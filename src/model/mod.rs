@@ -4,6 +4,10 @@ use std::iter;
 
 pub mod parser;
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Clone,PartialEq)]
 pub enum Value {
     Extant,
     Int32Value(i32),
@@ -14,14 +18,204 @@ pub enum Value {
     Record(Vec<Attr>, Vec<Item>),
 }
 
+impl Value {
+
+    pub fn text<T: ToString>(x: T) -> Value {
+        Value::Text(x.to_string())
+    }
+
+    pub fn record(items: Vec<Item>) -> Value {
+        Value::Record(vec![], items)
+    }
+
+    pub fn singleton<I: ToItem>(value: I) -> Value {
+        Value::record(vec![value.item()])
+    }
+
+    pub fn empty_record() -> Value {
+        Value::Record(vec![], vec![])
+    }
+
+    pub fn from_vec<V: ToValue>(items: Vec<V>) -> Value {
+        Value::Record(vec![],
+                      items.into_iter()
+                          .map(|item| Item::of(item))
+                          .collect())
+    }
+
+    pub fn of_attr(attr: Attr) -> Value {
+        Value::Record(vec![attr], vec![])
+    }
+
+    pub fn of_attrs(attrs: Vec<Attr>) -> Value {
+        Value::Record(attrs, vec![])
+    }
+
+}
+
+pub trait ToValue {
+
+    fn val(self) -> Value;
+
+}
+
+impl ToValue for i32 {
+    fn val(self) -> Value {
+        Value::Int32Value(self)
+    }
+}
+
+impl ToValue for i64 {
+    fn val(self) -> Value {
+        Value::Int64Value(self)
+    }
+}
+
+impl ToValue for f64 {
+
+    fn val(self) -> Value {
+        Value::Float64Value(self)
+    }
+
+}
+
+impl ToValue for bool {
+
+    fn val(self) -> Value {
+        Value::BooleanValue(self)
+    }
+
+}
+
+impl ToValue for String {
+
+    fn val(self) -> Value {
+        Value::Text(self)
+    }
+
+}
+
+impl ToValue for &str {
+
+    fn val(self) -> Value {
+        Value::Text(self.to_owned())
+    }
+
+}
+
+impl ToValue for Value {
+    fn val(self) -> Value {
+        self
+    }
+}
+
+#[derive(Clone,PartialEq)]
 pub struct Attr {
     name: String,
     value: Value,
 }
 
+impl Attr {
+
+    pub fn of<T: ToAttr>(rep : T) -> Attr {
+        rep.attr()
+    }
+
+}
+
+pub trait ToAttr {
+
+    fn attr(self) -> Attr;
+
+}
+
+impl ToAttr for &str {
+    fn attr(self) -> Attr {
+        Attr { name: self.to_owned(), value: Value::Extant }
+    }
+}
+
+impl ToAttr for String {
+    fn attr(self) -> Attr {
+        Attr { name: self, value: Value::Extant }
+    }
+}
+
+impl<V: ToValue> ToAttr for (&str, V) {
+
+    fn attr(self) -> Attr {
+        let (name_str, v) = self;
+        Attr { name: name_str.to_owned(), value: v.val() }
+    }
+
+}
+
+impl<V: ToValue> ToAttr for (String, V) {
+
+    fn attr(self) -> Attr {
+        let (name, v) = self;
+        Attr { name, value: v.val() }
+    }
+
+}
+
+#[derive(Clone,PartialEq)]
 pub enum Item {
     ValueItem(Value),
     Slot(Value, Value),
+}
+
+impl Item {
+
+    pub fn of<I: ToItem>(item: I) -> Item {
+        item.item()
+    }
+
+    pub fn slot<K: ToValue, V : ToValue>(key : K, value : V) -> Item {
+        Item::Slot(key.val(), value.val())
+    }
+}
+
+pub trait ToItem {
+
+    fn item(self) -> Item;
+
+}
+
+pub trait ToSlot {
+
+    fn slot(self) -> Item;
+
+}
+
+impl<V: ToValue> ToItem for V {
+    fn item(self) -> Item {
+        Item::ValueItem(self.val())
+    }
+}
+
+impl ToItem for Item {
+    fn item(self) -> Item {
+        self
+    }
+}
+
+impl<K: ToValue, V: ToValue> ToSlot for (K, V) {
+
+    fn slot(self) -> Item {
+        let (key, value) = self;
+        Item::Slot(key.val(), value.val())
+    }
+}
+
+fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+    if parser::is_identifier(literal) {
+        f.write_str(literal)
+    } else if needs_escape(literal) {
+        write!(f, "\"{}\"", escape_text(literal))
+    } else {
+        write!(f, "\"{}\"", literal)
+    }
 }
 
 impl Display for Value {
@@ -30,11 +224,9 @@ impl Display for Value {
             Value::Extant => f.write_str(""),
             Value::Int32Value(n) => write!(f, "{}", n),
             Value::Int64Value(n) => write!(f, "{}", n),
-            Value::Float64Value(x) => write!(f, "{}", x),
+            Value::Float64Value(x) => write!(f, "{:e}", x),
             Value::BooleanValue(p) => write!(f, "{}", p),
-            Value::Text(s) if parser::is_identifier(s) => f.write_str(s),
-            Value::Text(s) if needs_escape(s) => write!(f, "\"{}\"", escape_text(s)),
-            Value::Text(s) => write!(f, "\"{}\"", s),
+            Value::Text(s) => write_string_literal(s, f),
             Value::Record(attrs, body) => {
                 if attrs.is_empty() && body.is_empty() {
                     f.write_str("{}")
@@ -44,6 +236,14 @@ impl Display for Value {
                     }
                     if !body.is_empty() {
                         f.write_str("{")?;
+                        let mut first = true;
+                        for elem in body.iter() {
+                            if !first {
+                                f.write_str(",")?;
+                            }
+                            write!(f, "{}", elem)?;
+                            first = false;
+                        }
                         f.write_str("}")
                     } else {
                         Result::Ok(())
@@ -65,12 +265,27 @@ impl Display for Attr {
                         f.write_str(",")?;
                     }
                     write!(f, "{}", elem)?;
-                    first = true;
+                    first = false;
                 }
-                Result::Ok(())
+                f.write_str(")")
             },
-            Value::Extant => write!(f, "@{}", self.name),
-            ow => write!(f, "@{}({})", self.name, ow),
+            Value::Record(attrs, body)if attrs.is_empty() && body.len() == 1 => {
+                f.write_str("@")?;
+                write_string_literal(&self.name, f)?;
+                match body.first() {
+                    Some(slot@ Item::Slot(_, _)) => write!(f, "({})", slot),
+                    _ => write!(f, "({})", &self.value),
+                }
+            },
+            Value::Extant => {
+                f.write_str("@")?;
+                write_string_literal(&self.name, f)
+            },
+            ow => {
+                f.write_str("@")?;
+                write_string_literal(&self.name, f)?;
+                write!(f, "({})", ow)
+            },
         }
     }
 }
