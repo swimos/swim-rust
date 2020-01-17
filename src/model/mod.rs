@@ -97,42 +97,40 @@ impl Value {
 
 }
 
-impl Into<Value> for i32 {
-    fn into(self) -> Value {
-        Value::Int32Value(self)
+impl From<i32> for Value {
+    fn from(n: i32) -> Self {
+        Value::Int32Value(n)
     }
 }
 
-impl Into<Value> for i64 {
-    fn into(self) -> Value {
-        Value::Int64Value(self)
+impl From<i64> for Value {
+    fn from(n: i64) -> Self {
+        Value::Int64Value(n)
     }
 }
 
-impl Into<Value> for f64 {
-    fn into(self) -> Value {
-        Value::Float64Value(self)
+impl From<f64> for Value {
+    fn from(x: f64) -> Self {
+        Value::Float64Value(x)
     }
 }
 
-impl Into<Value> for bool {
-    fn into(self) -> Value {
-        Value::BooleanValue(self)
+impl From<bool> for Value {
+    fn from(p: bool) -> Self {
+        Value::BooleanValue(p)
     }
 }
 
-impl Into<Value> for String {
-    fn into(self) -> Value {
-        Value::Text(self)
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::Text(s)
     }
 }
 
-impl Into<Value> for &str {
-
-    fn into(self) -> Value {
-        Value::Text(self.to_owned())
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Value::Text(s.to_owned())
     }
-
 }
 
 /// An attribute that can be applied to a record ['Value']. A key value pair where the key is
