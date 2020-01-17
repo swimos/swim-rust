@@ -1,5 +1,7 @@
 use super::*;
-use crate::model::parser::ValueParseState::AfterAttribute;
+
+#[cfg(test)]
+mod tests;
 
 pub fn is_identifier_start(c: char) -> bool {
     c >= 'A' && c <= 'Z' ||
@@ -37,6 +39,76 @@ pub fn is_identifier(name: &str) -> bool {
     }
 }
 
+pub struct FailedAt(usize);
+
+
+pub enum ParseFailure {
+    BadToken(FailedAt),
+    InvalidToken(FailedAt),
+    IncompleteRecord,
+    UnconsumedInput,
+}
+
+pub enum ParseTermination {
+    Failed(ParseFailure),
+    EarlyTermination(Value),
+}
+
+pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
+    let mut state = vec![];
+    let mut tokens = tokenize_str(repr);
+    let mut result: Option<Result<Value, ParseFailure>> = None;
+    while let Some(maybe_token) = tokens.next() {
+        match maybe_token {
+            Ok(token) => {
+                match consume_token(&mut state, token) {
+                    Some(ParseTermination::Failed(err)) => {
+                        result = Some(Err(err));
+                        break
+                    },
+                    Some(ParseTermination::EarlyTermination(value)) => {
+                        result = Some(Ok(value));
+                        break
+                    }
+                    None => {},
+                }
+            },
+            Err(failed) => {
+                result = Some(Err(ParseFailure::BadToken(failed)));
+                break
+            },
+        }
+
+    }
+    match result {
+        Some(e @ Err(_)) => e,
+        Some(Ok(value)) => {
+            match tokens.next() {
+                Some(_) => Err(ParseFailure::UnconsumedInput),
+                _ => Ok(value)
+            }
+        },
+        _ => {
+            let depth = state.len();
+            match state.pop() {
+                Some(Frame { mut attrs, items, parse_state}) if depth == 1 => {
+                    match parse_state {
+                        ValueParseState::ReadingAttribute(name) => {
+                            attrs.push(Attr { name: name.to_owned(), value: Value::Extant });
+                            Ok(Value::Record(attrs, items))
+                        },
+                        ValueParseState::AfterAttribute => {
+                            Ok(Value::Record(attrs, items))
+                        },
+                        _ => Err(ParseFailure::IncompleteRecord)
+                    }
+                },
+                _ => Err(ParseFailure::IncompleteRecord)
+            }
+        },
+    }
+}
+
 #[derive(PartialEq)]
 enum ReconToken<'a> {
     AttrMarker,
@@ -56,7 +128,6 @@ enum ReconToken<'a> {
 }
 
 impl ReconToken<'_> {
-
     fn is_value(&self) -> bool {
         match self {
             ReconToken::Identifier(_) |
@@ -81,7 +152,6 @@ impl ReconToken<'_> {
             _ => None
         }
     }
-
 }
 
 struct LocatedReconToken<'a>(ReconToken<'a>, usize);
@@ -372,7 +442,6 @@ fn token_start<'a>(source: &'a str,
 }
 
 fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToken<'a>, FailedAt>> + 'a {
-
     let following = repr.chars()
         .skip(1)
         .map(|c| Some(c))
@@ -386,7 +455,7 @@ fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToke
               })
 }
 
-pub struct FailedAt(usize);
+
 
 
 enum ValueParseState {
@@ -400,25 +469,6 @@ enum ValueParseState {
     AfterSlot(bool),
 }
 
-impl ValueParseState {
-
-    fn new_record(attr_body: bool) -> (Vec<Attr>, Vec<Item>, ValueParseState) {
-        (vec![], vec![], ValueParseState::RecordStart(attr_body))
-    }
-
-}
-
-pub enum ParseFailure {
-    BadToken(FailedAt),
-    InvalidToken(FailedAt),
-    IncompleteRecord,
-    UnconsumedInput,
-}
-
-pub enum ParseTermination {
-    Failed(ParseFailure),
-    EarlyTermination(Value),
-}
 
 fn make_singleton(attrs: Vec<Attr>, value: Value) -> Value {
     Value::Record(attrs, vec![Item::ValueItem(value)])
@@ -502,57 +552,10 @@ fn unescape(literal: &str) -> Result<String, String> {
     }
 }
 
-pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
-    let mut state = vec![];
-    let mut tokens = tokenize_str(repr);
-    let mut result: Option<Result<Value, ParseFailure>> = None;
-    while let Some(token) = tokens.next() {
-        match consume_token(&mut state, token) {
-            Some(ParseTermination::Failed(err)) => {
-                result = Some(Err(err));
-                break
-            },
-            Some(ParseTermination::EarlyTermination(value)) => {
-                result = Some(Ok(value));
-                break
-            }
-            None => {},
-        }
-    }
-    match result {
-        Some(e @Err(_)) => e,
-        Some(Ok(value)) => {
-          match tokens.next() {
-              Some(_) => Err(ParseFailure::UnconsumedInput),
-              _ => Ok(value)
-          }
-        },
-        _ => {
-            let depth = state.len();
-            match state.pop() {
-                Some((mut attrs, items, parse_state)) if depth == 1 => {
-                    match parse_state {
-                        ValueParseState::ReadingAttribute(name) => {
-                            attrs.push(Attr{ name: name.to_owned(), value: Value::Extant });
-                            Ok(Value::Record(attrs, items))
-                        },
-                        ValueParseState::AfterAttribute => {
-                            Ok(Value::Record(attrs, items))
-                        },
-                        _ => Err(ParseFailure::IncompleteRecord)
-                    }
-                },
-                _ => Err(ParseFailure::IncompleteRecord)
-            }
-        },
-    }
-
-}
-
-fn push_down(state: &mut Vec<(Vec<Attr>, Vec<Item>, ValueParseState)>,
-             value : Value,
+fn push_down(state: &mut Vec<Frame>,
+             value: Value,
              offset: usize) -> Option<Result<Value, FailedAt>> {
-    if let Some((mut attrs, mut items, mut parse_state)) = state.pop() {
+    if let Some(Frame { mut attrs, mut items, mut parse_state }) = state.pop() {
         match parse_state {
             ValueParseState::ReadingAttribute(name) => {
                 match value {
@@ -567,37 +570,36 @@ fn push_down(state: &mut Vec<(Vec<Attr>, Vec<Item>, ValueParseState)>,
                         attrs.push(Attr { name, value: rec })
                     },
                     ow => {
-                        attrs.push(Attr { name, value: ow})
+                        attrs.push(Attr { name, value: ow })
                     },
                 }
-                parse_state = AfterAttribute;
-                state.push((attrs, items, parse_state));
+                parse_state = ValueParseState::AfterAttribute;
+                state.push(Frame { attrs, items, parse_state });
                 None
             },
             ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) => {
                 parse_state = ValueParseState::Single(p, value);
-                state.push((attrs, items, parse_state));
+                state.push(Frame { attrs, items, parse_state });
                 None
             },
             ValueParseState::ReadingSlot(p, key) => {
                 items.push(Item::Slot(key, value));
                 parse_state = ValueParseState::AfterSlot(p);
-                state.push((attrs, items, parse_state));
+                state.push(Frame { attrs, items, parse_state });
                 None
             },
             _ => Some(Err(FailedAt(offset))),
         }
-
     } else {
         Some(Ok(value))
     }
 }
 
-fn push_down_and_close(state: &mut Vec<(Vec<Attr>, Vec<Item>, ValueParseState)>,
+fn push_down_and_close(state: &mut Vec<Frame>,
                        value: Value,
                        is_attr: bool,
                        offset: usize) -> Option<Result<Value, FailedAt>> {
-    if let Some((attrs, mut items, parse_state)) = state.pop() {
+    if let Some(Frame { attrs, mut items, parse_state }) = state.pop() {
         match parse_state {
             ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) if p == is_attr => {
                 items.push(Item::ValueItem(value));
@@ -611,233 +613,378 @@ fn push_down_and_close(state: &mut Vec<(Vec<Attr>, Vec<Item>, ValueParseState)>,
             },
             _ => Some(Err(FailedAt(offset))),
         }
-
     } else {
         Some(Err(FailedAt(offset)))
     }
 }
 
-fn consume_token(state: &mut Vec<(Vec<Attr>, Vec<Item>, ValueParseState)>,
-                 loc_token: Result<LocatedReconToken, FailedAt>) -> Option<ParseTermination> {
+enum StartAt {
+    Attrs,
+    AttrBody,
+    RecordBody,
+}
+
+struct Frame {
+    attrs: Vec<Attr>,
+    items: Vec<Item>,
+    parse_state: ValueParseState,
+}
+
+impl Frame {
+    fn new_record(start: StartAt) -> Frame {
+        Frame {
+            attrs: vec![],
+            items: vec![],
+            parse_state: match start {
+                StartAt::Attrs => ValueParseState::AttributeStart,
+                StartAt::AttrBody => ValueParseState::RecordStart(true),
+                StartAt::RecordBody => ValueParseState::RecordStart(false),
+            },
+        }
+    }
+}
+
+enum StateModification {
+    Fail,
+    RePush(Frame),
+    OpenNew(Frame, StartAt),
+    PushDown(Value),
+    PushDownAndClose(Value, bool),
+
+}
+
+impl StateModification {
+    fn apply(self, state: &mut Vec<Frame>,
+             offset: usize) -> Option<Result<Value, FailedAt>> {
+        match self {
+            StateModification::Fail => Some(Err(FailedAt(offset))),
+            StateModification::RePush(frame) => {
+                state.push(frame);
+                None
+            },
+            StateModification::OpenNew(frame, start) => {
+                state.push(frame);
+                match start {
+                    StartAt::Attrs => {},
+                    StartAt::AttrBody => {},
+                    StartAt::RecordBody => {},
+                }
+                state.push(Frame::new_record(start));
+                None
+            },
+            StateModification::PushDown(value) => {
+                push_down(state, value, offset)
+            }
+            StateModification::PushDownAndClose(value, attr_body) => {
+                push_down_and_close(state, value, attr_body, offset)
+            }
+        }
+    }
+}
+
+fn repush(attrs: Vec<Attr>, items: Vec<Item>, parse_state: ValueParseState) -> StateModification {
+    StateModification::RePush(Frame {
+        attrs,
+        items,
+        parse_state,
+    })
+}
+
+fn open_new(attrs: Vec<Attr>, items: Vec<Item>, parse_state: ValueParseState, start_at: StartAt) -> StateModification {
+    StateModification::OpenNew(Frame {
+        attrs,
+        items,
+        parse_state,
+    }, start_at)
+}
+
+fn consume_token(state: &mut Vec<Frame>,
+                 loc_token: LocatedReconToken) -> Option<ParseTermination> {
     use ValueParseState::*;
-    use ReconToken::*;
 
-    let LocatedReconToken(token, offset) = match loc_token {
-        Ok(t) => t,
-        Err(at) => return Some(ParseTermination::Failed(ParseFailure::BadToken(at))),
-    };
+    let LocatedReconToken(token, offset) = loc_token;
 
-    let result : Option<Result<Value, FailedAt>> =
-        if let Some((mut attrs,
-                        mut items,
-                        mut parse_state)) = state.pop() {
-
-        match (parse_state, token) {
-            (AttributeStart, Identifier(name))  => {
-                parse_state = ReadingAttribute(name.to_owned());
-                state.push((attrs, items, parse_state));
-                None
-            },
-            (AttributeStart, StringLiteral(name))  => {
-                match unescape(name) {
-                    Ok(unesc) =>  {
-                        parse_state = ReadingAttribute(unesc);
-                        state.push((attrs, items, parse_state));
-                        None
-                    },
-                    Err(_) => Some(Err(FailedAt(offset))),
-                }
-            },
-
-            //AFTER ATTRIBUTE NAME
-
-            (ReadingAttribute(name), AttrMarker)  => {
-                attrs.push(Attr { name: name.to_owned(), value: Value::Extant });
-                parse_state = AttributeStart;
-                state.push((attrs, items, parse_state));
-                None
-            },
-            (st @ ReadingAttribute(_), AttrBodyStart)  => {
-                state.push((attrs, items, st));
-                state.push(ValueParseState::new_record(true));
-                None
-            },
-            (ReadingAttribute(name), RecordBodyStart)  => {
-                attrs.push(Attr { name: name.to_owned(), value: Value::Extant });
-                parse_state = RecordStart(false);
-                state.push((attrs, items, parse_state));
-                None
-            },
-            (ReadingAttribute(attr_name), tok) if tok.is_value() =>{
-                let attr = Attr { name: attr_name.to_owned(), value: Value::Extant };
-                attrs.push(attr);
-                match tok.to_value() {
-                    Some(Ok(value)) => {
-                        let record = make_singleton(attrs, value);
-                        push_down(state, record, offset)
-                    },
-                    _ => Some(Err(FailedAt(offset))),
-                }
-
-            },
-            (ReadingAttribute(attr_name), EntrySep) => {
-                let attr = Attr { name: attr_name.to_owned(), value: Value::Extant };
-                attrs.push(attr);
-                let record = Value::Record(attrs, items);
-                push_down(state, record, offset)
-            },
-            (ReadingAttribute(attr_name), tok @ AttrBodyEnd) |
-            (ReadingAttribute(attr_name), tok @ RecordBodyEnd) => {
-                let attr = Attr { name: attr_name.to_owned(), value: Value::Extant };
-                attrs.push(attr);
-                let record = Value::Record(attrs, items);
-                push_down_and_close(state, record, tok == AttrBodyEnd, offset)
-            },
-
-            //AFTER ATTRIBUTE BODY
-
-            (AfterAttribute, AttrMarker)  => {
-                parse_state = AttributeStart;
-                state.push((attrs, items, parse_state));
-                None
-            },
-            (AfterAttribute, RecordBodyStart)  => {
-                parse_state = RecordStart(false);
-                state.push((attrs, items, parse_state));
-                None
-            },
-            (AfterAttribute, tok) if tok.is_value() => {
-                match tok.to_value() {
-                    Some(Ok(value)) => {
-                        let record = make_singleton(attrs, value);
-                        push_down(state, record, offset)
-                    },
-                    _ => Some(Err(FailedAt(offset))),
-                }
-            },
-            (AfterAttribute, EntrySep) => {
-                let record = Value::Record(attrs, items);
-                push_down(state, record, offset)
-            },
-            (AfterAttribute, tok @ AttrBodyEnd) |
-            (AfterAttribute, tok @ RecordBodyEnd) => {
-                let record = Value::Record(attrs, items);
-                push_down_and_close(state, record, tok == AttrBodyEnd, offset)
-            },
-
-            //CLOSING RECORD BODY
-
-            (RecordStart(false), tok @ RecordBodyEnd) |
-            (RecordStart(true), tok @ AttrBodyEnd) |
-            (AfterSlot(false), tok @ RecordBodyEnd) |
-            (AfterSlot(true), tok @ AttrBodyEnd) => {
-                let record = Value::Record(attrs, items);
-                push_down_and_close(state, record, tok == AttrBodyEnd, offset)
-            },
-            (Single(false, v), tok @ RecordBodyEnd) |
-            (Single(true, v), tok @ AttrBodyEnd) => {
-                items.push(Item::ValueItem(v));
-                let record = Value::Record(attrs, items);
-                push_down_and_close(state, record, tok == AttrBodyEnd, offset)
-            },
-            (InsideBody(false, required), tok@ RecordBodyEnd) |
-            (InsideBody(true, required), tok @ AttrBodyEnd) => {
-                if required {
-                    items.push(Item::ValueItem(Value::Extant));
-                }
-                let record = Value::Record(attrs, items);
-                push_down_and_close(state, record, tok == AttrBodyEnd, offset)
-            },
-
-            //RECORD NESTING
-
-            (st @ RecordStart(_), RecordBodyStart) |
-            (st @ ReadingSlot(_, _), RecordBodyStart) |
-            (st @ InsideBody(_, _), RecordBodyStart) => {
-                state.push((attrs, items, st));
-                state.push(ValueParseState::new_record(true));
-                None
-            },
-
-            (st @ RecordStart(_), AttrMarker) |
-            (st @ ReadingSlot(_, _), AttrMarker) |
-            (st @ InsideBody(_, _), AttrMarker) => {
-                state.push((attrs, items, st));
-                state.push((vec![], vec![], AttributeStart));
-                None
-            },
-
-            //VALUES
-
-            (RecordStart(p), tok) if tok.is_value() => {
-                match tok.to_value() {
-                    Some(Ok(value)) => {
-                        parse_state = Single(p, value);
-                        state.push((attrs, items, parse_state));
-                        None
-                    },
-                    _ => Some(Err(FailedAt(offset))),
-                }
-            },
-            (ReadingSlot(p, key), tok) if tok.is_value() => {
-                match tok.to_value() {
-                    Some(Ok(value)) => {
-                        parse_state = AfterSlot(p);
-                        items.push(Item::Slot(key, value));
-                        state.push((attrs, items, parse_state));
-                        None
-                    },
-                    _ => Some(Err(FailedAt(offset))),
-                }
-            },
-            (Single(p, value), tok) if tok == EntrySep || tok == NewLine => {
-                parse_state = InsideBody(p, tok == EntrySep);
-                items.push(Item::ValueItem(value));
-                state.push((attrs, items, parse_state));
-                None
-            },
-
-            //SLOTS
-            (Single(p, key), SlotDivider) => {
-                parse_state = ReadingSlot(p, key);
-                state.push((attrs, items, parse_state));
-                None
-            },
-            (AfterSlot(p), tok) if tok == EntrySep || tok == NewLine => {
-                parse_state = InsideBody(p, tok == EntrySep);
-                state.push((attrs, items, parse_state));
-                None
-            },
-
-            //FALLBACKS
-            (_, NewLine) => None,
-            _ => Some(Err(FailedAt(offset))),
+    if let Some(Frame { attrs, items, parse_state }) = state.pop() {
+        let state_mod: StateModification = match parse_state {
+            AttributeStart => update_attr_start(token, attrs, items),
+            ReadingAttribute(name) => update_reading_attr(token, name, attrs, items),
+            AfterAttribute => update_after_attr(token, attrs, items),
+            RecordStart(attr_body) => update_record_start(token, attr_body, attrs, items),
+            InsideBody(attr_body, required) => update_inside_body(token, attr_body, required, attrs, items),
+            Single(attr_body, value) => update_single(token, attr_body, value, attrs, items),
+            ReadingSlot(attr_body, key) => update_reading_slot(token, attr_body, key, attrs, items),
+            AfterSlot(attr_body) => update_after_slot(token, attr_body, attrs, items),
+        };
+        match state_mod.apply(state, offset) {
+            Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
+            Some(Err(failed)) => Some(ParseTermination::Failed(ParseFailure::InvalidToken(failed))),
+            _ => None,
         }
     } else {
+        use ReconToken::*;
         match token {
             AttrMarker => {
-                state.push((vec![], vec![], AttributeStart));
+                state.push(Frame::new_record(StartAt::Attrs));
                 None
             },
             RecordBodyStart => {
-                state.push(ValueParseState::new_record(false));
+                state.push(Frame::new_record(StartAt::RecordBody));
                 None
             },
             NewLine => None,
             tok if tok.is_value() => {
                 match tok.to_value() {
-                    Some(Ok(value)) => Some(Ok(value)),
-                    _ => Some(Err(FailedAt(offset)))
+                    Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
+                    _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(FailedAt(offset))))
                 }
             },
-            _ => Some(Err(FailedAt(offset))),
+            _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(FailedAt(offset)))),
         }
-    };
-
-    match result {
-        Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
-        Some(Err(failed)) => Some(ParseTermination::Failed(ParseFailure::InvalidToken(failed))),
-        _ => None,
     }
 }
+
+fn update_attr_start(token: ReconToken,
+                     attrs: Vec<Attr>,
+                     items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        Identifier(name) => repush(attrs, items, ReadingAttribute(name.to_owned())),
+        StringLiteral(name) => {
+            match unescape(name) {
+                Ok(unesc) => {
+                    repush(attrs, items, ReadingAttribute(unesc))
+                },
+                Err(_) => StateModification::Fail,
+            }
+        },
+        _ => StateModification::Fail,
+    }
+}
+
+fn update_reading_attr(token: ReconToken,
+                       name: String,
+                       mut attrs: Vec<Attr>,
+                       items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        AttrMarker => {
+            attrs.push(Attr { name: name.to_owned(), value: Value::Extant });
+            repush(attrs, items, AttributeStart)
+        },
+        AttrBodyStart => open_new(attrs, items, ReadingAttribute(name), StartAt::AttrBody),
+        RecordBodyStart => {
+            attrs.push(Attr { name, value: Value::Extant });
+            repush(attrs, items, RecordStart(false))
+        },
+        tok if tok.is_value() => {
+            let attr = Attr { name, value: Value::Extant };
+            attrs.push(attr);
+            match tok.to_value() {
+                Some(Ok(value)) => {
+                    let record = make_singleton(attrs, value);
+                    StateModification::PushDown(record)
+                },
+                _ => StateModification::Fail,
+            }
+        },
+        EntrySep => {
+            let attr = Attr { name, value: Value::Extant };
+            attrs.push(attr);
+            let record = Value::Record(attrs, items);
+            StateModification::PushDown(record)
+        },
+        tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
+            let attr = Attr { name, value: Value::Extant };
+            attrs.push(attr);
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
+        },
+        NewLine => repush(attrs, items, ReadingAttribute(name)),
+        _ => StateModification::Fail,
+    }
+}
+
+fn update_after_attr(token: ReconToken,
+                     attrs: Vec<Attr>,
+                     items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        AttrMarker => repush(attrs, items, AttributeStart),
+        RecordBodyStart => repush(attrs, items, RecordStart(false)),
+        tok if tok.is_value() => {
+            match tok.to_value() {
+                Some(Ok(value)) => {
+                    let record = make_singleton(attrs, value);
+                    StateModification::PushDown(record)
+                },
+                _ => StateModification::Fail,
+            }
+        },
+        EntrySep => {
+            let record = Value::Record(attrs, items);
+            StateModification::PushDown(record)
+        },
+        tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
+        },
+        NewLine => repush(attrs, items, AfterAttribute),
+        _ => StateModification::Fail,
+    }
+}
+
+fn update_record_start(token: ReconToken,
+                       attr_body: bool,
+                       attrs: Vec<Attr>,
+                       items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        RecordBodyEnd if !attr_body => {
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, false)
+        },
+        AttrBodyEnd if attr_body => {
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, true)
+        },
+        RecordBodyStart => open_new(attrs, items, RecordStart(attr_body), StartAt::RecordBody),
+        AttrMarker => open_new(attrs, items, RecordStart(attr_body), StartAt::Attrs),
+        tok if tok.is_value() => {
+            match tok.to_value() {
+                Some(Ok(value)) => repush(attrs, items, Single(attr_body, value)),
+                _ => StateModification::Fail,
+            }
+        },
+        NewLine => repush(attrs, items, RecordStart(attr_body)),
+        _ => StateModification::Fail,
+    }
+}
+
+fn update_inside_body(token: ReconToken,
+                      attr_body: bool,
+                      required: bool,
+                      attrs: Vec<Attr>,
+                      mut items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        RecordBodyEnd if !attr_body => {
+            if required {
+                items.push(Item::ValueItem(Value::Extant));
+            }
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, false)
+        },
+        AttrBodyEnd if attr_body => {
+            if required {
+                items.push(Item::ValueItem(Value::Extant));
+            }
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, true)
+        },
+        RecordBodyStart => open_new(attrs, items, InsideBody(attr_body, required), StartAt::RecordBody),
+        AttrMarker => open_new(attrs, items, InsideBody(attr_body, required), StartAt::Attrs),
+        NewLine => repush(attrs, items, InsideBody(attr_body, required)),
+        _ => StateModification::Fail,
+    }
+}
+
+fn update_single(token: ReconToken,
+                 attr_body: bool,
+                 value: Value,
+                 attrs: Vec<Attr>,
+                 mut items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        RecordBodyEnd if !attr_body => {
+            items.push(Item::ValueItem(value));
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, false)
+        },
+        AttrBodyEnd if attr_body => {
+            items.push(Item::ValueItem(value));
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, true)
+        },
+        tok @ EntrySep | tok @ NewLine => {
+            items.push(Item::ValueItem(value));
+            repush(attrs, items, InsideBody(attr_body, tok == EntrySep))
+        },
+        SlotDivider => repush(attrs, items, ReadingSlot(attr_body, value)),
+        _ => StateModification::Fail,
+    }
+}
+
+fn update_reading_slot(token: ReconToken,
+                       attr_body: bool,
+                       key: Value,
+                       attrs: Vec<Attr>,
+                       mut items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        RecordBodyStart => open_new(attrs, items, ReadingSlot(attr_body, key), StartAt::RecordBody),
+        AttrMarker => open_new(attrs, items, ReadingSlot(attr_body, key), StartAt::Attrs),
+        tok if tok.is_value() => {
+            match tok.to_value() {
+                Some(Ok(value)) => {
+                    items.push(Item::Slot(key, value));
+                    repush(attrs, items, AfterSlot(attr_body))
+                },
+                _ => StateModification::Fail,
+            }
+        },
+        RecordBodyEnd if !attr_body => {
+            items.push(Item::Slot(key, Value::Extant));
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, false)
+        },
+        AttrBodyEnd if attr_body => {
+            items.push(Item::Slot(key, Value::Extant));
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, true)
+        },
+        tok @ EntrySep | tok @ NewLine => {
+            items.push(Item::Slot(key, Value::Extant));
+            repush(attrs, items, InsideBody(attr_body, tok == EntrySep))
+        },
+        _ => StateModification::Fail,
+    }
+}
+
+
+fn update_after_slot(token: ReconToken,
+                     attr_body: bool,
+                     attrs: Vec<Attr>,
+                     items: Vec<Item>) -> StateModification {
+    use ReconToken::*;
+    use ValueParseState::*;
+
+    match token {
+        RecordBodyEnd if !attr_body => {
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, false)
+        },
+        AttrBodyEnd if attr_body => {
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndClose(record, true)
+        },
+        tok @ EntrySep | tok @ NewLine =>
+            repush(attrs, items, InsideBody(attr_body, tok == EntrySep)),
+        _ => StateModification::Fail,
+    }
+}
+
 
