@@ -7,204 +7,236 @@ pub mod parser;
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone,PartialEq)]
+/// The core Swim model type. A recursive data type that can be represented in text as a Recon
+/// document.
+#[derive(Clone,PartialEq,Debug)]
 pub enum Value {
+
+    /// A defined but empty value.
     Extant,
+
+    /// A 32-bit integer wrapped as a [`Value`].
     Int32Value(i32),
+
+    /// A 64-bit integer wrapped as a [`Value`].
     Int64Value(i64),
+
+    /// A 64-bit floating point number wrapped as a [`Value`].
     Float64Value(f64),
+
+    /// A boolean wrapped as a [`Value`].
     BooleanValue(bool),
+
+    /// A textual value. A text can either be an identifier or a string literal. A literal
+    /// consists of underscores, digits and most characters from the basic multilingual plane and
+    /// may not start with a digit.
+    ///
+    /// Literals will be printed "as is" whereas string literals will be quoted and escaped using
+    /// Java conventions.
+    ///
+    /// Additionally, the strings `true` and `false` are not identifiers.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::model::Value;
+    ///
+    /// assert_eq!(Value::text("an_identifier").to_string(), "an_identifier");
+    /// assert_eq!(Value::text("2morrow").to_string(), r#""2morrow""#);
+    /// assert_eq!(Value::text("\t\r\n").to_string(), r#""\t\r\n""#);
+    /// assert_eq!(Value::text("true").to_string(), r#""true""#);
+    /// ```
+    ///
     Text(String),
+
+    ///
+    /// A compound [`Value`] consisting of any number of [`Attr`]s and [`Item`]s.
+    ///
     Record(Vec<Attr>, Vec<Item>),
 }
 
 impl Value {
 
+    /// Create a text value from anything that can be converted to a ['String'].
     pub fn text<T: ToString>(x: T) -> Value {
         Value::Text(x.to_string())
     }
 
+    /// Create a record from a vector of ['Item']s.
     pub fn record(items: Vec<Item>) -> Value {
         Value::Record(vec![], items)
     }
 
-    pub fn singleton<I: ToItem>(value: I) -> Value {
-        Value::record(vec![value.item()])
+    /// Create a singleton record from anything that can be converted to an ['Item'].
+    pub fn singleton<I: Into<Item>>(value: I) -> Value {
+        Value::record(vec![value.into()])
     }
 
+    /// Create an empty record.
     pub fn empty_record() -> Value {
         Value::Record(vec![], vec![])
     }
 
-    pub fn from_vec<V: ToValue>(items: Vec<V>) -> Value {
+    /// Create a record from a vector of anything that can be converted to ['Item']s.
+    pub fn from_vec<V: Into<Value>>(items: Vec<V>) -> Value {
         Value::Record(vec![],
                       items.into_iter()
                           .map(|item| Item::of(item))
                           .collect())
     }
 
+    /// Create a record consisting of only a single ['Attr'].
     pub fn of_attr(attr: Attr) -> Value {
         Value::Record(vec![attr], vec![])
     }
 
+    /// Create a record from a vector of ['Attr']s.
     pub fn of_attrs(attrs: Vec<Attr>) -> Value {
         Value::Record(attrs, vec![])
     }
 
 }
 
-pub trait ToValue {
-
-    fn val(self) -> Value;
-
-}
-
-impl ToValue for i32 {
-    fn val(self) -> Value {
+impl Into<Value> for i32 {
+    fn into(self) -> Value {
         Value::Int32Value(self)
     }
 }
 
-impl ToValue for i64 {
-    fn val(self) -> Value {
+impl Into<Value> for i64 {
+    fn into(self) -> Value {
         Value::Int64Value(self)
     }
 }
 
-impl ToValue for f64 {
-
-    fn val(self) -> Value {
+impl Into<Value> for f64 {
+    fn into(self) -> Value {
         Value::Float64Value(self)
     }
-
 }
 
-impl ToValue for bool {
-
-    fn val(self) -> Value {
+impl Into<Value> for bool {
+    fn into(self) -> Value {
         Value::BooleanValue(self)
     }
-
 }
 
-impl ToValue for String {
-
-    fn val(self) -> Value {
+impl Into<Value> for String {
+    fn into(self) -> Value {
         Value::Text(self)
     }
-
 }
 
-impl ToValue for &str {
+impl Into<Value> for &str {
 
-    fn val(self) -> Value {
+    fn into(self) -> Value {
         Value::Text(self.to_owned())
     }
 
 }
 
-impl ToValue for Value {
-    fn val(self) -> Value {
-        self
-    }
-}
-
-#[derive(Clone,PartialEq)]
+/// An attribute that can be applied to a record ['Value']. A key value pair where the key is
+/// a ['String'] and the value can be any ['Value'].
+#[derive(Clone,PartialEq,Debug)]
 pub struct Attr {
-    name: String,
-    value: Value,
+    pub name: String,
+    pub value: Value,
 }
 
 impl Attr {
 
-    pub fn of<T: ToAttr>(rep : T) -> Attr {
-        rep.attr()
+    /// Create an ['Attr'] from anything that can be converted to one.
+    ///
+    /// #Examples
+    ///
+    /// ```
+    /// use swim_rust::model::*;
+    ///
+    /// assert_eq!(Attr::of("name"), Attr { name: String::from("name"), value: Value::Extant });
+    /// assert_eq!(Attr::of(("key", 1)), Attr { name: String::from("key"), value: Value::Int32Value(1) });
+    /// ```
+    pub fn of<T: Into<Attr>>(rep : T) -> Attr {
+        rep.into()
     }
 
 }
 
-pub trait ToAttr {
-
-    fn attr(self) -> Attr;
-
-}
-
-impl ToAttr for &str {
-    fn attr(self) -> Attr {
-        Attr { name: self.to_owned(), value: Value::Extant }
+impl From<&str> for Attr {
+    fn from(s: &str) -> Self {
+        Attr { name: s.to_owned(), value: Value::Extant }
     }
 }
 
-impl ToAttr for String {
-    fn attr(self) -> Attr {
-        Attr { name: self, value: Value::Extant }
+impl From<String> for Attr {
+    fn from(name: String) -> Self {
+        Attr { name, value: Value::Extant }
     }
 }
 
-impl<V: ToValue> ToAttr for (&str, V) {
-
-    fn attr(self) -> Attr {
-        let (name_str, v) = self;
-        Attr { name: name_str.to_owned(), value: v.val() }
+impl<V: Into<Value>> From<(&str, V)> for Attr {
+    fn from(pair: (&str, V)) -> Self {
+        let (name_str, v) = pair;
+        Attr { name: name_str.to_owned(), value: v.into() }
     }
-
 }
 
-impl<V: ToValue> ToAttr for (String, V) {
-
-    fn attr(self) -> Attr {
-        let (name, v) = self;
-        Attr { name, value: v.val() }
+impl<V: Into<Value>> From<(String, V)> for Attr {
+    fn from(pair: (String, V)) -> Self {
+        let (name, v) = pair;
+        Attr { name, value: v.into() }
     }
-
 }
 
-#[derive(Clone,PartialEq)]
+/// An item that may occur in the body of record ['Value'].
+#[derive(Clone,PartialEq,Debug)]
 pub enum Item {
+    /// An item consisting of a single ['Value'].
     ValueItem(Value),
+
+    /// An item that is a key value pair where both are ['Value']s.
     Slot(Value, Value),
 }
 
 impl Item {
 
-    pub fn of<I: ToItem>(item: I) -> Item {
-        item.item()
+    /// Create an ['Item'] from anything that can be converted to one.
+    ///
+    /// #Examples
+    ///
+    /// ```
+    /// use swim_rust::model::*;
+    ///
+    /// assert_eq!(Item::of("name"), Item::ValueItem(Value::text("name")));
+    /// assert_eq!(Item::of(("key", 1)), Item::Slot(Value::text("key"), Value::Int32Value(1)));
+    /// assert_eq!(Item::of((true, -1i64)), Item::Slot(Value::BooleanValue(true), Value::Int64Value(-1)));
+    /// ```
+    pub fn of<I: Into<Item>>(item: I) -> Item {
+        item.into()
     }
 
-    pub fn slot<K: ToValue, V : ToValue>(key : K, value : V) -> Item {
-        Item::Slot(key.val(), value.val())
-    }
-}
-
-pub trait ToItem {
-
-    fn item(self) -> Item;
-
-}
-
-pub trait ToSlot {
-
-    fn slot(self) -> Item;
-
-}
-
-impl<V: ToValue> ToItem for V {
-    fn item(self) -> Item {
-        Item::ValueItem(self.val())
-    }
-}
-
-impl ToItem for Item {
-    fn item(self) -> Item {
-        self
+    /// Create a slot ['Item'] from a pair of things that can be converted to ['Value']s.
+    ///
+    /// #Examples
+    ///
+    /// ```
+    /// use swim_rust::model::*;
+    /// assert_eq!(Item::slot("key", 1), Item::Slot(Value::text("key"), Value::Int32Value(1)));
+    /// ```
+    pub fn slot<K: Into<Value>, V : Into<Value>>(key : K, value : V) -> Item {
+        Item::Slot(key.into(), value.into())
     }
 }
 
-impl<K: ToValue, V: ToValue> ToSlot for (K, V) {
+impl<V: Into<Value>> From<V> for Item {
+    fn from(v: V) -> Self {
+        Item::ValueItem(v.into())
+    }
+}
 
-    fn slot(self) -> Item {
-        let (key, value) = self;
-        Item::Slot(key.val(), value.val())
+impl<K: Into<Value>, V: Into<Value>> From<(K, V)> for Item {
+    fn from(pair: (K, V)) -> Self {
+        let (key, value) = pair;
+        Item::Slot(key.into(), value.into())
     }
 }
 

@@ -66,17 +66,17 @@ fn float64_value_to_string() {
 fn attribute_to_string() {
     assert_that!(Attr::of("name").to_string(), eq("@name"));
     assert_that!(Attr::of("two words").to_string(), eq(r#"@"two words""#));
-    assert_that!(("name", 1).attr().to_string(), eq("@name(1)"));
+    assert_that!(Attr::of(("name", 1)).to_string(), eq("@name(1)"));
 }
 
 #[test]
 fn item_to_string() {
     assert_that!(Item::of(0).to_string(), eq("0"));
-    let slot1 = ("name", 7).slot();
+    let slot1: Item = ("name", 7).into();
     assert_that!(slot1.to_string(), eq("name:7"));
-    let slot2 = (-5, "two words").slot();
+    let slot2: Item = (-5, "two words").into();
     assert_that!(slot2.to_string(), eq(r#"-5:"two words""#));
-    let slot3 = Item::Slot("empty".val(), Value::Extant);
+    let slot3 = Item::Slot("empty".into(), Value::Extant);
     assert_that!(slot3.to_string(), eq("empty:"));
 }
 
@@ -88,7 +88,7 @@ fn no_attr_record_to_string() {
     assert_that!(Value::from_vec(vec![1, 2, 3]).to_string(), eq("{1,2,3}"));
     assert_that!(Value::from_vec(vec!["a", "b", "c"]).to_string(), eq("{a,b,c}"));
     assert_that!(Value::record(vec![
-        ("a", 1).slot(), 2.item(), ("c", 3).slot()
+        ("a", 1).into(), 2.into(), ("c", 3).into()
     ]).to_string(), eq("{a:1,2,c:3}"));
 }
 
@@ -100,21 +100,21 @@ fn with_attr_record_to_string() {
     assert_that!(rec2.to_string(), eq("@name1@name2"));
     let rec3 = Value::Record(vec![Attr::of("name")], vec![Item::of(3)]);
     assert_that!(rec3.to_string(), eq("@name{3}"));
-    let rec4 = Value::Record(vec![Attr::of("name")], vec![(true,-1).slot()]);
+    let rec4 = Value::Record(vec![Attr::of("name")], vec![(true,-1).into()]);
     assert_that!(rec4.to_string(), eq("@name{true:-1}"));
-    let rec5 = Value::Record(vec![("name", 1).attr()], vec![("a", 1).slot(), 7.item()]);
+    let rec5 = Value::Record(vec![("name", 1).into()], vec![("a", 1).into(), 7.into()]);
     assert_that!(rec5.to_string(), eq("@name(1){a:1,7}"));
 }
 
 #[test]
 fn attrs_with_record_bodies_to_string() {
-    let attr1 = ("name", Value::empty_record()).attr();
+    let attr1: Attr = ("name", Value::empty_record()).into();
     assert_that!(attr1.to_string(), eq("@name({})"));
-    let attr2 = ("name", Value::singleton(0)).attr();
+    let attr2: Attr = ("name", Value::singleton(0)).into();
     assert_that!(attr2.to_string(), eq("@name({0})"));
-    let attr3 = ("name", Value::singleton(("a", 1).slot())).attr();
+    let attr3: Attr = ("name", Value::singleton(("a", 1))).into();
     assert_that!(attr3.to_string(), eq("@name(a:1)"));
-    let attr4 = ("name", Value::record(vec![("a", 1).slot(), ("b", 2).slot()])).attr();
+    let attr4: Attr = ("name", Value::record(vec![("a", 1).into(), ("b", 2).into()])).into();
     assert_that!(attr4.to_string(), eq("@name(a:1,b:2)"));
 }
 
@@ -125,12 +125,12 @@ fn nested_records_to_string() {
     let inner = Value::from_vec(vec!["a", "b", "c"]);
     let nested1 = Value::from_vec(vec![inner.clone()]);
     assert_that!(nested1.to_string(), eq("{{a,b,c}}"));
-    let nested2 = Value::record(vec![("aa", 10).slot(), inner.clone().item(), ("zz", 99).slot()]);
+    let nested2 = Value::record(vec![("aa", 10).into(), inner.clone().into(), ("zz", 99).into()]);
     assert_that!(nested2.to_string(), eq("{aa:10,{a,b,c},zz:99}"));
-    let attr_inner = Value::Record(vec![("name", 1).attr()], vec![]);
+    let attr_inner = Value::Record(vec![("name", 1).into()], vec![]);
     let nested3 = Value::from_vec(vec![attr_inner.clone()]);
     assert_that!(nested3.to_string(), eq("{@name(1)}"));
-    let complex_inner = Value::Record(vec![("inner", 1).attr()], vec![("a", 1).slot(), 7.item()]);
-    let nested_attr = ("outer", complex_inner.clone()).attr();
+    let complex_inner = Value::Record(vec![("inner", 1).into()], vec![("a", 1).into(), 7.into()]);
+    let nested_attr: Attr = ("outer", complex_inner.clone()).into();
     assert_that!(nested_attr.to_string(), eq("@outer(@inner(1){a:1,7})"));
 }
