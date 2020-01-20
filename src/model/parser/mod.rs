@@ -1,4 +1,5 @@
 use super::*;
+use std::borrow::Borrow;
 
 #[cfg(test)]
 mod tests;
@@ -39,11 +40,23 @@ pub fn is_identifier(name: &str) -> bool {
     }
 }
 
+#[derive(Eq,Clone,Copy,Hash,Debug,PartialEq,Ord,PartialOrd)]
 pub struct FailedAt(usize);
+
+#[derive(Eq,Clone,Copy,Hash,Debug,PartialEq,Ord,PartialOrd)]
+enum TokenError {
+    NoClosingQuote,
+    InvalidInteger,
+    InvalidFloat,
+    BadStartChar,
+}
+
+#[derive(Eq,Clone,Hash,Debug,PartialEq,Ord,PartialOrd)]
+pub struct BadToken(FailedAt, TokenError);
 
 
 pub enum ParseFailure {
-    BadToken(FailedAt),
+    TokenizationFailure(BadToken),
     InvalidToken(FailedAt),
     IncompleteRecord,
     UnconsumedInput,
@@ -74,7 +87,7 @@ pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
                 }
             },
             Err(failed) => {
-                result = Some(Err(ParseFailure::BadToken(failed)));
+                result = Some(Err(ParseFailure::TokenizationFailure(failed)));
                 break
             },
         }
@@ -109,8 +122,20 @@ pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
     }
 }
 
-#[derive(PartialEq)]
-enum ReconToken<'a> {
+trait TokenStr: PartialEq + Borrow<str> + Into<String> {
+
+}
+
+impl<'a> TokenStr for &'a str {
+
+}
+
+impl<'a> TokenStr for String {
+
+}
+
+#[derive(PartialEq,Debug)]
+enum ReconToken<S> {
     AttrMarker,
     AttrBodyStart,
     AttrBodyEnd,
@@ -119,15 +144,15 @@ enum ReconToken<'a> {
     SlotDivider,
     EntrySep,
     NewLine,
-    Identifier(&'a str),
-    StringLiteral(&'a str),
+    Identifier(S),
+    StringLiteral(S),
     Int32Literal(i32),
     Int64Literal(i64),
     Float64Literal(f64),
     BoolLiteral(bool),
 }
 
-impl ReconToken<'_> {
+impl<S: TokenStr> ReconToken<S> {
     fn is_value(&self) -> bool {
         match self {
             ReconToken::Identifier(_) |
@@ -140,11 +165,11 @@ impl ReconToken<'_> {
         }
     }
 
-    fn to_value(&self) -> Option<Result<Value, String>> {
-        match *self {
-            ReconToken::Identifier(name) => Some(Ok(Value::Text(name.to_owned()))),
+    fn unwrap_value(self) -> Option<Result<Value, String>> {
+        match self {
+            ReconToken::Identifier(name) => Some(Ok(Value::Text(name.into()))),
             ReconToken::StringLiteral(name) => Some(
-                unescape(name).map(|unesc| Value::Text(unesc))),
+                unescape(name.borrow()).map(|unesc| Value::Text(unesc))),
             ReconToken::Int32Literal(n) => Some(Ok(Value::Int32Value(n))),
             ReconToken::Int64Literal(n) => Some(Ok(Value::Int64Value(n))),
             ReconToken::Float64Literal(x) => Some(Ok(Value::Float64Value(x))),
@@ -154,12 +179,14 @@ impl ReconToken<'_> {
     }
 }
 
-struct LocatedReconToken<'a>(ReconToken<'a>, usize);
+#[derive(PartialEq,Debug)]
+struct LocatedReconToken<S>(ReconToken<S>, usize);
 
-fn loc(token: ReconToken, offset: usize) -> LocatedReconToken {
+fn loc<S>(token: ReconToken<S>, offset: usize) -> LocatedReconToken<S> {
     LocatedReconToken(token, offset)
 }
 
+#[derive(PartialEq,Eq,Debug)]
 enum TokenParseState {
     None,
     ReadingIdentifier(usize),
@@ -169,7 +196,7 @@ enum TokenParseState {
     StartExponent(usize),
     ReadingExponent(usize),
     ReadingNewLine(usize),
-    Failed(usize),
+    Failed(usize, TokenError),
 }
 
 
@@ -177,7 +204,7 @@ fn tokenize_update<'a>(source: &'a str,
                        state: &mut TokenParseState,
                        index: usize,
                        current: char,
-                       next: Option<char>) -> Option<Result<LocatedReconToken<'a>, FailedAt>> {
+                       next: Option<char>) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
     match state {
         TokenParseState::None => token_start(source, state, index, current, next),
         TokenParseState::ReadingIdentifier(off) => {
@@ -186,17 +213,9 @@ fn tokenize_update<'a>(source: &'a str,
                     None
                 },
                 _ => {
-                    let start = *off;
-                    let content = &source[start..index + 1];
-                    let token = if content == "true" {
-                        ReconToken::BoolLiteral(true)
-                    } else if content == "false" {
-                        ReconToken::BoolLiteral(false)
-                    } else {
-                        ReconToken::Identifier(content)
-                    };
+                    let tok = extract_identifier(&source, index, *off);
                     *state = TokenParseState::None;
-                    Some(Result::Ok(loc(token, start)))
+                    tok
                 },
             }
         },
@@ -218,8 +237,8 @@ fn tokenize_update<'a>(source: &'a str,
                         }
                     },
                     _ => {
-                        *state = TokenParseState::Failed(index);
-                        Some(Result::Err(FailedAt(index)))
+                        *state = TokenParseState::Failed(index, TokenError::NoClosingQuote);
+                        Some(Result::Err(BadToken(FailedAt(index), TokenError::NoClosingQuote)))
                     },
                 }
             }
@@ -262,8 +281,8 @@ fn tokenize_update<'a>(source: &'a str,
                         None
                     } else {
                         let start = *off;
-                        *state = TokenParseState::Failed(start);
-                        Some(Result::Err(FailedAt(start)))
+                        *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
+                        Some(Result::Err(BadToken(FailedAt(start), TokenError::InvalidFloat)))
                     }
                 },
                 _ => {
@@ -280,8 +299,8 @@ fn tokenize_update<'a>(source: &'a str,
                         None
                     } else {
                         let start = *off;
-                        *state = TokenParseState::Failed(start);
-                        Some(Result::Err(FailedAt(start)))
+                        *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
+                        Some(Result::Err(BadToken(FailedAt(start), TokenError::InvalidFloat)))
                     }
                 },
                 _ => {
@@ -306,12 +325,23 @@ fn tokenize_update<'a>(source: &'a str,
                 },
             }
         },
-        TokenParseState::Failed(i) => {
-            let off = *i;
-            *state = TokenParseState::Failed(off);
-            Some(Result::Err(FailedAt(off)))
+        TokenParseState::Failed(i, err) => {
+
+            Some(Result::Err(BadToken(FailedAt(*i), *err)))
         },
     }
+}
+
+fn extract_identifier(source: &str, index: usize, start: usize) -> Option<Result<LocatedReconToken<&str>, BadToken>> {
+    let content = &source[start..index + 1];
+    let token = if content == "true" {
+        ReconToken::BoolLiteral(true)
+    } else if content == "false" {
+        ReconToken::BoolLiteral(false)
+    } else {
+        ReconToken::Identifier(content)
+    };
+    Some(Result::Ok(loc(token, start)))
 }
 
 fn is_numeric_char(c: char) -> bool {
@@ -324,7 +354,7 @@ fn is_mantissa_char(c: char) -> bool {
 
 fn parse_int_token<'a>(state: &mut TokenParseState,
                        offset: usize,
-                       rep: &str) -> Result<LocatedReconToken<'a>, FailedAt> {
+                       rep: &str) -> Result<LocatedReconToken<&'a str>, BadToken> {
     match rep.parse::<i64>() {
         Ok(n) => {
             *state = TokenParseState::None;
@@ -336,23 +366,23 @@ fn parse_int_token<'a>(state: &mut TokenParseState,
             }, offset))
         },
         Err(_) => {
-            *state = TokenParseState::Failed(offset);
-            Err(FailedAt(offset))
+            *state = TokenParseState::Failed(offset, TokenError::InvalidInteger);
+            Err(BadToken(FailedAt(offset), TokenError::InvalidInteger))
         },
     }
 }
 
 fn parse_float_token<'a>(state: &mut TokenParseState,
                          offset: usize,
-                         rep: &str) -> Result<LocatedReconToken<'a>, FailedAt> {
+                         rep: &str) -> Result<LocatedReconToken<&'a str>, BadToken> {
     match rep.parse::<f64>() {
         Ok(x) => {
             *state = TokenParseState::None;
             Ok(loc(ReconToken::Float64Literal(x), offset))
         },
         Err(_) => {
-            *state = TokenParseState::Failed(offset);
-            Err(FailedAt(offset))
+            *state = TokenParseState::Failed(offset, TokenError::InvalidFloat);
+            Err(BadToken(FailedAt(offset), TokenError::InvalidFloat))
         },
     }
 }
@@ -361,7 +391,7 @@ fn token_start<'a>(source: &'a str,
                    state: &mut TokenParseState,
                    index: usize,
                    current: char,
-                   next: Option<char>) -> Option<Result<LocatedReconToken<'a>, FailedAt>> {
+                   next: Option<char>) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
     match current {
         '@' => Some(Result::Ok(loc(ReconToken::AttrMarker, index))),
         '(' => Some(Result::Ok(loc(ReconToken::AttrBodyStart, index))),
@@ -405,8 +435,8 @@ fn token_start<'a>(source: &'a str,
                     None
                 },
                 _ => {
-                    *state = TokenParseState::Failed(index);
-                    Some(Result::Err(FailedAt(index)))
+                    *state = TokenParseState::Failed(index, TokenError::InvalidInteger);
+                    Some(Result::Err(BadToken(FailedAt(index), TokenError::InvalidInteger)))
                 }
             }
         },
@@ -429,19 +459,47 @@ fn token_start<'a>(source: &'a str,
                     None
                 },
                 _ => {
-                    *state = TokenParseState::Failed(index);
-                    Some(Result::Err(FailedAt(index)))
+                    *state = TokenParseState::Failed(index, TokenError::InvalidFloat);
+                    Some(Result::Err(BadToken(FailedAt(index), TokenError::InvalidFloat)))
                 }
             }
         }
         _ => {
-            *state = TokenParseState::Failed(index);
-            Some(Result::Err(FailedAt(index)))
+            *state = TokenParseState::Failed(index, TokenError::BadStartChar);
+            Some(Result::Err(BadToken(FailedAt(index), TokenError::BadStartChar)))
         },
     }
 }
 
-fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToken<'a>, FailedAt>> + 'a {
+fn final_token<'a>(source: &'a str,
+                   state: &mut TokenParseState,
+                   index: usize) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
+    match state {
+        TokenParseState::ReadingIdentifier(off) =>
+            extract_identifier(source, index, *off),
+        TokenParseState::ReadingInteger(off) => {
+            let start = *off;
+            Some(parse_int_token(state, start, &source[start..index + 1]))
+        },
+        TokenParseState::ReadingMantissa(off) => {
+            let start = *off;
+            Some(parse_float_token(state, start, &source[start..index + 1]))
+        },
+        TokenParseState::StartExponent(off) =>
+            Some(Err(BadToken(FailedAt(*off), TokenError::InvalidFloat))),
+        TokenParseState::ReadingExponent(off) => {
+            let start = *off;
+            Some(parse_float_token(state, start, &source[start..index + 1]))
+        },
+        TokenParseState::ReadingNewLine(off) =>
+            Some(Ok(LocatedReconToken(ReconToken::NewLine, *off))),
+        TokenParseState::Failed(off, err) =>
+            Some(Err(BadToken(FailedAt(*off), *err))),
+        _ => None,
+    }
+}
+
+fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToken<&'a str>, BadToken>> + 'a {
     let following = repr.chars()
         .skip(1)
         .map(|c| Some(c))
@@ -451,12 +509,15 @@ fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToke
         .zip(following)
         .scan(TokenParseState::None,
               move |state, ((i, current), next)| {
-                  tokenize_update(repr, state, i, current, next)
+                  let current_token = tokenize_update(repr, state, i, current, next);
+                  match (&current_token, next) {
+                      (Some(_), _) => Some(current_token),
+                      (None, None) => Some(final_token(repr, state, i)),
+                      _ => Some(None)
+                  }
               })
+        .flatten()
 }
-
-
-
 
 enum ValueParseState {
     AttributeStart,
@@ -702,8 +763,8 @@ fn open_new(attrs: Vec<Attr>, items: Vec<Item>, parse_state: ValueParseState, st
     }, start_at)
 }
 
-fn consume_token(state: &mut Vec<Frame>,
-                 loc_token: LocatedReconToken) -> Option<ParseTermination> {
+fn consume_token<S: TokenStr>(state: &mut Vec<Frame>,
+                 loc_token: LocatedReconToken<S>) -> Option<ParseTermination> {
     use ValueParseState::*;
 
     let LocatedReconToken(token, offset) = loc_token;
@@ -737,7 +798,7 @@ fn consume_token(state: &mut Vec<Frame>,
             },
             NewLine => None,
             tok if tok.is_value() => {
-                match tok.to_value() {
+                match tok.unwrap_value() {
                     Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
                     _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(FailedAt(offset))))
                 }
@@ -747,16 +808,16 @@ fn consume_token(state: &mut Vec<Frame>,
     }
 }
 
-fn update_attr_start(token: ReconToken,
+fn update_attr_start<S: TokenStr>(token: ReconToken<S>,
                      attrs: Vec<Attr>,
                      items: Vec<Item>) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
     match token {
-        Identifier(name) => repush(attrs, items, ReadingAttribute(name.to_owned())),
+        Identifier(name) => repush(attrs, items, ReadingAttribute(name.into())),
         StringLiteral(name) => {
-            match unescape(name) {
+            match unescape(name.borrow()) {
                 Ok(unesc) => {
                     repush(attrs, items, ReadingAttribute(unesc))
                 },
@@ -767,7 +828,7 @@ fn update_attr_start(token: ReconToken,
     }
 }
 
-fn update_reading_attr(token: ReconToken,
+fn update_reading_attr<S: TokenStr>(token: ReconToken<S>,
                        name: String,
                        mut attrs: Vec<Attr>,
                        items: Vec<Item>) -> StateModification {
@@ -787,7 +848,7 @@ fn update_reading_attr(token: ReconToken,
         tok if tok.is_value() => {
             let attr = Attr { name, value: Value::Extant };
             attrs.push(attr);
-            match tok.to_value() {
+            match tok.unwrap_value() {
                 Some(Ok(value)) => {
                     let record = make_singleton(attrs, value);
                     StateModification::PushDown(record)
@@ -812,7 +873,7 @@ fn update_reading_attr(token: ReconToken,
     }
 }
 
-fn update_after_attr(token: ReconToken,
+fn update_after_attr<S: TokenStr>(token: ReconToken<S>,
                      attrs: Vec<Attr>,
                      items: Vec<Item>) -> StateModification {
     use ReconToken::*;
@@ -822,7 +883,7 @@ fn update_after_attr(token: ReconToken,
         AttrMarker => repush(attrs, items, AttributeStart),
         RecordBodyStart => repush(attrs, items, RecordStart(false)),
         tok if tok.is_value() => {
-            match tok.to_value() {
+            match tok.unwrap_value() {
                 Some(Ok(value)) => {
                     let record = make_singleton(attrs, value);
                     StateModification::PushDown(record)
@@ -843,7 +904,7 @@ fn update_after_attr(token: ReconToken,
     }
 }
 
-fn update_record_start(token: ReconToken,
+fn update_record_start<S: TokenStr>(token: ReconToken<S>,
                        attr_body: bool,
                        attrs: Vec<Attr>,
                        items: Vec<Item>) -> StateModification {
@@ -862,7 +923,7 @@ fn update_record_start(token: ReconToken,
         RecordBodyStart => open_new(attrs, items, RecordStart(attr_body), StartAt::RecordBody),
         AttrMarker => open_new(attrs, items, RecordStart(attr_body), StartAt::Attrs),
         tok if tok.is_value() => {
-            match tok.to_value() {
+            match tok.unwrap_value() {
                 Some(Ok(value)) => repush(attrs, items, Single(attr_body, value)),
                 _ => StateModification::Fail,
             }
@@ -872,7 +933,7 @@ fn update_record_start(token: ReconToken,
     }
 }
 
-fn update_inside_body(token: ReconToken,
+fn update_inside_body<S: TokenStr>(token: ReconToken<S>,
                       attr_body: bool,
                       required: bool,
                       attrs: Vec<Attr>,
@@ -902,7 +963,7 @@ fn update_inside_body(token: ReconToken,
     }
 }
 
-fn update_single(token: ReconToken,
+fn update_single<S: TokenStr>(token: ReconToken<S>,
                  attr_body: bool,
                  value: Value,
                  attrs: Vec<Attr>,
@@ -930,7 +991,7 @@ fn update_single(token: ReconToken,
     }
 }
 
-fn update_reading_slot(token: ReconToken,
+fn update_reading_slot<S: TokenStr>(token: ReconToken<S>,
                        attr_body: bool,
                        key: Value,
                        attrs: Vec<Attr>,
@@ -942,7 +1003,7 @@ fn update_reading_slot(token: ReconToken,
         RecordBodyStart => open_new(attrs, items, ReadingSlot(attr_body, key), StartAt::RecordBody),
         AttrMarker => open_new(attrs, items, ReadingSlot(attr_body, key), StartAt::Attrs),
         tok if tok.is_value() => {
-            match tok.to_value() {
+            match tok.unwrap_value() {
                 Some(Ok(value)) => {
                     items.push(Item::Slot(key, value));
                     repush(attrs, items, AfterSlot(attr_body))
@@ -969,7 +1030,7 @@ fn update_reading_slot(token: ReconToken,
 }
 
 
-fn update_after_slot(token: ReconToken,
+fn update_after_slot<S: TokenStr>(token: ReconToken<S>,
                      attr_body: bool,
                      attrs: Vec<Attr>,
                      items: Vec<Item>) -> StateModification {
