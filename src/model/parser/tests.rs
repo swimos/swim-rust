@@ -60,13 +60,43 @@ fn integer_tokens() {
     assert_that!(read_single_token("-1").unwrap(), eq(ReconToken::Int32Literal(-1)));
     assert_that!(read_single_token("-04").unwrap(), eq(ReconToken::Int32Literal(-4)));
 
-    let big_n =  i64::from(i32::max_value()) * 2i64;
+    let big_n = i64::from(std::i32::MAX) * 2i64;
     let big = big_n.to_string();
 
     assert_that!(read_single_token(big.borrow()).unwrap(), eq(ReconToken::Int64Literal(big_n)));
 
-    let big_n_neg =  -big_n;
+    let big_n_neg = -big_n;
     let big_neg = big_n_neg.to_string();
 
     assert_that!(read_single_token(big_neg.borrow()).unwrap(), eq(ReconToken::Int64Literal(big_n_neg)));
+}
+
+#[test]
+fn bool_tokens() {
+    assert_that!(read_single_token("true").unwrap(), eq(ReconToken::BoolLiteral(true)));
+    assert_that!(read_single_token("false").unwrap(), eq(ReconToken::BoolLiteral(false)));
+}
+
+#[test]
+fn identifier_tokens() {
+    assert_that!(read_single_token("name").unwrap(), eq(ReconToken::Identifier("name")));
+    assert_that!(read_single_token("اسم").unwrap(), eq(ReconToken::Identifier("اسم")));
+    assert_that!(read_single_token("name2").unwrap(), eq(ReconToken::Identifier("name2")));
+    assert_that!(read_single_token("_name").unwrap(), eq(ReconToken::Identifier("_name")));
+    assert_that!(read_single_token("first_second").unwrap(), eq(ReconToken::Identifier("first_second")));
+}
+
+#[test]
+fn string_literal_tokens() {
+    assert_that!(read_single_token(r#""name""#).unwrap(), eq(ReconToken::StringLiteral("name")));
+    assert_that!(read_single_token(r#""اسم""#).unwrap(), eq(ReconToken::StringLiteral("اسم")));
+    assert_that!(read_single_token(r#""two words""#).unwrap(), eq(ReconToken::StringLiteral("two words")));
+    assert_that!(read_single_token(r#""2name""#).unwrap(), eq(ReconToken::StringLiteral("2name")));
+    assert_that!(read_single_token(r#""true""#).unwrap(), eq(ReconToken::StringLiteral("true")));
+    assert_that!(read_single_token(r#""false""#).unwrap(), eq(ReconToken::StringLiteral("false")));
+    assert_that!(read_single_token(r#""£%^$&*""#).unwrap(), eq(ReconToken::StringLiteral("£%^$&*")));
+    assert_that!(read_single_token("\"\r\n\t\"").unwrap(), eq(ReconToken::StringLiteral("\r\n\t")));
+    assert_that!(read_single_token(r#""\r\n\t""#).unwrap(), eq(ReconToken::StringLiteral(r"\r\n\t")));
+    assert_that!(read_single_token(r#""a \"quote\" z""#).unwrap(), eq(ReconToken::StringLiteral(r#"a \"quote\" z"#)));
+    assert_that!(read_single_token(r#""a \\ z""#).unwrap(), eq(ReconToken::StringLiteral(r#"a \\ z"#)));
 }

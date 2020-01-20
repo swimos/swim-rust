@@ -204,16 +204,16 @@ fn tokenize_update<'a>(source: &'a str,
                        state: &mut TokenParseState,
                        index: usize,
                        current: char,
-                       next: Option<char>) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
+                       next: Option<(usize, char)>) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
     match state {
         TokenParseState::None => token_start(source, state, index, current, next),
         TokenParseState::ReadingIdentifier(off) => {
             match next {
-                Some(c) if is_identifier_char(c) => {
+                Some((_, c)) if is_identifier_char(c) => {
                     None
                 },
                 _ => {
-                    let tok = extract_identifier(&source, index, *off);
+                    let tok = extract_identifier(&source, source.len(), *off);
                     *state = TokenParseState::None;
                     tok
                 },
@@ -221,10 +221,15 @@ fn tokenize_update<'a>(source: &'a str,
         },
         TokenParseState::ReadingStringLiteral(off, escape) => {
             if current == '\"' {
-                let start = *off;
-                let token = ReconToken::StringLiteral(&source[start..index]);
-                *state = TokenParseState::None;
-                Some(Result::Ok(loc(token, start)))
+                if *escape {
+                    *escape = false;
+                    None
+                } else {
+                    let start = *off;
+                    let token = ReconToken::StringLiteral(&source[start..index]);
+                    *state = TokenParseState::None;
+                    Some(Result::Ok(loc(token, start)))
+                }
             } else {
                 match next {
                     Some(_) => {
@@ -245,7 +250,7 @@ fn tokenize_update<'a>(source: &'a str,
         },
         TokenParseState::ReadingInteger(off) => {
             match next {
-                Some(c) if is_numeric_char(c) => {
+                Some((_, c)) if is_numeric_char(c) => {
                     if current == '.' {
                         *state = TokenParseState::ReadingMantissa(*off)
                     } else if current == 'e' || current == 'E' {
@@ -255,13 +260,13 @@ fn tokenize_update<'a>(source: &'a str,
                 },
                 _ => {
                     let start = *off;
-                    Some(parse_int_token(state, start, &source[start..index + 1]))
+                    Some(parse_int_token(state, start, &source[start..source.len()]))
                 },
             }
         },
         TokenParseState::ReadingMantissa(off) => {
             match next {
-                Some(c) if is_mantissa_char(c) => {
+                Some((_, c)) if is_mantissa_char(c) => {
                     if current == 'e' || current == 'E' {
                         *state = TokenParseState::StartExponent(*off)
                     }
@@ -269,13 +274,13 @@ fn tokenize_update<'a>(source: &'a str,
                 },
                 _ => {
                     let start = *off;
-                    Some(parse_float_token(state, start, &source[start..index + 1]))
+                    Some(parse_float_token(state, start, &source[start..source.len()]))
                 },
             }
         },
         TokenParseState::StartExponent(off) => {
             match next {
-                Some(c) if c.is_digit(10) => {
+                Some((_, c)) if c.is_digit(10) => {
                     if current == '-' || current.is_digit(10) {
                         *state = TokenParseState::ReadingExponent(*off);
                         None
@@ -287,13 +292,13 @@ fn tokenize_update<'a>(source: &'a str,
                 },
                 _ => {
                     let start = *off;
-                    Some(parse_float_token(state, start, &source[start..index + 1]))
+                    Some(parse_float_token(state, start, &source[start..source.len()]))
                 },
             }
         },
         TokenParseState::ReadingExponent(off) => {
             match next {
-                Some(c) if c.is_digit(10) => {
+                Some((_, c)) if c.is_digit(10) => {
                     if current.is_digit(10) {
                         *state = TokenParseState::ReadingExponent(*off);
                         None
@@ -305,13 +310,13 @@ fn tokenize_update<'a>(source: &'a str,
                 },
                 _ => {
                     let start = *off;
-                    Some(parse_float_token(state, start, &source[start..index + 1]))
+                    Some(parse_float_token(state, start, &source[start..source.len()]))
                 },
             }
         }
         TokenParseState::ReadingNewLine(off) => {
             match next {
-                Some(w) if w.is_whitespace() => {
+                Some((_, w)) if w.is_whitespace() => {
                     None
                 },
                 Some(_) => {
@@ -332,8 +337,10 @@ fn tokenize_update<'a>(source: &'a str,
     }
 }
 
-fn extract_identifier(source: &str, index: usize, start: usize) -> Option<Result<LocatedReconToken<&str>, BadToken>> {
-    let content = &source[start..index + 1];
+fn extract_identifier(source: &str,
+                      next_index: usize,
+                      start: usize) -> Option<Result<LocatedReconToken<&str>, BadToken>> {
+    let content = &source[start..next_index];
     let token = if content == "true" {
         ReconToken::BoolLiteral(true)
     } else if content == "false" {
@@ -391,7 +398,7 @@ fn token_start<'a>(source: &'a str,
                    state: &mut TokenParseState,
                    index: usize,
                    current: char,
-                   next: Option<char>) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
+                   next: Option<(usize, char)>) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
     match current {
         '@' => Some(Result::Ok(loc(ReconToken::AttrMarker, index))),
         '(' => Some(Result::Ok(loc(ReconToken::AttrBodyStart, index))),
@@ -402,7 +409,7 @@ fn token_start<'a>(source: &'a str,
         ',' | ';' => Some(Result::Ok(loc(ReconToken::EntrySep, index))),
         '\r' | '\n' => {
             match next {
-                Some(c) if c.is_whitespace() => {
+                Some((_, c)) if c.is_whitespace() => {
                     *state = TokenParseState::ReadingNewLine(index);
                     None
                 },
@@ -413,24 +420,31 @@ fn token_start<'a>(source: &'a str,
         },
         w if w.is_whitespace() => None,
         '\"' => {
-            *state = TokenParseState::ReadingStringLiteral(index + 1, false);
-            None
+            match next {
+                Some((next_index, _)) => {
+                    *state = TokenParseState::ReadingStringLiteral(next_index, false);
+                    None
+                }
+                _ => {
+                    *state = TokenParseState::Failed(index, TokenError::NoClosingQuote);
+                    Some(Err(BadToken(FailedAt(index), TokenError::NoClosingQuote)))
+                }
+            }
         },
         c if is_identifier_start(c) => {
             match next {
-                Some(c) if is_identifier_char(c) => {
+                Some((_, c)) if is_identifier_char(c) => {
                     *state = TokenParseState::ReadingIdentifier(index);
                     None
                 },
                 _ => {
-                    Some(Result::Ok(
-                        loc(ReconToken::Identifier(&source[index..index + 1]), index)))
+                    Some(Ok(loc(ReconToken::Identifier(&source[index..source.len()]), index)))
                 },
             }
         },
         '-' => {
             match next {
-                Some(c) if c == '.' || c.is_digit(10) => {
+                Some((_, c)) if c == '.' || c.is_digit(10) => {
                     *state = TokenParseState::ReadingInteger(index);
                     None
                 },
@@ -442,7 +456,7 @@ fn token_start<'a>(source: &'a str,
         },
         c if c.is_digit(10) => {
             match next {
-                Some(c) if is_numeric_char(c) => {
+                Some((_, c)) if is_numeric_char(c) => {
                     *state = TokenParseState::ReadingInteger(index);
                     None
                 },
@@ -454,7 +468,7 @@ fn token_start<'a>(source: &'a str,
         },
         '.' => {
             match next {
-                Some(c) if c.is_digit(10) => {
+                Some((_, c)) if c.is_digit(10) => {
                     *state = TokenParseState::ReadingMantissa(index);
                     None
                 },
@@ -472,24 +486,23 @@ fn token_start<'a>(source: &'a str,
 }
 
 fn final_token<'a>(source: &'a str,
-                   state: &mut TokenParseState,
-                   index: usize) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
+                   state: &mut TokenParseState) -> Option<Result<LocatedReconToken<&'a str>, BadToken>> {
     match state {
         TokenParseState::ReadingIdentifier(off) =>
-            extract_identifier(source, index, *off),
+            extract_identifier(source, source.len(), *off),
         TokenParseState::ReadingInteger(off) => {
             let start = *off;
-            Some(parse_int_token(state, start, &source[start..index + 1]))
+            Some(parse_int_token(state, start, &source[start..source.len()]))
         },
         TokenParseState::ReadingMantissa(off) => {
             let start = *off;
-            Some(parse_float_token(state, start, &source[start..index + 1]))
+            Some(parse_float_token(state, start, &source[start..source.len()]))
         },
         TokenParseState::StartExponent(off) =>
             Some(Err(BadToken(FailedAt(*off), TokenError::InvalidFloat))),
         TokenParseState::ReadingExponent(off) => {
             let start = *off;
-            Some(parse_float_token(state, start, &source[start..index + 1]))
+            Some(parse_float_token(state, start, &source[start..source.len()]))
         },
         TokenParseState::ReadingNewLine(off) =>
             Some(Ok(LocatedReconToken(ReconToken::NewLine, *off))),
@@ -500,9 +513,9 @@ fn final_token<'a>(source: &'a str,
 }
 
 fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToken<&'a str>, BadToken>> + 'a {
-    let following = repr.chars()
+    let following = repr.char_indices()
         .skip(1)
-        .map(|c| Some(c))
+        .map(|ci| Some(ci))
         .chain(iter::once(None));
 
     repr.char_indices()
@@ -512,7 +525,7 @@ fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToke
                   let current_token = tokenize_update(repr, state, i, current, next);
                   match (&current_token, next) {
                       (Some(_), _) => Some(current_token),
-                      (None, None) => Some(final_token(repr, state, i)),
+                      (None, None) => Some(final_token(repr, state)),
                       _ => Some(None)
                   }
               })
