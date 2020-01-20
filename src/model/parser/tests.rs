@@ -100,3 +100,20 @@ fn string_literal_tokens() {
     assert_that!(read_single_token(r#""a \"quote\" z""#).unwrap(), eq(ReconToken::StringLiteral(r#"a \"quote\" z"#)));
     assert_that!(read_single_token(r#""a \\ z""#).unwrap(), eq(ReconToken::StringLiteral(r#"a \\ z"#)));
 }
+
+#[test]
+fn floating_point_tokens() {
+    assert_that!(read_single_token("0.0").unwrap(), eq(ReconToken::Float64Literal(0.0)));
+    assert_that!(read_single_token(".0").unwrap(), eq(ReconToken::Float64Literal(0.0)));
+    assert_that!(read_single_token("3.5").unwrap(), eq(ReconToken::Float64Literal(3.5)));
+    assert_that!(read_single_token("-1.0").unwrap(), eq(ReconToken::Float64Literal(-1.0)));
+    assert_that!(read_single_token("3e2").unwrap(), eq(ReconToken::Float64Literal(3e2)));
+    assert_that!(read_single_token("50.06e8").unwrap(), eq(ReconToken::Float64Literal(50.06e8)));
+    assert_that!(read_single_token(".2e0").unwrap(), eq(ReconToken::Float64Literal(0.2e0)));
+    assert_that!(read_single_token("3E2").unwrap(), eq(ReconToken::Float64Literal(3e2)));
+    assert_that!(read_single_token("50.06E8").unwrap(), eq(ReconToken::Float64Literal(50.06e8)));
+    assert_that!(read_single_token(".2E0").unwrap(), eq(ReconToken::Float64Literal(0.2e0)));
+    assert_that!(read_single_token("3e-9").unwrap(), eq(ReconToken::Float64Literal(3e-9)));
+    assert_that!(read_single_token("3E-9").unwrap(), eq(ReconToken::Float64Literal(3e-9)));
+    assert_that!(read_single_token("-.76e-12").unwrap(), eq(ReconToken::Float64Literal(-0.76e-12)));
+}

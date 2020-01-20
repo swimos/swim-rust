@@ -96,7 +96,13 @@ pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
     match result {
         Some(e @ Err(_)) => e,
         Some(Ok(value)) => {
-            match tokens.next() {
+            let mut rem = tokens.filter(|t| {
+                match t {
+                    Ok(LocatedReconToken(ReconToken::NewLine, _)) => false,
+                    _ => true,
+                }
+            });
+            match rem.next() {
                 Some(_) => Err(ParseFailure::UnconsumedInput),
                 _ => Ok(value)
             }
