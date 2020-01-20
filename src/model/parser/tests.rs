@@ -117,3 +117,30 @@ fn floating_point_tokens() {
     assert_that!(read_single_token("3E-9").unwrap(), eq(ReconToken::Float64Literal(3e-9)));
     assert_that!(read_single_token("-.76e-12").unwrap(), eq(ReconToken::Float64Literal(-0.76e-12)));
 }
+
+#[test]
+fn token_sequence() {
+    let source = "@name(2){ x : -3, \"y\": true \n 7 } ";
+    let tokens = tokenize_str(source)
+        .map(|r| { r.unwrap().0 })
+        .collect::<Vec<_>>();
+
+    assert_that!(tokens, eq(vec![
+        ReconToken::AttrMarker,
+        ReconToken::Identifier("name"),
+        ReconToken::AttrBodyStart,
+        ReconToken::Int32Literal(2),
+        ReconToken::AttrBodyEnd,
+        ReconToken::RecordBodyStart,
+        ReconToken::Identifier("x"),
+        ReconToken::SlotDivider,
+        ReconToken::Int32Literal(-3),
+        ReconToken::EntrySep,
+        ReconToken::StringLiteral("y"),
+        ReconToken::SlotDivider,
+        ReconToken::BoolLiteral(true),
+        ReconToken::NewLine,
+        ReconToken::Int32Literal(7),
+        ReconToken::RecordBodyEnd,
+    ]));
+}

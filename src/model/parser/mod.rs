@@ -55,6 +55,7 @@ enum TokenError {
 pub struct BadToken(FailedAt, TokenError);
 
 
+#[derive(Eq,Clone,Hash,Debug,PartialEq)]
 pub enum ParseFailure {
     TokenizationFailure(BadToken),
     InvalidToken(FailedAt),
@@ -62,6 +63,7 @@ pub enum ParseFailure {
     UnconsumedInput,
 }
 
+#[derive(Clone,Debug,PartialEq)]
 pub enum ParseTermination {
     Failed(ParseFailure),
     EarlyTermination(Value),
@@ -205,7 +207,6 @@ enum TokenParseState {
     Failed(usize, TokenError),
 }
 
-
 fn tokenize_update<'a>(source: &'a str,
                        state: &mut TokenParseState,
                        index: usize,
@@ -217,6 +218,11 @@ fn tokenize_update<'a>(source: &'a str,
             match next {
                 Some((_, c)) if is_identifier_char(c) => {
                     None
+                },
+                Some((next_off, _)) => {
+                    let tok = extract_identifier(&source, next_off, *off);
+                    *state = TokenParseState::None;
+                    tok
                 },
                 _ => {
                     let tok = extract_identifier(&source, source.len(), *off);
@@ -264,6 +270,10 @@ fn tokenize_update<'a>(source: &'a str,
                     }
                     None
                 },
+                Some((next_off, _)) => {
+                    let start = *off;
+                    Some(parse_int_token(state, start, &source[start..next_off]))
+                },
                 _ => {
                     let start = *off;
                     Some(parse_int_token(state, start, &source[start..source.len()]))
@@ -277,6 +287,10 @@ fn tokenize_update<'a>(source: &'a str,
                         *state = TokenParseState::StartExponent(*off)
                     }
                     None
+                },
+                Some((next_off, _)) => {
+                    let start = *off;
+                    Some(parse_float_token(state, start, &source[start..next_off]))
                 },
                 _ => {
                     let start = *off;
@@ -296,6 +310,14 @@ fn tokenize_update<'a>(source: &'a str,
                         Some(Result::Err(BadToken(FailedAt(start), TokenError::InvalidFloat)))
                     }
                 },
+                Some((next_off, _)) => {
+                    if current.is_digit(10) {
+                        let start = *off;
+                        Some(parse_float_token(state, start, &source[start..next_off]))
+                    } else {
+                        Some(Err(BadToken(FailedAt(*off), TokenError::InvalidFloat)))
+                    }
+                },
                 _ => {
                     let start = *off;
                     Some(parse_float_token(state, start, &source[start..source.len()]))
@@ -313,6 +335,10 @@ fn tokenize_update<'a>(source: &'a str,
                         *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
                         Some(Result::Err(BadToken(FailedAt(start), TokenError::InvalidFloat)))
                     }
+                },
+                Some((next_off, _)) => {
+                    let start = *off;
+                    Some(parse_float_token(state, start, &source[start..next_off]))
                 },
                 _ => {
                     let start = *off;
@@ -338,7 +364,7 @@ fn tokenize_update<'a>(source: &'a str,
         },
         TokenParseState::Failed(i, err) => {
 
-            Some(Result::Err(BadToken(FailedAt(*i), *err)))
+            Some(Err(BadToken(FailedAt(*i), *err)))
         },
     }
 }
@@ -442,6 +468,9 @@ fn token_start<'a>(source: &'a str,
                 Some((_, c)) if is_identifier_char(c) => {
                     *state = TokenParseState::ReadingIdentifier(index);
                     None
+                },
+                Some((next_off, _)) => {
+                    Some(Ok(loc(ReconToken::Identifier(&source[index..next_off]), index)))
                 },
                 _ => {
                     Some(Ok(loc(ReconToken::Identifier(&source[index..source.len()]), index)))
