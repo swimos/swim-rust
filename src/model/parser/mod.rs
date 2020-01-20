@@ -485,13 +485,17 @@ enum EscapeState {
 }
 
 fn is_escape(c: char) -> bool {
-    c == '\\' || c == '\"' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == '\t'
+    c == '\\' || c == '\"' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't'
 }
 
-fn unescape(literal: &str) -> Result<String, String> {
+/// Unescape a string using Java conventions. Returns the input as a failure if the string
+/// contains an invalid escape.
+///
+/// TODO Handle escaped UTF-16 surrogate pairs.
+pub fn unescape(literal: &str) -> Result<String, String> {
     let mut failed = false;
     let unescaped_string = literal.chars().scan(EscapeState::None, |state, c| {
-        match state {
+        Some(match state {
             EscapeState::None => {
                 if c == '\\' {
                     *state = EscapeState::Escape;
@@ -543,8 +547,8 @@ fn unescape(literal: &str) -> Result<String, String> {
                 failed = true;
                 None
             },
-        }
-    }).collect();
+        })
+    }).flatten().collect();
     if failed {
         Err(literal.to_owned())
     } else {
