@@ -144,3 +144,24 @@ fn token_sequence() {
         ReconToken::RecordBodyEnd,
     ]));
 }
+
+#[test]
+fn parse_simple_values() {
+    assert_that!(parse_single("1").unwrap(), eq(Value::Int32Value(1)));
+    assert_that!(parse_single("123").unwrap(), eq(Value::Int32Value(123)));
+    assert_that!(parse_single("-77").unwrap(), eq(Value::Int32Value(-77)));
+
+    assert_that!(parse_single("name").unwrap(), eq(Value::text("name")));
+    assert_that!(parse_single("اسم").unwrap(), eq(Value::text("اسم")));
+
+    assert_that!(parse_single(r#""name""#).unwrap(), eq(Value::text("name")));
+    assert_that!(parse_single(r#""two words""#).unwrap(), eq(Value::text("two words")));
+    assert_that!(parse_single(r#""two \n lines""#).unwrap(), eq(Value::text("two \n lines")));
+    assert_that!(parse_single(r#""\"quoted\"""#).unwrap(), eq(Value::text(r#""quoted""#)));
+
+    assert_that!(parse_single("true").unwrap(), eq(Value::BooleanValue(true)));
+    assert_that!(parse_single("false").unwrap(), eq(Value::BooleanValue(false)));
+
+    assert_that!(parse_single("1.25").unwrap(), eq(Value::Float64Value(1.25)));
+    assert_that!(parse_single("-1.25e-7").unwrap(), eq(Value::Float64Value(-1.25e-7)));
+}
