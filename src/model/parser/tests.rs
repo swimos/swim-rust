@@ -472,3 +472,178 @@ fn parse_complex_attributes() {
         ))))
     );
 }
+
+#[test]
+fn parse_nested_records() {
+    assert_that!(
+        parse_single("{{}}").unwrap(),
+        eq(Value::singleton(Value::empty_record()))
+    );
+    assert_that!(
+        parse_single("{{{}}}").unwrap(),
+        eq(Value::singleton(Value::singleton(Value::empty_record())))
+    );
+    assert_that!(
+        parse_single("{@name}").unwrap(),
+        eq(Value::singleton(Value::of_attr("name")))
+    );
+    assert_that!(
+        parse_single("{@name(1)}").unwrap(),
+        eq(Value::singleton(Value::of_attr(("name", 1))))
+    );
+
+    assert_that!(
+        parse_single("{0, {}}").unwrap(),
+        eq(Value::from_vec(vec![
+            Item::of(0),
+            Item::of(Value::empty_record())
+        ]))
+    );
+    assert_that!(
+        parse_single("{0, @name}").unwrap(),
+        eq(Value::from_vec(vec![
+            Item::of(0),
+            Item::of(Value::of_attr("name"))
+        ]))
+    );
+    assert_that!(
+        parse_single("{0, @name(1)}").unwrap(),
+        eq(Value::from_vec(vec![
+            Item::of(0),
+            Item::of(Value::of_attr(("name", 1)))
+        ]))
+    );
+
+    assert_that!(
+        parse_single("{a: {b:1}}").unwrap(),
+        eq(Value::from_vec(vec![Item::slot(
+            "a",
+            Value::singleton(("b", 1))
+        )]))
+    );
+    assert_that!(
+        parse_single("{0, a: {b:1}}").unwrap(),
+        eq(Value::from_vec(vec![
+            Item::of(0),
+            Item::slot("a", Value::singleton(("b", 1)))
+        ]))
+    );
+
+    assert_that!(
+        parse_single("{{a:1}: b}").unwrap(),
+        eq(Value::from_vec(vec![Item::slot(
+            Value::singleton(("a", 1)),
+            "b"
+        )]))
+    );
+    assert_that!(
+        parse_single("{0, {a:1}: b}").unwrap(),
+        eq(Value::from_vec(vec![
+            Item::of(0),
+            Item::slot(Value::singleton(("a", 1)), "b")
+        ]))
+    );
+
+    assert_that!(
+        parse_single("{a: {b:1,c:2}}").unwrap(),
+        eq(Value::from_vec(vec![Item::slot(
+            "a",
+            Value::from_vec(vec![("b", 1), ("c", 2)])
+        )]))
+    );
+    assert_that!(
+        parse_single("{0, a: {b:1,c:2}}").unwrap(),
+        eq(Value::from_vec(vec![
+            Item::of(0),
+            Item::slot("a", Value::from_vec(vec![("b", 1), ("c", 2)]))
+        ]))
+    );
+
+    assert_that!(
+        parse_single("@name({{}})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::singleton(Value::empty_record())
+        )))
+    );
+    assert_that!(
+        parse_single("@name(@inner)").unwrap(),
+        eq(Value::of_attr(("name", Value::of_attr("inner"))))
+    );
+    assert_that!(
+        parse_single("@name(@inner(1))").unwrap(),
+        eq(Value::of_attr(("name", Value::of_attr(("inner", 1)))))
+    );
+    assert_that!(
+        parse_single("@name(0, {})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::from_vec(vec![Item::of(0), Item::of(Value::empty_record())])
+        )))
+    );
+    assert_that!(
+        parse_single("@name(0, @inner)").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::from_vec(vec![Item::of(0), Item::of(Value::of_attr("inner"))])
+        )))
+    );
+    assert_that!(
+        parse_single("@name(0, @inner(1))").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::from_vec(vec![Item::of(0), Item::of(Value::of_attr(("inner", 1)))])
+        )))
+    );
+    assert_that!(
+        parse_single("@name(a: {b:1})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::singleton(("a", Value::singleton(("b", 1))))
+        )))
+    );
+    assert_that!(
+        parse_single("@name(0, a: {b:1})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::from_vec(vec![
+                Item::of(0),
+                Item::of(("a", Value::singleton(("b", 1))))
+            ])
+        )))
+    );
+    assert_that!(
+        parse_single("@name({a:1}: b)").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::singleton((Value::singleton(("a", 1)), "b"))
+        )))
+    );
+    assert_that!(
+        parse_single("@name(0, {a:1}: b)").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::from_vec(vec![
+                Item::of(0),
+                Item::of((Value::singleton(("a", 1)), "b"))
+            ])
+        )))
+    );
+    assert_that!(
+        parse_single("@name(a: {b:1,c:2})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::singleton(("a", Value::from_vec(vec![("b", 1), ("c", 2)])))
+        )))
+    );
+    assert_that!(
+        parse_single("@name(0, a: {b:1,c:2})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::from_vec(vec![
+                Item::from(0),
+                Item::from(("a", Value::from_vec(vec![("b", 1), ("c", 2)])))
+            ])
+        )))
+    );
+}

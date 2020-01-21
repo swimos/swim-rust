@@ -734,6 +734,9 @@ fn push_down(
                 });
                 None
             }
+            ValueParseState::ReadingAttribute(name) => {
+                pack_attribute_body(state, value, attrs, items, name)
+            }
             _ => Some(Err(BadRecord(FailedAt(offset), RecordError::BadStack))),
         }
     } else {
@@ -748,7 +751,7 @@ fn push_down_and_close(
     offset: usize,
 ) -> Option<Result<Value, BadRecord>> {
     if let Some(Frame {
-        mut attrs,
+        attrs,
         mut items,
         parse_state,
     }) = state.pop()
@@ -765,39 +768,7 @@ fn push_down_and_close(
                 push_down(state, record, offset)
             }
             ValueParseState::ReadingAttribute(name) if is_attr => {
-                let attr = match value {
-                    Value::Record(rec_attrs, rec_items)
-                        if rec_attrs.is_empty() && rec_items.is_empty() =>
-                    {
-                        Attr {
-                            name,
-                            value: Value::Extant,
-                        }
-                    }
-                    Value::Record(rec_attrs, mut rec_items)
-                        if rec_attrs.is_empty() && rec_items.len() == 1 =>
-                    {
-                        match rec_items.pop() {
-                            Some(Item::ValueItem(v)) => Attr { name, value: v },
-                            Some(slot) => Attr {
-                                name,
-                                value: Value::singleton(slot),
-                            },
-                            _ => Attr {
-                                name,
-                                value: Value::Extant,
-                            },
-                        }
-                    }
-                    ow => Attr { name, value: ow },
-                };
-                attrs.push(attr);
-                state.push(Frame {
-                    attrs,
-                    items,
-                    parse_state: ValueParseState::AfterAttribute,
-                });
-                None
+                pack_attribute_body(state, value, attrs, items, name)
             }
             _ => Some(Err(BadRecord(
                 FailedAt(offset),
@@ -814,6 +785,44 @@ fn push_down_and_close(
             Some(Ok(value))
         }
     }
+}
+
+fn pack_attribute_body(
+    state: &mut Vec<Frame>,
+    value: Value,
+    mut attrs: Vec<Attr>,
+    items: Vec<Item>,
+    name: String,
+) -> Option<Result<Value, BadRecord>> {
+    let attr = match value {
+        Value::Record(rec_attrs, rec_items) if rec_attrs.is_empty() && rec_items.is_empty() => {
+            Attr {
+                name,
+                value: Value::Extant,
+            }
+        }
+        Value::Record(rec_attrs, mut rec_items) if rec_attrs.is_empty() && rec_items.len() == 1 => {
+            match rec_items.pop() {
+                Some(Item::ValueItem(v)) => Attr { name, value: v },
+                Some(slot) => Attr {
+                    name,
+                    value: Value::singleton(slot),
+                },
+                _ => Attr {
+                    name,
+                    value: Value::Extant,
+                },
+            }
+        }
+        ow => Attr { name, value: ow },
+    };
+    attrs.push(attr);
+    state.push(Frame {
+        attrs,
+        items,
+        parse_state: ValueParseState::AfterAttribute,
+    });
+    None
 }
 
 enum StartAt {

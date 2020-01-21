@@ -84,8 +84,8 @@ impl Value {
     }
 
     /// Create a record consisting of only a single ['Attr'].
-    pub fn of_attr(attr: Attr) -> Value {
-        Value::Record(vec![attr], vec![])
+    pub fn of_attr<A: Into<Attr>>(attr: A) -> Value {
+        Value::Record(vec![attr.into()], vec![])
     }
 
     /// Create a record from a vector of ['Attr']s.
