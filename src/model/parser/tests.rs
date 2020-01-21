@@ -647,3 +647,128 @@ fn parse_nested_records() {
         )))
     );
 }
+
+#[test]
+fn parse_tagged_records() {
+    assert_that!(
+        parse_single("@name {}").unwrap(),
+        eq(Value::of_attr("name"))
+    );
+    assert_that!(
+        parse_single("@first@second {}").unwrap(),
+        eq(Value::of_attrs(vec![Attr::of("first"), Attr::of("second")]))
+    );
+    assert_that!(
+        parse_single("@name id").unwrap(),
+        eq(Value::Record(vec![Attr::of("name")], vec![Item::of("id")]))
+    );
+    assert_that!(
+        parse_single(r#"@name"@value""#).unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![Item::of("@value")]
+        ))
+    );
+    assert_that!(
+        parse_single("@name -4").unwrap(),
+        eq(Value::Record(vec![Attr::of("name")], vec![Item::of(-4)]))
+    );
+
+    assert_that!(
+        parse_single("@name{id}").unwrap(),
+        eq(Value::Record(vec![Attr::of("name")], vec![Item::of("id")]))
+    );
+    assert_that!(
+        parse_single(r#"@name { "@value" }"#).unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![Item::of("@value")]
+        ))
+    );
+    assert_that!(
+        parse_single("@name{ -4}").unwrap(),
+        eq(Value::Record(vec![Attr::of("name")], vec![Item::of(-4)]))
+    );
+    assert_that!(
+        parse_single("@name {1, 2, 3}").unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![Item::of(1), Item::of(2), Item::of(3)]
+        ))
+    );
+    assert_that!(
+        parse_single("@name {a:1,b:2}").unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![Item::of(("a", 1)), Item::of(("b", 2))]
+        ))
+    );
+    assert_that!(
+        parse_single("@name {,}").unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![Item::of(Value::Extant), Item::of(Value::Extant)]
+        ))
+    );
+}
+
+#[test]
+fn parse_nested_tagged_records() {
+    assert_that!(
+        parse_single("@name(@inner1 {}, @inner2 {})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::from_vec(vec![Value::of_attr("inner1"), Value::of_attr("inner2")])
+        )))
+    );
+    assert_that!(
+        parse_single("@name(@inner {1, 2})").unwrap(),
+        eq(Value::of_attr((
+            "name",
+            Value::Record(vec![Attr::of("inner")], vec![Item::of(1), Item::of(2)])
+        )))
+    );
+    assert_that!(
+        parse_single("@name {@inner1 {}, @inner2 {} }").unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![
+                Item::of(Value::of_attr("inner1")),
+                Item::of(Value::of_attr("inner2"))
+            ]
+        ))
+    );
+    assert_that!(
+        parse_single("@name {@inner {1, 2}}").unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![Item::of(Value::Record(
+                vec![Attr::of("inner")],
+                vec![Item::of(1), Item::of(2)]
+            ))]
+        ))
+    );
+    assert_that!(
+        parse_single("@name {0, @inner {1, 2}}").unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![
+                Item::of(0),
+                Item::of(Value::Record(
+                    vec![Attr::of("inner")],
+                    vec![Item::of(1), Item::of(2)]
+                ))
+            ]
+        ))
+    );
+    assert_that!(
+        parse_single("@name {first: {1, 2}, {second}: 3}").unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("name")],
+            vec![
+                Item::slot("first", Value::from_vec(vec![1, 2])),
+                Item::slot(Value::singleton("second"), 3)
+            ]
+        ))
+    );
+}
