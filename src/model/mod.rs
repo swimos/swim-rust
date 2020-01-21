@@ -9,9 +9,8 @@ mod tests;
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
-#[derive(Clone,PartialEq,Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Value {
-
     /// A defined but empty value.
     Extant,
 
@@ -56,7 +55,6 @@ pub enum Value {
 }
 
 impl Value {
-
     /// Create a text value from anything that can be converted to a ['String'].
     pub fn text<T: ToString>(x: T) -> Value {
         Value::Text(x.to_string())
@@ -79,10 +77,10 @@ impl Value {
 
     /// Create a record from a vector of anything that can be converted to ['Item']s.
     pub fn from_vec<I: Into<Item>>(items: Vec<I>) -> Value {
-        Value::Record(vec![],
-                      items.into_iter()
-                          .map(|item| Item::of(item))
-                          .collect())
+        Value::Record(
+            vec![],
+            items.into_iter().map(|item| Item::of(item)).collect(),
+        )
     }
 
     /// Create a record consisting of only a single ['Attr'].
@@ -94,7 +92,6 @@ impl Value {
     pub fn of_attrs(attrs: Vec<Attr>) -> Value {
         Value::Record(attrs, vec![])
     }
-
 }
 
 impl From<i32> for Value {
@@ -135,14 +132,13 @@ impl From<&str> for Value {
 
 /// An attribute that can be applied to a record ['Value']. A key value pair where the key is
 /// a ['String'] and the value can be any ['Value'].
-#[derive(Clone,PartialEq,Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Attr {
     pub name: String,
     pub value: Value,
 }
 
 impl Attr {
-
     /// Create an ['Attr'] from anything that can be converted to one.
     ///
     /// #Examples
@@ -153,40 +149,51 @@ impl Attr {
     /// assert_eq!(Attr::of("name"), Attr { name: String::from("name"), value: Value::Extant });
     /// assert_eq!(Attr::of(("key", 1)), Attr { name: String::from("key"), value: Value::Int32Value(1) });
     /// ```
-    pub fn of<T: Into<Attr>>(rep : T) -> Attr {
+    pub fn of<T: Into<Attr>>(rep: T) -> Attr {
         rep.into()
     }
-
 }
 
 impl From<&str> for Attr {
     fn from(s: &str) -> Self {
-        Attr { name: s.to_owned(), value: Value::Extant }
+        Attr {
+            name: s.to_owned(),
+            value: Value::Extant,
+        }
     }
 }
 
 impl From<String> for Attr {
     fn from(name: String) -> Self {
-        Attr { name, value: Value::Extant }
+        Attr {
+            name,
+            value: Value::Extant,
+        }
     }
 }
 
 impl<V: Into<Value>> From<(&str, V)> for Attr {
     fn from(pair: (&str, V)) -> Self {
         let (name_str, v) = pair;
-        Attr { name: name_str.to_owned(), value: v.into() }
+        Attr {
+            name: name_str.to_owned(),
+            value: v.into(),
+        }
     }
 }
 
 impl<V: Into<Value>> From<(String, V)> for Attr {
     fn from(pair: (String, V)) -> Self {
         let (name, v) = pair;
-        Attr { name, value: v.into() }
+        Attr {
+            name,
+            value: v.into(),
+        }
     }
 }
 
 /// An item that may occur in the body of record ['Value'].
-#[derive(Clone,PartialEq,Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Item {
     /// An item consisting of a single ['Value'].
     ValueItem(Value),
@@ -196,7 +203,6 @@ pub enum Item {
 }
 
 impl Item {
-
     /// Create an ['Item'] from anything that can be converted to one.
     ///
     /// #Examples
@@ -220,7 +226,7 @@ impl Item {
     /// use swim_rust::model::*;
     /// assert_eq!(Item::slot("key", 1), Item::Slot(Value::text("key"), Value::Int32Value(1)));
     /// ```
-    pub fn slot<K: Into<Value>, V : Into<Value>>(key : K, value : V) -> Item {
+    pub fn slot<K: Into<Value>, V: Into<Value>>(key: K, value: V) -> Item {
         Item::Slot(key.into(), value.into())
     }
 }
@@ -279,7 +285,7 @@ impl Display for Value {
                         Result::Ok(())
                     }
                 }
-            },
+            }
         }
     }
 }
@@ -298,24 +304,24 @@ impl Display for Attr {
                     first = false;
                 }
                 f.write_str(")")
-            },
-            Value::Record(attrs, body)if attrs.is_empty() && body.len() == 1 => {
+            }
+            Value::Record(attrs, body) if attrs.is_empty() && body.len() == 1 => {
                 f.write_str("@")?;
                 write_string_literal(&self.name, f)?;
                 match body.first() {
-                    Some(slot@ Item::Slot(_, _)) => write!(f, "({})", slot),
+                    Some(slot @ Item::Slot(_, _)) => write!(f, "({})", slot),
                     _ => write!(f, "({})", &self.value),
                 }
-            },
+            }
             Value::Extant => {
                 f.write_str("@")?;
                 write_string_literal(&self.name, f)
-            },
+            }
             ow => {
                 f.write_str("@")?;
                 write_string_literal(&self.name, f)?;
                 write!(f, "({})", ow)
-            },
+            }
         }
     }
 }
@@ -333,7 +339,9 @@ fn needs_escape(text: &str) -> bool {
     text.chars().any(|c| c < '\u{20}' || c == '"' || c == '\\')
 }
 
-static DIGITS: [char; 16] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
+static DIGITS: [char; 16] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+];
 
 fn escape_text(text: &str) -> String {
     let mut output = Vec::with_capacity(text.len());
@@ -342,31 +350,31 @@ fn escape_text(text: &str) -> String {
             '"' => {
                 output.push('\\');
                 output.push('\"');
-            },
+            }
             '\\' => {
                 output.push('\\');
                 output.push('\\');
-            },
+            }
             '\r' => {
                 output.push('\\');
                 output.push('r');
-            },
+            }
             '\n' => {
                 output.push('\\');
                 output.push('n');
-            },
+            }
             '\t' => {
                 output.push('\\');
                 output.push('t');
-            },
+            }
             '\u{08}' => {
                 output.push('\\');
                 output.push('b');
-            },
+            }
             '\u{0c}' => {
                 output.push('\\');
                 output.push('f');
-            },
+            }
             cp if cp < '\u{20}' => {
                 let n = cp as usize;
                 output.push('\\');
@@ -381,8 +389,3 @@ fn escape_text(text: &str) -> String {
     }
     output.iter().collect()
 }
-
-
-
-
-
