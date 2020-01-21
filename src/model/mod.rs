@@ -78,7 +78,7 @@ impl Value {
     }
 
     /// Create a record from a vector of anything that can be converted to ['Item']s.
-    pub fn from_vec<V: Into<Value>>(items: Vec<V>) -> Value {
+    pub fn from_vec<I: Into<Item>>(items: Vec<I>) -> Value {
         Value::Record(vec![],
                       items.into_iter()
                           .map(|item| Item::of(item))

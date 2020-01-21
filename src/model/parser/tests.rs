@@ -165,3 +165,42 @@ fn parse_simple_values() {
     assert_that!(parse_single("1.25").unwrap(), eq(Value::Float64Value(1.25)));
     assert_that!(parse_single("-1.25e-7").unwrap(), eq(Value::Float64Value(-1.25e-7)));
 }
+
+#[test]
+fn parse_simple_attributes() {
+    assert_that!(parse_single("@name").unwrap(), eq(Value::of_attr(Attr::of("name"))));
+    assert_that!(parse_single("@name1@name2").unwrap(),
+        eq(Value::of_attrs(vec![Attr::of("name1"), Attr::of("name2")])));
+    assert_that!(parse_single("@name(1)").unwrap(), eq(Value::of_attr(Attr::of(("name", 1)))));
+    assert_that!(parse_single(r#"@"two words""#).unwrap(), eq(Value::of_attr(Attr::of("two words"))));
+    assert_that!(parse_single(r#"@"@name""#).unwrap(), eq(Value::of_attr(Attr::of("@name"))));
+}
+
+#[test]
+fn parse_simple_records() {
+    assert_that!(parse_single("{}").unwrap(), eq(Value::empty_record()));
+    assert_that!(parse_single("{1}").unwrap(), eq(Value::singleton(1)));
+    assert_that!(parse_single("{a:1}").unwrap(), eq(Value::singleton(("a", 1))));
+    assert_that!(parse_single("{1,2,3}").unwrap(), eq(Value::from_vec(vec![1, 2, 3])));
+    assert_that!(parse_single("{1;2;3}").unwrap(), eq(Value::from_vec(vec![1, 2, 3])));
+    assert_that!(parse_single("{1\n2\n3}").unwrap(), eq(Value::from_vec(vec![1, 2, 3])));
+    assert_that!(parse_single("{a: 1, b: 2, c: 3}").unwrap(),
+        eq(Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)])));
+    assert_that!(parse_single("{a: 1; b: 2; c: 3}").unwrap(),
+        eq(Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)])));
+    assert_that!(parse_single("{a: 1\n\n b: 2\r\n c: 3}").unwrap(),
+        eq(Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)])));
+    assert_that!(parse_single(r#"{first: 1, 2: second, "3": 3}"#).unwrap(),
+        eq(Value::Record(vec![], vec![Item::slot("first", 1), Item::slot(2, "second"), Item::slot("3", 3)])));
+    assert_that!(parse_single("{a:}").unwrap(), eq(Value::singleton(("a", Value::Extant))));
+    assert_that!(parse_single("{:1}").unwrap(), eq(Value::singleton((Value::Extant, 1))));
+    assert_that!(parse_single("{:}").unwrap(), eq(Value::singleton((Value::Extant, Value::Extant))));
+    assert_that!(parse_single("{a:1,:2,3:,:,}").unwrap(),
+        eq(Value::Record(vec![], vec![
+            Item::slot("a", 1),
+            Item::slot(Value::Extant, 2),
+            Item::slot(3, Value::Extant),
+            Item::slot(Value::Extant, Value::Extant),
+            Item::of(Value::Extant),
+        ])));
+}

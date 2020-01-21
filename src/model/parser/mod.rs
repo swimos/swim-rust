@@ -51,14 +51,33 @@ enum TokenError {
     BadStartChar,
 }
 
+#[derive(Eq,Clone,Copy,Hash,Debug,PartialEq,Ord,PartialOrd)]
+enum RecordError {
+    InvalidValue,
+    NonValueToken,
+    BadValueStart,
+    BadRecordStart,
+    InvalidStringLiteral,
+    InvalidAttributeName,
+    InvalidAttributeValue,
+    InvalidItemStart,
+    InvalidAfterItem,
+    InvalidSlotValue,
+    BadStack,
+    BadStackOnClose,
+    EmptyStackOnClose,
+}
+
 #[derive(Eq,Clone,Hash,Debug,PartialEq,Ord,PartialOrd)]
 pub struct BadToken(FailedAt, TokenError);
 
+#[derive(Eq,Clone,Hash,Debug,PartialEq,Ord,PartialOrd)]
+pub struct BadRecord(FailedAt, RecordError);
 
 #[derive(Eq,Clone,Hash,Debug,PartialEq)]
 pub enum ParseFailure {
     TokenizationFailure(BadToken),
-    InvalidToken(FailedAt),
+    InvalidToken(BadRecord),
     IncompleteRecord,
     UnconsumedInput,
 }
@@ -567,6 +586,8 @@ fn tokenize_str<'a>(repr: &'a str) -> impl Iterator<Item=Result<LocatedReconToke
         .flatten()
 }
 
+
+#[derive(Clone,Debug,PartialEq)]
 enum ValueParseState {
     AttributeStart,
     ReadingAttribute(String),
@@ -667,29 +688,9 @@ pub fn unescape(literal: &str) -> Result<String, String> {
 
 fn push_down(state: &mut Vec<Frame>,
              value: Value,
-             offset: usize) -> Option<Result<Value, FailedAt>> {
-    if let Some(Frame { mut attrs, mut items, mut parse_state }) = state.pop() {
+             offset: usize) -> Option<Result<Value, BadRecord>> {
+    if let Some(Frame { attrs, mut items, mut parse_state }) = state.pop() {
         match parse_state {
-            ValueParseState::ReadingAttribute(name) => {
-                match value {
-                    Value::Record(_, mut body_items) if body_items.len() <= 1 => {
-                        match body_items.pop() {
-                            Some(Item::ValueItem(single)) => attrs.push(Attr { name, value: single }),
-                            Some(slot) => attrs.push(Attr { name, value: Value::Record(vec![], vec![slot]) }),
-                            _ => attrs.push(Attr { name, value: Value::Extant }),
-                        }
-                    },
-                    rec @ Value::Record(_, _) => {
-                        attrs.push(Attr { name, value: rec })
-                    },
-                    ow => {
-                        attrs.push(Attr { name, value: ow })
-                    },
-                }
-                parse_state = ValueParseState::AfterAttribute;
-                state.push(Frame { attrs, items, parse_state });
-                None
-            },
             ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) => {
                 parse_state = ValueParseState::Single(p, value);
                 state.push(Frame { attrs, items, parse_state });
@@ -701,7 +702,7 @@ fn push_down(state: &mut Vec<Frame>,
                 state.push(Frame { attrs, items, parse_state });
                 None
             },
-            _ => Some(Err(FailedAt(offset))),
+            _ => Some(Err(BadRecord(FailedAt(offset), RecordError::BadStack))),
         }
     } else {
         Some(Ok(value))
@@ -711,8 +712,8 @@ fn push_down(state: &mut Vec<Frame>,
 fn push_down_and_close(state: &mut Vec<Frame>,
                        value: Value,
                        is_attr: bool,
-                       offset: usize) -> Option<Result<Value, FailedAt>> {
-    if let Some(Frame { attrs, mut items, parse_state }) = state.pop() {
+                       offset: usize) -> Option<Result<Value, BadRecord>> {
+    if let Some(Frame { mut attrs, mut items, parse_state }) = state.pop() {
         match parse_state {
             ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) if p == is_attr => {
                 items.push(Item::ValueItem(value));
@@ -724,10 +725,29 @@ fn push_down_and_close(state: &mut Vec<Frame>,
                 let record = Value::Record(attrs, items);
                 push_down(state, record, offset)
             },
-            _ => Some(Err(FailedAt(offset))),
+            ValueParseState::ReadingAttribute(name) if is_attr => {
+                let attr = match value {
+                    Value::Record(rec_attrs, mut rec_items) if rec_attrs.is_empty() && rec_items.len() == 1 => {
+                        match rec_items.pop() {
+                            Some(Item::ValueItem(v)) => Attr { name, value: v },
+                            Some(slot) => Attr { name, value: Value::singleton(slot) },
+                            _ => Attr {name, value: Value::Extant },
+                        }
+                    },
+                    ow => Attr { name, value: ow },
+                };
+                attrs.push(attr);
+                state.push(Frame { attrs, items, parse_state: ValueParseState::AfterAttribute });
+                None
+            },
+            _ => Some(Err(BadRecord(FailedAt(offset), RecordError::BadStackOnClose))),
         }
     } else {
-        Some(Err(FailedAt(offset)))
+        if is_attr {
+            Some(Err(BadRecord(FailedAt(offset), RecordError::EmptyStackOnClose)))
+        } else {
+            Some(Ok(value))
+        }
     }
 }
 
@@ -758,7 +778,7 @@ impl Frame {
 }
 
 enum StateModification {
-    Fail,
+    Fail(RecordError),
     RePush(Frame),
     OpenNew(Frame, StartAt),
     PushDown(Value),
@@ -768,9 +788,9 @@ enum StateModification {
 
 impl StateModification {
     fn apply(self, state: &mut Vec<Frame>,
-             offset: usize) -> Option<Result<Value, FailedAt>> {
+             offset: usize) -> Option<Result<Value, BadRecord>> {
         match self {
-            StateModification::Fail => Some(Err(FailedAt(offset))),
+            StateModification::Fail(err) => Some(Err(BadRecord(FailedAt(offset), err))),
             StateModification::RePush(frame) => {
                 state.push(frame);
                 None
@@ -848,10 +868,13 @@ fn consume_token<S: TokenStr>(state: &mut Vec<Frame>,
             tok if tok.is_value() => {
                 match tok.unwrap_value() {
                     Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
-                    _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(FailedAt(offset))))
+                    Some(Err(_)) => Some(ParseTermination::Failed(
+                        ParseFailure::InvalidToken(BadRecord(FailedAt(offset), RecordError::InvalidValue)))),
+                    _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(
+                        BadRecord(FailedAt(offset), RecordError::NonValueToken))))
                 }
             },
-            _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(FailedAt(offset)))),
+            _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(BadRecord(FailedAt(offset), RecordError::BadValueStart)))),
         }
     }
 }
@@ -869,10 +892,10 @@ fn update_attr_start<S: TokenStr>(token: ReconToken<S>,
                 Ok(unesc) => {
                     repush(attrs, items, ReadingAttribute(unesc))
                 },
-                Err(_) => StateModification::Fail,
+                Err(_) => StateModification::Fail(RecordError::InvalidStringLiteral),
             }
         },
-        _ => StateModification::Fail,
+        _ => StateModification::Fail(RecordError::InvalidAttributeName),
     }
 }
 
@@ -901,7 +924,8 @@ fn update_reading_attr<S: TokenStr>(token: ReconToken<S>,
                     let record = make_singleton(attrs, value);
                     StateModification::PushDown(record)
                 },
-                _ => StateModification::Fail,
+                Some(Err(_)) =>StateModification::Fail(RecordError::InvalidValue),
+                _ => StateModification::Fail(RecordError::NonValueToken),
             }
         },
         EntrySep => {
@@ -917,7 +941,7 @@ fn update_reading_attr<S: TokenStr>(token: ReconToken<S>,
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         },
         NewLine => repush(attrs, items, ReadingAttribute(name)),
-        _ => StateModification::Fail,
+        _ => StateModification::Fail(RecordError::InvalidAttributeValue),
     }
 }
 
@@ -936,7 +960,8 @@ fn update_after_attr<S: TokenStr>(token: ReconToken<S>,
                     let record = make_singleton(attrs, value);
                     StateModification::PushDown(record)
                 },
-                _ => StateModification::Fail,
+                Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
+                _ => StateModification::Fail(RecordError::NonValueToken),
             }
         },
         EntrySep => {
@@ -948,7 +973,7 @@ fn update_after_attr<S: TokenStr>(token: ReconToken<S>,
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         },
         NewLine => repush(attrs, items, AfterAttribute),
-        _ => StateModification::Fail,
+        _ => StateModification::Fail(RecordError::BadRecordStart),
     }
 }
 
@@ -973,11 +998,13 @@ fn update_record_start<S: TokenStr>(token: ReconToken<S>,
         tok if tok.is_value() => {
             match tok.unwrap_value() {
                 Some(Ok(value)) => repush(attrs, items, Single(attr_body, value)),
-                _ => StateModification::Fail,
+                Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
+                _ => StateModification::Fail(RecordError::NonValueToken),
             }
         },
         NewLine => repush(attrs, items, RecordStart(attr_body)),
-        _ => StateModification::Fail,
+        SlotDivider => repush(attrs, items, ReadingSlot(attr_body, Value::Extant)),
+        _ => StateModification::Fail(RecordError::BadRecordStart),
     }
 }
 
@@ -1006,8 +1033,16 @@ fn update_inside_body<S: TokenStr>(token: ReconToken<S>,
         },
         RecordBodyStart => open_new(attrs, items, InsideBody(attr_body, required), StartAt::RecordBody),
         AttrMarker => open_new(attrs, items, InsideBody(attr_body, required), StartAt::Attrs),
+        tok if tok.is_value() => {
+            match tok.unwrap_value() {
+                Some(Ok(value)) => repush(attrs, items, Single(attr_body, value)),
+                Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
+                _ => StateModification::Fail(RecordError::NonValueToken),
+            }
+        },
         NewLine => repush(attrs, items, InsideBody(attr_body, required)),
-        _ => StateModification::Fail,
+        SlotDivider => repush(attrs, items, ReadingSlot(attr_body, Value::Extant)),
+        _ => StateModification::Fail(RecordError::InvalidItemStart),
     }
 }
 
@@ -1035,7 +1070,7 @@ fn update_single<S: TokenStr>(token: ReconToken<S>,
             repush(attrs, items, InsideBody(attr_body, tok == EntrySep))
         },
         SlotDivider => repush(attrs, items, ReadingSlot(attr_body, value)),
-        _ => StateModification::Fail,
+        _ => StateModification::Fail(RecordError::InvalidAfterItem),
     }
 }
 
@@ -1056,7 +1091,8 @@ fn update_reading_slot<S: TokenStr>(token: ReconToken<S>,
                     items.push(Item::Slot(key, value));
                     repush(attrs, items, AfterSlot(attr_body))
                 },
-                _ => StateModification::Fail,
+                Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
+                _ => StateModification::Fail(RecordError::NonValueToken),
             }
         },
         RecordBodyEnd if !attr_body => {
@@ -1073,7 +1109,7 @@ fn update_reading_slot<S: TokenStr>(token: ReconToken<S>,
             items.push(Item::Slot(key, Value::Extant));
             repush(attrs, items, InsideBody(attr_body, tok == EntrySep))
         },
-        _ => StateModification::Fail,
+        _ => StateModification::Fail(RecordError::InvalidSlotValue),
     }
 }
 
@@ -1096,7 +1132,7 @@ fn update_after_slot<S: TokenStr>(token: ReconToken<S>,
         },
         tok @ EntrySep | tok @ NewLine =>
             repush(attrs, items, InsideBody(attr_body, tok == EntrySep)),
-        _ => StateModification::Fail,
+        _ => StateModification::Fail(RecordError::InvalidAfterItem),
     }
 }
 
