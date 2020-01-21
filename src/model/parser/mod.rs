@@ -766,6 +766,14 @@ fn push_down_and_close(
             }
             ValueParseState::ReadingAttribute(name) if is_attr => {
                 let attr = match value {
+                    Value::Record(rec_attrs, rec_items)
+                        if rec_attrs.is_empty() && rec_items.is_empty() =>
+                    {
+                        Attr {
+                            name,
+                            value: Value::Extant,
+                        }
+                    }
                     Value::Record(rec_attrs, mut rec_items)
                         if rec_attrs.is_empty() && rec_items.len() == 1 =>
                     {
@@ -1068,7 +1076,7 @@ fn update_record_start<S: TokenStr>(
     token: ReconToken<S>,
     attr_body: bool,
     attrs: Vec<Attr>,
-    items: Vec<Item>,
+    mut items: Vec<Item>,
 ) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
@@ -1076,7 +1084,7 @@ fn update_record_start<S: TokenStr>(
     match token {
         RecordBodyEnd if !attr_body => {
             let record = Value::Record(attrs, items);
-            StateModification::PushDownAndClose(record, false)
+            StateModification::PushDown(record)
         }
         AttrBodyEnd if attr_body => {
             let record = Value::Record(attrs, items);
@@ -1089,8 +1097,12 @@ fn update_record_start<S: TokenStr>(
             Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
             _ => StateModification::Fail(RecordError::NonValueToken),
         },
-        NewLine => repush(attrs, items, RecordStart(attr_body)),
         SlotDivider => repush(attrs, items, ReadingSlot(attr_body, Value::Extant)),
+        EntrySep => {
+            items.push(Item::of(Value::Extant));
+            repush(attrs, items, InsideBody(attr_body, true))
+        }
+        NewLine => repush(attrs, items, RecordStart(attr_body)),
         _ => StateModification::Fail(RecordError::BadRecordStart),
     }
 }
@@ -1111,7 +1123,7 @@ fn update_inside_body<S: TokenStr>(
                 items.push(Item::ValueItem(Value::Extant));
             }
             let record = Value::Record(attrs, items);
-            StateModification::PushDownAndClose(record, false)
+            StateModification::PushDown(record)
         }
         AttrBodyEnd if attr_body => {
             if required {
@@ -1137,8 +1149,12 @@ fn update_inside_body<S: TokenStr>(
             Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
             _ => StateModification::Fail(RecordError::NonValueToken),
         },
-        NewLine => repush(attrs, items, InsideBody(attr_body, required)),
         SlotDivider => repush(attrs, items, ReadingSlot(attr_body, Value::Extant)),
+        EntrySep => {
+            items.push(Item::of(Value::Extant));
+            repush(attrs, items, InsideBody(attr_body, true))
+        }
+        NewLine => repush(attrs, items, InsideBody(attr_body, required)),
         _ => StateModification::Fail(RecordError::InvalidItemStart),
     }
 }
@@ -1157,7 +1173,7 @@ fn update_single<S: TokenStr>(
         RecordBodyEnd if !attr_body => {
             items.push(Item::ValueItem(value));
             let record = Value::Record(attrs, items);
-            StateModification::PushDownAndClose(record, false)
+            StateModification::PushDown(record)
         }
         AttrBodyEnd if attr_body => {
             items.push(Item::ValueItem(value));
@@ -1202,7 +1218,7 @@ fn update_reading_slot<S: TokenStr>(
         RecordBodyEnd if !attr_body => {
             items.push(Item::Slot(key, Value::Extant));
             let record = Value::Record(attrs, items);
-            StateModification::PushDownAndClose(record, false)
+            StateModification::PushDown(record)
         }
         AttrBodyEnd if attr_body => {
             items.push(Item::Slot(key, Value::Extant));
@@ -1229,7 +1245,7 @@ fn update_after_slot<S: TokenStr>(
     match token {
         RecordBodyEnd if !attr_body => {
             let record = Value::Record(attrs, items);
-            StateModification::PushDownAndClose(record, false)
+            StateModification::PushDown(record)
         }
         AttrBodyEnd if attr_body => {
             let record = Value::Record(attrs, items);

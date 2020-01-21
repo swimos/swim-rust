@@ -411,4 +411,64 @@ fn parse_simple_records() {
             ]
         ))
     );
+    assert_that!(
+        parse_single("{,}").unwrap(),
+        eq(Value::from_vec(vec![Value::Extant, Value::Extant]))
+    );
+    assert_that!(
+        parse_single("{1,,,2}").unwrap(),
+        eq(Value::from_vec(vec![
+            Item::of(1),
+            Item::of(Value::Extant),
+            Item::of(Value::Extant),
+            Item::of(2)
+        ]))
+    );
+}
+
+#[test]
+fn parse_complex_attributes() {
+    assert_that!(
+        parse_single("@name()").unwrap(),
+        eq(Value::of_attr(Attr::of("name")))
+    );
+    assert_that!(
+        parse_single("@name({})").unwrap(),
+        eq(Value::of_attr(Attr::of(("name", Value::empty_record()))))
+    );
+    assert_that!(
+        parse_single("@name(single: -2)").unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            Value::singleton(("single", -2))
+        ))))
+    );
+    assert_that!(
+        parse_single("@name(first: 1, second: 2, third : 3)").unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            Value::from_vec(vec![("first", 1), ("second", 2), ("third", 3)])
+        ))))
+    );
+    assert_that!(
+        parse_single("@name(first: 1; second: 2; third : 3)").unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            Value::from_vec(vec![("first", 1), ("second", 2), ("third", 3)])
+        ))))
+    );
+    assert_that!(
+        parse_single("@name(first: 1\n second: 2\n third : 3)").unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            Value::from_vec(vec![("first", 1), ("second", 2), ("third", 3)])
+        ))))
+    );
+    assert_that!(
+        parse_single("@name(,)").unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            Value::from_vec(vec![Value::Extant, Value::Extant])
+        ))))
+    );
 }

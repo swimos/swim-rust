@@ -1,20 +1,19 @@
 use crossbeam::atomic::AtomicCell;
 use std::future::Future;
-use std::task::{Context, Poll};
 use std::pin::Pin;
+use std::task::{Context, Poll};
 
-pub trait EffCell<'a> where {
+pub trait EffCell<'a> {
     type Contents;
     type GetF: Future<Output = Self::Contents> + 'a;
     type SetF: Future<Output = ()> + 'a;
-    type UpdF : Future<Output = Self::Contents> + 'a;
+    type UpdF: Future<Output = Self::Contents> + 'a;
 
-    fn get<'s : 'a>(&'s self) -> Self::GetF;
+    fn get<'s: 'a>(&'s self) -> Self::GetF;
 
-    fn set<'s : 'a>(&'s self, value: Self::Contents) -> Self::SetF;
+    fn set<'s: 'a>(&'s self, value: Self::Contents) -> Self::SetF;
 
-    fn update<'s : 'a>(&'s self, f : &'a dyn Fn(Self::Contents) -> Self::Contents) -> Self::UpdF;
-
+    fn update<'s: 'a>(&'s self, f: &'a dyn Fn(Self::Contents) -> Self::Contents) -> Self::UpdF;
 }
 
 pub struct CopyGet<'a, T> {
@@ -27,8 +26,8 @@ pub struct CopySet<'a, T> {
 }
 
 pub struct CopyEqUpdate<'a, T> {
-    cell : &'a AtomicCell<T>,
-    upd : &'a dyn Fn(T) -> T,
+    cell: &'a AtomicCell<T>,
+    upd: &'a dyn Fn(T) -> T,
 }
 
 impl<'a, T: Copy> Future for CopyGet<'a, T> {
@@ -49,10 +48,7 @@ impl<'a, T: Copy> Future for CopySet<'a, T> {
     }
 }
 
-
-
-impl<'a, T : Copy + Eq> Future for CopyEqUpdate<'a, T> {
-
+impl<'a, T: Copy + Eq> Future for CopyEqUpdate<'a, T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
@@ -74,15 +70,15 @@ impl<'a, T: Copy + Eq + 'a> EffCell<'a> for AtomicCell<T> {
     type SetF = CopySet<'a, T>;
     type UpdF = CopyEqUpdate<'a, T>;
 
-    fn get<'s : 'a>(&'s self) -> Self::GetF {
-        CopyGet { cell : self }
+    fn get<'s: 'a>(&'s self) -> Self::GetF {
+        CopyGet { cell: self }
     }
 
-    fn set<'s : 'a>(&'s self, value: Self::Contents) -> Self::SetF {
-        CopySet { cell : self, value }
+    fn set<'s: 'a>(&'s self, value: Self::Contents) -> Self::SetF {
+        CopySet { cell: self, value }
     }
 
-    fn update<'s : 'a>(&'s self, f : &'a dyn Fn(Self::Contents) -> Self::Contents) -> Self::UpdF {
-        CopyEqUpdate {cell : self, upd : f}
+    fn update<'s: 'a>(&'s self, f: &'a dyn Fn(Self::Contents) -> Self::Contents) -> Self::UpdF {
+        CopyEqUpdate { cell: self, upd: f }
     }
 }
