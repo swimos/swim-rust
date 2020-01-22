@@ -40,10 +40,7 @@ pub fn is_identifier(name: &str) -> bool {
 }
 
 #[derive(Eq, Clone, Copy, Hash, Debug, PartialEq, Ord, PartialOrd)]
-pub struct FailedAt(usize);
-
-#[derive(Eq, Clone, Copy, Hash, Debug, PartialEq, Ord, PartialOrd)]
-enum TokenError {
+pub enum TokenError {
     NoClosingQuote,
     InvalidInteger,
     InvalidFloat,
@@ -51,7 +48,7 @@ enum TokenError {
 }
 
 #[derive(Eq, Clone, Copy, Hash, Debug, PartialEq, Ord, PartialOrd)]
-enum RecordError {
+pub enum RecordError {
     InvalidValue,
     NonValueToken,
     BadValueStart,
@@ -68,10 +65,10 @@ enum RecordError {
 }
 
 #[derive(Eq, Clone, Hash, Debug, PartialEq, Ord, PartialOrd)]
-pub struct BadToken(FailedAt, TokenError);
+pub struct BadToken(usize, TokenError);
 
 #[derive(Eq, Clone, Hash, Debug, PartialEq, Ord, PartialOrd)]
-pub struct BadRecord(FailedAt, RecordError);
+pub struct BadRecord(usize, RecordError);
 
 #[derive(Eq, Clone, Hash, Debug, PartialEq)]
 pub enum ParseFailure {
@@ -87,62 +84,139 @@ pub enum ParseTermination {
     EarlyTermination(Value),
 }
 
-pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
-    let mut state = vec![];
-    let mut tokens = tokenize_str(repr);
-    let mut result: Option<Result<Value, ParseFailure>> = None;
-    while let Some(maybe_token) = tokens.next() {
-        match maybe_token {
-            Ok(token) => match consume_token(&mut state, token) {
-                Some(ParseTermination::Failed(err)) => {
-                    result = Some(Err(err));
-                    break;
-                }
-                Some(ParseTermination::EarlyTermination(value)) => {
-                    result = Some(Ok(value));
-                    break;
-                }
-                None => {}
-            },
-            Err(failed) => {
-                result = Some(Err(ParseFailure::TokenizationFailure(failed)));
-                break;
-            }
-        }
-    }
-    match result {
-        Some(e @ Err(_)) => e,
-        Some(Ok(value)) => {
-            let mut rem = tokens.filter(|t| match t {
-                Ok(LocatedReconToken(ReconToken::NewLine, _)) => false,
-                _ => true,
-            });
-            match rem.next() {
-                Some(_) => Err(ParseFailure::UnconsumedInput),
-                _ => Ok(value),
-            }
-        }
-        _ => {
-            let depth = state.len();
-            match state.pop() {
-                Some(Frame {
-                    mut attrs,
-                    items,
-                    parse_state,
-                }) if depth == 1 => match parse_state {
-                    ValueParseState::ReadingAttribute(name) => {
-                        attrs.push(Attr {
-                            name: name.to_owned(),
-                            value: Value::Extant,
-                        });
-                        Ok(Value::Record(attrs, items))
+pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseFailure>> + 'a {
+    let tokens = tokenize_str(repr).map(|t| Some(t)).chain(iter::once(None));
+
+    tokens
+        .scan(Some(vec![]), |maybe_state, maybe_token| {
+            if let Some(state) = maybe_state {
+                let current = match maybe_token {
+                    Some(Ok(token)) => match consume_token(state, token) {
+                        Some(ParseTermination::Failed(err)) => {
+                            *maybe_state = None;
+                            Some(Err(err))
+                        }
+                        Some(ParseTermination::EarlyTermination(value)) => Some(Ok(value)),
+                        _ => None,
+                    },
+                    Some(Err(err)) => Some(Err(ParseFailure::TokenizationFailure(err))),
+                    _ => {
+                        let depth = state.len();
+                        match state.pop() {
+                            Some(Frame {
+                                mut attrs,
+                                items,
+                                parse_state,
+                            }) if depth == 1 => match parse_state {
+                                ValueParseState::ReadingAttribute(name) => {
+                                    attrs.push(Attr {
+                                        name: name.to_owned(),
+                                        value: Value::Extant,
+                                    });
+                                    Some(Ok(Value::Record(attrs, items)))
+                                }
+                                ValueParseState::AfterAttribute => {
+                                    Some(Ok(Value::Record(attrs, items)))
+                                }
+                                _ => Some(Err(ParseFailure::IncompleteRecord)),
+                            },
+                            _ => None,
+                        }
                     }
-                    ValueParseState::AfterAttribute => Ok(Value::Record(attrs, items)),
-                    _ => Err(ParseFailure::IncompleteRecord),
-                },
-                _ => Err(ParseFailure::IncompleteRecord),
+                };
+                Some(current)
+            } else {
+                None
             }
-        }
+        })
+        .flatten()
+}
+
+pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
+    let mut value_iter = parse_all(repr);
+    match value_iter.next() {
+        Some(res @ Ok(_)) => match value_iter.next() {
+            Some(v) => {
+                println!("{:?}", v);
+                Err(ParseFailure::UnconsumedInput)
+            }
+            _ => res,
+        },
+        Some(err @ Err(_)) => err,
+        _ => Err(ParseFailure::IncompleteRecord),
+    }
+}
+
+/// Unescape a string using Java conventions. Returns the input as a failure if the string
+/// contains an invalid escape.
+///
+/// TODO Handle escaped UTF-16 surrogate pairs.
+pub fn unescape(literal: &str) -> Result<String, String> {
+    let mut failed = false;
+    let unescaped_string = literal
+        .chars()
+        .scan(EscapeState::None, |state, c| {
+            Some(match state {
+                EscapeState::None => {
+                    if c == '\\' {
+                        *state = EscapeState::Escape;
+                        None
+                    } else {
+                        Some(c)
+                    }
+                }
+                EscapeState::Escape if is_escape(c) => {
+                    *state = EscapeState::None;
+                    Some(match c {
+                        '\\' => '\\',
+                        '\"' => '\"',
+                        'b' => '\u{08}',
+                        'f' => '\u{0c}',
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        ow => ow,
+                    })
+                }
+                EscapeState::Escape if c == 'u' => {
+                    *state = EscapeState::UnicodeEscape0;
+                    None
+                }
+                EscapeState::UnicodeEscape0 if c == 'u' => None,
+                EscapeState::UnicodeEscape0 if c.is_digit(16) => {
+                    *state = EscapeState::UnicodeEscape1(c.to_digit(16).unwrap());
+                    None
+                }
+                EscapeState::UnicodeEscape1(d1) if c.is_digit(16) => {
+                    *state = EscapeState::UnicodeEscape2(*d1, c.to_digit(16).unwrap());
+                    None
+                }
+                EscapeState::UnicodeEscape2(d1, d2) if c.is_digit(16) => {
+                    *state = EscapeState::UnicodeEscape3(*d1, *d2, c.to_digit(16).unwrap());
+                    None
+                }
+                EscapeState::UnicodeEscape3(d1, d2, d3) if c.is_digit(16) => {
+                    let uc: char = char::try_from(
+                        (*d1 << 12) | (*d2 << 8) | (*d3 << 4) | c.to_digit(16).unwrap(),
+                    )
+                    .unwrap();
+                    *state = EscapeState::None;
+                    Some(uc)
+                }
+                EscapeState::Failed => None,
+                _ => {
+                    *state = EscapeState::Failed;
+                    failed = true;
+                    None
+                }
+            })
+        })
+        .flatten()
+        .collect();
+    if failed {
+        Err(literal.to_owned())
+    } else {
+        Ok(unescaped_string)
     }
 }
 
@@ -264,10 +338,7 @@ fn tokenize_update<'a>(
                     }
                     _ => {
                         *state = TokenParseState::Failed(index, TokenError::NoClosingQuote);
-                        Some(Result::Err(BadToken(
-                            FailedAt(index),
-                            TokenError::NoClosingQuote,
-                        )))
+                        Some(Result::Err(BadToken(index, TokenError::NoClosingQuote)))
                     }
                 }
             }
@@ -318,10 +389,7 @@ fn tokenize_update<'a>(
                 } else {
                     let start = *off;
                     *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
-                    Some(Result::Err(BadToken(
-                        FailedAt(start),
-                        TokenError::InvalidFloat,
-                    )))
+                    Some(Result::Err(BadToken(start, TokenError::InvalidFloat)))
                 }
             }
             Some((next_off, _)) => {
@@ -329,7 +397,7 @@ fn tokenize_update<'a>(
                     let start = *off;
                     Some(parse_float_token(state, start, &source[start..next_off]))
                 } else {
-                    Some(Err(BadToken(FailedAt(*off), TokenError::InvalidFloat)))
+                    Some(Err(BadToken(*off, TokenError::InvalidFloat)))
                 }
             }
             _ => {
@@ -349,10 +417,7 @@ fn tokenize_update<'a>(
                 } else {
                     let start = *off;
                     *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
-                    Some(Result::Err(BadToken(
-                        FailedAt(start),
-                        TokenError::InvalidFloat,
-                    )))
+                    Some(Result::Err(BadToken(start, TokenError::InvalidFloat)))
                 }
             }
             Some((next_off, _)) => {
@@ -380,7 +445,7 @@ fn tokenize_update<'a>(
                 None
             }
         },
-        TokenParseState::Failed(i, err) => Some(Err(BadToken(FailedAt(*i), *err))),
+        TokenParseState::Failed(i, err) => Some(Err(BadToken(*i, *err))),
     }
 }
 
@@ -426,7 +491,7 @@ fn parse_int_token<'a>(
         }
         Err(_) => {
             *state = TokenParseState::Failed(offset, TokenError::InvalidInteger);
-            Err(BadToken(FailedAt(offset), TokenError::InvalidInteger))
+            Err(BadToken(offset, TokenError::InvalidInteger))
         }
     }
 }
@@ -443,7 +508,7 @@ fn parse_float_token<'a>(
         }
         Err(_) => {
             *state = TokenParseState::Failed(offset, TokenError::InvalidFloat);
-            Err(BadToken(FailedAt(offset), TokenError::InvalidFloat))
+            Err(BadToken(offset, TokenError::InvalidFloat))
         }
     }
 }
@@ -478,7 +543,7 @@ fn token_start<'a>(
             }
             _ => {
                 *state = TokenParseState::Failed(index, TokenError::NoClosingQuote);
-                Some(Err(BadToken(FailedAt(index), TokenError::NoClosingQuote)))
+                Some(Err(BadToken(index, TokenError::NoClosingQuote)))
             }
         },
         c if is_identifier_start(c) => match next {
@@ -502,10 +567,7 @@ fn token_start<'a>(
             }
             _ => {
                 *state = TokenParseState::Failed(index, TokenError::InvalidInteger);
-                Some(Result::Err(BadToken(
-                    FailedAt(index),
-                    TokenError::InvalidInteger,
-                )))
+                Some(Result::Err(BadToken(index, TokenError::InvalidInteger)))
             }
         },
         c if c.is_digit(10) => match next {
@@ -525,18 +587,12 @@ fn token_start<'a>(
             }
             _ => {
                 *state = TokenParseState::Failed(index, TokenError::InvalidFloat);
-                Some(Result::Err(BadToken(
-                    FailedAt(index),
-                    TokenError::InvalidFloat,
-                )))
+                Some(Result::Err(BadToken(index, TokenError::InvalidFloat)))
             }
         },
         _ => {
             *state = TokenParseState::Failed(index, TokenError::BadStartChar);
-            Some(Result::Err(BadToken(
-                FailedAt(index),
-                TokenError::BadStartChar,
-            )))
+            Some(Result::Err(BadToken(index, TokenError::BadStartChar)))
         }
     }
 }
@@ -559,9 +615,7 @@ fn final_token<'a>(
                 &source[start..source.len()],
             ))
         }
-        TokenParseState::StartExponent(off) => {
-            Some(Err(BadToken(FailedAt(*off), TokenError::InvalidFloat)))
-        }
+        TokenParseState::StartExponent(off) => Some(Err(BadToken(*off, TokenError::InvalidFloat))),
         TokenParseState::ReadingExponent(off) => {
             let start = *off;
             Some(parse_float_token(
@@ -573,7 +627,7 @@ fn final_token<'a>(
         TokenParseState::ReadingNewLine(off) => {
             Some(Ok(LocatedReconToken(ReconToken::NewLine, *off)))
         }
-        TokenParseState::Failed(off, err) => Some(Err(BadToken(FailedAt(*off), *err))),
+        TokenParseState::Failed(off, err) => Some(Err(BadToken(*off, *err))),
         _ => None,
     }
 }
@@ -630,79 +684,6 @@ fn is_escape(c: char) -> bool {
     c == '\\' || c == '\"' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't'
 }
 
-/// Unescape a string using Java conventions. Returns the input as a failure if the string
-/// contains an invalid escape.
-///
-/// TODO Handle escaped UTF-16 surrogate pairs.
-pub fn unescape(literal: &str) -> Result<String, String> {
-    let mut failed = false;
-    let unescaped_string = literal
-        .chars()
-        .scan(EscapeState::None, |state, c| {
-            Some(match state {
-                EscapeState::None => {
-                    if c == '\\' {
-                        *state = EscapeState::Escape;
-                        None
-                    } else {
-                        Some(c)
-                    }
-                }
-                EscapeState::Escape if is_escape(c) => {
-                    *state = EscapeState::None;
-                    Some(match c {
-                        '\\' => '\\',
-                        '\"' => '\"',
-                        'b' => '\u{08}',
-                        'f' => '\u{0c}',
-                        'n' => '\n',
-                        'r' => '\r',
-                        't' => '\t',
-                        ow => ow,
-                    })
-                }
-                EscapeState::Escape if c == 'u' => {
-                    *state = EscapeState::UnicodeEscape0;
-                    None
-                }
-                EscapeState::UnicodeEscape0 if c == 'u' => None,
-                EscapeState::UnicodeEscape0 if c.is_digit(16) => {
-                    *state = EscapeState::UnicodeEscape1(c.to_digit(16).unwrap());
-                    None
-                }
-                EscapeState::UnicodeEscape1(d1) if c.is_digit(16) => {
-                    *state = EscapeState::UnicodeEscape2(*d1, c.to_digit(16).unwrap());
-                    None
-                }
-                EscapeState::UnicodeEscape2(d1, d2) if c.is_digit(16) => {
-                    *state = EscapeState::UnicodeEscape3(*d1, *d2, c.to_digit(16).unwrap());
-                    None
-                }
-                EscapeState::UnicodeEscape3(d1, d2, d3) if c.is_digit(16) => {
-                    let uc: char = char::try_from(
-                        (*d1 << 12) | (*d2 << 8) | (*d3 << 4) | c.to_digit(16).unwrap(),
-                    )
-                    .unwrap();
-                    *state = EscapeState::None;
-                    Some(uc)
-                }
-                EscapeState::Failed => None,
-                _ => {
-                    *state = EscapeState::Failed;
-                    failed = true;
-                    None
-                }
-            })
-        })
-        .flatten()
-        .collect();
-    if failed {
-        Err(literal.to_owned())
-    } else {
-        Ok(unescaped_string)
-    }
-}
-
 fn push_down(
     state: &mut Vec<Frame>,
     value: Value,
@@ -737,7 +718,7 @@ fn push_down(
             ValueParseState::ReadingAttribute(name) => {
                 pack_attribute_body(state, value, attrs, items, name)
             }
-            _ => Some(Err(BadRecord(FailedAt(offset), RecordError::BadStack))),
+            _ => Some(Err(BadRecord(offset, RecordError::BadStack))),
         }
     } else {
         Some(Ok(value))
@@ -770,17 +751,11 @@ fn push_down_and_close(
             ValueParseState::ReadingAttribute(name) if is_attr => {
                 pack_attribute_body(state, value, attrs, items, name)
             }
-            _ => Some(Err(BadRecord(
-                FailedAt(offset),
-                RecordError::BadStackOnClose,
-            ))),
+            _ => Some(Err(BadRecord(offset, RecordError::BadStackOnClose))),
         }
     } else {
         if is_attr {
-            Some(Err(BadRecord(
-                FailedAt(offset),
-                RecordError::EmptyStackOnClose,
-            )))
+            Some(Err(BadRecord(offset, RecordError::EmptyStackOnClose)))
         } else {
             Some(Ok(value))
         }
@@ -862,7 +837,7 @@ enum StateModification {
 impl StateModification {
     fn apply(self, state: &mut Vec<Frame>, offset: usize) -> Option<Result<Value, BadRecord>> {
         match self {
-            StateModification::Fail(err) => Some(Err(BadRecord(FailedAt(offset), err))),
+            StateModification::Fail(err) => Some(Err(BadRecord(offset, err))),
             StateModification::RePush(frame) => {
                 state.push(frame);
                 None
@@ -955,14 +930,14 @@ fn consume_token<S: TokenStr>(
             tok if tok.is_value() => match tok.unwrap_value() {
                 Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
                 Some(Err(_)) => Some(ParseTermination::Failed(ParseFailure::InvalidToken(
-                    BadRecord(FailedAt(offset), RecordError::InvalidValue),
+                    BadRecord(offset, RecordError::InvalidValue),
                 ))),
                 _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(
-                    BadRecord(FailedAt(offset), RecordError::NonValueToken),
+                    BadRecord(offset, RecordError::NonValueToken),
                 ))),
             },
             _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(
-                BadRecord(FailedAt(offset), RecordError::BadValueStart),
+                BadRecord(offset, RecordError::BadValueStart),
             ))),
         }
     }
