@@ -4,6 +4,21 @@ use std::borrow::Borrow;
 #[cfg(test)]
 mod tests;
 
+/// Determine if a character is valid at the start of an identifier.
+///
+/// #Examples
+///
+/// ```
+/// use swim_rust::model::parser::*;
+///
+/// assert!(is_identifier_start('a'));
+/// assert!(is_identifier_start('ℵ'));
+/// assert!(is_identifier_start('_'));
+/// assert!(!is_identifier_start('2'));
+/// assert!(!is_identifier_start('-'));
+/// assert!(!is_identifier_start('@'));
+///
+/// ```
 pub fn is_identifier_start(c: char) -> bool {
     c >= 'A' && c <= 'Z'
         || c == '_'
@@ -23,10 +38,41 @@ pub fn is_identifier_start(c: char) -> bool {
         || c >= '\u{10000}' && c <= '\u{effff}'
 }
 
+/// Determine if a character is valid after the start of an identifier.
+///
+/// #Examples
+///
+/// ```
+/// use swim_rust::model::parser::*;
+///
+/// assert!(is_identifier_char('a'));
+/// assert!(is_identifier_char('ℵ'));
+/// assert!(is_identifier_char('_'));
+/// assert!(is_identifier_char('2'));
+/// assert!(is_identifier_char('-'));
+/// assert!(!is_identifier_char('@'));
+///
+/// ```
 pub fn is_identifier_char(c: char) -> bool {
     is_identifier_start(c) || c == '-' || c >= '0' && c <= '9'
 }
 
+/// Determine if a string is a valid Recon identifier.
+///
+/// #Examples
+///
+/// ```
+/// use swim_rust::model::parser::*;
+///
+/// assert!(is_identifier("name"));
+/// assert!(is_identifier("name2"));
+/// assert!(is_identifier("_name"));
+/// assert!(is_identifier("two_parts"));
+/// assert!(!is_identifier("2morrow"));
+/// assert!(!is_identifier("@tag"));
+///
+/// ```
+///
 pub fn is_identifier(name: &str) -> bool {
     if name == "true" || name == "false" {
         false
@@ -39,6 +85,7 @@ pub fn is_identifier(name: &str) -> bool {
     }
 }
 
+/// Errors that can occur when splitting a stream of characters into ['ReconToken']s.
 #[derive(Eq, Clone, Copy, Hash, Debug, PartialEq, Ord, PartialOrd)]
 pub enum TokenError {
     NoClosingQuote,
@@ -47,6 +94,7 @@ pub enum TokenError {
     BadStartChar,
 }
 
+/// Errors that can occur when parsing a ['Value'] from a stream of ['ReconToken']s.
 #[derive(Eq, Clone, Copy, Hash, Debug, PartialEq, Ord, PartialOrd)]
 pub enum RecordError {
     InvalidValue,
@@ -64,26 +112,32 @@ pub enum RecordError {
     EmptyStackOnClose,
 }
 
+/// Parse failure indicating that an invalid token was encountered.
 #[derive(Eq, Clone, Hash, Debug, PartialEq, Ord, PartialOrd)]
 pub struct BadToken(usize, TokenError);
 
+/// Parse failure indicated that an invalid sequence of tokens was encountered.
 #[derive(Eq, Clone, Hash, Debug, PartialEq, Ord, PartialOrd)]
 pub struct BadRecord(usize, RecordError);
 
+/// Failure type for Recon parse operations.
 #[derive(Eq, Clone, Hash, Debug, PartialEq)]
 pub enum ParseFailure {
+    /// An invalid token was encountered.
     TokenizationFailure(BadToken),
+
+    /// An inappropriate token was found in the token stream.
     InvalidToken(BadRecord),
+
+    /// More tokens were expected when the end of the stream was reached.
     IncompleteRecord,
+
+    /// Tokens remained in the input when the parse operation completed.
     UnconsumedInput,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ParseTermination {
-    Failed(ParseFailure),
-    EarlyTermination(Value),
-}
-
+/// Parse a stream of ['Value']s from a stream of characters. More values will be read until either
+/// an error is encountered or the end of the stream is reached.
 pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseFailure>> + 'a {
     let tokens = tokenize_str(repr).map(|t| Some(t)).chain(iter::once(None));
 
@@ -132,6 +186,8 @@ pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseF
         .flatten()
 }
 
+/// Parse exactly one ['Value'] from the input, returning an error if the string does not contain
+/// the representation of exactly one.
 pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
     let mut value_iter = parse_all(repr);
     match value_iter.next() {
@@ -220,6 +276,12 @@ pub fn unescape(literal: &str) -> Result<String, String> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum ParseTermination {
+    Failed(ParseFailure),
+    EarlyTermination(Value),
+}
+
 trait TokenStr: PartialEq + Borrow<str> + Into<String> {}
 
 impl<'a> TokenStr for &'a str {}
@@ -245,6 +307,7 @@ enum ReconToken<S> {
 }
 
 impl<S: TokenStr> ReconToken<S> {
+    /// True iff the token constitutes a ['Value'] in itself.
     fn is_value(&self) -> bool {
         match self {
             ReconToken::Identifier(_)
@@ -257,6 +320,7 @@ impl<S: TokenStr> ReconToken<S> {
         }
     }
 
+    /// Try to get a value from a single token.
     fn unwrap_value(self) -> Option<Result<Value, String>> {
         match self {
             ReconToken::Identifier(name) => Some(Ok(Value::Text(name.into()))),
@@ -272,6 +336,7 @@ impl<S: TokenStr> ReconToken<S> {
     }
 }
 
+/// A token along with its offset within the stream (in bytes).
 #[derive(PartialEq, Debug)]
 struct LocatedReconToken<S>(ReconToken<S>, usize);
 
@@ -279,6 +344,7 @@ fn loc<S>(token: ReconToken<S>, offset: usize) -> LocatedReconToken<S> {
     LocatedReconToken(token, offset)
 }
 
+/// States for the tokenization automaton.
 #[derive(PartialEq, Eq, Debug)]
 enum TokenParseState {
     None,
@@ -292,6 +358,7 @@ enum TokenParseState {
     Failed(usize, TokenError),
 }
 
+/// State transition function for the tokenization automaton.
 fn tokenize_update<'a>(
     source: &'a str,
     state: &mut TokenParseState,
@@ -449,6 +516,7 @@ fn tokenize_update<'a>(
     }
 }
 
+/// Cut an identifier out of the source string.
 fn extract_identifier(
     source: &str,
     next_index: usize,
@@ -513,6 +581,8 @@ fn parse_float_token<'a>(
     }
 }
 
+/// Select the initial state for the tokenization automaton, returning a token immediately
+/// where appropriate.
 fn token_start<'a>(
     source: &'a str,
     state: &mut TokenParseState,
@@ -597,6 +667,7 @@ fn token_start<'a>(
     }
 }
 
+/// Attempt to construct the final token at the end of the stream.
 fn final_token<'a>(
     source: &'a str,
     state: &mut TokenParseState,
@@ -632,6 +703,7 @@ fn final_token<'a>(
     }
 }
 
+/// Tokenize a string held entirely in memory.
 fn tokenize_str<'a>(
     repr: &'a str,
 ) -> impl Iterator<Item = Result<LocatedReconToken<&'a str>, BadToken>> + 'a {
@@ -654,6 +726,7 @@ fn tokenize_str<'a>(
         .flatten()
 }
 
+/// States for the parser automaton.
 #[derive(Clone, Debug, PartialEq)]
 enum ValueParseState {
     AttributeStart,
@@ -670,6 +743,7 @@ fn make_singleton(attrs: Vec<Attr>, value: Value) -> Value {
     Value::Record(attrs, vec![Item::ValueItem(value)])
 }
 
+/// States for the automaton to unescape a Java escaped string.
 enum EscapeState {
     None,
     Escape,
@@ -684,6 +758,8 @@ fn is_escape(c: char) -> bool {
     c == '\\' || c == '\"' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't'
 }
 
+/// Add a value to the frame on top of the parser stack. If the stack is empty this value is
+/// instead returned.
 fn push_down(
     state: &mut Vec<Frame>,
     value: Value,
@@ -725,6 +801,8 @@ fn push_down(
     }
 }
 
+/// Add a value to the frame on top of the parser stack the pop that frame, create a record from
+/// it and push that record down to the new top of the stack.
 fn push_down_and_close(
     state: &mut Vec<Frame>,
     value: Value,
@@ -762,6 +840,8 @@ fn push_down_and_close(
     }
 }
 
+/// Pack a ['Value'] into an attribute body then add that attribute to the frame on top of the
+/// stack.
 fn pack_attribute_body(
     state: &mut Vec<Frame>,
     value: Value,
@@ -800,12 +880,17 @@ fn pack_attribute_body(
     None
 }
 
+/// The initial state when starting to parse a record.
 enum StartAt {
+    /// Reading the attributes at the start of the record.
     Attrs,
+    /// Reading the body of an attribute.
     AttrBody,
+    /// Readin the body of a normal record.
     RecordBody,
 }
 
+/// A partially constructed record. The state of the parser is a stack of these.
 struct Frame {
     attrs: Vec<Attr>,
     items: Vec<Item>,
@@ -826,6 +911,7 @@ impl Frame {
     }
 }
 
+/// An operation to be applied to the parser state after consuming a token.
 enum StateModification {
     Fail(RecordError),
     RePush(Frame),
@@ -835,6 +921,7 @@ enum StateModification {
 }
 
 impl StateModification {
+    /// Apply the modification to the parser state stack.
     fn apply(self, state: &mut Vec<Frame>, offset: usize) -> Option<Result<Value, BadRecord>> {
         match self {
             StateModification::Fail(err) => Some(Err(BadRecord(offset, err))),
@@ -860,6 +947,7 @@ impl StateModification {
     }
 }
 
+/// Push an entry back onto the stack.
 fn repush(attrs: Vec<Attr>, items: Vec<Item>, parse_state: ValueParseState) -> StateModification {
     StateModification::RePush(Frame {
         attrs,
@@ -884,6 +972,7 @@ fn open_new(
     )
 }
 
+/// The state transition function for the parser automaton.
 fn consume_token<S: TokenStr>(
     state: &mut Vec<Frame>,
     loc_token: LocatedReconToken<S>,
