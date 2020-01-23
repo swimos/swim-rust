@@ -18,7 +18,10 @@ pub trait Iteratee<In> {
 
     fn feed(&mut self, input: In) -> Option<Self::Item>;
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         None
     }
 
@@ -50,54 +53,70 @@ pub trait Iteratee<In> {
         IterateeMap::new(self, f)
     }
 
-    fn scan_with_flush<State, B, U, F>(self, init: State, scan: U, flush: F) -> IterateeScan<Self, State, U, F>
+    fn scan_with_flush<State, B, U, F>(
+        self,
+        init: State,
+        scan: U,
+        flush: F,
+    ) -> IterateeScan<Self, State, U, F>
     where
         Self: Sized,
         U: FnMut(&mut State, Self::Item) -> Option<B>,
-        F: FnMut(State) -> Option<B> {
+        F: FnMut(State) -> Option<B>,
+    {
         IterateeScan::new(self, init, scan, flush)
     }
 
     fn scan<State, B, U>(self, init: State, scan: U) -> IterateeScanSimple<Self, State, U>
-        where
-            Self: Sized,
-            U: FnMut(&mut State, Self::Item) -> Option<B>
+    where
+        Self: Sized,
+        U: FnMut(&mut State, Self::Item) -> Option<B>,
     {
         IterateeScanSimple::new(self, init, scan)
     }
 
     fn and_then<I>(self, next: I) -> IterateeAndThen<Self, I>
-        where
-            Self: Sized,
-            I: Iteratee<Self::Item> {
+    where
+        Self: Sized,
+        I: Iteratee<Self::Item>,
+    {
         IterateeAndThen {
             first: self,
-            second: next
+            second: next,
         }
     }
 
     fn flat_map<I, F>(self, f: F) -> IterateeFlatMap<Self, I, F>
-        where
-            Self: Sized,
-            I: Iteratee<In>,
-            F: FnMut(Self::Item) -> I {
+    where
+        Self: Sized,
+        I: Iteratee<In>,
+        F: FnMut(Self::Item) -> I,
+    {
         IterateeFlatMap::new(self, f)
     }
 
     fn flatten<I>(self) -> IterateeFlatten<Self, I>
-        where
-            Self: Sized,
-            Self::Item: Iteratee<In>,
+    where
+        Self: Sized,
+        Self::Item: Iteratee<In>,
     {
         IterateeFlatten::new(self)
     }
 
     fn fold<State, F>(self, init: State, fold: F) -> IterateeFold<Self, State, F>
-        where
-            Self: Sized,
-            F: FnMut(&mut State, Self::Item) -> ()
+    where
+        Self: Sized,
+        F: FnMut(&mut State, Self::Item) -> (),
     {
         IterateeFold::new(self, init, fold)
+    }
+
+    fn transduce<It>(self, iterator: It) -> TransducedIterator<It, Self>
+    where
+        Self: Sized,
+        It: Iterator<Item = In>,
+    {
+        TransducedIterator::new(iterator, self)
     }
 }
 
@@ -131,15 +150,16 @@ pub fn unfold_into<In, State, Out, I, U, F>(
 where
     I: FnMut() -> State,
     U: FnMut(&mut State, In) -> bool,
-    F: FnMut(State) -> Option<Out>
+    F: FnMut(State) -> Option<Out>,
 {
     UnfoldInto::new(init, unfolder, extract)
 }
 
 pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T> {
     let n = num.get();
-    unfold(None, move |maybe_vec: &mut Option<Vec<T>>, t| {
-        match maybe_vec {
+    unfold(
+        None,
+        move |maybe_vec: &mut Option<Vec<T>>, t| match maybe_vec {
             Some(vec) => {
                 vec.push(t);
                 if vec.len() == n {
@@ -147,7 +167,7 @@ pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T> {
                 } else {
                     None
                 }
-            },
+            }
             _ => {
                 let new_vec = vec![t];
                 if n == 1 {
@@ -157,17 +177,19 @@ pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T> {
                     None
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn collect_all_vec<T>() -> impl Iteratee<T> {
-    unfold_with_flush(vec![],
-                      |vec, input| {
-                        vec.push(input);
-                          None
-                      },
-                      |vec| { Some(vec) })
+    unfold_with_flush(
+        vec![],
+        |vec, input| {
+            vec.push(input);
+            None
+        },
+        |vec| Some(vec),
+    )
 }
 
 #[derive(Clone)]
@@ -194,7 +216,7 @@ where
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
-       self.iteratee.demand_hint()
+        self.iteratee.demand_hint()
     }
 }
 
@@ -263,7 +285,7 @@ where
     fn flush(self) -> Option<Self::Item> {
         let Unfold {
             state,
-            unfold : _,
+            unfold: _,
             mut flush,
         } = self;
         flush(state)
@@ -277,12 +299,8 @@ pub struct IterateeMap<I, F> {
 }
 
 impl<I, F> IterateeMap<I, F> {
-
     fn new(iteratee: I, f: F) -> IterateeMap<I, F> {
-        IterateeMap {
-            iteratee,
-            f
-        }
+        IterateeMap { iteratee, f }
     }
 }
 
@@ -298,7 +316,10 @@ where
         iteratee.feed(input).map(f)
     }
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         let IterateeMap { iteratee, f } = self;
         iteratee.flush().map(f)
     }
@@ -316,7 +337,6 @@ pub struct IterateeScan<I, State, U, F> {
 }
 
 impl<I, State, U, F> IterateeScan<I, State, U, F> {
-
     fn new(iteratee: I, init: State, scan: U, flush: F) -> IterateeScan<I, State, U, F> {
         IterateeScan {
             iteratee,
@@ -325,27 +345,43 @@ impl<I, State, U, F> IterateeScan<I, State, U, F> {
             flush,
         }
     }
-
 }
 
 impl<I, In, State, B, U, F> Iteratee<In> for IterateeScan<I, State, U, F>
 where
     I: Iteratee<In>,
     U: FnMut(&mut State, I::Item) -> Option<B>,
-    F: FnMut(State) -> Option<B> {
-
+    F: FnMut(State) -> Option<B>,
+{
     type Item = B;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
-        let IterateeScan { iteratee, state, scan, flush: _ } = self;
-        iteratee.feed(input).map(|out| (*scan)(state, out)).flatten()
+        let IterateeScan {
+            iteratee,
+            state,
+            scan,
+            flush: _,
+        } = self;
+        iteratee
+            .feed(input)
+            .map(|out| (*scan)(state, out))
+            .flatten()
     }
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
-        let IterateeScan { iteratee, mut state, mut scan, mut flush } = self;
-        iteratee.flush().map(|out| {
-            scan(&mut state, out).or_else(|| flush(state))
-        }).flatten()
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        let IterateeScan {
+            iteratee,
+            mut state,
+            mut scan,
+            mut flush,
+        } = self;
+        iteratee
+            .flush()
+            .map(|out| scan(&mut state, out).or_else(|| flush(state)))
+            .flatten()
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
@@ -360,7 +396,6 @@ pub struct IterateeScanSimple<I, State, U> {
 }
 
 impl<I, State, U> IterateeScanSimple<I, State, U> {
-
     fn new(iteratee: I, init: State, scan: U) -> IterateeScanSimple<I, State, U> {
         IterateeScanSimple {
             iteratee,
@@ -368,19 +403,25 @@ impl<I, State, U> IterateeScanSimple<I, State, U> {
             scan,
         }
     }
-
 }
 
 impl<I, In, State, B, U> Iteratee<In> for IterateeScanSimple<I, State, U>
-    where
-        I: Iteratee<In>,
-        U: FnMut(&mut State, I::Item) -> Option<B> {
-
+where
+    I: Iteratee<In>,
+    U: FnMut(&mut State, I::Item) -> Option<B>,
+{
     type Item = B;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
-        let IterateeScanSimple { iteratee, state, scan, } = self;
-        iteratee.feed(input).map(|out| (*scan)(state, out)).flatten()
+        let IterateeScanSimple {
+            iteratee,
+            state,
+            scan,
+        } = self;
+        iteratee
+            .feed(input)
+            .map(|out| (*scan)(state, out))
+            .flatten()
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
@@ -396,18 +437,25 @@ pub struct IterateeAndThen<I1, I2> {
 impl<S, I1, I2> Iteratee<S> for IterateeAndThen<I1, I2>
 where
     I1: Iteratee<S>,
-    I2: Iteratee<I1::Item>, {
-
+    I2: Iteratee<I1::Item>,
+{
     type Item = I2::Item;
 
     fn feed(&mut self, input: S) -> Option<Self::Item> {
         let IterateeAndThen { first, second } = self;
-        first.feed(input).map(|intermediate| second.feed(intermediate)).flatten()
+        first
+            .feed(input)
+            .map(|intermediate| second.feed(intermediate))
+            .flatten()
     }
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         let IterateeAndThen { first, mut second } = self;
-        first.flush()
+        first
+            .flush()
             .map(|intermediate| second.feed(intermediate))
             .flatten()
             .or_else(|| second.flush())
@@ -420,15 +468,13 @@ where
 
 pub enum IterateeFlatMap<I1, I2, F> {
     First(I1, F),
-    Second(I2)
+    Second(I2),
 }
 
 impl<I1, I2, F> IterateeFlatMap<I1, I2, F> {
-
     fn new(iteratee: I1, f: F) -> IterateeFlatMap<I1, I2, F> {
         IterateeFlatMap::First(iteratee, f)
     }
-
 }
 
 impl<In, I1, I2, F> Iteratee<In> for IterateeFlatMap<I1, I2, F>
@@ -446,12 +492,15 @@ where
                     *self = IterateeFlatMap::Second(f(s));
                 }
                 None
-            },
+            }
             IterateeFlatMap::Second(iteratee) => iteratee.feed(input),
         }
     }
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         match self {
             IterateeFlatMap::First(iteratee, mut f) => {
                 if let Some(s) = iteratee.flush() {
@@ -459,7 +508,7 @@ where
                 } else {
                     None
                 }
-            },
+            }
             IterateeFlatMap::Second(iteratee) => iteratee.flush(),
         }
     }
@@ -474,22 +523,20 @@ where
 
 pub enum IterateeFlatten<I1, I2> {
     First(I1),
-    Second(I2)
+    Second(I2),
 }
 
 impl<I1, I2> IterateeFlatten<I1, I2> {
-
     fn new(iteratee: I1) -> IterateeFlatten<I1, I2> {
         IterateeFlatten::First(iteratee)
     }
-
 }
 
 impl<In, I1, I2> Iteratee<In> for IterateeFlatten<I1, I2>
 where
     I1: Iteratee<In, Item = I2>,
-    I2: Iteratee<In> {
-
+    I2: Iteratee<In>,
+{
     type Item = I2::Item;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
@@ -499,12 +546,15 @@ where
                     *self = IterateeFlatten::Second(next);
                 }
                 None
-            },
+            }
             IterateeFlatten::Second(iteratee) => iteratee.feed(input),
         }
     }
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         match self {
             IterateeFlatten::First(iteratee) => {
                 if let Some(next) = iteratee.flush() {
@@ -512,7 +562,7 @@ where
                 } else {
                     None
                 }
-            },
+            }
             IterateeFlatten::Second(iteratee) => iteratee.flush(),
         }
     }
@@ -532,34 +582,39 @@ pub struct IterateeFold<I, State, F> {
 }
 
 impl<I, State, F> IterateeFold<I, State, F> {
-
     fn new(iteratee: I, init: State, f: F) -> IterateeFold<I, State, F> {
         IterateeFold {
             iteratee,
             state: init,
-            f
+            f,
         }
     }
-
 }
 
 impl<In, State, I, F> Iteratee<In> for IterateeFold<I, State, F>
-    where
-        I: Iteratee<In>,
-        F: FnMut(&mut State, I::Item) -> () {
-
+where
+    I: Iteratee<In>,
+    F: FnMut(&mut State, I::Item) -> (),
+{
     type Item = State;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
-        let IterateeFold { iteratee, state, f} = self;
+        let IterateeFold { iteratee, state, f } = self;
         if let Some(item) = iteratee.feed(input) {
             f(state, item);
         }
         None
     }
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
-        let IterateeFold { iteratee, mut state, mut f} = self;
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        let IterateeFold {
+            iteratee,
+            mut state,
+            mut f,
+        } = self;
         if let Some(item) = iteratee.flush() {
             f(&mut state, item)
         }
@@ -579,28 +634,31 @@ pub struct UnfoldInto<State, I, U, F> {
 }
 
 impl<State, I, U, F> UnfoldInto<State, I, U, F> {
-
     fn new(init: I, unfold: U, extract: F) -> UnfoldInto<State, I, U, F> {
         UnfoldInto {
             maybe_state: None,
             init,
             unfold,
-            extract
+            extract,
         }
     }
-
 }
 
 impl<In, State, Out, I, U, F> Iteratee<In> for UnfoldInto<State, I, U, F>
-    where
-        I: FnMut() -> State,
-        U: FnMut(&mut State, In) -> bool,
-        F: FnMut(State) -> Option<Out>,
+where
+    I: FnMut() -> State,
+    U: FnMut(&mut State, In) -> bool,
+    F: FnMut(State) -> Option<Out>,
 {
     type Item = Out;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
-        let UnfoldInto { init, maybe_state, unfold, extract} = self;
+        let UnfoldInto {
+            init,
+            maybe_state,
+            unfold,
+            extract,
+        } = self;
         match maybe_state {
             Some(state) => {
                 if unfold(state, input) {
@@ -608,7 +666,7 @@ impl<In, State, Out, I, U, F> Iteratee<In> for UnfoldInto<State, I, U, F>
                 } else {
                     None
                 }
-            },
+            }
             _ => {
                 let mut new_state = init();
                 if unfold(&mut new_state, input) {
@@ -617,12 +675,20 @@ impl<In, State, Out, I, U, F> Iteratee<In> for UnfoldInto<State, I, U, F>
                     *maybe_state = Some(new_state);
                     None
                 }
-            },
+            }
         }
     }
 
-    fn flush(self) -> Option<Self::Item> where Self: Sized {
-        let UnfoldInto { init: _, mut maybe_state, unfold: _, extract} = self;
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        let UnfoldInto {
+            init: _,
+            mut maybe_state,
+            unfold: _,
+            extract,
+        } = self;
         maybe_state.take().map(extract).flatten()
     }
 
@@ -631,6 +697,47 @@ impl<In, State, Out, I, U, F> Iteratee<In> for UnfoldInto<State, I, U, F>
     }
 }
 
+pub struct TransducedIterator<I, T> {
+    iterator: I,
+    transform: Option<T>,
+}
 
+impl<I, T> TransducedIterator<I, T> {
+    fn new(iterator: I, transform: T) -> TransducedIterator<I, T> {
+        TransducedIterator {
+            iterator,
+            transform: Some(transform),
+        }
+    }
+}
 
+impl<I, T> Iterator for TransducedIterator<I, T>
+where
+    I: Iterator,
+    T: Iteratee<I::Item>,
+{
+    type Item = T::Item;
 
+    fn next(&mut self) -> Option<Self::Item> {
+        let TransducedIterator {
+            iterator,
+            transform,
+        } = self;
+        match transform {
+            Some(trans) => {
+                while let Some(item) = iterator.next() {
+                    let result = trans.feed(item);
+                    if result.is_some() {
+                        return result;
+                    }
+                }
+                transform.take().unwrap().flush()
+            }
+            _ => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, self.iterator.size_hint().1)
+    }
+}
