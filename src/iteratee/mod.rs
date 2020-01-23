@@ -51,7 +51,7 @@ pub trait Iteratee<In> {
     fn map<B, F>(self, f: F) -> IterateeMap<Self, F>
     where
         Self: Sized,
-        F: FnMut(Self::Item, B),
+        F: FnMut(Self::Item) -> B,
     {
         IterateeMap::new(self, f)
     }
@@ -224,9 +224,16 @@ where
         self.iteratee.feed((self.f)(input))
     }
 
+    fn flush(self) -> Option<Self::Item> where
+        Self: Sized, {
+        self.iteratee.flush()
+    }
+
     fn demand_hint(&self) -> (usize, Option<usize>) {
         self.iteratee.demand_hint()
     }
+
+
 }
 
 #[derive(Clone)]
