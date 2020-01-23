@@ -13,6 +13,9 @@
 // limitations under the License.
 use std::num::NonZeroUsize;
 
+#[cfg(test)]
+mod tests;
+
 pub trait Iteratee<In> {
     type Item;
 
@@ -155,33 +158,39 @@ where
     UnfoldInto::new(init, unfolder, extract)
 }
 
-pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T> {
-    let n = num.get();
-    unfold(
-        None,
-        move |maybe_vec: &mut Option<Vec<T>>, t| match maybe_vec {
-            Some(vec) => {
-                vec.push(t);
-                if vec.len() == n {
-                    maybe_vec.take()
-                } else {
-                    None
-                }
-            }
-            _ => {
-                let new_vec = vec![t];
-                if n == 1 {
-                    Some(new_vec)
-                } else {
-                    *maybe_vec = Some(new_vec);
-                    None
-                }
-            }
-        },
-    )
+pub fn collect_vec<T>(
+    num: NonZeroUsize,
+) -> impl Iteratee<T, Item = Vec<T>> {
+    unfold(None, vec_unfolder(num.get()))
 }
 
-pub fn collect_all_vec<T>() -> impl Iteratee<T> {
+pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
+    unfold_with_flush(None, vec_unfolder(num.get()), |maybe_vec| maybe_vec)
+}
+
+fn vec_unfolder<T>(n: usize) -> impl FnMut(&mut Option<Vec<T>>, T) -> Option<Vec<T>> {
+    move |maybe_vec, t| match maybe_vec {
+        Some(vec) => {
+            vec.push(t);
+            if vec.len() == n {
+                maybe_vec.take()
+            } else {
+                None
+            }
+        }
+        _ => {
+            let new_vec = vec![t];
+            if n == 1 {
+                Some(new_vec)
+            } else {
+                *maybe_vec = Some(new_vec);
+                None
+            }
+        }
+    }
+}
+
+pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
     unfold_with_flush(
         vec![],
         |vec, input| {
