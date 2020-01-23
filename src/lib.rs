@@ -21,4 +21,4 @@ extern crate bytes;
 
 pub mod eff_cell;
 pub mod model;
-pub mod consumer;
+pub mod iteratee;
