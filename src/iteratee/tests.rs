@@ -351,3 +351,39 @@ fn maybe_map_with_flush() {
 
     assert_that!(iteratee.flush(), eq(Some(vec!["0".to_owned()])));
 }
+
+#[test]
+fn and_then_iteratees() {
+    let size = NonZeroUsize::new(2).unwrap();
+    let mut iteratee = identity::<i32>()
+        .filter(|i| i % 2 == 0)
+        .and_then(collect_vec(size));
+
+    assert_that!(iteratee.feed(0), none());
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(2), eq(Some(vec![0, 2])));
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(10), eq(Some(vec![4, 10])));
+    assert_that!(iteratee.feed(2), none());
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn and_then_iteratees_with_flush() {
+    let size = NonZeroUsize::new(2).unwrap();
+    let mut iteratee = identity::<i32>()
+        .filter(|i| i % 2 == 0)
+        .and_then(collect_vec_with_rem(size));
+
+    assert_that!(iteratee.feed(0), none());
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(2), eq(Some(vec![0, 2])));
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(10), eq(Some(vec![4, 10])));
+    assert_that!(iteratee.feed(2), none());
+
+    assert_that!(iteratee.flush(), eq(Some(vec![2])));
+}
