@@ -15,6 +15,7 @@
 use super::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use std::convert::TryInto;
 use std::num::NonZeroUsize;
 
 #[test]
@@ -386,4 +387,28 @@ fn and_then_iteratees_with_flush() {
     assert_that!(iteratee.feed(2), none());
 
     assert_that!(iteratee.flush(), eq(Some(vec![2])));
+}
+
+fn to_non_zero(n: i32) -> Option<NonZeroUsize> {
+    match n.try_into() {
+        Ok(i) => NonZeroUsize::new(i),
+        Err(_) => None,
+    }
+}
+
+#[test]
+fn flat_map_iteratee() {
+    let mut iteratee = identity::<i32>()
+        .maybe_map(to_non_zero)
+        .flat_map(|i| collect_vec(i));
+
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(8), eq(Some(vec![7, 8])));
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(9), none());
+    assert_that!(iteratee.feed(10), none());
+    assert_that!(iteratee.feed(11), eq(Some(vec![9, 10, 11])));
+
+    assert_that!(iteratee.flush(), none());
 }
