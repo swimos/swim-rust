@@ -18,6 +18,30 @@ use hamcrest2::prelude::*;
 use std::num::NonZeroUsize;
 
 #[test]
+fn identity_iteratee() {
+    let mut iteratee = identity::<i32>();
+
+    assert_that!(iteratee.feed(7), eq(Some(7)));
+    assert_that!(iteratee.feed(4), eq(Some(4)));
+    assert_that!(iteratee.feed(1), eq(Some(1)));
+    assert_that!(iteratee.feed(3), eq(Some(3)));
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn never_iteratee() {
+    let mut iteratee = never::<i32>();
+
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(3), none());
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
 fn unfold_iteratee() {
     let mut iteratee = unfold((0, 0), |state, n: i32| {
         let (count, sum) = state;

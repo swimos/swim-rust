@@ -21,7 +21,10 @@ pub trait Iteratee<In> {
 
     fn feed(&mut self, input: In) -> Option<Self::Item>;
 
-    fn feed_all<U>(&mut self, inputs: U) -> Vec<Self::Item> where U: Iterator<Item = In> {
+    fn feed_all<U>(&mut self, inputs: U) -> Vec<Self::Item>
+    where
+        U: Iterator<Item = In>,
+    {
         inputs.flat_map(|input| self.feed(input)).collect()
     }
 
@@ -127,9 +130,9 @@ pub trait Iteratee<In> {
     }
 
     fn transduce<It>(&mut self, iterator: It) -> TransducedRefIterator<It, Self>
-        where
-            Self: Sized,
-            It: Iterator<Item = In>,
+    where
+        Self: Sized,
+        It: Iterator<Item = In>,
     {
         TransducedRefIterator::new(iterator, self)
     }
@@ -177,9 +180,7 @@ where
     UnfoldInto::new(init, unfolder, extract)
 }
 
-pub fn collect_vec<T>(
-    num: NonZeroUsize,
-) -> impl Iteratee<T, Item = Vec<T>> {
+pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
     unfold(None, vec_unfolder(num.get()))
 }
 
@@ -221,16 +222,29 @@ pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
 }
 
 pub fn identity<T>() -> impl Iteratee<T, Item = T> {
-    return Identity{};
+    return Identity {};
+}
+
+pub fn never<T>() -> impl Iteratee<T, Item = T> {
+    return Never {};
 }
 
 pub struct Identity;
+pub struct Never;
 
 impl<T> Iteratee<T> for Identity {
     type Item = T;
 
     fn feed(&mut self, input: T) -> Option<Self::Item> {
         Some(input)
+    }
+}
+
+impl<T> Iteratee<T> for Never {
+    type Item = T;
+
+    fn feed(&mut self, _: T) -> Option<Self::Item> {
+        None
     }
 }
 
@@ -257,16 +271,16 @@ where
         self.iteratee.feed((self.f)(input))
     }
 
-    fn flush(self) -> Option<Self::Item> where
-        Self: Sized, {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         self.iteratee.flush()
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
         self.iteratee.demand_hint()
     }
-
-
 }
 
 #[derive(Clone)]
@@ -806,9 +820,9 @@ impl<'a, I, T> TransducedRefIterator<'a, I, T> {
 }
 
 impl<'a, I, T> Iterator for TransducedRefIterator<'a, I, T>
-    where
-        I: Iterator,
-        T: Iteratee<I::Item>,
+where
+    I: Iterator,
+    T: Iteratee<I::Item>,
 {
     type Item = T::Item;
 
@@ -837,19 +851,17 @@ pub struct IterateeFuse<I> {
 }
 
 impl<I> IterateeFuse<I> {
-
     fn new(iteratee: I) -> IterateeFuse<I> {
         IterateeFuse {
             iteratee,
             done: false,
         }
     }
-
 }
 
 impl<In, I> Iteratee<In> for IterateeFuse<I>
 where
-    I: Iteratee<In>
+    I: Iteratee<In>,
 {
     type Item = I::Item;
 
@@ -865,8 +877,10 @@ where
         }
     }
 
-    fn flush(self) -> Option<Self::Item> where
-        Self: Sized, {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         if self.done {
             None
         } else {
