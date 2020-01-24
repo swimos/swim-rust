@@ -308,6 +308,13 @@ where
             .flatten()
     }
 
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.iteratee.flush()
+    }
+
     fn demand_hint(&self) -> (usize, Option<usize>) {
         (self.iteratee.demand_hint().0, None)
     }

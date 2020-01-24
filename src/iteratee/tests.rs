@@ -127,8 +127,7 @@ fn collect_all_to_vector() {
 #[test]
 fn map_iteratee() {
     let size = NonZeroUsize::new(3).unwrap();
-    let mut iteratee = collect_vec::<i32>(size)
-        .map(|vec| { vec.iter().sum() });
+    let mut iteratee = collect_vec::<i32>(size).map(|vec| vec.iter().sum());
 
     assert_that!(iteratee.feed(1), none());
     assert_that!(iteratee.feed(2), none());
@@ -142,8 +141,7 @@ fn map_iteratee() {
 #[test]
 fn map_iteratee_with_flush() {
     let size = NonZeroUsize::new(3).unwrap();
-    let mut iteratee = collect_vec_with_rem::<i32>(size)
-        .map(|vec| { vec.iter().sum() });
+    let mut iteratee = collect_vec_with_rem::<i32>(size).map(|vec| vec.iter().sum());
 
     assert_that!(iteratee.feed(1), none());
     assert_that!(iteratee.feed(2), none());
@@ -157,12 +155,14 @@ fn map_iteratee_with_flush() {
 #[test]
 fn comap_iteratee() {
     let size = NonZeroUsize::new(3).unwrap();
-    let mut iteratee = collect_vec(size)
-        .comap(|n: i32| { n.to_string() });
+    let mut iteratee = collect_vec(size).comap(|n: i32| n.to_string());
 
     assert_that!(iteratee.feed(1), none());
     assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), eq(Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])));
+    assert_that!(
+        iteratee.feed(3),
+        eq(Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()]))
+    );
 
     assert_that!(iteratee.feed(4), none());
     assert_that!(iteratee.feed(5), none());
@@ -172,14 +172,71 @@ fn comap_iteratee() {
 #[test]
 fn comap_iteratee_with_flush() {
     let size = NonZeroUsize::new(3).unwrap();
-    let mut iteratee = collect_vec_with_rem(size)
-        .comap(|n: i32| { n.to_string() });
+    let mut iteratee = collect_vec_with_rem(size).comap(|n: i32| n.to_string());
 
     assert_that!(iteratee.feed(1), none());
     assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), eq(Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])));
+    assert_that!(
+        iteratee.feed(3),
+        eq(Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()]))
+    );
 
     assert_that!(iteratee.feed(4), none());
     assert_that!(iteratee.feed(5), none());
-    assert_that!(iteratee.flush(), eq(Some(vec!["4".to_owned(), "5".to_owned()])));
+    assert_that!(
+        iteratee.flush(),
+        eq(Some(vec!["4".to_owned(), "5".to_owned()]))
+    );
+}
+
+#[test]
+fn maybe_comap_iteratee() {
+    let size = NonZeroUsize::new(3).unwrap();
+    let mut iteratee = collect_vec(size).maybe_comap(|n: i32| {
+        if n % 2 == 0 {
+            Some(n.to_string())
+        } else {
+            None
+        }
+    });
+
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(5), none());
+    assert_that!(
+        iteratee.feed(6),
+        eq(Some(vec!["2".to_owned(), "4".to_owned(), "6".to_owned()]))
+    );
+
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(8), none());
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn maybe_comap_iteratee_with_flush() {
+    let size = NonZeroUsize::new(3).unwrap();
+    let mut iteratee = collect_vec_with_rem(size).maybe_comap(|n: i32| {
+        if n % 2 == 0 {
+            Some(n.to_string())
+        } else {
+            None
+        }
+    });
+
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(5), none());
+    assert_that!(
+        iteratee.feed(6),
+        eq(Some(vec!["2".to_owned(), "4".to_owned(), "6".to_owned()]))
+    );
+
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(8), none());
+    assert_that!(iteratee.flush(), eq(Some(vec!["8".to_owned()])));
 }
