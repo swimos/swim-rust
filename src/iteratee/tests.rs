@@ -412,3 +412,25 @@ fn flat_map_iteratee() {
 
     assert_that!(iteratee.flush(), none());
 }
+
+#[test]
+fn add_flush() {
+    let mut iteratee = identity::<i32>().with_flush(42);
+    assert_that!(iteratee.feed(2), eq(Some(2)));
+    assert_that!(iteratee.feed(7), eq(Some(7)));
+
+    assert_that!(iteratee.flush(), eq(Some(42)));
+}
+
+#[test]
+fn remove_flush() {
+    let size = NonZeroUsize::new(3).unwrap();
+    let mut iteratee = collect_vec_with_rem::<i32>(size).without_flush();
+
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(-1), none());
+    assert_that!(iteratee.feed(7), eq(Some(vec![2, -1, 7])));
+
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.flush(), none());
+}

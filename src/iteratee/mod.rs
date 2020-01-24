@@ -121,6 +121,20 @@ pub trait Iteratee<In> {
         IterateeFlatMap::new(self, f)
     }
 
+    fn with_flush(self, value: Self::Item) -> WithFlush<Self, Self::Item>
+    where
+        Self: Sized,
+    {
+        WithFlush::new(self, value)
+    }
+
+    fn without_flush(self) -> WithFlush<Self, Self::Item>
+    where
+        Self: Sized,
+    {
+        WithFlush::new_opt(self, None)
+    }
+
     fn flatten<I>(self) -> IterateeFlatten<Self, I>
     where
         Self: Sized,
@@ -1013,5 +1027,45 @@ where
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
         (self.iteratee.demand_hint().0, None)
+    }
+}
+
+pub struct WithFlush<I, T> {
+    iteratee: I,
+    last: Option<T>,
+}
+
+impl<I, T> WithFlush<I, T> {
+    fn new_opt(iteratee: I, last: Option<T>) -> WithFlush<I, T> {
+        WithFlush { iteratee, last }
+    }
+
+    fn new(iteratee: I, val: T) -> WithFlush<I, T> {
+        WithFlush {
+            iteratee,
+            last: Some(val),
+        }
+    }
+}
+
+impl<In, I, T> Iteratee<In> for WithFlush<I, T>
+where
+    I: Iteratee<In, Item = T>,
+{
+    type Item = T;
+
+    fn feed(&mut self, input: In) -> Option<Self::Item> {
+        self.iteratee.feed(input)
+    }
+
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.last
+    }
+
+    fn demand_hint(&self) -> (usize, Option<usize>) {
+        self.iteratee.demand_hint()
     }
 }
