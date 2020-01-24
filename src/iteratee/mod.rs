@@ -676,14 +676,17 @@ where
     }
 }
 
-pub enum IterateeFlatten<I1, I2> {
-    First(I1),
-    Second(I2),
+pub struct IterateeFlatten<I1, I2> {
+    selector: I1,
+    maybe_current: Option<I2>,
 }
 
 impl<I1, I2> IterateeFlatten<I1, I2> {
     fn new(iteratee: I1) -> IterateeFlatten<I1, I2> {
-        IterateeFlatten::First(iteratee)
+        IterateeFlatten {
+            selector: iteratee,
+            maybe_current: None,
+        }
     }
 }
 
@@ -695,14 +698,24 @@ where
     type Item = I2::Item;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
-        match self {
-            IterateeFlatten::First(iteratee) => {
-                if let Some(next) = iteratee.feed(input) {
-                    *self = IterateeFlatten::Second(next);
+        let IterateeFlatten {
+            selector,
+            maybe_current,
+        } = self;
+        match maybe_current {
+            Some(current) => {
+                let result = current.feed(input);
+                if result.is_some() {
+                    *maybe_current = None;
+                }
+                result
+            }
+            _ => {
+                if let Some(s) = selector.feed(input) {
+                    *maybe_current = Some(s);
                 }
                 None
             }
-            IterateeFlatten::Second(iteratee) => iteratee.feed(input),
         }
     }
 
@@ -710,22 +723,24 @@ where
     where
         Self: Sized,
     {
-        match self {
-            IterateeFlatten::First(iteratee) => {
-                if let Some(next) = iteratee.flush() {
-                    next.flush()
-                } else {
-                    None
-                }
-            }
-            IterateeFlatten::Second(iteratee) => iteratee.flush(),
+        let IterateeFlatten {
+            selector,
+            maybe_current,
+        } = self;
+        match maybe_current {
+            Some(current) => current.flush(),
+            _ => selector.flush().map(|it| it.flush()).flatten(),
         }
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
-        match self {
-            IterateeFlatten::First(iteratee) => (iteratee.demand_hint().0, None),
-            IterateeFlatten::Second(iteratee) => iteratee.demand_hint(),
+        let IterateeFlatten {
+            selector,
+            maybe_current,
+        } = self;
+        match maybe_current {
+            Some(current) => current.demand_hint(),
+            _ => (selector.demand_hint().0, None),
         }
     }
 }

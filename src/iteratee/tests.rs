@@ -434,3 +434,21 @@ fn remove_flush() {
     assert_that!(iteratee.feed(3), none());
     assert_that!(iteratee.flush(), none());
 }
+
+#[test]
+fn flatten_iteratee() {
+    let mut iteratee = identity::<i32>()
+        .maybe_map(to_non_zero)
+        .map(|n| collect_vec(n))
+        .flatten();
+
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(8), eq(Some(vec![7, 8])));
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(9), none());
+    assert_that!(iteratee.feed(10), none());
+    assert_that!(iteratee.feed(11), eq(Some(vec![9, 10, 11])));
+
+    assert_that!(iteratee.flush(), none());
+}
