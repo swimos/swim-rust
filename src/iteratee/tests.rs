@@ -452,3 +452,17 @@ fn flatten_iteratee() {
 
     assert_that!(iteratee.flush(), none());
 }
+
+#[test]
+fn fold_iteratee() {
+    let mut iteratee = identity::<i32>()
+        .filter(|i| i % 2 == 0)
+        .fold(0, |sum, i| *sum = *sum + i);
+
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(4), none());
+
+    assert_that!(iteratee.flush(), eq(Some(6)));
+}
