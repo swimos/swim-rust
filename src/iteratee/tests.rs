@@ -313,3 +313,41 @@ fn filter_iteratee_with_flush() {
 
     assert_that!(iteratee.flush(), eq(Some(vec![0])));
 }
+
+#[test]
+fn maybe_map_iteratee() {
+    let mut iteratee = identity::<i32>().maybe_map(|i| {
+        if i % 2 == 0 {
+            Some(i.to_string())
+        } else {
+            None
+        }
+    });
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(4), eq(Some("4".to_owned())));
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(0), eq(Some("0".to_owned())));
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn maybe_map_with_flush() {
+    let size = NonZeroUsize::new(2).unwrap();
+    let mut iteratee = collect_vec_with_rem::<i32>(size).maybe_map(|v| match v.get(0) {
+        Some(i) if i % 2 == 0 => Some(v.iter().map(|j| j.to_string()).collect()),
+        _ => None,
+    });
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(
+        iteratee.feed(3),
+        eq(Some(vec!["2".to_owned(), "3".to_owned()]))
+    );
+
+    assert_that!(iteratee.feed(0), none());
+
+    assert_that!(iteratee.flush(), eq(Some(vec!["0".to_owned()])));
+}

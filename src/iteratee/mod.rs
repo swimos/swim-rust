@@ -63,6 +63,14 @@ pub trait Iteratee<In> {
         IterateeMap::new(self, f)
     }
 
+    fn maybe_map<B, F>(self, f: F) -> IterateeMaybeMap<Self, F>
+    where
+        Self: Sized,
+        F: FnMut(Self::Item) -> Option<B>,
+    {
+        IterateeMaybeMap::new(self, f)
+    }
+
     fn scan_with_flush<State, B, U, F>(
         self,
         init: State,
@@ -404,6 +412,41 @@ where
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
         self.iteratee.demand_hint()
+    }
+}
+
+pub struct IterateeMaybeMap<I, F> {
+    iteratee: I,
+    f: F,
+}
+
+impl<I, F> IterateeMaybeMap<I, F> {
+    fn new(iteratee: I, f: F) -> IterateeMaybeMap<I, F> {
+        IterateeMaybeMap { iteratee, f }
+    }
+}
+
+impl<In, Out, I, F> Iteratee<In> for IterateeMaybeMap<I, F>
+where
+    I: Iteratee<In>,
+    F: FnMut(I::Item) -> Option<Out>,
+{
+    type Item = Out;
+
+    fn feed(&mut self, input: In) -> Option<Self::Item> {
+        let IterateeMaybeMap { iteratee, f } = self;
+        iteratee.feed(input).map(f).flatten()
+    }
+
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.iteratee.flush().map(self.f).flatten()
+    }
+
+    fn demand_hint(&self) -> (usize, Option<usize>) {
+        (self.iteratee.demand_hint().0, None)
     }
 }
 
