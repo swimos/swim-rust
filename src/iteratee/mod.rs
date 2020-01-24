@@ -21,6 +21,10 @@ pub trait Iteratee<In> {
 
     fn feed(&mut self, input: In) -> Option<Self::Item>;
 
+    fn feed_all<U>(&mut self, inputs: U) -> Vec<Self::Item> where U: Iterator<Item = In> {
+        inputs.flat_map(|input| self.feed(input)).collect()
+    }
+
     fn flush(self) -> Option<Self::Item>
     where
         Self: Sized,
@@ -114,12 +118,27 @@ pub trait Iteratee<In> {
         IterateeFold::new(self, init, fold)
     }
 
-    fn transduce<It>(self, iterator: It) -> TransducedIterator<It, Self>
+    fn transduce_into<It>(self, iterator: It) -> TransducedIterator<It, Self>
     where
         Self: Sized,
         It: Iterator<Item = In>,
     {
         TransducedIterator::new(iterator, self)
+    }
+
+    fn transduce<It>(&mut self, iterator: It) -> TransducedRefIterator<It, Self>
+        where
+            Self: Sized,
+            It: Iterator<Item = In>,
+    {
+        TransducedRefIterator::new(iterator, self)
+    }
+
+    fn fuse(self) -> IterateeFuse<Self>
+    where
+        Self: Sized,
+    {
+        IterateeFuse::new(self)
     }
 }
 
@@ -199,6 +218,20 @@ pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
         },
         |vec| Some(vec),
     )
+}
+
+pub fn identity<T>() -> impl Iteratee<T, Item = T> {
+    return Identity{};
+}
+
+pub struct Identity;
+
+impl<T> Iteratee<T> for Identity {
+    type Item = T;
+
+    fn feed(&mut self, input: T) -> Option<Self::Item> {
+        Some(input)
+    }
 }
 
 #[derive(Clone)]
@@ -755,5 +788,97 @@ where
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, self.iterator.size_hint().1)
+    }
+}
+
+pub struct TransducedRefIterator<'a, I, T> {
+    iterator: I,
+    transform: &'a mut T,
+}
+
+impl<'a, I, T> TransducedRefIterator<'a, I, T> {
+    fn new(iterator: I, transform: &'a mut T) -> TransducedRefIterator<'a, I, T> {
+        TransducedRefIterator {
+            iterator,
+            transform,
+        }
+    }
+}
+
+impl<'a, I, T> Iterator for TransducedRefIterator<'a, I, T>
+    where
+        I: Iterator,
+        T: Iteratee<I::Item>,
+{
+    type Item = T::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let TransducedRefIterator {
+            iterator,
+            transform,
+        } = self;
+        while let Some(item) = iterator.next() {
+            let result = transform.feed(item);
+            if result.is_some() {
+                return result;
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, self.iterator.size_hint().1)
+    }
+}
+
+pub struct IterateeFuse<I> {
+    iteratee: I,
+    done: bool,
+}
+
+impl<I> IterateeFuse<I> {
+
+    fn new(iteratee: I) -> IterateeFuse<I> {
+        IterateeFuse {
+            iteratee,
+            done: false,
+        }
+    }
+
+}
+
+impl<In, I> Iteratee<In> for IterateeFuse<I>
+where
+    I: Iteratee<In>
+{
+    type Item = I::Item;
+
+    fn feed(&mut self, input: In) -> Option<Self::Item> {
+        if self.done {
+            None
+        } else {
+            let result = self.iteratee.feed(input);
+            if result.is_some() {
+                self.done = true;
+            }
+            result
+        }
+    }
+
+    fn flush(self) -> Option<Self::Item> where
+        Self: Sized, {
+        if self.done {
+            None
+        } else {
+            self.iteratee.flush()
+        }
+    }
+
+    fn demand_hint(&self) -> (usize, Option<usize>) {
+        if self.done {
+            (0, None)
+        } else {
+            self.iteratee.demand_hint()
+        }
     }
 }
