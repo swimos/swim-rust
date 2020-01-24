@@ -240,3 +240,47 @@ fn maybe_comap_iteratee_with_flush() {
     assert_that!(iteratee.feed(8), none());
     assert_that!(iteratee.flush(), eq(Some(vec!["8".to_owned()])));
 }
+
+#[test]
+fn scan_iteratee() {
+    let mut iteratee = identity::<i32>().scan(0, |max, i| {
+        if i > *max {
+            *max = i;
+            Some(i)
+        } else {
+            None
+        }
+    });
+
+    assert_that!(iteratee.feed(2), eq(Some(2)));
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(5), eq(Some(5)));
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(22), eq(Some(22)));
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn scan_iteratee_with_flush() {
+    let mut iteratee = identity::<i32>().scan_with_flush(None, |prev, i| {
+        match *prev {
+            Some(p) => {
+                *prev = Some(i);
+                Some(p)
+            },
+            _ => {
+                *prev = Some(i);
+                None
+            }
+        }
+    }, |prev| prev);
+
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(2), eq(Some(1)));
+    assert_that!(iteratee.feed(5), eq(Some(2)));
+    assert_that!(iteratee.feed(-1), eq(Some(5)));
+
+    assert_that!(iteratee.flush(), eq(Some(-1)));
+}

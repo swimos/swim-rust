@@ -448,10 +448,12 @@ where
             mut scan,
             mut flush,
         } = self;
-        iteratee
-            .flush()
-            .map(|out| scan(&mut state, out).or_else(|| flush(state)))
-            .flatten()
+        match iteratee.flush() {
+            Some(v) => {
+                scan(&mut state, v).or_else(|| flush(state))
+            }
+            _ => flush(state),
+        }
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
