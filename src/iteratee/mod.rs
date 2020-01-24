@@ -85,6 +85,14 @@ pub trait Iteratee<In> {
         IterateeScanSimple::new(self, init, scan)
     }
 
+    fn filter<P>(self, predicate: P) -> Filter<Self, P>
+    where
+        Self: Sized,
+        P: FnMut(&Self::Item) -> bool,
+    {
+        Filter::new(self, predicate)
+    }
+
     fn and_then<I>(self, next: I) -> IterateeAndThen<Self, I>
     where
         Self: Sized,
@@ -449,9 +457,7 @@ where
             mut flush,
         } = self;
         match iteratee.flush() {
-            Some(v) => {
-                scan(&mut state, v).or_else(|| flush(state))
-            }
+            Some(v) => scan(&mut state, v).or_else(|| flush(state)),
             _ => flush(state),
         }
     }
@@ -903,5 +909,46 @@ where
         } else {
             self.iteratee.demand_hint()
         }
+    }
+}
+
+pub struct Filter<I, P> {
+    iteratee: I,
+    predicate: P,
+}
+
+impl<I, P> Filter<I, P> {
+    fn new(iteratee: I, predicate: P) -> Filter<I, P> {
+        Filter {
+            iteratee,
+            predicate,
+        }
+    }
+}
+
+impl<In, I, P> Iteratee<In> for Filter<I, P>
+where
+    I: Iteratee<In>,
+    P: FnMut(&I::Item) -> bool,
+{
+    type Item = I::Item;
+
+    fn feed(&mut self, input: In) -> Option<Self::Item> {
+        let Filter {
+            iteratee,
+            predicate,
+        } = self;
+        iteratee.feed(input).filter(predicate)
+    }
+
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.iteratee.flush().filter(self.predicate)
+    }
+
+    fn demand_hint(&self) -> (usize, Option<usize>) {
+        (self.iteratee.demand_hint().0, None)
     }
 }

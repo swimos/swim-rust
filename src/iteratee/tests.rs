@@ -264,18 +264,20 @@ fn scan_iteratee() {
 
 #[test]
 fn scan_iteratee_with_flush() {
-    let mut iteratee = identity::<i32>().scan_with_flush(None, |prev, i| {
-        match *prev {
+    let mut iteratee = identity::<i32>().scan_with_flush(
+        None,
+        |prev, i| match *prev {
             Some(p) => {
                 *prev = Some(i);
                 Some(p)
-            },
+            }
             _ => {
                 *prev = Some(i);
                 None
             }
-        }
-    }, |prev| prev);
+        },
+        |prev| prev,
+    );
 
     assert_that!(iteratee.feed(1), none());
     assert_that!(iteratee.feed(2), eq(Some(1)));
@@ -283,4 +285,31 @@ fn scan_iteratee_with_flush() {
     assert_that!(iteratee.feed(-1), eq(Some(5)));
 
     assert_that!(iteratee.flush(), eq(Some(-1)));
+}
+
+#[test]
+fn filter_iteratee() {
+    let mut iteratee = identity::<i32>().filter(|i| i % 2 == 0);
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(4), eq(Some(4)));
+    assert_that!(iteratee.feed(1), none());
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(0), eq(Some(0)));
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn filter_iteratee_with_flush() {
+    let size = NonZeroUsize::new(2).unwrap();
+    let mut iteratee =
+        collect_vec_with_rem::<i32>(size).filter(|v| v.get(0).map(|i| i % 2 == 0).unwrap_or(false));
+    assert_that!(iteratee.feed(7), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(3), eq(Some(vec![2, 3])));
+
+    assert_that!(iteratee.feed(0), none());
+
+    assert_that!(iteratee.flush(), eq(Some(vec![0])));
 }

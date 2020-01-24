@@ -20,5 +20,5 @@ extern crate tokio_util;
 extern crate bytes;
 
 pub mod eff_cell;
-pub mod model;
 pub mod iteratee;
+pub mod model;
