@@ -466,3 +466,24 @@ fn fold_iteratee() {
 
     assert_that!(iteratee.flush(), eq(Some(6)));
 }
+
+#[test]
+fn fuse_iteratee() {
+    let mut iteratee = identity::<i32>().fuse();
+    assert_that!(iteratee.feed(3), eq(Some(3)));
+    assert_that!(iteratee.feed(12), none());
+    assert_that!(iteratee.feed(-2), none());
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn fuse_iteratee_with_flush() {
+    let mut iteratee = identity::<i32>().fold(0, |sum, i| *sum = *sum + i).fuse();
+
+    assert_that!(iteratee.feed(3), none());
+    assert_that!(iteratee.feed(12), none());
+    assert_that!(iteratee.feed(-2), none());
+
+    assert_that!(iteratee.flush(), eq(Some(13)));
+}
