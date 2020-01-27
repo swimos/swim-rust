@@ -487,3 +487,32 @@ fn fuse_iteratee_with_flush() {
 
     assert_that!(iteratee.flush(), eq(Some(13)));
 }
+
+#[test]
+fn transduce_iterator() {
+    let size = NonZeroUsize::new(2).unwrap();
+    let data1 = vec![5, 3, -5, 10, 7];
+    let mut iteratee = collect_vec_with_rem(size);
+    let output1 = iteratee.transduce(data1.into_iter()).collect::<Vec<_>>();
+
+    assert_that!(output1, eq(vec![vec![5, 3], vec![-5, 10]]));
+
+    let data2 = vec![12, -1];
+    let output2 = iteratee.transduce(data2.into_iter()).collect::<Vec<_>>();
+
+    assert_that!(output2, eq(vec![vec![7, 12]]));
+
+    assert_that!(iteratee.flush(), eq(Some(vec![-1])));
+}
+
+#[test]
+fn transduce_iterator_consuming_iteratee() {
+    let size = NonZeroUsize::new(2).unwrap();
+    let data = vec![5, 3, -5, 10, 7];
+    let iteratee = collect_vec_with_rem(size);
+    let output = iteratee
+        .transduce_into(data.into_iter())
+        .collect::<Vec<_>>();
+
+    assert_that!(output, eq(vec![vec![5, 3], vec![-5, 10], vec![7]]));
+}
