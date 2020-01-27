@@ -262,6 +262,26 @@ pub trait Iteratee<In> {
         Filter::new(self, predicate)
     }
 
+    /// Compose this iteratee with another that consumes its output type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::NonZeroUsize;
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let size = NonZeroUsize::new(2).unwrap();
+    ///
+    /// //Collects even inputs into vectors of length 2.
+    /// let mut iteratee = identity::<i32>()
+    ///     .filter(|i| i % 2 == 0)
+    ///     .and_then(collect_vec(size));
+    ///
+    /// assert!(iteratee.feed(1).is_none());
+    /// assert!(iteratee.feed(2).is_none());
+    /// assert_eq!(iteratee.feed(10), Some(vec![2, 10]));
+    /// ```
+    ///
     fn and_then<I>(self, next: I) -> IterateeAndThen<Self, I>
     where
         Self: Sized,
@@ -273,6 +293,24 @@ pub trait Iteratee<In> {
         }
     }
 
+    /// Chooses another iterateee to use based on the input and then delegates all following inputs
+    /// to that iteratee until it produces a value. This process is repeated indefinitely.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::NonZeroUsize;
+    /// use swim_rust::iteratee::*;
+    ///
+    /// //Assembles a vector the length of which is determined by the first value.
+    /// let mut iteratee = identity::<usize>()
+    ///        .maybe_map(|n| NonZeroUsize::new(n))
+    ///        .flat_map(|i| collect_vec(i));
+    ///
+    /// assert!(iteratee.feed(2).is_none());
+    /// assert!(iteratee.feed(6).is_none());
+    /// assert_eq!(iteratee.feed(17), Some(vec![6, 17]));
+    /// ```
     fn flat_map<I, F>(self, f: F) -> IterateeFlatMap<Self, I, F>
     where
         Self: Sized,
@@ -282,6 +320,7 @@ pub trait Iteratee<In> {
         IterateeFlatMap::new(self, f)
     }
 
+    ///Replace the flush output of this iteratee with a specified item.
     fn with_flush(self, value: Self::Item) -> WithFlush<Self, Self::Item>
     where
         Self: Sized,
@@ -289,6 +328,7 @@ pub trait Iteratee<In> {
         WithFlush::new(self, value)
     }
 
+    ///Remove the flush output of this iteratee.
     fn without_flush(self) -> WithFlush<Self, Self::Item>
     where
         Self: Sized,
@@ -296,6 +336,8 @@ pub trait Iteratee<In> {
         WithFlush::new_opt(self, None)
     }
 
+    /// Flatten an iteratee of iteratees. This is a simplified version of 'flat_map()' where the
+    /// mapping function is the identity.
     fn flatten<I>(self) -> IterateeFlatten<Self, I>
     where
         Self: Sized,
@@ -304,6 +346,22 @@ pub trait Iteratee<In> {
         IterateeFlatten::new(self)
     }
 
+    /// Fold over the outputs of this iteratee, emitting a value only on flush.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let mut iteratee = identity::<i32>().fold(0, |sum, i| *sum = *sum + i);
+    ///
+    /// assert!(iteratee.feed(3).is_none());
+    /// assert!(iteratee.feed(-1).is_none());
+    /// assert!(iteratee.feed(7).is_none());
+    ///
+    /// assert_eq!(iteratee.flush(), Some(9));
+    ///
+    /// ```
     fn fold<State, F>(self, init: State, fold: F) -> IterateeFold<Self, State, F>
     where
         Self: Sized,
@@ -312,14 +370,25 @@ pub trait Iteratee<In> {
         IterateeFold::new(self, init, fold)
     }
 
-    fn transduce_into<It>(self, iterator: It) -> TransducedIterator<It, Self>
-    where
-        Self: Sized,
-        It: Iterator<Item = In>,
-    {
-        TransducedIterator::new(iterator, self)
-    }
-
+    /// Transduce an iterator with this iteratee. This creates a new iterator that will feed
+    /// tha values of the original iterator into this iteratee and yields the outputs of this
+    /// iteratee. The iteratee will not be flushed and can be used again.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::NonZeroUsize;
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let size = NonZeroUsize::new(2).unwrap();
+    ///
+    /// let data = vec![1, 2, 3, 4, 5];
+    /// let mut iteratee = copy_into_vec(size);
+    ///
+    /// let output = iteratee.transduce(data.iter()).collect::<Vec<_>>();
+    ///
+    /// assert_eq!(output, vec![vec![1, 2], vec![3, 4]]);
+    /// ```
     fn transduce<It>(&mut self, iterator: It) -> TransducedRefIterator<It, Self>
     where
         Self: Sized,
@@ -328,6 +397,36 @@ pub trait Iteratee<In> {
         TransducedRefIterator::new(iterator, self)
     }
 
+    /// Transduce an iterator with this iteratee. This creates a new iterator that will feed
+    /// tha values of the original iterator into this iteratee and yields the outputs of this
+    /// iteratee. This consumes the iteratee which will be flushed after the input iterator is
+    /// exhausted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::NonZeroUsize;
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let size = NonZeroUsize::new(2).unwrap();
+    ///
+    /// let data = vec![1, 2, 3, 4, 5];
+    /// let mut iteratee = copy_into_vec_with_rem(size);
+    ///
+    /// let output = iteratee.transduce_into(data.iter()).collect::<Vec<_>>();
+    ///
+    /// assert_eq!(output, vec![vec![1, 2], vec![3, 4], vec![5]]);
+    /// ```
+    fn transduce_into<It>(self, iterator: It) -> TransducedIterator<It, Self>
+    where
+        Self: Sized,
+        It: Iterator<Item = In>,
+    {
+        TransducedIterator::new(iterator, self)
+    }
+
+    /// Create a new iteratee that will delegates to this iteratee until it emits a value and then
+    /// will never emit another value (including on flush).
     fn fuse(self) -> IterateeFuse<Self>
     where
         Self: Sized,
