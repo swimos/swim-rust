@@ -211,17 +211,32 @@ where
 }
 
 pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
-    unfold(None, vec_unfolder(num.get()))
+    unfold(None, vec_unfolder(num.get(), |t| t))
 }
 
 pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
-    unfold_with_flush(None, vec_unfolder(num.get()), |maybe_vec| maybe_vec)
+    unfold_with_flush(None, vec_unfolder(num.get(), |t| t), |maybe_vec| maybe_vec)
 }
 
-fn vec_unfolder<T>(n: usize) -> impl FnMut(&mut Option<Vec<T>>, T) -> Option<Vec<T>> {
-    move |maybe_vec, t| match maybe_vec {
+pub fn copy_into_vec<'a, T: Copy + 'a>(num: NonZeroUsize) -> impl Iteratee<&'a T, Item = Vec<T>> {
+    unfold(None, vec_unfolder(num.get(), |t: &'a T| *t))
+}
+
+pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
+    num: NonZeroUsize,
+) -> impl Iteratee<&'a T, Item = Vec<T>> {
+    unfold_with_flush(None, vec_unfolder(num.get(), |t: &'a T| *t), |maybe_vec| {
+        maybe_vec
+    })
+}
+
+fn vec_unfolder<S, T>(
+    n: usize,
+    mut conform: impl FnMut(S) -> T,
+) -> impl FnMut(&mut Option<Vec<T>>, S) -> Option<Vec<T>> {
+    move |maybe_vec, s| match maybe_vec {
         Some(vec) => {
-            vec.push(t);
+            vec.push(conform(s));
             if vec.len() == n {
                 maybe_vec.take()
             } else {
@@ -229,7 +244,7 @@ fn vec_unfolder<T>(n: usize) -> impl FnMut(&mut Option<Vec<T>>, T) -> Option<Vec
             }
         }
         _ => {
-            let new_vec = vec![t];
+            let new_vec = vec![conform(s)];
             if n == 1 {
                 Some(new_vec)
             } else {

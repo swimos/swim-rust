@@ -492,13 +492,14 @@ fn fuse_iteratee_with_flush() {
 fn transduce_iterator() {
     let size = NonZeroUsize::new(2).unwrap();
     let data1 = vec![5, 3, -5, 10, 7];
-    let mut iteratee = collect_vec_with_rem(size);
-    let output1 = iteratee.transduce(data1.into_iter()).collect::<Vec<_>>();
+    let data2 = vec![12, -1];
+
+    let mut iteratee = copy_into_vec_with_rem(size);
+    let output1 = iteratee.transduce(data1.iter()).collect::<Vec<_>>();
 
     assert_that!(output1, eq(vec![vec![5, 3], vec![-5, 10]]));
 
-    let data2 = vec![12, -1];
-    let output2 = iteratee.transduce(data2.into_iter()).collect::<Vec<_>>();
+    let output2 = iteratee.transduce(data2.iter()).collect::<Vec<_>>();
 
     assert_that!(output2, eq(vec![vec![7, 12]]));
 
@@ -509,10 +510,8 @@ fn transduce_iterator() {
 fn transduce_iterator_consuming_iteratee() {
     let size = NonZeroUsize::new(2).unwrap();
     let data = vec![5, 3, -5, 10, 7];
-    let iteratee = collect_vec_with_rem(size);
-    let output = iteratee
-        .transduce_into(data.into_iter())
-        .collect::<Vec<_>>();
+    let iteratee = copy_into_vec_with_rem(size);
+    let output = iteratee.transduce_into(data.iter()).collect::<Vec<_>>();
 
     assert_that!(output, eq(vec![vec![5, 3], vec![-5, 10], vec![7]]));
 }
