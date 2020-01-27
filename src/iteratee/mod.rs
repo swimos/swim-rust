@@ -16,11 +16,38 @@ use std::num::NonZeroUsize;
 #[cfg(test)]
 mod tests;
 
+/// Dual of ['Iterator'] that can repeatedly consume some number of items before producing
+/// an output. In general, ['Iteratee']s are stateful and can be flushed to obtain their
+/// final state when the are no longer required.
+///
+/// # Examples
+/// ```
+/// use std::num::NonZeroUsize;
+/// use swim_rust::iteratee::*;
+///
+/// let size = NonZeroUsize::new(2).unwrap();
+/// let mut iteratee = collect_vec_with_rem(size);
+///
+/// //Collects elements until an output can be produced.
+/// assert!(iteratee.feed(4).is_none());
+/// assert_eq!(iteratee.feed(-1), Some(vec![4, -1]));
+///
+/// //In general, an iteratee instance can be used multiple times.
+/// assert!(iteratee.feed(7).is_none());
+///
+/// //Flushing the iteratee consumes it after which it can no longer be used.
+/// assert_eq!(iteratee.flush(), Some(vec![7]));
+/// ```
 pub trait Iteratee<In> {
+    /// The type of the values that will be produced by the iteratee.
     type Item;
 
+    /// Feed a single value into the iteratee. If a value can then be produced this will return
+    /// ['Some'].
     fn feed(&mut self, input: In) -> Option<Self::Item>;
 
+    /// Feed all values from an ['Iterator'] into this iteratee, collecting all outputs generated
+    /// into a vector.
     fn feed_all<U>(&mut self, inputs: U) -> Vec<Self::Item>
     where
         U: Iterator<Item = In>,
@@ -28,6 +55,8 @@ pub trait Iteratee<In> {
         inputs.flat_map(|input| self.feed(input)).collect()
     }
 
+    /// Flush the state of the iteratee, consuming it. By default this does nothing and must be
+    /// overridden by implementors.
     fn flush(self) -> Option<Self::Item>
     where
         Self: Sized,
@@ -35,10 +64,24 @@ pub trait Iteratee<In> {
         None
     }
 
+    /// Gives a hint of how many items this iteratee will consume before producing a result. The
+    /// returned value is a range from the minimum number of items to the maximum. This should
+    /// obey the same contract as specified for ['size_hint()'] on ['Iterator'].
     fn demand_hint(&self) -> (usize, Option<usize>) {
         (0, None)
     }
 
+    /// Apply a transformation to the input values for this iteratee.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let mut iteratee = identity().comap(|i: i32| i.to_string());
+    ///
+    /// assert_eq!(iteratee.feed(2), Some("2".to_owned()));
+    /// ```
     fn comap<B, F>(self, f: F) -> Comap<Self, F>
     where
         Self: Sized,
@@ -47,6 +90,24 @@ pub trait Iteratee<In> {
         Comap::new(self, f)
     }
 
+    /// Apply a transformation that may filter out values to the input values of this iteratee.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let mut iteratee = identity().maybe_comap(|i: i32| {
+    ///     if i % 2 == 0 {
+    ///         Some(i.to_string())
+    ///     } else {
+    ///         None
+    ///     }   
+    /// });
+    ///
+    /// assert!(iteratee.feed(1).is_none());
+    /// assert_eq!(iteratee.feed(2), Some("2".to_owned()));
+    /// ```
     fn maybe_comap<B, F>(self, f: F) -> MaybeComap<Self, F>
     where
         Self: Sized,
@@ -55,6 +116,17 @@ pub trait Iteratee<In> {
         MaybeComap::new(self, f)
     }
 
+    /// Apply a transformation to the outputs of this iteratee.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let mut iteratee = identity().map(|i: i32| i.to_string());
+    ///
+    /// assert_eq!(iteratee.feed(2), Some("2".to_string()));
+    /// ```
     fn map<B, F>(self, f: F) -> IterateeMap<Self, F>
     where
         Self: Sized,
@@ -63,6 +135,25 @@ pub trait Iteratee<In> {
         IterateeMap::new(self, f)
     }
 
+    /// Apply a transformation to the outputs of this iteratee that may filter out some of the
+    /// values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let mut iteratee = identity().maybe_map(|i: i32| {
+    ///     if i % 2 == 0 {
+    ///         Some(i.to_string())
+    ///     } else {
+    ///         None
+    ///     }
+    /// });
+    ///
+    /// assert!(iteratee.feed(1).is_none());
+    /// assert_eq!(iteratee.feed(2), Some("2".to_string()));
+    /// ```
     fn maybe_map<B, F>(self, f: F) -> IterateeMaybeMap<Self, F>
     where
         Self: Sized,
@@ -71,6 +162,71 @@ pub trait Iteratee<In> {
         IterateeMaybeMap::new(self, f)
     }
 
+    /// Apply a stateful transformation to the outputs of this iteratee. The final value of the
+    /// state is ignored on flush.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// //Stores the largest values that has been seen in the state an only produces an output
+    /// //when a new largest value is seen.
+    /// let mut iteratee = identity::<i32>().scan(0, |max, i| {
+    ///     if i > *max {
+    ///         *max = i;
+    ///         Some(i)
+    ///     } else {
+    ///         None
+    ///     }
+    /// });
+    ///
+    /// assert_eq!(iteratee.feed(4), Some(4));
+    /// assert!(iteratee.feed(2).is_none());
+    /// assert_eq!(iteratee.feed(7), Some(7));
+    /// assert!(iteratee.feed(4).is_none());
+    ///
+    /// assert!(iteratee.flush().is_none());
+    /// ```
+    fn scan<State, B, U>(self, init: State, scan: U) -> IterateeScanSimple<Self, State, U>
+    where
+        Self: Sized,
+        U: FnMut(&mut State, Self::Item) -> Option<B>,
+    {
+        IterateeScanSimple::new(self, init, scan)
+    }
+
+    /// Apply a stateful transformation to the outputs of this iteratee. The final value of the
+    /// state may be output on flush..
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// //Stores the previously seen value in the state and returns it on each input. Outputs
+    /// //the value of the state on flush.
+    /// let mut iteratee = identity::<i32>().scan_with_flush(
+    ///        None,
+    ///        |prev, i| match *prev {
+    ///            Some(p) => {
+    ///                *prev = Some(i);
+    ///                Some(p)
+    ///            }
+    ///            _ => {
+    ///                *prev = Some(i);
+    ///                None
+    ///            }
+    ///        },
+    ///        |prev| prev,
+    ///    );
+    ///
+    /// assert!(iteratee.feed(2).is_none());
+    /// assert_eq!(iteratee.feed(7), Some(2));
+    /// assert_eq!(iteratee.feed(3), Some(7));
+    ///
+    /// assert_eq!(iteratee.flush(), Some(3));
+    /// ```
     fn scan_with_flush<State, B, U, F>(
         self,
         init: State,
@@ -85,14 +241,19 @@ pub trait Iteratee<In> {
         IterateeScan::new(self, init, scan, flush)
     }
 
-    fn scan<State, B, U>(self, init: State, scan: U) -> IterateeScanSimple<Self, State, U>
-    where
-        Self: Sized,
-        U: FnMut(&mut State, Self::Item) -> Option<B>,
-    {
-        IterateeScanSimple::new(self, init, scan)
-    }
-
+    /// Filter the outputs of this iteratee using a predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let mut iteratee = identity::<i32>().filter(|i| i % 2 == 0);
+    ///
+    /// assert!(iteratee.feed(1).is_none());
+    /// assert_eq!(iteratee.feed(6), Some(6));
+    ///
+    /// ```
     fn filter<P>(self, predicate: P) -> Filter<Self, P>
     where
         Self: Sized,
@@ -178,23 +339,49 @@ pub trait Iteratee<In> {
 pub fn unfold<In, State, Out, U>(
     init: State,
     unfold: U,
-) -> Unfold<State, U, impl FnMut(State) -> Option<Out>>
+) -> Unfold<State, U, impl FnMut(State) -> Option<Out>, impl Fn(&State) -> (usize, Option<usize>)>
 where
     U: FnMut(&mut State, In) -> Option<Out>,
 {
-    Unfold::new(init, unfold, |_| None)
+    Unfold::new(init, unfold, |_| None, |_: &State| (0, None))
+}
+
+pub fn unfold_with_hint<In, State, Out, U, H>(
+    init: State,
+    unfold: U,
+    hint: H,
+) -> Unfold<State, U, impl FnMut(State) -> Option<Out>, H>
+where
+    U: FnMut(&mut State, In) -> Option<Out>,
+    H: Fn(&State) -> (usize, Option<usize>),
+{
+    Unfold::new(init, unfold, |_| None, hint)
 }
 
 pub fn unfold_with_flush<In, State, Out, U, F>(
     init: State,
     unfold: U,
     flush: F,
-) -> Unfold<State, U, F>
+) -> Unfold<State, U, F, impl Fn(&State) -> (usize, Option<usize>)>
 where
     U: FnMut(&mut State, In) -> Option<Out>,
     F: FnMut(State) -> Option<Out>,
 {
-    Unfold::new(init, unfold, flush)
+    Unfold::new(init, unfold, flush, |_: &State| (0, None))
+}
+
+pub fn unfold_with_flush_and_hint<In, State, Out, U, F, H>(
+    init: State,
+    unfold: U,
+    flush: F,
+    hint: H,
+) -> Unfold<State, U, F, H>
+where
+    U: FnMut(&mut State, In) -> Option<Out>,
+    F: FnMut(State) -> Option<Out>,
+    H: Fn(&State) -> (usize, Option<usize>),
+{
+    Unfold::new(init, unfold, flush, hint)
 }
 
 pub fn unfold_into<In, State, Out, I, U, F>(
@@ -210,24 +397,42 @@ where
     UnfoldInto::new(init, unfolder, extract)
 }
 
+fn vec_hint<T>(num: NonZeroUsize) -> impl Fn(&Option<Vec<T>>) -> (usize, Option<usize>) {
+    move |v| {
+        let diff: usize = match v {
+            Some(v) => num.get() - v.len(),
+            _ => num.get(),
+        };
+        (diff, Some(diff))
+    }
+}
+
 pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
-    unfold(None, vec_unfolder(num.get(), |t| t))
+    unfold_with_hint(None, vec_unfolder(num.get(), |t| t), vec_hint(num))
 }
 
 pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
-    unfold_with_flush(None, vec_unfolder(num.get(), |t| t), |maybe_vec| maybe_vec)
+    unfold_with_flush_and_hint(
+        None,
+        vec_unfolder(num.get(), |t| t),
+        |maybe_vec| maybe_vec,
+        vec_hint(num),
+    )
 }
 
 pub fn copy_into_vec<'a, T: Copy + 'a>(num: NonZeroUsize) -> impl Iteratee<&'a T, Item = Vec<T>> {
-    unfold(None, vec_unfolder(num.get(), |t: &'a T| *t))
+    unfold_with_hint(None, vec_unfolder(num.get(), |t: &'a T| *t), vec_hint(num))
 }
 
 pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
     num: NonZeroUsize,
 ) -> impl Iteratee<&'a T, Item = Vec<T>> {
-    unfold_with_flush(None, vec_unfolder(num.get(), |t: &'a T| *t), |maybe_vec| {
-        maybe_vec
-    })
+    unfold_with_flush_and_hint(
+        None,
+        vec_unfolder(num.get(), |t: &'a T| *t),
+        |maybe_vec| maybe_vec,
+        vec_hint(num),
+    )
 }
 
 fn vec_unfolder<S, T>(
@@ -365,45 +570,47 @@ where
     }
 }
 
-pub struct Unfold<B, U, F> {
+pub struct Unfold<B, U, F, H> {
     state: B,
     unfold: U,
     flush: F,
+    hint: H,
 }
 
-impl<State, U, F> Unfold<State, U, F> {
-    fn new(init: State, unfold: U, flush: F) -> Unfold<State, U, F> {
+impl<State, U, F, H> Unfold<State, U, F, H> {
+    fn new(init: State, unfold: U, flush: F, hint: H) -> Unfold<State, U, F, H> {
         Unfold {
             state: init,
             unfold,
             flush,
+            hint,
         }
     }
 }
 
-impl<In, State, Out, U, F> Iteratee<In> for Unfold<State, U, F>
+impl<In, State, Out, U, F, H> Iteratee<In> for Unfold<State, U, F, H>
 where
     U: FnMut(&mut State, In) -> Option<Out>,
     F: FnMut(State) -> Option<Out>,
+    H: Fn(&State) -> (usize, Option<usize>),
 {
     type Item = Out;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
-        let Unfold {
-            state,
-            unfold,
-            flush: _,
-        } = self;
+        let Unfold { state, unfold, .. } = self;
         unfold(state, input)
     }
 
     fn flush(self) -> Option<Self::Item> {
         let Unfold {
-            state,
-            unfold: _,
-            mut flush,
+            state, mut flush, ..
         } = self;
         flush(state)
+    }
+
+    fn demand_hint(&self) -> (usize, Option<usize>) {
+        let Unfold { state, hint, .. } = self;
+        hint(state)
     }
 }
 
@@ -869,10 +1076,9 @@ where
         Self: Sized,
     {
         let UnfoldInto {
-            init: _,
             mut maybe_state,
-            unfold: _,
             extract,
+            ..
         } = self;
         maybe_state.take().map(extract).flatten()
     }
