@@ -435,6 +435,31 @@ pub trait Iteratee<In> {
     }
 }
 
+/// Create a stateful iteratee that generates its outputs from its internal state and the value
+/// of each input.
+///
+/// # Examples
+///
+/// ```
+/// use swim_rust::iteratee::*;
+///
+/// //Emits every fourth value.
+/// let mut iteratee = unfold(0, |count: &mut u32, i: i32| {
+///     *count = *count + 1;
+///     if *count % 4 == 0 {
+///         Some(i)
+///     } else {
+///         None
+///     }
+/// });
+///
+/// assert!(iteratee.feed(3).is_none());
+/// assert!(iteratee.feed(-1).is_none());
+/// assert!(iteratee.feed(12).is_none());
+/// assert_eq!(iteratee.feed(17), Some(17));
+/// assert!(iteratee.feed(-66).is_none());
+/// ```
+///
 pub fn unfold<In, State, Out, U>(
     init: State,
     unfold: U,
@@ -445,6 +470,8 @@ where
     Unfold::new(init, unfold, |_| None, |_: &State| (0, None))
 }
 
+/// Create a stateful iteratee that generates its outputs from its internal state and the value
+/// of each input. Allows the caller to provide a demand hint, otherwise identical to 'unfold()'.
 pub fn unfold_with_hint<In, State, Out, U, H>(
     init: State,
     unfold: U,
@@ -457,6 +484,23 @@ where
     Unfold::new(init, unfold, |_| None, hint)
 }
 
+/// Create a stateful iteratee that generates its outputs from its internal state and the value
+/// of each input. The iteratee may also produce a value on flush.
+///
+/// # Examples
+///
+/// ```
+/// use swim_rust::iteratee::*;
+///
+/// let mut iteratee = unfold_with_flush(None, |prev, i| {
+///     prev.replace(i)
+/// }, |prev| prev);
+///
+/// assert!(iteratee.feed(1).is_none());
+/// assert_eq!(iteratee.feed(3), Some(1));
+/// assert_eq!(iteratee.flush(), Some(3));
+/// ```
+///
 pub fn unfold_with_flush<In, State, Out, U, F>(
     init: State,
     unfold: U,
@@ -469,6 +513,9 @@ where
     Unfold::new(init, unfold, flush, |_: &State| (0, None))
 }
 
+/// Create a stateful iteratee that generates its outputs from its internal state and the value
+/// of each input. The iteratee may also produce a value on flush. Allows the caller to provide a
+/// demand hint, otherwise identical to 'unfold_with_flush()'.
 pub fn unfold_with_flush_and_hint<In, State, Out, U, F, H>(
     init: State,
     unfold: U,
@@ -483,7 +530,9 @@ where
     Unfold::new(init, unfold, flush, hint)
 }
 
-pub fn unfold_into<In, State, Out, I, U, F>(
+/// Variant unfold iteratee that splits the determination of whether a value should be emitted and
+/// the actual extraction of that value from the state.
+pub fn unfold_with_extract<In, State, Out, I, U, F>(
     init: I,
     unfolder: U,
     extract: F,
@@ -496,20 +545,50 @@ where
     UnfoldInto::new(init, unfolder, extract)
 }
 
-fn vec_hint<T>(num: NonZeroUsize) -> impl Fn(&Option<Vec<T>>) -> (usize, Option<usize>) {
-    move |v| {
-        let diff: usize = match v {
-            Some(v) => num.get() - v.len(),
-            _ => num.get(),
-        };
-        (diff, Some(diff))
-    }
-}
-
+/// Collects the input values into vectors of a fixed length. Leftover elements are discarded
+/// on flush.
+///
+/// # Examples
+///
+/// ```
+/// use std::num::NonZeroUsize;
+/// use swim_rust::iteratee::*;
+///
+/// let size = NonZeroUsize::new(3).unwrap();
+///
+/// let mut iteratee = collect_vec::<i32>(size);
+///
+/// assert!(iteratee.feed(1).is_none());
+/// assert!(iteratee.feed(2).is_none());
+/// assert_eq!(iteratee.feed(3), Some(vec![1, 2, 3]));
+/// assert!(iteratee.feed(4).is_none());
+///
+/// assert!(iteratee.flush().is_none());
+/// ```
 pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
     unfold_with_hint(None, vec_unfolder(num.get(), |t| t), vec_hint(num))
 }
 
+/// Collects the input values into vectors of a fixed length. Leftover elements are emitted as an
+/// underfull vector on flush.
+///
+/// # Examples
+///
+/// ```
+/// use std::num::NonZeroUsize;
+/// use swim_rust::iteratee::*;
+///
+/// let size = NonZeroUsize::new(3).unwrap();
+///
+/// let mut iteratee = collect_vec_with_rem::<i32>(size);
+///
+/// assert!(iteratee.feed(1).is_none());
+/// assert!(iteratee.feed(2).is_none());
+/// assert_eq!(iteratee.feed(3), Some(vec![1, 2, 3]));
+/// assert!(iteratee.feed(4).is_none());
+///
+/// assert_eq!(iteratee.flush(), Some(vec![4]));
+/// ```
 pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
     unfold_with_flush_and_hint(
         None,
@@ -519,10 +598,14 @@ pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec
     )
 }
 
+/// Create an iteratee that consumes copyable items by reference and copies them into a vector.
+/// Otherwise identical to 'collect_vec()'.
 pub fn copy_into_vec<'a, T: Copy + 'a>(num: NonZeroUsize) -> impl Iteratee<&'a T, Item = Vec<T>> {
     unfold_with_hint(None, vec_unfolder(num.get(), |t: &'a T| *t), vec_hint(num))
 }
 
+/// Create an iteratee that consumes copyable items by reference and copies them into a vector.
+/// Otherwise identical to 'collect_vec_with_rem()'.
 pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
     num: NonZeroUsize,
 ) -> impl Iteratee<&'a T, Item = Vec<T>> {
@@ -532,6 +615,52 @@ pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
         |maybe_vec| maybe_vec,
         vec_hint(num),
     )
+}
+
+/// Collects all inputs into a single vector that is emitted on flush.
+///
+/// # Examples
+///
+/// ```
+/// use swim_rust::iteratee::*;
+///
+/// let mut iteratee = collect_all_vec::<i32>();
+///
+/// assert!(iteratee.feed(34).is_none());
+/// assert!(iteratee.feed(-12).is_none());
+/// assert!(iteratee.feed(0).is_none());
+///
+/// assert_eq!(iteratee.flush(), Some(vec![34, -12, 0]));
+/// ```
+pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
+    unfold_with_flush(
+        vec![],
+        |vec, input| {
+            vec.push(input);
+            None
+        },
+        |vec| Some(vec),
+    )
+}
+
+/// The trivial iteratee that emits all of its inputs unchanged.
+pub fn identity<T>() -> impl Iteratee<T, Item = T> {
+    return Identity {};
+}
+
+/// The trivial iteratee that never emits anything.
+pub fn never<T>() -> impl Iteratee<T, Item = T> {
+    return Never {};
+}
+
+fn vec_hint<T>(num: NonZeroUsize) -> impl Fn(&Option<Vec<T>>) -> (usize, Option<usize>) {
+    move |v| {
+        let diff: usize = match v {
+            Some(v) => num.get() - v.len(),
+            _ => num.get(),
+        };
+        (diff, Some(diff))
+    }
 }
 
 fn vec_unfolder<S, T>(
@@ -557,25 +686,6 @@ fn vec_unfolder<S, T>(
             }
         }
     }
-}
-
-pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
-    unfold_with_flush(
-        vec![],
-        |vec, input| {
-            vec.push(input);
-            None
-        },
-        |vec| Some(vec),
-    )
-}
-
-pub fn identity<T>() -> impl Iteratee<T, Item = T> {
-    return Identity {};
-}
-
-pub fn never<T>() -> impl Iteratee<T, Item = T> {
-    return Never {};
 }
 
 pub struct Identity;
