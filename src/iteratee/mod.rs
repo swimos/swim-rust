@@ -433,6 +433,15 @@ pub trait Iteratee<In> {
     {
         IterateeFuse::new(self)
     }
+
+    /// Create a new iteratee that will delegates to this iteratee until it emits an error and then
+    /// will never emit another value (including on flush).
+    fn fuse_on_error<T, E>(self) -> IterateeFuseOnError<Self>
+    where
+        Self: Iteratee<In, Item = Result<T, E>> + Sized,
+    {
+        IterateeFuseOnError::new(self)
+    }
 }
 
 /// Create a stateful iteratee that generates its outputs from its internal state and the value
@@ -651,6 +660,15 @@ pub fn identity<T>() -> impl Iteratee<T, Item = T> {
 /// The trivial iteratee that never emits anything.
 pub fn never<T>() -> impl Iteratee<T, Item = T> {
     return Never {};
+}
+
+/// Adds single item lookahead to incoming values.
+pub fn look_ahead<T: Copy>() -> impl Iteratee<T, Item = (T, Option<T>)> {
+    unfold_with_flush(None, |prev, current| {
+        let result = prev.map(|p| (p, Some(current)));
+        *prev = Some(current);
+        result
+    }, |prev| {  prev.map(|p| (p, None)) })
 }
 
 fn vec_hint<T>(num: NonZeroUsize) -> impl Fn(&Option<Vec<T>>) -> (usize, Option<usize>) {
@@ -1427,9 +1445,70 @@ where
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
         if self.done {
-            (0, None)
+            (usize::max_value(), None)
         } else {
             self.iteratee.demand_hint()
+        }
+    }
+}
+
+pub struct IterateeFuseOnError<I> {
+    iteratee: I,
+    failed: bool,
+}
+
+impl<I> IterateeFuseOnError<I> {
+    fn new(iteratee: I) -> IterateeFuseOnError<I> {
+        IterateeFuseOnError {
+            iteratee,
+            failed: false,
+        }
+    }
+}
+
+impl <In, T, E, I> Iteratee<In> for IterateeFuseOnError<I>
+where
+    I: Iteratee<In, Item = Result<T, E>> {
+    type Item = Result<T, E>;
+
+    fn feed(&mut self, input: In) -> Option<Self::Item> {
+        let IterateeFuseOnError {
+            iteratee,
+            failed,
+        } = self;
+        if *failed {
+            None
+        } else {
+            let result = iteratee.feed(input);
+            if let Some(Err(_)) = &result {
+                *failed = true;
+            }
+            result
+        }
+    }
+
+    fn flush(self) -> Option<Self::Item> where
+        Self: Sized, {
+        let IterateeFuseOnError {
+            iteratee,
+            failed,
+        } = self;
+        if failed {
+            None
+        } else {
+            iteratee.flush()
+        }
+    }
+
+    fn demand_hint(&self) -> (usize, Option<usize>) {
+        let IterateeFuseOnError {
+            iteratee,
+            failed,
+        } = self;
+        if *failed {
+            (usize::max_value(), None)
+        } else {
+            iteratee.demand_hint()
         }
     }
 }

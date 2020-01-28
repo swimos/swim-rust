@@ -20,6 +20,7 @@ mod tests;
 
 mod token_buffer;
 
+use crate::iteratee::*;
 use token_buffer::*;
 
 /// Determine if a character is valid at the start of an identifier.
@@ -393,7 +394,7 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                 let tok = extract_identifier(source, next.map(|p| p.0), *off);
                 *state = TokenParseState::None;
                 tok
-            },
+            }
         },
         TokenParseState::ReadingStringLiteral(off, escape) => {
             if current == '\"' {
@@ -416,11 +417,11 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                             *escape = false;
                             None
                         }
-                    },
+                    }
                     _ => {
                         *state = TokenParseState::Failed(index, TokenError::NoClosingQuote);
                         Some(Result::Err(BadToken(index, TokenError::NoClosingQuote)))
-                    },
+                    }
                 }
             }
         }
@@ -432,12 +433,15 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                     *state = TokenParseState::StartExponent(*off)
                 }
                 None
-            },
+            }
             _ => {
                 let start = *off;
-                Some(parse_int_token(state, start, source.take_opt_ref(
-                    start, next.map(|p| p.0))))
-            },
+                Some(parse_int_token(
+                    state,
+                    start,
+                    source.take_opt_ref(start, next.map(|p| p.0)),
+                ))
+            }
         },
         TokenParseState::ReadingMantissa(off) => match next {
             Some((_, c)) if is_mantissa_char(c) => {
@@ -445,7 +449,7 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                     *state = TokenParseState::StartExponent(*off)
                 }
                 None
-            },
+            }
             _ => {
                 let start = *off;
                 Some(parse_float_token(
@@ -453,7 +457,7 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                     start,
                     source.take_opt_ref(start, next.map(|p| p.0)),
                 ))
-            },
+            }
         },
         TokenParseState::StartExponent(off) => match next {
             Some((_, c)) if c.is_digit(10) => {
@@ -465,22 +469,22 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                     *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
                     Some(Result::Err(BadToken(start, TokenError::InvalidFloat)))
                 }
-            },
+            }
             Some((next_off, _)) => {
                 if current.is_digit(10) {
                     let start = *off;
-                    Some(parse_float_token(state, start, source.take_ref(start, next_off)))
+                    Some(parse_float_token(
+                        state,
+                        start,
+                        source.take_ref(start, next_off),
+                    ))
                 } else {
                     Some(Err(BadToken(*off, TokenError::InvalidFloat)))
                 }
-            },
+            }
             _ => {
                 let start = *off;
-                Some(parse_float_token(
-                    state,
-                    start,
-                    source.take_all_ref(start),
-                ))
+                Some(parse_float_token(state, start, source.take_all_ref(start)))
             }
         },
         TokenParseState::ReadingExponent(off) => match next {
@@ -493,7 +497,7 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                     *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
                     Some(Result::Err(BadToken(start, TokenError::InvalidFloat)))
                 }
-            },
+            }
             _ => {
                 let start = *off;
                 Some(parse_float_token(
@@ -688,20 +692,12 @@ fn final_token<T: TokenStr, B: TokenBuffer<T>>(
         }
         TokenParseState::ReadingMantissa(off) => {
             let start = *off;
-            Some(parse_float_token(
-                state,
-                start,
-                source.take_all_ref(start),
-            ))
+            Some(parse_float_token(state, start, source.take_all_ref(start)))
         }
         TokenParseState::StartExponent(off) => Some(Err(BadToken(*off, TokenError::InvalidFloat))),
         TokenParseState::ReadingExponent(off) => {
             let start = *off;
-            Some(parse_float_token(
-                state,
-                start,
-                source.take_all_ref(start),
-            ))
+            Some(parse_float_token(state, start, source.take_all_ref(start)))
         }
         TokenParseState::ReadingNewLine(off) => {
             Some(Ok(LocatedReconToken(ReconToken::NewLine, *off)))
@@ -725,16 +721,38 @@ fn tokenize_str<'a>(
 
     repr.char_indices()
         .zip(following)
-        .scan(TokenParseState::None, move |parse_state, ((i, current), next)| {
-
-            let current_token = tokenize_update(&mut token_buffer, parse_state, i, current, next);
-            match (&current_token, next) {
-                (Some(_), _) => Some(current_token),
-                (None, None) => Some(final_token(&mut token_buffer, parse_state)),
-                _ => Some(None),
-            }
-        })
+        .scan(
+            TokenParseState::None,
+            move |parse_state, ((i, current), next)| {
+                let current_token =
+                    tokenize_update(&mut token_buffer, parse_state, i, current, next);
+                match (&current_token, next) {
+                    (Some(_), _) => Some(current_token),
+                    (None, None) => Some(final_token(&mut token_buffer, parse_state)),
+                    _ => Some(None),
+                }
+            },
+        )
         .flatten()
+}
+
+/// Create an iteratee that tokenizes unicode characters.
+fn tokenize_iteratee() -> impl Iteratee<(usize, char), Item = Result<LocatedReconToken<String>, BadToken>>
+{
+    let char_look_ahead = look_ahead::<(usize, char)>();
+    let tokenize = unfold_with_flush(
+        (TokenAccumulator::new(), TokenParseState::None),
+        |state, item: ((usize, char), Option<(usize, char)>)| {
+            let (token_buffer, parse_state) = state;
+            let ((i, current), next) = item;
+            tokenize_update(token_buffer, parse_state, i, current, next)
+        },
+        |state| {
+            let (mut token_buffer, mut parse_state) = state;
+            final_token(&mut token_buffer, &mut parse_state)
+        },
+    );
+    char_look_ahead.and_then(tokenize).fuse_on_error()
 }
 
 /// States for the parser automaton.
