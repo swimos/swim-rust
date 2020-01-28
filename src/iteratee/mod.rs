@@ -293,6 +293,19 @@ pub trait Iteratee<In> {
         }
     }
 
+    /// Compose together two fallible iteratees where the error types can be unified.
+    fn and_then_fallible<I, T1, T2, E1, E2>(self, next: I) -> IterateeAndThenFallible<Self, I>
+    where
+        Self: Iteratee<In, Item = Result<T1, E1>> + Sized,
+        I: Iteratee<T1, Item = Result<T1, E2>>,
+        E2: From<E1>,
+    {
+        IterateeAndThenFallible {
+            first: self,
+            second: next,
+        }
+    }
+
     /// Chooses another iterateee to use based on the input and then delegates all following inputs
     /// to that iteratee until it produces a value. This process is repeated indefinitely.
     ///
@@ -664,11 +677,15 @@ pub fn never<T>() -> impl Iteratee<T, Item = T> {
 
 /// Adds single item lookahead to incoming values.
 pub fn look_ahead<T: Copy>() -> impl Iteratee<T, Item = (T, Option<T>)> {
-    unfold_with_flush(None, |prev, current| {
-        let result = prev.map(|p| (p, Some(current)));
-        *prev = Some(current);
-        result
-    }, |prev| {  prev.map(|p| (p, None)) })
+    unfold_with_flush(
+        None,
+        |prev, current| {
+            let result = prev.map(|p| (p, Some(current)));
+            *prev = Some(current);
+            result
+        },
+        |prev| prev.map(|p| (p, None)),
+    )
 }
 
 /// Attaches the byte offset in UTF8 of each character received as input.
@@ -1052,6 +1069,45 @@ where
             .map(|intermediate| second.feed(intermediate))
             .flatten()
             .or_else(|| second.flush())
+    }
+
+    fn demand_hint(&self) -> (usize, Option<usize>) {
+        (self.first.demand_hint().0, None)
+    }
+}
+
+pub struct IterateeAndThenFallible<I1, I2> {
+    first: I1,
+    second: I2,
+}
+
+impl<In, I1, I2, T1, T2, E1, E2> Iteratee<In> for IterateeAndThenFallible<I1, I2>
+where
+    I1: Iteratee<In, Item = Result<T1, E1>>,
+    I2: Iteratee<T1, Item = Result<T2, E2>>,
+    E2: From<E1>,
+{
+    type Item = Result<T2, E2>;
+
+    fn feed(&mut self, input: In) -> Option<Self::Item> {
+        let IterateeAndThenFallible { first, second } = self;
+        match first.feed(input) {
+            Some(Err(e)) => Some(Err(e.into())),
+            Some(Ok(t)) => second.feed(t),
+            _ => None,
+        }
+    }
+
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        let IterateeAndThenFallible { first, mut second } = self;
+        match first.flush() {
+            Some(Err(e)) => Some(Err(e.into())),
+            Some(Ok(t)) => second.feed(t).or_else(|| second.flush()),
+            _ => second.flush(),
+        }
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
@@ -1475,16 +1531,14 @@ impl<I> IterateeFuseOnError<I> {
     }
 }
 
-impl <In, T, E, I> Iteratee<In> for IterateeFuseOnError<I>
+impl<In, T, E, I> Iteratee<In> for IterateeFuseOnError<I>
 where
-    I: Iteratee<In, Item = Result<T, E>> {
+    I: Iteratee<In, Item = Result<T, E>>,
+{
     type Item = Result<T, E>;
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
-        let IterateeFuseOnError {
-            iteratee,
-            failed,
-        } = self;
+        let IterateeFuseOnError { iteratee, failed } = self;
         if *failed {
             None
         } else {
@@ -1496,12 +1550,11 @@ where
         }
     }
 
-    fn flush(self) -> Option<Self::Item> where
-        Self: Sized, {
-        let IterateeFuseOnError {
-            iteratee,
-            failed,
-        } = self;
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        let IterateeFuseOnError { iteratee, failed } = self;
         if failed {
             None
         } else {
@@ -1510,10 +1563,7 @@ where
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
-        let IterateeFuseOnError {
-            iteratee,
-            failed,
-        } = self;
+        let IterateeFuseOnError { iteratee, failed } = self;
         if *failed {
             (usize::max_value(), None)
         } else {
