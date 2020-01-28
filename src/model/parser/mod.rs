@@ -155,6 +155,18 @@ pub enum ParseFailure {
     UnconsumedInput,
 }
 
+impl From<BadToken> for ParseFailure {
+    fn from(err: BadToken) -> Self {
+        ParseFailure::TokenizationFailure(err)
+    }
+}
+
+impl From<BadRecord> for ParseFailure {
+    fn from(err: BadRecord) -> Self {
+        ParseFailure::InvalidToken(err)
+    }
+}
+
 /// Parse a stream of ['Value']s from a stream of characters. More values will be read until either
 /// an error is encountered or the end of the stream is reached.
 pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseFailure>> + 'a {
@@ -173,29 +185,7 @@ pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseF
                         _ => None,
                     },
                     Some(Err(err)) => Some(Err(ParseFailure::TokenizationFailure(err))),
-                    _ => {
-                        let depth = state.len();
-                        match state.pop() {
-                            Some(Frame {
-                                mut attrs,
-                                items,
-                                parse_state,
-                            }) if depth == 1 => match parse_state {
-                                ValueParseState::ReadingAttribute(name) => {
-                                    attrs.push(Attr {
-                                        name: name.to_owned(),
-                                        value: Value::Extant,
-                                    });
-                                    Some(Ok(Value::Record(attrs, items)))
-                                }
-                                ValueParseState::AfterAttribute => {
-                                    Some(Ok(Value::Record(attrs, items)))
-                                }
-                                _ => Some(Err(ParseFailure::IncompleteRecord)),
-                            },
-                            _ => None,
-                        }
-                    }
+                    _ => handle_tok_stream_end(state)
                 };
                 Some(current)
             } else {
@@ -203,6 +193,52 @@ pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseF
             }
         })
         .flatten()
+}
+
+///Creates a final ['Value'] from the contents of the stack where possible.
+fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFailure>> {
+    let depth = state.len();
+    match state.pop() {
+        Some(Frame {
+                 mut attrs,
+                 items,
+                 parse_state,
+             }) if depth == 1 => match parse_state {
+            ValueParseState::ReadingAttribute(name) => {
+                attrs.push(Attr {
+                    name: name.to_owned(),
+                    value: Value::Extant,
+                });
+                Some(Ok(Value::Record(attrs, items)))
+            }
+            ValueParseState::AfterAttribute => {
+                Some(Ok(Value::Record(attrs, items)))
+            }
+            _ => Some(Err(ParseFailure::IncompleteRecord)),
+        },
+        _ => None,
+    }
+}
+
+/// Iteratee converting Recon tokens into Recon values.
+fn from_tokens_iteratee() -> impl Iteratee<LocatedReconToken<String>, Item = Result<Value, ParseFailure>> {
+    unfold_with_flush(vec![], |state: &mut Vec<Frame>, loc_token: LocatedReconToken<String>| {
+        consume_token(state, loc_token).map(|res| {
+            match res {
+                ParseTermination::EarlyTermination(value) => Ok(value),
+                ParseTermination::Failed(failure) => Err(failure),
+            }
+        })
+    }, |mut state: Vec<Frame>| {
+        handle_tok_stream_end(&mut state)
+    })
+}
+
+/// Iteratee that parses a stream of UTF characters into Recon ['Value']s.
+pub fn parse_iteratee() -> impl Iteratee<(usize, char), Item = Result<Value, ParseFailure>> {
+    tokenize_iteratee()
+        .and_then_fallible(from_tokens_iteratee())
+        .fuse_on_error()
 }
 
 /// Parse exactly one ['Value'] from the input, returning an error if the string does not contain
@@ -752,7 +788,7 @@ fn tokenize_iteratee() -> impl Iteratee<(usize, char), Item = Result<LocatedReco
             final_token(&mut token_buffer, &mut parse_state)
         },
     );
-    char_look_ahead.and_then(tokenize).fuse_on_error()
+    char_look_ahead.and_then(tokenize)
 }
 
 /// States for the parser automaton.

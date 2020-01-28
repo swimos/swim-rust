@@ -297,7 +297,7 @@ pub trait Iteratee<In> {
     fn and_then_fallible<I, T1, T2, E1, E2>(self, next: I) -> IterateeAndThenFallible<Self, I>
     where
         Self: Iteratee<In, Item = Result<T1, E1>> + Sized,
-        I: Iteratee<T1, Item = Result<T1, E2>>,
+        I: Iteratee<T1, Item = Result<T2, E2>>,
         E2: From<E1>,
     {
         IterateeAndThenFallible {
