@@ -611,7 +611,7 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
         w if w.is_whitespace() => None,
         '\"' => match next {
             Some((next_index, _)) => {
-                source.mark();
+                source.mark(false);
                 *state = TokenParseState::ReadingStringLiteral(next_index, false);
                 None
             }
@@ -622,7 +622,7 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
         },
         c if is_identifier_start(c) => match next {
             Some((_, c)) if is_identifier_char(c) => {
-                source.mark();
+                source.mark(true);
                 *state = TokenParseState::ReadingIdentifier(index);
                 None
             }
@@ -637,7 +637,7 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
         },
         '-' => match next {
             Some((_, c)) if c == '.' || c.is_digit(10) => {
-                source.mark();
+                source.mark(true);
                 *state = TokenParseState::ReadingInteger(index);
                 None
             }
@@ -648,7 +648,7 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
         },
         c if c.is_digit(10) => match next {
             Some((_, c)) if is_numeric_char(c) => {
-                source.mark();
+                source.mark(true);
                 *state = TokenParseState::ReadingInteger(index);
                 None
             }
@@ -659,7 +659,7 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
         },
         '.' => match next {
             Some((_, c)) if c.is_digit(10) => {
-                source.mark();
+                source.mark(true);
                 *state = TokenParseState::ReadingMantissa(index);
                 None
             }

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::parser::token_buffer::MarkState::Marked;
+
 /// Trait for types that keep logical pointers into a range of the input for the purpose of
 /// extracting tokens. This allows us to use the same parsing logic to extract references
 /// to sub-slices of complete documents in memory and to construct heap allocated strings
@@ -23,7 +25,7 @@ pub(super) trait TokenBuffer<T> {
     fn update(&mut self, next: Option<(usize, char)>) -> ();
 
     /// Indicate that we will be taking a slice of the input from this point in the future.
-    fn mark(&mut self) -> ();
+    fn mark(&mut self, inclusive: bool) -> ();
 
     /// Take a slice of the input. The from index must not be before the last index and which mark
     /// was called and the to index must not be greater than the index of the last character
@@ -109,7 +111,7 @@ impl<'a> TokenBuffer<&'a str> for InMemoryInput<'a> {
         }
     }
 
-    fn mark(&mut self) -> () {
+    fn mark(&mut self, _: bool) -> () {
         self.marked = true;
     }
 
@@ -140,11 +142,17 @@ impl<'a> TokenBuffer<&'a str> for InMemoryInput<'a> {
     }
 }
 
+enum MarkState {
+    None,
+    MarkNext,
+    Marked,
+}
+
 /// Token buffer the holds the characters seen since the last mark in a ['String'].
 pub(super) struct TokenAccumulator {
     buffer: String,
     next_char: Option<char>,
-    marked: bool,
+    mark_state: MarkState,
     lower_bound: usize,
     upper_bound: usize,
 }
@@ -154,7 +162,7 @@ impl TokenAccumulator {
         TokenAccumulator {
             buffer: String::new(),
             next_char: None,
-            marked: false,
+            mark_state: MarkState::None,
             lower_bound: 0,
             upper_bound: 0,
         }
@@ -166,31 +174,41 @@ impl TokenBuffer<String> for TokenAccumulator {
         let TokenAccumulator {
             buffer,
             next_char,
-            marked,
+            mark_state,
             lower_bound,
             upper_bound,
         } = self;
         if let Some(c) = next_char {
-            if *marked {
-                buffer.push(*c);
-            } else {
-                *lower_bound = *upper_bound;
-                buffer.clear();
-                buffer.push(*c);
+            match *mark_state {
+                MarkState::None => {
+                    *lower_bound = *upper_bound;
+                    buffer.clear();
+                },
+                MarkState::MarkNext => {
+                    *lower_bound = *upper_bound;
+                    buffer.clear();
+                    *mark_state = MarkState::Marked;
+                },
+                Marked => {},
             }
+            buffer.push(*c);
             *upper_bound += c.len_utf8();
         }
         *next_char = next.map(|p| p.1);
     }
 
-    fn mark(&mut self) -> () {
-        self.marked = true;
+    fn mark(&mut self, inclusive: bool) -> () {
+        self.mark_state = if inclusive {
+            MarkState::Marked
+        } else {
+            MarkState::MarkNext
+        }
     }
 
     fn take(&mut self, from: usize, to: usize) -> String {
         let TokenAccumulator {
             buffer,
-            marked,
+            mark_state,
             lower_bound,
             upper_bound,
             ..
@@ -201,7 +219,7 @@ impl TokenBuffer<String> for TokenAccumulator {
             let start = from - *lower_bound;
             let end = to - *lower_bound;
 
-            *marked = false;
+            *mark_state = MarkState::None;
             if start == 0 && to == buffer.len() {
                 std::mem::take(buffer)
             } else {
@@ -213,7 +231,7 @@ impl TokenBuffer<String> for TokenAccumulator {
     fn take_ref(&mut self, from: usize, to: usize) -> &str {
         let TokenAccumulator {
             buffer,
-            marked,
+            mark_state,
             lower_bound,
             upper_bound,
             ..
@@ -224,7 +242,7 @@ impl TokenBuffer<String> for TokenAccumulator {
             let start = from - *lower_bound;
             let end = to - *lower_bound;
 
-            *marked = false;
+            *mark_state = MarkState::None;
             &buffer[start..end]
         }
     }
