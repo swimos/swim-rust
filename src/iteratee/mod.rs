@@ -671,6 +671,15 @@ pub fn look_ahead<T: Copy>() -> impl Iteratee<T, Item = (T, Option<T>)> {
     }, |prev| {  prev.map(|p| (p, None)) })
 }
 
+/// Attaches the byte offset in UTF8 of each character received as input.
+pub fn utf8_byte_offsets() -> impl Iteratee<char, Item = (usize, char)> {
+    unfold(0, |offset, c: char| {
+        let result = (*offset, c);
+        *offset += c.len_utf8();
+        Some(result)
+    })
+}
+
 fn vec_hint<T>(num: NonZeroUsize) -> impl Fn(&Option<Vec<T>>) -> (usize, Option<usize>) {
     move |v| {
         let diff: usize = match v {
