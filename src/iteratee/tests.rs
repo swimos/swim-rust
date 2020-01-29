@@ -515,3 +515,45 @@ fn transduce_iterator_consuming_iteratee() {
 
     assert_that!(output, eq(vec![vec![5, 3], vec![-5, 10], vec![7]]));
 }
+
+#[test]
+fn fuse_iteratee_on_error() {
+    let mut iteratee = identity::<i32>().map(|i| {
+        if i > 10 {
+            Err("Too big!")
+        } else {
+            Ok(i)
+        }
+    }).fuse_on_error();
+
+    assert_that!(iteratee.feed(3), eq(Some(Ok(3))));
+    assert_that!(iteratee.feed(0), eq(Some(Ok(0))));
+    assert_that!(iteratee.feed(-2), eq(Some(Ok(-2))));
+    assert_that!(iteratee.feed(12), eq(Some(Err("Too big!"))));
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(77), none());
+
+    assert_that!(iteratee.flush(), none());
+}
+
+#[test]
+fn fuse_iteratee_on_error_with_flush() {
+    let mut iteratee = identity::<i32>().map(|i| {
+        if i > 10 {
+            Err("Too big!")
+        } else {
+            Ok(i)
+        }
+    }).with_flush(Ok(6)).fuse_on_error();
+
+    assert_that!(iteratee.feed(3), eq(Some(Ok(3))));
+    assert_that!(iteratee.feed(0), eq(Some(Ok(0))));
+    assert_that!(iteratee.feed(-2), eq(Some(Ok(-2))));
+    assert_that!(iteratee.feed(12), eq(Some(Err("Too big!"))));
+    assert_that!(iteratee.feed(2), none());
+    assert_that!(iteratee.feed(4), none());
+    assert_that!(iteratee.feed(77), none());
+
+    assert_that!(iteratee.flush(), none());
+}
