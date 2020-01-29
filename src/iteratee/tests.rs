@@ -569,3 +569,17 @@ fn iteratee_look_ahead() {
     assert_that!(iteratee.feed('o'), eq(Some(('l', Some('o')))));
     assert_that!(iteratee.flush(), eq(Some(('o', None))));
 }
+
+#[test]
+fn attach_utf8_offsets() {
+    let mut iteratee = utf8_byte_offsets();
+
+    assert_that!(iteratee.feed('a'), eq(Some((0, 'a'))));
+    assert_that!(iteratee.feed('ق'), eq(Some((1, 'ق'))));
+    assert_that!(iteratee.feed('b'), eq(Some((3, 'b'))));
+    assert_that!(iteratee.feed('🐋'), eq(Some((4, '🐋'))));
+    assert_that!(iteratee.feed('c'), eq(Some((8, 'c'))));
+
+    assert_that!(iteratee.flush(), none());
+
+}

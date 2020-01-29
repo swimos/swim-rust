@@ -739,6 +739,21 @@ pub fn look_ahead<T: Clone>() -> impl Iteratee<T, Item = (T, Option<T>)> {
 }
 
 /// Attaches the byte offset in UTF8 of each character received as input.
+///
+/// # Examples
+///
+/// ```
+/// use swim_rust::iteratee::*;
+/// let mut iteratee = utf8_byte_offsets();
+///
+/// assert_eq!(iteratee.feed('a'), Some((0, 'a')));
+/// assert_eq!(iteratee.feed('ق'), Some((1, 'ق')));
+/// assert_eq!(iteratee.feed('b'), Some((3, 'b')));
+/// assert_eq!(iteratee.feed('🐋'), Some((4, '🐋')));
+/// assert_eq!(iteratee.feed('c'), Some((8, 'c')));
+///
+/// assert!(iteratee.flush().is_none());
+/// ```
 pub fn utf8_byte_offsets() -> impl Iteratee<char, Item = (usize, char)> {
     unfold(0, |offset, c: char| {
         let result = (*offset, c);
