@@ -557,3 +557,15 @@ fn fuse_iteratee_on_error_with_flush() {
 
     assert_that!(iteratee.flush(), none());
 }
+
+#[test]
+fn iteratee_look_ahead() {
+    let mut iteratee = look_ahead::<char>();
+
+    assert_that!(iteratee.feed('h'), none());
+    assert_that!(iteratee.feed('e'), eq(Some(('h', Some('e')))));
+    assert_that!(iteratee.feed('l'), eq(Some(('e', Some('l')))));
+    assert_that!(iteratee.feed('l'), eq(Some(('l', Some('l')))));
+    assert_that!(iteratee.feed('o'), eq(Some(('l', Some('o')))));
+    assert_that!(iteratee.flush(), eq(Some(('o', None))));
+}

@@ -676,13 +676,25 @@ pub fn never<T>() -> impl Iteratee<T, Item = T> {
 }
 
 /// Adds single item lookahead to incoming values.
-pub fn look_ahead<T: Copy>() -> impl Iteratee<T, Item = (T, Option<T>)> {
+///
+/// # Examples
+///
+/// ```
+/// use swim_rust::iteratee::*;
+///
+/// let mut iteratee = look_ahead::<char>();
+///
+/// assert!(iteratee.feed('a').is_none());
+/// assert_eq!(iteratee.feed('b'), Some(('a', Some('b'))));
+/// assert_eq!(iteratee.feed('c'), Some(('b', Some('c'))));
+/// assert_eq!(iteratee.flush(), Some(('c', None)));
+/// ```
+pub fn look_ahead<T: Clone>() -> impl Iteratee<T, Item = (T, Option<T>)> {
     unfold_with_flush(
         None,
-        |prev, current| {
-            let result = prev.map(|p| (p, Some(current)));
-            *prev = Some(current);
-            result
+        |prev, current: T| {
+            let prev_opt = std::mem::replace(prev, Some(current.clone()));
+            prev_opt.map(|p| (p, Some(current)))
         },
         |prev| prev.map(|p| (p, None)),
     )
