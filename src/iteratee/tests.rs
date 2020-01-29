@@ -518,13 +518,9 @@ fn transduce_iterator_consuming_iteratee() {
 
 #[test]
 fn fuse_iteratee_on_error() {
-    let mut iteratee = identity::<i32>().map(|i| {
-        if i > 10 {
-            Err("Too big!")
-        } else {
-            Ok(i)
-        }
-    }).fuse_on_error();
+    let mut iteratee = identity::<i32>()
+        .map(|i| if i > 10 { Err("Too big!") } else { Ok(i) })
+        .fuse_on_error();
 
     assert_that!(iteratee.feed(3), eq(Some(Ok(3))));
     assert_that!(iteratee.feed(0), eq(Some(Ok(0))));
@@ -539,13 +535,10 @@ fn fuse_iteratee_on_error() {
 
 #[test]
 fn fuse_iteratee_on_error_with_flush() {
-    let mut iteratee = identity::<i32>().map(|i| {
-        if i > 10 {
-            Err("Too big!")
-        } else {
-            Ok(i)
-        }
-    }).with_flush(Ok(6)).fuse_on_error();
+    let mut iteratee = identity::<i32>()
+        .map(|i| if i > 10 { Err("Too big!") } else { Ok(i) })
+        .with_flush(Ok(6))
+        .fuse_on_error();
 
     assert_that!(iteratee.feed(3), eq(Some(Ok(3))));
     assert_that!(iteratee.feed(0), eq(Some(Ok(0))));
@@ -581,5 +574,32 @@ fn attach_utf8_offsets() {
     assert_that!(iteratee.feed('c'), eq(Some((8, 'c'))));
 
     assert_that!(iteratee.flush(), none());
+}
 
+#[test]
+fn fallible_composition() {
+    let size = NonZeroUsize::new(2).unwrap();
+
+    let first = identity::<Result<i32, &str>>();
+    let second = collect_vec_with_rem::<i32>(size).map(|v| {
+        if v.len() > 1 && v[0] == v[1] {
+            Err("Identical".to_owned())
+        } else {
+            Ok(v)
+        }
+    });
+
+    let mut iteratee = first.and_then_fallible(second);
+
+    assert_that!(iteratee.feed(Ok(1)), none());
+    assert_that!(
+        iteratee.feed(Err("Boom!")),
+        eq(Some(Err("Boom!".to_owned())))
+    );
+    assert_that!(iteratee.feed(Ok(2)), eq(Some(Ok(vec![1, 2]))));
+    assert_that!(iteratee.feed(Ok(3)), none());
+    assert_that!(iteratee.feed(Ok(3)), eq(Some(Err("Identical".to_owned()))));
+    assert_that!(iteratee.feed(Ok(4)), none());
+
+    assert_that!(iteratee.flush(), eq(Some(Ok(vec![4]))));
 }

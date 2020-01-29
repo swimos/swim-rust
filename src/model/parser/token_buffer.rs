@@ -19,7 +19,6 @@ use crate::model::parser::token_buffer::MarkState::Marked;
 /// to sub-slices of complete documents in memory and to construct heap allocated strings
 /// for streams of characters.
 pub(super) trait TokenBuffer<T> {
-
     /// Add the next character (and byte offset) to the buffer (or ['None'] when we reach
     /// the end of the input.
     fn update(&mut self, next: Option<(usize, char)>) -> ();
@@ -183,13 +182,13 @@ impl TokenBuffer<String> for TokenAccumulator {
                 MarkState::None => {
                     *lower_bound = *upper_bound;
                     buffer.clear();
-                },
+                }
                 MarkState::MarkNext => {
                     *lower_bound = *upper_bound;
                     buffer.clear();
                     *mark_state = MarkState::Marked;
-                },
-                Marked => {},
+                }
+                Marked => {}
             }
             buffer.push(*c);
             *upper_bound += c.len_utf8();

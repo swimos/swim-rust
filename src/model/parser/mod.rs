@@ -185,7 +185,7 @@ pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseF
                         _ => None,
                     },
                     Some(Err(err)) => Some(Err(ParseFailure::TokenizationFailure(err))),
-                    _ => handle_tok_stream_end(state)
+                    _ => handle_tok_stream_end(state),
                 };
                 Some(current)
             } else {
@@ -200,10 +200,10 @@ fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFa
     let depth = state.len();
     match state.pop() {
         Some(Frame {
-                 mut attrs,
-                 items,
-                 parse_state,
-             }) if depth == 1 => match parse_state {
+            mut attrs,
+            items,
+            parse_state,
+        }) if depth == 1 => match parse_state {
             ValueParseState::ReadingAttribute(name) => {
                 attrs.push(Attr {
                     name: name.to_owned(),
@@ -211,9 +211,7 @@ fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFa
                 });
                 Some(Ok(Value::Record(attrs, items)))
             }
-            ValueParseState::AfterAttribute => {
-                Some(Ok(Value::Record(attrs, items)))
-            }
+            ValueParseState::AfterAttribute => Some(Ok(Value::Record(attrs, items))),
             _ => Some(Err(ParseFailure::IncompleteRecord)),
         },
         _ => None,
@@ -221,17 +219,18 @@ fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFa
 }
 
 /// Iteratee converting Recon tokens into Recon values.
-fn from_tokens_iteratee() -> impl Iteratee<LocatedReconToken<String>, Item = Result<Value, ParseFailure>> {
-    unfold_with_flush(vec![], |state: &mut Vec<Frame>, loc_token: LocatedReconToken<String>| {
-        consume_token(state, loc_token).map(|res| {
-            match res {
+fn from_tokens_iteratee(
+) -> impl Iteratee<LocatedReconToken<String>, Item = Result<Value, ParseFailure>> {
+    unfold_with_flush(
+        vec![],
+        |state: &mut Vec<Frame>, loc_token: LocatedReconToken<String>| {
+            consume_token(state, loc_token).map(|res| match res {
                 ParseTermination::EarlyTermination(value) => Ok(value),
                 ParseTermination::Failed(failure) => Err(failure),
-            }
-        })
-    }, |mut state: Vec<Frame>| {
-        handle_tok_stream_end(&mut state)
-    })
+            })
+        },
+        |mut state: Vec<Frame>| handle_tok_stream_end(&mut state),
+    )
 }
 
 /// Iteratee that parses a stream of UTF characters into Recon ['Value']s.
@@ -773,8 +772,8 @@ fn tokenize_str<'a>(
 }
 
 /// Create an iteratee that tokenizes unicode characters.
-fn tokenize_iteratee() -> impl Iteratee<(usize, char), Item = Result<LocatedReconToken<String>, BadToken>>
-{
+fn tokenize_iteratee(
+) -> impl Iteratee<(usize, char), Item = Result<LocatedReconToken<String>, BadToken>> {
     let char_look_ahead = look_ahead::<(usize, char)>();
     let tokenize = unfold_with_flush(
         (TokenAccumulator::new(), TokenParseState::None),
