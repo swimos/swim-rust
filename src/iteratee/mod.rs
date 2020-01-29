@@ -440,6 +440,26 @@ pub trait Iteratee<In> {
 
     /// Create a new iteratee that will delegates to this iteratee until it emits a value and then
     /// will never emit another value (including on flush).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::num::NonZeroUsize;
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let size = NonZeroUsize::new(2).unwrap();
+    ///
+    /// let mut iteratee = collect_vec(size).fuse();
+    ///
+    /// assert!(iteratee.feed(8).is_none());
+    /// assert_eq!(iteratee.feed(4), Some(vec![8, 4]));
+    ///
+    /// assert!(iteratee.feed(2).is_none());
+    /// assert!(iteratee.feed(0).is_none());
+    ///
+    /// assert!(iteratee.flush().is_none());
+    /// ```
+    ///
     fn fuse(self) -> IterateeFuse<Self>
     where
         Self: Sized,
@@ -449,6 +469,24 @@ pub trait Iteratee<In> {
 
     /// Create a new iteratee that will delegates to this iteratee until it emits an error and then
     /// will never emit another value (including on flush).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    /// use swim_rust::iteratee::Iteratee;
+    /// let mut iteratee = identity::<&str>().map(|s| {
+    ///     if s.is_empty() { Err(()) } else { Ok(s) }
+    /// }).fuse_on_error();
+    ///
+    /// assert_eq!(iteratee.feed("Hello"), Some(Ok("Hello")));
+    /// assert_eq!(iteratee.feed("World"), Some(Ok("World")));
+    /// assert_eq!(iteratee.feed(""), Some(Err(())));
+    /// assert!(iteratee.feed("Hello").is_none());
+    ///
+    /// assert!(iteratee.flush().is_none());
+    ///
+    /// ```
     fn fuse_on_error<T, E>(self) -> IterateeFuseOnError<Self>
     where
         Self: Iteratee<In, Item = Result<T, E>> + Sized,
