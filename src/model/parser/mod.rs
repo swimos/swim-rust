@@ -360,6 +360,28 @@ enum ReconToken<S> {
     BoolLiteral(bool),
 }
 
+impl ReconToken<&str> {
+    #[cfg(test)]
+    fn owned_token(&self) -> ReconToken<String> {
+        match *self {
+            ReconToken::AttrMarker => ReconToken::AttrMarker,
+            ReconToken::AttrBodyStart => ReconToken::AttrBodyStart,
+            ReconToken::AttrBodyEnd => ReconToken::AttrBodyEnd,
+            ReconToken::RecordBodyStart => ReconToken::RecordBodyStart,
+            ReconToken::RecordBodyEnd => ReconToken::RecordBodyEnd,
+            ReconToken::SlotDivider => ReconToken::SlotDivider,
+            ReconToken::EntrySep => ReconToken::EntrySep,
+            ReconToken::NewLine => ReconToken::NewLine,
+            ReconToken::Identifier(id) => ReconToken::Identifier(id.to_owned()),
+            ReconToken::StringLiteral(s) => ReconToken::StringLiteral(s.to_owned()),
+            ReconToken::Int32Literal(n) => ReconToken::Int32Literal(n),
+            ReconToken::Int64Literal(n) => ReconToken::Int64Literal(n),
+            ReconToken::Float64Literal(x) => ReconToken::Float64Literal(x),
+            ReconToken::BoolLiteral(p) => ReconToken::BoolLiteral(p),
+        }
+    }
+}
+
 impl<S: TokenStr> ReconToken<S> {
     /// True iff the token constitutes a ['Value'] in itself.
     fn is_value(&self) -> bool {
@@ -776,14 +798,18 @@ fn tokenize_iteratee(
 ) -> impl Iteratee<(usize, char), Item = Result<LocatedReconToken<String>, BadToken>> {
     let char_look_ahead = look_ahead::<(usize, char)>();
     let tokenize = unfold_with_flush(
-        (TokenAccumulator::new(), TokenParseState::None),
+        (false, TokenAccumulator::new(), TokenParseState::None),
         |state, item: ((usize, char), Option<(usize, char)>)| {
-            let (token_buffer, parse_state) = state;
+            let (is_init, token_buffer, parse_state) = state;
             let ((i, current), next) = item;
+            if !*is_init {
+                token_buffer.update(Some(item.0));
+                *is_init = true;
+            }
             tokenize_update(token_buffer, parse_state, i, current, next)
         },
         |state| {
-            let (mut token_buffer, mut parse_state) = state;
+            let (_, mut token_buffer, mut parse_state) = state;
             final_token(&mut token_buffer, &mut parse_state)
         },
     );

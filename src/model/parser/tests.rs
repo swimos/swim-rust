@@ -25,6 +25,23 @@ fn read_single_token(repr: &str) -> Result<ReconToken<&str>, Option<BadToken>> {
     }
 }
 
+type ReadSingle = fn(&str) -> Result<ReconToken<String>, Option<BadToken>>;
+
+fn read_single_token_owned(repr: &str) -> Result<ReconToken<String>, Option<BadToken>> {
+    read_single_token(repr).map(|t| t.owned_token())
+}
+
+fn consume_to_single_token(repr: &str) -> Result<ReconToken<String>, Option<BadToken>> {
+    match tokenize_iteratee()
+        .transduce_into(repr.char_indices())
+        .next()
+    {
+        Some(Ok(LocatedReconToken(token, _))) => Ok(token),
+        Some(Err(failed)) => Err(Some(failed)),
+        _ => Err(None),
+    }
+}
+
 #[test]
 fn unescape_strings() {
     assert_that!(unescape("no escapes").unwrap(), eq("no escapes"));
@@ -84,29 +101,26 @@ fn identifiers() {
 }
 
 #[test]
-fn integer_tokens() {
+fn parse_integer_tokens() {
+    integer_tokens(read_single_token_owned);
+}
+
+#[test]
+fn iteratee_integer_tokens() {
+    integer_tokens(consume_to_single_token);
+}
+
+fn integer_tokens(read_single: ReadSingle) {
+    assert_that!(read_single("0").unwrap(), eq(ReconToken::Int32Literal(0)));
+    assert_that!(read_single("1").unwrap(), eq(ReconToken::Int32Literal(1)));
+    assert_that!(read_single("42").unwrap(), eq(ReconToken::Int32Literal(42)));
     assert_that!(
-        read_single_token("0").unwrap(),
-        eq(ReconToken::Int32Literal(0))
-    );
-    assert_that!(
-        read_single_token("1").unwrap(),
-        eq(ReconToken::Int32Literal(1))
-    );
-    assert_that!(
-        read_single_token("42").unwrap(),
-        eq(ReconToken::Int32Literal(42))
-    );
-    assert_that!(
-        read_single_token("1076").unwrap(),
+        read_single("1076").unwrap(),
         eq(ReconToken::Int32Literal(1076))
     );
+    assert_that!(read_single("-1").unwrap(), eq(ReconToken::Int32Literal(-1)));
     assert_that!(
-        read_single_token("-1").unwrap(),
-        eq(ReconToken::Int32Literal(-1))
-    );
-    assert_that!(
-        read_single_token("-04").unwrap(),
+        read_single("-04").unwrap(),
         eq(ReconToken::Int32Literal(-4))
     );
 
@@ -114,7 +128,7 @@ fn integer_tokens() {
     let big = big_n.to_string();
 
     assert_that!(
-        read_single_token(big.borrow()).unwrap(),
+        read_single(big.borrow()).unwrap(),
         eq(ReconToken::Int64Literal(big_n))
     );
 
@@ -122,147 +136,183 @@ fn integer_tokens() {
     let big_neg = big_n_neg.to_string();
 
     assert_that!(
-        read_single_token(big_neg.borrow()).unwrap(),
+        read_single(big_neg.borrow()).unwrap(),
         eq(ReconToken::Int64Literal(big_n_neg))
     );
 }
 
 #[test]
-fn bool_tokens() {
+fn parse_bool_tokens() {
+    bool_tokens(read_single_token_owned);
+}
+
+#[test]
+fn iteratee_bool_tokens() {
+    bool_tokens(consume_to_single_token);
+}
+
+fn bool_tokens(read_single: ReadSingle) {
     assert_that!(
-        read_single_token("true").unwrap(),
+        read_single("true").unwrap(),
         eq(ReconToken::BoolLiteral(true))
     );
     assert_that!(
-        read_single_token("false").unwrap(),
+        read_single("false").unwrap(),
         eq(ReconToken::BoolLiteral(false))
     );
 }
 
 #[test]
-fn identifier_tokens() {
+fn parse_identifier_tokens() {
+    identifier_tokens(read_single_token_owned);
+}
+
+#[test]
+fn iteratee_identifier_tokens() {
+    identifier_tokens(consume_to_single_token);
+}
+
+fn identifier_tokens(read_single: ReadSingle) {
     assert_that!(
-        read_single_token("name").unwrap(),
-        eq(ReconToken::Identifier("name"))
+        read_single("name").unwrap(),
+        eq(ReconToken::Identifier("name").owned_token())
     );
     assert_that!(
-        read_single_token("اسم").unwrap(),
-        eq(ReconToken::Identifier("اسم"))
+        read_single("اسم").unwrap(),
+        eq(ReconToken::Identifier("اسم").owned_token())
     );
     assert_that!(
-        read_single_token("name2").unwrap(),
-        eq(ReconToken::Identifier("name2"))
+        read_single("name2").unwrap(),
+        eq(ReconToken::Identifier("name2").owned_token())
     );
     assert_that!(
-        read_single_token("_name").unwrap(),
-        eq(ReconToken::Identifier("_name"))
+        read_single("_name").unwrap(),
+        eq(ReconToken::Identifier("_name").owned_token())
     );
     assert_that!(
-        read_single_token("first_second").unwrap(),
-        eq(ReconToken::Identifier("first_second"))
+        read_single("first_second").unwrap(),
+        eq(ReconToken::Identifier("first_second").owned_token())
     );
 }
 
 #[test]
-fn string_literal_tokens() {
+fn parse_string_literal_tokens() {
+    string_literal_tokens(read_single_token_owned);
+}
+
+#[test]
+fn iteratee_string_literal_tokens() {
+    string_literal_tokens(consume_to_single_token);
+}
+
+fn string_literal_tokens(read_single: ReadSingle) {
     assert_that!(
-        read_single_token(r#""name""#).unwrap(),
-        eq(ReconToken::StringLiteral("name"))
+        read_single(r#""name""#).unwrap(),
+        eq(ReconToken::StringLiteral("name").owned_token())
     );
     assert_that!(
-        read_single_token(r#""اسم""#).unwrap(),
-        eq(ReconToken::StringLiteral("اسم"))
+        read_single(r#""اسم""#).unwrap(),
+        eq(ReconToken::StringLiteral("اسم").owned_token())
     );
     assert_that!(
-        read_single_token(r#""two words""#).unwrap(),
-        eq(ReconToken::StringLiteral("two words"))
+        read_single(r#""two words""#).unwrap(),
+        eq(ReconToken::StringLiteral("two words").owned_token())
     );
     assert_that!(
-        read_single_token(r#""2name""#).unwrap(),
-        eq(ReconToken::StringLiteral("2name"))
+        read_single(r#""2name""#).unwrap(),
+        eq(ReconToken::StringLiteral("2name").owned_token())
     );
     assert_that!(
-        read_single_token(r#""true""#).unwrap(),
-        eq(ReconToken::StringLiteral("true"))
+        read_single(r#""true""#).unwrap(),
+        eq(ReconToken::StringLiteral("true").owned_token())
     );
     assert_that!(
-        read_single_token(r#""false""#).unwrap(),
-        eq(ReconToken::StringLiteral("false"))
+        read_single(r#""false""#).unwrap(),
+        eq(ReconToken::StringLiteral("false").owned_token())
     );
     assert_that!(
-        read_single_token(r#""£%^$&*""#).unwrap(),
-        eq(ReconToken::StringLiteral("£%^$&*"))
+        read_single(r#""£%^$&*""#).unwrap(),
+        eq(ReconToken::StringLiteral("£%^$&*").owned_token())
     );
     assert_that!(
-        read_single_token("\"\r\n\t\"").unwrap(),
-        eq(ReconToken::StringLiteral("\r\n\t"))
+        read_single("\"\r\n\t\"").unwrap(),
+        eq(ReconToken::StringLiteral("\r\n\t").owned_token())
     );
     assert_that!(
-        read_single_token(r#""\r\n\t""#).unwrap(),
-        eq(ReconToken::StringLiteral(r"\r\n\t"))
+        read_single(r#""\r\n\t""#).unwrap(),
+        eq(ReconToken::StringLiteral(r"\r\n\t").owned_token())
     );
     assert_that!(
-        read_single_token(r#""a \"quote\" z""#).unwrap(),
-        eq(ReconToken::StringLiteral(r#"a \"quote\" z"#))
+        read_single(r#""a \"quote\" z""#).unwrap(),
+        eq(ReconToken::StringLiteral(r#"a \"quote\" z"#).owned_token())
     );
     assert_that!(
-        read_single_token(r#""a \\ z""#).unwrap(),
-        eq(ReconToken::StringLiteral(r#"a \\ z"#))
+        read_single(r#""a \\ z""#).unwrap(),
+        eq(ReconToken::StringLiteral(r#"a \\ z"#).owned_token())
     );
 }
 
 #[test]
-fn floating_point_tokens() {
+fn parse_floating_point_tokens() {
+    floating_point_tokens(read_single_token_owned);
+}
+
+#[test]
+fn iteratee_floating_point_tokens() {
+    floating_point_tokens(consume_to_single_token);
+}
+
+fn floating_point_tokens(read_single: ReadSingle) {
     assert_that!(
-        read_single_token("0.0").unwrap(),
+        read_single("0.0").unwrap(),
         eq(ReconToken::Float64Literal(0.0))
     );
     assert_that!(
-        read_single_token(".0").unwrap(),
+        read_single(".0").unwrap(),
         eq(ReconToken::Float64Literal(0.0))
     );
     assert_that!(
-        read_single_token("3.5").unwrap(),
+        read_single("3.5").unwrap(),
         eq(ReconToken::Float64Literal(3.5))
     );
     assert_that!(
-        read_single_token("-1.0").unwrap(),
+        read_single("-1.0").unwrap(),
         eq(ReconToken::Float64Literal(-1.0))
     );
     assert_that!(
-        read_single_token("3e2").unwrap(),
+        read_single("3e2").unwrap(),
         eq(ReconToken::Float64Literal(3e2))
     );
     assert_that!(
-        read_single_token("50.06e8").unwrap(),
+        read_single("50.06e8").unwrap(),
         eq(ReconToken::Float64Literal(50.06e8))
     );
     assert_that!(
-        read_single_token(".2e0").unwrap(),
+        read_single(".2e0").unwrap(),
         eq(ReconToken::Float64Literal(0.2e0))
     );
     assert_that!(
-        read_single_token("3E2").unwrap(),
+        read_single("3E2").unwrap(),
         eq(ReconToken::Float64Literal(3e2))
     );
     assert_that!(
-        read_single_token("50.06E8").unwrap(),
+        read_single("50.06E8").unwrap(),
         eq(ReconToken::Float64Literal(50.06e8))
     );
     assert_that!(
-        read_single_token(".2E0").unwrap(),
+        read_single(".2E0").unwrap(),
         eq(ReconToken::Float64Literal(0.2e0))
     );
     assert_that!(
-        read_single_token("3e-9").unwrap(),
+        read_single("3e-9").unwrap(),
         eq(ReconToken::Float64Literal(3e-9))
     );
     assert_that!(
-        read_single_token("3E-9").unwrap(),
+        read_single("3E-9").unwrap(),
         eq(ReconToken::Float64Literal(3e-9))
     );
     assert_that!(
-        read_single_token("-.76e-12").unwrap(),
+        read_single("-.76e-12").unwrap(),
         eq(ReconToken::Float64Literal(-0.76e-12))
     );
 }
@@ -288,6 +338,38 @@ fn token_sequence() {
             ReconToken::Int32Literal(-3),
             ReconToken::EntrySep,
             ReconToken::StringLiteral("y"),
+            ReconToken::SlotDivider,
+            ReconToken::BoolLiteral(true),
+            ReconToken::NewLine,
+            ReconToken::Int32Literal(7),
+            ReconToken::RecordBodyEnd,
+        ])
+    );
+}
+
+#[test]
+fn iteratee_token_sequence() {
+    let source = "@name(2){ x : -3, \"y\": true \n 7 } ";
+    let tokens = tokenize_iteratee()
+        .fuse_on_error()
+        .transduce_into(source.char_indices())
+        .map(|r| r.unwrap().0)
+        .collect::<Vec<_>>();
+
+    assert_that!(
+        tokens,
+        eq(vec![
+            ReconToken::AttrMarker,
+            ReconToken::Identifier("name".to_owned()),
+            ReconToken::AttrBodyStart,
+            ReconToken::Int32Literal(2),
+            ReconToken::AttrBodyEnd,
+            ReconToken::RecordBodyStart,
+            ReconToken::Identifier("x".to_owned()),
+            ReconToken::SlotDivider,
+            ReconToken::Int32Literal(-3),
+            ReconToken::EntrySep,
+            ReconToken::StringLiteral("y".to_owned()),
             ReconToken::SlotDivider,
             ReconToken::BoolLiteral(true),
             ReconToken::NewLine,

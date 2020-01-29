@@ -220,7 +220,7 @@ impl TokenBuffer<String> for TokenAccumulator {
             let end = to - *lower_bound;
 
             *mark_state = MarkState::None;
-            if start == 0 && to == buffer.len() {
+            if start == 0 && end == buffer.len() {
                 std::mem::take(buffer)
             } else {
                 buffer[start..end].to_owned()
