@@ -294,6 +294,35 @@ pub trait Iteratee<In> {
     }
 
     /// Compose together two fallible iteratees where the error types can be unified.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use swim_rust::iteratee::*;
+    ///
+    /// let div_two = identity::<i32>().map(|i| {
+    ///     if i % 2 == 0 {
+    ///         Err("2")
+    ///     } else {
+    ///         Ok(i)
+    ///     }
+    /// });
+    ///
+    /// let div_three = identity::<i32>().map(|i| {
+    ///     if i % 3 == 0 {
+    ///         Err("3")
+    ///     } else {
+    ///         Ok(i)
+    ///     }
+    /// });
+    ///
+    /// let mut iteratee = div_two.and_then_fallible(div_three);
+    ///
+    /// assert_eq!(iteratee.feed(1), Some(Ok(1)));
+    /// assert_eq!(iteratee.feed(2), Some(Err("2")));
+    /// assert_eq!(iteratee.feed(6), Some(Err("2")));
+    /// assert_eq!(iteratee.feed(9), Some(Err("3")));
+    /// ```
     fn and_then_fallible<I, T1, T2, E1, E2>(self, next: I) -> IterateeAndThenFallible<Self, I>
     where
         Self: Iteratee<In, Item = Result<T1, E1>> + Sized,
