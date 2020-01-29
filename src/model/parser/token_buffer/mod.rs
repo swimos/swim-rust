@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::parser::token_buffer::MarkState::Marked;
+#[cfg(test)]
+mod tests;
 
 /// Trait for types that keep logical pointers into a range of the input for the purpose of
 /// extracting tokens. This allows us to use the same parsing logic to extract references
@@ -188,7 +189,7 @@ impl TokenBuffer<String> for TokenAccumulator {
                     buffer.clear();
                     *mark_state = MarkState::Marked;
                 }
-                Marked => {}
+                MarkState::Marked => {}
             }
             buffer.push(*c);
             *upper_bound += c.len_utf8();
