@@ -197,7 +197,7 @@ pub trait Iteratee<In> {
     }
 
     /// Apply a stateful transformation to the outputs of this iteratee. The final value of the
-    /// state may be output on flush..
+    /// state may be output on flush.
     ///
     /// # Examples
     ///
@@ -236,7 +236,7 @@ pub trait Iteratee<In> {
     where
         Self: Sized,
         U: FnMut(&mut State, Self::Item) -> Option<B>,
-        F: FnMut(State) -> Option<B>,
+        F: FnOnce(State) -> Option<B>,
     {
         IterateeScan::new(self, init, scan, flush)
     }
@@ -597,7 +597,7 @@ pub fn unfold_with_flush<In, State, Out, U, F>(
 ) -> Unfold<State, U, F, impl Fn(&State) -> (usize, Option<usize>)>
 where
     U: FnMut(&mut State, In) -> Option<Out>,
-    F: FnMut(State) -> Option<Out>,
+    F: FnOnce(State) -> Option<Out>,
 {
     Unfold::new(init, unfold, flush, |_: &State| (0, None))
 }
@@ -613,7 +613,7 @@ pub fn unfold_with_flush_and_hint<In, State, Out, U, F, H>(
 ) -> Unfold<State, U, F, H>
 where
     U: FnMut(&mut State, In) -> Option<Out>,
-    F: FnMut(State) -> Option<Out>,
+    F: FnOnce(State) -> Option<Out>,
     H: Fn(&State) -> (usize, Option<usize>),
 {
     Unfold::new(init, unfold, flush, hint)
@@ -938,7 +938,7 @@ impl<State, U, F, H> Unfold<State, U, F, H> {
 impl<In, State, Out, U, F, H> Iteratee<In> for Unfold<State, U, F, H>
 where
     U: FnMut(&mut State, In) -> Option<Out>,
-    F: FnMut(State) -> Option<Out>,
+    F: FnOnce(State) -> Option<Out>,
     H: Fn(&State) -> (usize, Option<usize>),
 {
     type Item = Out;
@@ -950,7 +950,7 @@ where
 
     fn flush(self) -> Option<Self::Item> {
         let Unfold {
-            state, mut flush, ..
+            state, flush, ..
         } = self;
         flush(state)
     }
@@ -1055,7 +1055,7 @@ impl<I, In, State, B, U, F> Iteratee<In> for IterateeScan<I, State, U, F>
 where
     I: Iteratee<In>,
     U: FnMut(&mut State, I::Item) -> Option<B>,
-    F: FnMut(State) -> Option<B>,
+    F: FnOnce(State) -> Option<B>,
 {
     type Item = B;
 
@@ -1080,7 +1080,7 @@ where
             iteratee,
             mut state,
             mut scan,
-            mut flush,
+            flush,
         } = self;
         match iteratee.flush() {
             Some(v) => scan(&mut state, v).or_else(|| flush(state)),
@@ -1744,5 +1744,13 @@ where
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
         self.iteratee.demand_hint()
+    }
+}
+
+impl<In, I: Iteratee<In>> Iteratee<In> for Box<I> {
+    type Item = I::Item;
+
+    fn feed(&mut self, input: In) -> Option<Self::Item> {
+        (**self).feed(input)
     }
 }
