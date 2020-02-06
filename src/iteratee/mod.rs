@@ -949,9 +949,7 @@ where
     }
 
     fn flush(self) -> Option<Self::Item> {
-        let Unfold {
-            state, flush, ..
-        } = self;
+        let Unfold { state, flush, .. } = self;
         flush(state)
     }
 

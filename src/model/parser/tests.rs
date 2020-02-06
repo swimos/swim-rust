@@ -46,7 +46,7 @@ fn consume_to_single_token(repr: &str) -> Result<ReconToken<String>, Option<BadT
 fn consume_to_value(repr: &str) -> Result<Value, ParseFailure> {
     match parse_iteratee().transduce_into(repr.char_indices()).next() {
         Some(result) => result,
-        _ => Err(ParseFailure::IncompleteRecord)
+        _ => Err(ParseFailure::IncompleteRecord),
     }
 }
 
@@ -808,10 +808,7 @@ fn iteratee_tagged_records() {
 }
 
 fn tagged_records(read_single: ReadSingleValue) {
-    assert_that!(
-        read_single("@name {}").unwrap(),
-        eq(Value::of_attr("name"))
-    );
+    assert_that!(read_single("@name {}").unwrap(), eq(Value::of_attr("name")));
     assert_that!(
         read_single("@first@second {}").unwrap(),
         eq(Value::of_attrs(vec![Attr::of("first"), Attr::of("second")]))

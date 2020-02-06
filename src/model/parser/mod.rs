@@ -12,16 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
 use std::borrow::Borrow;
+use std::io;
+use std::str::{from_utf8, from_utf8_unchecked, Utf8Error};
+
+use bytes::{Buf, BytesMut};
+
+use token_buffer::*;
+
+use crate::iteratee::*;
+
+use super::*;
 
 #[cfg(test)]
 mod tests;
 
 mod token_buffer;
-
-use crate::iteratee::*;
-use token_buffer::*;
 
 /// Determine if a character is valid at the start of an identifier.
 ///
@@ -1418,5 +1424,88 @@ fn update_after_slot<S: TokenStr>(
             repush(attrs, items, InsideBody(attr_body, tok == EntrySep))
         }
         _ => StateModification::Fail(RecordError::InvalidAfterItem),
+    }
+}
+
+pub struct IterateeDecoder<I>(pub Option<I>);
+
+impl<I> IterateeDecoder<I>
+where
+    I: Iteratee<char>,
+{
+    pub fn new(iteratee: I) -> IterateeDecoder<I> {
+        IterateeDecoder(Some(iteratee))
+    }
+}
+
+fn feed_chars<I, T, E>(iteratee: &mut I, src: &mut BytesMut, eof: bool) -> Result<Option<T>, E>
+where
+    I: Iteratee<char, Item = Result<T, E>>,
+    E: From<io::Error> + From<Utf8Error>,
+{
+    let as_utf8 = match from_utf8(&*src) {
+        Ok(s) => s,
+        Err(utf_err) => {
+            let good_to = utf_err.valid_up_to();
+            if eof || src.remaining() - good_to >= 4 {
+                return Err(utf_err.into());
+            } else {
+                unsafe { from_utf8_unchecked(&src[0..good_to]) }
+            }
+        }
+    };
+    let mut chars = as_utf8.char_indices();
+    loop {
+        match chars.next() {
+            Some((off, c)) => match iteratee.feed(c) {
+                Some(Ok(result)) => {
+                    src.advance(off + c.len_utf8());
+                    break Ok(Some(result));
+                }
+                Some(Err(e)) => {
+                    break Err(e);
+                }
+                _ => {
+                    continue;
+                }
+            },
+            _ => {
+                src.advance(src.remaining());
+                break Ok(None);
+            }
+        }
+    }
+}
+
+impl<I, T, E> tokio_util::codec::Decoder for IterateeDecoder<I>
+where
+    I: Iteratee<char, Item = Result<T, E>>,
+    E: From<io::Error> + From<Utf8Error>,
+{
+    type Item = T;
+    type Error = E;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        match &mut self.0 {
+            Some(iteratee) => feed_chars(iteratee, src, false),
+            _ => Ok(None),
+        }
+    }
+
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        match self.0.take() {
+            Some(mut iteratee) => {
+                if buf.is_empty() {
+                    match iteratee.flush() {
+                        Some(Ok(result)) => Ok(Some(result)),
+                        Some(Err(e)) => Err(e),
+                        _ => Ok(None),
+                    }
+                } else {
+                    feed_chars(&mut iteratee, buf, true)
+                }
+            }
+            _ => Ok(None),
+        }
     }
 }
