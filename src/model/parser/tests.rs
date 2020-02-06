@@ -25,7 +25,8 @@ fn read_single_token(repr: &str) -> Result<ReconToken<&str>, Option<BadToken>> {
     }
 }
 
-type ReadSingle = fn(&str) -> Result<ReconToken<String>, Option<BadToken>>;
+type ReadSingleToken = fn(&str) -> Result<ReconToken<String>, Option<BadToken>>;
+type ReadSingleValue = fn(&str) -> Result<Value, ParseFailure>;
 
 fn read_single_token_owned(repr: &str) -> Result<ReconToken<String>, Option<BadToken>> {
     read_single_token(repr).map(|t| t.owned_token())
@@ -39,6 +40,13 @@ fn consume_to_single_token(repr: &str) -> Result<ReconToken<String>, Option<BadT
         Some(Ok(LocatedReconToken(token, _))) => Ok(token),
         Some(Err(failed)) => Err(Some(failed)),
         _ => Err(None),
+    }
+}
+
+fn consume_to_value(repr: &str) -> Result<Value, ParseFailure> {
+    match parse_iteratee().transduce_into(repr.char_indices()).next() {
+        Some(result) => result,
+        _ => Err(ParseFailure::IncompleteRecord)
     }
 }
 
@@ -110,7 +118,7 @@ fn iteratee_integer_tokens() {
     integer_tokens(consume_to_single_token);
 }
 
-fn integer_tokens(read_single: ReadSingle) {
+fn integer_tokens(read_single: ReadSingleToken) {
     assert_that!(read_single("0").unwrap(), eq(ReconToken::Int32Literal(0)));
     assert_that!(read_single("1").unwrap(), eq(ReconToken::Int32Literal(1)));
     assert_that!(read_single("42").unwrap(), eq(ReconToken::Int32Literal(42)));
@@ -151,7 +159,7 @@ fn iteratee_bool_tokens() {
     bool_tokens(consume_to_single_token);
 }
 
-fn bool_tokens(read_single: ReadSingle) {
+fn bool_tokens(read_single: ReadSingleToken) {
     assert_that!(
         read_single("true").unwrap(),
         eq(ReconToken::BoolLiteral(true))
@@ -172,7 +180,7 @@ fn iteratee_identifier_tokens() {
     identifier_tokens(consume_to_single_token);
 }
 
-fn identifier_tokens(read_single: ReadSingle) {
+fn identifier_tokens(read_single: ReadSingleToken) {
     assert_that!(
         read_single("name").unwrap(),
         eq(ReconToken::Identifier("name").owned_token())
@@ -205,7 +213,7 @@ fn iteratee_string_literal_tokens() {
     string_literal_tokens(consume_to_single_token);
 }
 
-fn string_literal_tokens(read_single: ReadSingle) {
+fn string_literal_tokens(read_single: ReadSingleToken) {
     assert_that!(
         read_single(r#""name""#).unwrap(),
         eq(ReconToken::StringLiteral("name").owned_token())
@@ -262,7 +270,7 @@ fn iteratee_floating_point_tokens() {
     floating_point_tokens(consume_to_single_token);
 }
 
-fn floating_point_tokens(read_single: ReadSingle) {
+fn floating_point_tokens(read_single: ReadSingleToken) {
     assert_that!(
         read_single("0.0").unwrap(),
         eq(ReconToken::Float64Literal(0.0))
@@ -381,98 +389,125 @@ fn iteratee_token_sequence() {
 
 #[test]
 fn parse_simple_values() {
-    assert_that!(parse_single("1").unwrap(), eq(Value::Int32Value(1)));
-    assert_that!(parse_single("123").unwrap(), eq(Value::Int32Value(123)));
-    assert_that!(parse_single("-77").unwrap(), eq(Value::Int32Value(-77)));
+    simple_values(parse_single);
+}
 
-    assert_that!(parse_single("name").unwrap(), eq(Value::text("name")));
-    assert_that!(parse_single("اسم").unwrap(), eq(Value::text("اسم")));
+#[test]
+fn iteratee_simple_values() {
+    simple_values(consume_to_value);
+}
 
-    assert_that!(parse_single(r#""name""#).unwrap(), eq(Value::text("name")));
+fn simple_values(read_single: ReadSingleValue) {
+    assert_that!(read_single("1").unwrap(), eq(Value::Int32Value(1)));
+    assert_that!(read_single("123").unwrap(), eq(Value::Int32Value(123)));
+    assert_that!(read_single("-77").unwrap(), eq(Value::Int32Value(-77)));
+
+    assert_that!(read_single("name").unwrap(), eq(Value::text("name")));
+    assert_that!(read_single("اسم").unwrap(), eq(Value::text("اسم")));
+
+    assert_that!(read_single(r#""name""#).unwrap(), eq(Value::text("name")));
     assert_that!(
-        parse_single(r#""two words""#).unwrap(),
+        read_single(r#""two words""#).unwrap(),
         eq(Value::text("two words"))
     );
     assert_that!(
-        parse_single(r#""two \n lines""#).unwrap(),
+        read_single(r#""two \n lines""#).unwrap(),
         eq(Value::text("two \n lines"))
     );
     assert_that!(
-        parse_single(r#""\"quoted\"""#).unwrap(),
+        read_single(r#""\"quoted\"""#).unwrap(),
         eq(Value::text(r#""quoted""#))
     );
 
-    assert_that!(parse_single("true").unwrap(), eq(Value::BooleanValue(true)));
+    assert_that!(read_single("true").unwrap(), eq(Value::BooleanValue(true)));
     assert_that!(
-        parse_single("false").unwrap(),
+        read_single("false").unwrap(),
         eq(Value::BooleanValue(false))
     );
 
-    assert_that!(parse_single("1.25").unwrap(), eq(Value::Float64Value(1.25)));
+    assert_that!(read_single("1.25").unwrap(), eq(Value::Float64Value(1.25)));
     assert_that!(
-        parse_single("-1.25e-7").unwrap(),
+        read_single("-1.25e-7").unwrap(),
         eq(Value::Float64Value(-1.25e-7))
     );
 }
 
 #[test]
 fn parse_simple_attributes() {
+    simple_attributes(parse_single);
+}
+
+#[test]
+fn iteratee_simple_attributes() {
+    simple_attributes(consume_to_value);
+}
+
+fn simple_attributes(read_single: ReadSingleValue) {
     assert_that!(
-        parse_single("@name").unwrap(),
+        read_single("@name").unwrap(),
         eq(Value::of_attr(Attr::of("name")))
     );
     assert_that!(
-        parse_single("@name1@name2").unwrap(),
+        read_single("@name1@name2").unwrap(),
         eq(Value::of_attrs(vec![Attr::of("name1"), Attr::of("name2")]))
     );
     assert_that!(
-        parse_single("@name(1)").unwrap(),
+        read_single("@name(1)").unwrap(),
         eq(Value::of_attr(Attr::of(("name", 1))))
     );
     assert_that!(
-        parse_single(r#"@"two words""#).unwrap(),
+        read_single(r#"@"two words""#).unwrap(),
         eq(Value::of_attr(Attr::of("two words")))
     );
     assert_that!(
-        parse_single(r#"@"@name""#).unwrap(),
+        read_single(r#"@"@name""#).unwrap(),
         eq(Value::of_attr(Attr::of("@name")))
     );
 }
 
 #[test]
 fn parse_simple_records() {
-    assert_that!(parse_single("{}").unwrap(), eq(Value::empty_record()));
-    assert_that!(parse_single("{1}").unwrap(), eq(Value::singleton(1)));
+    simple_records(parse_single);
+}
+
+#[test]
+fn iteratee_simple_records() {
+    simple_records(consume_to_value);
+}
+
+fn simple_records(read_single: ReadSingleValue) {
+    assert_that!(read_single("{}").unwrap(), eq(Value::empty_record()));
+    assert_that!(read_single("{1}").unwrap(), eq(Value::singleton(1)));
     assert_that!(
-        parse_single("{a:1}").unwrap(),
+        read_single("{a:1}").unwrap(),
         eq(Value::singleton(("a", 1)))
     );
     assert_that!(
-        parse_single("{1,2,3}").unwrap(),
+        read_single("{1,2,3}").unwrap(),
         eq(Value::from_vec(vec![1, 2, 3]))
     );
     assert_that!(
-        parse_single("{1;2;3}").unwrap(),
+        read_single("{1;2;3}").unwrap(),
         eq(Value::from_vec(vec![1, 2, 3]))
     );
     assert_that!(
-        parse_single("{1\n2\n3}").unwrap(),
+        read_single("{1\n2\n3}").unwrap(),
         eq(Value::from_vec(vec![1, 2, 3]))
     );
     assert_that!(
-        parse_single("{a: 1, b: 2, c: 3}").unwrap(),
+        read_single("{a: 1, b: 2, c: 3}").unwrap(),
         eq(Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)]))
     );
     assert_that!(
-        parse_single("{a: 1; b: 2; c: 3}").unwrap(),
+        read_single("{a: 1; b: 2; c: 3}").unwrap(),
         eq(Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)]))
     );
     assert_that!(
-        parse_single("{a: 1\n\n b: 2\r\n c: 3}").unwrap(),
+        read_single("{a: 1\n\n b: 2\r\n c: 3}").unwrap(),
         eq(Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)]))
     );
     assert_that!(
-        parse_single(r#"{first: 1, 2: second, "3": 3}"#).unwrap(),
+        read_single(r#"{first: 1, 2: second, "3": 3}"#).unwrap(),
         eq(Value::Record(
             vec![],
             vec![
@@ -483,19 +518,19 @@ fn parse_simple_records() {
         ))
     );
     assert_that!(
-        parse_single("{a:}").unwrap(),
+        read_single("{a:}").unwrap(),
         eq(Value::singleton(("a", Value::Extant)))
     );
     assert_that!(
-        parse_single("{:1}").unwrap(),
+        read_single("{:1}").unwrap(),
         eq(Value::singleton((Value::Extant, 1)))
     );
     assert_that!(
-        parse_single("{:}").unwrap(),
+        read_single("{:}").unwrap(),
         eq(Value::singleton((Value::Extant, Value::Extant)))
     );
     assert_that!(
-        parse_single("{a:1,:2,3:,:,}").unwrap(),
+        read_single("{a:1,:2,3:,:,}").unwrap(),
         eq(Value::Record(
             vec![],
             vec![
@@ -508,11 +543,11 @@ fn parse_simple_records() {
         ))
     );
     assert_that!(
-        parse_single("{,}").unwrap(),
+        read_single("{,}").unwrap(),
         eq(Value::from_vec(vec![Value::Extant, Value::Extant]))
     );
     assert_that!(
-        parse_single("{1,,,2}").unwrap(),
+        read_single("{1,,,2}").unwrap(),
         eq(Value::from_vec(vec![
             Item::of(1),
             Item::of(Value::Extant),
@@ -524,44 +559,53 @@ fn parse_simple_records() {
 
 #[test]
 fn parse_complex_attributes() {
+    complex_attributes(parse_single);
+}
+
+#[test]
+fn iteratee_complex_attributes() {
+    complex_attributes(consume_to_value);
+}
+
+fn complex_attributes(read_single: ReadSingleValue) {
     assert_that!(
-        parse_single("@name()").unwrap(),
+        read_single("@name()").unwrap(),
         eq(Value::of_attr(Attr::of("name")))
     );
     assert_that!(
-        parse_single("@name({})").unwrap(),
+        read_single("@name({})").unwrap(),
         eq(Value::of_attr(Attr::of(("name", Value::empty_record()))))
     );
     assert_that!(
-        parse_single("@name(single: -2)").unwrap(),
+        read_single("@name(single: -2)").unwrap(),
         eq(Value::of_attr(Attr::of((
             "name",
             Value::singleton(("single", -2))
         ))))
     );
     assert_that!(
-        parse_single("@name(first: 1, second: 2, third : 3)").unwrap(),
+        read_single("@name(first: 1, second: 2, third : 3)").unwrap(),
         eq(Value::of_attr(Attr::of((
             "name",
             Value::from_vec(vec![("first", 1), ("second", 2), ("third", 3)])
         ))))
     );
     assert_that!(
-        parse_single("@name(first: 1; second: 2; third : 3)").unwrap(),
+        read_single("@name(first: 1; second: 2; third : 3)").unwrap(),
         eq(Value::of_attr(Attr::of((
             "name",
             Value::from_vec(vec![("first", 1), ("second", 2), ("third", 3)])
         ))))
     );
     assert_that!(
-        parse_single("@name(first: 1\n second: 2\n third : 3)").unwrap(),
+        read_single("@name(first: 1\n second: 2\n third : 3)").unwrap(),
         eq(Value::of_attr(Attr::of((
             "name",
             Value::from_vec(vec![("first", 1), ("second", 2), ("third", 3)])
         ))))
     );
     assert_that!(
-        parse_single("@name(,)").unwrap(),
+        read_single("@name(,)").unwrap(),
         eq(Value::of_attr(Attr::of((
             "name",
             Value::from_vec(vec![Value::Extant, Value::Extant])
@@ -571,39 +615,48 @@ fn parse_complex_attributes() {
 
 #[test]
 fn parse_nested_records() {
+    nested_records(parse_single);
+}
+
+#[test]
+fn iteratee_nested_records() {
+    nested_records(consume_to_value);
+}
+
+fn nested_records(read_single: ReadSingleValue) {
     assert_that!(
-        parse_single("{{}}").unwrap(),
+        read_single("{{}}").unwrap(),
         eq(Value::singleton(Value::empty_record()))
     );
     assert_that!(
-        parse_single("{{{}}}").unwrap(),
+        read_single("{{{}}}").unwrap(),
         eq(Value::singleton(Value::singleton(Value::empty_record())))
     );
     assert_that!(
-        parse_single("{@name}").unwrap(),
+        read_single("{@name}").unwrap(),
         eq(Value::singleton(Value::of_attr("name")))
     );
     assert_that!(
-        parse_single("{@name(1)}").unwrap(),
+        read_single("{@name(1)}").unwrap(),
         eq(Value::singleton(Value::of_attr(("name", 1))))
     );
 
     assert_that!(
-        parse_single("{0, {}}").unwrap(),
+        read_single("{0, {}}").unwrap(),
         eq(Value::from_vec(vec![
             Item::of(0),
             Item::of(Value::empty_record())
         ]))
     );
     assert_that!(
-        parse_single("{0, @name}").unwrap(),
+        read_single("{0, @name}").unwrap(),
         eq(Value::from_vec(vec![
             Item::of(0),
             Item::of(Value::of_attr("name"))
         ]))
     );
     assert_that!(
-        parse_single("{0, @name(1)}").unwrap(),
+        read_single("{0, @name(1)}").unwrap(),
         eq(Value::from_vec(vec![
             Item::of(0),
             Item::of(Value::of_attr(("name", 1)))
@@ -611,14 +664,14 @@ fn parse_nested_records() {
     );
 
     assert_that!(
-        parse_single("{a: {b:1}}").unwrap(),
+        read_single("{a: {b:1}}").unwrap(),
         eq(Value::from_vec(vec![Item::slot(
             "a",
             Value::singleton(("b", 1))
         )]))
     );
     assert_that!(
-        parse_single("{0, a: {b:1}}").unwrap(),
+        read_single("{0, a: {b:1}}").unwrap(),
         eq(Value::from_vec(vec![
             Item::of(0),
             Item::slot("a", Value::singleton(("b", 1)))
@@ -626,14 +679,14 @@ fn parse_nested_records() {
     );
 
     assert_that!(
-        parse_single("{{a:1}: b}").unwrap(),
+        read_single("{{a:1}: b}").unwrap(),
         eq(Value::from_vec(vec![Item::slot(
             Value::singleton(("a", 1)),
             "b"
         )]))
     );
     assert_that!(
-        parse_single("{0, {a:1}: b}").unwrap(),
+        read_single("{0, {a:1}: b}").unwrap(),
         eq(Value::from_vec(vec![
             Item::of(0),
             Item::slot(Value::singleton(("a", 1)), "b")
@@ -641,14 +694,14 @@ fn parse_nested_records() {
     );
 
     assert_that!(
-        parse_single("{a: {b:1,c:2}}").unwrap(),
+        read_single("{a: {b:1,c:2}}").unwrap(),
         eq(Value::from_vec(vec![Item::slot(
             "a",
             Value::from_vec(vec![("b", 1), ("c", 2)])
         )]))
     );
     assert_that!(
-        parse_single("{0, a: {b:1,c:2}}").unwrap(),
+        read_single("{0, a: {b:1,c:2}}").unwrap(),
         eq(Value::from_vec(vec![
             Item::of(0),
             Item::slot("a", Value::from_vec(vec![("b", 1), ("c", 2)]))
@@ -656,50 +709,50 @@ fn parse_nested_records() {
     );
 
     assert_that!(
-        parse_single("@name({{}})").unwrap(),
+        read_single("@name({{}})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::singleton(Value::empty_record())
         )))
     );
     assert_that!(
-        parse_single("@name(@inner)").unwrap(),
+        read_single("@name(@inner)").unwrap(),
         eq(Value::of_attr(("name", Value::of_attr("inner"))))
     );
     assert_that!(
-        parse_single("@name(@inner(1))").unwrap(),
+        read_single("@name(@inner(1))").unwrap(),
         eq(Value::of_attr(("name", Value::of_attr(("inner", 1)))))
     );
     assert_that!(
-        parse_single("@name(0, {})").unwrap(),
+        read_single("@name(0, {})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::from_vec(vec![Item::of(0), Item::of(Value::empty_record())])
         )))
     );
     assert_that!(
-        parse_single("@name(0, @inner)").unwrap(),
+        read_single("@name(0, @inner)").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::from_vec(vec![Item::of(0), Item::of(Value::of_attr("inner"))])
         )))
     );
     assert_that!(
-        parse_single("@name(0, @inner(1))").unwrap(),
+        read_single("@name(0, @inner(1))").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::from_vec(vec![Item::of(0), Item::of(Value::of_attr(("inner", 1)))])
         )))
     );
     assert_that!(
-        parse_single("@name(a: {b:1})").unwrap(),
+        read_single("@name(a: {b:1})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::singleton(("a", Value::singleton(("b", 1))))
         )))
     );
     assert_that!(
-        parse_single("@name(0, a: {b:1})").unwrap(),
+        read_single("@name(0, a: {b:1})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::from_vec(vec![
@@ -709,14 +762,14 @@ fn parse_nested_records() {
         )))
     );
     assert_that!(
-        parse_single("@name({a:1}: b)").unwrap(),
+        read_single("@name({a:1}: b)").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::singleton((Value::singleton(("a", 1)), "b"))
         )))
     );
     assert_that!(
-        parse_single("@name(0, {a:1}: b)").unwrap(),
+        read_single("@name(0, {a:1}: b)").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::from_vec(vec![
@@ -726,14 +779,14 @@ fn parse_nested_records() {
         )))
     );
     assert_that!(
-        parse_single("@name(a: {b:1,c:2})").unwrap(),
+        read_single("@name(a: {b:1,c:2})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::singleton(("a", Value::from_vec(vec![("b", 1), ("c", 2)])))
         )))
     );
     assert_that!(
-        parse_single("@name(0, a: {b:1,c:2})").unwrap(),
+        read_single("@name(0, a: {b:1,c:2})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::from_vec(vec![
@@ -746,61 +799,70 @@ fn parse_nested_records() {
 
 #[test]
 fn parse_tagged_records() {
+    tagged_records(parse_single);
+}
+
+#[test]
+fn iteratee_tagged_records() {
+    tagged_records(consume_to_value);
+}
+
+fn tagged_records(read_single: ReadSingleValue) {
     assert_that!(
-        parse_single("@name {}").unwrap(),
+        read_single("@name {}").unwrap(),
         eq(Value::of_attr("name"))
     );
     assert_that!(
-        parse_single("@first@second {}").unwrap(),
+        read_single("@first@second {}").unwrap(),
         eq(Value::of_attrs(vec![Attr::of("first"), Attr::of("second")]))
     );
     assert_that!(
-        parse_single("@name id").unwrap(),
+        read_single("@name id").unwrap(),
         eq(Value::Record(vec![Attr::of("name")], vec![Item::of("id")]))
     );
     assert_that!(
-        parse_single(r#"@name"@value""#).unwrap(),
+        read_single(r#"@name"@value""#).unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![Item::of("@value")]
         ))
     );
     assert_that!(
-        parse_single("@name -4").unwrap(),
+        read_single("@name -4").unwrap(),
         eq(Value::Record(vec![Attr::of("name")], vec![Item::of(-4)]))
     );
 
     assert_that!(
-        parse_single("@name{id}").unwrap(),
+        read_single("@name{id}").unwrap(),
         eq(Value::Record(vec![Attr::of("name")], vec![Item::of("id")]))
     );
     assert_that!(
-        parse_single(r#"@name { "@value" }"#).unwrap(),
+        read_single(r#"@name { "@value" }"#).unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![Item::of("@value")]
         ))
     );
     assert_that!(
-        parse_single("@name{ -4}").unwrap(),
+        read_single("@name{ -4}").unwrap(),
         eq(Value::Record(vec![Attr::of("name")], vec![Item::of(-4)]))
     );
     assert_that!(
-        parse_single("@name {1, 2, 3}").unwrap(),
+        read_single("@name {1, 2, 3}").unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![Item::of(1), Item::of(2), Item::of(3)]
         ))
     );
     assert_that!(
-        parse_single("@name {a:1,b:2}").unwrap(),
+        read_single("@name {a:1,b:2}").unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![Item::of(("a", 1)), Item::of(("b", 2))]
         ))
     );
     assert_that!(
-        parse_single("@name {,}").unwrap(),
+        read_single("@name {,}").unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![Item::of(Value::Extant), Item::of(Value::Extant)]
@@ -810,22 +872,31 @@ fn parse_tagged_records() {
 
 #[test]
 fn parse_nested_tagged_records() {
+    nested_tagged_records(parse_single);
+}
+
+#[test]
+fn iteratee_nested_tagged_records() {
+    nested_tagged_records(consume_to_value);
+}
+
+fn nested_tagged_records(read_single: ReadSingleValue) {
     assert_that!(
-        parse_single("@name(@inner1 {}, @inner2 {})").unwrap(),
+        read_single("@name(@inner1 {}, @inner2 {})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::from_vec(vec![Value::of_attr("inner1"), Value::of_attr("inner2")])
         )))
     );
     assert_that!(
-        parse_single("@name(@inner {1, 2})").unwrap(),
+        read_single("@name(@inner {1, 2})").unwrap(),
         eq(Value::of_attr((
             "name",
             Value::Record(vec![Attr::of("inner")], vec![Item::of(1), Item::of(2)])
         )))
     );
     assert_that!(
-        parse_single("@name {@inner1 {}, @inner2 {} }").unwrap(),
+        read_single("@name {@inner1 {}, @inner2 {} }").unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![
@@ -835,7 +906,7 @@ fn parse_nested_tagged_records() {
         ))
     );
     assert_that!(
-        parse_single("@name {@inner {1, 2}}").unwrap(),
+        read_single("@name {@inner {1, 2}}").unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![Item::of(Value::Record(
@@ -845,7 +916,7 @@ fn parse_nested_tagged_records() {
         ))
     );
     assert_that!(
-        parse_single("@name {0, @inner {1, 2}}").unwrap(),
+        read_single("@name {0, @inner {1, 2}}").unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![
@@ -858,7 +929,7 @@ fn parse_nested_tagged_records() {
         ))
     );
     assert_that!(
-        parse_single("@name {first: {1, 2}, {second}: 3}").unwrap(),
+        read_single("@name {first: {1, 2}, {second}: 3}").unwrap(),
         eq(Value::Record(
             vec![Attr::of("name")],
             vec![
