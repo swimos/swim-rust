@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::parser::is_identifier;
+use bytes::*;
+use std::borrow::Borrow;
 use std::convert::TryFrom;
+use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::iter;
+use tokio_util::codec::Encoder;
 
 pub mod parser;
 
@@ -402,4 +407,311 @@ fn escape_text(text: &str) -> String {
         }
     }
     output.iter().collect()
+}
+
+fn encode_escaped(s: &str, dst: &mut BytesMut) -> Result<(), std::io::Error> {
+    let mut from = 0;
+    let bytes = s.as_bytes();
+    let mut put_acc = |dst: &mut BytesMut, off: usize| {
+        if off > from {
+            dst.put(&bytes[from..off]);
+            from = off + 1;
+        }
+    };
+    s.char_indices().for_each(|(off, c)| {
+        match c {
+            '"' => {
+                put_acc(dst, off);
+                dst.put(b"\\\"".as_ref());
+            }
+            '\\' => {
+                put_acc(dst, off);
+                dst.put(b"\\\\".as_ref())
+            }
+            '\r' => {
+                put_acc(dst, off);
+                dst.put(b"\\r".as_ref())
+            }
+            '\n' => {
+                put_acc(dst, off);
+                dst.put(b"\\n".as_ref())
+            }
+            '\t' => {
+                put_acc(dst, off);
+                dst.put(b"\\t".as_ref())
+            }
+            '\u{08}' => {
+                put_acc(dst, off);
+                dst.put(b"\\b".as_ref())
+            }
+            '\u{0c}' => {
+                put_acc(dst, off);
+                dst.put(b"\\f".as_ref())
+            }
+            cp if cp < '\u{20}' => {
+                put_acc(dst, off);
+                let n = cp as usize;
+                dst.put(b"\\u".as_ref());
+                dst.put_u8(DIGITS[(n >> 12) & 0xf] as u8);
+                dst.put_u8(DIGITS[(n >> 8) & 0xf] as u8);
+                dst.put_u8(DIGITS[(n >> 4) & 0xf] as u8);
+                dst.put_u8(DIGITS[n & 0xf] as u8);
+            }
+            _ => {}
+        };
+    });
+    put_acc(dst, bytes.len());
+    Ok(())
+}
+
+///
+/// Encodes [`Value`]s as bytes using a compact UTF-8 recon formatting.
+///
+pub struct ValueEncoder {}
+
+const TRUE: &'static [u8] = b"true";
+const FALSE: &'static [u8] = b"false";
+
+fn unpack_attr_body(attrs: &Vec<Attr>, items: &Vec<Item>) -> bool {
+    if !attrs.is_empty() {
+        false
+    } else if items.len() > 1 {
+        true
+    } else {
+        match items.first() {
+            Some(item) => match item {
+                Item::Slot(_, _) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+}
+
+fn encode_attr(
+    encoder: &mut ValueEncoder,
+    attr: Attr,
+    dst: &mut BytesMut,
+) -> Result<(), ValueEncodeErr> {
+    dst.put_u8(b'@');
+    ValueEncoder::encode_text(dst, &attr.name)?;
+    if attr.value != Value::Extant {
+        dst.put_u8(b'(');
+        match attr.value {
+            Value::Record(attrs, items) if unpack_attr_body(&attrs, &items) => {
+                encoder.encode_items(dst, items)?
+            }
+            ow => encoder.encode(ow, dst)?,
+        }
+        dst.put_u8(b')');
+    };
+    Ok(())
+}
+
+pub enum ValueEncodeErr {
+    IoErr(std::io::Error),
+    FormatErr(std::fmt::Error),
+}
+
+impl From<std::io::Error> for ValueEncodeErr {
+    fn from(e: std::io::Error) -> Self {
+        ValueEncodeErr::IoErr(e)
+    }
+}
+
+impl From<std::fmt::Error> for ValueEncodeErr {
+    fn from(e: std::fmt::Error) -> Self {
+        ValueEncodeErr::FormatErr(e)
+    }
+}
+
+impl Encoder for ValueEncoder {
+    type Item = Value;
+    type Error = ValueEncodeErr;
+
+    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        dst.reserve(ValueEncoder::estimate_size(&item));
+        self.encode_value(item, dst)
+    }
+}
+
+fn len_str_literal(s: &str) -> usize {
+    s.chars()
+        .map(|c| match c {
+            '\\' | '\"' | '\r' | '\n' | '\t' | '\u{08}' | '\u{0c}' => 2,
+            cp if cp < '\u{20}' => 6,
+            _ => c.len_utf8(),
+        })
+        .sum::<usize>()
+        + 2
+}
+
+impl ValueEncoder {
+    pub fn new() -> ValueEncoder {
+        ValueEncoder {}
+    }
+
+    fn encode_value(&mut self, item: Value, dst: &mut BytesMut) -> Result<(), ValueEncodeErr> {
+        match item {
+            Value::Extant => Ok(()),
+            Value::Int32Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
+            Value::Int64Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
+            Value::Float64Value(x) => write!(dst, "{}", x).map_err(|e| e.into()),
+            Value::BooleanValue(p) => {
+                if p {
+                    dst.put(TRUE);
+                } else {
+                    dst.put(FALSE);
+                }
+                Ok(())
+            }
+            Value::Text(s) => ValueEncoder::encode_text(dst, &s),
+            Value::Record(attrs, items) => {
+                if attrs.is_empty() && items.is_empty() {
+                    dst.put_u8(b'{');
+                    dst.put_u8(b'}');
+                }
+                for attr in attrs {
+                    encode_attr(self, attr, dst)?;
+                }
+
+                if !items.is_empty() {
+                    dst.put_u8(b'{');
+                    self.encode_items(dst, items)?;
+                    dst.put_u8(b'}');
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn encode_text(dst: &mut BytesMut, s: &String) -> Result<(), ValueEncodeErr> {
+        if parser::is_identifier(s.borrow()) {
+            dst.put(s.as_bytes());
+            Ok(())
+        } else if needs_escape(s.borrow()) {
+            dst.put_u8(b'\"');
+            encode_escaped(s.borrow(), dst)?;
+            dst.put_u8(b'\"');
+            Ok(())
+        } else {
+            dst.put_u8(b'\"');
+            dst.put(s.as_bytes());
+            dst.put_u8(b'\"');
+            Ok(())
+        }
+    }
+
+    fn encode_items(&mut self, dst: &mut BytesMut, items: Vec<Item>) -> Result<(), ValueEncodeErr> {
+        let mut first: bool = true;
+        for item in items.into_iter() {
+            if !first {
+                dst.put_u8(b',');
+            } else {
+                first = false;
+            }
+            match item {
+                Item::ValueItem(v) => self.encode(v, dst)?,
+                Item::Slot(k, v) => {
+                    self.encode(k, dst)?;
+                    dst.put_u8(b':');
+                    self.encode(v, dst)?
+                }
+            };
+        }
+        Ok(())
+    }
+
+    fn estimate_attr_size(attr: &Attr) -> usize {
+        let mut sum: usize = 1;
+        sum += if is_identifier(attr.name.borrow()) {
+            attr.name.len()
+        } else {
+            len_str_literal(attr.name.borrow())
+        };
+        match &attr.value {
+            Value::Extant => {}
+            Value::Record(attrs, items) if unpack_attr_body(attrs, items) => {
+                sum += items.len() + 1;
+                for item in items.iter() {
+                    match item {
+                        Item::ValueItem(v) => sum += ValueEncoder::estimate_size(v),
+                        Item::Slot(k, v) => {
+                            sum +=
+                                ValueEncoder::estimate_size(k) + ValueEncoder::estimate_size(v) + 1
+                        }
+                    };
+                }
+            }
+            ow => {
+                sum += 2 + ValueEncoder::estimate_size(ow);
+            }
+        };
+        sum
+    }
+
+    fn estimate_size(value: &Value) -> usize {
+        match value {
+            Value::Extant => 0,
+            Value::Int32Value(n) => {
+                let mut a = (*n).abs();
+                let mut i = 0;
+                while a > 0 {
+                    a /= 10;
+                    i += 1;
+                }
+                if *n < 0 {
+                    i + 1
+                } else {
+                    i
+                }
+            }
+            Value::Int64Value(n) => {
+                let mut a = (*n).abs();
+                let mut i = 0;
+                while a > 0 {
+                    a /= 10;
+                    i += 1;
+                }
+                if *n < 0 {
+                    i + 1
+                } else {
+                    i
+                }
+            }
+            Value::Float64Value(_) => 5,
+            Value::BooleanValue(_) => 10,
+            Value::Text(s) => {
+                if is_identifier(s.borrow()) {
+                    s.len()
+                } else {
+                    len_str_literal(s.borrow())
+                }
+            }
+            Value::Record(attrs, items) => {
+                if attrs.is_empty() && items.is_empty() {
+                    2
+                } else {
+                    let mut sum: usize = 0;
+                    for attr in attrs.iter() {
+                        sum += ValueEncoder::estimate_attr_size(attr);
+                    }
+                    if sum == 0 || !items.is_empty() {
+                        sum += 1 + items.len();
+                        for item in items.iter() {
+                            match item {
+                                Item::ValueItem(v) => sum += ValueEncoder::estimate_size(v),
+                                Item::Slot(k, v) => {
+                                    sum += ValueEncoder::estimate_size(k)
+                                        + ValueEncoder::estimate_size(v)
+                                        + 1
+                                }
+                            };
+                        }
+                    }
+                    sum
+                }
+            }
+        }
+    }
 }
