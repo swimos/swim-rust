@@ -21,6 +21,8 @@ use std::fmt::{Display, Formatter};
 use std::iter;
 use tokio_util::codec::Encoder;
 use std::hash::{Hash, Hasher};
+use std::cmp::Ordering;
+use either::Either;
 
 pub mod parser;
 
@@ -112,6 +114,142 @@ impl Value {
     pub fn of_attrs(attrs: Vec<Attr>) -> Value {
         Value::Record(attrs, vec![])
     }
+
+    fn compare(&self, other: &Self) -> Ordering {
+        match self {
+            Value::Extant => {
+                match other {
+                    Value::Extant => Ordering::Equal,
+                    _ => Ordering::Greater
+                }
+            },
+            Value::Int32Value(n) => {
+                match other {
+                    Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                    Value::Int32Value(m) => n.cmp(m),
+                    Value::Int64Value(m) => (*n as i64).cmp(m),
+                    Value::Float64Value(y) => {
+                        if y.is_nan() {
+                            Ordering::Greater
+                        } else {
+                            let x = *n as f64;
+                            if x == *y {
+                                Ordering::Equal
+                            } else if x < *y {
+                                Ordering::Less
+                            } else {
+                                Ordering::Greater
+                            }
+                        }
+                    },
+                    _ => Ordering::Greater
+                }
+            },
+            Value::Int64Value(n) => {
+                match other {
+                    Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                    Value::Int32Value(m) => n.cmp(&(*m as i64)),
+                    Value::Int64Value(m) => n.cmp(m),
+                    Value::Float64Value(y) => {
+                        if y.is_nan() {
+                            Ordering::Greater
+                        } else {
+                            let x = *n as f64;
+                            if x == *y {
+                                Ordering::Equal
+                            } else if x < *y {
+                                Ordering::Less
+                            } else {
+                                Ordering::Greater
+                            }
+                        }
+                    },
+                    _ => Ordering::Greater
+                }
+            },
+            Value::Float64Value(x) => {
+                match other {
+                    Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                    Value::Int32Value(m) => {
+                        if x.is_nan() {
+                            Ordering::Less
+                        } else {
+                            let y = *m as f64;
+                            if *x == y {
+                                Ordering::Equal
+                            } else if *x < y {
+                                Ordering::Less
+                            } else {
+                                Ordering::Greater
+                            }
+                        }
+                    },
+                    Value::Int64Value(m) => {
+                        if x.is_nan() {
+                            Ordering::Less
+                        } else {
+                            let y = *m as f64;
+                            if *x == y {
+                                Ordering::Equal
+                            } else if *x < y {
+                                Ordering::Less
+                            } else {
+                                Ordering::Greater
+                            }
+                        }
+                    },
+                    Value::Float64Value(y) => {
+                        if x.is_nan() {
+                            if y.is_nan() {
+                                Ordering::Equal
+                            } else {
+                                Ordering::Less
+                            }
+                        } else {
+                            if y.is_nan() {
+                                Ordering::Greater
+                            } else {
+                                if *x == *y {
+                                    Ordering::Equal
+                                } else if *x < *y {
+                                    Ordering::Less
+                                } else {
+                                    Ordering::Greater
+                                }
+                            }
+                        }
+                    },
+                    _ => Ordering::Greater
+                }
+            },
+            Value::BooleanValue(p) => {
+                match other {
+                    Value::Extant => Ordering::Less,
+                    Value::BooleanValue(q) => p.cmp(q),
+                    _ => Ordering::Greater
+                }
+            },
+            Value::Text(s) => {
+                match other {
+                    Value::Record(_, _) => Ordering::Greater,
+                    Value::Text(t) => s.cmp(t),
+                    _ => Ordering::Less
+                }
+            },
+            Value::Record(attrs1, items1) => {
+                match other {
+                    Value::Record(attrs2, items2) => {
+                        let first = attrs1.iter().map(|a| Either::Left(a))
+                            .chain(items1.iter().map(|i| Either::Right(i)));
+                        let second = attrs2.iter().map(|a| Either::Left(a))
+                            .chain(items2.iter().map(|i| Either::Right(i)));
+                        first.cmp(second)
+                    },
+                    _ => Ordering::Less
+                }
+            },
+        }
+    }
 }
 
 impl PartialEq for Value {
@@ -172,6 +310,18 @@ impl PartialEq for Value {
 }
 
 impl Eq for Value {}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.compare(other))
+    }
+}
+
+impl Ord for Value {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.compare(other)
+    }
+}
 
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -270,6 +420,25 @@ impl Attr {
     pub fn of<T: Into<Attr>>(rep: T) -> Attr {
         rep.into()
     }
+
+    fn compare(&self, other: &Attr) -> Ordering {
+        match self.name.cmp(&other.name) {
+            Ordering::Equal => self.value.cmp(&other.value),
+            ow => ow,
+        }
+    }
+}
+
+impl PartialOrd for Attr {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.compare(other))
+    }
+}
+
+impl Ord for Attr {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.compare(other)
+    }
 }
 
 impl From<&str> for Attr {
@@ -346,6 +515,40 @@ impl Item {
     /// ```
     pub fn slot<K: Into<Value>, V: Into<Value>>(key: K, value: V) -> Item {
         Item::Slot(key.into(), value.into())
+    }
+
+    fn compare(&self, other: &Item) -> Ordering {
+        match self {
+            Item::ValueItem(v1) => {
+                match other {
+                    Item::ValueItem(v2) => v1.cmp(v2),
+                    Item::Slot(_, _) => Ordering::Greater,
+                }
+            },
+            Item::Slot(key1, value1) => {
+                match other {
+                    Item::ValueItem(_) => Ordering::Less,
+                    Item::Slot(key2, value2) => {
+                        match key1.cmp(key2) {
+                            Ordering::Equal => value1.cmp(value2),
+                            ow => ow,
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+impl PartialOrd for Item {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.compare(other))
+    }
+}
+
+impl Ord for Item {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.compare(other)
     }
 }
 

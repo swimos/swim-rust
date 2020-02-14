@@ -20,6 +20,7 @@ extern crate tokio_util;
 extern crate bytes;
 extern crate pin_utils;
 extern crate im;
+extern crate either;
 
 pub mod eff_cell;
 pub mod iteratee;
