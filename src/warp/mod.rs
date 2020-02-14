@@ -12,16 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate crossbeam;
-extern crate futures;
-extern crate tokio;
-extern crate tokio_util;
-//extern crate tokio_tungstenite;
-extern crate bytes;
+#[cfg(test)]
+mod tests;
 
-pub mod eff_cell;
-pub mod iteratee;
-pub mod model;
-pub mod lane;
-pub mod sink;
-pub mod warp;
+mod model;
