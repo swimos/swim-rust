@@ -17,33 +17,39 @@ use std::ops::Deref;
 
 use crate::model::{Attr, Item, Value};
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum Envelope {
-    EventMessage,
-    CommandMessage,
+    EventMessage(LaneAddressed),
+    CommandMessage(LaneAddressed),
     LinkRequest(LinkAddressed),
     LinkedResponse(LinkAddressed),
     SyncRequest(LinkAddressed),
-    SyncedResponse,
-    UnlinkRequest,
-    UnlinkedResponse,
-    AuthRequest,
-    AuthedResponse,
-    DeauthRequest,
-    DeauthedResponse,
+    SyncedResponse(LaneAddressed),
+    UnlinkRequest(LaneAddressed),
+    UnlinkedResponse(LaneAddressed),
+    AuthRequest(HostAddressed),
+    AuthedResponse(HostAddressed),
+    DeauthRequest(HostAddressed),
+    DeauthedResponse(HostAddressed),
 }
 
 #[derive(Debug, PartialEq)]
-pub struct LaneAddressed(String, String);
+pub struct HostAddressed {
+    pub body: Value,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct LaneAddressed {
+    pub node_uri: String,
+    pub lane_uri: String,
+    pub body: Value,
+}
 
 #[derive(Debug, PartialEq)]
 pub struct LinkAddressed {
-    pub node_uri: String,
-    pub lane_uri: String,
+    pub lane: LaneAddressed,
     pub rate: f64,
     pub prio: f64,
-    pub body: Value,
 }
 
 #[derive(Debug, PartialEq)]
@@ -56,42 +62,40 @@ pub enum EnvelopeParseErr {
 
 fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, EnvelopeParseErr> {
     let result = items.iter().enumerate().try_fold(LinkAddressed {
-        node_uri: String::new(),
-        lane_uri: String::new(),
+        lane: LaneAddressed {
+            node_uri: String::new(),
+            lane_uri: String::new(),
+            body,
+        },
         rate: 0.0,
         prio: 0.0,
-        body,
-    }, |mut acc, (index, item)| {
+    }, |mut link_addressed, (index, item)| {
         match item {
             Item::Slot(slot_key, slot_value) => {
                 if let Value::Text(slot_key_val) = slot_key {
                     match slot_key_val.as_str() {
                         "prio" => {
                             if let Value::Float64Value(slot_val) = slot_value {
-                                acc.prio = *slot_val;
-                                Ok(acc)
+                                link_addressed.prio = *slot_val;
+                                Ok(link_addressed)
                             } else {
                                 Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
                             }
                         }
                         "rate" => {
                             if let Value::Float64Value(slot_val) = slot_value {
-                                acc.rate = *slot_val;
-                                Ok(acc)
+                                link_addressed.rate = *slot_val;
+                                Ok(link_addressed)
                             } else {
                                 Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
                             }
                         }
                         _ => {
                             if let Value::Text(slot_val) = slot_value {
-                                if slot_key_val == "node" {
-                                    acc.node_uri = slot_val.deref().to_string();
-                                    Ok(acc)
-                                } else if slot_key_val == "lane" {
-                                    acc.lane_uri = slot_val.deref().to_string();
-                                    Ok(acc)
+                                if let Err(e) = parse_lane_addressed_value(slot_key_val, slot_val, &mut link_addressed.lane) {
+                                    Err(e)
                                 } else {
-                                    Err(EnvelopeParseErr::UnexpectedKey(slot_key_val.to_owned()))
+                                    Ok(link_addressed)
                                 }
                             } else {
                                 Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
@@ -104,14 +108,10 @@ fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, 
             }
             // Lane/Node URI without a key
             Item::ValueItem(slot_value) => {
-                if index == 0 {
-                    acc.node_uri = slot_value.deref().to_string();
-                    Ok(acc)
-                } else if index == 1 {
-                    acc.lane_uri = slot_value.deref().to_string();
-                    Ok(acc)
+                if let Err(e) = parse_lane_addressed_index(index, slot_value, &mut link_addressed.lane) {
+                    Err(e)
                 } else {
-                    Err(EnvelopeParseErr::Malformatted)
+                    Ok(link_addressed)
                 }
             }
         }
@@ -120,9 +120,67 @@ fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, 
     Ok(result.unwrap())
 }
 
-fn dispatch_linked_addressed<F>(envelope_type: Attr, rec: Value, func: F)
-                                -> Result<Envelope, EnvelopeParseErr>
-    where F: Fn(LinkAddressed) -> Envelope {
+fn parse_lane_addressed(items: Vec<Item>, body: Value) -> Result<LaneAddressed, EnvelopeParseErr> {
+    let result = items.iter().enumerate().try_fold(LaneAddressed {
+        node_uri: String::new(),
+        lane_uri: String::new(),
+        body,
+    }, |mut lane_addressed, (index, item)| {
+        match item {
+            Item::Slot(slot_key, slot_value) => {
+                if let Value::Text(slot_key_val) = slot_key {
+                    if let Value::Text(slot_val) = slot_value {
+                        if let Err(e) = parse_lane_addressed_value(slot_key_val, slot_val, &mut lane_addressed) {
+                            Err(e)
+                        } else {
+                            Ok(lane_addressed)
+                        }
+                    } else {
+                        Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
+                    }
+                } else {
+                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
+                }
+            }
+            Item::ValueItem(slot_value) => {
+                if let Err(e) = parse_lane_addressed_index(index, slot_value, &mut lane_addressed) {
+                    Err(e)
+                } else {
+                    Ok(lane_addressed)
+                }
+            }
+        }
+    });
+
+    result
+}
+
+fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a mut LaneAddressed) -> Result<&'a LaneAddressed, EnvelopeParseErr> {
+    if key == "node" {
+        lane_addressed.node_uri = val.deref().to_string();
+        Ok(lane_addressed)
+    } else if key == "lane" {
+        lane_addressed.lane_uri = val.deref().to_string();
+        Ok(lane_addressed)
+    } else {
+        Err(EnvelopeParseErr::UnexpectedKey(key.to_owned()))
+    }
+}
+
+fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &'a mut LaneAddressed) -> Result<&'a LaneAddressed, EnvelopeParseErr> {
+    if index == 0 {
+        lane_addressed.node_uri = value.deref().to_string();
+        Ok(lane_addressed)
+    } else if index == 1 {
+        lane_addressed.lane_uri = value.deref().to_string();
+        Ok(lane_addressed)
+    } else {
+        Err(EnvelopeParseErr::Malformatted)
+    }
+}
+
+fn dispatch_linked_addressed<F: Fn(LinkAddressed) -> Envelope>(envelope_type: Attr, rec: Value, func: F)
+                                                               -> Result<Envelope, EnvelopeParseErr> {
     match envelope_type.value {
         Value::Record(_, headers) => {
             return match parse_link_addressed(headers, rec) {
@@ -130,10 +188,32 @@ fn dispatch_linked_addressed<F>(envelope_type: Attr, rec: Value, func: F)
                 Err(e) => Err(e)
             };
         }
-        u @ _ => {
-            Err(EnvelopeParseErr::UnexpectedType(u))
+        v @ _ => {
+            Err(EnvelopeParseErr::UnexpectedType(v))
         }
     }
+}
+
+fn dispatch_lane_addressed<F: Fn(LaneAddressed) -> Envelope>(envelope_type: Attr, rec: Value, func: F)
+                                                             -> Result<Envelope, EnvelopeParseErr> {
+    match envelope_type.value {
+        Value::Record(_, headers) => {
+            return match parse_lane_addressed(headers, rec) {
+                Ok(la) => Ok(func(la)),
+                Err(e) => Err(e)
+            };
+        }
+        v @ _ => {
+            Err(EnvelopeParseErr::UnexpectedType(v))
+        }
+    }
+}
+
+fn dispatch_host_addressed<F: Fn(HostAddressed) -> Envelope>(_envelope_type: Attr, rec: Value, func: F)
+                                                             -> Result<Envelope, EnvelopeParseErr> {
+    Ok(func(HostAddressed {
+        body: rec
+    }))
 }
 
 // Cast equivalent
@@ -143,8 +223,8 @@ impl TryFrom<Value> for Envelope {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         let (mut vec, body) = match value {
             Value::Record(a, i) => (a, i),
-            t @ _ => {
-                return Err(EnvelopeParseErr::UnexpectedType(t));
+            v @ _ => {
+                return Err(EnvelopeParseErr::UnexpectedType(v));
             }
         };
 
@@ -171,8 +251,16 @@ impl TryFrom<Value> for Envelope {
         };
 
         return match envelope_type.name.as_str() {
-            "event" => Ok(Envelope::EventMessage),
-            "command" => Ok(Envelope::CommandMessage),
+            "event" => {
+                dispatch_lane_addressed(envelope_type, rec, |la| {
+                    Envelope::EventMessage(la)
+                })
+            }
+            "command" => {
+                dispatch_lane_addressed(envelope_type, rec, |la| {
+                    Envelope::CommandMessage(la)
+                })
+            }
             "link" => {
                 dispatch_linked_addressed(envelope_type, rec, |la| {
                     Envelope::LinkRequest(la)
@@ -188,13 +276,41 @@ impl TryFrom<Value> for Envelope {
                     Envelope::SyncRequest(la)
                 })
             }
-            "synced" => Ok(Envelope::SyncedResponse),
-            "unlink" => Ok(Envelope::UnlinkRequest),
-            "unlinked" => Ok(Envelope::UnlinkedResponse),
-            "auth" => Ok(Envelope::AuthRequest),
-            "authed" => Ok(Envelope::AuthedResponse),
-            "deauth" => Ok(Envelope::DeauthRequest),
-            "deauthed" => Ok(Envelope::DeauthedResponse),
+            "synced" => {
+                dispatch_lane_addressed(envelope_type, rec, |la| {
+                    Envelope::SyncedResponse(la)
+                })
+            }
+            "unlink" => {
+                dispatch_lane_addressed(envelope_type, rec, |la| {
+                    Envelope::UnlinkRequest(la)
+                })
+            }
+            "unlinked" => {
+                dispatch_lane_addressed(envelope_type, rec, |la| {
+                    Envelope::UnlinkedResponse(la)
+                })
+            }
+            "auth" => {
+                dispatch_host_addressed(envelope_type, rec, |la| {
+                    Envelope::AuthRequest(la)
+                })
+            }
+            "authed" => {
+                dispatch_host_addressed(envelope_type, rec, |la| {
+                    Envelope::AuthedResponse(la)
+                })
+            }
+            "deauth" => {
+                dispatch_host_addressed(envelope_type, rec, |la| {
+                    Envelope::DeauthRequest(la)
+                })
+            }
+            "deauthed" => {
+                dispatch_host_addressed(envelope_type, rec, |la| {
+                    Envelope::DeauthedResponse(la)
+                })
+            }
             s @ _ => {
                 Err(EnvelopeParseErr::UnknownTag(String::from(s)))
             }
