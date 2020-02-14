@@ -61,7 +61,7 @@ pub enum EnvelopeParseErr {
 }
 
 fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, EnvelopeParseErr> {
-    let result = items.iter().enumerate().try_fold(LinkAddressed {
+    items.iter().enumerate().try_fold(LinkAddressed {
         lane: LaneAddressed {
             node_uri: String::new(),
             lane_uri: String::new(),
@@ -115,13 +115,11 @@ fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, 
                 }
             }
         }
-    });
-
-    Ok(result.unwrap())
+    })
 }
 
 fn parse_lane_addressed(items: Vec<Item>, body: Value) -> Result<LaneAddressed, EnvelopeParseErr> {
-    let result = items.iter().enumerate().try_fold(LaneAddressed {
+    items.iter().enumerate().try_fold(LaneAddressed {
         node_uri: String::new(),
         lane_uri: String::new(),
         body,
@@ -150,9 +148,7 @@ fn parse_lane_addressed(items: Vec<Item>, body: Value) -> Result<LaneAddressed, 
                 }
             }
         }
-    });
-
-    result
+    })
 }
 
 fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a mut LaneAddressed) -> Result<&'a LaneAddressed, EnvelopeParseErr> {
@@ -209,13 +205,6 @@ fn dispatch_lane_addressed<F: Fn(LaneAddressed) -> Envelope>(envelope_type: Attr
     }
 }
 
-fn dispatch_host_addressed<F: Fn(HostAddressed) -> Envelope>(_envelope_type: Attr, rec: Value, func: F)
-                                                             -> Result<Envelope, EnvelopeParseErr> {
-    Ok(func(HostAddressed {
-        body: rec
-    }))
-}
-
 // Cast equivalent
 impl TryFrom<Value> for Envelope {
     type Error = EnvelopeParseErr;
@@ -242,7 +231,7 @@ impl TryFrom<Value> for Envelope {
             }
         };
 
-        let rec = {
+        let body = {
             if attributes.len() == 0 && body.len() == 0 {
                 Value::Extant
             } else {
@@ -252,64 +241,56 @@ impl TryFrom<Value> for Envelope {
 
         return match envelope_type.name.as_str() {
             "event" => {
-                dispatch_lane_addressed(envelope_type, rec, |la| {
+                dispatch_lane_addressed(envelope_type, body, |la| {
                     Envelope::EventMessage(la)
                 })
             }
             "command" => {
-                dispatch_lane_addressed(envelope_type, rec, |la| {
+                dispatch_lane_addressed(envelope_type, body, |la| {
                     Envelope::CommandMessage(la)
                 })
             }
             "link" => {
-                dispatch_linked_addressed(envelope_type, rec, |la| {
+                dispatch_linked_addressed(envelope_type, body, |la| {
                     Envelope::LinkRequest(la)
                 })
             }
             "linked" => {
-                dispatch_linked_addressed(envelope_type, rec, |la| {
+                dispatch_linked_addressed(envelope_type, body, |la| {
                     Envelope::LinkedResponse(la)
                 })
             }
             "sync" => {
-                dispatch_linked_addressed(envelope_type, rec, |la| {
+                dispatch_linked_addressed(envelope_type, body, |la| {
                     Envelope::SyncRequest(la)
                 })
             }
             "synced" => {
-                dispatch_lane_addressed(envelope_type, rec, |la| {
+                dispatch_lane_addressed(envelope_type, body, |la| {
                     Envelope::SyncedResponse(la)
                 })
             }
             "unlink" => {
-                dispatch_lane_addressed(envelope_type, rec, |la| {
+                dispatch_lane_addressed(envelope_type, body, |la| {
                     Envelope::UnlinkRequest(la)
                 })
             }
             "unlinked" => {
-                dispatch_lane_addressed(envelope_type, rec, |la| {
+                dispatch_lane_addressed(envelope_type, body, |la| {
                     Envelope::UnlinkedResponse(la)
                 })
             }
             "auth" => {
-                dispatch_host_addressed(envelope_type, rec, |la| {
-                    Envelope::AuthRequest(la)
-                })
+                Ok(Envelope::AuthRequest(HostAddressed { body }))
             }
             "authed" => {
-                dispatch_host_addressed(envelope_type, rec, |la| {
-                    Envelope::AuthedResponse(la)
-                })
+                Ok(Envelope::AuthedResponse(HostAddressed { body }))
             }
             "deauth" => {
-                dispatch_host_addressed(envelope_type, rec, |la| {
-                    Envelope::DeauthRequest(la)
-                })
+                Ok(Envelope::DeauthRequest(HostAddressed { body }))
             }
             "deauthed" => {
-                dispatch_host_addressed(envelope_type, rec, |la| {
-                    Envelope::DeauthedResponse(la)
-                })
+                Ok(Envelope::DeauthedResponse(HostAddressed { body }))
             }
             s @ _ => {
                 Err(EnvelopeParseErr::UnknownTag(String::from(s)))
