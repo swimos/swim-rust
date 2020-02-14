@@ -15,6 +15,7 @@
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
+use super::*;
 
 use futures::executor::block_on;
 use futures::future::FusedFuture;
@@ -22,28 +23,10 @@ use futures::{future, stream, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 
 use crate::model::Value;
 use crate::sink::item::ItemSink;
 use crate::sink::{MpscSink, SinkSendError};
-
-struct ValueDownlinkTask<E> {
-    join_handle: JoinHandle<Result<(), E>>,
-    stop_trigger: oneshot::Sender<()>,
-}
-
-impl<E> ValueDownlinkTask<E> {
-    async fn stop(self) -> Result<(), E> {
-        match self.stop_trigger.send(()) {
-            Ok(_) => match self.join_handle.await {
-                Ok(r) => r,
-                Err(_) => Ok(()), //TODO Ignoring the case where the downlink task panicked. Can maybe do better?
-            },
-            Err(_) => Ok(()),
-        }
-    }
-}
 
 /// An open value downlink. This maintains an internal state consisting of a [`Value`] which can be
 /// altered by local set operations or updates from a remote lane. Whenever a local set is applied,
@@ -53,7 +36,7 @@ impl<E> ValueDownlinkTask<E> {
 pub struct ValueDownlink<Err: Debug, S, R> {
     pub set_sink: S,
     pub event_stream: R,
-    task: Option<ValueDownlinkTask<Err>>,
+    task: Option<DownlinkTask<Err>>,
 }
 
 impl<Err: Debug, S, R> ValueDownlink<Err, S, R>
@@ -64,7 +47,7 @@ where
     fn new(
         set_sink: S,
         event_stream: R,
-        task: Option<ValueDownlinkTask<Err>>,
+        task: Option<DownlinkTask<Err>>,
     ) -> ValueDownlink<Err, S, R> {
         ValueDownlink {
             set_sink,
@@ -122,7 +105,7 @@ where
 
     let join_handle = tokio::task::spawn(lane_task);
 
-    let dl_task = ValueDownlinkTask {
+    let dl_task = DownlinkTask {
         join_handle,
         stop_trigger: stop_tx,
     };
@@ -147,40 +130,40 @@ enum OutputTrigger {
 
 impl ValueLaneOperation {
     fn into_update(self,
-                   state: &mut LaneState,
+                   state: &mut DownlinkState,
                    value_state: &mut Arc<Value>) -> Option<OutputTrigger> {
         match self {
             ValueLaneOperation::Start => {
                 Some(OutputTrigger::SyncRequired)
             }
             ValueLaneOperation::Message(LaneMessage::Linked) => {
-                *state = LaneState::Linked;
+                *state = DownlinkState::Linked;
                 None
             }
             ValueLaneOperation::Message(LaneMessage::Synced) => {
                 match *state {
-                    LaneState::Synced => None,
+                    DownlinkState::Synced => None,
                     _ => {
-                        *state = LaneState::Synced;
+                        *state = DownlinkState::Synced;
                         Some(OutputTrigger::FromUpdate(value_state.clone()))
                     }
                 }
             }
             ValueLaneOperation::Message(LaneMessage::ValueUpdated(new_value)) => {
                 match *state {
-                    LaneState::Unlinked => None,
-                    LaneState::Linked => {
+                    DownlinkState::Unlinked => None,
+                    DownlinkState::Linked => {
                         *value_state = Arc::new(new_value);
                         None
                     },
-                    LaneState::Synced => {
+                    DownlinkState::Synced => {
                         *value_state = Arc::new(new_value);
                         Some(OutputTrigger::FromUpdate(value_state.clone()))
                     },
                 }
             }
             ValueLaneOperation::Message(LaneMessage::Unlinked) => {
-                *state = LaneState::Unlinked;
+                *state = DownlinkState::Unlinked;
                 None
             }
             ValueLaneOperation::Set(new_value) => {
@@ -190,13 +173,6 @@ impl ValueLaneOperation {
             _ => None,
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum LaneState {
-    Unlinked,
-    Linked,
-    Synced,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -253,7 +229,7 @@ where
     Cmd: Sink<LaneCommand, Error = E>,
     Event: Sink<LaneEvent, Error = E>,
 {
-    let mut state = LaneState::Unlinked;
+    let mut state = DownlinkState::Unlinked;
     let mut state_value = Arc::new(init);
 
     let updates = StreamExt::take_while(operations, |op| {
@@ -291,7 +267,7 @@ where
 
 /// The state of a value lane and the receives of events that can be generted by it.
 struct ValueLaneModel<Cmd, Ev> {
-    state: LaneState,
+    state: DownlinkState,
     value_state: Arc<Value>,
     command_out: Cmd,
     event_out: Ev,
@@ -300,7 +276,7 @@ struct ValueLaneModel<Cmd, Ev> {
 impl<Cmd, Ev> ValueLaneModel<Cmd, Ev> {
     fn new(init: Value, command_out: Cmd, event_out: Ev) -> ValueLaneModel<Cmd, Ev> {
         ValueLaneModel {
-            state: LaneState::Unlinked,
+            state: DownlinkState::Unlinked,
             value_state: Arc::new(init),
             command_out,
             event_out,
@@ -327,33 +303,33 @@ where
                 Some(command_out.send_item(LaneCommand::Sync).await)
             }
             ValueLaneOperation::Message(LaneMessage::Linked) => {
-                *state = LaneState::Linked;
+                *state = DownlinkState::Linked;
                 Some(Ok(()))
             },
             ValueLaneOperation::Message(LaneMessage::Synced) => {
                 match *state {
-                    LaneState::Synced => Some(Ok(())),
+                    DownlinkState::Synced => Some(Ok(())),
                     _ => {
-                        *state = LaneState::Synced;
+                        *state = DownlinkState::Synced;
                         Some(event_out.send_item(LaneEvent(value_state.clone(), true)).await)
                     }
                 }
             },
             ValueLaneOperation::Message(LaneMessage::ValueUpdated(v)) => {
                 match *state {
-                    LaneState::Unlinked => Some(Ok(())),
-                    LaneState::Linked => {
+                    DownlinkState::Unlinked => Some(Ok(())),
+                    DownlinkState::Linked => {
                         *value_state = Arc::new(v);
                         Some(Ok(()))
                     },
-                    LaneState::Synced => {
+                    DownlinkState::Synced => {
                         *value_state = Arc::new(v);
                         Some(event_out.send_item(LaneEvent(value_state.clone(), false)).await)
                     },
                 }
             },
             ValueLaneOperation::Message(LaneMessage::Unlinked) => {
-                *state = LaneState::Unlinked;
+                *state = DownlinkState::Unlinked;
                 None
             },
             ValueLaneOperation::Set(v) => {
@@ -364,7 +340,7 @@ where
                 }
             },
             ValueLaneOperation::Close => {
-                *state = LaneState::Unlinked;
+                *state = DownlinkState::Unlinked;
                 let send_unlink : Result<(), E> = command_out.send_item(LaneCommand::Unlink).await;
                 match send_unlink  {
                     e@Err(_) => Some(e),

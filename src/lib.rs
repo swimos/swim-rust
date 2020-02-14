@@ -19,9 +19,10 @@ extern crate tokio_util;
 //extern crate tokio_tungstenite;
 extern crate bytes;
 extern crate pin_utils;
+extern crate im;
 
 pub mod eff_cell;
 pub mod iteratee;
-pub mod lane;
+pub mod downlink;
 pub mod model;
 pub mod sink;

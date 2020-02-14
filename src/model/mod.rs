@@ -20,6 +20,7 @@ use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::iter;
 use tokio_util::codec::Encoder;
+use std::hash::{Hash, Hasher};
 
 pub mod parser;
 
@@ -28,7 +29,7 @@ mod tests;
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub enum Value {
     /// A defined but empty value.
     Extant,
@@ -113,6 +114,104 @@ impl Value {
     }
 }
 
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Value::Extant => {
+                match other {
+                    Value::Extant => true,
+                    _ => false,
+                }
+            },
+            Value::Int32Value(n) => {
+                match other {
+                    Value::Int32Value(m) => n == m,
+                    _ => false
+                }
+            },
+            Value::Int64Value(n) => {
+                match other {
+                    Value::Int64Value(m) => n == m,
+                    _ => false
+                }
+            },
+            Value::Float64Value(x) => {
+                match other {
+                    Value::Float64Value(y) => {
+                        if x.is_nan() {
+                            y.is_nan()
+                        } else {
+                            x == y
+                        }
+                    },
+                    _ => false
+                }
+            },
+            Value::BooleanValue(p) => {
+                match other {
+                    Value::BooleanValue(q) => p == q,
+                    _ => false
+                }
+            },
+            Value::Text(s) => {
+                match other {
+                    Value::Text(t) => s == t,
+                    _ => false
+                }
+            },
+            Value::Record(attrs1, items1) => {
+                match other {
+                    Value::Record(attrs2, items2) => {
+                        attrs1 == attrs2 && items1 == items2
+                    },
+                    _ => false
+                }
+            },
+        }
+    }
+}
+
+impl Eq for Value {}
+
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Value::Extant => {
+                state.write_u8(0);
+            },
+            Value::Int32Value(n) => {
+                state.write_u8(1);
+                state.write_i32(*n);
+            },
+            Value::Int64Value(n) => {
+                state.write_u8(2);
+                state.write_i64(*n);
+            },
+            Value::Float64Value(x) => {
+                state.write_u8(3);
+                if x.is_nan() {
+                    state.write_u64(0);
+                } else {
+                    state.write_u64(x.to_bits());
+                }
+            },
+            Value::BooleanValue(p) => {
+                state.write_u8(4);
+                state.write_u8(if *p { 1 } else { 0 })
+            },
+            Value::Text(s) => {
+                state.write_u8(5);
+                s.hash(state);
+            },
+            Value::Record(attrs, items) => {
+                state.write_u8(6);
+                attrs.hash(state);
+                items.hash(state);
+            },
+        }
+    }
+}
+
 impl From<i32> for Value {
     fn from(n: i32) -> Self {
         Value::Int32Value(n)
@@ -151,7 +250,7 @@ impl From<&str> for Value {
 
 /// An attribute that can be applied to a record ['Value']. A key value pair where the key is
 /// a ['String'] and the value can be any ['Value'].
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Attr {
     pub name: String,
     pub value: Value,
@@ -212,7 +311,7 @@ impl<V: Into<Value>> From<(String, V)> for Attr {
 }
 
 /// An item that may occur in the body of record ['Value'].
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Item {
     /// An item consisting of a single ['Value'].
     ValueItem(Value),
