@@ -220,10 +220,6 @@ impl TryFrom<Value> for Envelope {
             }
         };
 
-        if vec.len() > 2 {
-            return Err(EnvelopeParseErr::Malformatted);
-        }
-
         let body = {
             if vec.len() > 1 {
                 Value::Record(vec.drain(1..).collect(), body)

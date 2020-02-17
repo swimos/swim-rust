@@ -32,7 +32,6 @@ fn run_test(record: Value, expected: Envelope) {
     }
 }
 
-
 fn link_addressed_no_body() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_no_body(),
@@ -200,7 +199,8 @@ fn parse_auth() {
     run_test(record,
              Envelope::AuthRequest(HostAddressed {
                  body: Value::Extant
-             }));
+             }),
+    );
 }
 
 // @auth@test
@@ -219,7 +219,8 @@ fn parse_auth_with_body() {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
                      Vec::new()),
-             }));
+             }),
+    );
 }
 
 // @authed
@@ -235,7 +236,8 @@ fn parse_authed() {
     run_test(record,
              Envelope::AuthedResponse(HostAddressed {
                  body: Value::Extant
-             }));
+             }),
+    );
 }
 
 // @authed@test
@@ -254,7 +256,8 @@ fn parse_authed_with_body() {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
                      Vec::new()),
-             }));
+             }),
+    );
 }
 
 // @command(node: node_uri, lane: lane_uri)
@@ -291,7 +294,8 @@ fn parse_deauthed() {
     run_test(record,
              Envelope::DeauthedResponse(HostAddressed {
                  body: Value::Extant
-             }));
+             }),
+    );
 }
 
 // @deauthed@test
@@ -310,7 +314,8 @@ fn parse_deauthed_with_body() {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
                      Vec::new()),
-             }));
+             }),
+    );
 }
 
 // @deauth
@@ -326,7 +331,8 @@ fn parse_deauth() {
     run_test(record,
              Envelope::DeauthRequest(HostAddressed {
                  body: Value::Extant
-             }));
+             }),
+    );
 }
 
 // @deauth@test
@@ -345,7 +351,8 @@ fn parse_deauth_with_body() {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
                      Vec::new()),
-             }));
+             }),
+    );
 }
 
 // @event(node: node_uri, lane: lane_uri)
@@ -445,7 +452,7 @@ fn run_test_expect_err(record: Value, expected: EnvelopeParseErr) {
     let e = Envelope::try_from(record);
 
     match e {
-        Ok(_) => panic!("Parsed correctly when it shouldn't have"),
+        Ok(r) => panic!("Expected enveloped to not parse: {:?}", r),
         Err(e) => {
             assert_eq!(e, expected);
         }
@@ -523,4 +530,29 @@ fn mixed_headers() {
     ]);
 
     run_test(record, Envelope::SyncRequest(link_addressed_no_body()));
+}
+
+#[test]
+fn parse_body_multiple_attributes() {
+    let record = Value::Record(
+        vec![
+            Attr::of(("auth", Value::Extant)),
+            Attr::of(("first", Value::Extant)),
+            Attr::of(("second", Value::Extant)),
+            Attr::of(("third", Value::Extant)),
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
+             Envelope::AuthRequest(HostAddressed {
+                 body: Value::Record(
+                     vec![
+                         Attr { name: String::from("first"), value: Value::Extant },
+                         Attr { name: String::from("second"), value: Value::Extant },
+                         Attr { name: String::from("third"), value: Value::Extant },
+                     ],
+                     Vec::new()),
+             }),
+    );
 }
