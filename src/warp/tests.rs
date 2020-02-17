@@ -17,13 +17,11 @@ use std::convert::TryFrom;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use crate::model::{Attr, Value};
-use crate::model::parser::parse_single;
+use crate::model::{Attr, Item, Value};
 use crate::warp::model::{Envelope, HostAddressed, LaneAddressed, LinkAddressed};
 
-fn run_test(recon: &str, expected: Envelope) {
-    let value = parse_single(recon).unwrap();
-    let e = Envelope::try_from(value);
+fn run_test(record: Value, expected: Envelope) {
+    let e = Envelope::try_from(record);
 
     match e {
         Ok(env) => assert_that!(expected, eq(env)),
@@ -33,6 +31,7 @@ fn run_test(recon: &str, expected: Envelope) {
         }
     }
 }
+
 
 fn link_addressed_no_body() -> LinkAddressed {
     LinkAddressed {
@@ -68,72 +67,154 @@ fn lane_addressed_test_record() -> LaneAddressed {
     }
 }
 
+fn link_named_headers() -> Vec<Item> {
+    vec![
+        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+        Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
+        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+    ]
+}
 
+fn lane_named_headers() -> Vec<Item> {
+    vec![
+        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+        Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
+    ]
+}
+
+fn lane_positional_headers() -> Vec<Item> {
+    vec![
+        Item::ValueItem(Value::Text(String::from("node_uri"))),
+        Item::ValueItem(Value::Text(String::from("lane_uri"))),
+    ]
+}
+
+fn link_positional_headers() -> Vec<Item> {
+    vec![
+        Item::ValueItem(Value::Text(String::from("node_uri"))),
+        Item::ValueItem(Value::Text(String::from("lane_uri"))),
+        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+    ]
+}
+
+fn create_record(tag: &str, items: Vec<Item>) -> Value {
+    Value::Record(
+        vec![
+            Attr::of((tag, Value::Record(
+                Vec::new(),
+                items,
+            ))),
+        ],
+        Vec::new(),
+    )
+}
+
+fn create_record_with_test(tag: &str, items: Vec<Item>) -> Value {
+    Value::Record(
+        vec![
+            Attr::of((tag, Value::Record(
+                Vec::new(),
+                items,
+            ))),
+            Attr::of(("test", Value::Extant))
+        ],
+        Vec::new(),
+    )
+}
+
+// "@sync(node: node_uri, lane: lane_uri, prio: 0.5, rate: 1.0)"
 #[test]
 fn parse_sync_with_named_headers() {
-    run_test("@sync(node: node_uri, lane: lane_uri, prio: 0.5, rate: 1.0)",
-             Envelope::SyncRequest(link_addressed_no_body()));
+    let record = create_record("sync", link_named_headers());
+    run_test(record, Envelope::SyncRequest(link_addressed_no_body()));
 }
 
+// @sync(node_uri, lane_uri, prio: 0.5, rate: 1.0)
 #[test]
 fn parse_sync_with_positional_headers() {
-    run_test("@sync(node_uri, lane_uri, prio: 0.5, rate: 1.0)",
-             Envelope::SyncRequest(link_addressed_no_body()));
+    let record = create_record("sync", link_positional_headers());
+    run_test(record, Envelope::SyncRequest(link_addressed_no_body()));
 }
 
+// @sync(node_uri, lane_uri, prio: 0.5, rate: 1.0)@test
 #[test]
 fn parse_sync_with_body() {
-    run_test("@sync(node_uri, lane_uri, prio: 0.5, rate: 1.0)@test",
-             Envelope::SyncRequest(link_addressed_test_record()));
+    let record = create_record_with_test("sync", link_positional_headers());
+    run_test(record, Envelope::SyncRequest(link_addressed_test_record()));
 }
 
+// @link(node: node_uri, lane: lane_uri, prio: 0.5, rate: 1.0)
 #[test]
 fn parse_link_with_named_headers() {
-    run_test("@link(node: node_uri, lane: lane_uri, prio: 0.5, rate: 1.0)",
-             Envelope::LinkRequest(link_addressed_no_body()));
+    let record = create_record("link", link_named_headers());
+    run_test(record, Envelope::LinkRequest(link_addressed_no_body()));
 }
 
+// @link(node_uri, lane_uri, prio: 0.5, rate: 1.0)
 #[test]
 fn parse_link_with_positional_headers() {
-    run_test("@link(node_uri, lane_uri, prio: 0.5, rate: 1.0)",
-             Envelope::LinkRequest(link_addressed_no_body()));
+    let record = create_record("link", link_positional_headers());
+    run_test(record, Envelope::LinkRequest(link_addressed_no_body()));
 }
 
+// @link(node_uri, lane_uri, prio: 0.5, rate: 1.0)@test
 #[test]
 fn parse_link_with_body() {
-    run_test("@link(node_uri, lane_uri, prio: 0.5, rate: 1.0)@test",
-             Envelope::LinkRequest(link_addressed_test_record()));
+    let record = create_record_with_test("link", link_named_headers());
+    run_test(record, Envelope::LinkRequest(link_addressed_test_record()));
 }
 
+// @linked(node: node_uri, lane: lane_uri, prio: 0.5, rate: 1.0)
 #[test]
 fn parse_linked_with_named_headers() {
-    run_test("@linked(node: node_uri, lane: lane_uri, prio: 0.5, rate: 1.0)",
-             Envelope::LinkedResponse(link_addressed_no_body()));
+    let record = create_record("linked", link_named_headers());
+    run_test(record, Envelope::LinkedResponse(link_addressed_no_body()));
 }
 
+// @linked(node_uri, lane_uri, prio: 0.5, rate: 1.0)
 #[test]
 fn parse_linked_with_positional_headers() {
-    run_test("@linked(node_uri, lane_uri, prio: 0.5, rate: 1.0)",
-             Envelope::LinkedResponse(link_addressed_no_body()));
+    let record = create_record("linked", link_positional_headers());
+    run_test(record, Envelope::LinkedResponse(link_addressed_no_body()));
 }
 
+// @linked(node_uri, lane_uri, prio: 0.5, rate: 1.0)@test
 #[test]
 fn parse_linked_with_body() {
-    run_test("@linked(node_uri, lane_uri, prio: 0.5, rate: 1.0)@test",
-             Envelope::LinkedResponse(link_addressed_test_record()));
+    let record = create_record_with_test("linked", link_positional_headers());
+    run_test(record, Envelope::LinkedResponse(link_addressed_test_record()));
 }
 
+// @auth
 #[test]
 fn parse_auth() {
-    run_test("@auth",
+    let record = Value::Record(
+        vec![
+            Attr::of(("auth", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::AuthRequest(HostAddressed {
                  body: Value::Extant
              }));
 }
 
+// @auth@test
 #[test]
 fn parse_auth_with_body() {
-    run_test("@auth@test",
+    let record = Value::Record(
+        vec![
+            Attr::of(("auth", Value::Extant)),
+            Attr::of(("test", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::AuthRequest(HostAddressed {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
@@ -141,17 +222,34 @@ fn parse_auth_with_body() {
              }));
 }
 
+// @authed
 #[test]
 fn parse_authed() {
-    run_test("@authed",
+    let record = Value::Record(
+        vec![
+            Attr::of(("authed", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::AuthedResponse(HostAddressed {
                  body: Value::Extant
              }));
 }
 
+// @authed@test
 #[test]
 fn parse_authed_with_body() {
-    run_test("@authed@test",
+    let record = Value::Record(
+        vec![
+            Attr::of(("authed", Value::Extant)),
+            Attr::of(("test", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::AuthedResponse(HostAddressed {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
@@ -159,35 +257,55 @@ fn parse_authed_with_body() {
              }));
 }
 
+// @command(node: node_uri, lane: lane_uri)
 #[test]
 fn parse_command_with_named_headers() {
-    run_test("@command(node: node_uri, lane: lane_uri)",
-             Envelope::CommandMessage(lane_addressed_no_body()));
+    let record = create_record("command", lane_named_headers());
+    run_test(record, Envelope::CommandMessage(lane_addressed_no_body()));
 }
 
+// @command(node_uri, lane_uri)
 #[test]
 fn parse_command_with_positional_headers() {
-    run_test("@command(node_uri, lane_uri)",
-             Envelope::CommandMessage(lane_addressed_no_body()));
+    let record = create_record("command", lane_positional_headers());
+    run_test(record, Envelope::CommandMessage(lane_addressed_no_body()));
 }
 
+// @command(node_uri, lane_uri)@test
 #[test]
 fn parse_command_with_body() {
-    run_test("@command(node_uri, lane_uri)@test",
-             Envelope::CommandMessage(lane_addressed_test_record()));
+    let record = create_record_with_test("command", lane_positional_headers());
+    run_test(record, Envelope::CommandMessage(lane_addressed_test_record()));
 }
 
+// @deauthed
 #[test]
 fn parse_deauthed() {
-    run_test("@deauthed",
+    let record = Value::Record(
+        vec![
+            Attr::of(("deauthed", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::DeauthedResponse(HostAddressed {
                  body: Value::Extant
              }));
 }
 
+// @deauthed@test
 #[test]
 fn parse_deauthed_with_body() {
-    run_test("@deauthed@test",
+    let record = Value::Record(
+        vec![
+            Attr::of(("deauthed", Value::Extant)),
+            Attr::of(("test", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::DeauthedResponse(HostAddressed {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
@@ -195,17 +313,34 @@ fn parse_deauthed_with_body() {
              }));
 }
 
+// @deauth
 #[test]
 fn parse_deauth() {
-    run_test("@deauth",
+    let record = Value::Record(
+        vec![
+            Attr::of(("deauth", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::DeauthRequest(HostAddressed {
                  body: Value::Extant
              }));
 }
 
+// @deauth@test
 #[test]
 fn parse_deauth_with_body() {
-    run_test("@deauth@test",
+    let record = Value::Record(
+        vec![
+            Attr::of(("deauth", Value::Extant)),
+            Attr::of(("test", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    run_test(record,
              Envelope::DeauthRequest(HostAddressed {
                  body: Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
@@ -213,75 +348,86 @@ fn parse_deauth_with_body() {
              }));
 }
 
-
+// @event(node: node_uri, lane: lane_uri)
 #[test]
 fn parse_event_with_named_headers() {
-    run_test("@event(node: node_uri, lane: lane_uri)",
-             Envelope::EventMessage(lane_addressed_no_body()));
+    let record = create_record("event", lane_named_headers());
+    run_test(record, Envelope::EventMessage(lane_addressed_no_body()));
 }
 
+// @event(node_uri, lane_uri)
 #[test]
 fn parse_event_with_positional_headers() {
-    run_test("@event(node_uri, lane_uri)",
-             Envelope::EventMessage(lane_addressed_no_body()));
+    let record = create_record("event", lane_positional_headers());
+    run_test(record, Envelope::EventMessage(lane_addressed_no_body()));
 }
 
+// @event(node_uri, lane_uri)@test
 #[test]
 fn parse_event_with_body() {
-    run_test("@event(node_uri, lane_uri)@test",
-             Envelope::EventMessage(lane_addressed_test_record()));
+    let record = create_record_with_test("event", lane_named_headers());
+    run_test(record, Envelope::EventMessage(lane_addressed_test_record()));
 }
 
+// @synced(node: node_uri, lane: lane_uri)
 #[test]
 fn parse_synced_with_named_headers() {
-    run_test("@synced(node: node_uri, lane: lane_uri)",
-             Envelope::SyncedResponse(lane_addressed_no_body()));
+    let record = create_record("synced", lane_named_headers());
+    run_test(record, Envelope::SyncedResponse(lane_addressed_no_body()));
 }
 
+// @synced(node_uri, lane_uri)
 #[test]
 fn parse_synced_with_positional_headers() {
-    run_test("@synced(node_uri, lane_uri)",
-             Envelope::SyncedResponse(lane_addressed_no_body()));
+    let record = create_record("synced", lane_positional_headers());
+    run_test(record, Envelope::SyncedResponse(lane_addressed_no_body()));
 }
 
+// @synced(node_uri, lane_uri)@test
 #[test]
 fn parse_synced_with_body() {
-    run_test("@synced(node_uri, lane_uri)@test",
-             Envelope::SyncedResponse(lane_addressed_test_record()));
+    let record = create_record_with_test("synced", lane_named_headers());
+    run_test(record, Envelope::SyncedResponse(lane_addressed_test_record()));
 }
 
+// @unlink(node: node_uri, lane: lane_uri)
 #[test]
 fn parse_unlink_with_named_headers() {
-    run_test("@unlink(node: node_uri, lane: lane_uri)",
-             Envelope::UnlinkRequest(lane_addressed_no_body()));
+    let record = create_record("unlink", lane_named_headers());
+    run_test(record, Envelope::UnlinkRequest(lane_addressed_no_body()));
 }
 
+// @unlink(node_uri, lane_uri)
 #[test]
 fn parse_unlink_with_positional_headers() {
-    run_test("@unlink(node_uri, lane_uri)",
-             Envelope::UnlinkRequest(lane_addressed_no_body()));
+    let record = create_record("unlink", lane_positional_headers());
+    run_test(record, Envelope::UnlinkRequest(lane_addressed_no_body()));
 }
 
+// @unlink(node_uri, lane_uri)@test
 #[test]
 fn parse_unlink_with_body() {
-    run_test("@unlink(node_uri, lane_uri)@test",
-             Envelope::UnlinkRequest(lane_addressed_test_record()));
+    let record = create_record_with_test("unlink", lane_named_headers());
+    run_test(record, Envelope::UnlinkRequest(lane_addressed_test_record()));
 }
 
+// @unlinked(node: node_uri, lane: lane_uri)
 #[test]
 fn parse_unlinked_with_named_headers() {
-    run_test("@unlinked(node: node_uri, lane: lane_uri)",
-             Envelope::UnlinkedResponse(lane_addressed_no_body()));
+    let record = create_record("unlinked", lane_named_headers());
+    run_test(record, Envelope::UnlinkedResponse(lane_addressed_no_body()));
 }
 
+// @unlinked(node_uri, lane_uri)
 #[test]
 fn parse_unlinked_with_positional_headers() {
-    run_test("@unlinked(node_uri, lane_uri)",
-             Envelope::UnlinkedResponse(lane_addressed_no_body()));
+    let record = create_record("unlinked", lane_positional_headers());
+    run_test(record, Envelope::UnlinkedResponse(lane_addressed_no_body()));
 }
 
+// @unlinked(node_uri, lane_uri)@test
 #[test]
 fn parse_unlinked_with_body() {
-    run_test("@unlinked(node_uri, lane_uri)@test",
-             Envelope::UnlinkedResponse(lane_addressed_test_record()));
+    let record = create_record_with_test("unlinked", lane_named_headers());
+    run_test(record, Envelope::UnlinkedResponse(lane_addressed_test_record()));
 }
