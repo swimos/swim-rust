@@ -221,22 +221,17 @@ impl TryFrom<Value> for Envelope {
             return Err(EnvelopeParseErr::Malformatted);
         }
 
-        vec.reverse();
-        let envelope_type = vec.pop().unwrap();
-        let attributes = {
-            if let Some(v) = vec.pop() {
-                vec![v]
+        let body = {
+            if vec.len() > 1 {
+                Value::Record(vec.drain(1..).collect(), body)
             } else {
-                Vec::new()
+                Value::Extant
             }
         };
 
-        let body = {
-            if attributes.len() == 0 && body.len() == 0 {
-                Value::Extant
-            } else {
-                Value::Record(attributes, body)
-            }
+        let envelope_type = match vec.pop() {
+            Some(v) => v,
+            None => return Err(EnvelopeParseErr::Malformatted)
         };
 
         return match envelope_type.name.as_str() {
