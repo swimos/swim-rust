@@ -18,7 +18,7 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
 use crate::model::{Attr, Item, Value};
-use crate::warp::model::{Envelope, HostAddressed, LaneAddressed, LinkAddressed};
+use crate::warp::envelope::{Envelope, EnvelopeParseErr, HostAddressed, LaneAddressed, LinkAddressed};
 
 fn run_test(record: Value, expected: Envelope) {
     let e = Envelope::try_from(record);
@@ -430,4 +430,97 @@ fn parse_unlinked_with_positional_headers() {
 fn parse_unlinked_with_body() {
     let record = create_record_with_test("unlinked", lane_named_headers());
     run_test(record, Envelope::UnlinkedResponse(lane_addressed_test_record()));
+}
+
+
+#[test]
+fn unknown_tag() {
+    let tag = "unknown_tag";
+    let record = create_record_with_test(tag, lane_named_headers());
+
+    run_test_expect_err(record, EnvelopeParseErr::UnknownTag(String::from(tag)));
+}
+
+fn run_test_expect_err(record: Value, expected: EnvelopeParseErr) {
+    let e = Envelope::try_from(record);
+
+    match e {
+        Ok(_) => panic!("Parsed correctly when it shouldn't have"),
+        Err(e) => {
+            assert_eq!(e, expected);
+        }
+    }
+}
+
+#[test]
+fn unexpected_key() {
+    let record = Value::Record(
+        vec![
+            Attr::of(("unlinked", Value::Record(
+                Vec::new(),
+                vec![
+                    Item::Slot(Value::Text(String::from("not_a_node")), Value::Text(String::from("node_uri"))),
+                    Item::Slot(Value::Text(String::from("node_a_lane")), Value::Text(String::from("lane_uri"))),
+                ],
+            ))),
+        ],
+        Vec::new(),
+    );
+
+    run_test_expect_err(record, EnvelopeParseErr::UnexpectedKey(String::from("not_a_node")));
+}
+
+#[test]
+fn unexpected_type() {
+    let record = Value::Record(
+        vec![
+            Attr::of(("unlinked", Value::Record(
+                Vec::new(),
+                vec![
+                    Item::Slot(Value::Float64Value(1.0), Value::Float64Value(1.0)),
+                ],
+            ))),
+        ],
+        Vec::new(),
+    );
+
+    run_test_expect_err(record, EnvelopeParseErr::UnexpectedType(Value::Float64Value(1.0)));
+}
+
+#[test]
+fn too_many_named_headers() {
+    let record = create_record("sync", vec![
+        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+        Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
+        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+        Item::Slot(Value::Text(String::from("host")), Value::Text(String::from("swim.ai"))),
+    ]);
+
+    run_test_expect_err(record, EnvelopeParseErr::UnexpectedKey(String::from("host")));
+}
+
+#[test]
+fn too_many_positional_headers() {
+    let record = create_record("sync", vec![
+        Item::ValueItem(Value::Text(String::from("node_uri"))),
+        Item::ValueItem(Value::Text(String::from("lane_uri"))),
+        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+        Item::ValueItem(Value::Text(String::from("swim.ai"))),
+    ]);
+
+    run_test_expect_err(record, EnvelopeParseErr::Malformatted);
+}
+
+#[test]
+fn mixed_headers() {
+    let record = create_record("sync", vec![
+        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+        Item::ValueItem(Value::Text(String::from("lane_uri"))),
+        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+    ]);
+
+    run_test(record, Envelope::SyncRequest(link_addressed_no_body()));
 }
