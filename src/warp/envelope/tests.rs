@@ -592,9 +592,8 @@ fn missing_header() {
         Vec::new(),
     );
 
-    run_test_expect_err(record, EnvelopeParseErr::MissingHeader(String::from("lane_uri")));
+    run_test_expect_err(record, EnvelopeParseErr::MissingHeader(String::from("lane")));
 }
-
 
 #[test]
 fn multiple_attributes() {

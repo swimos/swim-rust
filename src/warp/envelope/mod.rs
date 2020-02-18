@@ -223,9 +223,9 @@ fn to_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> 
 
 fn validate_lane_addressed(la: &LaneAddressed) -> Result<(), EnvelopeParseErr> {
     if la.lane_uri.is_empty() {
-        Err(EnvelopeParseErr::MissingHeader(String::from("lane_uri")))
+        Err(EnvelopeParseErr::MissingHeader(String::from("lane")))
     } else if la.node_uri.is_empty() {
-        Err(EnvelopeParseErr::MissingHeader(String::from("node_uri")))
+        Err(EnvelopeParseErr::MissingHeader(String::from("node")))
     } else {
         Ok(())
     }
