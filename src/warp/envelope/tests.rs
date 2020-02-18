@@ -18,6 +18,8 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
 use crate::model::{Attr, Item, Value};
+use crate::model::Item::ValueItem;
+use crate::model::Value::Float64Value;
 use crate::warp::envelope::{Envelope, EnvelopeParseErr, HostAddressed, LaneAddressed, LinkAddressed};
 
 fn run_test(record: Value, expected: Envelope) {
@@ -26,7 +28,7 @@ fn run_test(record: Value, expected: Envelope) {
     match e {
         Ok(env) => assert_that!(expected, eq(env)),
         Err(e) => {
-            eprintln!("{:?}", e);
+            println!("{:?}", e);
             panic!(e);
         }
     }
@@ -35,34 +37,34 @@ fn run_test(record: Value, expected: Envelope) {
 fn link_addressed_no_body() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_no_body(),
-        prio: 0.5,
-        rate: 1.0,
+        prio: Some(0.5),
+        rate: Some(1.0),
     }
 }
 
 fn link_addressed_test_record() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_test_record(),
-        prio: 0.5,
-        rate: 1.0,
+        prio: Some(0.5),
+        rate: Some(1.0),
     }
 }
 
 fn lane_addressed_no_body() -> LaneAddressed {
     LaneAddressed {
-        node_uri: String::from("node_uri"),
-        lane_uri: String::from("lane_uri"),
-        body: Value::Extant,
+        node_uri: Some(String::from("node_uri")),
+        lane_uri: Some(String::from("lane_uri")),
+        body: None,
     }
 }
 
 fn lane_addressed_test_record() -> LaneAddressed {
     LaneAddressed {
-        node_uri: String::from("node_uri"),
-        lane_uri: String::from("lane_uri"),
-        body: Value::Record(
+        node_uri: Some(String::from("node_uri")),
+        lane_uri: Some(String::from("lane_uri")),
+        body: Some(Value::Record(
             vec![Attr { name: String::from("test"), value: Value::Extant }],
-            Vec::new()),
+            Vec::new())),
     }
 }
 
@@ -198,7 +200,7 @@ fn parse_auth() {
 
     run_test(record,
              Envelope::AuthRequest(HostAddressed {
-                 body: Value::Extant
+                 body: None
              }),
     );
 }
@@ -216,9 +218,9 @@ fn parse_auth_with_body() {
 
     run_test(record,
              Envelope::AuthRequest(HostAddressed {
-                 body: Value::Record(
+                 body: Some(Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()),
+                     Vec::new()))
              }),
     );
 }
@@ -235,7 +237,7 @@ fn parse_authed() {
 
     run_test(record,
              Envelope::AuthedResponse(HostAddressed {
-                 body: Value::Extant
+                 body: None
              }),
     );
 }
@@ -253,9 +255,9 @@ fn parse_authed_with_body() {
 
     run_test(record,
              Envelope::AuthedResponse(HostAddressed {
-                 body: Value::Record(
+                 body: Some(Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()),
+                     Vec::new()))
              }),
     );
 }
@@ -293,7 +295,7 @@ fn parse_deauthed() {
 
     run_test(record,
              Envelope::DeauthedResponse(HostAddressed {
-                 body: Value::Extant
+                 body: None
              }),
     );
 }
@@ -311,9 +313,9 @@ fn parse_deauthed_with_body() {
 
     run_test(record,
              Envelope::DeauthedResponse(HostAddressed {
-                 body: Value::Record(
+                 body: Some(Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()),
+                     Vec::new()))
              }),
     );
 }
@@ -330,7 +332,7 @@ fn parse_deauth() {
 
     run_test(record,
              Envelope::DeauthRequest(HostAddressed {
-                 body: Value::Extant
+                 body: None
              }),
     );
 }
@@ -348,9 +350,9 @@ fn parse_deauth_with_body() {
 
     run_test(record,
              Envelope::DeauthRequest(HostAddressed {
-                 body: Value::Record(
+                 body: Some(Value::Record(
                      vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()),
+                     Vec::new()))
              }),
     );
 }
@@ -546,13 +548,63 @@ fn parse_body_multiple_attributes() {
 
     run_test(record,
              Envelope::AuthRequest(HostAddressed {
-                 body: Value::Record(
+                 body: Some(Value::Record(
                      vec![
                          Attr { name: String::from("first"), value: Value::Extant },
                          Attr { name: String::from("second"), value: Value::Extant },
                          Attr { name: String::from("third"), value: Value::Extant },
                      ],
-                     Vec::new()),
+                     Vec::new()))
+             }),
+    );
+}
+
+#[test]
+fn duplicate_headers() {
+    let record = Value::Record(
+        vec![
+            Attr::of(("sync", Value::Record(
+                Vec::new(),
+                vec![
+                    Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+                    Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+                ],
+            ))),
+        ],
+        Vec::new()
+    );
+
+    run_test_expect_err(record, EnvelopeParseErr::DuplicateTag(String::from("node")));
+}
+
+#[test]
+fn multiple_attributes() {
+    let record = Value::Record(
+        vec![
+            Attr::of(("sync", Value::Record(
+                Vec::new(),
+                vec![
+                    Item::ValueItem(Value::Text(String::from("node_uri"))),
+                    Item::ValueItem(Value::Text(String::from("lane_uri"))),
+                    Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+                    Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+                ],
+            ))),
+        ],
+        vec![
+            ValueItem(Value::Float64Value(1.0)),
+        ],
+    );
+
+    run_test(record,
+             Envelope::SyncRequest(LinkAddressed {
+                 lane: LaneAddressed {
+                     node_uri: Some(String::from("node_uri")),
+                     lane_uri: Some(String::from("lane_uri")),
+                     body: Some(Float64Value(1.0)),
+                 },
+                 rate: Some(1.0),
+                 prio: Some(0.5),
              }),
     );
 }

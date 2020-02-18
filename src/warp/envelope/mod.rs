@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
-
 use std::convert::TryFrom;
 use std::ops::Deref;
 
 use crate::model::{Attr, Item, Value};
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, PartialEq)]
 pub enum Envelope {
@@ -38,40 +38,42 @@ pub enum Envelope {
 
 #[derive(Debug, PartialEq)]
 pub struct HostAddressed {
-    pub body: Value,
+    pub body: Option<Value>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct LaneAddressed {
-    pub node_uri: String,
-    pub lane_uri: String,
-    pub body: Value,
+    pub node_uri: Option<String>,
+    pub lane_uri: Option<String>,
+    pub body: Option<Value>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct LinkAddressed {
     pub lane: LaneAddressed,
-    pub rate: f64,
-    pub prio: f64,
+    pub rate: Option<f64>,
+    pub prio: Option<f64>,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum EnvelopeParseErr {
     UnexpectedKey(String),
     UnexpectedType(Value),
+    UnexpectedItem(Item),
     Malformatted,
+    DuplicateTag(String),
     UnknownTag(String),
 }
 
-fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, EnvelopeParseErr> {
+fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAddressed, EnvelopeParseErr> {
     items.iter().enumerate().try_fold(LinkAddressed {
         lane: LaneAddressed {
-            node_uri: String::new(),
-            lane_uri: String::new(),
+            node_uri: None,
+            lane_uri: None,
             body,
         },
-        rate: 0.0,
-        prio: 0.0,
+        rate: None,
+        prio: None,
     }, |mut link_addressed, (index, item)| {
         match item {
             Item::Slot(slot_key, slot_value) => {
@@ -79,7 +81,7 @@ fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, 
                     match slot_key_val.as_str() {
                         "prio" => {
                             if let Value::Float64Value(slot_val) = slot_value {
-                                link_addressed.prio = *slot_val;
+                                link_addressed.prio = Some(*slot_val);
                                 Ok(link_addressed)
                             } else {
                                 Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
@@ -87,7 +89,7 @@ fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, 
                         }
                         "rate" => {
                             if let Value::Float64Value(slot_val) = slot_value {
-                                link_addressed.rate = *slot_val;
+                                link_addressed.rate = Some(*slot_val);
                                 Ok(link_addressed)
                             } else {
                                 Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
@@ -121,10 +123,10 @@ fn parse_link_addressed(items: Vec<Item>, body: Value) -> Result<LinkAddressed, 
     })
 }
 
-fn parse_lane_addressed(items: Vec<Item>, body: Value) -> Result<LaneAddressed, EnvelopeParseErr> {
+fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAddressed, EnvelopeParseErr> {
     items.iter().enumerate().try_fold(LaneAddressed {
-        node_uri: String::new(),
-        lane_uri: String::new(),
+        node_uri: None,
+        lane_uri: None,
         body,
     }, |mut lane_addressed, (index, item)| {
         match item {
@@ -154,35 +156,55 @@ fn parse_lane_addressed(items: Vec<Item>, body: Value) -> Result<LaneAddressed, 
     })
 }
 
-fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a mut LaneAddressed) -> Result<&'a LaneAddressed, EnvelopeParseErr> {
+//noinspection DuplicatedCode
+fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a mut LaneAddressed)
+                                  -> Result<&'a LaneAddressed, EnvelopeParseErr> {
     if key == "node" {
-        lane_addressed.node_uri = val.deref().to_string();
-        Ok(lane_addressed)
+        if lane_addressed.node_uri.is_some() {
+            Err(EnvelopeParseErr::DuplicateTag(String::from("node")))
+        } else {
+            lane_addressed.node_uri = Some(val.deref().to_string());
+            Ok(lane_addressed)
+        }
     } else if key == "lane" {
-        lane_addressed.lane_uri = val.deref().to_string();
-        Ok(lane_addressed)
+        if lane_addressed.lane_uri.is_some() {
+            Err(EnvelopeParseErr::DuplicateTag(String::from("lane")))
+        } else {
+            lane_addressed.lane_uri = Some(val.deref().to_string());
+            Ok(lane_addressed)
+        }
     } else {
         Err(EnvelopeParseErr::UnexpectedKey(key.to_owned()))
     }
 }
 
-fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &'a mut LaneAddressed) -> Result<&'a LaneAddressed, EnvelopeParseErr> {
+//noinspection DuplicatedCode
+fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &'a mut LaneAddressed)
+                                  -> Result<&'a LaneAddressed, EnvelopeParseErr> {
     if index == 0 {
-        lane_addressed.node_uri = value.deref().to_string();
-        Ok(lane_addressed)
+        if lane_addressed.node_uri.is_some() {
+            Err(EnvelopeParseErr::DuplicateTag(String::from("node")))
+        } else {
+            lane_addressed.node_uri = Some(value.deref().to_string());
+            Ok(lane_addressed)
+        }
     } else if index == 1 {
-        lane_addressed.lane_uri = value.deref().to_string();
-        Ok(lane_addressed)
+        if lane_addressed.lane_uri.is_some() {
+            Err(EnvelopeParseErr::DuplicateTag(String::from("lane")))
+        } else {
+            lane_addressed.lane_uri = Some(value.deref().to_string());
+            Ok(lane_addressed)
+        }
     } else {
         Err(EnvelopeParseErr::Malformatted)
     }
 }
 
-fn dispatch_linked_addressed<F: Fn(LinkAddressed) -> Envelope>(envelope_type: Attr, rec: Value, func: F)
-                                                               -> Result<Envelope, EnvelopeParseErr> {
+fn dispatch_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+    where F: Fn(LinkAddressed) -> Envelope {
     match envelope_type.value {
         Value::Record(_, headers) => {
-            return match parse_link_addressed(headers, rec) {
+            return match parse_link_addressed(headers, body) {
                 Ok(la) => Ok(func(la)),
                 Err(e) => Err(e)
             };
@@ -193,11 +215,11 @@ fn dispatch_linked_addressed<F: Fn(LinkAddressed) -> Envelope>(envelope_type: At
     }
 }
 
-fn dispatch_lane_addressed<F: Fn(LaneAddressed) -> Envelope>(envelope_type: Attr, rec: Value, func: F)
-                                                             -> Result<Envelope, EnvelopeParseErr> {
+fn dispatch_lane_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+    where F: Fn(LaneAddressed) -> Envelope {
     match envelope_type.value {
         Value::Record(_, headers) => {
-            return match parse_lane_addressed(headers, rec) {
+            return match parse_lane_addressed(headers, body) {
                 Ok(la) => Ok(func(la)),
                 Err(e) => Err(e)
             };
@@ -208,12 +230,11 @@ fn dispatch_lane_addressed<F: Fn(LaneAddressed) -> Envelope>(envelope_type: Attr
     }
 }
 
-// Cast equivalent
 impl TryFrom<Value> for Envelope {
     type Error = EnvelopeParseErr;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
-        let (mut vec, body) = match value {
+        let (mut attrs, mut body) = match value {
             Value::Record(a, i) => (a, i),
             v @ _ => {
                 return Err(EnvelopeParseErr::UnexpectedType(v));
@@ -221,14 +242,20 @@ impl TryFrom<Value> for Envelope {
         };
 
         let body = {
-            if vec.len() > 1 {
-                Value::Record(vec.drain(1..).collect(), body)
+            if attrs.len() > 1 {
+                Some(Value::Record(attrs.drain(1..).collect(), body))
+            } else if body.len() == 1 {
+                let single = body.pop().unwrap();
+                match single {
+                    Item::ValueItem(inner) => Some(inner),
+                    i @ _ => return Err(EnvelopeParseErr::UnexpectedItem(i))
+                }
             } else {
-                Value::Extant
+                None
             }
         };
 
-        let envelope_type = match vec.pop() {
+        let envelope_type = match attrs.pop() {
             Some(v) => v,
             None => return Err(EnvelopeParseErr::Malformatted)
         };
