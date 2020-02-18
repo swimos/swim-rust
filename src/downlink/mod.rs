@@ -39,7 +39,6 @@ pub struct Downlink<Err: Debug, S, R> {
 }
 
 impl<Err: Debug, S, R> Downlink<Err, S, R> {
-
     //Private as downlinks should only be created by methods in this module and its children.
     fn new(set_sink: S, event_stream: R, task: Option<DownlinkTask<Err>>) -> Downlink<Err, S, R> {
         Downlink {
@@ -193,9 +192,14 @@ impl<State> Model<State> {
 
         loop {
             if let Some(op) = ops_str.next().await {
-                let responses = StateMachine::handle_operation(&mut self, op);
-                let r = match responses {
-                    (Some(event), Some(cmd)) => match ev_sink.send_item(event).await {
+                let Response {
+                    event,
+                    command,
+                    terminate,
+                } = StateMachine::handle_operation(&mut self, op);
+
+                let result = match (event, command) {
+                    (Some(ev), Some(cmd)) => match ev_sink.send_item(ev).await {
                         Ok(()) => cmd_sink.send_item(cmd).await,
                         e @ Err(_) => e,
                     },
@@ -203,13 +207,58 @@ impl<State> Model<State> {
                     (_, Some(command)) => cmd_sink.send_item(command).await,
                     _ => Ok(()),
                 };
-                if r.is_err() {
-                    break r;
+                if terminate || result.is_err() {
+                    break result;
                 }
             } else {
                 break Ok(());
             }
         }
+    }
+}
+
+struct Response<Ev, Cmd> {
+    event: Option<Event<Ev>>,
+    command: Option<Command<Cmd>>,
+    terminate: bool,
+}
+
+impl<Ev, Cmd> Response<Ev, Cmd> {
+    fn none() -> Response<Ev, Cmd> {
+        Response {
+            event: None,
+            command: None,
+            terminate: false,
+        }
+    }
+
+    fn for_event(event: Event<Ev>) -> Response<Ev, Cmd> {
+        Response {
+            event: Some(event),
+            command: None,
+            terminate: false,
+        }
+    }
+
+    fn for_command(command: Command<Cmd>) -> Response<Ev, Cmd> {
+        Response {
+            event: None,
+            command: Some(command),
+            terminate: false,
+        }
+    }
+
+    fn of(event: Event<Ev>, command: Command<Cmd>) -> Response<Ev, Cmd> {
+        Response {
+            event: Some(event),
+            command: Some(command),
+            terminate: false,
+        }
+    }
+
+    fn then_terminate(mut self) -> Self {
+        self.terminate = true;
+        self
     }
 }
 
@@ -221,10 +270,8 @@ trait StateMachine<A>: Sized {
     type Cmd;
 
     /// For an operation on the downlink, generate output messages.
-    fn handle_operation(
-        model: &mut Model<Self>,
-        op: Operation<A>,
-    ) -> (Option<Event<Self::Ev>>, Option<Command<Self::Cmd>>);
+    fn handle_operation(model: &mut Model<Self>, op: Operation<A>)
+        -> Response<Self::Ev, Self::Cmd>;
 }
 
 /// Combines together updates received from the Warp connection, local actions and the stop signal

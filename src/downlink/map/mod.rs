@@ -114,17 +114,17 @@ impl StateMachine<MapAction<Value>> for ValMap {
     fn handle_operation(
         model: &mut Model<ValMap>,
         op: MapLaneOperation,
-    ) -> (Option<Event<Self::Ev>>, Option<Command<Self::Cmd>>) {
+    ) -> Response<Self::Ev, Self::Cmd> {
         let Model { data_state, state } = model;
         match op {
-            Operation::Start => (None, Some(Command::Sync)),
+            Operation::Start => Response::for_command(Command::Sync),
             Operation::Message(Message::Linked) => {
                 *state = DownlinkState::Linked;
-                (None, None)
+                Response::none()
             }
             Operation::Message(Message::Synced) => {
                 *state = DownlinkState::Synced;
-                (Some(Event(ViewWithEvent::initial(data_state), false)), None)
+                Response::for_event(Event(ViewWithEvent::initial(data_state), false))
             }
             Operation::Message(Message::Action(a)) => {
                 if *state != DownlinkState::Unlinked {
@@ -151,17 +151,17 @@ impl StateMachine<MapAction<Value>> for ValMap {
                         }
                     };
                     if *state == DownlinkState::Synced {
-                        (Some(Event(event, false)), None)
+                        Response::for_event(Event(event, false))
                     } else {
-                        (None, None)
+                        Response::none()
                     }
                 } else {
-                    (None, None)
+                    Response::none()
                 }
             }
             Operation::Message(Message::Unlinked) => {
                 *state = DownlinkState::Unlinked;
-                (None, None)
+                Response::none().then_terminate()
             }
             Operation::Action(a) => {
                 let (event, cmd) = match a {
@@ -193,9 +193,9 @@ impl StateMachine<MapAction<Value>> for ValMap {
                         (ViewWithEvent::clear(data_state), MapAction::Clear)
                     }
                 };
-                (Some(Event(event, true)), Some(Command::Action(cmd)))
+                Response::of(Event(event, true), Command::Action(cmd))
             }
-            Operation::Close => (None, Some(Command::Unlink)),
+            Operation::Close => Response::for_command(Command::Unlink).then_terminate(),
         }
     }
 }

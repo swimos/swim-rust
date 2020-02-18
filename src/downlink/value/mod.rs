@@ -76,40 +76,40 @@ impl StateMachine<Value> for Arc<Value> {
     fn handle_operation(
         model: &mut Model<Self>,
         op: Operation<Value>,
-    ) -> (Option<Event<Self::Ev>>, Option<Command<Self::Cmd>>) {
+    ) -> Response<Self::Ev, Self::Cmd> {
         let Model { data_state, state } = model;
         match op {
-            Operation::Start => (None, Some(Command::Sync)),
+            Operation::Start => Response::for_command(Command::Sync),
             Operation::Message(message) => match message {
                 Message::Linked => {
                     *state = DownlinkState::Linked;
-                    (None, None)
+                    Response::none()
                 }
                 Message::Synced => {
                     *state = DownlinkState::Synced;
-                    (Some(Event(data_state.clone(), false)), None)
+                    Response::for_event(Event(data_state.clone(), false))
                 }
                 Message::Action(upd_value) => {
                     *data_state = Arc::new(upd_value);
                     if *state == DownlinkState::Synced {
-                        (Some(Event(data_state.clone(), false)), None)
+                        Response::for_event(Event(data_state.clone(), false))
                     } else {
-                        (None, None)
+                        Response::none()
                     }
                 }
                 Message::Unlinked => {
                     *state = DownlinkState::Unlinked;
-                    (None, None)
+                    Response::none().then_terminate()
                 }
             },
             Operation::Action(set_value) => {
                 *data_state = Arc::new(set_value);
-                (
-                    Some(Event(data_state.clone(), true)),
-                    Some(Command::Action(data_state.clone())),
+                Response::of(
+                    Event(data_state.clone(), true),
+                    Command::Action(data_state.clone()),
                 )
             }
-            Operation::Close => (None, Some(Command::Unlink)),
+            Operation::Close => Response::for_command(Command::Unlink).then_terminate(),
         }
     }
 }
