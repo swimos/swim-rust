@@ -14,7 +14,6 @@
 
 use std::future::Future;
 
-use crate::sink::SinkSendError;
 use futures::future::{Map, Ready};
 use futures::{future, FutureExt};
 use tokio::sync::{mpsc, watch};
@@ -45,6 +44,7 @@ impl<S, F> ItemSinkWrapper<S, F> {
 }
 
 pub type MpscErr<T> = mpsc::error::SendError<T>;
+pub type WatchErr<T> = watch::error::SendError<T>;
 
 fn transform_err<T, Err: From<MpscErr<T>>>(result: Result<(), MpscErr<T>>) -> Result<(), Err> {
     result.map_err(|e| e.into())
@@ -113,10 +113,10 @@ where
 }
 
 impl<'a, T: Send + 'a> ItemSink<'a, T> for watch::Sender<T> {
-    type Error = SinkSendError<T>;
+    type Error = watch::error::SendError<T>;
     type SendFuture = Ready<Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        future::ready(self.broadcast(value).map_err(|_| SinkSendError::Closed))
+        future::ready(self.broadcast(value))
     }
 }

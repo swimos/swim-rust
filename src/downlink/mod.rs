@@ -65,7 +65,7 @@ impl<Err: Debug, S, R> Drop for Downlink<Err, S, R> {
 
 /// Asynchronously create a new downlink from a stream of input events, writing to a sink of
 /// commands.
-pub fn create_downlink<Err, A, State, Updates, Commands>(
+fn create_downlink<Err, A, State, Updates, Commands>(
     init: State,
     update_stream: Updates,
     cmd_sink: Commands,
@@ -86,7 +86,6 @@ where
     let (stop_tx, stop_rx) = oneshot::channel::<()>();
 
     let event_sink = item::for_mpsc_sender::<_, Err>(event_tx);
-    //let event_sink = event_tx.into_err();
 
     // The task that maintains the internal state of the lane.
     let lane_task = model.make_downlink_task(

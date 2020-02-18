@@ -124,7 +124,7 @@ impl StateMachine<MapAction<Value>> for ValMap {
                 (None, None)
             }
             Operation::Message(Message::Synced) => {
-                *state = DownlinkState::Linked;
+                *state = DownlinkState::Synced;
                 (Some(Event(ViewWithEvent::initial(data_state), false)), None)
             }
             Operation::Message(Message::Action(a)) => {
@@ -161,7 +161,7 @@ impl StateMachine<MapAction<Value>> for ValMap {
                 }
             }
             Operation::Message(Message::Unlinked) => {
-                *state = DownlinkState::Linked;
+                *state = DownlinkState::Unlinked;
                 (None, None)
             }
             Operation::Action(a) => {
