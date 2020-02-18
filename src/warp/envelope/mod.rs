@@ -200,7 +200,7 @@ fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &
     }
 }
 
-fn dispatch_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+fn to_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
     where F: Fn(LinkAddressed) -> Envelope {
     match envelope_type.value {
         Value::Record(_, headers) => {
@@ -215,7 +215,7 @@ fn dispatch_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: 
     }
 }
 
-fn dispatch_lane_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+fn to_lane_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
     where F: Fn(LaneAddressed) -> Envelope {
     match envelope_type.value {
         Value::Record(_, headers) => {
@@ -262,42 +262,42 @@ impl TryFrom<Value> for Envelope {
 
         return match envelope_type.name.as_str() {
             "event" => {
-                dispatch_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type, body, |la| {
                     Envelope::EventMessage(la)
                 })
             }
             "command" => {
-                dispatch_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type, body, |la| {
                     Envelope::CommandMessage(la)
                 })
             }
             "link" => {
-                dispatch_linked_addressed(envelope_type, body, |la| {
+                to_linked_addressed(envelope_type, body, |la| {
                     Envelope::LinkRequest(la)
                 })
             }
             "linked" => {
-                dispatch_linked_addressed(envelope_type, body, |la| {
+                to_linked_addressed(envelope_type, body, |la| {
                     Envelope::LinkedResponse(la)
                 })
             }
             "sync" => {
-                dispatch_linked_addressed(envelope_type, body, |la| {
+                to_linked_addressed(envelope_type, body, |la| {
                     Envelope::SyncRequest(la)
                 })
             }
             "synced" => {
-                dispatch_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type, body, |la| {
                     Envelope::SyncedResponse(la)
                 })
             }
             "unlink" => {
-                dispatch_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type, body, |la| {
                     Envelope::UnlinkRequest(la)
                 })
             }
             "unlinked" => {
-                dispatch_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type, body, |la| {
                     Envelope::UnlinkedResponse(la)
                 })
             }
