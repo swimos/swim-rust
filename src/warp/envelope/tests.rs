@@ -52,16 +52,16 @@ fn link_addressed_test_record() -> LinkAddressed {
 
 fn lane_addressed_no_body() -> LaneAddressed {
     LaneAddressed {
-        node_uri: Some(String::from("node_uri")),
-        lane_uri: Some(String::from("lane_uri")),
+        node_uri: String::from("node_uri"),
+        lane_uri: String::from("lane_uri"),
         body: None,
     }
 }
 
 fn lane_addressed_test_record() -> LaneAddressed {
     LaneAddressed {
-        node_uri: Some(String::from("node_uri")),
-        lane_uri: Some(String::from("lane_uri")),
+        node_uri: String::from("node_uri"),
+        lane_uri: String::from("lane_uri"),
         body: Some(Value::Record(
             vec![Attr { name: String::from("test"), value: Value::Extant }],
             Vec::new())),
@@ -571,11 +571,30 @@ fn duplicate_headers() {
                 ],
             ))),
         ],
-        Vec::new()
+        Vec::new(),
     );
 
-    run_test_expect_err(record, EnvelopeParseErr::DuplicateTag(String::from("node")));
+    run_test_expect_err(record, EnvelopeParseErr::DuplicateHeader(String::from("node")));
 }
+
+#[test]
+fn missing_header() {
+    let record = Value::Record(
+        vec![
+            Attr::of(("sync", Value::Record(
+                Vec::new(),
+                vec![
+                    Item::Slot(Value::Text(String::from("lane")), Value::Text(String::new())),
+                    Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+                ],
+            ))),
+        ],
+        Vec::new(),
+    );
+
+    run_test_expect_err(record, EnvelopeParseErr::MissingHeader(String::from("lane_uri")));
+}
+
 
 #[test]
 fn multiple_attributes() {
@@ -599,8 +618,8 @@ fn multiple_attributes() {
     run_test(record,
              Envelope::SyncRequest(LinkAddressed {
                  lane: LaneAddressed {
-                     node_uri: Some(String::from("node_uri")),
-                     lane_uri: Some(String::from("lane_uri")),
+                     node_uri: String::from("node_uri"),
+                     lane_uri: String::from("lane_uri"),
                      body: Some(Float64Value(1.0)),
                  },
                  rate: Some(1.0),

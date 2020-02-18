@@ -43,8 +43,8 @@ pub struct HostAddressed {
 
 #[derive(Debug, PartialEq)]
 pub struct LaneAddressed {
-    pub node_uri: Option<String>,
-    pub lane_uri: Option<String>,
+    pub node_uri: String,
+    pub lane_uri: String,
     pub body: Option<Value>,
 }
 
@@ -57,19 +57,20 @@ pub struct LinkAddressed {
 
 #[derive(Debug, PartialEq)]
 pub enum EnvelopeParseErr {
+    MissingHeader(String),
     UnexpectedKey(String),
     UnexpectedType(Value),
     UnexpectedItem(Item),
     Malformatted,
-    DuplicateTag(String),
+    DuplicateHeader(String),
     UnknownTag(String),
 }
 
 fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAddressed, EnvelopeParseErr> {
     items.iter().enumerate().try_fold(LinkAddressed {
         lane: LaneAddressed {
-            node_uri: None,
-            lane_uri: None,
+            node_uri: String::new(),
+            lane_uri: String::new(),
             body,
         },
         rate: None,
@@ -125,8 +126,8 @@ fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAdd
 
 fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAddressed, EnvelopeParseErr> {
     items.iter().enumerate().try_fold(LaneAddressed {
-        node_uri: None,
-        lane_uri: None,
+        node_uri: String::new(),
+        lane_uri: String::new(),
         body,
     }, |mut lane_addressed, (index, item)| {
         match item {
@@ -160,17 +161,17 @@ fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAdd
 fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a mut LaneAddressed)
                                   -> Result<&'a LaneAddressed, EnvelopeParseErr> {
     if key == "node" {
-        if lane_addressed.node_uri.is_some() {
-            Err(EnvelopeParseErr::DuplicateTag(String::from("node")))
+        if !lane_addressed.node_uri.is_empty() {
+            Err(EnvelopeParseErr::DuplicateHeader(String::from("node")))
         } else {
-            lane_addressed.node_uri = Some(val.deref().to_string());
+            lane_addressed.node_uri = val.deref().to_string();
             Ok(lane_addressed)
         }
     } else if key == "lane" {
-        if lane_addressed.lane_uri.is_some() {
-            Err(EnvelopeParseErr::DuplicateTag(String::from("lane")))
+        if !lane_addressed.lane_uri.is_empty() {
+            Err(EnvelopeParseErr::DuplicateHeader(String::from("lane")))
         } else {
-            lane_addressed.lane_uri = Some(val.deref().to_string());
+            lane_addressed.lane_uri = val.deref().to_string();
             Ok(lane_addressed)
         }
     } else {
@@ -178,21 +179,20 @@ fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a m
     }
 }
 
-//noinspection DuplicatedCode
 fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &'a mut LaneAddressed)
                                   -> Result<&'a LaneAddressed, EnvelopeParseErr> {
     if index == 0 {
-        if lane_addressed.node_uri.is_some() {
-            Err(EnvelopeParseErr::DuplicateTag(String::from("node")))
+        if !lane_addressed.node_uri.is_empty() {
+            Err(EnvelopeParseErr::DuplicateHeader(String::from("node")))
         } else {
-            lane_addressed.node_uri = Some(value.deref().to_string());
+            lane_addressed.node_uri = value.deref().to_string();
             Ok(lane_addressed)
         }
     } else if index == 1 {
-        if lane_addressed.lane_uri.is_some() {
-            Err(EnvelopeParseErr::DuplicateTag(String::from("lane")))
+        if !lane_addressed.lane_uri.is_empty() {
+            Err(EnvelopeParseErr::DuplicateHeader(String::from("lane")))
         } else {
-            lane_addressed.lane_uri = Some(value.deref().to_string());
+            lane_addressed.lane_uri = value.deref().to_string();
             Ok(lane_addressed)
         }
     } else {
@@ -205,7 +205,13 @@ fn to_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> 
     match envelope_type.value {
         Value::Record(_, headers) => {
             return match parse_link_addressed(headers, body) {
-                Ok(la) => Ok(func(la)),
+                Ok(la) => {
+                    if let Err(e) = validate_lane_addressed(&la.lane) {
+                        Err(e)
+                    } else {
+                        Ok(func(la))
+                    }
+                }
                 Err(e) => Err(e)
             };
         }
@@ -215,12 +221,28 @@ fn to_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> 
     }
 }
 
+fn validate_lane_addressed(la: &LaneAddressed) -> Result<(), EnvelopeParseErr> {
+    if la.lane_uri.is_empty() {
+        Err(EnvelopeParseErr::MissingHeader(String::from("lane_uri")))
+    } else if la.node_uri.is_empty() {
+        Err(EnvelopeParseErr::MissingHeader(String::from("node_uri")))
+    } else {
+        Ok(())
+    }
+}
+
 fn to_lane_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
     where F: Fn(LaneAddressed) -> Envelope {
     match envelope_type.value {
         Value::Record(_, headers) => {
             return match parse_lane_addressed(headers, body) {
-                Ok(la) => Ok(func(la)),
+                Ok(la) => {
+                    if let Err(e) = validate_lane_addressed(&la) {
+                        Err(e)
+                    } else {
+                        Ok(func(la))
+                    }
+                }
                 Err(e) => Err(e)
             };
         }
