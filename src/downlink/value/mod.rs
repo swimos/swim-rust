@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::*;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
-use super::*;
 
 use futures::executor::block_on;
 use futures::future::FusedFuture;
@@ -113,7 +113,7 @@ where
     ValueDownlink::new(MpscSink::wrap(set_tx), event_rx, Some(dl_task))
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum ValueLaneOperation {
     Start,
     Message(LaneMessage),
@@ -121,47 +121,43 @@ enum ValueLaneOperation {
     Close,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum OutputTrigger {
     FromUpdate(Arc<Value>),
     FromSet(Arc<Value>),
-    SyncRequired
+    SyncRequired,
 }
 
 impl ValueLaneOperation {
-    fn into_update(self,
-                   state: &mut DownlinkState,
-                   value_state: &mut Arc<Value>) -> Option<OutputTrigger> {
+    fn into_update(
+        self,
+        state: &mut DownlinkState,
+        value_state: &mut Arc<Value>,
+    ) -> Option<OutputTrigger> {
         match self {
-            ValueLaneOperation::Start => {
-                Some(OutputTrigger::SyncRequired)
-            }
+            ValueLaneOperation::Start => Some(OutputTrigger::SyncRequired),
             ValueLaneOperation::Message(LaneMessage::Linked) => {
                 *state = DownlinkState::Linked;
                 None
             }
-            ValueLaneOperation::Message(LaneMessage::Synced) => {
-                match *state {
-                    DownlinkState::Synced => None,
-                    _ => {
-                        *state = DownlinkState::Synced;
-                        Some(OutputTrigger::FromUpdate(value_state.clone()))
-                    }
+            ValueLaneOperation::Message(LaneMessage::Synced) => match *state {
+                DownlinkState::Synced => None,
+                _ => {
+                    *state = DownlinkState::Synced;
+                    Some(OutputTrigger::FromUpdate(value_state.clone()))
                 }
-            }
-            ValueLaneOperation::Message(LaneMessage::ValueUpdated(new_value)) => {
-                match *state {
-                    DownlinkState::Unlinked => None,
-                    DownlinkState::Linked => {
-                        *value_state = Arc::new(new_value);
-                        None
-                    },
-                    DownlinkState::Synced => {
-                        *value_state = Arc::new(new_value);
-                        Some(OutputTrigger::FromUpdate(value_state.clone()))
-                    },
+            },
+            ValueLaneOperation::Message(LaneMessage::ValueUpdated(new_value)) => match *state {
+                DownlinkState::Unlinked => None,
+                DownlinkState::Linked => {
+                    *value_state = Arc::new(new_value);
+                    None
                 }
-            }
+                DownlinkState::Synced => {
+                    *value_state = Arc::new(new_value);
+                    Some(OutputTrigger::FromUpdate(value_state.clone()))
+                }
+            },
             ValueLaneOperation::Message(LaneMessage::Unlinked) => {
                 *state = DownlinkState::Unlinked;
                 None
@@ -175,7 +171,7 @@ impl ValueLaneOperation {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LaneMessage {
     Linked,
     Synced,
@@ -183,13 +179,14 @@ pub enum LaneMessage {
     Unlinked,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LaneCommand {
     Sync,
     SetValue(Arc<Value>),
     Unlink,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct LaneEvent(pub Arc<Value>, pub bool);
 
 /// Combines together updates received from the Warp connection, local sets and the stop signal
@@ -236,8 +233,10 @@ where
         future::ready(*op != ValueLaneOperation::Close)
     })
     .filter_map(move |op| {
-        future::ready(op.into_update(&mut state,&mut state_value)
-            .map(|upd| Ok(upd)))
+        future::ready(
+            op.into_update(&mut state, &mut state_value)
+                .map(|upd| Ok(upd)),
+        )
     });
 
     let events = event_output.with_flat_map(|update: OutputTrigger| {
@@ -299,54 +298,63 @@ where
             event_out,
         } = self;
         match op {
-            ValueLaneOperation::Start => {
-                Some(command_out.send_item(LaneCommand::Sync).await)
-            }
+            ValueLaneOperation::Start => Some(command_out.send_item(LaneCommand::Sync).await),
             ValueLaneOperation::Message(LaneMessage::Linked) => {
                 *state = DownlinkState::Linked;
                 Some(Ok(()))
-            },
-            ValueLaneOperation::Message(LaneMessage::Synced) => {
-                match *state {
-                    DownlinkState::Synced => Some(Ok(())),
-                    _ => {
-                        *state = DownlinkState::Synced;
-                        Some(event_out.send_item(LaneEvent(value_state.clone(), true)).await)
-                    }
+            }
+            ValueLaneOperation::Message(LaneMessage::Synced) => match *state {
+                DownlinkState::Synced => Some(Ok(())),
+                _ => {
+                    *state = DownlinkState::Synced;
+                    Some(
+                        event_out
+                            .send_item(LaneEvent(value_state.clone(), true))
+                            .await,
+                    )
                 }
             },
-            ValueLaneOperation::Message(LaneMessage::ValueUpdated(v)) => {
-                match *state {
-                    DownlinkState::Unlinked => Some(Ok(())),
-                    DownlinkState::Linked => {
-                        *value_state = Arc::new(v);
-                        Some(Ok(()))
-                    },
-                    DownlinkState::Synced => {
-                        *value_state = Arc::new(v);
-                        Some(event_out.send_item(LaneEvent(value_state.clone(), false)).await)
-                    },
+            ValueLaneOperation::Message(LaneMessage::ValueUpdated(v)) => match *state {
+                DownlinkState::Unlinked => Some(Ok(())),
+                DownlinkState::Linked => {
+                    *value_state = Arc::new(v);
+                    Some(Ok(()))
+                }
+                DownlinkState::Synced => {
+                    *value_state = Arc::new(v);
+                    Some(
+                        event_out
+                            .send_item(LaneEvent(value_state.clone(), false))
+                            .await,
+                    )
                 }
             },
             ValueLaneOperation::Message(LaneMessage::Unlinked) => {
                 *state = DownlinkState::Unlinked;
                 None
-            },
+            }
             ValueLaneOperation::Set(v) => {
                 *value_state = Arc::new(v);
-                match command_out.send_item(LaneCommand::SetValue(value_state.clone())).await {
-                    Ok(_) => Some(event_out.send_item(LaneEvent(value_state.clone(), true)).await),
+                match command_out
+                    .send_item(LaneCommand::SetValue(value_state.clone()))
+                    .await
+                {
+                    Ok(_) => Some(
+                        event_out
+                            .send_item(LaneEvent(value_state.clone(), true))
+                            .await,
+                    ),
                     e @ Err(_) => Some(e),
                 }
-            },
+            }
             ValueLaneOperation::Close => {
                 *state = DownlinkState::Unlinked;
-                let send_unlink : Result<(), E> = command_out.send_item(LaneCommand::Unlink).await;
-                match send_unlink  {
-                    e@Err(_) => Some(e),
+                let send_unlink: Result<(), E> = command_out.send_item(LaneCommand::Unlink).await;
+                match send_unlink {
+                    e @ Err(_) => Some(e),
                     _ => None,
                 }
-            },
+            }
         }
     }
 }
