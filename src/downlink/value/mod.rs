@@ -22,8 +22,8 @@ use tokio::sync::watch;
 
 use crate::model::Value;
 
-/// Asynchronously create a new downlink from a stream of input events, writing to a sink of
-/// commands.
+/// Create a value downlink with back-pressure (it will only process set messages as rapidly
+/// as it can write commands to the output).
 pub fn create_back_pressure_downlink<Err, Updates, Commands>(
     init: Value,
     update_stream: Updates,
@@ -48,8 +48,8 @@ fn transform_err<T, Err: From<item::WatchErr<T>>>(
     result.map_err(|e| e.into())
 }
 
-/// Asynchronously create a new downlink from a stream of input events, writing to a sink of
-/// commands.
+/// Create a value downlink without back-pressure (it will process set operations as rapidly as it
+/// can and some outgoing message will be dropped).
 pub fn create_dropping_downlink<Err, Updates, Commands>(
     init: Value,
     update_stream: Updates,

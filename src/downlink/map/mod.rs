@@ -92,8 +92,7 @@ impl ViewWithEvent {
 
 type MapLaneOperation = Operation<MapAction<Value>>;
 
-/// Asynchronously create a new downlink from a stream of input events, writing to a sink of
-/// commands.
+/// Create a map downlink.
 pub fn create_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,

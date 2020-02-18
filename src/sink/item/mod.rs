@@ -29,6 +29,7 @@ pub trait ItemSink<'a, T> {
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
 }
 
+/// Wraps a type that cannot directly implement [`ItemSink`].
 pub struct ItemSinkWrapper<S, F> {
     sink: S,
     send_operation: F,
@@ -50,12 +51,24 @@ fn transform_err<T, Err: From<MpscErr<T>>>(result: Result<(), MpscErr<T>>) -> Re
     result.map_err(|e| e.into())
 }
 
+/// Wrap an [`mpsc::Sender`] as an item sink. It is not possible to implement the trait
+/// directly as the `send` method returns an anonymous type.
 pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + 'static>(
     sender: mpsc::Sender<T>,
 ) -> impl for<'a> ItemSink<'a, T, Error = Err> {
     let err_trans = || transform_err::<T, Err>;
 
     map_err(ItemSinkWrapper::new(sender, mpsc::Sender::send), err_trans)
+}
+
+/// Transform the error type of an [`ItemSink`].
+pub fn map_err<T, E1, E2, Snk, Fac, F>(sink: Snk, f: Fac) -> ItemSinkMapErr<Snk, Fac>
+    where
+        Snk: for<'a> ItemSink<'a, T, Error = E1>,
+        F: FnMut(Result<(), E1>) -> Result<(), E2>,
+        Fac: FnMut() -> F,
+{
+    ItemSinkMapErr::new(sink, f)
 }
 
 impl<'a, T, Err, S, F, Fut> ItemSink<'a, T> for ItemSinkWrapper<S, F>
@@ -87,14 +100,7 @@ impl<Snk, Fac> ItemSinkMapErr<Snk, Fac> {
     }
 }
 
-pub fn map_err<T, E1, E2, Snk, Fac, F>(sink: Snk, f: Fac) -> ItemSinkMapErr<Snk, Fac>
-where
-    Snk: for<'a> ItemSink<'a, T, Error = E1>,
-    F: FnMut(Result<(), E1>) -> Result<(), E2>,
-    Fac: FnMut() -> F,
-{
-    ItemSinkMapErr::new(sink, f)
-}
+
 
 impl<'a, T, E1, E2, Snk, Fac, F> ItemSink<'a, T> for ItemSinkMapErr<Snk, Fac>
 where
