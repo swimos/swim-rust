@@ -37,16 +37,16 @@ fn run_test(record: Value, expected: Envelope) {
 fn link_addressed_no_body() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_no_body(),
-        prio: Some(0.5),
-        rate: Some(1.0),
+        prio: 0.5,
+        rate: 1.0,
     }
 }
 
 fn link_addressed_test_record() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_test_record(),
-        prio: Some(0.5),
-        rate: Some(1.0),
+        prio: 0.5,
+        rate: 1.0,
     }
 }
 
@@ -581,10 +581,9 @@ fn duplicate_headers() {
 fn missing_header() {
     let record = Value::Record(
         vec![
-            Attr::of(("sync", Value::Record(
+            Attr::of(("synced", Value::Record(
                 Vec::new(),
                 vec![
-                    Item::Slot(Value::Text(String::from("lane")), Value::Text(String::new())),
                     Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
                 ],
             ))),
@@ -621,8 +620,8 @@ fn multiple_attributes() {
                      lane_uri: String::from("lane_uri"),
                      body: Some(Float64Value(1.0)),
                  },
-                 rate: Some(1.0),
-                 prio: Some(0.5),
+                 rate: 1.0,
+                 prio: 0.5,
              }),
     );
 }
