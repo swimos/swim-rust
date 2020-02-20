@@ -70,19 +70,20 @@ impl<Err: Debug, S, R> Drop for Downlink<Err, S, R> {
 
 /// Asynchronously create a new downlink from a stream of input events, writing to a sink of
 /// commands.
-fn create_downlink<Err, A, State, Updates, Commands>(
+fn create_downlink<Err, M, A, State, Updates, Commands>(
     init: State,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
 ) -> Downlink<Err, mpsc::Sender<A>, mpsc::Receiver<Event<State::Ev>>>
 where
+    M: Send + 'static,
     A: Send + 'static,
-    State: StateMachine<A> + Send + 'static,
+    State: StateMachine<M, A> + Send + 'static,
     State::Ev: Send + 'static,
     State::Cmd: Send + 'static,
     Err: From<item::MpscErr<Event<State::Ev>>> + Send + Debug + 'static,
-    Updates: Stream<Item = Message<A>> + Send + 'static,
+    Updates: Stream<Item = Message<M>> + Send + 'static,
     Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = Err> + Send + 'static,
 {
     let model = Model::new(init);
@@ -134,10 +135,10 @@ impl<E> DownlinkTask<E> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Message<A> {
+pub enum Message<M> {
     Linked,
     Synced,
-    Action(A),
+    Action(M),
     Unlinked,
 }
 
@@ -152,9 +153,9 @@ pub enum Command<A> {
 pub struct Event<A>(pub A, pub bool);
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Operation<A> {
+pub enum Operation<M, A> {
     Start,
-    Message(Message<A>),
+    Message(Message<M>),
     Action(A),
     Close,
 }
@@ -175,15 +176,15 @@ impl<State> Model<State> {
 
     /// A task that consumes the operations applied to the downlink, updates the state and
     /// forwards events and commands to a pair of output sinks.
-    async fn make_downlink_task<E, A, Ops, Commands, Events>(
+    async fn make_downlink_task<E, M, A, Ops, Commands, Events>(
         mut self,
         ops: Ops,
         mut cmd_sink: Commands,
         mut ev_sink: Events,
     ) -> Result<(), E>
     where
-        State: StateMachine<A>,
-        Ops: Stream<Item = Operation<A>> + Send + 'static,
+        State: StateMachine<M, A>,
+        Ops: Stream<Item = Operation<M, A>> + Send + 'static,
         Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = E>,
         Events: for<'b> ItemSink<'b, Event<State::Ev>, Error = E>,
     {
@@ -195,9 +196,9 @@ impl<State> Model<State> {
                 let Response {
                     event,
                     command,
+                    error,
                     terminate,
                 } = StateMachine::handle_operation(&mut self, op);
-
                 let result = match (event, command) {
                     (Some(ev), Some(cmd)) => match ev_sink.send_item(ev).await {
                         Ok(()) => cmd_sink.send_item(cmd).await,
@@ -207,7 +208,10 @@ impl<State> Model<State> {
                     (_, Some(command)) => cmd_sink.send_item(command).await,
                     _ => Ok(()),
                 };
-                if terminate || result.is_err() {
+
+                if error.is_some() {
+                    break Ok(()); //TODO Handle this properly.
+                } else if terminate || result.is_err() {
                     break result;
                 }
             } else {
@@ -220,6 +224,7 @@ impl<State> Model<State> {
 struct Response<Ev, Cmd> {
     event: Option<Event<Ev>>,
     command: Option<Command<Cmd>>,
+    error: Option<TransitionError>,
     terminate: bool,
 }
 
@@ -228,6 +233,7 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
         Response {
             event: None,
             command: None,
+            error: None,
             terminate: false,
         }
     }
@@ -236,6 +242,7 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
         Response {
             event: Some(event),
             command: None,
+            error: None,
             terminate: false,
         }
     }
@@ -244,6 +251,7 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
         Response {
             event: None,
             command: Some(command),
+            error: None,
             terminate: false,
         }
     }
@@ -252,6 +260,7 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
         Response {
             event: Some(event),
             command: Some(command),
+            error: None,
             terminate: false,
         }
     }
@@ -260,30 +269,43 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
         self.terminate = true;
         self
     }
+
+    fn with_error(mut self, err: TransitionError) -> Self {
+        self.error = Some(err);
+        self
+    }
+}
+
+pub enum TransitionError {
+    ReceiverDropped,
+    SideEffectFailed,
 }
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
-trait StateMachine<A>: Sized {
+trait StateMachine<M, A>: Sized {
     /// Type of events that will be issued to the owner of the downlink.
     type Ev;
     /// Type of commands that will be sent out to the Warp connection.
     type Cmd;
 
     /// For an operation on the downlink, generate output messages.
-    fn handle_operation(model: &mut Model<Self>, op: Operation<A>)
-        -> Response<Self::Ev, Self::Cmd>;
+    fn handle_operation(
+        model: &mut Model<Self>,
+        op: Operation<M, A>,
+    ) -> Response<Self::Ev, Self::Cmd>;
 }
 
 /// Combines together updates received from the Warp connection, local actions and the stop signal
 /// into a single stream.
-fn combine_inputs<A, Upd, Act>(
+fn combine_inputs<M, A, Upd, Act>(
     updates: Upd,
     actions: Act,
     stop: oneshot::Receiver<()>,
-) -> impl Stream<Item = Operation<A>> + Send + 'static
+) -> impl Stream<Item = Operation<M, A>> + Send + 'static
 where
+    M: Send + 'static,
     A: Send + 'static,
-    Upd: Stream<Item = Message<A>> + Send + 'static,
+    Upd: Stream<Item = Message<M>> + Send + 'static,
     Act: Stream<Item = A> + Send + 'static,
 {
     let upd_operations = updates.map(|v| Operation::Message(v));
