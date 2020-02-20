@@ -406,7 +406,8 @@ fn handle_action(
         MapAction::Insert { key, value, old } => {
             let v_arc = Arc::new(value);
             let err = update_and_notify_prev(
-                data_state, &key,
+                data_state,
+                &key,
                 |map| {
                     map.insert(key.clone(), v_arc.clone());
                 },
@@ -422,7 +423,8 @@ fn handle_action(
         }
         MapAction::Remove { key, old } => {
             let err = update_and_notify_prev(
-                data_state, &key,
+                data_state,
+                &key,
                 |map| {
                     map.remove(&key);
                 },
