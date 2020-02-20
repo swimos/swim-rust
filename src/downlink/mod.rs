@@ -16,6 +16,7 @@ use std::pin::Pin;
 
 use futures::executor::block_on;
 use futures::{future, stream, Stream, StreamExt};
+use futures_util::select_biased;
 use pin_utils::pin_mut;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -23,6 +24,7 @@ use tokio::task::JoinHandle;
 
 use crate::sink::item;
 use crate::sink::item::ItemSink;
+use futures::stream::FusedStream;
 use std::fmt::Debug;
 
 pub mod map;
@@ -114,7 +116,8 @@ where
 
     // The task that maintains the internal state of the lane.
     let lane_task = model.make_downlink_task(
-        combine_inputs(update_stream, act_rx, stop_rx),
+        combine_inputs(update_stream, stop_rx),
+        act_rx.fuse(),
         cmd_sink,
         event_sink,
     );
@@ -195,23 +198,47 @@ impl<State> Model<State> {
 
     /// A task that consumes the operations applied to the downlink, updates the state and
     /// forwards events and commands to a pair of output sinks.
-    async fn make_downlink_task<E, M, A, Ops, Commands, Events>(
+    async fn make_downlink_task<E, M, A, Ops, Acts, Commands, Events>(
         mut self,
         ops: Ops,
+        acts: Acts,
         mut cmd_sink: Commands,
         mut ev_sink: Events,
     ) -> Result<(), E>
     where
         State: StateMachine<M, A>,
-        Ops: Stream<Item = Operation<M, A>> + Send + 'static,
+        Ops: FusedStream<Item = Operation<M, A>> + Send + 'static,
+        Acts: FusedStream<Item = A> + Send + 'static,
         Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = E>,
         Events: for<'b> ItemSink<'b, Event<State::Ev>, Error = E>,
     {
         pin_mut!(ops);
+        pin_mut!(acts);
         let mut ops_str: Pin<&mut Ops> = ops;
+        let mut act_str: Pin<&mut Acts> = acts;
+
+        let mut read_act = false;
 
         loop {
-            if let Some(op) = ops_str.next().await {
+            let next_op = if self.state == DownlinkState::Synced {
+                if read_act {
+                    read_act = false;
+                    select_biased! {
+                        act_op = act_str.next() => act_op.map(Operation::Action),
+                        upd_op = ops_str.next() => upd_op,
+                    }
+                } else {
+                    read_act = true;
+                    select_biased! {
+                        upd_op = ops_str.next() => upd_op,
+                        act_op = act_str.next() => act_op.map(Operation::Action),
+                    }
+                }
+            } else {
+                ops_str.next().await
+            };
+
+            if let Some(op) = next_op {
                 let Response {
                     event,
                     command,
@@ -314,26 +341,21 @@ trait StateMachine<M, A>: Sized {
     ) -> Response<Self::Ev, Self::Cmd>;
 }
 
-/// Combines together updates received from the Warp connection, local actions and the stop signal
+/// Combines together updates received from the Warp connection  and the stop signal
 /// into a single stream.
-fn combine_inputs<M, A, Upd, Act>(
+fn combine_inputs<M, A, Upd>(
     updates: Upd,
-    actions: Act,
     stop: oneshot::Receiver<()>,
-) -> impl Stream<Item = Operation<M, A>> + Send + 'static
+) -> impl FusedStream<Item = Operation<M, A>> + Send + 'static
 where
     M: Send + 'static,
     A: Send + 'static,
     Upd: Stream<Item = Message<M>> + Send + 'static,
-    Act: Stream<Item = A> + Send + 'static,
 {
-    let upd_operations = updates.map(|v| Operation::Message(v));
-    let act_operations = actions.map(|v| Operation::Action(v));
+    let upd_operations = updates.map(Operation::Message);
     let close_operations = stream::once(stop).map(|_| Operation::Close);
-
-    let updates_and_sets = stream::select(upd_operations, act_operations);
 
     let init = stream::once(future::ready(Operation::Start));
 
-    init.chain(stream::select(close_operations, updates_and_sets))
+    init.chain(stream::select(close_operations, upd_operations))
 }

@@ -14,6 +14,7 @@
 
 extern crate crossbeam;
 extern crate futures;
+extern crate futures_util;
 extern crate tokio;
 extern crate tokio_util;
 //extern crate tokio_tungstenite;
