@@ -15,7 +15,7 @@
 use std::convert::TryFrom;
 use std::ops::Deref;
 
-use crate::model::{Attr, Item, Value};
+use crate::model::{Item, Value};
 
 #[cfg(test)]
 mod tests;
@@ -44,15 +44,15 @@ struct LaneAddressedBuilder {
 }
 
 impl LaneAddressedBuilder {
-    fn build(&self) -> Result<LaneAddressed, EnvelopeParseErr> {
+    fn build(self) -> Result<LaneAddressed, EnvelopeParseErr> {
         if self.lane_uri.is_none() {
             Err(EnvelopeParseErr::MissingHeader(String::from("lane")))
         } else if self.node_uri.is_none() {
             Err(EnvelopeParseErr::MissingHeader(String::from("node")))
         } else {
             Ok(LaneAddressed {
-                node_uri: self.node_uri.to_owned().unwrap(),
-                lane_uri: self.lane_uri.to_owned().unwrap(),
+                node_uri: self.node_uri.unwrap(),
+                lane_uri: self.lane_uri.unwrap(),
                 body: self.body.to_owned(),
             })
         }
@@ -67,7 +67,7 @@ struct LinkAddressedBuilder {
 }
 
 impl LinkAddressedBuilder {
-    fn build(&self) -> Result<LinkAddressed, EnvelopeParseErr> {
+    fn build(self) -> Result<LinkAddressed, EnvelopeParseErr> {
         if self.rate.is_none() {
             Err(EnvelopeParseErr::MissingHeader(String::from("rate")))
         } else if self.prio.is_none() {
@@ -240,9 +240,9 @@ fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &
     }
 }
 
-fn to_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+fn to_linked_addressed<F>(value:Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
     where F: Fn(LinkAddressed) -> Envelope {
-    match envelope_type.value {
+    match value {
         Value::Record(_, headers) => {
             return match parse_link_addressed(headers, body) {
                 Ok(link_builder) => {
@@ -260,9 +260,9 @@ fn to_linked_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> 
     }
 }
 
-fn to_lane_addressed<F>(envelope_type: Attr, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+fn to_lane_addressed<F>(value:Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
     where F: Fn(LaneAddressed) -> Envelope {
-    match envelope_type.value {
+    match value {
         Value::Record(_, headers) => {
             return match parse_lane_addressed(headers, body) {
                 Ok(lane_builder) => {
@@ -312,42 +312,42 @@ impl TryFrom<Value> for Envelope {
 
         return match envelope_type.name.as_str() {
             "event" => {
-                to_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type.value, body, |la| {
                     Envelope::EventMessage(la)
                 })
             }
             "command" => {
-                to_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type.value, body, |la| {
                     Envelope::CommandMessage(la)
                 })
             }
             "link" => {
-                to_linked_addressed(envelope_type, body, |la| {
+                to_linked_addressed(envelope_type.value, body, |la| {
                     Envelope::LinkRequest(la)
                 })
             }
             "linked" => {
-                to_linked_addressed(envelope_type, body, |la| {
+                to_linked_addressed(envelope_type.value, body, |la| {
                     Envelope::LinkedResponse(la)
                 })
             }
             "sync" => {
-                to_linked_addressed(envelope_type, body, |la| {
+                to_linked_addressed(envelope_type.value, body, |la| {
                     Envelope::SyncRequest(la)
                 })
             }
             "synced" => {
-                to_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type.value, body, |la| {
                     Envelope::SyncedResponse(la)
                 })
             }
             "unlink" => {
-                to_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type.value, body, |la| {
                     Envelope::UnlinkRequest(la)
                 })
             }
             "unlinked" => {
-                to_lane_addressed(envelope_type, body, |la| {
+                to_lane_addressed(envelope_type.value, body, |la| {
                     Envelope::UnlinkedResponse(la)
                 })
             }
