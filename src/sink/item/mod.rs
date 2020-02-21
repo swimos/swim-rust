@@ -63,10 +63,10 @@ pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + 'static>(
 
 /// Transform the error type of an [`ItemSink`].
 pub fn map_err<T, E1, E2, Snk, Fac, F>(sink: Snk, f: Fac) -> ItemSinkMapErr<Snk, Fac>
-    where
-        Snk: for<'a> ItemSink<'a, T, Error = E1>,
-        F: FnMut(Result<(), E1>) -> Result<(), E2>,
-        Fac: FnMut() -> F,
+where
+    Snk: for<'a> ItemSink<'a, T, Error = E1>,
+    F: FnMut(Result<(), E1>) -> Result<(), E2>,
+    Fac: FnMut() -> F,
 {
     ItemSinkMapErr::new(sink, f)
 }
@@ -99,8 +99,6 @@ impl<Snk, Fac> ItemSinkMapErr<Snk, Fac> {
         ItemSinkMapErr { sink, fac }
     }
 }
-
-
 
 impl<'a, T, E1, E2, Snk, Fac, F> ItemSink<'a, T> for ItemSinkMapErr<Snk, Fac>
 where

@@ -12,19 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate crossbeam;
-extern crate futures;
-extern crate tokio;
-extern crate tokio_util;
-//extern crate tokio_tungstenite;
-extern crate bytes;
-extern crate either;
-extern crate im;
-extern crate pin_utils;
+use tokio::sync::oneshot;
 
-pub mod downlink;
-pub mod eff_cell;
-pub mod iteratee;
-pub mod model;
-pub mod request;
-pub mod sink;
+#[derive(Debug)]
+pub struct Request<T> {
+    satisfy: oneshot::Sender<T>,
+}
+
+impl<T> Request<T> {
+    pub fn new(sender: oneshot::Sender<T>) -> Request<T> {
+        Request { satisfy: sender }
+    }
+
+    pub fn send(self, data: T) -> Option<()> {
+        match self.satisfy.send(data) {
+            Ok(_) => None,
+            Err(_) => Some(()),
+        }
+    }
+}
