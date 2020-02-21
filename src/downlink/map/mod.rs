@@ -21,6 +21,7 @@ use crate::model::Value;
 use crate::request::Request;
 
 use super::*;
+use std::fmt::Formatter;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MapModification<V> {
@@ -215,6 +216,33 @@ impl MapAction {
     }
 }
 
+impl Debug for MapAction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MapAction::Insert { key, value, old } => {
+                write!(f, "Insert({:?} => {:?}, {:?})", key, value, old)
+            }
+            MapAction::Remove { key, old } => write!(f, "Remove({:?}, {:?})", key, old),
+            MapAction::Take { n, before, after } => {
+                write!(f, "Take({:?}, {:?}, {:?})", n, before, after)
+            }
+            MapAction::Skip { n, before, after } => {
+                write!(f, "Skip({:?}, {:?}, {:?})", n, before, after)
+            }
+            MapAction::Clear { before } => write!(f, "Clear({:?})", before),
+            MapAction::Get { request } => write!(f, "Get({:?})", request),
+            MapAction::GetByKey { key, request } => write!(f, "GetByKey({:?}, {:?})", key, request),
+            MapAction::Update {
+                key,
+                f: _,
+                before,
+                after,
+            } => write!(f, "Update({:?}, <closure>, {:?}, {:?})", key, before, after),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MapEvent {
     Initial,
     Insert(Value),
@@ -226,6 +254,7 @@ pub enum MapEvent {
 
 pub type ValMap = OrdMap<Value, Arc<Value>>;
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ViewWithEvent {
     pub view: ValMap,
     pub event: MapEvent,
