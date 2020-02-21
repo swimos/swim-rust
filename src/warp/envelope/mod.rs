@@ -77,8 +77,8 @@ impl LinkAddressedBuilder {
                 Ok(lane) => {
                     Ok(LinkAddressed {
                         lane,
-                        rate: self.rate.unwrap(),
-                        prio: self.prio.unwrap(),
+                        rate: self.rate,
+                        prio: self.prio,
                     })
                 }
                 Err(e) => Err(e)
@@ -102,8 +102,8 @@ pub struct LaneAddressed {
 #[derive(Debug, PartialEq)]
 pub struct LinkAddressed {
     pub lane: LaneAddressed,
-    pub rate: f64,
-    pub prio: f64,
+    pub rate: Option<f64>,
+    pub prio: Option<f64>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -211,18 +211,20 @@ fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAdd
 fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a mut LaneAddressedBuilder)
                                   -> Result<&'a LaneAddressedBuilder, EnvelopeParseErr> {
     if key == "node" {
-        if lane_addressed.node_uri.is_some() {
-            Err(EnvelopeParseErr::DuplicateHeader(String::from("node")))
-        } else {
-            lane_addressed.node_uri = Some(val.deref().to_string());
-            Ok(lane_addressed)
+        match lane_addressed.node_uri {
+            Some(_) => Err(EnvelopeParseErr::DuplicateHeader(String::from("node"))),
+            None => {
+                lane_addressed.node_uri = Some(val.deref().to_string());
+                Ok(lane_addressed)
+            }
         }
     } else if key == "lane" {
-        if lane_addressed.lane_uri.is_some() {
-            Err(EnvelopeParseErr::DuplicateHeader(String::from("lane")))
-        } else {
-            lane_addressed.lane_uri = Some(val.deref().to_string());
-            Ok(lane_addressed)
+        match lane_addressed.lane_uri {
+            Some(_) => Err(EnvelopeParseErr::DuplicateHeader(String::from("lane"))),
+            None => {
+                lane_addressed.lane_uri = Some(val.deref().to_string());
+                Ok(lane_addressed)
+            }
         }
     } else {
         Err(EnvelopeParseErr::UnexpectedKey(key.to_owned()))
@@ -240,7 +242,7 @@ fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &
     }
 }
 
-fn to_linked_addressed<F>(value:Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+fn to_linked_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
     where F: Fn(LinkAddressed) -> Envelope {
     match value {
         Value::Record(_, headers) => {
@@ -260,7 +262,7 @@ fn to_linked_addressed<F>(value:Value, body: Option<Value>, func: F) -> Result<E
     }
 }
 
-fn to_lane_addressed<F>(value:Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
+fn to_lane_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
     where F: Fn(LaneAddressed) -> Envelope {
     match value {
         Value::Record(_, headers) => {
