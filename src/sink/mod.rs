@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::mpsc;
-use tokio::sync::watch;
-use tokio::sync::mpsc::error::TrySendError;
-use futures::Sink;
 use futures::task::{Context, Poll};
-use std::pin::Pin;
+use futures::Sink;
 use std::error::Error;
-use std::fmt::{Display, Formatter, Debug};
+use std::fmt::{Debug, Display, Formatter};
+use std::pin::Pin;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::watch;
+
+pub mod item;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SinkSendError<T> {
@@ -43,11 +45,9 @@ impl<T: Debug> Error for SinkSendError<T> {}
 pub struct MpscSink<T>(mpsc::Sender<T>);
 
 impl<T> MpscSink<T> {
-
     pub fn wrap(sender: mpsc::Sender<T>) -> MpscSink<T> {
         MpscSink(sender)
     }
-
 }
 
 /// Wrapper for the Tokio watch sender to allow it to implement [`Sink`].
@@ -55,11 +55,9 @@ impl<T> MpscSink<T> {
 pub struct WatchSink<T>(watch::Sender<T>);
 
 impl<T> WatchSink<T> {
-
     pub fn wrap(sender: watch::Sender<T>) -> WatchSink<T> {
         WatchSink(sender)
     }
-
 }
 
 impl<T> From<mpsc::Sender<T>> for MpscSink<T> {
@@ -84,11 +82,9 @@ impl<T> Sink<T> for MpscSink<T> {
 
     fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
         let MpscSink(sender) = self.get_mut();
-        sender.try_send(item).map_err(|err| {
-            match err {
-                TrySendError::Full(_) => panic!("Call `poll_ready` on sink before sending."),
-                TrySendError::Closed(t) => SinkSendError::ClosedOnSend(t)
-            }
+        sender.try_send(item).map_err(|err| match err {
+            TrySendError::Full(_) => panic!("Call `poll_ready` on sink before sending."),
+            TrySendError::Closed(t) => SinkSendError::ClosedOnSend(t),
         })
     }
 
@@ -122,4 +118,3 @@ impl<T> Sink<T> for WatchSink<T> {
         Poll::Ready(Ok(()))
     }
 }
-
