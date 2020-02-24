@@ -23,6 +23,9 @@ use crate::request::Request;
 use super::*;
 use std::fmt::Formatter;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MapModification<V> {
     Insert(Value, V),
@@ -332,14 +335,25 @@ impl StateMachine<MapModification<Value>, MapAction> for ValMap {
     ) -> Response<Self::Ev, Self::Cmd> {
         let Model { data_state, state } = model;
         match op {
-            Operation::Start => Response::for_command(Command::Sync),
+            Operation::Start => {
+                if *state != DownlinkState::Synced {
+                    Response::for_command(Command::Sync)
+                } else {
+                    Response::none()
+                }
+            }
             Operation::Message(Message::Linked) => {
                 *state = DownlinkState::Linked;
                 Response::none()
             }
             Operation::Message(Message::Synced) => {
+                let state_before = *state;
                 *state = DownlinkState::Synced;
-                Response::for_event(Event(ViewWithEvent::initial(data_state), false))
+                if state_before == DownlinkState::Synced {
+                    Response::none()
+                } else {
+                    Response::for_event(Event(ViewWithEvent::initial(data_state), false))
+                }
             }
             Operation::Message(Message::Action(a)) => {
                 if *state != DownlinkState::Unlinked {
@@ -451,21 +465,29 @@ fn handle_action(
             )
         }
         MapAction::Remove { key, old } => {
-            let err = update_and_notify_prev(
-                data_state,
-                &key,
-                |map| {
-                    map.remove(&key);
-                },
-                old,
-            );
-            (
-                Response::of(
-                    Event(ViewWithEvent::remove(data_state, key.clone()), true),
-                    Command::Action(MapModification::Remove(key)),
-                ),
-                err,
-            )
+            let (err, did_rem) = match old {
+                Some(req) => {
+                    let prev = data_state.remove(&key);
+                    let did_remove = prev.is_some();
+                    (req.send(prev), did_remove)
+                }
+                _ => {
+                    let old = data_state.remove(&key);
+                    (None, old.is_some())
+                }
+            };
+            if did_rem {
+                (
+                    Response::of(
+                        Event(ViewWithEvent::remove(data_state, key.clone()), true),
+                        Command::Action(MapModification::Remove(key)),
+                    ),
+                    err,
+                )
+            } else {
+                (Response::none(), err)
+            }
+
         }
         MapAction::Take { n, before, after } => {
             let err1 = update_and_notify(
