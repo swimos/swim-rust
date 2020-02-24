@@ -171,11 +171,8 @@ fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAdd
                         }
                         _ => {
                             if let Value::Text(slot_val) = slot_value {
-                                if let Err(e) = parse_lane_addressed_value(slot_key_val, slot_val, &mut link_addressed.lane) {
-                                    Err(e)
-                                } else {
-                                    Ok(link_addressed)
-                                }
+                                parse_lane_addressed_value(slot_key_val, slot_val, &mut link_addressed.lane)?;
+                                Ok(link_addressed)
                             } else {
                                 Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
                             }
@@ -187,11 +184,8 @@ fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAdd
             }
             // Lane/Node URI without a key
             Item::ValueItem(slot_value) => {
-                if let Err(e) = parse_lane_addressed_index(index, slot_value, &mut link_addressed.lane) {
-                    Err(e)
-                } else {
-                    Ok(link_addressed)
-                }
+                parse_lane_addressed_index(index, slot_value, &mut link_addressed.lane)?;
+                Ok(link_addressed)
             }
         }
     })
@@ -205,18 +199,12 @@ fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAdd
     }, |mut lane_addressed, (index, item)| {
         match item {
             Item::Slot(Value::Text(slot_key), Value::Text(slot_value)) => {
-                if let Err(e) = parse_lane_addressed_value(slot_key, slot_value, &mut lane_addressed) {
-                    Err(e)
-                } else {
-                    Ok(lane_addressed)
-                }
+                parse_lane_addressed_value(slot_key, slot_value, &mut lane_addressed)?;
+                Ok(lane_addressed)
             }
             Item::ValueItem(slot_value) => {
-                if let Err(e) = parse_lane_addressed_index(index, slot_value, &mut lane_addressed) {
-                    Err(e)
-                } else {
-                    Ok(lane_addressed)
-                }
+                parse_lane_addressed_index(index, slot_value, &mut lane_addressed)?;
+                Ok(lane_addressed)
             }
             _ => {
                 Err(EnvelopeParseErr::UnexpectedItem(item.to_owned()))
@@ -263,15 +251,8 @@ fn to_linked_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<
     where F: Fn(LinkAddressed) -> Envelope {
     match value {
         Value::Record(_, headers) => {
-            return match parse_link_addressed(headers, body) {
-                Ok(link_builder) => {
-                    match link_builder.build() {
-                        Ok(la) => Ok(func(la)),
-                        Err(e) => Err(e)
-                    }
-                }
-                Err(e) => Err(e)
-            };
+            let link_addressed = parse_link_addressed(headers, body)?.build()?;
+            Ok(func(link_addressed))
         }
         v @ _ => {
             Err(EnvelopeParseErr::UnexpectedType(v))
@@ -283,15 +264,8 @@ fn to_lane_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<En
     where F: Fn(LaneAddressed) -> Envelope {
     match value {
         Value::Record(_, headers) => {
-            return match parse_lane_addressed(headers, body) {
-                Ok(lane_builder) => {
-                    match lane_builder.build() {
-                        Ok(la) => Ok(func(la)),
-                        Err(e) => Err(e)
-                    }
-                }
-                Err(e) => Err(e)
-            };
+            let lane_builder = parse_lane_addressed(headers, body)?.build()?;
+            Ok(func(lane_builder))
         }
         v @ _ => {
             Err(EnvelopeParseErr::UnexpectedType(v))
