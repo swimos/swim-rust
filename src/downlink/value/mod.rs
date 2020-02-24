@@ -24,6 +24,9 @@ use crate::model::Value;
 use crate::request::Request;
 use std::fmt;
 
+#[cfg(test)]
+mod tests;
+
 pub enum Action {
     Set(Value, Option<Request<()>>),
     Get(Request<Arc<Value>>),
@@ -139,18 +142,31 @@ impl StateMachine<Value, Action> for Arc<Value> {
     ) -> Response<Self::Ev, Self::Cmd> {
         let Model { data_state, state } = model;
         match op {
-            Operation::Start => Response::for_command(Command::Sync),
+            Operation::Start => {
+                if *state == DownlinkState::Synced {
+                    Response::none()
+                } else {
+                    Response::for_command(Command::Sync)
+                }
+            }
             Operation::Message(message) => match message {
                 Message::Linked => {
                     *state = DownlinkState::Linked;
                     Response::none()
                 }
                 Message::Synced => {
+                    let old_state = *state;
                     *state = DownlinkState::Synced;
-                    Response::for_event(Event(data_state.clone(), false))
+                    if old_state == DownlinkState::Synced {
+                        Response::none()
+                    } else {
+                        Response::for_event(Event(data_state.clone(), false))
+                    }
                 }
                 Message::Action(upd_value) => {
-                    *data_state = Arc::new(upd_value);
+                    if *state != DownlinkState::Unlinked {
+                        *data_state = Arc::new(upd_value);
+                    }
                     if *state == DownlinkState::Synced {
                         Response::for_event(Event(data_state.clone(), false))
                     } else {
