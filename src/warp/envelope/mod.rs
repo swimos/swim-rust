@@ -45,16 +45,28 @@ struct LaneAddressedBuilder {
 
 impl LaneAddressedBuilder {
     fn build(self) -> Result<LaneAddressed, EnvelopeParseErr> {
-        if self.lane_uri.is_none() {
-            Err(EnvelopeParseErr::MissingHeader(String::from("lane")))
-        } else if self.node_uri.is_none() {
-            Err(EnvelopeParseErr::MissingHeader(String::from("node")))
-        } else {
-            Ok(LaneAddressed {
-                node_uri: self.node_uri.unwrap(),
-                lane_uri: self.lane_uri.unwrap(),
-                body: self.body.to_owned(),
-            })
+        match self {
+            LaneAddressedBuilder {
+                node_uri: Some(node_uri),
+                lane_uri: Some(lane_uri),
+                body
+            } => {
+                Ok(LaneAddressed {
+                    node_uri,
+                    lane_uri,
+                    body,
+                })
+            }
+            LaneAddressedBuilder {
+                node_uri: None, ..
+            } => {
+                Err(EnvelopeParseErr::MissingHeader(String::from("node")))
+            }
+            LaneAddressedBuilder {
+                lane_uri: None, ..
+            } => {
+                Err(EnvelopeParseErr::MissingHeader(String::from("lane")))
+            }
         }
     }
 }
@@ -68,20 +80,34 @@ struct LinkAddressedBuilder {
 
 impl LinkAddressedBuilder {
     fn build(self) -> Result<LinkAddressed, EnvelopeParseErr> {
-        if self.rate.is_none() {
-            Err(EnvelopeParseErr::MissingHeader(String::from("rate")))
-        } else if self.prio.is_none() {
-            Err(EnvelopeParseErr::MissingHeader(String::from("prio")))
-        } else {
-            match self.lane.build() {
-                Ok(lane) => {
-                    Ok(LinkAddressed {
-                        lane,
-                        rate: self.rate,
-                        prio: self.prio,
-                    })
+        match self {
+            LinkAddressedBuilder {
+                rate: Some(r),
+                prio: Some(p),
+                lane
+            } => {
+                match lane.build() {
+                    Ok(lane) => {
+                        Ok(LinkAddressed {
+                            lane,
+                            rate: r,
+                            prio: p,
+                        })
+                    }
+                    Err(e) => Err(e),
                 }
-                Err(e) => Err(e)
+            }
+            LinkAddressedBuilder {
+                rate: None,
+                ..
+            } => {
+                Err(EnvelopeParseErr::MissingHeader(String::from("rate")))
+            }
+            LinkAddressedBuilder {
+                prio: None,
+                ..
+            } => {
+                Err(EnvelopeParseErr::MissingHeader(String::from("prio")))
             }
         }
     }
@@ -102,8 +128,8 @@ pub struct LaneAddressed {
 #[derive(Debug, PartialEq)]
 pub struct LinkAddressed {
     pub lane: LaneAddressed,
-    pub rate: Option<f64>,
-    pub prio: Option<f64>,
+    pub rate: f64,
+    pub prio: f64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -297,10 +323,14 @@ impl TryFrom<Value> for Envelope {
             if attrs.len() > 1 {
                 Some(Value::Record(attrs.drain(1..).collect(), body))
             } else if body.len() == 1 {
-                let single = body.pop().unwrap();
-                match single {
-                    Item::ValueItem(inner) => Some(inner),
-                    i @ _ => return Err(EnvelopeParseErr::UnexpectedItem(i))
+                match body.pop() {
+                    Some(item) => {
+                        match item {
+                            Item::ValueItem(inner) => Some(inner),
+                            i @ _ => return Err(EnvelopeParseErr::UnexpectedItem(i))
+                        }
+                    }
+                    None => None
                 }
             } else {
                 None

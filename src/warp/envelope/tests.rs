@@ -37,16 +37,16 @@ fn run_test(record: Value, expected: Envelope) {
 fn link_addressed_no_body() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_no_body(),
-        prio: Some(0.5),
-        rate: Some(1.0),
+        prio: 0.5,
+        rate: 1.0,
     }
 }
 
 fn link_addressed_test_record() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_test_record(),
-        prio: Some(0.5),
-        rate: Some(1.0),
+        prio: 0.5,
+        rate: 1.0,
     }
 }
 
@@ -575,6 +575,14 @@ fn duplicate_headers() {
     );
 
     run_test_expect_err(record, EnvelopeParseErr::DuplicateHeader(String::from("node")));
+
+    let record = create_record("sync", vec![
+        Item::ValueItem(Value::Text(String::from("node_uri"))),
+        Item::ValueItem(Value::Text(String::from("lane_uri"))),
+        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+    ]);
+
+    run_test_expect_err(record, EnvelopeParseErr::MissingHeader(String::from("rate")));
 }
 
 #[test]
@@ -620,8 +628,8 @@ fn multiple_attributes() {
                      lane_uri: String::from("lane_uri"),
                      body: Some(Float64Value(1.0)),
                  },
-                 rate: Some(1.0),
-                 prio: Some(0.5),
+                 rate: 1.0,
+                 prio: 0.5,
              }),
     );
 }
