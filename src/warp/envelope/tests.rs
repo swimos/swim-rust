@@ -37,16 +37,16 @@ fn run_test(record: Value, expected: Envelope) {
 fn link_addressed_no_body() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_no_body(),
-        prio: 0.5,
-        rate: 1.0,
+        prio: Some(0.5),
+        rate: Some(1.0),
     }
 }
 
 fn link_addressed_test_record() -> LinkAddressed {
     LinkAddressed {
         lane: lane_addressed_test_record(),
-        prio: 0.5,
-        rate: 1.0,
+        prio: Some(0.5),
+        rate: Some(1.0),
     }
 }
 
@@ -628,8 +628,8 @@ fn multiple_attributes() {
                      lane_uri: String::from("lane_uri"),
                      body: Some(Float64Value(1.0)),
                  },
-                 rate: 1.0,
-                 prio: 0.5,
+                 rate: Some(1.0),
+                 prio: Some(0.5),
              }),
     );
 }

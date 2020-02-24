@@ -82,16 +82,16 @@ impl LinkAddressedBuilder {
     fn build(self) -> Result<LinkAddressed, EnvelopeParseErr> {
         match self {
             LinkAddressedBuilder {
-                rate: Some(r),
-                prio: Some(p),
+                rate: Some(_),
+                prio: Some(_),
                 lane
             } => {
                 match lane.build() {
                     Ok(lane) => {
                         Ok(LinkAddressed {
                             lane,
-                            rate: r,
-                            prio: p,
+                            rate: self.rate,
+                            prio: self.prio,
                         })
                     }
                     Err(e) => Err(e),
@@ -128,8 +128,8 @@ pub struct LaneAddressed {
 #[derive(Debug, PartialEq)]
 pub struct LinkAddressed {
     pub lane: LaneAddressed,
-    pub rate: f64,
-    pub prio: f64,
+    pub rate: Option<f64>,
+    pub prio: Option<f64>,
 }
 
 #[derive(Debug, PartialEq)]
