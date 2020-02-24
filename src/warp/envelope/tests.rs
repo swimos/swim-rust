@@ -481,19 +481,20 @@ fn unexpected_key() {
 
 #[test]
 fn unexpected_type() {
+    let slot = Item::Slot(Value::Float64Value(1.0), Value::Float64Value(1.0));
     let record = Value::Record(
         vec![
             Attr::of(("unlinked", Value::Record(
                 Vec::new(),
                 vec![
-                    Item::Slot(Value::Float64Value(1.0), Value::Float64Value(1.0)),
+                    slot.clone(),
                 ],
             ))),
         ],
         Vec::new(),
     );
 
-    run_test_expect_err(record, EnvelopeParseErr::UnexpectedType(Value::Float64Value(1.0)));
+    run_test_expect_err(record, EnvelopeParseErr::UnexpectedItem(slot));
 }
 
 #[test]

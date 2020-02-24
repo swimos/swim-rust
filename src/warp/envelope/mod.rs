@@ -86,16 +86,12 @@ impl LinkAddressedBuilder {
                 prio: Some(_),
                 lane
             } => {
-                match lane.build() {
-                    Ok(lane) => {
-                        Ok(LinkAddressed {
-                            lane,
-                            rate: self.rate,
-                            prio: self.prio,
-                        })
-                    }
-                    Err(e) => Err(e),
-                }
+                let lane = lane.build()?;
+                Ok(LinkAddressed {
+                    lane,
+                    rate: self.rate,
+                    prio: self.prio,
+                })
             }
             LinkAddressedBuilder {
                 rate: None,
@@ -208,19 +204,11 @@ fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAdd
         body,
     }, |mut lane_addressed, (index, item)| {
         match item {
-            Item::Slot(slot_key, slot_value) => {
-                if let Value::Text(key) = slot_key {
-                    if let Value::Text(slot_val) = slot_value {
-                        if let Err(e) = parse_lane_addressed_value(key, slot_val, &mut lane_addressed) {
-                            Err(e)
-                        } else {
-                            Ok(lane_addressed)
-                        }
-                    } else {
-                        Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
-                    }
+            Item::Slot(Value::Text(slot_key), Value::Text(slot_value)) => {
+                if let Err(e) = parse_lane_addressed_value(slot_key, slot_value, &mut lane_addressed) {
+                    Err(e)
                 } else {
-                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
+                    Ok(lane_addressed)
                 }
             }
             Item::ValueItem(slot_value) => {
@@ -229,6 +217,9 @@ fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAdd
                 } else {
                     Ok(lane_addressed)
                 }
+            }
+            _ => {
+                Err(EnvelopeParseErr::UnexpectedItem(item.to_owned()))
             }
         }
     })
