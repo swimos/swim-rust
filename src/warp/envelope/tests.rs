@@ -576,14 +576,6 @@ fn duplicate_headers() {
     );
 
     run_test_expect_err(record, EnvelopeParseErr::DuplicateHeader(String::from("node")));
-
-    let record = create_record("sync", vec![
-        Item::ValueItem(Value::Text(String::from("node_uri"))),
-        Item::ValueItem(Value::Text(String::from("lane_uri"))),
-        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
-    ]);
-
-    run_test_expect_err(record, EnvelopeParseErr::MissingHeader(String::from("rate")));
 }
 
 #[test]
@@ -633,4 +625,17 @@ fn multiple_attributes() {
                  prio: Some(0.5),
              }),
     );
+}
+
+#[test]
+fn tag() {
+    let record = Value::Record(
+        vec![
+            Attr::of(("auth", Value::Extant))
+        ],
+        Vec::new(),
+    );
+
+    let e = Envelope::try_from(record).unwrap();
+    assert_eq!(e.tag(), "auth");
 }

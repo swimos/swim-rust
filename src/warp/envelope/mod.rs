@@ -20,20 +20,116 @@ use crate::model::{Item, Value};
 #[cfg(test)]
 mod tests;
 
+/// A model to exchange over WARP connections.
 #[derive(Debug, PartialEq)]
 pub enum Envelope {
-    EventMessage(LaneAddressed),
-    CommandMessage(LaneAddressed),
+    // @link
     LinkRequest(LinkAddressed),
-    LinkedResponse(LinkAddressed),
+    // @sync
     SyncRequest(LinkAddressed),
+    // @linked
+    LinkedResponse(LinkAddressed),
+
+    // @event
+    EventMessage(LaneAddressed),
+    // @command
+    CommandMessage(LaneAddressed),
+    // @synced
     SyncedResponse(LaneAddressed),
+    // @unlink
     UnlinkRequest(LaneAddressed),
+    // @unlinked
     UnlinkedResponse(LaneAddressed),
+
+    // @auth
     AuthRequest(HostAddressed),
+    // @authed
     AuthedResponse(HostAddressed),
+    // @deauth
     DeauthRequest(HostAddressed),
+    // @deauthed
     DeauthedResponse(HostAddressed),
+}
+
+impl Envelope {
+    /// Returns the tag (envelope type) of the current [`Envelope`] variant.
+    fn tag(self) -> &'static str {
+        match self {
+            Envelope::LinkRequest(_) => {
+                "link"
+            }
+            Envelope::SyncRequest(_) => {
+                "sync"
+            }
+            Envelope::LinkedResponse(_) => {
+                "linked"
+            }
+            Envelope::EventMessage(_) => {
+                "event"
+            }
+            Envelope::CommandMessage(_) => {
+                "command"
+            }
+            Envelope::SyncedResponse(_) => {
+                "synced"
+            }
+            Envelope::UnlinkRequest(_) => {
+                "unlink"
+            }
+            Envelope::UnlinkedResponse(_) => {
+                "unlinked"
+            }
+            Envelope::AuthRequest(_) => {
+                "auth"
+            }
+            Envelope::AuthedResponse(_) => {
+                "authed"
+            }
+            Envelope::DeauthRequest(_) => {
+                "deauth"
+            }
+            Envelope::DeauthedResponse(_) => {
+                "deauthed"
+            }
+        }
+    }
+}
+
+/// A simple [`Envelope`] payload to deliver to the other end of an active network connection.
+#[derive(Debug, PartialEq)]
+pub struct HostAddressed {
+    pub body: Option<Value>,
+}
+
+/// An [`Envelope`]'s payload that is routed to a particular lane, of a particular node. Both the
+/// `node_uri` and `lane_uri` must be provided.
+#[derive(Debug, PartialEq)]
+pub struct LaneAddressed {
+    pub node_uri: String,
+    pub lane_uri: String,
+    pub body: Option<Value>,
+}
+
+/// An [`Envelope`] to route along the path of a currently open link. If the `rate` or `prio` are
+/// not provided then they are set to `None`.
+#[derive(Debug, PartialEq)]
+pub struct LinkAddressed {
+    pub lane: LaneAddressed,
+    pub rate: Option<f64>,
+    pub prio: Option<f64>,
+}
+
+/// Errors that may occur when parsing a [`Value`] in to an [`Envelope`]. A variant's associated
+/// data is the cause of the error.
+#[derive(Debug, PartialEq)]
+pub enum EnvelopeParseErr {
+    MissingHeader(String),
+    UnexpectedKey(String),
+    UnexpectedType(Value),
+    UnexpectedItem(Item),
+    Malformatted,
+    DuplicateHeader(String),
+    UnknownTag(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -43,6 +139,15 @@ struct LaneAddressedBuilder {
     body: Option<Value>,
 }
 
+#[derive(Debug, PartialEq)]
+struct LinkAddressedBuilder {
+    lane: LaneAddressedBuilder,
+    rate: Option<f64>,
+    prio: Option<f64>,
+}
+
+/// Builds a [`LaneAddressed`] variant. Verifying that neither the `node_uri` or `lane_uri` are
+/// `None`.
 impl LaneAddressedBuilder {
     fn build(self) -> Result<LaneAddressed, EnvelopeParseErr> {
         match self {
@@ -71,20 +176,12 @@ impl LaneAddressedBuilder {
     }
 }
 
-#[derive(Debug, PartialEq)]
-struct LinkAddressedBuilder {
-    lane: LaneAddressedBuilder,
-    rate: Option<f64>,
-    prio: Option<f64>,
-}
-
 impl LinkAddressedBuilder {
     fn build(self) -> Result<LinkAddressed, EnvelopeParseErr> {
         match self {
             LinkAddressedBuilder {
-                rate: Some(_),
-                prio: Some(_),
-                lane
+                lane,
+                ..
             } => {
                 let lane = lane.build()?;
                 Ok(LinkAddressed {
@@ -93,52 +190,13 @@ impl LinkAddressedBuilder {
                     prio: self.prio,
                 })
             }
-            LinkAddressedBuilder {
-                rate: None,
-                ..
-            } => {
-                Err(EnvelopeParseErr::MissingHeader(String::from("rate")))
-            }
-            LinkAddressedBuilder {
-                prio: None,
-                ..
-            } => {
-                Err(EnvelopeParseErr::MissingHeader(String::from("prio")))
-            }
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct HostAddressed {
-    pub body: Option<Value>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct LaneAddressed {
-    pub node_uri: String,
-    pub lane_uri: String,
-    pub body: Option<Value>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct LinkAddressed {
-    pub lane: LaneAddressed,
-    pub rate: Option<f64>,
-    pub prio: Option<f64>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum EnvelopeParseErr {
-    MissingHeader(String),
-    UnexpectedKey(String),
-    UnexpectedType(Value),
-    UnexpectedItem(Item),
-    Malformatted,
-    DuplicateHeader(String),
-    UnknownTag(String),
-}
-
+/// Parses a [`LinkAddressed`] envelope from a vector of [`Item`]s. Returning a builder which
+/// can be used for validation or an [`EnvelopeParseErr`] with a cause if any errors are
+/// encountered.
 fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAddressedBuilder, EnvelopeParseErr> {
     items.iter().enumerate().try_fold(LinkAddressedBuilder {
         lane: LaneAddressedBuilder {
@@ -191,6 +249,9 @@ fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAdd
     })
 }
 
+/// Parses a [`LaneAddressed`] envelope from a vector of [`Item`]s. Returning a builder which
+/// can be used for validation or an [`EnvelopeParseErr`] with a cause if any errors are
+/// encountered. Both the `node_uri` and `lane_uri` [`Item`]s should be provided.
 fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAddressedBuilder, EnvelopeParseErr> {
     items.iter().enumerate().try_fold(LaneAddressedBuilder {
         node_uri: None,
@@ -213,14 +274,14 @@ fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAdd
     })
 }
 
-fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a mut LaneAddressedBuilder)
-                                  -> Result<&'a LaneAddressedBuilder, EnvelopeParseErr> {
+fn parse_lane_addressed_value(key: &str, val: &String, lane_addressed: &mut LaneAddressedBuilder)
+                              -> Result<(), EnvelopeParseErr> {
     if key == "node" {
         match lane_addressed.node_uri {
             Some(_) => Err(EnvelopeParseErr::DuplicateHeader(String::from("node"))),
             None => {
                 lane_addressed.node_uri = Some(val.deref().to_string());
-                Ok(lane_addressed)
+                Ok(())
             }
         }
     } else if key == "lane" {
@@ -228,7 +289,7 @@ fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a m
             Some(_) => Err(EnvelopeParseErr::DuplicateHeader(String::from("lane"))),
             None => {
                 lane_addressed.lane_uri = Some(val.deref().to_string());
-                Ok(lane_addressed)
+                Ok(())
             }
         }
     } else {
@@ -236,8 +297,8 @@ fn parse_lane_addressed_value<'a>(key: &str, val: &String, lane_addressed: &'a m
     }
 }
 
-fn parse_lane_addressed_index<'a>(index: usize, value: &Value, lane_addressed: &'a mut LaneAddressedBuilder)
-                                  -> Result<&'a LaneAddressedBuilder, EnvelopeParseErr> {
+fn parse_lane_addressed_index(index: usize, value: &Value, lane_addressed: &mut LaneAddressedBuilder)
+                              -> Result<(), EnvelopeParseErr> {
     if index == 0 {
         parse_lane_addressed_value("node", &value.to_string(), lane_addressed)
     } else if index == 1 {
@@ -273,6 +334,38 @@ fn to_lane_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<En
     }
 }
 
+/// Attempt to parse a ['Value'] in to an ['Envelope']. Returning either the parsed [`Envelope`] or
+/// an [`EnvelopeParseErr`] detailing the failure cause.
+///
+/// # Examples
+/// ```
+/// use swim_rust::warp::envelope::*;
+/// use std::convert::TryFrom;
+/// use swim_rust::model::{Value, Attr, Item};
+///
+/// let record = Value::Record(
+///         vec![
+///             Attr::of(("command", Value::Record(
+///                 Vec::new(),
+///                 vec![
+///                   Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+///                   Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
+///               ],
+///             ))),
+///         ],
+///         Vec::new(),
+///     );
+///
+/// let envelope = Envelope::try_from(record).unwrap();
+/// assert_eq!(envelope, Envelope::CommandMessage(LaneAddressed {
+///        node_uri: String::from("node_uri"),
+///        lane_uri: String::from("lane_uri"),
+///        body: None,
+/// }));
+/// ```
+/// An ['Envelope'] is formed of named headers and a value, with the exception of `node` and `lane` where they
+/// may be positional; `node` at header index 0 and `lane` at header index 1. See [`Envelope`] for
+/// a list of the acceptable variants.
 impl TryFrom<Value> for Envelope {
     type Error = EnvelopeParseErr;
 
