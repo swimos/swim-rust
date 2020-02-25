@@ -30,3 +30,4 @@ pub mod model;
 pub mod request;
 pub mod sink;
 pub mod warp;
+pub mod connections;
