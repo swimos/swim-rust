@@ -1,3 +1,5 @@
+
+
 use std::borrow::{Borrow, BorrowMut};
 use std::convert::TryInto;
 
@@ -7,6 +9,7 @@ use error::{Error, Result};
 
 use crate::model::{Attr, Item, Value};
 use crate::model::Value::Record;
+use crate::model::Item::{Slot, ValueItem};
 
 mod error {
     pub use serde::de::value::Error;
@@ -22,6 +25,8 @@ struct Serializer {
 
 impl Serializer {
     fn add_attr(&mut self, name: &str) {
+        self.drain_stack();
+
         match &mut self.output {
             Value::Record(_, ref mut items) => {
                 self.stack = Vec::new();
@@ -50,6 +55,24 @@ impl Serializer {
             v_ @ _ => {
                 panic!()
             }
+        }
+    }
+
+    fn drain_stack(&mut self) {
+        if self.stack.len() == 1 {
+            let opt = self.stack.pop();
+            match opt {
+                Some(v) => self.set_current(v),
+                None => {}
+            }
+        } else if self.stack.len() > 1 {
+            // items.into_iter().try_fold(Vec::with_capacity(length), |mut results: Vec<T>, item| {
+            let length = self.stack.len();
+            let items = self.stack.iter().fold(Vec::with_capacity(length), |mut v, item| {
+                v.push(Item::ValueItem(item.to_owned()));
+                v
+            });
+            self.set_current(Value::Record(Vec::new(), items));
         }
     }
 }
@@ -373,22 +396,7 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
 
     // Close the sequence.
     fn end(self) -> Result<()> {
-        if self.stack.len() == 1 {
-            let opt = self.stack.pop();
-            match opt {
-                Some(v) => self.set_current(v),
-                None => {}
-            }
-        } else if self.stack.len() > 1 {
-            // items.into_iter().try_fold(Vec::with_capacity(length), |mut results: Vec<T>, item| {
-            let length = self.stack.len();
-            let items = self.stack.iter().fold(Vec::with_capacity(length), |mut v, item| {
-                v.push(Item::ValueItem(item.to_owned()));
-                v
-            });
-            self.set_current(Value::Record(Vec::new(), items));
-        }
-
+        self.drain_stack();
         Ok(())
     }
 }
@@ -409,7 +417,7 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        // self.output += "]";
+        self.drain_stack();
         Ok(())
     }
 }
@@ -430,7 +438,7 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        // self.output += "]";
+        self.drain_stack();
         Ok(())
     }
 }
@@ -459,7 +467,7 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        // self.output += "]}";
+        self.drain_stack();
         Ok(())
     }
 }
@@ -502,7 +510,7 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        // self.output += "}";
+        self.drain_stack();
         Ok(())
     }
 }
@@ -522,6 +530,8 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
+        self.drain_stack();
+
         Ok(())
     }
 }
@@ -541,6 +551,8 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
+        self.drain_stack();
+
         Ok(())
     }
 }
@@ -557,36 +569,16 @@ fn test_struct() {
         int: 1,
         seq: vec!["a", "b"],
     };
-    // let expected = r#"{"int":1,"seq":["a","b"]}"#;
-    let s = to_string(&test);
-    println!("{:?}", s);
 
-    // assert_eq!(to_string(&test).unwrap(), expected);
+    let parsed_value = to_string(&test).unwrap();
+    let expected = Value::Record(Vec::new(), vec![
+        Item::Slot(Value::Text(String::from("int")), Value::Int32Value(1)),
+        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
+            ValueItem(Value::Text(String::from("a"))),
+            ValueItem(Value::Text(String::from("b"))),
+        ])),
+
+    ]);
+
+    assert_eq!(parsed_value, expected);
 }
-//
-// #[test]
-// fn test_enum() {
-//     #[derive(Serialize)]
-//     enum E {
-//         Unit,
-//         Newtype(u32),
-//         Tuple(u32, u32),
-//         Struct { a: u32 },
-//     }
-//
-//     let u = E::Unit;
-//     let expected = r#""Unit""#;
-//     assert_eq!(to_string(&u).unwrap(), expected);
-//
-//     let n = E::Newtype(1);
-//     let expected = r#"{"Newtype":1}"#;
-//     assert_eq!(to_string(&n).unwrap(), expected);
-//
-//     let t = E::Tuple(1, 2);
-//     let expected = r#"{"Tuple":[1,2]}"#;
-//     assert_eq!(to_string(&t).unwrap(), expected);
-//
-//     let s = E::Struct { a: 1 };
-//     let expected = r#"{"Struct":{"a":1}}"#;
-//     assert_eq!(to_string(&s).unwrap(), expected);
-// }
