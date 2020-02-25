@@ -12,17 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::parser::is_identifier;
-use bytes::*;
-use either::Either;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
-use std::fmt::Write;
 use std::fmt::{Display, Formatter};
+use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 use std::iter;
+
+use bytes::*;
+use either::Either;
 use tokio_util::codec::Encoder;
+
+use crate::model::parser::is_identifier;
 
 pub mod parser;
 

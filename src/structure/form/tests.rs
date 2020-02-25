@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::convert::TryFrom;
+use std::fmt::Debug;
 
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
@@ -20,7 +21,6 @@ use hamcrest2::prelude::*;
 use crate::model::{Item, Value};
 use crate::model::Value::Record;
 use crate::structure::form::FormParseErr;
-use std::fmt::Debug;
 
 fn assert_result<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) {
     match r {

@@ -49,8 +49,8 @@ pub trait Iteratee<In> {
     /// Feed all values from an ['Iterator'] into this iteratee, collecting all outputs generated
     /// into a vector.
     fn feed_all<U>(&mut self, inputs: U) -> Vec<Self::Item>
-    where
-        U: Iterator<Item = In>,
+        where
+            U: Iterator<Item=In>,
     {
         inputs.flat_map(|input| self.feed(input)).collect()
     }
@@ -58,8 +58,8 @@ pub trait Iteratee<In> {
     /// Flush the state of the iteratee, consuming it. By default this does nothing and must be
     /// overridden by implementors.
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         None
     }
@@ -83,9 +83,9 @@ pub trait Iteratee<In> {
     /// assert_eq!(iteratee.feed(2), Some("2".to_owned()));
     /// ```
     fn comap<B, F>(self, f: F) -> Comap<Self, F>
-    where
-        Self: Sized,
-        F: FnMut(B) -> In,
+        where
+            Self: Sized,
+            F: FnMut(B) -> In,
     {
         Comap::new(self, f)
     }
@@ -109,9 +109,9 @@ pub trait Iteratee<In> {
     /// assert_eq!(iteratee.feed(2), Some("2".to_owned()));
     /// ```
     fn maybe_comap<B, F>(self, f: F) -> MaybeComap<Self, F>
-    where
-        Self: Sized,
-        F: FnMut(B) -> Option<In>,
+        where
+            Self: Sized,
+            F: FnMut(B) -> Option<In>,
     {
         MaybeComap::new(self, f)
     }
@@ -128,9 +128,9 @@ pub trait Iteratee<In> {
     /// assert_eq!(iteratee.feed(2), Some("2".to_string()));
     /// ```
     fn map<B, F>(self, f: F) -> IterateeMap<Self, F>
-    where
-        Self: Sized,
-        F: FnMut(Self::Item) -> B,
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> B,
     {
         IterateeMap::new(self, f)
     }
@@ -155,9 +155,9 @@ pub trait Iteratee<In> {
     /// assert_eq!(iteratee.feed(2), Some("2".to_string()));
     /// ```
     fn maybe_map<B, F>(self, f: F) -> IterateeMaybeMap<Self, F>
-    where
-        Self: Sized,
-        F: FnMut(Self::Item) -> Option<B>,
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> Option<B>,
     {
         IterateeMaybeMap::new(self, f)
     }
@@ -189,9 +189,9 @@ pub trait Iteratee<In> {
     /// assert!(iteratee.flush().is_none());
     /// ```
     fn scan<State, B, U>(self, init: State, scan: U) -> IterateeScanSimple<Self, State, U>
-    where
-        Self: Sized,
-        U: FnMut(&mut State, Self::Item) -> Option<B>,
+        where
+            Self: Sized,
+            U: FnMut(&mut State, Self::Item) -> Option<B>,
     {
         IterateeScanSimple::new(self, init, scan)
     }
@@ -233,10 +233,10 @@ pub trait Iteratee<In> {
         scan: U,
         flush: F,
     ) -> IterateeScan<Self, State, U, F>
-    where
-        Self: Sized,
-        U: FnMut(&mut State, Self::Item) -> Option<B>,
-        F: FnOnce(State) -> Option<B>,
+        where
+            Self: Sized,
+            U: FnMut(&mut State, Self::Item) -> Option<B>,
+            F: FnOnce(State) -> Option<B>,
     {
         IterateeScan::new(self, init, scan, flush)
     }
@@ -255,9 +255,9 @@ pub trait Iteratee<In> {
     ///
     /// ```
     fn filter<P>(self, predicate: P) -> Filter<Self, P>
-    where
-        Self: Sized,
-        P: FnMut(&Self::Item) -> bool,
+        where
+            Self: Sized,
+            P: FnMut(&Self::Item) -> bool,
     {
         Filter::new(self, predicate)
     }
@@ -283,9 +283,9 @@ pub trait Iteratee<In> {
     /// ```
     ///
     fn and_then<I>(self, next: I) -> IterateeAndThen<Self, I>
-    where
-        Self: Sized,
-        I: Iteratee<Self::Item>,
+        where
+            Self: Sized,
+            I: Iteratee<Self::Item>,
     {
         IterateeAndThen {
             first: self,
@@ -324,10 +324,10 @@ pub trait Iteratee<In> {
     /// assert_eq!(iteratee.feed(9), Some(Err("3")));
     /// ```
     fn and_then_fallible<I, T1, T2, E1, E2>(self, next: I) -> IterateeAndThenFallible<Self, I>
-    where
-        Self: Iteratee<In, Item = Result<T1, E1>> + Sized,
-        I: Iteratee<T1, Item = Result<T2, E2>>,
-        E2: From<E1>,
+        where
+            Self: Iteratee<In, Item=Result<T1, E1>> + Sized,
+            I: Iteratee<T1, Item=Result<T2, E2>>,
+            E2: From<E1>,
     {
         IterateeAndThenFallible {
             first: self,
@@ -354,26 +354,26 @@ pub trait Iteratee<In> {
     /// assert_eq!(iteratee.feed(17), Some(vec![6, 17]));
     /// ```
     fn flat_map<I, F>(self, f: F) -> IterateeFlatMap<Self, I, F>
-    where
-        Self: Sized,
-        I: Iteratee<In>,
-        F: FnMut(Self::Item) -> I,
+        where
+            Self: Sized,
+            I: Iteratee<In>,
+            F: FnMut(Self::Item) -> I,
     {
         IterateeFlatMap::new(self, f)
     }
 
     ///Replace the flush output of this iteratee with a specified item.
     fn with_flush(self, value: Self::Item) -> WithFlush<Self, Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         WithFlush::new(self, value)
     }
 
     ///Remove the flush output of this iteratee.
     fn without_flush(self) -> WithFlush<Self, Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         WithFlush::new_opt(self, None)
     }
@@ -381,9 +381,9 @@ pub trait Iteratee<In> {
     /// Flatten an iteratee of iteratees. This is a simplified version of 'flat_map()' where the
     /// mapping function is the identity.
     fn flatten<I>(self) -> IterateeFlatten<Self, I>
-    where
-        Self: Sized,
-        Self::Item: Iteratee<In>,
+        where
+            Self: Sized,
+            Self::Item: Iteratee<In>,
     {
         IterateeFlatten::new(self)
     }
@@ -405,9 +405,9 @@ pub trait Iteratee<In> {
     ///
     /// ```
     fn fold<State, F>(self, init: State, fold: F) -> IterateeFold<Self, State, F>
-    where
-        Self: Sized,
-        F: FnMut(&mut State, Self::Item) -> (),
+        where
+            Self: Sized,
+            F: FnMut(&mut State, Self::Item) -> (),
     {
         IterateeFold::new(self, init, fold)
     }
@@ -432,9 +432,9 @@ pub trait Iteratee<In> {
     /// assert_eq!(output, vec![vec![1, 2], vec![3, 4]]);
     /// ```
     fn transduce<It>(&mut self, iterator: It) -> TransducedRefIterator<It, Self>
-    where
-        Self: Sized,
-        It: Iterator<Item = In>,
+        where
+            Self: Sized,
+            It: Iterator<Item=In>,
     {
         TransducedRefIterator::new(iterator, self)
     }
@@ -460,9 +460,9 @@ pub trait Iteratee<In> {
     /// assert_eq!(output, vec![vec![1, 2], vec![3, 4], vec![5]]);
     /// ```
     fn transduce_into<It>(self, iterator: It) -> TransducedIterator<It, Self>
-    where
-        Self: Sized,
-        It: Iterator<Item = In>,
+        where
+            Self: Sized,
+            It: Iterator<Item=In>,
     {
         TransducedIterator::new(iterator, self)
     }
@@ -490,8 +490,8 @@ pub trait Iteratee<In> {
     /// ```
     ///
     fn fuse(self) -> IterateeFuse<Self>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         IterateeFuse::new(self)
     }
@@ -517,8 +517,8 @@ pub trait Iteratee<In> {
     ///
     /// ```
     fn fuse_on_error<T, E>(self) -> IterateeFuseOnError<Self>
-    where
-        Self: Iteratee<In, Item = Result<T, E>> + Sized,
+        where
+            Self: Iteratee<In, Item=Result<T, E>> + Sized,
     {
         IterateeFuseOnError::new(self)
     }
@@ -553,8 +553,8 @@ pub fn unfold<In, State, Out, U>(
     init: State,
     unfold: U,
 ) -> Unfold<State, U, impl FnMut(State) -> Option<Out>, impl Fn(&State) -> (usize, Option<usize>)>
-where
-    U: FnMut(&mut State, In) -> Option<Out>,
+    where
+        U: FnMut(&mut State, In) -> Option<Out>,
 {
     Unfold::new(init, unfold, |_| None, |_: &State| (0, None))
 }
@@ -566,9 +566,9 @@ pub fn unfold_with_hint<In, State, Out, U, H>(
     unfold: U,
     hint: H,
 ) -> Unfold<State, U, impl FnMut(State) -> Option<Out>, H>
-where
-    U: FnMut(&mut State, In) -> Option<Out>,
-    H: Fn(&State) -> (usize, Option<usize>),
+    where
+        U: FnMut(&mut State, In) -> Option<Out>,
+        H: Fn(&State) -> (usize, Option<usize>),
 {
     Unfold::new(init, unfold, |_| None, hint)
 }
@@ -595,9 +595,9 @@ pub fn unfold_with_flush<In, State, Out, U, F>(
     unfold: U,
     flush: F,
 ) -> Unfold<State, U, F, impl Fn(&State) -> (usize, Option<usize>)>
-where
-    U: FnMut(&mut State, In) -> Option<Out>,
-    F: FnOnce(State) -> Option<Out>,
+    where
+        U: FnMut(&mut State, In) -> Option<Out>,
+        F: FnOnce(State) -> Option<Out>,
 {
     Unfold::new(init, unfold, flush, |_: &State| (0, None))
 }
@@ -611,10 +611,10 @@ pub fn unfold_with_flush_and_hint<In, State, Out, U, F, H>(
     flush: F,
     hint: H,
 ) -> Unfold<State, U, F, H>
-where
-    U: FnMut(&mut State, In) -> Option<Out>,
-    F: FnOnce(State) -> Option<Out>,
-    H: Fn(&State) -> (usize, Option<usize>),
+    where
+        U: FnMut(&mut State, In) -> Option<Out>,
+        F: FnOnce(State) -> Option<Out>,
+        H: Fn(&State) -> (usize, Option<usize>),
 {
     Unfold::new(init, unfold, flush, hint)
 }
@@ -626,10 +626,10 @@ pub fn unfold_with_extract<In, State, Out, I, U, F>(
     unfolder: U,
     extract: F,
 ) -> UnfoldInto<State, I, U, F>
-where
-    I: FnMut() -> State,
-    U: FnMut(&mut State, In) -> bool,
-    F: FnMut(State) -> Option<Out>,
+    where
+        I: FnMut() -> State,
+        U: FnMut(&mut State, In) -> bool,
+        F: FnMut(State) -> Option<Out>,
 {
     UnfoldInto::new(init, unfolder, extract)
 }
@@ -654,7 +654,7 @@ where
 ///
 /// assert!(iteratee.flush().is_none());
 /// ```
-pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
+pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item=Vec<T>> {
     unfold_with_hint(None, vec_unfolder(num.get(), |t| t), vec_hint(num))
 }
 
@@ -678,7 +678,7 @@ pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
 ///
 /// assert_eq!(iteratee.flush(), Some(vec![4]));
 /// ```
-pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
+pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item=Vec<T>> {
     unfold_with_flush_and_hint(
         None,
         vec_unfolder(num.get(), |t| t),
@@ -689,7 +689,7 @@ pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec
 
 /// Create an iteratee that consumes copyable items by reference and copies them into a vector.
 /// Otherwise identical to 'collect_vec()'.
-pub fn copy_into_vec<'a, T: Copy + 'a>(num: NonZeroUsize) -> impl Iteratee<&'a T, Item = Vec<T>> {
+pub fn copy_into_vec<'a, T: Copy + 'a>(num: NonZeroUsize) -> impl Iteratee<&'a T, Item=Vec<T>> {
     unfold_with_hint(None, vec_unfolder(num.get(), |t: &'a T| *t), vec_hint(num))
 }
 
@@ -697,7 +697,7 @@ pub fn copy_into_vec<'a, T: Copy + 'a>(num: NonZeroUsize) -> impl Iteratee<&'a T
 /// Otherwise identical to 'collect_vec_with_rem()'.
 pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
     num: NonZeroUsize,
-) -> impl Iteratee<&'a T, Item = Vec<T>> {
+) -> impl Iteratee<&'a T, Item=Vec<T>> {
     unfold_with_flush_and_hint(
         None,
         vec_unfolder(num.get(), |t: &'a T| *t),
@@ -721,7 +721,7 @@ pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
 ///
 /// assert_eq!(iteratee.flush(), Some(vec![34, -12, 0]));
 /// ```
-pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
+pub fn collect_all_vec<T>() -> impl Iteratee<T, Item=Vec<T>> {
     unfold_with_flush(
         vec![],
         |vec, input| {
@@ -733,12 +733,12 @@ pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
 }
 
 /// The trivial iteratee that emits all of its inputs unchanged.
-pub fn identity<T>() -> impl Iteratee<T, Item = T> {
+pub fn identity<T>() -> impl Iteratee<T, Item=T> {
     return Identity {};
 }
 
 /// The trivial iteratee that never emits anything.
-pub fn never<T>() -> impl Iteratee<T, Item = T> {
+pub fn never<T>() -> impl Iteratee<T, Item=T> {
     return Never {};
 }
 
@@ -756,7 +756,7 @@ pub fn never<T>() -> impl Iteratee<T, Item = T> {
 /// assert_eq!(iteratee.feed('c'), Some(('b', Some('c'))));
 /// assert_eq!(iteratee.flush(), Some(('c', None)));
 /// ```
-pub fn look_ahead<T: Clone>() -> impl Iteratee<T, Item = (T, Option<T>)> {
+pub fn look_ahead<T: Clone>() -> impl Iteratee<T, Item=(T, Option<T>)> {
     unfold_with_flush(
         None,
         |prev, current: T| {
@@ -783,7 +783,7 @@ pub fn look_ahead<T: Clone>() -> impl Iteratee<T, Item = (T, Option<T>)> {
 ///
 /// assert!(iteratee.flush().is_none());
 /// ```
-pub fn utf8_byte_offsets() -> impl Iteratee<char, Item = (usize, char)> {
+pub fn utf8_byte_offsets() -> impl Iteratee<char, Item=(usize, char)> {
     unfold(0, |offset, c: char| {
         let result = (*offset, c);
         *offset += c.len_utf8();
@@ -827,6 +827,7 @@ fn vec_unfolder<S, T>(
 }
 
 pub struct Identity;
+
 pub struct Never;
 
 impl<T> Iteratee<T> for Identity {
@@ -858,9 +859,9 @@ impl<I, F> Comap<I, F> {
 }
 
 impl<In, B, I, F> Iteratee<B> for Comap<I, F>
-where
-    I: Iteratee<In>,
-    F: FnMut(B) -> In,
+    where
+        I: Iteratee<In>,
+        F: FnMut(B) -> In,
 {
     type Item = I::Item;
 
@@ -869,8 +870,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         self.iteratee.flush()
     }
@@ -893,9 +894,9 @@ impl<I, F> MaybeComap<I, F> {
 }
 
 impl<In, B, I, F> Iteratee<B> for MaybeComap<I, F>
-where
-    I: Iteratee<In>,
-    F: FnMut(B) -> Option<In>,
+    where
+        I: Iteratee<In>,
+        F: FnMut(B) -> Option<In>,
 {
     type Item = I::Item;
 
@@ -906,8 +907,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         self.iteratee.flush()
     }
@@ -936,10 +937,10 @@ impl<State, U, F, H> Unfold<State, U, F, H> {
 }
 
 impl<In, State, Out, U, F, H> Iteratee<In> for Unfold<State, U, F, H>
-where
-    U: FnMut(&mut State, In) -> Option<Out>,
-    F: FnOnce(State) -> Option<Out>,
-    H: Fn(&State) -> (usize, Option<usize>),
+    where
+        U: FnMut(&mut State, In) -> Option<Out>,
+        F: FnOnce(State) -> Option<Out>,
+        H: Fn(&State) -> (usize, Option<usize>),
 {
     type Item = Out;
 
@@ -972,9 +973,9 @@ impl<I, F> IterateeMap<I, F> {
 }
 
 impl<In, B, I, F> Iteratee<In> for IterateeMap<I, F>
-where
-    I: Iteratee<In>,
-    F: FnMut(I::Item) -> B,
+    where
+        I: Iteratee<In>,
+        F: FnMut(I::Item) -> B,
 {
     type Item = B;
 
@@ -984,8 +985,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeMap { iteratee, f } = self;
         iteratee.flush().map(f)
@@ -1008,9 +1009,9 @@ impl<I, F> IterateeMaybeMap<I, F> {
 }
 
 impl<In, Out, I, F> Iteratee<In> for IterateeMaybeMap<I, F>
-where
-    I: Iteratee<In>,
-    F: FnMut(I::Item) -> Option<Out>,
+    where
+        I: Iteratee<In>,
+        F: FnMut(I::Item) -> Option<Out>,
 {
     type Item = Out;
 
@@ -1020,8 +1021,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         self.iteratee.flush().map(self.f).flatten()
     }
@@ -1050,10 +1051,10 @@ impl<I, State, U, F> IterateeScan<I, State, U, F> {
 }
 
 impl<I, In, State, B, U, F> Iteratee<In> for IterateeScan<I, State, U, F>
-where
-    I: Iteratee<In>,
-    U: FnMut(&mut State, I::Item) -> Option<B>,
-    F: FnOnce(State) -> Option<B>,
+    where
+        I: Iteratee<In>,
+        U: FnMut(&mut State, I::Item) -> Option<B>,
+        F: FnOnce(State) -> Option<B>,
 {
     type Item = B;
 
@@ -1071,8 +1072,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeScan {
             iteratee,
@@ -1108,9 +1109,9 @@ impl<I, State, U> IterateeScanSimple<I, State, U> {
 }
 
 impl<I, In, State, B, U> Iteratee<In> for IterateeScanSimple<I, State, U>
-where
-    I: Iteratee<In>,
-    U: FnMut(&mut State, I::Item) -> Option<B>,
+    where
+        I: Iteratee<In>,
+        U: FnMut(&mut State, I::Item) -> Option<B>,
 {
     type Item = B;
 
@@ -1137,9 +1138,9 @@ pub struct IterateeAndThen<I1, I2> {
 }
 
 impl<S, I1, I2> Iteratee<S> for IterateeAndThen<I1, I2>
-where
-    I1: Iteratee<S>,
-    I2: Iteratee<I1::Item>,
+    where
+        I1: Iteratee<S>,
+        I2: Iteratee<I1::Item>,
 {
     type Item = I2::Item;
 
@@ -1152,8 +1153,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeAndThen { first, mut second } = self;
         first
@@ -1174,10 +1175,10 @@ pub struct IterateeAndThenFallible<I1, I2> {
 }
 
 impl<In, I1, I2, T1, T2, E1, E2> Iteratee<In> for IterateeAndThenFallible<I1, I2>
-where
-    I1: Iteratee<In, Item = Result<T1, E1>>,
-    I2: Iteratee<T1, Item = Result<T2, E2>>,
-    E2: From<E1>,
+    where
+        I1: Iteratee<In, Item=Result<T1, E1>>,
+        I2: Iteratee<T1, Item=Result<T2, E2>>,
+        E2: From<E1>,
 {
     type Item = Result<T2, E2>;
 
@@ -1191,8 +1192,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeAndThenFallible { first, mut second } = self;
         match first.flush() {
@@ -1224,10 +1225,10 @@ impl<I1, I2, F> IterateeFlatMap<I1, I2, F> {
 }
 
 impl<In, I1, I2, F> Iteratee<In> for IterateeFlatMap<I1, I2, F>
-where
-    I1: Iteratee<In>,
-    I2: Iteratee<In>,
-    F: FnMut(I1::Item) -> I2,
+    where
+        I1: Iteratee<In>,
+        I2: Iteratee<In>,
+        F: FnMut(I1::Item) -> I2,
 {
     type Item = I2::Item;
 
@@ -1255,8 +1256,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeFlatMap {
             selector,
@@ -1297,9 +1298,9 @@ impl<I1, I2> IterateeFlatten<I1, I2> {
 }
 
 impl<In, I1, I2> Iteratee<In> for IterateeFlatten<I1, I2>
-where
-    I1: Iteratee<In, Item = I2>,
-    I2: Iteratee<In>,
+    where
+        I1: Iteratee<In, Item=I2>,
+        I2: Iteratee<In>,
 {
     type Item = I2::Item;
 
@@ -1326,8 +1327,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeFlatten {
             selector,
@@ -1368,9 +1369,9 @@ impl<I, State, F> IterateeFold<I, State, F> {
 }
 
 impl<In, State, I, F> Iteratee<In> for IterateeFold<I, State, F>
-where
-    I: Iteratee<In>,
-    F: FnMut(&mut State, I::Item) -> (),
+    where
+        I: Iteratee<In>,
+        F: FnMut(&mut State, I::Item) -> (),
 {
     type Item = State;
 
@@ -1383,8 +1384,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeFold {
             iteratee,
@@ -1421,10 +1422,10 @@ impl<State, I, U, F> UnfoldInto<State, I, U, F> {
 }
 
 impl<In, State, Out, I, U, F> Iteratee<In> for UnfoldInto<State, I, U, F>
-where
-    I: FnMut() -> State,
-    U: FnMut(&mut State, In) -> bool,
-    F: FnMut(State) -> Option<Out>,
+    where
+        I: FnMut() -> State,
+        U: FnMut(&mut State, In) -> bool,
+        F: FnMut(State) -> Option<Out>,
 {
     type Item = Out;
 
@@ -1456,8 +1457,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let UnfoldInto {
             mut maybe_state,
@@ -1487,9 +1488,9 @@ impl<I, T> TransducedIterator<I, T> {
 }
 
 impl<I, T> Iterator for TransducedIterator<I, T>
-where
-    I: Iterator,
-    T: Iteratee<I::Item>,
+    where
+        I: Iterator,
+        T: Iteratee<I::Item>,
 {
     type Item = T::Item;
 
@@ -1532,9 +1533,9 @@ impl<'a, I, T> TransducedRefIterator<'a, I, T> {
 }
 
 impl<'a, I, T> Iterator for TransducedRefIterator<'a, I, T>
-where
-    I: Iterator,
-    T: Iteratee<I::Item>,
+    where
+        I: Iterator,
+        T: Iteratee<I::Item>,
 {
     type Item = T::Item;
 
@@ -1572,8 +1573,8 @@ impl<I> IterateeFuse<I> {
 }
 
 impl<In, I> Iteratee<In> for IterateeFuse<I>
-where
-    I: Iteratee<In>,
+    where
+        I: Iteratee<In>,
 {
     type Item = I::Item;
 
@@ -1590,8 +1591,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         if self.done {
             None
@@ -1624,8 +1625,8 @@ impl<I> IterateeFuseOnError<I> {
 }
 
 impl<In, T, E, I> Iteratee<In> for IterateeFuseOnError<I>
-where
-    I: Iteratee<In, Item = Result<T, E>>,
+    where
+        I: Iteratee<In, Item=Result<T, E>>,
 {
     type Item = Result<T, E>;
 
@@ -1643,8 +1644,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         let IterateeFuseOnError { iteratee, failed } = self;
         if failed {
@@ -1679,9 +1680,9 @@ impl<I, P> Filter<I, P> {
 }
 
 impl<In, I, P> Iteratee<In> for Filter<I, P>
-where
-    I: Iteratee<In>,
-    P: FnMut(&I::Item) -> bool,
+    where
+        I: Iteratee<In>,
+        P: FnMut(&I::Item) -> bool,
 {
     type Item = I::Item;
 
@@ -1694,8 +1695,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         self.iteratee.flush().filter(self.predicate)
     }
@@ -1724,8 +1725,8 @@ impl<I, T> WithFlush<I, T> {
 }
 
 impl<In, I, T> Iteratee<In> for WithFlush<I, T>
-where
-    I: Iteratee<In, Item = T>,
+    where
+        I: Iteratee<In, Item=T>,
 {
     type Item = T;
 
@@ -1734,8 +1735,8 @@ where
     }
 
     fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         self.last
     }

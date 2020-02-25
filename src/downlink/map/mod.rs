@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Formatter;
 use std::sync::Arc;
 
 use im::ordmap::OrdMap;
@@ -21,7 +22,6 @@ use crate::model::Value;
 use crate::request::Request;
 
 use super::*;
-use std::fmt::Formatter;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MapModification<V> {
@@ -161,8 +161,8 @@ impl MapAction {
     }
 
     pub fn update<F>(key: Value, f: F) -> MapAction
-    where
-        F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
+        where
+            F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
     {
         MapAction::Update {
             key,
@@ -190,8 +190,8 @@ impl MapAction {
         val_before: Request<Option<Arc<Value>>>,
         val_after: Request<Option<Arc<Value>>>,
     ) -> MapAction
-    where
-        F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
+        where
+            F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
     {
         MapAction::Update {
             key,
@@ -312,11 +312,11 @@ pub fn create_downlink<Err, Updates, Commands>(
     cmd_sink: Commands,
     buffer_size: usize,
 ) -> Downlink<Err, mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
-where
-    Err: From<item::MpscErr<Event<ViewWithEvent>>> + Send + Debug + 'static,
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands:
-        for<'b> ItemSink<'b, Command<MapModification<Arc<Value>>>, Error = Err> + Send + 'static,
+    where
+        Err: From<item::MpscErr<Event<ViewWithEvent>>> + Send + Debug + 'static,
+        Updates: Stream<Item=Message<MapModification<Value>>> + Send + 'static,
+        Commands:
+            for<'b> ItemSink<'b, Command<MapModification<Arc<Value>>>, Error=Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
     super::create_downlink(init, update_stream, cmd_sink, buffer_size)
@@ -389,8 +389,8 @@ fn update_and_notify<Upd>(
     update: Upd,
     request: Option<Request<ValMap>>,
 ) -> Option<()>
-where
-    Upd: FnOnce(&mut ValMap) -> (),
+    where
+        Upd: FnOnce(&mut ValMap) -> (),
 {
     match request {
         Some(req) => {
@@ -411,8 +411,8 @@ fn update_and_notify_prev<Upd>(
     update: Upd,
     request: Option<Request<Option<Arc<Value>>>>,
 ) -> Option<()>
-where
-    Upd: FnOnce(&mut ValMap) -> (),
+    where
+        Upd: FnOnce(&mut ValMap) -> (),
 {
     match request {
         Some(req) => {

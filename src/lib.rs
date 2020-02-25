@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate crossbeam;
-extern crate futures;
-extern crate futures_util;
-extern crate tokio;
-extern crate tokio_util;
 //extern crate tokio_tungstenite;
 extern crate bytes;
+extern crate crossbeam;
 extern crate either;
+extern crate futures;
+extern crate futures_util;
 extern crate im;
 extern crate pin_utils;
+extern crate tokio;
+extern crate tokio_util;
 
 pub mod downlink;
 pub mod eff_cell;

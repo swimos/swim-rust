@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use std::convert::TryInto;
 use std::num::NonZeroUsize;
+
+use hamcrest2::assert_that;
+use hamcrest2::prelude::*;
+
+use super::*;
 
 #[test]
 fn identity_iteratee() {
