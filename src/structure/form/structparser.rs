@@ -1,10 +1,12 @@
 use std::borrow::{Borrow, BorrowMut};
+use std::convert::TryInto;
 
 use serde::{ser, Serialize};
 
 use error::{Error, Result};
 
 use crate::model::{Attr, Item, Value};
+use crate::model::Value::Record;
 
 mod error {
     pub use serde::de::value::Error;
@@ -15,12 +17,14 @@ mod error {
 struct Serializer {
     // This string starts empty and JSON is appended as values are serialized.
     output: Value,
+    stack: Vec<Value>,
 }
 
 impl Serializer {
     fn add_attr(&mut self, name: &str) {
         match &mut self.output {
             Value::Record(_, ref mut items) => {
+                self.stack = Vec::new();
                 let item = Item::Slot(Value::Text(String::from(name)), Value::Extant);
                 items.push(item);
             }
@@ -61,6 +65,7 @@ pub fn to_string<T>(value: &T) -> Result<Value>
 {
     let mut serializer = Serializer {
         output: Value::Record(Vec::new(), Vec::new()),
+        stack: Vec::new(),
     };
     value.serialize(&mut serializer)?;
     Ok(serializer.output)
@@ -95,7 +100,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // of the primitive types of the data model and map it to JSON by appending
     // into the output string.
     fn serialize_bool(self, v: bool) -> Result<()> {
-        self.set_current(Value::BooleanValue(v));
+        self.stack.push(Value::BooleanValue(v));
         Ok(())
     }
 
@@ -112,14 +117,14 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_i32(self, v: i32) -> Result<()> {
-        self.set_current(Value::Int32Value(v));
+        self.stack.push(Value::Int32Value(v));
         Ok(())
     }
 
     // Not particularly efficient but this is example code anyway. A more
     // performant approach would be to use the `itoa` crate.
     fn serialize_i64(self, v: i64) -> Result<()> {
-        self.set_current(Value::Int64Value(v));
+        self.stack.push(Value::Int64Value(v));
         Ok(())
     }
 
@@ -133,12 +138,12 @@ impl<'a> ser::Serializer for &'a mut Serializer {
 
     // TODO
     fn serialize_u32(self, v: u32) -> Result<()> {
-        self.set_current(Value::Int32Value(v as i32));
+        self.stack.push(Value::Int32Value(v as i32));
         Ok(())
     }
 
     fn serialize_u64(self, v: u64) -> Result<()> {
-        self.set_current(Value::Int64Value(v as i64));
+        self.stack.push(Value::Int64Value(v as i64));
         Ok(())
     }
 
@@ -147,14 +152,14 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_f64(self, v: f64) -> Result<()> {
-        self.set_current(Value::Float64Value(v));
+        self.stack.push(Value::Float64Value(v));
         Ok(())
     }
 
     // Serialize a char as a single-character string. Other formats may
     // represent this differently.
     fn serialize_char(self, v: char) -> Result<()> {
-        self.set_current(Value::Text(v.to_string()));
+        self.stack.push(Value::Text(v.to_string()));
         Ok(())
     }
 
@@ -162,7 +167,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // get the idea. For example it would emit invalid JSON if the input string
     // contains a '"' character.
     fn serialize_str(self, v: &str) -> Result<()> {
-        self.set_current(Value::Text(String::from(v)));
+        self.stack.push(Value::Text(String::from(v)));
         Ok(())
     }
 
@@ -198,7 +203,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // In Serde, unit means an anonymous value containing no data. Map this to
     // JSON as `null`.
     fn serialize_unit(self) -> Result<()> {
-        self.set_current(Value::Extant);
+        self.stack.push(Value::Extant);
         Ok(())
     }
 
@@ -265,7 +270,12 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // doesn't make a difference in JSON because the length is not represented
     // explicitly in the serialized form. Some serializers may only be able to
     // support sequences for which the length is known up front.
-    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+    fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
+        match len {
+            Some(l) => self.stack = Vec::with_capacity(l),
+            None => {}
+        }
+
         Ok(self)
     }
 
@@ -363,7 +373,22 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
 
     // Close the sequence.
     fn end(self) -> Result<()> {
-        // self.output += "]";
+        if self.stack.len() == 1 {
+            let opt = self.stack.pop();
+            match opt {
+                Some(v) => self.set_current(v),
+                None => {}
+            }
+        } else if self.stack.len() > 1 {
+            // items.into_iter().try_fold(Vec::with_capacity(length), |mut results: Vec<T>, item| {
+            let length = self.stack.len();
+            let items = self.stack.iter().fold(Vec::with_capacity(length), |mut v, item| {
+                v.push(Item::ValueItem(item.to_owned()));
+                v
+            });
+            self.set_current(Value::Record(Vec::new(), items));
+        }
+
         Ok(())
     }
 }
