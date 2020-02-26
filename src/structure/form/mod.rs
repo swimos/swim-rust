@@ -26,11 +26,6 @@ use crate::model::{Item, Value};
 #[allow(dead_code)]
 mod compound;
 
-#[allow(unused_imports)]
-#[allow(unused_variables)]
-#[allow(dead_code)]
-mod scratch;
-
 #[cfg(test)]
 mod tests;
 
