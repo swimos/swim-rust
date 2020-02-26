@@ -258,7 +258,7 @@ fn dropped_set_action() {
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.data_state));
     assert!(Arc::ptr_eq(&cmd, &model.data_state));
-    assert_that!(err, some());
+    assert_that!(&err, some());
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }
 
@@ -313,6 +313,6 @@ fn dropped_update_action() {
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.data_state));
     assert!(Arc::ptr_eq(&cmd, &model.data_state));
-    assert_that!(err, some());
+    assert_that!(&err, some());
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }

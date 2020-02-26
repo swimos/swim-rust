@@ -14,7 +14,6 @@
 
 use std::pin::Pin;
 
-use futures::executor::block_on;
 use futures::{future, stream, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_utils::pin_mut;
@@ -26,31 +25,61 @@ use crate::sink::item;
 use crate::sink::item::ItemSink;
 use futures::stream::FusedStream;
 use std::fmt::Debug;
+use tokio::sync::watch;
 
 pub mod map;
+#[cfg(test)]
+mod tests;
 pub mod value;
 
-pub struct Sender<Err: Debug, S> {
+pub struct Sender<S> {
     /// A sink for local actions (sets, insertions, etc.)
     pub set_sink: S,
     /// The task running the downlink.
-    task: Option<DownlinkTask<Err>>,
+    task: Option<DownlinkTask>,
 }
 
-impl<Err: Debug, S> Drop for Sender<Err, S> {
-    fn drop(&mut self) {
-        match self.task.take() {
-            Some(t) => {
-                block_on(t.stop()).unwrap();
-            }
-            _ => {}
-        }
+impl<T> Sender<mpsc::Sender<T>> {
+    pub async fn send(&mut self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        self.set_sink.send(value).await
     }
 }
 
-impl<Err: Debug, S> Sender<Err, S> {
+impl<T> Sender<watch::Sender<T>> {
+    pub fn send(&mut self, value: T) -> Result<(), watch::error::SendError<T>> {
+        self.set_sink.broadcast(value)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DownlinkError {
+    DroppedChannel,
+    TaskPanic,
+    OperationStreamEnded,
+    TransitionError,
+}
+
+impl<T> From<mpsc::error::SendError<T>> for DownlinkError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        DownlinkError::DroppedChannel
+    }
+}
+
+impl<T> From<mpsc::error::TrySendError<T>> for DownlinkError {
+    fn from(_: mpsc::error::TrySendError<T>) -> Self {
+        DownlinkError::DroppedChannel
+    }
+}
+
+impl<T> From<watch::error::SendError<T>> for DownlinkError {
+    fn from(_: watch::error::SendError<T>) -> Self {
+        DownlinkError::DroppedChannel
+    }
+}
+
+impl<S> Sender<S> {
     /// Stop the downlink from running.
-    pub async fn stop(mut self) -> Result<(), Err> {
+    pub async fn stop(mut self) -> Result<(), DownlinkError> {
         match (&mut self).task.take() {
             Some(t) => t.stop().await,
             _ => Ok(()),
@@ -64,14 +93,14 @@ pub struct Receiver<R> {
 }
 
 /// Type containing the components of a running downlink.
-pub struct Downlink<Err: Debug, S, R> {
+pub struct Downlink<S, R> {
     pub receiver: Receiver<R>,
-    pub sender: Sender<Err, S>,
+    pub sender: Sender<S>,
 }
 
-impl<Err: Debug, S, R> Downlink<Err, S, R> {
+impl<S, R> Downlink<S, R> {
     //Private as downlinks should only be created by methods in this module and its children.
-    fn new(set_sink: S, event_stream: R, task: Option<DownlinkTask<Err>>) -> Downlink<Err, S, R> {
+    fn new(set_sink: S, event_stream: R, task: Option<DownlinkTask>) -> Downlink<S, R> {
         Downlink {
             receiver: Receiver { event_stream },
             sender: Sender { set_sink, task },
@@ -79,11 +108,11 @@ impl<Err: Debug, S, R> Downlink<Err, S, R> {
     }
 
     /// Stop the downlink from running.
-    pub async fn stop(self) -> Result<(), Err> {
+    pub async fn stop(self) -> Result<(), DownlinkError> {
         self.sender.stop().await
     }
 
-    pub fn split(self) -> (Sender<Err, S>, Receiver<R>) {
+    pub fn split(self) -> (Sender<S>, Receiver<R>) {
         let Downlink { sender, receiver } = self;
         (sender, receiver)
     }
@@ -96,14 +125,14 @@ fn create_downlink<Err, M, A, State, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
-) -> Downlink<Err, mpsc::Sender<A>, mpsc::Receiver<Event<State::Ev>>>
+) -> Downlink<mpsc::Sender<A>, mpsc::Receiver<Event<State::Ev>>>
 where
     M: Send + 'static,
     A: Send + 'static,
     State: StateMachine<M, A> + Send + 'static,
     State::Ev: Send + 'static,
     State::Cmd: Send + 'static,
-    Err: From<item::MpscErr<Event<State::Ev>>> + Send + Debug + 'static,
+    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
     Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = Err> + Send + 'static,
 {
@@ -112,7 +141,7 @@ where
     let (event_tx, event_rx) = mpsc::channel::<Event<State::Ev>>(buffer_size);
     let (stop_tx, stop_rx) = oneshot::channel::<()>();
 
-    let event_sink = item::for_mpsc_sender::<_, Err>(event_tx);
+    let event_sink = item::for_mpsc_sender::<_, DownlinkError>(event_tx);
 
     // The task that maintains the internal state of the lane.
     let lane_task = model.make_downlink_task(
@@ -139,19 +168,22 @@ enum DownlinkState {
     Synced,
 }
 
-struct DownlinkTask<E> {
-    join_handle: JoinHandle<Result<(), E>>,
+struct DownlinkTask {
+    join_handle: JoinHandle<Result<(), DownlinkError>>,
     stop_trigger: oneshot::Sender<()>,
 }
 
-impl<E> DownlinkTask<E> {
-    async fn stop(self) -> Result<(), E> {
+impl DownlinkTask {
+    async fn stop(self) -> Result<(), DownlinkError> {
         match self.stop_trigger.send(()) {
             Ok(_) => match self.join_handle.await {
                 Ok(r) => r,
-                Err(_) => Ok(()), //TODO Ignoring the case where the downlink task panicked. Can maybe do better?
+                Err(_) => Err(DownlinkError::TaskPanic),
             },
-            Err(_) => Ok(()),
+            Err(_) => match self.join_handle.await {
+                Ok(r) => r,
+                Err(_) => Err(DownlinkError::TaskPanic),
+            },
         }
     }
 }
@@ -199,19 +231,21 @@ impl<State> Model<State> {
 
     /// A task that consumes the operations applied to the downlink, updates the state and
     /// forwards events and commands to a pair of output sinks.
-    async fn make_downlink_task<E, M, A, Ops, Acts, Commands, Events>(
+    async fn make_downlink_task<EC, EE, M, A, Ops, Acts, Commands, Events>(
         mut self,
         ops: Ops,
         acts: Acts,
         mut cmd_sink: Commands,
         mut ev_sink: Events,
-    ) -> Result<(), E>
+    ) -> Result<(), DownlinkError>
     where
+        EC: Into<DownlinkError>,
+        EE: Into<DownlinkError>,
         State: StateMachine<M, A>,
         Ops: FusedStream<Item = Operation<M, A>> + Send + 'static,
         Acts: FusedStream<Item = A> + Send + 'static,
-        Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = E>,
-        Events: for<'b> ItemSink<'b, Event<State::Ev>, Error = E>,
+        Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = EC>,
+        Events: for<'b> ItemSink<'b, Event<State::Ev>, Error = EE>,
     {
         pin_mut!(ops);
         pin_mut!(acts);
@@ -248,21 +282,21 @@ impl<State> Model<State> {
                 } = StateMachine::handle_operation(&mut self, op);
                 let result = match (event, command) {
                     (Some(ev), Some(cmd)) => match ev_sink.send_item(ev).await {
-                        Ok(()) => cmd_sink.send_item(cmd).await,
-                        e @ Err(_) => e,
+                        Ok(()) => cmd_sink.send_item(cmd).await.map_err(|e| e.into()),
+                        Err(e) => Err(e.into()),
                     },
-                    (Some(event), _) => ev_sink.send_item(event).await,
-                    (_, Some(command)) => cmd_sink.send_item(command).await,
+                    (Some(event), _) => ev_sink.send_item(event).await.map_err(|e| e.into()),
+                    (_, Some(command)) => cmd_sink.send_item(command).await.map_err(|e| e.into()),
                     _ => Ok(()),
                 };
 
                 if error.is_some() {
-                    break Ok(()); //TODO Handle this properly.
+                    break Err(DownlinkError::TransitionError); //TODO Handle this properly.
                 } else if terminate || result.is_err() {
                     break result;
                 }
             } else {
-                break Ok(());
+                break Err(DownlinkError::OperationStreamEnded);
             }
         }
     }
@@ -324,10 +358,11 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TransitionError {
     ReceiverDropped,
     SideEffectFailed,
+    IllegalTransition(String),
 }
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.

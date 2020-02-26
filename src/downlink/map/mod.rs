@@ -314,9 +314,9 @@ pub fn create_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
-) -> Downlink<Err, mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
+) -> Downlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
-    Err: From<item::MpscErr<Event<ViewWithEvent>>> + Send + Debug + 'static,
+    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands:
         for<'b> ItemSink<'b, Command<MapModification<Arc<Value>>>, Error = Err> + Send + 'static,
@@ -487,7 +487,6 @@ fn handle_action(
             } else {
                 (Response::none(), err)
             }
-
         }
         MapAction::Take { n, before, after } => {
             let err1 = update_and_notify(
