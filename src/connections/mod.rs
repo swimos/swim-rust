@@ -9,17 +9,43 @@ use url;
 #[cfg(test)]
 mod tests;
 
+struct ConnectionPool {
+    connections: HashMap<String, ConnectionHandler>,
+}
+
+impl ConnectionPool {
+    fn new() -> ConnectionPool {
+        return ConnectionPool { connections: HashMap::new() };
+    }
+
+    fn get_connection(&mut self, client: &Client, host: &str) -> &ConnectionHandler {
+        if !self.connections.contains_key(host) {
+            // TODO The connection buffer is hardcoded
+            let (connection, connection_handler) = Connection::new(host, 5).unwrap();
+            client.schedule_task(connection.open());
+
+            self.connections.insert(host.to_string(), connection_handler);
+        }
+        return self.connections.get(host).unwrap();
+    }
+}
+
+struct ConnectionHandler {
+    tx: mpsc::Sender<Message>,
+}
+
+
 struct Connection {
     url: url::Url,
     rx: mpsc::Receiver<Message>,
 }
 
 impl Connection {
-    fn new(host: &str, buffer_size: usize) -> Result<(Connection, mpsc::Sender<Message>), ConnectionError> {
+    fn new(host: &str, buffer_size: usize) -> Result<(Connection, ConnectionHandler), ConnectionError> {
         let url = url::Url::parse(&host)?;
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        return Ok((Connection { url, rx }, tx));
+        return Ok((Connection { url, rx }, ConnectionHandler { tx }));
     }
 
     async fn open(self) -> Result<(), ConnectionError> {
@@ -34,13 +60,13 @@ impl Connection {
         return Ok(());
     }
 
-    async fn receive_messages(mut read_stream: SplitStream<WebSocketStream<TcpStream>>) {
-        while let Some(message) = read_stream.next().await {
+    async fn receive_messages(read_stream: SplitStream<WebSocketStream<TcpStream>>) {
+        read_stream.for_each_concurrent(10, |message| async {
             if let Ok(m) = message {
                 // TODO Add a real callback
                 println!("{}", m);
             }
-        }
+        }).await;
     }
 
     async fn send_message(mut tx: mpsc::Sender<Message>, message: String) -> Result<(), ConnectionError> {
@@ -58,10 +84,10 @@ pub enum ConnectionError
 
 }
 
-impl std::error::Error for ConnectionError {}
+impl Error for ConnectionError {}
 
-impl std::fmt::Display for ConnectionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for ConnectionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ConnectionError::ParseError => write!(f, "Parse error!"),
             ConnectionError::ConnectError => write!(f, "Connect error!"),
@@ -91,5 +117,28 @@ impl From<tungstenite::error::Error, > for ConnectionError {
 impl From<tokio::sync::mpsc::error::SendError<Message>, > for ConnectionError {
     fn from(_: tokio::sync::mpsc::error::SendError<Message>) -> Self {
         ConnectionError::SendMessageError
+    }
+}
+
+
+struct Client {
+    rt: tokio::runtime::Runtime,
+}
+
+
+impl Client {
+    fn new() -> Client {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        return Client { rt };
+    }
+
+    fn schedule_task<F>(&self, task: impl Future<Output=Result<F, ConnectionError>> + Send + 'static)
+        where F: Send + 'static {
+        &self.rt.spawn(async move { task.await }.inspect(|response| {
+            match response {
+                Err(e) => println!("{}", e),
+                Ok(_) => ()
+            }
+        }));
     }
 }
