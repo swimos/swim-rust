@@ -4,6 +4,11 @@ use tokio_tungstenite::{connect_async, WebSocketStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use std::error::Error;
+use std::future::Future;
+use futures::future::FutureExt;
+use std::fmt;
+use std::collections::HashMap;
 use url;
 
 #[cfg(test)]
