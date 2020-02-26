@@ -660,7 +660,7 @@ fn vec_of_vecs() {
 
     let test = Test {
         seq: vec![
-            vec!["a", "b", "c"], //v1
+            vec!["a", "b"], //v1
             vec!["c", "d"] //v2
         ],
     };
