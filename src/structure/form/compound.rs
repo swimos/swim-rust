@@ -1,5 +1,3 @@
-
-
 use std::borrow::{Borrow, BorrowMut};
 use std::convert::TryInto;
 
@@ -8,8 +6,8 @@ use serde::{ser, Serialize};
 use error::{Error, Result};
 
 use crate::model::{Attr, Item, Value};
-use crate::model::Value::Record;
 use crate::model::Item::{Slot, ValueItem};
+use crate::model::Value::Record;
 
 mod error {
     pub use serde::de::value::Error;
@@ -17,63 +15,128 @@ mod error {
     pub type Result<T> = ::std::result::Result<T, Error>;
 }
 
-struct Serializer {
-    // This string starts empty and JSON is appended as values are serialized.
-    output: Value,
+#[derive(Debug, PartialEq)]
+enum State {
+    /// Not read any fields yet.
+    Unknown,
+    ReadingItemWithAttribute,
+    ReadingItem,
+    ReadingSequence(Option<usize>),
+}
+
+#[derive(Debug, PartialEq)]
+struct SerializerState {
+    state: State,
     stack: Vec<Value>,
 }
 
-impl Serializer {
-    fn add_attr(&mut self, name: &str) {
-        self.drain_stack();
+impl SerializerState {
+    fn state(&self) -> &State {
+        self.state.borrow()
+    }
 
-        match &mut self.output {
-            Value::Record(_, ref mut items) => {
-                self.stack = Vec::new();
-                let item = Item::Slot(Value::Text(String::from(name)), Value::Extant);
-                items.push(item);
+    fn stack(&mut self) -> &mut Vec<Value> {
+        self.stack.as_mut()
+    }
+}
+
+struct Serializer {
+    output: Value,
+    state: Vec<SerializerState>,
+}
+
+impl Serializer {
+    fn push_state(&mut self, state: State) {
+        self.state.push(SerializerState {
+            state,
+            stack: Vec::new(),
+        });
+    }
+
+    fn push(&mut self, value: Value) {
+        let v = self.state.pop();
+        match v {
+            Some(mut s) => {
+                s.stack.push(value);
+                self.state.push(s);
             }
-            v_ @ _ => {
+            None => {
+                self.state.push(SerializerState {
+                    state: State::Unknown,
+                    stack: vec![value],
+                });
+            }
+        }
+
+        let serializer_state = self.current_state();
+        let state = &serializer_state.state;
+        match state {
+            State::ReadingItemWithAttribute => {}//*state = State::Unknown,
+            _ => {}
+        }
+    }
+
+    fn push_attr(&mut self, name: &str) {
+        self.push_state(State::ReadingItemWithAttribute);
+        let item = Item::Slot(Value::Text(String::from(name)), Value::Extant);
+
+        match self.state.last_mut() {
+            Some(s) => {
+                s.stack().push(Value::Record(Vec::new(), vec![item]));
+            }
+            None => {
+                //todo
                 panic!()
             }
         }
     }
 
+    fn current_state(&mut self) -> &SerializerState {
+        if self.state.len() == 0 {
+            let serializer_state = SerializerState {
+                state: State::ReadingItemWithAttribute,
+                stack: vec![],
+            };
+            self.state.push(serializer_state);
+        }
+
+        self.state.last().unwrap()
+    }
+
     fn set_current(&mut self, value: Value) {
         match &mut self.output {
             Value::Record(_, ref mut items) => {
-                let last = items.last_mut().unwrap();
-                match last {
-                    Item::Slot(k, v) => {
-                        *last = Item::Slot(k.to_owned(), value);
-                    }
-                    Item::ValueItem(v) => {
-                        panic!()
+                if items.len() == 0 {
+                    items.push(Item::ValueItem(value));
+                } else {
+                    let last = items.last_mut().unwrap();
+
+                    match last {
+                        Item::Slot(k, v) => {
+                            *last = Item::Slot(k.to_owned(), value);
+                        }
+                        Item::ValueItem(v) => {
+                            // todo
+                            panic!()
+                        }
                     }
                 }
             }
             v_ @ _ => {
+                // todo
                 panic!()
             }
         }
     }
 
     fn drain_stack(&mut self) {
-        if self.stack.len() == 1 {
-            let opt = self.stack.pop();
-            match opt {
-                Some(v) => self.set_current(v),
-                None => {}
-            }
-        } else if self.stack.len() > 1 {
-            // items.into_iter().try_fold(Vec::with_capacity(length), |mut results: Vec<T>, item| {
-            let length = self.stack.len();
-            let items = self.stack.iter().fold(Vec::with_capacity(length), |mut v, item| {
-                v.push(Item::ValueItem(item.to_owned()));
-                v
-            });
-            self.set_current(Value::Record(Vec::new(), items));
-        }
+        let stack = &self.current_state().stack;
+        let items = stack.iter().fold(Vec::new(), |mut vec, item| {
+            vec.push(Item::ValueItem(item.to_owned()));
+            vec
+        });
+
+        self.set_current(Value::Record(Vec::new(), items));
     }
 }
 
@@ -87,8 +150,11 @@ pub fn to_string<T>(value: &T) -> Result<Value>
         T: Serialize,
 {
     let mut serializer = Serializer {
+        state: vec![SerializerState {
+            state: State::ReadingItem,
+            stack: Vec::new(),
+        }],
         output: Value::Record(Vec::new(), Vec::new()),
-        stack: Vec::new(),
     };
     value.serialize(&mut serializer)?;
     Ok(serializer.output)
@@ -123,7 +189,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // of the primitive types of the data model and map it to JSON by appending
     // into the output string.
     fn serialize_bool(self, v: bool) -> Result<()> {
-        self.stack.push(Value::BooleanValue(v));
+        self.push(Value::BooleanValue(v));
         Ok(())
     }
 
@@ -140,14 +206,12 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_i32(self, v: i32) -> Result<()> {
-        self.stack.push(Value::Int32Value(v));
+        self.push(Value::Int32Value(v));
         Ok(())
     }
 
-    // Not particularly efficient but this is example code anyway. A more
-    // performant approach would be to use the `itoa` crate.
     fn serialize_i64(self, v: i64) -> Result<()> {
-        self.stack.push(Value::Int64Value(v));
+        self.push(Value::Int64Value(v));
         Ok(())
     }
 
@@ -159,14 +223,14 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         self.serialize_u32(u32::from(v))
     }
 
-    // TODO
+    // TODO: Unsigned types
     fn serialize_u32(self, v: u32) -> Result<()> {
-        self.stack.push(Value::Int32Value(v as i32));
+        self.push(Value::Int32Value(v as i32));
         Ok(())
     }
 
     fn serialize_u64(self, v: u64) -> Result<()> {
-        self.stack.push(Value::Int64Value(v as i64));
+        self.push(Value::Int64Value(v as i64));
         Ok(())
     }
 
@@ -175,22 +239,17 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_f64(self, v: f64) -> Result<()> {
-        self.stack.push(Value::Float64Value(v));
+        self.push(Value::Float64Value(v));
         Ok(())
     }
 
-    // Serialize a char as a single-character string. Other formats may
-    // represent this differently.
     fn serialize_char(self, v: char) -> Result<()> {
-        self.stack.push(Value::Text(v.to_string()));
+        self.push(Value::Text(v.to_string()));
         Ok(())
     }
 
-    // This only works for strings that don't require escape sequences but you
-    // get the idea. For example it would emit invalid JSON if the input string
-    // contains a '"' character.
     fn serialize_str(self, v: &str) -> Result<()> {
-        self.stack.push(Value::Text(String::from(v)));
+        self.push(Value::Text(String::from(v)));
         Ok(())
     }
 
@@ -226,7 +285,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // In Serde, unit means an anonymous value containing no data. Map this to
     // JSON as `null`.
     fn serialize_unit(self) -> Result<()> {
-        self.stack.push(Value::Extant);
+        self.push(Value::Extant);
         Ok(())
     }
 
@@ -278,7 +337,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         where
             T: ?Sized + Serialize,
     {
-        self.add_attr(variant);
+        self.push_attr(variant);
         value.serialize(&mut *self)?;
         Ok(())
     }
@@ -294,11 +353,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // explicitly in the serialized form. Some serializers may only be able to
     // support sequences for which the length is known up front.
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
-        match len {
-            Some(l) => self.stack = Vec::with_capacity(l),
-            None => {}
-        }
-
+        self.push_state(State::ReadingSequence(len));
         Ok(self)
     }
 
@@ -328,16 +383,12 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
-        // TODO
-        // self.output += "{";
-        // variant.serialize(&mut *self)?;
-        // self.output += ":[";
+        variant.serialize(&mut *self)?;
         Ok(self)
     }
 
     // Maps are represented in JSON as `{ K: V, K: V, ... }`.
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-        // self.output += "{";
         Ok(self)
     }
 
@@ -388,15 +439,12 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
         where
             T: ?Sized + Serialize,
     {
-        // if !self.output.ends_with('[') {
-        //     self.output += ",";
-        // }
         value.serialize(&mut **self)
     }
 
     // Close the sequence.
     fn end(self) -> Result<()> {
-        self.drain_stack();
+        self.push_state(State::ReadingItem);
         Ok(())
     }
 }
@@ -410,9 +458,6 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
         where
             T: ?Sized + Serialize,
     {
-        // if !self.output.ends_with('[') {
-        //     self.output += ",";
-        // }
         value.serialize(&mut **self)
     }
 
@@ -431,9 +476,6 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
         where
             T: ?Sized + Serialize,
     {
-        // if !self.output.ends_with('[') {
-        //     self.output += ",";
-        // }
         value.serialize(&mut **self)
     }
 
@@ -460,9 +502,6 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
         where
             T: ?Sized + Serialize,
     {
-        // if !self.output.ends_with('[') {
-        //     self.output += ",";
-        // }
         value.serialize(&mut **self)
     }
 
@@ -521,11 +560,12 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     type Ok = ();
     type Error = Error;
 
+    //noinspection DuplicatedCode
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
         where
             T: ?Sized + Serialize,
     {
-        self.add_attr(key);
+        self.push_attr(key);
         value.serialize(&mut **self)
     }
 
@@ -542,11 +582,12 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     type Ok = ();
     type Error = Error;
 
+    //noinspection DuplicatedCode
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
         where
             T: ?Sized + Serialize,
     {
-        self.add_attr(key);
+        self.push_attr(key);
         value.serialize(&mut **self)
     }
 
@@ -558,7 +599,35 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
 }
 
 #[test]
-fn test_struct() {
+fn simple_struct() {
+    #[derive(Serialize)]
+    struct Test {
+        a: u32,
+        b: f32,
+        c: i8,
+        d: String,
+    }
+
+    let test = Test {
+        a: 1,
+        b: 2.0,
+        c: 3,
+        d: String::from("hello"),
+    };
+
+    let parsed_value = to_string(&test).unwrap();
+    let expected = Value::Record(Vec::new(), vec![
+        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+        Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
+        Item::Slot(Value::Text(String::from("c")), Value::Int32Value(3)),
+        Item::Slot(Value::Text(String::from("d")), Value::Text(String::from("hello"))),
+    ]);
+
+    assert_eq!(parsed_value, expected);
+}
+
+#[test]
+fn struct_with_vec() {
     #[derive(Serialize)]
     struct Test {
         int: u32,
@@ -577,8 +646,37 @@ fn test_struct() {
             ValueItem(Value::Text(String::from("a"))),
             ValueItem(Value::Text(String::from("b"))),
         ])),
-
     ]);
+
+    assert_eq!(parsed_value, expected);
+}
+
+#[test]
+fn vec_of_vecs() {
+    #[derive(Serialize)]
+    struct Test {
+        seq: Vec<Vec<&'static str>>,
+    }
+
+    let test = Test {
+        seq: vec![
+            vec!["a", "b", "c"], //v1
+            vec!["c", "d"] //v2
+        ],
+    };
+
+    let parsed_value = to_string(&test).unwrap();
+    let expected = Value::Record(Vec::new(), vec![
+        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
+            Item::ValueItem(Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Text(String::from("a"))),
+                Item::ValueItem(Value::Text(String::from("b"))),
+            ])),
+            Item::ValueItem(Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Text(String::from("c"))),
+                Item::ValueItem(Value::Text(String::from("d"))),
+            ]))
+        ]))]);
 
     assert_eq!(parsed_value, expected);
 }

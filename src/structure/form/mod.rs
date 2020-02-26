@@ -24,7 +24,7 @@ use crate::model::{Item, Value};
 #[allow(unused_imports)]
 #[allow(unused_variables)]
 #[allow(dead_code)]
-mod structparser;
+mod compound;
 
 #[cfg(test)]
 mod tests;
