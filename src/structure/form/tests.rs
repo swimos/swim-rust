@@ -22,7 +22,7 @@ use crate::model::{Item, Value};
 use crate::model::Value::Record;
 use crate::structure::form::FormParseErr;
 
-fn assert_result<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) {
+fn assert_success<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) {
     match r {
         Ok(r) => {
             assert_eq!(r, expected);
@@ -33,79 +33,78 @@ fn assert_result<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) 
     }
 }
 
-#[test]
-fn from_bool() {
-    let r = bool::try_from(Value::Int32Value(1));
-    assert_result(r, true);
-
-    let r = bool::try_from(Value::Int64Value(0));
-    assert_result(r, false);
-
-    let r = bool::try_from(Value::Float64Value(1.0));
-    assert_result(r, true);
-
-    let r = bool::try_from(Value::Float64Value(0.0));
-    assert_result(r, false);
-
-    let r = bool::try_from(Value::Text(String::from("true")));
-    assert_result(r, true);
-
-    let r = bool::try_from(Value::Text(String::from("false")));
-    assert_result(r, false);
-
-    let r = bool::try_from(Value::Float64Value(2.0));
+fn assert_err<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: FormParseErr) {
     match r {
         Ok(_) => {
-            panic!("Parsed correctly with mismatched types.")
+            panic!("Expected {:?} but parsed correctly", expected);
         }
         Err(e) => {
-            assert_that!(e, eq(FormParseErr::NotABoolean));
+            assert_eq!(e, expected);
         }
     }
+}
+
+#[test]
+fn from_bool() {
+    let r = bool::try_from(Value::BooleanValue(true));
+    assert_success(r, true);
+
+    let r = bool::try_from(Value::BooleanValue(false));
+    assert_success(r, false);
+
+    let r = bool::try_from(Value::Int32Value(1));
+    assert_err(r, FormParseErr::IncorrectType(Value::Int32Value(1)));
+
+    let r = bool::try_from(Value::Int64Value(0));
+    assert_err(r, FormParseErr::IncorrectType(Value::Int64Value(0)));
+
+    let r = bool::try_from(Value::Float64Value(1.0));
+    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(1.0)));
+
+    let r = bool::try_from(Value::Float64Value(0.0));
+    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(0.0)));
+
+    let r = bool::try_from(Value::Text(String::from("true")));
+    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("true"))));
+
+    let r = bool::try_from(Value::Text(String::from("false")));
+    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("false"))));
+
+    let r = bool::try_from(Value::Float64Value(2.0));
+    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(2.0)));
 }
 
 #[test]
 fn from_f64() {
     let r = f64::try_from(Value::Float64Value(1.0));
-    assert_result(r, 1.0);
+    assert_success(r, 1.0);
 
     let r = f64::try_from(Value::Int32Value(1));
-    assert_result(r, 1.0);
+    assert_success(r, 1.0);
 
     let r = f64::try_from(Value::Int64Value(1));
-    assert_result(r, 1.0);
+    assert_success(r, 1.0);
 
     let r = f64::try_from(Value::Text(String::from("1.0")));
-    assert_result(r, 1.0);
+    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("1.0"))));
 }
 
 #[test]
 fn from_i64() {
     let r = i64::try_from(Value::Int64Value(1));
-    assert_result(r, 1);
+    assert_success(r, 1);
 
     let r = i64::try_from(Value::Int32Value(1));
-    assert_result(r, 1);
+    assert_success(r, 1);
 
     let r = i64::try_from(Value::Text(String::from("1")));
-    assert_result(r, 1);
-
-    let r = i64::try_from(Value::Float64Value(1.0));
-
-    match r {
-        Ok(_) => {
-            panic!("Parsed correctly with float.")
-        }
-        Err(e) => {
-            assert_that!(e, eq(FormParseErr::IncorrectType(Value::Float64Value(1.0))));
-        }
-    }
+    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("1"))));
 }
 
 #[test]
 fn from_str() {
     let r = String::try_from(Value::Float64Value(1.0));
-    assert_result(r, String::from("1"));
+    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(1.0)));
 }
 
 #[test]
