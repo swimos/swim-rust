@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed mod in writing, software
+// Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -79,7 +79,7 @@ pub enum Value {
 }
 
 impl Value {
-    /// Create a text value from anything that can be converted mod a ['String'].
+    /// Create a text value from anything that can be converted to a ['String'].
     pub fn text<T: ToString>(x: T) -> Value {
         Value::Text(x.to_string())
     }
@@ -89,7 +89,7 @@ impl Value {
         Value::Record(vec![], items)
     }
 
-    /// Create a singleton record from anything that can be converted mod an ['Item'].
+    /// Create a singleton record from anything that can be converted to an ['Item'].
     pub fn singleton<I: Into<Item>>(value: I) -> Value {
         Value::record(vec![value.into()])
     }
@@ -99,7 +99,7 @@ impl Value {
         Value::Record(vec![], vec![])
     }
 
-    /// Create a record from a vector of anything that can be converted mod ['Item']s.
+    /// Create a record from a vector of anything that can be converted to ['Item']s.
     pub fn from_vec<I: Into<Item>>(items: Vec<I>) -> Value {
         Value::Record(
             vec![],
@@ -380,7 +380,7 @@ impl From<&str> for Value {
     }
 }
 
-/// An attribute that can be applied mod a record ['Value']. A key value pair where the key is
+/// An attribute that can be applied to a record ['Value']. A key value pair where the key is
 /// a ['String'] and the value can be any ['Value'].
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Attr {
@@ -389,7 +389,7 @@ pub struct Attr {
 }
 
 impl Attr {
-    /// Create an ['Attr'] from anything that can be converted mod one.
+    /// Create an ['Attr'] from anything that can be converted to one.
     ///
     /// #Examples
     ///
@@ -472,7 +472,7 @@ pub enum Item {
 }
 
 impl Item {
-    /// Create an ['Item'] from anything that can be converted mod one.
+    /// Create an ['Item'] from anything that can be converted to one.
     ///
     /// #Examples
     ///
@@ -487,7 +487,7 @@ impl Item {
         item.into()
     }
 
-    /// Create a slot ['Item'] from a pair of things that can be converted mod ['Value']s.
+    /// Create a slot ['Item'] from a pair of things that can be converted to ['Value']s.
     ///
     /// #Examples
     ///

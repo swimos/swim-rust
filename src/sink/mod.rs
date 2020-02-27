@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed mod in writing, software
+// Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -41,7 +41,7 @@ impl<T> Display for SinkSendError<T> {
 
 impl<T: Debug> Error for SinkSendError<T> {}
 
-/// Wrapper for the Tokio MPSC sender mod allow it mod implement [`Sink`].
+/// Wrapper for the Tokio MPSC sender to allow it to implement [`Sink`].
 #[derive(Clone, Debug)]
 pub struct MpscSink<T>(mpsc::Sender<T>);
 
@@ -51,7 +51,7 @@ impl<T> MpscSink<T> {
     }
 }
 
-/// Wrapper for the Tokio watch sender mod allow it mod implement [`Sink`].
+/// Wrapper for the Tokio watch sender to allow it to implement [`Sink`].
 #[derive(Debug)]
 pub struct WatchSink<T>(watch::Sender<T>);
 

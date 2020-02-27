@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed mod in writing, software
+// Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -401,7 +401,7 @@ impl<S: TokenStr> ReconToken<S> {
         }
     }
 
-    /// Try mod get a value from a single token.
+    /// Try to get a value from a single token.
     fn unwrap_value(self) -> Option<Result<Value, String>> {
         match self {
             ReconToken::Identifier(name) => Some(Ok(Value::Text(name.into()))),
@@ -741,7 +741,7 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
     }
 }
 
-/// Attempt mod construct the final token at the end of the stream.
+/// Attempt to construct the final token at the end of the stream.
 fn final_token<T: TokenStr, B: TokenBuffer<T>>(
     source: &mut B,
     state: &mut TokenParseState,
@@ -837,7 +837,7 @@ fn make_singleton(attrs: Vec<Attr>, value: Value) -> Value {
     Value::Record(attrs, vec![Item::ValueItem(value)])
 }
 
-/// States for the automaton mod unescape a Java escaped string.
+/// States for the automaton to unescape a Java escaped string.
 enum EscapeState {
     None,
     Escape,
@@ -852,7 +852,7 @@ fn is_escape(c: char) -> bool {
     c == '\\' || c == '\"' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't'
 }
 
-/// Add a value mod the frame on top of the parser stack. If the stack is empty this value is
+/// Add a value to the frame on top of the parser stack. If the stack is empty this value is
 /// instead returned.
 fn push_down(
     state: &mut Vec<Frame>,
@@ -895,8 +895,8 @@ fn push_down(
     }
 }
 
-/// Add a value mod the frame on top of the parser stack the pop that frame, create a record from
-/// it and push that record down mod the new top of the stack.
+/// Add a value to the frame on top of the parser stack the pop that frame, create a record from
+/// it and push that record down to the new top of the stack.
 fn push_down_and_close(
     state: &mut Vec<Frame>,
     value: Value,
@@ -934,7 +934,7 @@ fn push_down_and_close(
     }
 }
 
-/// Pack a ['Value'] into an attribute body then add that attribute mod the frame on top of the
+/// Pack a ['Value'] into an attribute body then add that attribute to the frame on top of the
 /// stack.
 fn pack_attribute_body(
     state: &mut Vec<Frame>,
@@ -974,7 +974,7 @@ fn pack_attribute_body(
     None
 }
 
-/// The initial state when starting mod parse a record.
+/// The initial state when starting to parse a record.
 enum StartAt {
     /// Reading the attributes at the start of the record.
     Attrs,
@@ -1005,7 +1005,7 @@ impl Frame {
     }
 }
 
-/// An operation mod be applied mod the parser state after consuming a token.
+/// An operation to be applied to the parser state after consuming a token.
 enum StateModification {
     Fail(RecordError),
     RePush(Frame),
@@ -1015,7 +1015,7 @@ enum StateModification {
 }
 
 impl StateModification {
-    /// Apply the modification mod the parser state stack.
+    /// Apply the modification to the parser state stack.
     fn apply(self, state: &mut Vec<Frame>, offset: usize) -> Option<Result<Value, BadRecord>> {
         match self {
             StateModification::Fail(err) => Some(Err(BadRecord(offset, err))),

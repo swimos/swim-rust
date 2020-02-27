@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed mod in writing, software
+// Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -20,7 +20,7 @@ use crate::model::{Item, Value};
 #[cfg(test)]
 mod tests;
 
-/// A model mod exchange over WARP connections.
+/// A model to exchange over WARP connections.
 #[derive(Debug, PartialEq)]
 pub enum Envelope {
     // @link
@@ -96,13 +96,13 @@ impl Envelope {
     }
 }
 
-/// A simple [`Envelope`] payload mod deliver mod the other end of an active network connection.
+/// A simple [`Envelope`] payload to deliver to the other end of an active network connection.
 #[derive(Debug, PartialEq)]
 pub struct HostAddressed {
     pub body: Option<Value>,
 }
 
-/// An [`Envelope`]'s payload that is routed mod a particular lane, of a particular node. Both the
+/// An [`Envelope`]'s payload that is routed to a particular lane, of a particular node. Both the
 /// `node_uri` and `lane_uri` must be provided.
 #[derive(Debug, PartialEq)]
 pub struct LaneAddressed {
@@ -111,8 +111,8 @@ pub struct LaneAddressed {
     pub body: Option<Value>,
 }
 
-/// An [`Envelope`] mod route along the path of a currently open link. If the `rate` or `prio` are
-/// not provided then they are set mod `None`.
+/// An [`Envelope`] to route along the path of a currently open link. If the `rate` or `prio` are
+/// not provided then they are set to `None`.
 #[derive(Debug, PartialEq)]
 pub struct LinkAddressed {
     pub lane: LaneAddressed,
@@ -120,7 +120,7 @@ pub struct LinkAddressed {
     pub prio: Option<f64>,
 }
 
-/// Errors that may occur when parsing a [`Value`] in mod an [`Envelope`]. A variant's associated
+/// Errors that may occur when parsing a [`Value`] in to an [`Envelope`]. A variant's associated
 /// data is the cause of the error.
 #[derive(Debug, PartialEq)]
 pub enum EnvelopeParseErr {
@@ -335,7 +335,7 @@ fn to_lane_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<En
     }
 }
 
-/// Attempt mod parse a ['Value'] in mod an ['Envelope']. Returning either the parsed [`Envelope`] or
+/// Attempt to parse a ['Value'] in to an ['Envelope']. Returning either the parsed [`Envelope`] or
 /// an [`EnvelopeParseErr`] detailing the failure cause.
 ///
 /// # Examples
