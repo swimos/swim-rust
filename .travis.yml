@@ -11,13 +11,15 @@ cache: cargo
 
 before_script:
   - rustup component add clippy
+  - rustup component add rustfmt
 
 jobs:
   include:
     - stage: "Build"
       script: cargo rustc -- -D warnings
+
     - stage: "Test"
       script: cargo test
-    - stage: "Clippy"
-      script: cargo clippy --all-targets --all-features -- -D warnings
 
+    - stage: "Format"
+      script: cargo fmt -- --check
