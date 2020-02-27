@@ -27,6 +27,9 @@ mod nested;
 #[cfg(test)]
 mod vectors;
 
+#[cfg(test)]
+mod from;
+
 pub fn assert_err(parsed: Result<Value, SerializerError>, expected: SerializerError) {
     match parsed {
         Ok(v) => {

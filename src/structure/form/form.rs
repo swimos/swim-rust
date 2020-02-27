@@ -56,20 +56,18 @@ impl std::error::Error for SerializerError {
 }
 
 #[allow(dead_code)]
-pub fn to_value<T>(value: &T) -> Result<Value>
-    where
-        T: Serialize,
-{
+pub fn to_value<T>(value: &T) -> Result<Value> where T: Serialize {
     let mut serializer = Serializer::new();
     value.serialize(&mut serializer)?;
 
     Ok(serializer.output())
 }
 
-//noinspection ALL,RsTraitImplementation
+//noinspection RsTraitImplementation
 impl<'a> ser::Serializer for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
+
     type SerializeSeq = Self;
     type SerializeTuple = Self;
     type SerializeTupleStruct = Self;
@@ -170,10 +168,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         self,
         _name: &'static str,
         value: &T,
-    ) -> Result<()>
-        where
-            T: ?Sized + Serialize,
-    {
+    ) -> Result<()> where T: ?Sized + Serialize {
         value.serialize(self)
     }
 
@@ -247,7 +242,7 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_element<T>(&mut self, value: &T) -> Result<()>        where            T: ?Sized + Serialize    {
+    fn serialize_element<T>(&mut self, value: &T) -> Result<()> where T: ?Sized + Serialize {
         value.serialize(&mut **self)
     }
 
@@ -261,7 +256,7 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_element<T>(&mut self, value: &T) -> Result<()>        where            T: ?Sized + Serialize    {
+    fn serialize_element<T>(&mut self, value: &T) -> Result<()> where T: ?Sized + Serialize {
         value.serialize(&mut **self)
     }
 
@@ -348,14 +343,13 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>        where            T: ?Sized + Serialize    {
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()> where T: ?Sized + Serialize {
         self.current_state.attr_name = Some(key.to_owned());
         value.serialize(&mut **self)
     }
 
     fn end(self) -> Result<()> {
         self.exit_nested();
-
         Ok(())
     }
 }
@@ -480,24 +474,18 @@ impl Serializer {
             self.current_state.serializer_state = state;
             self.current_state.output = Value::Record(Vec::new(), Vec::new());
         } else {
-            match &mut self.current_state.output {
-                Value::Record(_, ref mut items) => {
-                    if let SerializerState::ReadingNested = self.current_state.serializer_state {
-                        match &self.current_state.attr_name {
-                            Some(name) => {
-                                items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
-                            }
-                            None => {
-                                items.push(Item::ValueItem(Value::Extant));
-                            }
+            if let Value::Record(_, ref mut items) = &mut self.current_state.output {
+                if let SerializerState::ReadingNested = self.current_state.serializer_state {
+                    match &self.current_state.attr_name {
+                        Some(name) => {
+                            items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
+                        }
+                        None => {
+                            items.push(Item::ValueItem(Value::Extant));
                         }
                     }
                 }
-                _ => {
-                    panic!()
-                }
             }
-
             self.push_state(State::new_with_state(state));
         }
     }
