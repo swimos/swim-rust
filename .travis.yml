@@ -18,14 +18,9 @@ stages:
   - test
   - format
 
-jobs:
-  include:
-    - stage: "Build"
-      script: cargo rustc -- -D warnings
+script:
+  - cargo rustc -- -D warnings
+  - cargo test
+  - cargo fmt -- --check
 
-    - stage: "Test"
-      script: cargo test
-
-    - stage: "Format"
-      script: cargo fmt -- --check
 
