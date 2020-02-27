@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![cfg_attr(DENY_WARNINGS, deny(warnings))]
+
+
 extern crate crossbeam;
 extern crate futures;
 extern crate futures_util;
