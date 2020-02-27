@@ -538,13 +538,17 @@ pub struct State {
 }
 
 impl State {
-    fn new() -> Self {
-        State::new_with_state(SerializerState::None)
+    fn default() ->Self {
+        State {
+            output:  Value::Extant,
+            serializer_state: SerializerState::None,
+            attr_name: None,
+        }
     }
 
     fn new_with_state(parser_state: SerializerState) -> Self {
         State {
-            output: Value::Record(Vec::new(), Vec::new()),
+            output:  Value::Record(Vec::new(), Vec::new()),
             serializer_state: parser_state,
             attr_name: None,
         }
@@ -554,7 +558,7 @@ impl State {
 impl Serializer {
     pub fn new() -> Self {
         Self {
-            current_state: State::new(),
+            current_state: State::default(),
             stack: vec![],
         }
     }
@@ -618,7 +622,9 @@ impl Serializer {
                     }
                 }
             }
-            Value::Extant => {}
+            Value::Extant => {
+                self.current_state.output = value;
+            }
             v @ _ => {
                 unimplemented!("{:?}", v)
             }
@@ -628,6 +634,7 @@ impl Serializer {
     pub fn enter_nested(&mut self, state: SerializerState) {
         if let SerializerState::None = self.current_state.serializer_state {
             self.current_state.serializer_state = state;
+            self.current_state.output = Value::Record(Vec::new(), Vec::new());
         } else {
             match &mut self.current_state.output {
                 Value::Record(_, ref mut items) => {

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::model::{Item, Value};
-use crate::model::Item::ValueItem;
 use crate::structure::form::form::{SerializerError, to_value};
 use crate::structure::form::tests::assert_err;
 
@@ -64,6 +63,34 @@ mod valid_types {
 
         assert_eq!(parsed_value, expected);
     }
+
+    #[test]
+    fn map_of_tuples() {
+        let mut map = BTreeMap::new();
+        map.insert("a", (1, 2, 3, 4, 5));
+        map.insert("b", (6, 7, 8, 9, 10));
+
+        let parsed_value = to_value(&map).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Int32Value(1)),
+                Item::ValueItem(Value::Int32Value(2)),
+                Item::ValueItem(Value::Int32Value(3)),
+                Item::ValueItem(Value::Int32Value(4)),
+                Item::ValueItem(Value::Int32Value(5)),
+            ])),
+            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Int32Value(6)),
+                Item::ValueItem(Value::Int32Value(7)),
+                Item::ValueItem(Value::Int32Value(8)),
+                Item::ValueItem(Value::Int32Value(9)),
+                Item::ValueItem(Value::Int32Value(10)),
+            ]))],
+        );
+
+        assert_eq!(parsed_value, expected);
+    }
 }
 
 #[cfg(test)]
@@ -71,4 +98,14 @@ mod invalid_types {
     use std::collections::BTreeMap;
 
     use super::*;
+
+    #[test]
+    fn invalid_nested_type() {
+        let mut map: BTreeMap<&str, Vec<u32>> = BTreeMap::new();
+        map.insert("a", vec![1, 2, 3]);
+        map.insert("b", vec![1, 2, 3]);
+
+        let parsed_value = to_value(&map);
+        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u32")));
+    }
 }

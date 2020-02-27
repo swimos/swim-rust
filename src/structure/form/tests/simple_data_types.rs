@@ -98,9 +98,118 @@ mod tuples {
     }
 }
 
+
 #[cfg(test)]
 mod valid_types {
     use super::*;
+
+    #[test]
+    fn enumeration() {
+        #[derive(Serialize)]
+        enum TestEnum {
+            A
+        }
+
+        let parsed_value = to_value(&TestEnum::A).unwrap();
+        let expected = Value::Text(String::from("A"));
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_bool() {
+        let parsed_value = to_value(&true).unwrap();
+        let expected = Value::BooleanValue(true);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i8() {
+        let test: i8 = 1;
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Int32Value(1);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i16() {
+        let test: i16 = 1;
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Int32Value(1);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i32() {
+        let test: i32 = 1;
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Int32Value(1);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i64() {
+        let test: i64 = 1;
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Int64Value(1);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_f32() {
+        let test: f32 = 1.0;
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Float64Value(1.0);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_f64() {
+        let test: f64 = 1.0;
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Float64Value(1.0);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_char() {
+        let parsed_value = to_value(&'s').unwrap();
+        let expected = Value::Text(String::from("s"));
+
+        assert_eq!(parsed_value, expected);
+    }
+}
+
+#[cfg(test)]
+mod struct_valid_types {
+    use super::*;
+
+    #[test]
+    fn enumeration() {
+        #[derive(Serialize)]
+        enum TestEnum {
+            A
+        }
+
+        #[derive(Serialize)]
+        struct Test {
+            a: TestEnum,
+        }
+
+        let parsed_value = to_value(&Test {
+            a: TestEnum::A
+        }).unwrap();
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Text(String::from("A"))),
+        ]);
+        assert_eq!(parsed_value, expected);
+    }
 
     #[test]
     fn test_bool() {
@@ -114,7 +223,6 @@ mod valid_types {
         };
 
         let parsed_value = to_value(&test).unwrap();
-
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::BooleanValue(true)),
         ]);
