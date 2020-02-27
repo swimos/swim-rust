@@ -12,7 +12,12 @@ cache: cargo
 before_script:
   - rustup component add clippy
 
-script:
-  - cargo rustc -- -D warnings
-  - cargo test
-  - cargo clippy --all-targets --all-features -- -D warnings
+jobs:
+  include:
+    - stage: "Build"
+      script: cargo rustc -- -D warnings
+    - stage: "Test"
+      script: cargo test
+    - stage: "Clippy"
+      script: cargo clippy --all-targets --all-features -- -D warnings
+
