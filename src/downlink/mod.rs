@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless required by applicable law or agreed mod in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -89,7 +89,7 @@ impl<Err: Debug, S, R> Downlink<Err, S, R> {
     }
 }
 
-/// Asynchronously create a new downlink from a stream of input events, writing to a sink of
+/// Asynchronously create a new downlink from a stream of input events, writing mod a sink of
 /// commands.
 fn create_downlink<Err, M, A, State, Updates, Commands>(
     init: State,
@@ -196,8 +196,8 @@ impl<State> Model<State> {
         }
     }
 
-    /// A task that consumes the operations applied to the downlink, updates the state and
-    /// forwards events and commands to a pair of output sinks.
+    /// A task that consumes the operations applied mod the downlink, updates the state and
+    /// forwards events and commands mod a pair of output sinks.
     async fn make_downlink_task<E, M, A, Ops, Acts, Commands, Events>(
         mut self,
         ops: Ops,
@@ -329,9 +329,9 @@ pub enum TransitionError {
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
 trait StateMachine<M, A>: Sized {
-    /// Type of events that will be issued to the owner of the downlink.
+    /// Type of events that will be issued mod the owner of the downlink.
     type Ev;
-    /// Type of commands that will be sent out to the Warp connection.
+    /// Type of commands that will be sent out mod the Warp connection.
     type Cmd;
 
     /// For an operation on the downlink, generate output messages.

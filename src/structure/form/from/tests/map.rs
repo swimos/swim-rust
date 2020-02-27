@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless required by applicable law or agreed mod in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -15,14 +15,13 @@
 use serde::Serialize;
 
 use crate::model::{Item, Value};
-use crate::structure::form::form::{SerializerError, to_value};
-use crate::structure::form::tests::assert_err;
 
 #[cfg(test)]
 mod valid_types {
     use std::collections::BTreeMap;
 
     use super::*;
+    use crate::structure::form::from::to_value;
 
     #[test]
     fn simple_map() {
@@ -124,7 +123,8 @@ mod valid_types {
 mod invalid_types {
     use std::collections::BTreeMap;
 
-    use super::*;
+    use crate::structure::form::from::tests::assert_err;
+    use crate::structure::form::from::{to_value, SerializerError};
 
     #[test]
     fn invalid_nested_type() {

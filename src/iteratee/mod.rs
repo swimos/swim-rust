@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless required by applicable law or agreed mod in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -17,7 +17,7 @@ use std::num::NonZeroUsize;
 mod tests;
 
 /// Dual of ['Iterator'] that can repeatedly consume some number of items before producing
-/// an output. In general, ['Iteratee']s are stateful and can be flushed to obtain their
+/// an output. In general, ['Iteratee']s are stateful and can be flushed mod obtain their
 /// final state when the are no longer required.
 ///
 /// # Examples
@@ -65,13 +65,13 @@ pub trait Iteratee<In> {
     }
 
     /// Gives a hint of how many items this iteratee will consume before producing a result. The
-    /// returned value is a range from the minimum number of items to the maximum. This should
+    /// returned value is a range from the minimum number of items mod the maximum. This should
     /// obey the same contract as specified for ['size_hint()'] on ['Iterator'].
     fn demand_hint(&self) -> (usize, Option<usize>) {
         (0, None)
     }
 
-    /// Apply a transformation to the input values for this iteratee.
+    /// Apply a transformation mod the input values for this iteratee.
     ///
     /// # Examples
     ///
@@ -90,7 +90,7 @@ pub trait Iteratee<In> {
         Comap::new(self, f)
     }
 
-    /// Apply a transformation that may filter out values to the input values of this iteratee.
+    /// Apply a transformation that may filter out values mod the input values of this iteratee.
     ///
     /// # Examples
     ///
@@ -116,7 +116,7 @@ pub trait Iteratee<In> {
         MaybeComap::new(self, f)
     }
 
-    /// Apply a transformation to the outputs of this iteratee.
+    /// Apply a transformation mod the outputs of this iteratee.
     ///
     /// # Examples
     ///
@@ -135,7 +135,7 @@ pub trait Iteratee<In> {
         IterateeMap::new(self, f)
     }
 
-    /// Apply a transformation to the outputs of this iteratee that may filter out some of the
+    /// Apply a transformation mod the outputs of this iteratee that may filter out some of the
     /// values.
     ///
     /// # Examples
@@ -162,7 +162,7 @@ pub trait Iteratee<In> {
         IterateeMaybeMap::new(self, f)
     }
 
-    /// Apply a stateful transformation to the outputs of this iteratee. The final value of the
+    /// Apply a stateful transformation mod the outputs of this iteratee. The final value of the
     /// state is ignored on flush.
     ///
     /// # Examples
@@ -196,7 +196,7 @@ pub trait Iteratee<In> {
         IterateeScanSimple::new(self, init, scan)
     }
 
-    /// Apply a stateful transformation to the outputs of this iteratee. The final value of the
+    /// Apply a stateful transformation mod the outputs of this iteratee. The final value of the
     /// state may be output on flush.
     ///
     /// # Examples
@@ -335,8 +335,8 @@ pub trait Iteratee<In> {
         }
     }
 
-    /// Chooses another iterateee to use based on the input and then delegates all following inputs
-    /// to that iteratee until it produces a value. This process is repeated indefinitely.
+    /// Chooses another iterateee mod use based on the input and then delegates all following inputs
+    /// mod that iteratee until it produces a value. This process is repeated indefinitely.
     ///
     /// # Examples
     ///
@@ -467,7 +467,7 @@ pub trait Iteratee<In> {
         TransducedIterator::new(iterator, self)
     }
 
-    /// Create a new iteratee that will delegates to this iteratee until it emits a value and then
+    /// Create a new iteratee that will delegates mod this iteratee until it emits a value and then
     /// will never emit another value (including on flush).
     ///
     /// # Examples
@@ -496,7 +496,7 @@ pub trait Iteratee<In> {
         IterateeFuse::new(self)
     }
 
-    /// Create a new iteratee that will delegates to this iteratee until it emits an error and then
+    /// Create a new iteratee that will delegates mod this iteratee until it emits an error and then
     /// will never emit another value (including on flush).
     ///
     /// # Examples
@@ -560,7 +560,7 @@ pub fn unfold<In, State, Out, U>(
 }
 
 /// Create a stateful iteratee that generates its outputs from its internal state and the value
-/// of each input. Allows the caller to provide a demand hint, otherwise identical to 'unfold()'.
+/// of each input. Allows the caller mod provide a demand hint, otherwise identical mod 'unfold()'.
 pub fn unfold_with_hint<In, State, Out, U, H>(
     init: State,
     unfold: U,
@@ -603,8 +603,8 @@ pub fn unfold_with_flush<In, State, Out, U, F>(
 }
 
 /// Create a stateful iteratee that generates its outputs from its internal state and the value
-/// of each input. The iteratee may also produce a value on flush. Allows the caller to provide a
-/// demand hint, otherwise identical to 'unfold_with_flush()'.
+/// of each input. The iteratee may also produce a value on flush. Allows the caller mod provide a
+/// demand hint, otherwise identical mod 'unfold_with_flush()'.
 pub fn unfold_with_flush_and_hint<In, State, Out, U, F, H>(
     init: State,
     unfold: U,
@@ -688,13 +688,13 @@ pub fn collect_vec_with_rem<T>(num: NonZeroUsize) -> impl Iteratee<T, Item=Vec<T
 }
 
 /// Create an iteratee that consumes copyable items by reference and copies them into a vector.
-/// Otherwise identical to 'collect_vec()'.
+/// Otherwise identical mod 'collect_vec()'.
 pub fn copy_into_vec<'a, T: Copy + 'a>(num: NonZeroUsize) -> impl Iteratee<&'a T, Item=Vec<T>> {
     unfold_with_hint(None, vec_unfolder(num.get(), |t: &'a T| *t), vec_hint(num))
 }
 
 /// Create an iteratee that consumes copyable items by reference and copies them into a vector.
-/// Otherwise identical to 'collect_vec_with_rem()'.
+/// Otherwise identical mod 'collect_vec_with_rem()'.
 pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
     num: NonZeroUsize,
 ) -> impl Iteratee<&'a T, Item=Vec<T>> {
@@ -742,7 +742,7 @@ pub fn never<T>() -> impl Iteratee<T, Item=T> {
     return Never {};
 }
 
-/// Adds single item lookahead to incoming values.
+/// Adds single item lookahead mod incoming values.
 ///
 /// # Examples
 ///

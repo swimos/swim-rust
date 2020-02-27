@@ -6,14 +6,14 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless required by applicable law or agreed mod in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 use crate::model::Value;
-use crate::structure::form::form::{Serializer, SerializerError, SerializerState};
+use crate::structure::form::from::{SerializerError, Serializer, SerializerState};
 
 #[cfg(test)]
 mod simple_data_types;

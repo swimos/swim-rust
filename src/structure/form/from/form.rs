@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless required by applicable law or agreed mod in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -19,14 +19,7 @@ use std::fmt::Display;
 use serde::{de, ser, Serialize};
 
 use crate::model::{Item, Value};
-
-pub type Result<T> = ::std::result::Result<T, SerializerError>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum SerializerError {
-    Message(String),
-    UnsupportedType(String),
-}
+use crate::structure::form::from::{Result, Serializer, SerializerError, SerializerState, State};
 
 impl ser::Error for SerializerError {
     fn custom<T: Display>(msg: T) -> Self {
@@ -55,13 +48,6 @@ impl std::error::Error for SerializerError {
     }
 }
 
-#[allow(dead_code)]
-pub fn to_value<T>(value: &T) -> Result<Value> where T: Serialize {
-    let mut serializer = Serializer::new();
-    value.serialize(&mut serializer)?;
-
-    Ok(serializer.output())
-}
 
 //noinspection RsTraitImplementation
 impl<'a> ser::Serializer for &'a mut Serializer {
@@ -354,26 +340,6 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum SerializerState {
-    ReadingNested,
-    // Reading key
-    ReadingMap(bool),
-    None,
-}
-
-#[derive(Debug)]
-pub struct Serializer {
-    pub current_state: State,
-    stack: Vec<State>,
-}
-
-#[derive(Debug, Clone)]
-pub struct State {
-    pub  output: Value,
-    pub serializer_state: SerializerState,
-    pub attr_name: Option<String>,
-}
 
 impl State {
     fn default() -> Self {

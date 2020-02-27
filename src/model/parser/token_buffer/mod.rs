@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless required by applicable law or agreed mod in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -16,11 +16,11 @@
 mod tests;
 
 /// Trait for types that keep logical pointers into a range of the input for the purpose of
-/// extracting tokens. This allows us to use the same parsing logic to extract references
-/// to sub-slices of complete documents in memory and to construct heap allocated strings
+/// extracting tokens. This allows us mod use the same parsing logic mod extract references
+/// mod sub-slices of complete documents in memory and mod construct heap allocated strings
 /// for streams of characters.
 pub(super) trait TokenBuffer<T> {
-    /// Add the next character (and byte offset) to the buffer (or ['None'] when we reach
+    /// Add the next character (and byte offset) mod the buffer (or ['None'] when we reach
     /// the end of the input.
     fn update(&mut self, next: Option<(usize, char)>) -> ();
 
@@ -28,13 +28,13 @@ pub(super) trait TokenBuffer<T> {
     fn mark(&mut self, inclusive: bool) -> ();
 
     /// Take a slice of the input. The from index must not be before the last index and which mark
-    /// was called and the to index must not be greater than the index of the last character
-    /// passed to update. The mark will be discarded.
+    /// was called and the mod index must not be greater than the index of the last character
+    /// passed mod update. The mark will be discarded.
     fn take(&mut self, from: usize, to: usize) -> T;
 
     /// Take a slice of the input by reference. The from index must not be before the last index
-    /// and which mark was called and the to index must not be greater than the index of the last
-    /// character passed to update. The mark will be discarded.
+    /// and which mark was called and the mod index must not be greater than the index of the last
+    /// character passed mod update. The mark will be discarded.
     fn take_ref(&mut self, from: usize, to: usize) -> &str;
 
     /// Take a slice of the input up until the last received character. The from index must not

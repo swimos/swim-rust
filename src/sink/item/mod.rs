@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless required by applicable law or agreed mod in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
@@ -18,14 +18,14 @@ use futures::{future, FutureExt};
 use futures::future::{Map, Ready};
 use tokio::sync::{mpsc, watch};
 
-/// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
+/// An alternative mod the [`futures::Sink`] trait for sinks that can consume their inputs in a
 /// single operation. This can simplify operations where one can guarantee that the target sink
 /// is a queue and will not be performing IO directly (for example in lane models).
 pub trait ItemSink<'a, T> {
     type Error;
     type SendFuture: Future<Output=Result<(), Self::Error>> + Send + 'a;
 
-    /// Attempt to send an item into the sink.
+    /// Attempt mod send an item into the sink.
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
 }
 
@@ -51,7 +51,7 @@ fn transform_err<T, Err: From<MpscErr<T>>>(result: Result<(), MpscErr<T>>) -> Re
     result.map_err(|e| e.into())
 }
 
-/// Wrap an [`mpsc::Sender`] as an item sink. It is not possible to implement the trait
+/// Wrap an [`mpsc::Sender`] as an item sink. It is not possible mod implement the trait
 /// directly as the `send` method returns an anonymous type.
 pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + 'static>(
     sender: mpsc::Sender<T>,
