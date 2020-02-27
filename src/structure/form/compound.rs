@@ -1,25 +1,52 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::convert::TryInto;
 
-use serde::{ser, Serialize};
-
-use error::{Error, Result};
+use serde::{ser, Serialize, de};
 
 use crate::model::{Attr, Item, Value};
 use crate::model::Item::{Slot, ValueItem};
 use crate::model::Value::Record;
+use std::fmt::Display;
+use std::fmt;
+use std::error::Error;
 
-mod error {
-    pub use serde::de::value::Error;
 
-    pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = ::std::result::Result<T, SerializerError>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SerializerError {
+    Message(String),
+    UnsupportedType(String),
 }
 
-// By convention, the public API of a Serde serializer is one or more `to_abc`
-// functions such as `to_string`, `to_bytes`, or `to_writer` depending on what
-// Rust types the serializer is able to produce as output.
-//
-// This basic serializer supports only `to_string`.
+impl ser::Error for SerializerError {
+    fn custom<T: Display>(msg: T) -> Self {
+        SerializerError::Message(msg.to_string())
+    }
+}
+
+impl de::Error for SerializerError {
+    fn custom<T: Display>(msg: T) -> Self {
+        SerializerError::Message(msg.to_string())
+    }
+}
+
+impl Display for SerializerError {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str(std::error::Error::description(self))
+    }
+}
+
+impl std::error::Error for SerializerError {
+    fn description(&self) -> &str {
+        match *self {
+            SerializerError::Message(ref msg) => msg,
+            _ => "TODO"
+        }
+    }
+}
+
+
 pub fn to_string<T>(value: &T) -> Result<Value>
     where
         T: Serialize,
@@ -41,7 +68,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     type Ok = ();
 
     // The error type when some error occurs during serialization.
-    type Error = Error;
+    type Error = SerializerError;
 
     // Associated types for keeping track of additional state while serializing
     // compound data structures like sequences and maps. In this case no
@@ -86,22 +113,19 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_u8(self, v: u8) -> Result<()> {
-        self.serialize_u32(u32::from(v))
+        Err(SerializerError::UnsupportedType(String::from("u8")))
     }
 
     fn serialize_u16(self, v: u16) -> Result<()> {
-        self.serialize_u32(u32::from(v))
+        Err(SerializerError::UnsupportedType(String::from("u16")))
     }
 
-    // TODO: Unsigned types
     fn serialize_u32(self, v: u32) -> Result<()> {
-        self.push_value(Value::Int32Value(v as i32));
-        Ok(())
+        Err(SerializerError::UnsupportedType(String::from("u32")))
     }
 
     fn serialize_u64(self, v: u64) -> Result<()> {
-        self.push_value(Value::Int64Value(v as i64));
-        Ok(())
+        Err(SerializerError::UnsupportedType(String::from("u64")))
     }
 
     fn serialize_f32(self, v: f32) -> Result<()> {
@@ -302,7 +326,7 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
     // Must match the `Ok` type of the serializer.
     type Ok = ();
     // Must match the `Error` type of the serializer.
-    type Error = Error;
+    type Error = SerializerError;
 
     // Serialize a single element of the sequence.
     fn serialize_element<T>(&mut self, value: &T) -> Result<()>
@@ -322,7 +346,7 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
 // Same thing but for tuples.
 impl<'a> ser::SerializeTuple for &'a mut Serializer {
     type Ok = ();
-    type Error = Error;
+    type Error = SerializerError;
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<()>
         where
@@ -340,7 +364,7 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
 // Same thing but for tuple structs.
 impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
     type Ok = ();
-    type Error = Error;
+    type Error = SerializerError;
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
         where
@@ -366,7 +390,7 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
 // the `}`.
 impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     type Ok = ();
-    type Error = Error;
+    type Error = SerializerError;
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
         where
@@ -391,7 +415,7 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
 // difference so the default behavior for `serialize_entry` is fine.
 impl<'a> ser::SerializeMap for &'a mut Serializer {
     type Ok = ();
-    type Error = Error;
+    type Error = SerializerError;
 
     // The Serde data model allows map keys to be any serializable type. JSON
     // only allows string keys so the implementation below will produce invalid
@@ -428,7 +452,7 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
 // constant strings.
 impl<'a> ser::SerializeStruct for &'a mut Serializer {
     type Ok = ();
-    type Error = Error;
+    type Error = SerializerError;
 
     //noinspection DuplicatedCode
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
@@ -450,7 +474,7 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
 // closing both of the curly braces opened by `serialize_struct_variant`.
 impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     type Ok = ();
-    type Error = Error;
+    type Error = SerializerError;
 
     //noinspection DuplicatedCode
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
@@ -469,7 +493,7 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
 }
 
 #[derive(Clone, Debug)]
-pub enum ParserState {
+pub enum SerializerState {
     // Key
     ReadingElement,
     ReadingSequence,
@@ -478,26 +502,26 @@ pub enum ParserState {
 
 #[derive(Debug)]
 pub struct Serializer {
-    pub current_state: SerializerState,
-    stack: Vec<SerializerState>,
+    pub current_state: State,
+    stack: Vec<State>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SerializerState {
+pub struct State {
     pub  output: Value,
-    pub parser_state: ParserState,
+    pub serializer_state: SerializerState,
     pub attr_name: Option<String>,
 }
 
-impl SerializerState {
+impl State {
     fn new() -> Self {
-        SerializerState::new_with_state(ParserState::None)
+        State::new_with_state(SerializerState::None)
     }
 
-    fn new_with_state(parser_state: ParserState) -> Self {
-        SerializerState {
+    fn new_with_state(parser_state: SerializerState) -> Self {
+        State {
             output: Value::Record(Vec::new(), Vec::new()),
-            parser_state,
+            serializer_state: parser_state,
             attr_name: None,
         }
     }
@@ -506,7 +530,7 @@ impl SerializerState {
 impl Serializer {
     pub fn new() -> Self {
         Self {
-            current_state: SerializerState::new(),
+            current_state: State::new(),
             stack: vec![],
         }
     }
@@ -515,12 +539,12 @@ impl Serializer {
         self.current_state.output.to_owned()
     }
 
-    pub fn push_state(&mut self, ss: SerializerState) {
+    pub fn push_state(&mut self, ss: State) {
         self.stack.push(self.current_state.to_owned());
         self.current_state = ss;
     }
 
-    pub fn pop_state(&mut self) -> SerializerState {
+    pub fn pop_state(&mut self) -> State {
         match self.stack.pop() {
             Some(s) => s,
             None => {
@@ -567,12 +591,12 @@ impl Serializer {
             }
         }
 
-        self.push_state(SerializerState::new_with_state(ParserState::ReadingSequence));
+        self.push_state(State::new_with_state(SerializerState::ReadingSequence));
     }
 
     pub fn exit_sequence(&mut self) {
         if let Some(mut previous_state) = self.stack.pop() {
-            if let ParserState::ReadingSequence = self.current_state.parser_state {
+            if let SerializerState::ReadingSequence = self.current_state.serializer_state {
                 if let Value::Record(_, ref mut items) = previous_state.output {
                     if let Some(item) = items.last_mut() {
                         match item {
