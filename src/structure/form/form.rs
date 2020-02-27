@@ -631,12 +631,14 @@ impl Serializer {
         } else {
             match &mut self.current_state.output {
                 Value::Record(_, ref mut items) => {
-                    match &self.current_state.attr_name {
-                        Some(name) => {
-                            items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
-                        }
-                        None => {
-                            items.push(Item::ValueItem(Value::Extant));
+                    if let SerializerState::ReadingNested = self.current_state.serializer_state {
+                        match &self.current_state.attr_name {
+                            Some(name) => {
+                                items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
+                            }
+                            None => {
+                                items.push(Item::ValueItem(Value::Extant));
+                            }
                         }
                     }
                 }

@@ -19,9 +19,9 @@ use crate::structure::form::tests::assert_err;
 
 #[cfg(test)]
 mod valid_types {
-    use super::*;
+    use std::collections::BTreeMap;
 
-    use std::collections::{HashMap, BTreeMap};
+    use super::*;
 
     #[test]
     fn simple_map() {
@@ -36,8 +36,31 @@ mod valid_types {
             Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
             Item::Slot(Value::Text(String::from("b")), Value::Int32Value(2)),
             Item::Slot(Value::Text(String::from("c")), Value::Int32Value(3)),
-
         ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn map_of_vecs() {
+        let mut map = BTreeMap::new();
+        map.insert("a", vec![1, 2, 3]);
+        map.insert("b", vec![1, 2, 3]);
+
+        let parsed_value = to_value(&map).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Int32Value(1)),
+                Item::ValueItem(Value::Int32Value(2)),
+                Item::ValueItem(Value::Int32Value(3))],
+            )),
+            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Int32Value(1)),
+                Item::ValueItem(Value::Int32Value(2)),
+                Item::ValueItem(Value::Int32Value(3)
+                )]))],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -45,6 +68,7 @@ mod valid_types {
 
 #[cfg(test)]
 mod invalid_types {
-    use super::*;
+    use std::collections::BTreeMap;
 
+    use super::*;
 }
