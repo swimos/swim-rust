@@ -18,9 +18,30 @@ use crate::structure::form::compound::{SerializerError, to_value};
 use crate::structure::form::tests::assert_err;
 
 #[cfg(test)]
-mod compound_types {
+mod valid {
+    use crate::model::{Item, Value};
+
     use super::*;
-    use crate::model::{Value, Item};
+
+    #[test]
+    fn generic() {
+        #[derive(Serialize)]
+        struct Test<T> {
+            v: T,
+        }
+
+        let test = Test {
+            v: String::from("hello")
+        };
+
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("v")), Value::Text(String::from("hello"))),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
 
     #[test]
     fn illegal_struct() {
@@ -86,6 +107,112 @@ mod compound_types {
                 Item::Slot(Value::Text(String::from("b")), Value::Text(String::from("child2"))),
             ]))
         ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn deep_struct() {
+        #[derive(Serialize)]
+        struct TestStruct {
+            a: i32,
+            b: Box<Option<TestStruct>>,
+        }
+
+        let test = TestStruct {
+            a: 0,
+            b: Box::new(Some(TestStruct {
+                a: 1,
+                b: Box::new(Some(TestStruct {
+                    a: 2,
+                    b: Box::new(Some(TestStruct {
+                        a: 3,
+                        b: Box::new(Some(TestStruct {
+                            a: 4,
+                            b: Box::new(None),
+                        })),
+                    })),
+                })),
+            })),
+        };
+
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
+            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+                Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                    Item::Slot(Value::Text(String::from("a")), Value::Int32Value(2)),
+                    Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(3)),
+                        Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(4)),
+                            Item::Slot(Value::Text(String::from("b")), Value::Extant),
+                        ])),
+                    ])),
+                ])),
+            ])),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn multiple_deep_structs() {
+        #[derive(Serialize)]
+        struct TestStruct {
+            a: Box<Option<TestStruct>>,
+            b: Box<Option<TestStruct>>,
+        }
+
+        let test = TestStruct {
+            a: Box::new(Some(TestStruct {
+                a: Box::new(Some(TestStruct {
+                    a: Box::new(None),
+                    b: Box::new(None),
+                })),
+                b: Box::new(Some(TestStruct {
+                    a: Box::new(None),
+                    b: Box::new(None),
+                })),
+            })),
+            b: Box::new(Some(TestStruct {
+                a: Box::new(Some(TestStruct {
+                    a: Box::new(None),
+                    b: Box::new(None),
+                })),
+                b: Box::new(Some(TestStruct {
+                    a: Box::new(None),
+                    b: Box::new(None),
+                })),
+            })),
+        };
+
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
+                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                    Item::Slot(Value::Text(String::from("b")), Value::Extant)],
+                )),
+                Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                    Item::Slot(Value::Text(String::from("b")), Value::Extant)],
+                ))],
+            )),
+            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
+                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                    Item::Slot(Value::Text(String::from("b")), Value::Extant)]),
+                ),
+                Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                    Item::Slot(Value::Text(String::from("b")), Value::Extant)]),
+                )]),
+            )],
+        );
 
         assert_eq!(parsed_value, expected);
     }

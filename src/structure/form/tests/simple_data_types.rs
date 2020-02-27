@@ -12,14 +12,91 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structure::form::tests::assert_err;
-
 use serde::Serialize;
 
 use crate::model::{Item, Value};
 use crate::model::Item::ValueItem;
 use crate::structure::form::compound::{SerializerError, to_value};
+use crate::structure::form::tests::assert_err;
 
+#[cfg(test)]
+mod tuples {
+    use super::*;
+
+    #[test]
+    fn test_struct_with_tuple() {
+        #[derive(Serialize)]
+        struct Test {
+            a: i32,
+            b: (i64, i64),
+        }
+
+        let test = Test {
+            a: 1,
+            b: (2, 3),
+        };
+
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Int64Value(2)),
+                Item::ValueItem(Value::Int64Value(3)),
+            ]))
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_tuple_struct_with_tuple() {
+        #[derive(Serialize)]
+        struct Test(i32, (i64, i64));
+
+        let test = Test(1, (2, 3));
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::ValueItem(Value::Int32Value(1)),
+            Item::ValueItem(Value::Record(Vec::new(), vec![
+                Item::ValueItem(Value::Int64Value(2)),
+                Item::ValueItem(Value::Int64Value(3)),
+            ]))
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_tuple_struct() {
+        #[derive(Serialize)]
+        struct Test(i32, i64);
+
+        let test = Test(1, 2);
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::ValueItem(Value::Int32Value(1)),
+            Item::ValueItem(Value::Int64Value(2)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_simple_tuple() {
+        let test = (1, 2);
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::ValueItem(Value::Int32Value(1)),
+            Item::ValueItem(Value::Int32Value(2)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+}
 
 #[cfg(test)]
 mod valid_types {
