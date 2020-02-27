@@ -40,16 +40,16 @@ fn serializer_sequences() {
     let mut serializer = Serializer::new();
 
     serializer.current_state.attr_name = Some(String::from("a"));
-    serializer.enter_sequence();
+    serializer.enter_nested();
     serializer.push_value(Value::Int32Value(1));
     serializer.push_value(Value::Int32Value(2));
-    serializer.exit_sequence();
+    serializer.exit_nested();
 
     serializer.current_state.attr_name = Some(String::from("b"));
-    serializer.enter_sequence();
+    serializer.enter_nested();
     serializer.push_value(Value::Int32Value(3));
     serializer.push_value(Value::Int32Value(4));
-    serializer.exit_sequence();
+    serializer.exit_nested();
 }
 
 #[test]
@@ -57,19 +57,19 @@ fn serializer_nested_sequences() {
     let mut serializer = Serializer::new();
 
     serializer.current_state.attr_name = Some(String::from("a"));
-    serializer.enter_sequence();
+    serializer.enter_nested();
 
     serializer.current_state.attr_name = Some(String::from("b"));
-    serializer.enter_sequence();
+    serializer.enter_nested();
     serializer.push_value(Value::Int32Value(1));
     serializer.push_value(Value::Int32Value(2));
-    serializer.exit_sequence();
+    serializer.exit_nested();
 
     serializer.current_state.attr_name = Some(String::from("c"));
-    serializer.enter_sequence();
+    serializer.enter_nested();
     serializer.push_value(Value::Int32Value(3));
     serializer.push_value(Value::Int32Value(4));
-    serializer.exit_sequence();
+    serializer.exit_nested();
 
-    serializer.exit_sequence();
+    serializer.exit_nested();
 }

@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::{ser, Serialize, de};
+use std::error::Error;
+use std::fmt;
+use std::fmt::Display;
+
+use serde::{de, ser, Serialize};
 
 use crate::model::{Item, Value};
-use std::fmt::Display;
-use std::fmt;
 
 pub type Result<T> = ::std::result::Result<T, SerializerError>;
 
@@ -40,7 +42,7 @@ impl de::Error for SerializerError {
 
 impl Display for SerializerError {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str(std::error::Error::description(self))
+        formatter.write_str(Error::description(self))
     }
 }
 
@@ -256,7 +258,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // explicitly in the serialized form. Some serializers may only be able to
     // support sequences for which the length is known up front.
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-        self.enter_sequence();
+        self.enter_nested();
         Ok(self)
     }
 
@@ -303,9 +305,10 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     fn serialize_struct(
         self,
         _name: &'static str,
-        len: usize,
+        _len: usize,
     ) -> Result<Self::SerializeStruct> {
-        self.serialize_map(Some(len))
+        self.enter_nested();
+        Ok(self)
     }
 
     // Struct variants are represented in JSON as `{ NAME: { K: V, ... } }`.
@@ -347,7 +350,7 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
 
     // Close the sequence.
     fn end(self) -> Result<()> {
-        self.exit_sequence();
+        self.exit_nested();
         Ok(())
     }
 }
@@ -365,7 +368,7 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        self.exit_sequence();
+        self.exit_nested();
         Ok(())
     }
 }
@@ -383,7 +386,7 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        self.exit_sequence();
+        self.exit_nested();
         Ok(())
     }
 }
@@ -409,7 +412,7 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        self.exit_sequence();
+        self.exit_nested();
         Ok(())
     }
 }
@@ -452,7 +455,7 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        self.exit_sequence();
+        self.exit_nested();
         Ok(())
     }
 }
@@ -473,7 +476,7 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        self.exit_sequence();
+        self.exit_nested();
 
         Ok(())
     }
@@ -495,7 +498,7 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     }
 
     fn end(self) -> Result<()> {
-        self.exit_sequence();
+        self.exit_nested();
 
         Ok(())
     }
@@ -505,7 +508,7 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
 pub enum SerializerState {
     // Key
     ReadingElement,
-    ReadingSequence,
+    ReadingNested,
     None,
 }
 
@@ -583,29 +586,33 @@ impl Serializer {
         }
     }
 
-    pub fn enter_sequence(&mut self) {
-        match &mut self.current_state.output {
-            Value::Record(_, ref mut items) => {
-                match &self.current_state.attr_name {
-                    Some(name) => {
-                        items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
-                    }
-                    None => {
-                        items.push(Item::ValueItem(Value::Extant));
+    pub fn enter_nested(&mut self) {
+        if let SerializerState::None = self.current_state.serializer_state {
+            self.current_state.serializer_state = SerializerState::ReadingNested;
+        } else {
+            match &mut self.current_state.output {
+                Value::Record(_, ref mut items) => {
+                    match &self.current_state.attr_name {
+                        Some(name) => {
+                            items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
+                        }
+                        None => {
+                            items.push(Item::ValueItem(Value::Extant));
+                        }
                     }
                 }
+                _ => {
+                    panic!()
+                }
             }
-            _ => {
-                panic!()
-            }
-        }
 
-        self.push_state(State::new_with_state(SerializerState::ReadingSequence));
+            self.push_state(State::new_with_state(SerializerState::ReadingNested));
+        }
     }
 
-    pub fn exit_sequence(&mut self) {
+    pub fn exit_nested(&mut self) {
         if let Some(mut previous_state) = self.stack.pop() {
-            if let SerializerState::ReadingSequence = self.current_state.serializer_state {
+            if let SerializerState::ReadingNested = self.current_state.serializer_state {
                 if let Value::Record(_, ref mut items) = previous_state.output {
                     if let Some(item) = items.last_mut() {
                         match item {

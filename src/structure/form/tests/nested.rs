@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-
 use serde::Serialize;
 
 use crate::structure::form::compound::{SerializerError, to_value};
@@ -22,6 +20,7 @@ use crate::structure::form::tests::assert_err;
 #[cfg(test)]
 mod compound_types {
     use super::*;
+    use crate::model::{Value, Item};
 
     #[test]
     fn illegal_struct() {
@@ -74,7 +73,20 @@ mod compound_types {
             },
         };
 
-        let parsed_value = to_value(&test);
-        println!("{:?}", parsed_value);
+        let parsed_value = to_value(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
+            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Int64Value(1)),
+                Item::Slot(Value::Text(String::from("b")), Value::Text(String::from("child1"))),
+            ])),
+            Item::Slot(Value::Text(String::from("c")), Value::Record(Vec::new(), vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Int64Value(2)),
+                Item::Slot(Value::Text(String::from("b")), Value::Text(String::from("child2"))),
+            ]))
+        ]);
+
+        assert_eq!(parsed_value, expected);
     }
 }
