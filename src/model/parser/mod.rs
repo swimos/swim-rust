@@ -175,8 +175,8 @@ impl From<BadRecord> for ParseFailure {
 
 /// Parse a stream of ['Value']s from a stream of characters. More values will be read until either
 /// an error is encountered or the end of the stream is reached.
-pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseFailure>> + 'a {
-    let tokens = tokenize_str(repr).map(|t| Some(t)).chain(iter::once(None));
+pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item=Result<Value, ParseFailure>> + 'a {
+    let tokens = tokenize_str(repr).map(Some).chain(iter::once(None));
 
     tokens
         .scan(Some(vec![]), |maybe_state, maybe_token| {
@@ -206,13 +206,13 @@ fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFa
     let depth = state.len();
     match state.pop() {
         Some(Frame {
-            mut attrs,
-            items,
-            parse_state,
-        }) if depth == 1 => match parse_state {
+                 mut attrs,
+                 items,
+                 parse_state,
+             }) if depth == 1 => match parse_state {
             ValueParseState::ReadingAttribute(name) => {
                 attrs.push(Attr {
-                    name: name.to_owned(),
+                    name,
                     value: Value::Extant,
                 });
                 Some(Ok(Value::Record(attrs, items)))
@@ -225,8 +225,7 @@ fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFa
 }
 
 /// Iteratee converting Recon tokens into Recon values.
-fn from_tokens_iteratee(
-) -> impl Iteratee<LocatedReconToken<String>, Item = Result<Value, ParseFailure>> {
+fn from_tokens_iteratee() -> impl Iteratee<LocatedReconToken<String>, Item=Result<Value, ParseFailure>> {
     unfold_with_flush(
         vec![],
         |state: &mut Vec<Frame>, loc_token: LocatedReconToken<String>| {
@@ -240,7 +239,7 @@ fn from_tokens_iteratee(
 }
 
 /// Iteratee that parses a stream of UTF characters into Recon ['Value']s.
-pub fn parse_iteratee() -> impl Iteratee<(usize, char), Item = Result<Value, ParseFailure>> {
+pub fn parse_iteratee() -> impl Iteratee<(usize, char), Item=Result<Value, ParseFailure>> {
     tokenize_iteratee()
         .and_then_fallible(from_tokens_iteratee())
         .fuse_on_error()
@@ -315,7 +314,7 @@ pub fn unescape(literal: &str) -> Result<String, String> {
                     let uc: char = char::try_from(
                         (*d1 << 12) | (*d2 << 8) | (*d3 << 4) | c.to_digit(16).unwrap(),
                     )
-                    .unwrap();
+                        .unwrap();
                     *state = EscapeState::None;
                     Some(uc)
                 }
@@ -407,7 +406,7 @@ impl<S: TokenStr> ReconToken<S> {
         match self {
             ReconToken::Identifier(name) => Some(Ok(Value::Text(name.into()))),
             ReconToken::StringLiteral(name) => {
-                Some(unescape(name.borrow()).map(|unesc| Value::Text(unesc)))
+                Some(unescape(name.borrow()).map( Value::Text))
             }
             ReconToken::Int32Literal(n) => Some(Ok(Value::Int32Value(n))),
             ReconToken::Int64Literal(n) => Some(Ok(Value::Int64Value(n))),
@@ -773,11 +772,11 @@ fn final_token<T: TokenStr, B: TokenBuffer<T>>(
 /// Tokenize a string held entirely in memory.
 fn tokenize_str<'a>(
     repr: &'a str,
-) -> impl Iterator<Item = Result<LocatedReconToken<&'a str>, BadToken>> + 'a {
+) -> impl Iterator<Item=Result<LocatedReconToken<&'a str>, BadToken>> + 'a {
     let following = repr
         .char_indices()
         .skip(1)
-        .map(|ci| Some(ci))
+        .map( Some)
         .chain(iter::once(None));
 
     let mut token_buffer = InMemoryInput::new(repr);
@@ -800,8 +799,7 @@ fn tokenize_str<'a>(
 }
 
 /// Create an iteratee that tokenizes unicode characters.
-fn tokenize_iteratee(
-) -> impl Iteratee<(usize, char), Item = Result<LocatedReconToken<String>, BadToken>> {
+fn tokenize_iteratee() -> impl Iteratee<(usize, char), Item=Result<LocatedReconToken<String>, BadToken>> {
     let char_look_ahead = look_ahead::<(usize, char)>();
     let tokenize = unfold_with_flush(
         (false, TokenAccumulator::new(), TokenParseState::None),
@@ -862,10 +860,10 @@ fn push_down(
     offset: usize,
 ) -> Option<Result<Value, BadRecord>> {
     if let Some(Frame {
-        attrs,
-        mut items,
-        mut parse_state,
-    }) = state.pop()
+                    attrs,
+                    mut items,
+                    mut parse_state,
+                }) = state.pop()
     {
         match parse_state {
             ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) => {
@@ -906,10 +904,10 @@ fn push_down_and_close(
     offset: usize,
 ) -> Option<Result<Value, BadRecord>> {
     if let Some(Frame {
-        attrs,
-        mut items,
-        parse_state,
-    }) = state.pop()
+                    attrs,
+                    mut items,
+                    parse_state,
+                }) = state.pop()
     {
         match parse_state {
             ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) if p == is_attr => {
@@ -927,12 +925,10 @@ fn push_down_and_close(
             }
             _ => Some(Err(BadRecord(offset, RecordError::BadStackOnClose))),
         }
+    } else if is_attr {
+        Some(Err(BadRecord(offset, RecordError::EmptyStackOnClose)))
     } else {
-        if is_attr {
-            Some(Err(BadRecord(offset, RecordError::EmptyStackOnClose)))
-        } else {
-            Some(Ok(value))
-        }
+        Some(Ok(value))
     }
 }
 
@@ -1078,10 +1074,10 @@ fn consume_token<S: TokenStr>(
     let LocatedReconToken(token, offset) = loc_token;
 
     if let Some(Frame {
-        attrs,
-        items,
-        parse_state,
-    }) = state.pop()
+                    attrs,
+                    items,
+                    parse_state,
+                }) = state.pop()
     {
         let state_mod: StateModification = match parse_state {
             AttributeStart => update_attr_start(token, attrs, items),
@@ -1158,7 +1154,7 @@ fn update_reading_attr<S: TokenStr>(
     match token {
         AttrMarker => {
             attrs.push(Attr {
-                name: name.to_owned(),
+                name,
                 value: Value::Extant,
             });
             repush(attrs, items, AttributeStart)
@@ -1430,8 +1426,8 @@ fn update_after_slot<S: TokenStr>(
 pub struct IterateeDecoder<I>(pub Option<I>);
 
 impl<I> IterateeDecoder<I>
-where
-    I: Iteratee<char>,
+    where
+        I: Iteratee<char>,
 {
     pub fn new(iteratee: I) -> IterateeDecoder<I> {
         IterateeDecoder(Some(iteratee))
@@ -1439,9 +1435,9 @@ where
 }
 
 fn feed_chars<I, T, E>(iteratee: &mut I, src: &mut BytesMut, eof: bool) -> Result<Option<T>, E>
-where
-    I: Iteratee<char, Item = Result<T, E>>,
-    E: From<io::Error> + From<Utf8Error>,
+    where
+        I: Iteratee<char, Item=Result<T, E>>,
+        E: From<io::Error> + From<Utf8Error>,
 {
     let as_utf8 = match from_utf8(&*src) {
         Ok(s) => s,
@@ -1478,9 +1474,9 @@ where
 }
 
 impl<I, T, E> tokio_util::codec::Decoder for IterateeDecoder<I>
-where
-    I: Iteratee<char, Item = Result<T, E>>,
-    E: From<io::Error> + From<Utf8Error>,
+    where
+        I: Iteratee<char, Item=Result<T, E>>,
+        E: From<io::Error> + From<Utf8Error>,
 {
     type Item = T;
     type Error = E;

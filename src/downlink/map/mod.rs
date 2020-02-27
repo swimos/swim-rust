@@ -234,9 +234,9 @@ impl Debug for MapAction {
             MapAction::GetByKey { key, request } => write!(f, "GetByKey({:?}, {:?})", key, request),
             MapAction::Update {
                 key,
-                f: _,
                 before,
                 after,
+                ..
             } => write!(f, "Update({:?}, <closure>, {:?}, {:?})", key, before, after),
         }
     }

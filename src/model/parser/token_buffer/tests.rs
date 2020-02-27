@@ -15,15 +15,16 @@
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use super::*;
 use crate::model::parser::TokenStr;
+
+use super::*;
 
 const INPUT1: &str = "abcd";
 const INPUT2: &str = "abcd efgh ij";
 
-fn take_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F) -> ()
-where
-    F: Fn() -> B,
+fn take_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
+    where
+        F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));
@@ -46,9 +47,9 @@ where
     assert_that!(t2, eq("d".to_owned()));
 }
 
-fn take_by_ref_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F) -> ()
-where
-    F: Fn() -> B,
+fn take_by_ref_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
+    where
+        F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));
@@ -66,9 +67,9 @@ where
     assert_that!(buffer.take_all_ref(3), eq("d"));
 }
 
-fn take_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F) -> ()
-where
-    F: Fn() -> B,
+fn take_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
+    where
+        F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));
@@ -103,9 +104,9 @@ where
     assert_that!(t3, eq("ij".to_owned()));
 }
 
-fn take_by_ref_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F) -> ()
-where
-    F: Fn() -> B,
+fn take_by_ref_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
+    where
+        F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));

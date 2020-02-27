@@ -22,10 +22,10 @@ mod tests;
 pub(super) trait TokenBuffer<T> {
     /// Add the next character (and byte offset) to the buffer (or ['None'] when we reach
     /// the end of the input.
-    fn update(&mut self, next: Option<(usize, char)>) -> ();
+    fn update(&mut self, next: Option<(usize, char)>);
 
     /// Indicate that we will be taking a slice of the input from this point in the future.
-    fn mark(&mut self, inclusive: bool) -> ();
+    fn mark(&mut self, inclusive: bool);
 
     /// Take a slice of the input. The from index must not be before the last index and which mark
     /// was called and the to index must not be greater than the index of the last character
@@ -86,7 +86,7 @@ impl<'a> InMemoryInput<'a> {
 }
 
 impl<'a> TokenBuffer<&'a str> for InMemoryInput<'a> {
-    fn update(&mut self, next: Option<(usize, char)>) -> () {
+    fn update(&mut self, next: Option<(usize, char)>) {
         let InMemoryInput {
             source,
             lower_bound,
@@ -111,7 +111,7 @@ impl<'a> TokenBuffer<&'a str> for InMemoryInput<'a> {
         }
     }
 
-    fn mark(&mut self, _: bool) -> () {
+    fn mark(&mut self, _: bool) {
         self.marked = true;
     }
 
@@ -170,7 +170,7 @@ impl TokenAccumulator {
 }
 
 impl TokenBuffer<String> for TokenAccumulator {
-    fn update(&mut self, next: Option<(usize, char)>) -> () {
+    fn update(&mut self, next: Option<(usize, char)>) {
         let TokenAccumulator {
             buffer,
             next_char,
@@ -197,7 +197,7 @@ impl TokenBuffer<String> for TokenAccumulator {
         *next_char = next.map(|p| p.1);
     }
 
-    fn mark(&mut self, inclusive: bool) -> () {
+    fn mark(&mut self, inclusive: bool) {
         self.mark_state = if inclusive {
             MarkState::Marked
         } else {
