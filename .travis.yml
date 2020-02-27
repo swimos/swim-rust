@@ -1,10 +1,5 @@
 language: rust
 
-os:
-  - linux
-  - osx
-  - windows
-
 rust:
   - stable
 cache: cargo
@@ -21,9 +16,18 @@ stages:
 jobs:
   include:
     - stage: "Build"
+    - os:
+        - linux
+        - osx
+        - windows
+
       script: cargo rustc -- -D warnings
 
     - stage: "Test"
+    - os:
+        - linux
+        - osx
+        - windows
       script: cargo test
 
     - stage: "Format"
