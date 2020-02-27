@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::model::{Item, Value};
-use crate::structure::form::compound::{to_string};
-
+use crate::structure::form::compound::to_value;
+// use crate::structure::form::tests::assert_err;
 use serde::Serialize;
 
 #[test]
@@ -31,7 +31,7 @@ fn nested_vectors() {
         ],
     };
 
-    let parsed_value = to_string(&test).unwrap();
+    let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(Vec::new(), vec![
         Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
             Item::ValueItem(Value::Record(Vec::new(), vec![

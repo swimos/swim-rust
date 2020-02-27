@@ -12,14 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::{Value};
-use crate::structure::form::compound::{Serializer};
+use crate::model::Value;
+use crate::structure::form::compound::{Serializer, SerializerError};
 
 #[cfg(test)]
 mod simple_data_types;
 
 #[cfg(test)]
+mod nested;
+
+#[cfg(test)]
 mod vectors;
+
+pub fn assert_err(parsed: Result<Value, SerializerError>, expected: SerializerError) {
+    match parsed {
+        Ok(v) => {
+            eprintln!("Expected error: {:?}", v);
+            panic!();
+        }
+        Err(e) => assert_eq!(e, expected)
+    }
+}
 
 
 #[test]
@@ -37,8 +50,6 @@ fn serializer_sequences() {
     serializer.push_value(Value::Int32Value(3));
     serializer.push_value(Value::Int32Value(4));
     serializer.exit_sequence();
-
-    println!("{:?}", serializer.output());
 }
 
 #[test]
@@ -61,6 +72,4 @@ fn serializer_nested_sequences() {
     serializer.exit_sequence();
 
     serializer.exit_sequence();
-
-    println!("{:?}", serializer.output());
 }

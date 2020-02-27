@@ -1,15 +1,22 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::convert::TryInto;
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use serde::{ser, Serialize, de};
 
-use crate::model::{Attr, Item, Value};
-use crate::model::Item::{Slot, ValueItem};
-use crate::model::Value::Record;
+use crate::model::{Item, Value};
 use std::fmt::Display;
 use std::fmt;
-use std::error::Error;
-
 
 pub type Result<T> = ::std::result::Result<T, SerializerError>;
 
@@ -46,8 +53,8 @@ impl std::error::Error for SerializerError {
     }
 }
 
-
-pub fn to_string<T>(value: &T) -> Result<Value>
+#[allow(dead_code)]
+pub fn to_value<T>(value: &T) -> Result<Value>
     where
         T: Serialize,
 {
@@ -112,19 +119,19 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         Ok(())
     }
 
-    fn serialize_u8(self, v: u8) -> Result<()> {
+    fn serialize_u8(self, _v: u8) -> Result<()> {
         Err(SerializerError::UnsupportedType(String::from("u8")))
     }
 
-    fn serialize_u16(self, v: u16) -> Result<()> {
+    fn serialize_u16(self, _v: u16) -> Result<()> {
         Err(SerializerError::UnsupportedType(String::from("u16")))
     }
 
-    fn serialize_u32(self, v: u32) -> Result<()> {
+    fn serialize_u32(self, _v: u32) -> Result<()> {
         Err(SerializerError::UnsupportedType(String::from("u32")))
     }
 
-    fn serialize_u64(self, v: u64) -> Result<()> {
+    fn serialize_u64(self, _v: u64) -> Result<()> {
         Err(SerializerError::UnsupportedType(String::from("u64")))
     }
 
@@ -150,7 +157,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // Serialize a byte array as an array of bytes. Could also use a base64
     // string here. Binary formats will typically represent byte arrays more
     // compactly.
-    fn serialize_bytes(self, v: &[u8]) -> Result<()> {
+    fn serialize_bytes(self, _v: &[u8]) -> Result<()> {
         // use serde::ser::SerializeSeq;
         // let mut seq = self.serialize_seq(Some(v.len()))?;
         // for byte in v {
@@ -248,7 +255,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // doesn't make a difference in JSON because the length is not represented
     // explicitly in the serialized form. Some serializers may only be able to
     // support sequences for which the length is known up front.
-    fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
         self.enter_sequence();
         Ok(self)
     }
@@ -602,7 +609,7 @@ impl Serializer {
                 if let Value::Record(_, ref mut items) = previous_state.output {
                     if let Some(item) = items.last_mut() {
                         match item {
-                            Item::Slot(a, ref mut v @ Value::Extant) => {
+                            Item::Slot(_, ref mut v @ Value::Extant) => {
                                 *v = self.current_state.output.to_owned();
                             }
                             Item::ValueItem(ref mut v) => {

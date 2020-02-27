@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use crate::structure::form::tests::assert_err;
 
 use serde::Serialize;
 
 use crate::model::{Item, Value};
 use crate::model::Item::ValueItem;
-use crate::structure::form::compound::{SerializerError, to_string};
+use crate::structure::form::compound::{SerializerError, to_value};
+
 
 #[cfg(test)]
 mod valid_types {
@@ -35,7 +36,7 @@ mod valid_types {
             a: true,
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::BooleanValue(true)),
@@ -55,7 +56,7 @@ mod valid_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
@@ -75,7 +76,7 @@ mod valid_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
@@ -95,7 +96,7 @@ mod valid_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
@@ -115,7 +116,7 @@ mod valid_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Int64Value(1)),
@@ -135,7 +136,7 @@ mod valid_types {
             a: 1.0,
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Float64Value(1.0)),
@@ -155,7 +156,7 @@ mod valid_types {
             a: 1.0,
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Float64Value(1.0)),
@@ -175,7 +176,7 @@ mod valid_types {
             a: 's',
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Text(String::from("s"))),
@@ -184,6 +185,7 @@ mod valid_types {
         assert_eq!(parsed_value, expected);
     }
 }
+
 
 #[cfg(test)]
 mod illegal_types {
@@ -200,7 +202,7 @@ mod illegal_types {
             a: "abcd".as_bytes(),
         };
 
-        let parsed_value = to_string(&test);
+        let parsed_value = to_value(&test);
         assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u8")));
     }
 
@@ -215,7 +217,7 @@ mod illegal_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test);
+        let parsed_value = to_value(&test);
         assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u8")));
     }
 
@@ -230,7 +232,7 @@ mod illegal_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test);
+        let parsed_value = to_value(&test);
         assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u16")));
     }
 
@@ -245,7 +247,7 @@ mod illegal_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test);
+        let parsed_value = to_value(&test);
         assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u32")));
     }
 
@@ -260,22 +262,10 @@ mod illegal_types {
             a: 1,
         };
 
-        let parsed_value = to_string(&test);
+        let parsed_value = to_value(&test);
         assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u64")));
     }
 }
-
-
-fn assert_err(parsed: Result<Value, SerializerError>, expected: SerializerError) {
-    match parsed {
-        Ok(v) => {
-            eprintln!("Expected error: {:?}", v);
-            panic!();
-        }
-        Err(e) => assert_eq!(e, expected)
-    }
-}
-
 
 #[cfg(test)]
 mod compound_types {
@@ -298,7 +288,7 @@ mod compound_types {
             d: String::from("hello"),
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
             Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
@@ -307,6 +297,29 @@ mod compound_types {
         ]);
 
         assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn illegal_struct() {
+        #[derive(Serialize)]
+        struct Test {
+            a: i32,
+            b: f32,
+            c: i8,
+            d: String,
+            e: u64,
+        }
+
+        let test = Test {
+            a: 1,
+            b: 2.0,
+            c: 3,
+            d: String::from("hello"),
+            e: 1,
+        };
+
+        let parsed_value = to_value(&test);
+        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u64")));
     }
 
     #[test]
@@ -320,7 +333,7 @@ mod compound_types {
             seq: vec!["a", "b"],
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
                 ValueItem(Value::Text(String::from("a"))),
@@ -344,7 +357,7 @@ mod compound_types {
             seq: vec!["a", "b"],
         };
 
-        let parsed_value = to_string(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(Vec::new(), vec![
             Item::Slot(Value::Text(String::from("int")), Value::Int32Value(1)),
             Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![

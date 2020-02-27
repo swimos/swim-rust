@@ -21,14 +21,10 @@ use serde::export::Formatter;
 
 use crate::model::{Item, Value};
 
-#[allow(unused_imports)]
-#[allow(unused_variables)]
-#[allow(dead_code)]
 mod compound;
 
 #[cfg(test)]
 mod tests;
-
 
 #[derive(Debug, PartialEq)]
 pub enum FormParseErr {
