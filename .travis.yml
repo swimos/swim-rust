@@ -13,6 +13,11 @@ before_script:
   - rustup component add clippy
   - rustup component add rustfmt
 
+stages:
+  - build
+  - test
+  - format
+
 jobs:
   include:
     - stage: "Build"
