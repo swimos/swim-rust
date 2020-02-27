@@ -485,7 +485,7 @@ pub struct Serializer {
 #[derive(Debug, Clone)]
 pub struct SerializerState {
     pub  output: Value,
-    pub current_state: ParserState,
+    pub parser_state: ParserState,
     pub attr_name: Option<String>,
 }
 
@@ -494,10 +494,10 @@ impl SerializerState {
         SerializerState::new_with_state(ParserState::None)
     }
 
-    fn new_with_state(state: ParserState) -> Self {
+    fn new_with_state(parser_state: ParserState) -> Self {
         SerializerState {
             output: Value::Record(Vec::new(), Vec::new()),
-            current_state: state,
+            parser_state,
             attr_name: None,
         }
     }
@@ -572,7 +572,7 @@ impl Serializer {
 
     pub fn exit_sequence(&mut self) {
         if let Some(mut previous_state) = self.stack.pop() {
-            if let ParserState::ReadingSequence = self.current_state.current_state {
+            if let ParserState::ReadingSequence = self.current_state.parser_state {
                 if let Value::Record(_, ref mut items) = previous_state.output {
                     if let Some(item) = items.last_mut() {
                         match item {

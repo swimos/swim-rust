@@ -18,11 +18,11 @@ use crate::model::{Item, Value};
 use crate::structure::form::compound::{to_string, Serializer};
 use crate::model::Item::ValueItem;
 
-use serde::{Serialize};
+use serde::Serialize;
 
 
 #[test]
-fn vecs() {
+fn serializer_sequences() {
     let mut serializer = Serializer::new();
 
     serializer.current_state.attr_name = Some(String::from("a"));
@@ -41,7 +41,7 @@ fn vecs() {
 }
 
 #[test]
-fn nested() {
+fn serializer_nested_sequences() {
     let mut serializer = Serializer::new();
 
     serializer.current_state.attr_name = Some(String::from("a"));
@@ -87,28 +87,6 @@ fn simple_struct() {
         Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
         Item::Slot(Value::Text(String::from("c")), Value::Int32Value(3)),
         Item::Slot(Value::Text(String::from("d")), Value::Text(String::from("hello"))),
-    ]);
-
-    assert_eq!(parsed_value, expected);
-}
-
-#[test]
-fn test_struct() {
-    #[derive(Serialize)]
-    struct Test {
-        a:i32,
-        b:f64
-    }
-
-    let test = Test {
-        a:1,
-        b:2.0
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-        Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
     ]);
 
     assert_eq!(parsed_value, expected);
@@ -162,7 +140,7 @@ fn struct_with_vec_and_members() {
 }
 
 #[test]
-fn vec_of_vecs() {
+fn nested_vectors() {
     #[derive(Serialize)]
     struct Test {
         seq: Vec<Vec<&'static str>>,
