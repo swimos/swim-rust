@@ -469,7 +469,7 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
 }
 
 #[derive(Clone, Debug)]
-enum ParserState {
+pub enum ParserState {
     // Key
     ReadingElement,
     ReadingSequence,
@@ -477,16 +477,16 @@ enum ParserState {
 }
 
 #[derive(Debug)]
-struct Serializer {
-    current_state: SerializerState,
+pub struct Serializer {
+    pub current_state: SerializerState,
     stack: Vec<SerializerState>,
 }
 
 #[derive(Debug, Clone)]
-struct SerializerState {
-    output: Value,
-    current_state: ParserState,
-    attr_name: Option<String>,
+pub struct SerializerState {
+    pub  output: Value,
+    pub current_state: ParserState,
+    pub attr_name: Option<String>,
 }
 
 impl SerializerState {
@@ -504,23 +504,23 @@ impl SerializerState {
 }
 
 impl Serializer {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             current_state: SerializerState::new(),
             stack: vec![],
         }
     }
 
-    fn output(&mut self) -> Value {
+    pub fn output(&mut self) -> Value {
         self.current_state.output.to_owned()
     }
 
-    fn push_state(&mut self, ss: SerializerState) {
-        self.stack.push(self.current_state.clone());
+    pub fn push_state(&mut self, ss: SerializerState) {
+        self.stack.push(self.current_state.to_owned());
         self.current_state = ss;
     }
 
-    fn pop_state(&mut self) -> SerializerState {
+    pub fn pop_state(&mut self) -> SerializerState {
         match self.stack.pop() {
             Some(s) => s,
             None => {
@@ -529,7 +529,7 @@ impl Serializer {
         }
     }
 
-    fn push_value(&mut self, value: Value) {
+    pub fn push_value(&mut self, value: Value) {
         let item = match &self.current_state.attr_name {
             Some(name) => {
                 Item::Slot(Value::Text(name.to_owned()), value)
@@ -538,8 +538,6 @@ impl Serializer {
                 Item::ValueItem(value)
             }
         };
-
-        self.current_state.attr_name = None;
 
         match &mut self.current_state.output {
             Value::Record(_, ref mut items) => {
@@ -552,20 +550,51 @@ impl Serializer {
         }
     }
 
-    fn enter_sequence(&mut self) {
-        let mut ss = SerializerState::new_with_state(ParserState::ReadingSequence);
-        ss.attr_name = self.current_state.attr_name.clone();
-        self.push_state(ss);
+    pub fn enter_sequence(&mut self) {
+        match &mut self.current_state.output {
+            Value::Record(_, ref mut items) => {
+                match &self.current_state.attr_name {
+                    Some(name) => {
+                        items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
+                    }
+                    None => {
+                        items.push(Item::ValueItem(Value::Extant));
+                    }
+                }
+            }
+            _ => {
+                panic!()
+            }
+        }
+
+        self.push_state(SerializerState::new_with_state(ParserState::ReadingSequence));
     }
 
-    fn exit_sequence(&mut self) {
+    pub fn exit_sequence(&mut self) {
         match self.stack.pop() {
             Some(mut previous_state) => {
                 match self.current_state.current_state {
                     ParserState::ReadingSequence => {
                         match previous_state.output {
                             Value::Record(_, ref mut items) => {
-                                items.push(Item::ValueItem(self.current_state.clone().output));
+                                match items.last_mut() {
+                                    Some(item) => {
+                                        match item {
+                                            Item::Slot(a, ref mut v @ Value::Extant) => {
+                                                *v = self.current_state.output.to_owned();
+                                            }
+                                            Item::ValueItem(ref mut v) => {
+                                                *v = self.current_state.output.to_owned();
+                                            }
+                                            _ => {
+                                                items.push(Item::ValueItem(self.current_state.output.to_owned()));
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        items.push(Item::ValueItem(self.current_state.output.to_owned()));
+                                    }
+                                }
                             }
                             _ => {
                                 unimplemented!()
@@ -584,158 +613,4 @@ impl Serializer {
             }
         }
     }
-}
-
-#[test]
-fn test_sequence() {
-    let vector = vec![
-        vec!["a"],
-        vec!["b"]
-    ];
-}
-
-#[test]
-fn vecs() {
-    let mut serializer = Serializer {
-        current_state: SerializerState::new(),
-        stack: vec![],
-    };
-
-    serializer.enter_sequence();
-    serializer.push_value(Value::Int32Value(1));
-    serializer.push_value(Value::Int32Value(2));
-    serializer.exit_sequence();
-
-    serializer.enter_sequence();
-    serializer.push_value(Value::Int32Value(3));
-    serializer.push_value(Value::Int32Value(4));
-    serializer.exit_sequence();
-
-    println!("{:?}", serializer.output());
-}
-
-#[test]
-fn nested() {
-    let mut serializer = Serializer::new();
-
-    serializer.enter_sequence();
-
-    serializer.enter_sequence();
-    serializer.push_value(Value::Int32Value(1));
-    serializer.push_value(Value::Int32Value(2));
-    serializer.exit_sequence();
-
-    serializer.enter_sequence();
-    serializer.push_value(Value::Int32Value(3));
-    serializer.push_value(Value::Int32Value(4));
-    serializer.exit_sequence();
-
-    serializer.exit_sequence();
-
-    println!("{:?}", serializer.output());
-}
-
-#[test]
-fn simple_struct() {
-    #[derive(Serialize)]
-    struct Test {
-        a: u32,
-        b: f32,
-        c: i8,
-        d: String,
-    }
-
-    let test = Test {
-        a: 1,
-        b: 2.0,
-        c: 3,
-        d: String::from("hello"),
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-        Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
-        Item::Slot(Value::Text(String::from("c")), Value::Int32Value(3)),
-        Item::Slot(Value::Text(String::from("d")), Value::Text(String::from("hello"))),
-    ]);
-
-    assert_eq!(parsed_value, expected);
-}
-
-#[test]
-fn struct_with_vec() {
-    #[derive(Serialize)]
-    struct Test {
-        seq: Vec<&'static str>,
-    }
-
-    let test = Test {
-        seq: vec!["a", "b"],
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            ValueItem(Value::Text(String::from("a"))),
-            ValueItem(Value::Text(String::from("b"))),
-        ])),
-    ]);
-
-    assert_eq!(parsed_value, expected);
-}
-
-#[test]
-fn struct_with_vec_and_members() {
-    #[derive(Serialize)]
-    struct Test {
-        int: u32,
-        seq: Vec<&'static str>,
-    }
-
-    let test = Test {
-        int: 1,
-        seq: vec!["a", "b"],
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("int")), Value::Int32Value(1)),
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            ValueItem(Value::Text(String::from("a"))),
-            ValueItem(Value::Text(String::from("b"))),
-        ])),
-    ]);
-
-    assert_eq!(parsed_value, expected);
-}
-
-#[test]
-fn vec_of_vecs() {
-    #[derive(Serialize)]
-    struct Test {
-        seq: Vec<Vec<&'static str>>,
-    }
-
-    let test = Test {
-        seq: vec![
-            vec!["a", "b"], //v1
-            vec!["c", "d"] //v2
-        ],
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            Item::ValueItem(Value::Record(Vec::new(), vec![
-                Item::ValueItem(Value::Text(String::from("a"))),
-                Item::ValueItem(Value::Text(String::from("b"))),
-            ])),
-            Item::ValueItem(Value::Record(Vec::new(), vec![
-                Item::ValueItem(Value::Text(String::from("c"))),
-                Item::ValueItem(Value::Text(String::from("d"))),
-            ]))
-        ]))]);
-
-    assert_eq!(parsed_value, expected);
 }
