@@ -17,10 +17,12 @@ use std::convert::TryFrom;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use crate::model::{Attr, Item, Value};
 use crate::model::Item::ValueItem;
 use crate::model::Value::Float64Value;
-use crate::warp::envelope::{Envelope, EnvelopeParseErr, HostAddressed, LaneAddressed, LinkAddressed};
+use crate::model::{Attr, Item, Value};
+use crate::warp::envelope::{
+    Envelope, EnvelopeParseErr, HostAddressed, LaneAddressed, LinkAddressed,
+};
 
 fn run_test(record: Value, expected: Envelope) {
     let e = Envelope::try_from(record);
@@ -63,15 +65,25 @@ fn lane_addressed_test_record() -> LaneAddressed {
         node_uri: String::from("node_uri"),
         lane_uri: String::from("lane_uri"),
         body: Some(Value::Record(
-            vec![Attr { name: String::from("test"), value: Value::Extant }],
-            Vec::new())),
+            vec![Attr {
+                name: String::from("test"),
+                value: Value::Extant,
+            }],
+            Vec::new(),
+        )),
     }
 }
 
 fn link_named_headers() -> Vec<Item> {
     vec![
-        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
-        Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
+        Item::Slot(
+            Value::Text(String::from("node")),
+            Value::Text(String::from("node_uri")),
+        ),
+        Item::Slot(
+            Value::Text(String::from("lane")),
+            Value::Text(String::from("lane_uri")),
+        ),
         Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
         Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
     ]
@@ -79,8 +91,14 @@ fn link_named_headers() -> Vec<Item> {
 
 fn lane_named_headers() -> Vec<Item> {
     vec![
-        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
-        Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
+        Item::Slot(
+            Value::Text(String::from("node")),
+            Value::Text(String::from("node_uri")),
+        ),
+        Item::Slot(
+            Value::Text(String::from("lane")),
+            Value::Text(String::from("lane_uri")),
+        ),
     ]
 }
 
@@ -102,12 +120,7 @@ fn link_positional_headers() -> Vec<Item> {
 
 fn create_record(tag: &str, items: Vec<Item>) -> Value {
     Value::Record(
-        vec![
-            Attr::of((tag, Value::Record(
-                Vec::new(),
-                items,
-            ))),
-        ],
+        vec![Attr::of((tag, Value::Record(Vec::new(), items)))],
         Vec::new(),
     )
 }
@@ -115,11 +128,8 @@ fn create_record(tag: &str, items: Vec<Item>) -> Value {
 fn create_record_with_test(tag: &str, items: Vec<Item>) -> Value {
     Value::Record(
         vec![
-            Attr::of((tag, Value::Record(
-                Vec::new(),
-                items,
-            ))),
-            Attr::of(("test", Value::Extant))
+            Attr::of((tag, Value::Record(Vec::new(), items))),
+            Attr::of(("test", Value::Extant)),
         ],
         Vec::new(),
     )
@@ -185,24 +195,18 @@ fn parse_linked_with_positional_headers() {
 #[test]
 fn parse_linked_with_body() {
     let record = create_record_with_test("linked", link_positional_headers());
-    run_test(record, Envelope::LinkedResponse(link_addressed_test_record()));
+    run_test(
+        record,
+        Envelope::LinkedResponse(link_addressed_test_record()),
+    );
 }
 
 // @auth
 #[test]
 fn parse_auth() {
-    let record = Value::Record(
-        vec![
-            Attr::of(("auth", Value::Extant))
-        ],
-        Vec::new(),
-    );
+    let record = Value::Record(vec![Attr::of(("auth", Value::Extant))], Vec::new());
 
-    run_test(record,
-             Envelope::AuthRequest(HostAddressed {
-                 body: None
-             }),
-    );
+    run_test(record, Envelope::AuthRequest(HostAddressed { body: None }));
 }
 
 // @auth@test
@@ -211,34 +215,33 @@ fn parse_auth_with_body() {
     let record = Value::Record(
         vec![
             Attr::of(("auth", Value::Extant)),
-            Attr::of(("test", Value::Extant))
+            Attr::of(("test", Value::Extant)),
         ],
         Vec::new(),
     );
 
-    run_test(record,
-             Envelope::AuthRequest(HostAddressed {
-                 body: Some(Value::Record(
-                     vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()))
-             }),
+    run_test(
+        record,
+        Envelope::AuthRequest(HostAddressed {
+            body: Some(Value::Record(
+                vec![Attr {
+                    name: String::from("test"),
+                    value: Value::Extant,
+                }],
+                Vec::new(),
+            )),
+        }),
     );
 }
 
 // @authed
 #[test]
 fn parse_authed() {
-    let record = Value::Record(
-        vec![
-            Attr::of(("authed", Value::Extant))
-        ],
-        Vec::new(),
-    );
+    let record = Value::Record(vec![Attr::of(("authed", Value::Extant))], Vec::new());
 
-    run_test(record,
-             Envelope::AuthedResponse(HostAddressed {
-                 body: None
-             }),
+    run_test(
+        record,
+        Envelope::AuthedResponse(HostAddressed { body: None }),
     );
 }
 
@@ -248,17 +251,22 @@ fn parse_authed_with_body() {
     let record = Value::Record(
         vec![
             Attr::of(("authed", Value::Extant)),
-            Attr::of(("test", Value::Extant))
+            Attr::of(("test", Value::Extant)),
         ],
         Vec::new(),
     );
 
-    run_test(record,
-             Envelope::AuthedResponse(HostAddressed {
-                 body: Some(Value::Record(
-                     vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()))
-             }),
+    run_test(
+        record,
+        Envelope::AuthedResponse(HostAddressed {
+            body: Some(Value::Record(
+                vec![Attr {
+                    name: String::from("test"),
+                    value: Value::Extant,
+                }],
+                Vec::new(),
+            )),
+        }),
     );
 }
 
@@ -280,23 +288,20 @@ fn parse_command_with_positional_headers() {
 #[test]
 fn parse_command_with_body() {
     let record = create_record_with_test("command", lane_positional_headers());
-    run_test(record, Envelope::CommandMessage(lane_addressed_test_record()));
+    run_test(
+        record,
+        Envelope::CommandMessage(lane_addressed_test_record()),
+    );
 }
 
 // @deauthed
 #[test]
 fn parse_deauthed() {
-    let record = Value::Record(
-        vec![
-            Attr::of(("deauthed", Value::Extant))
-        ],
-        Vec::new(),
-    );
+    let record = Value::Record(vec![Attr::of(("deauthed", Value::Extant))], Vec::new());
 
-    run_test(record,
-             Envelope::DeauthedResponse(HostAddressed {
-                 body: None
-             }),
+    run_test(
+        record,
+        Envelope::DeauthedResponse(HostAddressed { body: None }),
     );
 }
 
@@ -306,34 +311,33 @@ fn parse_deauthed_with_body() {
     let record = Value::Record(
         vec![
             Attr::of(("deauthed", Value::Extant)),
-            Attr::of(("test", Value::Extant))
+            Attr::of(("test", Value::Extant)),
         ],
         Vec::new(),
     );
 
-    run_test(record,
-             Envelope::DeauthedResponse(HostAddressed {
-                 body: Some(Value::Record(
-                     vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()))
-             }),
+    run_test(
+        record,
+        Envelope::DeauthedResponse(HostAddressed {
+            body: Some(Value::Record(
+                vec![Attr {
+                    name: String::from("test"),
+                    value: Value::Extant,
+                }],
+                Vec::new(),
+            )),
+        }),
     );
 }
 
 // @deauth
 #[test]
 fn parse_deauth() {
-    let record = Value::Record(
-        vec![
-            Attr::of(("deauth", Value::Extant))
-        ],
-        Vec::new(),
-    );
+    let record = Value::Record(vec![Attr::of(("deauth", Value::Extant))], Vec::new());
 
-    run_test(record,
-             Envelope::DeauthRequest(HostAddressed {
-                 body: None
-             }),
+    run_test(
+        record,
+        Envelope::DeauthRequest(HostAddressed { body: None }),
     );
 }
 
@@ -343,17 +347,22 @@ fn parse_deauth_with_body() {
     let record = Value::Record(
         vec![
             Attr::of(("deauth", Value::Extant)),
-            Attr::of(("test", Value::Extant))
+            Attr::of(("test", Value::Extant)),
         ],
         Vec::new(),
     );
 
-    run_test(record,
-             Envelope::DeauthRequest(HostAddressed {
-                 body: Some(Value::Record(
-                     vec![Attr { name: String::from("test"), value: Value::Extant }],
-                     Vec::new()))
-             }),
+    run_test(
+        record,
+        Envelope::DeauthRequest(HostAddressed {
+            body: Some(Value::Record(
+                vec![Attr {
+                    name: String::from("test"),
+                    value: Value::Extant,
+                }],
+                Vec::new(),
+            )),
+        }),
     );
 }
 
@@ -396,7 +405,10 @@ fn parse_synced_with_positional_headers() {
 #[test]
 fn parse_synced_with_body() {
     let record = create_record_with_test("synced", lane_named_headers());
-    run_test(record, Envelope::SyncedResponse(lane_addressed_test_record()));
+    run_test(
+        record,
+        Envelope::SyncedResponse(lane_addressed_test_record()),
+    );
 }
 
 // @unlink(node: node_uri, lane: lane_uri)
@@ -417,7 +429,10 @@ fn parse_unlink_with_positional_headers() {
 #[test]
 fn parse_unlink_with_body() {
     let record = create_record_with_test("unlink", lane_named_headers());
-    run_test(record, Envelope::UnlinkRequest(lane_addressed_test_record()));
+    run_test(
+        record,
+        Envelope::UnlinkRequest(lane_addressed_test_record()),
+    );
 }
 
 // @unlinked(node: node_uri, lane: lane_uri)
@@ -438,9 +453,11 @@ fn parse_unlinked_with_positional_headers() {
 #[test]
 fn parse_unlinked_with_body() {
     let record = create_record_with_test("unlinked", lane_named_headers());
-    run_test(record, Envelope::UnlinkedResponse(lane_addressed_test_record()));
+    run_test(
+        record,
+        Envelope::UnlinkedResponse(lane_addressed_test_record()),
+    );
 }
-
 
 #[test]
 fn unknown_tag() {
@@ -464,33 +481,39 @@ fn run_test_expect_err(record: Value, expected: EnvelopeParseErr) {
 #[test]
 fn unexpected_key() {
     let record = Value::Record(
-        vec![
-            Attr::of(("unlinked", Value::Record(
+        vec![Attr::of((
+            "unlinked",
+            Value::Record(
                 Vec::new(),
                 vec![
-                    Item::Slot(Value::Text(String::from("not_a_node")), Value::Text(String::from("node_uri"))),
-                    Item::Slot(Value::Text(String::from("node_a_lane")), Value::Text(String::from("lane_uri"))),
+                    Item::Slot(
+                        Value::Text(String::from("not_a_node")),
+                        Value::Text(String::from("node_uri")),
+                    ),
+                    Item::Slot(
+                        Value::Text(String::from("node_a_lane")),
+                        Value::Text(String::from("lane_uri")),
+                    ),
                 ],
-            ))),
-        ],
+            ),
+        ))],
         Vec::new(),
     );
 
-    run_test_expect_err(record, EnvelopeParseErr::UnexpectedKey(String::from("not_a_node")));
+    run_test_expect_err(
+        record,
+        EnvelopeParseErr::UnexpectedKey(String::from("not_a_node")),
+    );
 }
 
 #[test]
 fn unexpected_type() {
     let slot = Item::Slot(Value::Float64Value(1.0), Value::Float64Value(1.0));
     let record = Value::Record(
-        vec![
-            Attr::of(("unlinked", Value::Record(
-                Vec::new(),
-                vec![
-                    slot.clone(),
-                ],
-            ))),
-        ],
+        vec![Attr::of((
+            "unlinked",
+            Value::Record(Vec::new(), vec![slot.clone()]),
+        ))],
         Vec::new(),
     );
 
@@ -499,38 +522,62 @@ fn unexpected_type() {
 
 #[test]
 fn too_many_named_headers() {
-    let record = create_record("sync", vec![
-        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
-        Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
-        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
-        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
-        Item::Slot(Value::Text(String::from("host")), Value::Text(String::from("swim.ai"))),
-    ]);
+    let record = create_record(
+        "sync",
+        vec![
+            Item::Slot(
+                Value::Text(String::from("node")),
+                Value::Text(String::from("node_uri")),
+            ),
+            Item::Slot(
+                Value::Text(String::from("lane")),
+                Value::Text(String::from("lane_uri")),
+            ),
+            Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+            Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+            Item::Slot(
+                Value::Text(String::from("host")),
+                Value::Text(String::from("swim.ai")),
+            ),
+        ],
+    );
 
-    run_test_expect_err(record, EnvelopeParseErr::UnexpectedKey(String::from("host")));
+    run_test_expect_err(
+        record,
+        EnvelopeParseErr::UnexpectedKey(String::from("host")),
+    );
 }
 
 #[test]
 fn too_many_positional_headers() {
-    let record = create_record("sync", vec![
-        Item::ValueItem(Value::Text(String::from("node_uri"))),
-        Item::ValueItem(Value::Text(String::from("lane_uri"))),
-        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
-        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
-        Item::ValueItem(Value::Text(String::from("swim.ai"))),
-    ]);
+    let record = create_record(
+        "sync",
+        vec![
+            Item::ValueItem(Value::Text(String::from("node_uri"))),
+            Item::ValueItem(Value::Text(String::from("lane_uri"))),
+            Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+            Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+            Item::ValueItem(Value::Text(String::from("swim.ai"))),
+        ],
+    );
 
     run_test_expect_err(record, EnvelopeParseErr::Malformatted);
 }
 
 #[test]
 fn mixed_headers() {
-    let record = create_record("sync", vec![
-        Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
-        Item::ValueItem(Value::Text(String::from("lane_uri"))),
-        Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
-        Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
-    ]);
+    let record = create_record(
+        "sync",
+        vec![
+            Item::Slot(
+                Value::Text(String::from("node")),
+                Value::Text(String::from("node_uri")),
+            ),
+            Item::ValueItem(Value::Text(String::from("lane_uri"))),
+            Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
+            Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
+        ],
+    );
 
     run_test(record, Envelope::SyncRequest(link_addressed_no_body()));
 }
@@ -547,59 +594,86 @@ fn parse_body_multiple_attributes() {
         Vec::new(),
     );
 
-    run_test(record,
-             Envelope::AuthRequest(HostAddressed {
-                 body: Some(Value::Record(
-                     vec![
-                         Attr { name: String::from("first"), value: Value::Extant },
-                         Attr { name: String::from("second"), value: Value::Extant },
-                         Attr { name: String::from("third"), value: Value::Extant },
-                     ],
-                     Vec::new()))
-             }),
+    run_test(
+        record,
+        Envelope::AuthRequest(HostAddressed {
+            body: Some(Value::Record(
+                vec![
+                    Attr {
+                        name: String::from("first"),
+                        value: Value::Extant,
+                    },
+                    Attr {
+                        name: String::from("second"),
+                        value: Value::Extant,
+                    },
+                    Attr {
+                        name: String::from("third"),
+                        value: Value::Extant,
+                    },
+                ],
+                Vec::new(),
+            )),
+        }),
     );
 }
 
 #[test]
 fn duplicate_headers() {
     let record = Value::Record(
-        vec![
-            Attr::of(("sync", Value::Record(
+        vec![Attr::of((
+            "sync",
+            Value::Record(
                 Vec::new(),
                 vec![
-                    Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
-                    Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
+                    Item::Slot(
+                        Value::Text(String::from("node")),
+                        Value::Text(String::from("node_uri")),
+                    ),
+                    Item::Slot(
+                        Value::Text(String::from("node")),
+                        Value::Text(String::from("node_uri")),
+                    ),
                 ],
-            ))),
-        ],
+            ),
+        ))],
         Vec::new(),
     );
 
-    run_test_expect_err(record, EnvelopeParseErr::DuplicateHeader(String::from("node")));
+    run_test_expect_err(
+        record,
+        EnvelopeParseErr::DuplicateHeader(String::from("node")),
+    );
 }
 
 #[test]
 fn missing_header() {
     let record = Value::Record(
-        vec![
-            Attr::of(("synced", Value::Record(
+        vec![Attr::of((
+            "synced",
+            Value::Record(
                 Vec::new(),
-                vec![
-                    Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
-                ],
-            ))),
-        ],
+                vec![Item::Slot(
+                    Value::Text(String::from("node")),
+                    Value::Text(String::from("node_uri")),
+                )],
+            ),
+        ))],
         Vec::new(),
     );
 
-    run_test_expect_err(record, EnvelopeParseErr::MissingHeader(String::from("lane")));
+    run_test_expect_err(
+        record,
+        EnvelopeParseErr::MissingHeader(String::from("lane")),
+    );
 }
 
 #[test]
 fn multiple_attributes() {
     let record = Value::Record(
-        vec![
-            Attr::of(("sync", Value::Record(
+        vec![Attr::of((
+            "sync",
+            Value::Record(
                 Vec::new(),
                 vec![
                     Item::ValueItem(Value::Text(String::from("node_uri"))),
@@ -607,34 +681,28 @@ fn multiple_attributes() {
                     Item::Slot(Value::Text(String::from("prio")), Value::Float64Value(0.5)),
                     Item::Slot(Value::Text(String::from("rate")), Value::Float64Value(1.0)),
                 ],
-            ))),
-        ],
-        vec![
-            ValueItem(Value::Float64Value(1.0)),
-        ],
+            ),
+        ))],
+        vec![ValueItem(Value::Float64Value(1.0))],
     );
 
-    run_test(record,
-             Envelope::SyncRequest(LinkAddressed {
-                 lane: LaneAddressed {
-                     node_uri: String::from("node_uri"),
-                     lane_uri: String::from("lane_uri"),
-                     body: Some(Float64Value(1.0)),
-                 },
-                 rate: Some(1.0),
-                 prio: Some(0.5),
-             }),
+    run_test(
+        record,
+        Envelope::SyncRequest(LinkAddressed {
+            lane: LaneAddressed {
+                node_uri: String::from("node_uri"),
+                lane_uri: String::from("lane_uri"),
+                body: Some(Float64Value(1.0)),
+            },
+            rate: Some(1.0),
+            prio: Some(0.5),
+        }),
     );
 }
 
 #[test]
 fn tag() {
-    let record = Value::Record(
-        vec![
-            Attr::of(("auth", Value::Extant))
-        ],
-        Vec::new(),
-    );
+    let record = Value::Record(vec![Attr::of(("auth", Value::Extant))], Vec::new());
 
     let e = Envelope::try_from(record).unwrap();
     assert_eq!(e.tag(), "auth");
