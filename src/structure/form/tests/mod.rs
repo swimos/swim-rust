@@ -13,10 +13,13 @@
 // limitations under the License.
 
 use crate::model::Value;
-use crate::structure::form::compound::{Serializer, SerializerError};
+use crate::structure::form::form::{Serializer, SerializerError, SerializerState};
 
 #[cfg(test)]
 mod simple_data_types;
+
+#[cfg(test)]
+mod map;
 
 #[cfg(test)]
 mod nested;
@@ -40,13 +43,13 @@ fn serializer_sequences() {
     let mut serializer = Serializer::new();
 
     serializer.current_state.attr_name = Some(String::from("a"));
-    serializer.enter_nested();
+    serializer.enter_nested(SerializerState::ReadingNested);
     serializer.push_value(Value::Int32Value(1));
     serializer.push_value(Value::Int32Value(2));
     serializer.exit_nested();
 
     serializer.current_state.attr_name = Some(String::from("b"));
-    serializer.enter_nested();
+    serializer.enter_nested(SerializerState::ReadingNested);
     serializer.push_value(Value::Int32Value(3));
     serializer.push_value(Value::Int32Value(4));
     serializer.exit_nested();
@@ -57,16 +60,16 @@ fn serializer_nested_sequences() {
     let mut serializer = Serializer::new();
 
     serializer.current_state.attr_name = Some(String::from("a"));
-    serializer.enter_nested();
+    serializer.enter_nested(SerializerState::ReadingNested);
 
     serializer.current_state.attr_name = Some(String::from("b"));
-    serializer.enter_nested();
+    serializer.enter_nested(SerializerState::ReadingNested);
     serializer.push_value(Value::Int32Value(1));
     serializer.push_value(Value::Int32Value(2));
     serializer.exit_nested();
 
     serializer.current_state.attr_name = Some(String::from("c"));
-    serializer.enter_nested();
+    serializer.enter_nested(SerializerState::ReadingNested);
     serializer.push_value(Value::Int32Value(3));
     serializer.push_value(Value::Int32Value(4));
     serializer.exit_nested();

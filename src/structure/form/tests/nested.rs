@@ -14,7 +14,7 @@
 
 use serde::Serialize;
 
-use crate::structure::form::compound::{SerializerError, to_value};
+use crate::structure::form::form::{SerializerError, to_value};
 use crate::structure::form::tests::assert_err;
 
 #[cfg(test)]

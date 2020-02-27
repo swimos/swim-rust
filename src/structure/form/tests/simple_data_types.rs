@@ -16,7 +16,7 @@ use serde::Serialize;
 
 use crate::model::{Item, Value};
 use crate::model::Item::ValueItem;
-use crate::structure::form::compound::{SerializerError, to_value};
+use crate::structure::form::form::{SerializerError, to_value};
 use crate::structure::form::tests::assert_err;
 
 #[cfg(test)]
@@ -24,7 +24,7 @@ mod tuples {
     use super::*;
 
     #[test]
-    fn test_struct_with_tuple() {
+    fn struct_with_tuple() {
         #[derive(Serialize)]
         struct Test {
             a: i32,
@@ -50,7 +50,7 @@ mod tuples {
     }
 
     #[test]
-    fn test_tuple_struct_with_tuple() {
+    fn tuple_struct_with_tuple() {
         #[derive(Serialize)]
         struct Test(i32, (i64, i64));
 
@@ -69,7 +69,7 @@ mod tuples {
     }
 
     #[test]
-    fn test_tuple_struct() {
+    fn tuple_struct() {
         #[derive(Serialize)]
         struct Test(i32, i64);
 
@@ -85,7 +85,7 @@ mod tuples {
     }
 
     #[test]
-    fn test_simple_tuple() {
+    fn simple_tuple() {
         let test = (1, 2);
         let parsed_value = to_value(&test).unwrap();
 

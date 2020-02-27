@@ -258,7 +258,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // explicitly in the serialized form. Some serializers may only be able to
     // support sequences for which the length is known up front.
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-        self.enter_nested();
+        self.enter_nested(SerializerState::ReadingNested);
         Ok(self)
     }
 
@@ -294,6 +294,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
 
     // Maps are represented in JSON as `{ K: V, K: V, ... }`.
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+        self.enter_nested(SerializerState::ReadingMap(false));
         Ok(self)
     }
 
@@ -307,7 +308,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         _name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStruct> {
-        self.enter_nested();
+        self.enter_nested(SerializerState::ReadingNested);
         Ok(self)
     }
 
@@ -441,6 +442,11 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
         where
             T: ?Sized + Serialize,
     {
+        if let SerializerState::ReadingMap(ref mut b) = self.current_state.serializer_state {
+            *b = true;
+        } else {
+            panic!("Illegal state")
+        }
         key.serialize(&mut **self)
     }
 
@@ -451,6 +457,12 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
         where
             T: ?Sized + Serialize,
     {
+        if let SerializerState::ReadingMap(ref mut b) = self.current_state.serializer_state {
+            *b = false;
+        } else {
+            panic!("Illegal state")
+        }
+
         value.serialize(&mut **self)
     }
 
@@ -506,9 +518,9 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
 
 #[derive(Clone, Debug)]
 pub enum SerializerState {
-    // Key
-    ReadingElement,
     ReadingNested,
+    // Reading key
+    ReadingMap(bool),
     None,
 }
 
@@ -566,18 +578,45 @@ impl Serializer {
     }
 
     pub fn push_value(&mut self, value: Value) {
-        let item = match &self.current_state.attr_name {
-            Some(name) => {
-                Item::Slot(Value::Text(name.to_owned()), value)
-            }
-            None => {
-                Item::ValueItem(value)
-            }
-        };
-
         match &mut self.current_state.output {
             Value::Record(_, ref mut items) => {
-                items.push(item)
+                match self.current_state.serializer_state {
+                    SerializerState::ReadingMap(reading_key) => {
+                        match reading_key {
+                            true => {
+                                let item = Item::Slot(value, Value::Extant);
+                                items.push(item);
+                            }
+                            false => {
+                                match items.last_mut() {
+                                    Some(last_item) => {
+                                        match last_item {
+                                            Item::Slot(_, ref mut val) => {
+                                                *val = value;
+                                            }
+                                            i @ _ => {
+                                                panic!("Illegal state. Incorrect item type: {:?}", i);
+                                            }
+                                        }
+                                    }
+                                    None => {}
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        let item = match &self.current_state.attr_name {
+                            Some(name) => {
+                                Item::Slot(Value::Text(name.to_owned()), value)
+                            }
+                            None => {
+                                Item::ValueItem(value)
+                            }
+                        };
+
+                        items.push(item)
+                    }
+                }
             }
             Value::Extant => {}
             v @ _ => {
@@ -586,9 +625,9 @@ impl Serializer {
         }
     }
 
-    pub fn enter_nested(&mut self) {
+    pub fn enter_nested(&mut self, state: SerializerState) {
         if let SerializerState::None = self.current_state.serializer_state {
-            self.current_state.serializer_state = SerializerState::ReadingNested;
+            self.current_state.serializer_state = state;
         } else {
             match &mut self.current_state.output {
                 Value::Record(_, ref mut items) => {
@@ -606,7 +645,7 @@ impl Serializer {
                 }
             }
 
-            self.push_state(State::new_with_state(SerializerState::ReadingNested));
+            self.push_state(State::new_with_state(state));
         }
     }
 

@@ -21,7 +21,7 @@ use serde::export::Formatter;
 
 use crate::model::{Item, Value};
 
-mod compound;
+mod form;
 
 
 #[cfg(test)]
