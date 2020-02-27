@@ -18,8 +18,8 @@ use std::fmt::Debug;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use crate::model::{Item, Value};
 use crate::model::Value::Record;
+use crate::model::{Item, Value};
 use crate::structure::form::from::FormParseErr;
 
 fn assert_success<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) {
@@ -65,10 +65,16 @@ fn from_bool() {
     assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(0.0)));
 
     let r = bool::try_from(Value::Text(String::from("true")));
-    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("true"))));
+    assert_err(
+        r,
+        FormParseErr::IncorrectType(Value::Text(String::from("true"))),
+    );
 
     let r = bool::try_from(Value::Text(String::from("false")));
-    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("false"))));
+    assert_err(
+        r,
+        FormParseErr::IncorrectType(Value::Text(String::from("false"))),
+    );
 
     let r = bool::try_from(Value::Float64Value(2.0));
     assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(2.0)));
@@ -86,7 +92,10 @@ fn from_f64() {
     assert_success(r, 1.0);
 
     let r = f64::try_from(Value::Text(String::from("1.0")));
-    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("1.0"))));
+    assert_err(
+        r,
+        FormParseErr::IncorrectType(Value::Text(String::from("1.0"))),
+    );
 }
 
 #[test]
@@ -98,7 +107,10 @@ fn from_i64() {
     assert_success(r, 1);
 
     let r = i64::try_from(Value::Text(String::from("1")));
-    assert_err(r, FormParseErr::IncorrectType(Value::Text(String::from("1"))));
+    assert_err(
+        r,
+        FormParseErr::IncorrectType(Value::Text(String::from("1"))),
+    );
 }
 
 #[test]
@@ -109,15 +121,16 @@ fn from_str() {
 
 #[test]
 fn vector_mismatched_types() {
-    let r = Vec::<i64>::try_from(Record(Vec::new(), vec![
-        Item::ValueItem(Value::Int64Value(1)),
-        Item::ValueItem(Value::Float64Value(1.0))
-    ]));
+    let r = Vec::<i64>::try_from(Record(
+        Vec::new(),
+        vec![
+            Item::ValueItem(Value::Int64Value(1)),
+            Item::ValueItem(Value::Float64Value(1.0)),
+        ],
+    ));
 
     match r {
-        Ok(_) => {
-            panic!("Parsed correctly with mismatched types.")
-        }
+        Ok(_) => panic!("Parsed correctly with mismatched types."),
         Err(e) => {
             assert_that!(e, eq(FormParseErr::IncorrectType(Value::Float64Value(1.0))));
         }
@@ -126,13 +139,16 @@ fn vector_mismatched_types() {
 
 #[test]
 fn vector() {
-    let r = Vec::<i64>::try_from(Record(Vec::new(), vec![
-        Item::ValueItem(Value::Int64Value(1)),
-        Item::ValueItem(Value::Int64Value(2)),
-        Item::ValueItem(Value::Int64Value(3)),
-        Item::ValueItem(Value::Int64Value(4)),
-        Item::ValueItem(Value::Int64Value(5)),
-    ]));
+    let r = Vec::<i64>::try_from(Record(
+        Vec::new(),
+        vec![
+            Item::ValueItem(Value::Int64Value(1)),
+            Item::ValueItem(Value::Int64Value(2)),
+            Item::ValueItem(Value::Int64Value(3)),
+            Item::ValueItem(Value::Int64Value(4)),
+            Item::ValueItem(Value::Int64Value(5)),
+        ],
+    ));
 
     match r {
         Ok(r) => {

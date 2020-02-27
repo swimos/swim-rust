@@ -20,9 +20,9 @@ use crossbeam::atomic::AtomicCell;
 
 pub trait EffCell<'a> {
     type Contents;
-    type GetF: Future<Output=Self::Contents> + 'a;
-    type SetF: Future<Output=()> + 'a;
-    type UpdF: Future<Output=Self::Contents> + 'a;
+    type GetF: Future<Output = Self::Contents> + 'a;
+    type SetF: Future<Output = ()> + 'a;
+    type UpdF: Future<Output = Self::Contents> + 'a;
 
     fn get<'s: 'a>(&'s self) -> Self::GetF;
 

@@ -22,14 +22,10 @@ impl TryFrom<Value> for f64 {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::Int32Value(i) => {
-                Ok(i.into())
-            }
-            Value::Int64Value(i) => {
-                Ok(i as f64)
-            }
+            Value::Int32Value(i) => Ok(i.into()),
+            Value::Int64Value(i) => Ok(i as f64),
             Value::Float64Value(f) => Ok(f),
-            v @ _ => Err(FormParseErr::IncorrectType(v))
+            v @ _ => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -40,7 +36,7 @@ impl TryFrom<Value> for i32 {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::Int32Value(i) => Ok(i),
-            v @ _ => Err(FormParseErr::IncorrectType(v))
+            v @ _ => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -50,9 +46,9 @@ impl TryFrom<Value> for i64 {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::Int32Value(i) => Ok(i as i64),
+            Value::Int32Value(i) => Ok(i.into()),
             Value::Int64Value(i) => Ok(i),
-            v @ _ => Err(FormParseErr::IncorrectType(v))
+            v @ _ => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -63,7 +59,7 @@ impl TryFrom<Value> for bool {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::BooleanValue(b) => Ok(b),
-            v @ _ => Err(FormParseErr::IncorrectType(v))
+            v @ _ => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -73,37 +69,32 @@ impl TryFrom<Value> for String {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::Text(t) => {
-                Ok(t)
-            }
-            v @ _ => Err(FormParseErr::IncorrectType(v))
+            Value::Text(t) => Ok(t),
+            v @ _ => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
 
-impl<T: TryFrom<Value, Error=FormParseErr>> TryFrom<Value> for Vec<T> {
+impl<T: TryFrom<Value, Error = FormParseErr>> TryFrom<Value> for Vec<T> {
     type Error = FormParseErr;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::Record(attr, items) if attr.is_empty() => {
                 let length = items.len();
-                items.into_iter().try_fold(Vec::with_capacity(length), |mut results: Vec<T>, item| {
-                    match item {
+                items.into_iter().try_fold(
+                    Vec::with_capacity(length),
+                    |mut results: Vec<T>, item| match item {
                         Item::ValueItem(v) => {
                             let result = T::try_from(v)?;
                             results.push(result);
                             Ok(results)
                         }
-                        i @ _ => {
-                            Err(FormParseErr::IllegalItem(i))
-                        }
-                    }
-                })
+                        i @ _ => Err(FormParseErr::IllegalItem(i)),
+                    },
+                )
             }
-            v @ _ => {
-                Err(FormParseErr::IncorrectType(v))
-            }
+            v @ _ => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }

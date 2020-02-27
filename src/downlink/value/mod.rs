@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::{Debug, Formatter};
 use std::fmt;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use futures::Stream;
@@ -58,8 +58,8 @@ impl Action {
     }
 
     pub fn update<F>(f: F) -> Action
-        where
-            F: FnOnce(&Value) -> Value + Send + 'static,
+    where
+        F: FnOnce(&Value) -> Value + Send + 'static,
     {
         Action::Update(Box::new(f), None)
     }
@@ -69,8 +69,8 @@ impl Action {
     }
 
     pub fn update_and_await<F>(f: F, request: Request<Arc<Value>>) -> Action
-        where
-            F: FnOnce(&Value) -> Value + Send + 'static,
+    where
+        F: FnOnce(&Value) -> Value + Send + 'static,
     {
         Action::Update(Box::new(f), Some(request))
     }
@@ -91,13 +91,13 @@ pub fn create_back_pressure_downlink<Err, Updates, Commands>(
     cmd_sender: mpsc::Sender<Command<Arc<Value>>>,
     buffer_size: usize,
 ) -> Downlink<Err, mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
-    where
-        Err: From<item::MpscErr<Event<Arc<Value>>>>
+where
+    Err: From<item::MpscErr<Event<Arc<Value>>>>
         + From<item::MpscErr<Command<Arc<Value>>>>
         + Send
         + Debug
         + 'static,
-        Updates: Stream<Item=Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Message<Value>> + Send + 'static,
 {
     let cmd_sink = item::for_mpsc_sender::<Command<Arc<Value>>, Err>(cmd_sender);
     super::create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
@@ -117,13 +117,13 @@ pub fn create_dropping_downlink<Err, Updates, Commands>(
     cmd_sender: watch::Sender<Command<Arc<Value>>>,
     buffer_size: usize,
 ) -> Downlink<Err, mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
-    where
-        Err: From<item::MpscErr<Event<Arc<Value>>>>
+where
+    Err: From<item::MpscErr<Event<Arc<Value>>>>
         + From<item::WatchErr<Command<Arc<Value>>>>
         + Send
         + Debug
         + 'static,
-        Updates: Stream<Item=Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Message<Value>> + Send + 'static,
 {
     let err_trans = || transform_err::<Command<Arc<Value>>, Err>;
     let cmd_sink = item::map_err(cmd_sender, err_trans);

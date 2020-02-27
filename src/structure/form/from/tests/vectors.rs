@@ -25,21 +25,41 @@ fn vector_of_tuples() {
     }
 
     let test = Parent {
-        seq: vec![
-            (1, 2),
-            (3, 4),
-            (5, 6)
-        ]
+        seq: vec![(1, 2), (3, 4), (5, 6)],
     };
 
     let parsed_value = to_value(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            Item::ValueItem(Value::Record(Vec::new(), vec![Item::ValueItem(Value::Int32Value(1)), Item::ValueItem(Value::Int32Value(2))])),
-            Item::ValueItem(Value::Record(Vec::new(), vec![Item::ValueItem(Value::Int32Value(3)), Item::ValueItem(Value::Int32Value(4))])),
-            Item::ValueItem(Value::Record(Vec::new(), vec![Item::ValueItem(Value::Int32Value(5)), Item::ValueItem(Value::Int32Value(6))]))
-        ],
-        ))],
+    let expected = Value::Record(
+        Vec::new(),
+        vec![Item::Slot(
+            Value::Text(String::from("seq")),
+            Value::Record(
+                Vec::new(),
+                vec![
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::ValueItem(Value::Int32Value(1)),
+                            Item::ValueItem(Value::Int32Value(2)),
+                        ],
+                    )),
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::ValueItem(Value::Int32Value(3)),
+                            Item::ValueItem(Value::Int32Value(4)),
+                        ],
+                    )),
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::ValueItem(Value::Int32Value(5)),
+                            Item::ValueItem(Value::Int32Value(6)),
+                        ],
+                    )),
+                ],
+            ),
+        )],
     );
 
     assert_eq!(parsed_value, expected);
@@ -58,20 +78,41 @@ fn vector_of_structs() {
     }
 
     let test = Parent {
-        seq: vec![
-            Child { id: 1 },
-            Child { id: 1 },
-            Child { id: 1 },
-        ]
+        seq: vec![Child { id: 1 }, Child { id: 2 }, Child { id: 3 }],
     };
 
     let parsed_value = to_value(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            Item::ValueItem(Value::Record(Vec::new(), vec![Item::Slot(Value::Text(String::from("id")), Value::Int32Value(1))])),
-            Item::ValueItem(Value::Record(Vec::new(), vec![Item::Slot(Value::Text(String::from("id")), Value::Int32Value(1))])),
-            Item::ValueItem(Value::Record(Vec::new(), vec![Item::Slot(Value::Text(String::from("id")), Value::Int32Value(1))]))],
-        ))],
+    let expected = Value::Record(
+        Vec::new(),
+        vec![Item::Slot(
+            Value::Text(String::from("seq")),
+            Value::Record(
+                Vec::new(),
+                vec![
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![Item::Slot(
+                            Value::Text(String::from("id")),
+                            Value::Int32Value(1),
+                        )],
+                    )),
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![Item::Slot(
+                            Value::Text(String::from("id")),
+                            Value::Int32Value(2),
+                        )],
+                    )),
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![Item::Slot(
+                            Value::Text(String::from("id")),
+                            Value::Int32Value(3),
+                        )],
+                    )),
+                ],
+            ),
+        )],
     );
 
     assert_eq!(parsed_value, expected);
@@ -85,27 +126,34 @@ fn simple_vector() {
     }
 
     let test = Test {
-        seq: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        seq: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     };
 
     let parsed_value = to_value(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            Item::ValueItem(Value::Int32Value(1)),
-            Item::ValueItem(Value::Int32Value(2)),
-            Item::ValueItem(Value::Int32Value(3)),
-            Item::ValueItem(Value::Int32Value(4)),
-            Item::ValueItem(Value::Int32Value(5)),
-            Item::ValueItem(Value::Int32Value(6)),
-            Item::ValueItem(Value::Int32Value(7)),
-            Item::ValueItem(Value::Int32Value(8)),
-            Item::ValueItem(Value::Int32Value(9)),
-            Item::ValueItem(Value::Int32Value(10)),
-        ]))]);
+    let expected = Value::Record(
+        Vec::new(),
+        vec![Item::Slot(
+            Value::Text(String::from("seq")),
+            Value::Record(
+                Vec::new(),
+                vec![
+                    Item::ValueItem(Value::Int32Value(1)),
+                    Item::ValueItem(Value::Int32Value(2)),
+                    Item::ValueItem(Value::Int32Value(3)),
+                    Item::ValueItem(Value::Int32Value(4)),
+                    Item::ValueItem(Value::Int32Value(5)),
+                    Item::ValueItem(Value::Int32Value(6)),
+                    Item::ValueItem(Value::Int32Value(7)),
+                    Item::ValueItem(Value::Int32Value(8)),
+                    Item::ValueItem(Value::Int32Value(9)),
+                    Item::ValueItem(Value::Int32Value(10)),
+                ],
+            ),
+        )],
+    );
 
     assert_eq!(parsed_value, expected);
 }
-
 
 #[test]
 fn nested_vectors() {
@@ -115,24 +163,35 @@ fn nested_vectors() {
     }
 
     let test = Test {
-        seq: vec![
-            vec!["a", "b"],
-            vec!["c", "d"]
-        ],
+        seq: vec![vec!["a", "b"], vec!["c", "d"]],
     };
 
     let parsed_value = to_value(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            Item::ValueItem(Value::Record(Vec::new(), vec![
-                Item::ValueItem(Value::Text(String::from("a"))),
-                Item::ValueItem(Value::Text(String::from("b"))),
-            ])),
-            Item::ValueItem(Value::Record(Vec::new(), vec![
-                Item::ValueItem(Value::Text(String::from("c"))),
-                Item::ValueItem(Value::Text(String::from("d"))),
-            ]))
-        ]))]);
+    let expected = Value::Record(
+        Vec::new(),
+        vec![Item::Slot(
+            Value::Text(String::from("seq")),
+            Value::Record(
+                Vec::new(),
+                vec![
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::ValueItem(Value::Text(String::from("a"))),
+                            Item::ValueItem(Value::Text(String::from("b"))),
+                        ],
+                    )),
+                    Item::ValueItem(Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::ValueItem(Value::Text(String::from("c"))),
+                            Item::ValueItem(Value::Text(String::from("d"))),
+                        ],
+                    )),
+                ],
+            ),
+        )],
+    );
 
     assert_eq!(parsed_value, expected);
 }

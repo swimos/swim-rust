@@ -21,14 +21,13 @@ use serde::export::Formatter;
 use crate::model::{Item, Value};
 use serde::Serialize;
 
-mod unit;
 mod form;
+mod unit;
 
 #[cfg(test)]
 mod tests;
 
 pub type Result<T> = ::std::result::Result<T, SerializerError>;
-
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SerializerError {
@@ -37,7 +36,10 @@ pub enum SerializerError {
 }
 
 #[allow(dead_code)]
-pub fn to_value<T>(value: &T) -> Result<Value> where T: Serialize {
+pub fn to_value<T>(value: &T) -> Result<Value>
+where
+    T: Serialize,
+{
     let mut serializer = Serializer::new();
     value.serialize(&mut serializer)?;
 
@@ -52,7 +54,7 @@ pub struct Serializer {
 
 #[derive(Debug, Clone)]
 pub struct State {
-    pub  output: Value,
+    pub output: Value,
     pub serializer_state: SerializerState,
     pub attr_name: Option<String>,
 }
@@ -84,8 +86,10 @@ impl Display for FormParseErr {
 impl StdError for FormParseErr {}
 
 impl serde::ser::Error for FormParseErr {
-    fn custom<T>(_msg: T) -> Self where
-        T: Display {
+    fn custom<T>(_msg: T) -> Self
+    where
+        T: Display,
+    {
         FormParseErr::InvalidString(String::from("ser::Error"))
     }
 }

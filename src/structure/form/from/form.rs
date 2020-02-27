@@ -43,11 +43,10 @@ impl std::error::Error for SerializerError {
     fn description(&self) -> &str {
         match *self {
             SerializerError::Message(ref msg) => msg,
-            _ => "TODO"
+            _ => "TODO",
         }
     }
 }
-
 
 //noinspection RsTraitImplementation
 impl<'a> ser::Serializer for &'a mut Serializer {
@@ -128,7 +127,10 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         self.serialize_unit()
     }
 
-    fn serialize_some<T>(self, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_some<T>(self, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         value.serialize(self)
     }
 
@@ -150,11 +152,10 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         self.serialize_str(variant)
     }
 
-    fn serialize_newtype_struct<T>(
-        self,
-        _name: &'static str,
-        value: &T,
-    ) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         value.serialize(self)
     }
 
@@ -164,7 +165,10 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         _variant_index: u32,
         variant: &'static str,
         value: &T,
-    ) -> Result<()> where T: ?Sized + Serialize {
+    ) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         self.current_state.attr_name = Some(variant.to_owned());
         value.serialize(&mut *self)?;
         Ok(())
@@ -203,11 +207,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         Ok(self)
     }
 
-    fn serialize_struct(
-        self,
-        _name: &'static str,
-        _len: usize,
-    ) -> Result<Self::SerializeStruct> {
+    fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
         self.enter_nested(SerializerState::ReadingNested);
         Ok(self)
     }
@@ -228,7 +228,10 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_element<T>(&mut self, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_element<T>(&mut self, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         value.serialize(&mut **self)
     }
 
@@ -242,7 +245,10 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_element<T>(&mut self, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_element<T>(&mut self, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         value.serialize(&mut **self)
     }
 
@@ -256,7 +262,10 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_field<T>(&mut self, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_field<T>(&mut self, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         value.serialize(&mut **self)
     }
 
@@ -270,7 +279,10 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_field<T>(&mut self, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_field<T>(&mut self, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         value.serialize(&mut **self)
     }
 
@@ -284,7 +296,10 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_key<T>(&mut self, key: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_key<T>(&mut self, key: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         if let SerializerState::ReadingMap(ref mut b) = self.current_state.serializer_state {
             *b = true;
         } else {
@@ -293,7 +308,10 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
         key.serialize(&mut **self)
     }
 
-    fn serialize_value<T>(&mut self, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_value<T>(&mut self, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         if let SerializerState::ReadingMap(ref mut b) = self.current_state.serializer_state {
             *b = false;
         } else {
@@ -313,7 +331,10 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         self.current_state.attr_name = Some(key.to_owned());
         value.serialize(&mut **self)
     }
@@ -329,7 +350,10 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     type Ok = ();
     type Error = SerializerError;
 
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()> where T: ?Sized + Serialize {
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
         self.current_state.attr_name = Some(key.to_owned());
         value.serialize(&mut **self)
     }
@@ -339,7 +363,6 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
         Ok(())
     }
 }
-
 
 impl State {
     fn default() -> Self {
@@ -379,59 +402,43 @@ impl Serializer {
     pub fn pop_state(&mut self) -> State {
         match self.stack.pop() {
             Some(s) => s,
-            None => {
-                panic!("Stack underflow")
-            }
+            None => panic!("Stack underflow"),
         }
     }
 
     pub fn push_value(&mut self, value: Value) {
         match &mut self.current_state.output {
-            Value::Record(_, ref mut items) => {
-                match self.current_state.serializer_state {
-                    SerializerState::ReadingMap(reading_key) => {
-                        match reading_key {
-                            true => {
-                                let item = Item::Slot(value, Value::Extant);
-                                items.push(item);
-                            }
-                            false => {
-                                match items.last_mut() {
-                                    Some(last_item) => {
-                                        match last_item {
-                                            Item::Slot(_, ref mut val) => {
-                                                *val = value;
-                                            }
-                                            i @ _ => {
-                                                panic!("Illegal state. Incorrect item type: {:?}", i);
-                                            }
-                                        }
-                                    }
-                                    None => {}
-                                }
-                            }
-                        }
+            Value::Record(_, ref mut items) => match self.current_state.serializer_state {
+                SerializerState::ReadingMap(reading_key) => match reading_key {
+                    true => {
+                        let item = Item::Slot(value, Value::Extant);
+                        items.push(item);
                     }
-                    _ => {
-                        let item = match &self.current_state.attr_name {
-                            Some(name) => {
-                                Item::Slot(Value::Text(name.to_owned()), value)
+                    false => match items.last_mut() {
+                        Some(last_item) => match last_item {
+                            Item::Slot(_, ref mut val) => {
+                                *val = value;
                             }
-                            None => {
-                                Item::ValueItem(value)
+                            i @ _ => {
+                                panic!("Illegal state. Incorrect item type: {:?}", i);
                             }
-                        };
+                        },
+                        None => {}
+                    },
+                },
+                _ => {
+                    let item = match &self.current_state.attr_name {
+                        Some(name) => Item::Slot(Value::Text(name.to_owned()), value),
+                        None => Item::ValueItem(value),
+                    };
 
-                        items.push(item)
-                    }
+                    items.push(item)
                 }
-            }
+            },
             Value::Extant => {
                 self.current_state.output = value;
             }
-            v @ _ => {
-                unimplemented!("{:?}", v)
-            }
+            v @ _ => unimplemented!("{:?}", v),
         }
     }
 

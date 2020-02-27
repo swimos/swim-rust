@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::model::Value;
-use crate::structure::form::from::{SerializerError};
+use crate::structure::form::from::SerializerError;
 
 #[cfg(test)]
 mod simple_data_types;
@@ -36,6 +36,6 @@ pub fn assert_err(parsed: Result<Value, SerializerError>, expected: SerializerEr
             eprintln!("Expected error: {:?}", v);
             panic!();
         }
-        Err(e) => assert_eq!(e, expected)
+        Err(e) => assert_eq!(e, expected),
     }
 }

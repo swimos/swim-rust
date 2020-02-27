@@ -30,14 +30,18 @@ mod valid {
         }
 
         let test = Test {
-            v: String::from("hello")
+            v: String::from("hello"),
         };
 
         let parsed_value = to_value(&test).unwrap();
 
-        let expected = Value::Record(Vec::new(), vec![
-            Item::Slot(Value::Text(String::from("v")), Value::Text(String::from("hello"))),
-        ]);
+        let expected = Value::Record(
+            Vec::new(),
+            vec![Item::Slot(
+                Value::Text(String::from("v")),
+                Value::Text(String::from("hello")),
+            )],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -57,13 +61,14 @@ mod valid {
 
         let test = Parent {
             a: 0,
-            b: Child {
-                a: 0
-            },
+            b: Child { a: 0 },
         };
 
         let parsed_value = to_value(&test);
-        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u64")));
+        assert_err(
+            parsed_value,
+            SerializerError::UnsupportedType(String::from("u64")),
+        );
     }
 
     #[test]
@@ -95,17 +100,38 @@ mod valid {
 
         let parsed_value = to_value(&test).unwrap();
 
-        let expected = Value::Record(Vec::new(), vec![
-            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
-            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int64Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Text(String::from("child1"))),
-            ])),
-            Item::Slot(Value::Text(String::from("c")), Value::Record(Vec::new(), vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int64Value(2)),
-                Item::Slot(Value::Text(String::from("b")), Value::Text(String::from("child2"))),
-            ]))
-        ]);
+        let expected = Value::Record(
+            Vec::new(),
+            vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
+                Item::Slot(
+                    Value::Text(String::from("b")),
+                    Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::Slot(Value::Text(String::from("a")), Value::Int64Value(1)),
+                            Item::Slot(
+                                Value::Text(String::from("b")),
+                                Value::Text(String::from("child1")),
+                            ),
+                        ],
+                    ),
+                ),
+                Item::Slot(
+                    Value::Text(String::from("c")),
+                    Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::Slot(Value::Text(String::from("a")), Value::Int64Value(2)),
+                            Item::Slot(
+                                Value::Text(String::from("b")),
+                                Value::Text(String::from("child2")),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -137,22 +163,61 @@ mod valid {
 
         let parsed_value = to_value(&test).unwrap();
 
-        let expected = Value::Record(Vec::new(), vec![
-            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
-            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                    Item::Slot(Value::Text(String::from("a")), Value::Int32Value(2)),
-                    Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(3)),
-                        Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(4)),
-                            Item::Slot(Value::Text(String::from("b")), Value::Extant),
-                        ])),
-                    ])),
-                ])),
-            ])),
-        ]);
+        let expected = Value::Record(
+            Vec::new(),
+            vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
+                Item::Slot(
+                    Value::Text(String::from("b")),
+                    Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+                            Item::Slot(
+                                Value::Text(String::from("b")),
+                                Value::Record(
+                                    Vec::new(),
+                                    vec![
+                                        Item::Slot(
+                                            Value::Text(String::from("a")),
+                                            Value::Int32Value(2),
+                                        ),
+                                        Item::Slot(
+                                            Value::Text(String::from("b")),
+                                            Value::Record(
+                                                Vec::new(),
+                                                vec![
+                                                    Item::Slot(
+                                                        Value::Text(String::from("a")),
+                                                        Value::Int32Value(3),
+                                                    ),
+                                                    Item::Slot(
+                                                        Value::Text(String::from("b")),
+                                                        Value::Record(
+                                                            Vec::new(),
+                                                            vec![
+                                                                Item::Slot(
+                                                                    Value::Text(String::from("a")),
+                                                                    Value::Int32Value(4),
+                                                                ),
+                                                                Item::Slot(
+                                                                    Value::Text(String::from("b")),
+                                                                    Value::Extant,
+                                                                ),
+                                                            ],
+                                                        ),
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -190,27 +255,66 @@ mod valid {
 
         let parsed_value = to_value(&test).unwrap();
 
-        let expected = Value::Record(Vec::new(), vec![
-            Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
-                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
-                    Item::Slot(Value::Text(String::from("b")), Value::Extant)],
-                )),
-                Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
-                    Item::Slot(Value::Text(String::from("b")), Value::Extant)],
-                ))],
-            )),
-            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
-                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
-                    Item::Slot(Value::Text(String::from("b")), Value::Extant)]),
+        let expected = Value::Record(
+            Vec::new(),
+            vec![
+                Item::Slot(
+                    Value::Text(String::from("a")),
+                    Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::Slot(
+                                Value::Text(String::from("a")),
+                                Value::Record(
+                                    Vec::new(),
+                                    vec![
+                                        Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                                        Item::Slot(Value::Text(String::from("b")), Value::Extant),
+                                    ],
+                                ),
+                            ),
+                            Item::Slot(
+                                Value::Text(String::from("b")),
+                                Value::Record(
+                                    Vec::new(),
+                                    vec![
+                                        Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                                        Item::Slot(Value::Text(String::from("b")), Value::Extant),
+                                    ],
+                                ),
+                            ),
+                        ],
+                    ),
                 ),
-                Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
-                    Item::Slot(Value::Text(String::from("a")), Value::Extant),
-                    Item::Slot(Value::Text(String::from("b")), Value::Extant)]),
-                )]),
-            )],
+                Item::Slot(
+                    Value::Text(String::from("b")),
+                    Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::Slot(
+                                Value::Text(String::from("a")),
+                                Value::Record(
+                                    Vec::new(),
+                                    vec![
+                                        Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                                        Item::Slot(Value::Text(String::from("b")), Value::Extant),
+                                    ],
+                                ),
+                            ),
+                            Item::Slot(
+                                Value::Text(String::from("b")),
+                                Value::Record(
+                                    Vec::new(),
+                                    vec![
+                                        Item::Slot(Value::Text(String::from("a")), Value::Extant),
+                                        Item::Slot(Value::Text(String::from("b")), Value::Extant),
+                                    ],
+                                ),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
         );
 
         assert_eq!(parsed_value, expected);

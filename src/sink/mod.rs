@@ -16,8 +16,8 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 
-use futures::Sink;
 use futures::task::{Context, Poll};
+use futures::Sink;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::watch;

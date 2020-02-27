@@ -15,8 +15,8 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
-use std::fmt::{Display, Formatter};
 use std::fmt::Write;
+use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter;
 
