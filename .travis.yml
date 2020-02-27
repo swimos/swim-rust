@@ -1,5 +1,10 @@
 language: rust
 
+os:
+  - linux
+  - osx
+  - windows
+
 rust:
   - stable
 cache: cargo
@@ -8,27 +13,14 @@ before_script:
   - rustup component add clippy
   - rustup component add rustfmt
 
-stages:
-  - build
-  - test
-  - format
-
 jobs:
   include:
     - stage: "Build"
-    - os:
-        - linux
-        - osx
-        - windows
-
       script: cargo rustc -- -D warnings
 
     - stage: "Test"
-    - os:
-        - linux
-        - osx
-        - windows
       script: cargo test
 
     - stage: "Format"
       script: cargo fmt -- --check
+
