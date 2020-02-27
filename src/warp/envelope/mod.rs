@@ -298,8 +298,8 @@ fn to_linked_addressed<F>(
     body: Option<Value>,
     func: F,
 ) -> Result<Envelope, EnvelopeParseErr>
-    where
-        F: Fn(LinkAddressed) -> Envelope,
+where
+    F: Fn(LinkAddressed) -> Envelope,
 {
     match value {
         Value::Record(_, headers) => {
@@ -315,8 +315,8 @@ fn to_lane_addressed<F>(
     body: Option<Value>,
     func: F,
 ) -> Result<Envelope, EnvelopeParseErr>
-    where
-        F: Fn(LaneAddressed) -> Envelope,
+where
+    F: Fn(LaneAddressed) -> Envelope,
 {
     match value {
         Value::Record(_, headers) => {
@@ -392,30 +392,16 @@ impl TryFrom<Value> for Envelope {
         };
 
         match envelope_type.name.as_str() {
-            "event" => {
-                to_lane_addressed(envelope_type.value, body,  Envelope::EventMessage)
+            "event" => to_lane_addressed(envelope_type.value, body, Envelope::EventMessage),
+            "command" => to_lane_addressed(envelope_type.value, body, Envelope::CommandMessage),
+            "link" => to_linked_addressed(envelope_type.value, body, Envelope::LinkRequest),
+            "linked" => to_linked_addressed(envelope_type.value, body, Envelope::LinkedResponse),
+            "sync" => to_linked_addressed(envelope_type.value, body, Envelope::SyncRequest),
+            "synced" => to_lane_addressed(envelope_type.value, body, Envelope::SyncedResponse),
+            "unlink" => to_lane_addressed(envelope_type.value, body, Envelope::UnlinkRequest),
+            "unlinked" => {
+                to_lane_addressed(envelope_type.value, body, { Envelope::UnlinkedResponse })
             }
-            "command" => {
-                to_lane_addressed(envelope_type.value, body,  Envelope::CommandMessage)
-            }
-            "link" => {
-                to_linked_addressed(envelope_type.value, body,  Envelope::LinkRequest)
-            }
-            "linked" => {
-                to_linked_addressed(envelope_type.value, body,  Envelope::LinkedResponse)
-            }
-            "sync" => {
-                to_linked_addressed(envelope_type.value, body,  Envelope::SyncRequest)
-            }
-            "synced" => {
-                to_lane_addressed(envelope_type.value, body,  Envelope::SyncedResponse)
-            }
-            "unlink" => {
-                to_lane_addressed(envelope_type.value, body,  Envelope::UnlinkRequest)
-            }
-            "unlinked" => to_lane_addressed(envelope_type.value, body,  {
-                Envelope::UnlinkedResponse
-            }),
             "auth" => Ok(Envelope::AuthRequest(HostAddressed { body })),
             "authed" => Ok(Envelope::AuthedResponse(HostAddressed { body })),
             "deauth" => Ok(Envelope::DeauthRequest(HostAddressed { body })),

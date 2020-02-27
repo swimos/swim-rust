@@ -15,8 +15,8 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
-use std::fmt::{Display, Formatter};
 use std::fmt::Write;
+use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter;
 
@@ -27,7 +27,6 @@ use tokio_util::codec::Encoder;
 use crate::model::parser::is_identifier;
 
 pub mod parser;
-
 
 #[allow(clippy::redundant_clone)]
 #[cfg(test)]
@@ -104,10 +103,7 @@ impl Value {
 
     /// Create a record from a vector of anything that can be converted to ['Item']s.
     pub fn from_vec<I: Into<Item>>(items: Vec<I>) -> Value {
-        Value::Record(
-            vec![],
-            items.into_iter().map(Item::of).collect(),
-        )
+        Value::Record(vec![], items.into_iter().map(Item::of).collect())
     }
 
     /// Create a record consisting of only a single ['Attr'].

@@ -23,8 +23,8 @@ const INPUT1: &str = "abcd";
 const INPUT2: &str = "abcd efgh ij";
 
 fn take_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
-    where
-        F: Fn() -> B,
+where
+    F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));
@@ -48,8 +48,8 @@ fn take_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
 }
 
 fn take_by_ref_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
-    where
-        F: Fn() -> B,
+where
+    F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));
@@ -68,8 +68,8 @@ fn take_by_ref_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
 }
 
 fn take_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
-    where
-        F: Fn() -> B,
+where
+    F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));
@@ -105,8 +105,8 @@ fn take_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
 }
 
 fn take_by_ref_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
-    where
-        F: Fn() -> B,
+where
+    F: Fn() -> B,
 {
     let mut buffer = factory();
     buffer.update(Some((0, 'a')));

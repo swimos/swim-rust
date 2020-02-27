@@ -15,9 +15,9 @@
 use std::fmt::Debug;
 use std::pin::Pin;
 
-use futures::{future, stream, Stream, StreamExt};
 use futures::executor::block_on;
 use futures::stream::FusedStream;
+use futures::{future, stream, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_utils::pin_mut;
 use tokio::sync::mpsc;
@@ -94,15 +94,15 @@ fn create_downlink<Err, M, A, State, Updates, Commands>(
     cmd_sink: Commands,
     buffer_size: usize,
 ) -> Downlink<Err, mpsc::Sender<A>, mpsc::Receiver<Event<State::Ev>>>
-    where
-        M: Send + 'static,
-        A: Send + 'static,
-        State: StateMachine<M, A> + Send + 'static,
-        State::Ev: Send + 'static,
-        State::Cmd: Send + 'static,
-        Err: From<item::MpscErr<Event<State::Ev>>> + Send + Debug + 'static,
-        Updates: Stream<Item=Message<M>> + Send + 'static,
-        Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error=Err> + Send + 'static,
+where
+    M: Send + 'static,
+    A: Send + 'static,
+    State: StateMachine<M, A> + Send + 'static,
+    State::Ev: Send + 'static,
+    State::Cmd: Send + 'static,
+    Err: From<item::MpscErr<Event<State::Ev>>> + Send + Debug + 'static,
+    Updates: Stream<Item = Message<M>> + Send + 'static,
+    Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = Err> + Send + 'static,
 {
     let model = Model::new(init);
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
@@ -202,12 +202,12 @@ impl<State> Model<State> {
         mut cmd_sink: Commands,
         mut ev_sink: Events,
     ) -> Result<(), E>
-        where
-            State: StateMachine<M, A>,
-            Ops: FusedStream<Item=Operation<M, A>> + Send + 'static,
-            Acts: FusedStream<Item=A> + Send + 'static,
-            Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error=E>,
-            Events: for<'b> ItemSink<'b, Event<State::Ev>, Error=E>,
+    where
+        State: StateMachine<M, A>,
+        Ops: FusedStream<Item = Operation<M, A>> + Send + 'static,
+        Acts: FusedStream<Item = A> + Send + 'static,
+        Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = E>,
+        Events: for<'b> ItemSink<'b, Event<State::Ev>, Error = E>,
     {
         pin_mut!(ops);
         pin_mut!(acts);
@@ -343,11 +343,11 @@ trait StateMachine<M, A>: Sized {
 fn combine_inputs<M, A, Upd>(
     updates: Upd,
     stop: oneshot::Receiver<()>,
-) -> impl FusedStream<Item=Operation<M, A>> + Send + 'static
-    where
-        M: Send + 'static,
-        A: Send + 'static,
-        Upd: Stream<Item=Message<M>> + Send + 'static,
+) -> impl FusedStream<Item = Operation<M, A>> + Send + 'static
+where
+    M: Send + 'static,
+    A: Send + 'static,
+    Upd: Stream<Item = Message<M>> + Send + 'static,
 {
     let upd_operations = updates.map(Operation::Message);
     let close_operations = stream::once(stop).map(|_| Operation::Close);
