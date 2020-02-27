@@ -571,46 +571,27 @@ impl Serializer {
     }
 
     pub fn exit_sequence(&mut self) {
-        match self.stack.pop() {
-            Some(mut previous_state) => {
-                match self.current_state.current_state {
-                    ParserState::ReadingSequence => {
-                        match previous_state.output {
-                            Value::Record(_, ref mut items) => {
-                                match items.last_mut() {
-                                    Some(item) => {
-                                        match item {
-                                            Item::Slot(a, ref mut v @ Value::Extant) => {
-                                                *v = self.current_state.output.to_owned();
-                                            }
-                                            Item::ValueItem(ref mut v) => {
-                                                *v = self.current_state.output.to_owned();
-                                            }
-                                            _ => {
-                                                items.push(Item::ValueItem(self.current_state.output.to_owned()));
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        items.push(Item::ValueItem(self.current_state.output.to_owned()));
-                                    }
-                                }
+        if let Some(mut previous_state) = self.stack.pop() {
+            if let ParserState::ReadingSequence = self.current_state.current_state {
+                if let Value::Record(_, ref mut items) = previous_state.output {
+                    if let Some(item) = items.last_mut() {
+                        match item {
+                            Item::Slot(a, ref mut v @ Value::Extant) => {
+                                *v = self.current_state.output.to_owned();
+                            }
+                            Item::ValueItem(ref mut v) => {
+                                *v = self.current_state.output.to_owned();
                             }
                             _ => {
-                                unimplemented!()
+                                items.push(Item::ValueItem(self.current_state.output.to_owned()));
                             }
                         }
-                    }
-                    _ => {
-                        unimplemented!()
+                    } else {
+                        items.push(Item::ValueItem(self.current_state.output.to_owned()));
                     }
                 }
-
-                self.current_state = previous_state.to_owned();
             }
-            None => {
-//                panic!("Stack underflow")
-            }
+            self.current_state = previous_state.to_owned();
         }
     }
 }
