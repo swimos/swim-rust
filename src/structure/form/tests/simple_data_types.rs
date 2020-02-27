@@ -14,15 +14,261 @@
 
 
 
-use crate::model::{Item, Value};
-use crate::structure::form::compound::{to_string, SerializerError};
-use crate::model::Item::ValueItem;
-
 use serde::Serialize;
 
-fn assert_err(parsed:Result<Value, SerializerError>, expected:SerializerError){
+use crate::model::{Item, Value};
+use crate::model::Item::ValueItem;
+use crate::structure::form::compound::{SerializerError, to_string};
+
+#[cfg(test)]
+mod valid_types {
+    use super::*;
+
+    #[test]
+    fn test_bool() {
+        #[derive(Serialize)]
+        struct Test {
+            a: bool,
+        }
+
+        let test = Test {
+            a: true,
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::BooleanValue(true)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i8() {
+        #[derive(Serialize)]
+        struct Test {
+            a: i8,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i16() {
+        #[derive(Serialize)]
+        struct Test {
+            a: i16,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i32() {
+        #[derive(Serialize)]
+        struct Test {
+            a: i32,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_i64() {
+        #[derive(Serialize)]
+        struct Test {
+            a: i64,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int64Value(1)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_f32() {
+        #[derive(Serialize)]
+        struct Test {
+            a: f32,
+        }
+
+        let test = Test {
+            a: 1.0,
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Float64Value(1.0)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_f64() {
+        #[derive(Serialize)]
+        struct Test {
+            a: f64,
+        }
+
+        let test = Test {
+            a: 1.0,
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Float64Value(1.0)),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_char() {
+        #[derive(Serialize)]
+        struct Test {
+            a: char,
+        }
+
+        let test = Test {
+            a: 's',
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Text(String::from("s"))),
+        ]);
+
+        assert_eq!(parsed_value, expected);
+    }
+}
+
+#[cfg(test)]
+mod illegal_types {
+    use super::*;
+
+    #[test]
+    fn test_bytes() {
+        #[derive(Serialize)]
+        struct Test<'a> {
+            a: &'a [u8],
+        }
+
+        let test = Test {
+            a: "abcd".as_bytes(),
+        };
+
+        let parsed_value = to_string(&test);
+        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u8")));
+    }
+
+    #[test]
+    fn test_u8() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u8,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test);
+        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u8")));
+    }
+
+    #[test]
+    fn test_u16() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u16,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test);
+        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u16")));
+    }
+
+    #[test]
+    fn test_32() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u32,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test);
+        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u32")));
+    }
+
+    #[test]
+    fn test_u64() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u64,
+        }
+
+        let test = Test {
+            a: 1,
+        };
+
+        let parsed_value = to_string(&test);
+        assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u64")));
+    }
+}
+
+
+fn assert_err(parsed: Result<Value, SerializerError>, expected: SerializerError) {
     match parsed {
-        Ok(v)=> {
+        Ok(v) => {
             eprintln!("Expected error: {:?}", v);
             panic!();
         }
@@ -30,137 +276,83 @@ fn assert_err(parsed:Result<Value, SerializerError>, expected:SerializerError){
     }
 }
 
-#[test]
-fn test_u8() {
-    #[derive(Serialize)]
-    struct Test {
-        a: u8,
+
+#[cfg(test)]
+mod compound_types {
+    use super::*;
+
+    #[test]
+    fn simple_struct() {
+        #[derive(Serialize)]
+        struct Test {
+            a: i32,
+            b: f32,
+            c: i8,
+            d: String,
+        }
+
+        let test = Test {
+            a: 1,
+            b: 2.0,
+            c: 3,
+            d: String::from("hello"),
+        };
+
+        let parsed_value = to_string(&test).unwrap();
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
+            Item::Slot(Value::Text(String::from("c")), Value::Int32Value(3)),
+            Item::Slot(Value::Text(String::from("d")), Value::Text(String::from("hello"))),
+        ]);
+
+        assert_eq!(parsed_value, expected);
     }
 
-    let test = Test {
-        a: 1,
-    };
+    #[test]
+    fn struct_with_vec() {
+        #[derive(Serialize)]
+        struct Test {
+            seq: Vec<&'static str>,
+        }
 
-    let parsed_value = to_string(&test);
-    assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u8")));
-}
+        let test = Test {
+            seq: vec!["a", "b"],
+        };
 
-#[test]
-fn test_u16() {
-    #[derive(Serialize)]
-    struct Test {
-        a: u16,
+        let parsed_value = to_string(&test).unwrap();
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
+                ValueItem(Value::Text(String::from("a"))),
+                ValueItem(Value::Text(String::from("b"))),
+            ])),
+        ]);
+
+        assert_eq!(parsed_value, expected);
     }
 
-    let test = Test {
-        a: 1,
-    };
+    #[test]
+    fn struct_with_vec_and_members() {
+        #[derive(Serialize)]
+        struct Test {
+            int: i32,
+            seq: Vec<&'static str>,
+        }
 
-    let parsed_value = to_string(&test);
-    assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u16")));
-}
+        let test = Test {
+            int: 1,
+            seq: vec!["a", "b"],
+        };
 
-#[test]
-fn test_32() {
-    #[derive(Serialize)]
-    struct Test {
-        a: u32,
+        let parsed_value = to_string(&test).unwrap();
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("int")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
+                ValueItem(Value::Text(String::from("a"))),
+                ValueItem(Value::Text(String::from("b"))),
+            ])),
+        ]);
+
+        assert_eq!(parsed_value, expected);
     }
-
-    let test = Test {
-        a: 1,
-    };
-
-    let parsed_value = to_string(&test);
-    assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u32")));
-}
-
-#[test]
-fn test_u64() {
-    #[derive(Serialize)]
-    struct Test {
-        a: u64,
-    }
-
-    let test = Test {
-        a: 1,
-    };
-
-    let parsed_value = to_string(&test);
-    assert_err(parsed_value, SerializerError::UnsupportedType(String::from("u64")));
-}
-
-#[test]
-fn simple_struct() {
-    #[derive(Serialize)]
-    struct Test {
-        a: i32,
-        b: f32,
-        c: i8,
-        d: String,
-    }
-
-    let test = Test {
-        a: 1,
-        b: 2.0,
-        c: 3,
-        d: String::from("hello"),
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-        Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
-        Item::Slot(Value::Text(String::from("c")), Value::Int32Value(3)),
-        Item::Slot(Value::Text(String::from("d")), Value::Text(String::from("hello"))),
-    ]);
-
-    assert_eq!(parsed_value, expected);
-}
-
-#[test]
-fn struct_with_vec() {
-    #[derive(Serialize)]
-    struct Test {
-        seq: Vec<&'static str>,
-    }
-
-    let test = Test {
-        seq: vec!["a", "b"],
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            ValueItem(Value::Text(String::from("a"))),
-            ValueItem(Value::Text(String::from("b"))),
-        ])),
-    ]);
-
-    assert_eq!(parsed_value, expected);
-}
-
-#[test]
-fn struct_with_vec_and_members() {
-    #[derive(Serialize)]
-    struct Test {
-        int: i32,
-        seq: Vec<&'static str>,
-    }
-
-    let test = Test {
-        int: 1,
-        seq: vec!["a", "b"],
-    };
-
-    let parsed_value = to_string(&test).unwrap();
-    let expected = Value::Record(Vec::new(), vec![
-        Item::Slot(Value::Text(String::from("int")), Value::Int32Value(1)),
-        Item::Slot(Value::Text(String::from("seq")), Value::Record(Vec::new(), vec![
-            ValueItem(Value::Text(String::from("a"))),
-            ValueItem(Value::Text(String::from("b"))),
-        ])),
-    ]);
-
-    assert_eq!(parsed_value, expected);
 }

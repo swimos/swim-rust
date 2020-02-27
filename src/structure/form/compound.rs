@@ -151,12 +151,14 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     // string here. Binary formats will typically represent byte arrays more
     // compactly.
     fn serialize_bytes(self, v: &[u8]) -> Result<()> {
-        use serde::ser::SerializeSeq;
-        let mut seq = self.serialize_seq(Some(v.len()))?;
-        for byte in v {
-            seq.serialize_element(byte)?;
-        }
-        seq.end()
+        // use serde::ser::SerializeSeq;
+        // let mut seq = self.serialize_seq(Some(v.len()))?;
+        // for byte in v {
+        //     seq.serialize_element(byte)?;
+        // }
+        // seq.end()
+
+        Err(SerializerError::UnsupportedType(String::from("u8")))
     }
 
     // An absent optional is represented as the JSON `null`.
