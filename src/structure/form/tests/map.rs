@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use serde::Serialize;
+
 use crate::model::{Item, Value};
 use crate::structure::form::form::{SerializerError, to_value};
 use crate::structure::form::tests::assert_err;
@@ -88,6 +90,31 @@ mod valid_types {
                 Item::ValueItem(Value::Int32Value(10)),
             ]))],
         );
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn map_of_structs() {
+        #[derive(Serialize)]
+        struct Test {
+            a: f64,
+        }
+
+        let mut map = BTreeMap::new();
+        map.insert("a", Test { a: 1.0 });
+        map.insert("b", Test { a: 2.0 });
+
+        let parsed_value = to_value(&map).unwrap();
+
+        let expected = Value::Record(Vec::new(), vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Record(Vec::new(), vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Float64Value(1.0))
+            ])),
+            Item::Slot(Value::Text(String::from("b")), Value::Record(Vec::new(), vec![
+                Item::Slot(Value::Text(String::from("a")), Value::Float64Value(2.0))
+            ]))
+        ]);
 
         assert_eq!(parsed_value, expected);
     }
