@@ -53,8 +53,7 @@ pub enum Envelope {
 
 impl Envelope {
     /// Returns the tag (envelope type) of the current [`Envelope`] variant.
-    #[allow(dead_code)]
-    fn tag(self) -> &'static str {
+    pub fn tag(self) -> &'static str {
         match self {
             Envelope::LinkRequest(_) => "link",
             Envelope::SyncRequest(_) => "sync",
