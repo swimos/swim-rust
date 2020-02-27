@@ -30,8 +30,3 @@ pub mod model;
 pub mod request;
 pub mod sink;
 pub mod warp;
-
-#[test]
-fn unused() {
-    let x = 1;
-}
