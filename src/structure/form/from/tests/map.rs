@@ -22,7 +22,7 @@ mod valid_types {
 
     use super::*;
     use crate::model::Attr;
-    use crate::structure::form::from::to_value;
+    use crate::structure::form::to_value;
 
     #[test]
     fn simple_map() {
@@ -175,7 +175,7 @@ mod invalid_types {
     use std::collections::BTreeMap;
 
     use crate::structure::form::from::tests::assert_err;
-    use crate::structure::form::from::{to_value, SerializerError};
+    use crate::structure::form::{to_value, SerializerError};
 
     #[test]
     fn invalid_nested_type() {

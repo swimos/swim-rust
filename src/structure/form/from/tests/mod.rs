@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::model::Value;
-use crate::structure::form::from::SerializerError;
+use crate::structure::form::SerializerError;
 
 #[cfg(test)]
 mod simple_data_types;

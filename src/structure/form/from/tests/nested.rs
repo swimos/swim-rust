@@ -17,10 +17,10 @@ use serde::Serialize;
 #[cfg(test)]
 mod valid {
     use crate::model::{Attr, Item, Value};
-    use crate::structure::form::from::tests::assert_err;
-    use crate::structure::form::from::{to_value, SerializerError};
+    use crate::structure::form::{to_value, SerializerError};
 
     use super::*;
+    use crate::structure::form::from::tests::assert_err;
 
     #[test]
     fn generic() {

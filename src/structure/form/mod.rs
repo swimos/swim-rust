@@ -13,13 +13,29 @@
 // limitations under the License.
 
 use core::fmt;
-use serde::de::StdError;
-use serde::export::Formatter;
 use std::fmt::{Debug, Display};
 
+use serde::de::StdError;
+use serde::export::Formatter;
+use serde::Serialize;
+
 use crate::model::{Item, Value};
+use crate::structure::form::from::ValueSerializer;
 
 mod from;
+
+pub type Result<T> = ::std::result::Result<T, SerializerError>;
+
+#[allow(dead_code)]
+pub fn to_value<T>(value: &T) -> Result<Value>
+where
+    T: Serialize,
+{
+    let mut serializer = ValueSerializer::default();
+    value.serialize(&mut serializer)?;
+
+    Ok(serializer.output())
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SerializerError {

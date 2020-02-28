@@ -15,7 +15,7 @@
 use serde::Serialize;
 
 use crate::model::{Attr, Item, Value};
-use crate::structure::form::from::to_value;
+use crate::structure::form::to_value;
 
 #[test]
 fn vector_of_tuples() {

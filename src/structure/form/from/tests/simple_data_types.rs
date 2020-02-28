@@ -20,7 +20,7 @@ use crate::model::{Item, Value};
 #[cfg(test)]
 mod tuples {
     use crate::model::Attr;
-    use crate::structure::form::from::to_value;
+    use crate::structure::form::to_value;
 
     use super::*;
 
@@ -120,7 +120,7 @@ mod tuples {
 
 #[cfg(test)]
 mod valid_types {
-    use crate::structure::form::from::to_value;
+    use crate::structure::form::to_value;
 
     use super::*;
 
@@ -198,7 +198,7 @@ mod valid_types {
 #[cfg(test)]
 mod enumeration {
     use crate::model::Attr;
-    use crate::structure::form::from::to_value;
+    use crate::structure::form::to_value;
 
     use super::*;
 
@@ -299,7 +299,7 @@ mod enumeration {
 #[cfg(test)]
 mod struct_valid_types {
     use crate::model::Attr;
-    use crate::structure::form::from::to_value;
+    use crate::structure::form::to_value;
 
     use super::*;
 
@@ -481,10 +481,10 @@ mod struct_valid_types {
 
 #[cfg(test)]
 mod illegal_types {
-    use crate::structure::form::from::tests::assert_err;
-    use crate::structure::form::from::{to_value, SerializerError};
+    use crate::structure::form::{to_value, SerializerError};
 
     use super::*;
+    use crate::structure::form::from::tests::assert_err;
 
     #[test]
     fn test_bytes() {
@@ -572,10 +572,10 @@ mod illegal_types {
 #[cfg(test)]
 mod compound_types {
     use crate::model::Attr;
-    use crate::structure::form::from::tests::assert_err;
-    use crate::structure::form::from::{to_value, SerializerError};
+    use crate::structure::form::{to_value, SerializerError};
 
     use super::*;
+    use crate::structure::form::from::tests::assert_err;
 
     #[test]
     fn simple_struct() {
