@@ -255,7 +255,7 @@ fn parse_lane_addressed(
 
 fn parse_lane_addressed_value(
     key: &str,
-    val: &String,
+    val: &str,
     lane_addressed: &mut LaneAddressedBuilder,
 ) -> Result<(), EnvelopeParseErr> {
     if key == "node" {
@@ -306,7 +306,7 @@ where
             let link_addressed = parse_link_addressed(headers, body)?.build()?;
             Ok(func(link_addressed))
         }
-        v @ _ => Err(EnvelopeParseErr::UnexpectedType(v)),
+        v => Err(EnvelopeParseErr::UnexpectedType(v)),
     }
 }
 
@@ -323,7 +323,7 @@ where
             let lane_builder = parse_lane_addressed(headers, body)?.build()?;
             Ok(func(lane_builder))
         }
-        v @ _ => Err(EnvelopeParseErr::UnexpectedType(v)),
+        v => Err(EnvelopeParseErr::UnexpectedType(v)),
     }
 }
 
@@ -365,7 +365,7 @@ impl TryFrom<Value> for Envelope {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         let (mut attrs, mut body) = match value {
             Value::Record(a, i) => (a, i),
-            v @ _ => {
+            v => {
                 return Err(EnvelopeParseErr::UnexpectedType(v));
             }
         };
@@ -377,7 +377,7 @@ impl TryFrom<Value> for Envelope {
                 match body.pop() {
                     Some(item) => match item {
                         Item::ValueItem(inner) => Some(inner),
-                        i @ _ => return Err(EnvelopeParseErr::UnexpectedItem(i)),
+                        i => return Err(EnvelopeParseErr::UnexpectedItem(i)),
                     },
                     None => None,
                 }
@@ -391,36 +391,22 @@ impl TryFrom<Value> for Envelope {
             None => return Err(EnvelopeParseErr::Malformatted),
         };
 
-        return match envelope_type.name.as_str() {
-            "event" => {
-                to_lane_addressed(envelope_type.value, body, |la| Envelope::EventMessage(la))
+        match envelope_type.name.as_str() {
+            "event" => to_lane_addressed(envelope_type.value, body, Envelope::EventMessage),
+            "command" => to_lane_addressed(envelope_type.value, body, Envelope::CommandMessage),
+            "link" => to_linked_addressed(envelope_type.value, body, Envelope::LinkRequest),
+            "linked" => to_linked_addressed(envelope_type.value, body, Envelope::LinkedResponse),
+            "sync" => to_linked_addressed(envelope_type.value, body, Envelope::SyncRequest),
+            "synced" => to_lane_addressed(envelope_type.value, body, Envelope::SyncedResponse),
+            "unlink" => to_lane_addressed(envelope_type.value, body, Envelope::UnlinkRequest),
+            "unlinked" => {
+                to_lane_addressed(envelope_type.value, body, { Envelope::UnlinkedResponse })
             }
-            "command" => {
-                to_lane_addressed(envelope_type.value, body, |la| Envelope::CommandMessage(la))
-            }
-            "link" => {
-                to_linked_addressed(envelope_type.value, body, |la| Envelope::LinkRequest(la))
-            }
-            "linked" => {
-                to_linked_addressed(envelope_type.value, body, |la| Envelope::LinkedResponse(la))
-            }
-            "sync" => {
-                to_linked_addressed(envelope_type.value, body, |la| Envelope::SyncRequest(la))
-            }
-            "synced" => {
-                to_lane_addressed(envelope_type.value, body, |la| Envelope::SyncedResponse(la))
-            }
-            "unlink" => {
-                to_lane_addressed(envelope_type.value, body, |la| Envelope::UnlinkRequest(la))
-            }
-            "unlinked" => to_lane_addressed(envelope_type.value, body, |la| {
-                Envelope::UnlinkedResponse(la)
-            }),
             "auth" => Ok(Envelope::AuthRequest(HostAddressed { body })),
             "authed" => Ok(Envelope::AuthedResponse(HostAddressed { body })),
             "deauth" => Ok(Envelope::DeauthRequest(HostAddressed { body })),
             "deauthed" => Ok(Envelope::DeauthedResponse(HostAddressed { body })),
-            s @ _ => Err(EnvelopeParseErr::UnknownTag(String::from(s))),
-        };
+            s => Err(EnvelopeParseErr::UnknownTag(String::from(s))),
+        }
     }
 }

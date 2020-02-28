@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::parser::is_identifier;
-use bytes::*;
-use either::Either;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
@@ -22,10 +19,16 @@ use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter;
+
+use bytes::*;
+use either::Either;
 use tokio_util::codec::Encoder;
+
+use crate::model::parser::is_identifier;
 
 pub mod parser;
 
+#[allow(clippy::redundant_clone)]
 #[cfg(test)]
 mod tests;
 
@@ -76,6 +79,7 @@ pub enum Value {
     Record(Vec<Attr>, Vec<Item>),
 }
 
+#[allow(clippy::float_cmp, clippy::cognitive_complexity)]
 impl Value {
     /// Create a text value from anything that can be converted to a ['String'].
     pub fn text<T: ToString>(x: T) -> Value {
@@ -99,10 +103,7 @@ impl Value {
 
     /// Create a record from a vector of anything that can be converted to ['Item']s.
     pub fn from_vec<I: Into<Item>>(items: Vec<I>) -> Value {
-        Value::Record(
-            vec![],
-            items.into_iter().map(|item| Item::of(item)).collect(),
-        )
+        Value::Record(vec![], items.into_iter().map(Item::of).collect())
     }
 
     /// Create a record consisting of only a single ['Attr'].
@@ -198,18 +199,14 @@ impl Value {
                         } else {
                             Ordering::Less
                         }
+                    } else if y.is_nan() {
+                        Ordering::Greater
+                    } else if *x == *y {
+                        Ordering::Equal
+                    } else if *x < *y {
+                        Ordering::Less
                     } else {
-                        if y.is_nan() {
-                            Ordering::Greater
-                        } else {
-                            if *x == *y {
-                                Ordering::Equal
-                            } else if *x < *y {
-                                Ordering::Less
-                            } else {
-                                Ordering::Greater
-                            }
-                        }
+                        Ordering::Greater
                     }
                 }
                 _ => Ordering::Greater,
@@ -228,12 +225,12 @@ impl Value {
                 Value::Record(attrs2, items2) => {
                     let first = attrs1
                         .iter()
-                        .map(|a| Either::Left(a))
-                        .chain(items1.iter().map(|i| Either::Right(i)));
+                        .map(Either::Left)
+                        .chain(items1.iter().map(Either::Right));
                     let second = attrs2
                         .iter()
-                        .map(|a| Either::Left(a))
-                        .chain(items2.iter().map(|i| Either::Right(i)));
+                        .map(Either::Left)
+                        .chain(items2.iter().map(Either::Right));
                     first.cmp(second)
                 }
                 _ => Ordering::Less,
@@ -745,10 +742,10 @@ fn encode_escaped(s: &str, dst: &mut BytesMut) -> Result<(), std::io::Error> {
 ///
 pub struct ValueEncoder {}
 
-const TRUE: &'static [u8] = b"true";
-const FALSE: &'static [u8] = b"false";
+const TRUE: &[u8] = b"true";
+const FALSE: &[u8] = b"false";
 
-fn unpack_attr_body(attrs: &Vec<Attr>, items: &Vec<Item>) -> bool {
+fn unpack_attr_body(attrs: &[Attr], items: &[Item]) -> bool {
     if !attrs.is_empty() {
         false
     } else if items.len() > 1 {
@@ -822,6 +819,12 @@ fn len_str_literal(s: &str) -> usize {
         + 2
 }
 
+impl Default for ValueEncoder {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
 impl ValueEncoder {
     pub fn new() -> ValueEncoder {
         ValueEncoder {}
@@ -861,7 +864,7 @@ impl ValueEncoder {
         }
     }
 
-    fn encode_text(dst: &mut BytesMut, s: &String) -> Result<(), ValueEncodeErr> {
+    fn encode_text(dst: &mut BytesMut, s: &str) -> Result<(), ValueEncodeErr> {
         if parser::is_identifier(s.borrow()) {
             dst.put(s.as_bytes());
             Ok(())

@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Debug;
 use std::pin::Pin;
 
 use futures::executor::block_on;
+use futures::stream::FusedStream;
 use futures::{future, stream, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_utils::pin_mut;
@@ -24,8 +26,6 @@ use tokio::task::JoinHandle;
 
 use crate::sink::item;
 use crate::sink::item::ItemSink;
-use futures::stream::FusedStream;
-use std::fmt::Debug;
 
 pub mod map;
 pub mod value;
@@ -39,11 +39,8 @@ pub struct Sender<Err: Debug, S> {
 
 impl<Err: Debug, S> Drop for Sender<Err, S> {
     fn drop(&mut self) {
-        match self.task.take() {
-            Some(t) => {
-                block_on(t.stop()).unwrap();
-            }
-            _ => {}
+        if let Some(t) = self.task.take() {
+            block_on(t.stop()).unwrap();
         }
     }
 }
@@ -51,7 +48,7 @@ impl<Err: Debug, S> Drop for Sender<Err, S> {
 impl<Err: Debug, S> Sender<Err, S> {
     /// Stop the downlink from running.
     pub async fn stop(mut self) -> Result<(), Err> {
-        match (&mut self).task.take() {
+        match (self).task.take() {
             Some(t) => t.stop().await,
             _ => Ok(()),
         }

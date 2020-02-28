@@ -623,6 +623,7 @@ fn iteratee_nested_records() {
     nested_records(consume_to_value);
 }
 
+#[allow(clippy::cognitive_complexity)]
 fn nested_records(read_single: ReadSingleValue) {
     assert_that!(
         read_single("{{}}").unwrap(),

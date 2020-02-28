@@ -18,3 +18,4 @@ script:
   - cargo rustc -- -D warnings
   - cargo test
   - cargo fmt -- --check
+  - cargo clippy --all-features -- -D warnings
