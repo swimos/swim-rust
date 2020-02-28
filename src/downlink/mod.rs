@@ -39,11 +39,8 @@ pub struct Sender<Err: Debug, S> {
 
 impl<Err: Debug, S> Drop for Sender<Err, S> {
     fn drop(&mut self) {
-        match self.task.take() {
-            Some(t) => {
-                block_on(t.stop()).unwrap();
-            }
-            _ => {}
+        if let Some(t) = self.task.take() {
+            block_on(t.stop()).unwrap();
         }
     }
 }
@@ -51,7 +48,7 @@ impl<Err: Debug, S> Drop for Sender<Err, S> {
 impl<Err: Debug, S> Sender<Err, S> {
     /// Stop the downlink from running.
     pub async fn stop(mut self) -> Result<(), Err> {
-        match (&mut self).task.take() {
+        match (self).task.take() {
             Some(t) => t.stop().await,
             _ => Ok(()),
         }

@@ -728,18 +728,18 @@ pub fn collect_all_vec<T>() -> impl Iteratee<T, Item = Vec<T>> {
             vec.push(input);
             None
         },
-        |vec| Some(vec),
+        Some,
     )
 }
 
 /// The trivial iteratee that emits all of its inputs unchanged.
 pub fn identity<T>() -> impl Iteratee<T, Item = T> {
-    return Identity {};
+    Identity {}
 }
 
 /// The trivial iteratee that never emits anything.
 pub fn never<T>() -> impl Iteratee<T, Item = T> {
-    return Never {};
+    Never {}
 }
 
 /// Adds single item lookahead to incoming values.
@@ -1063,7 +1063,7 @@ where
             iteratee,
             state,
             scan,
-            flush: _,
+            ..
         } = self;
         iteratee
             .feed(input)
@@ -1274,7 +1274,7 @@ where
         let IterateeFlatMap {
             selector,
             maybe_current,
-            f: _,
+            ..
         } = self;
         match maybe_current {
             Some(current) => current.demand_hint(),
@@ -1501,7 +1501,7 @@ where
         } = self;
         match transform {
             Some(trans) => {
-                while let Some(item) = iterator.next() {
+                for item in iterator {
                     let result = trans.feed(item);
                     if result.is_some() {
                         return result;
@@ -1544,12 +1544,14 @@ where
             iterator,
             transform,
         } = self;
-        while let Some(item) = iterator.next() {
+
+        for item in iterator {
             let result = transform.feed(item);
             if result.is_some() {
                 return result;
             }
         }
+
         None
     }
 

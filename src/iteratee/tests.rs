@@ -48,8 +48,8 @@ fn never_iteratee() {
 fn unfold_iteratee() {
     let mut iteratee = unfold((0, 0), |state, n: i32| {
         let (count, sum) = state;
-        *count = *count + 1;
-        *sum = *sum + n;
+        *count += 1;
+        *sum += n;
         if *count == 4 {
             Some(*sum)
         } else {
@@ -71,8 +71,8 @@ fn unfold_iteratee_with_flush() {
         (0, 0),
         |state, n: i32| {
             let (count, sum) = state;
-            *count = *count + 1;
-            *sum = *sum + n;
+            *count += 1;
+            *sum += n;
             if *count == 4 {
                 Some(*sum)
             } else {
@@ -402,7 +402,7 @@ fn to_non_zero(n: i32) -> Option<NonZeroUsize> {
 fn flat_map_iteratee() {
     let mut iteratee = identity::<i32>()
         .maybe_map(to_non_zero)
-        .flat_map(|i| collect_vec(i));
+        .flat_map(collect_vec);
 
     assert_that!(iteratee.feed(2), none());
     assert_that!(iteratee.feed(7), none());
@@ -441,7 +441,7 @@ fn remove_flush() {
 fn flatten_iteratee() {
     let mut iteratee = identity::<i32>()
         .maybe_map(to_non_zero)
-        .map(|n| collect_vec(n))
+        .map(collect_vec)
         .flatten();
 
     assert_that!(iteratee.feed(2), none());
@@ -459,7 +459,7 @@ fn flatten_iteratee() {
 fn fold_iteratee() {
     let mut iteratee = identity::<i32>()
         .filter(|i| i % 2 == 0)
-        .fold(0, |sum, i| *sum = *sum + i);
+        .fold(0, |sum, i| *sum += i);
 
     assert_that!(iteratee.feed(1), none());
     assert_that!(iteratee.feed(2), none());
@@ -481,7 +481,7 @@ fn fuse_iteratee() {
 
 #[test]
 fn fuse_iteratee_with_flush() {
-    let mut iteratee = identity::<i32>().fold(0, |sum, i| *sum = *sum + i).fuse();
+    let mut iteratee = identity::<i32>().fold(0, |sum, i| *sum += i).fuse();
 
     assert_that!(iteratee.feed(3), none());
     assert_that!(iteratee.feed(12), none());
