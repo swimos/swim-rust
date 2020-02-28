@@ -128,8 +128,8 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_some<T>(self, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         value.serialize(self)
     }
@@ -161,8 +161,8 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 
     fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         self.push_attr(Attr::from(name));
         value.serialize(self)
@@ -175,8 +175,8 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         variant: &'static str,
         value: &T,
     ) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         self.push_attr(Attr::from(name));
         self.current_state.attr_name = Some(variant.to_owned());
@@ -245,8 +245,8 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
     type Error = SerializerError;
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
@@ -262,8 +262,8 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     type Error = SerializerError;
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
@@ -279,8 +279,8 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
     type Error = SerializerError;
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
@@ -296,8 +296,8 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     type Error = SerializerError;
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
@@ -313,8 +313,8 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
     type Error = SerializerError;
 
     fn serialize_key<T>(&mut self, key: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         if let SerializerState::ReadingMap(ref mut b) = self.current_state.serializer_state {
             *b = true;
@@ -325,8 +325,8 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
     }
 
     fn serialize_value<T>(&mut self, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         if let SerializerState::ReadingMap(ref mut b) = self.current_state.serializer_state {
             *b = false;
@@ -348,8 +348,8 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     type Error = SerializerError;
 
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         self.current_state.attr_name = Some(key.to_owned());
         value.serialize(&mut **self)
@@ -367,8 +367,8 @@ impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
     type Error = SerializerError;
 
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         self.current_state.attr_name = Some(key.to_owned());
         value.serialize(&mut **self)
@@ -403,7 +403,8 @@ impl Default for Serializer {
         Self {
             current_state: State::default(),
             stack: vec![],
-        }    }
+        }
+    }
 }
 
 impl Serializer {
