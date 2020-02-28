@@ -25,7 +25,7 @@ impl TryFrom<Value> for f64 {
             Value::Int32Value(i) => Ok(i.into()),
             Value::Int64Value(i) => Ok(i as f64),
             Value::Float64Value(f) => Ok(f),
-            v @ _ => Err(FormParseErr::IncorrectType(v)),
+            v  => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -36,7 +36,7 @@ impl TryFrom<Value> for i32 {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::Int32Value(i) => Ok(i),
-            v @ _ => Err(FormParseErr::IncorrectType(v)),
+            v  => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -48,7 +48,7 @@ impl TryFrom<Value> for i64 {
         match value {
             Value::Int32Value(i) => Ok(i.into()),
             Value::Int64Value(i) => Ok(i),
-            v @ _ => Err(FormParseErr::IncorrectType(v)),
+            v  => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -59,7 +59,7 @@ impl TryFrom<Value> for bool {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::BooleanValue(b) => Ok(b),
-            v @ _ => Err(FormParseErr::IncorrectType(v)),
+            v  => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -70,7 +70,7 @@ impl TryFrom<Value> for String {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::Text(t) => Ok(t),
-            v @ _ => Err(FormParseErr::IncorrectType(v)),
+            v  => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }
@@ -90,11 +90,11 @@ impl<T: TryFrom<Value, Error = FormParseErr>> TryFrom<Value> for Vec<T> {
                             results.push(result);
                             Ok(results)
                         }
-                        i @ _ => Err(FormParseErr::IllegalItem(i)),
+                        i  => Err(FormParseErr::IllegalItem(i)),
                     },
                 )
             }
-            v @ _ => Err(FormParseErr::IncorrectType(v)),
+            v  => Err(FormParseErr::IncorrectType(v)),
         }
     }
 }

@@ -14,8 +14,8 @@
 
 use serde::Serialize;
 
-use crate::model::{Item, Value};
 use crate::model::Item::ValueItem;
+use crate::model::{Item, Value};
 
 #[cfg(test)]
 mod tuples {
@@ -239,16 +239,22 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let parsed_value = to_value(&Test { a: TestEnum::A(1, 2) }).unwrap();
+        let parsed_value = to_value(&Test {
+            a: TestEnum::A(1, 2),
+        })
+        .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::from("a"),
-                Value::Record(vec![Attr::of("A")], vec![
-                    Item::ValueItem(Value::Int32Value(1)),
-                    Item::ValueItem(Value::Int32Value(2)),
-                ]),
+                Value::Record(
+                    vec![Attr::of("A")],
+                    vec![
+                        Item::ValueItem(Value::Int32Value(1)),
+                        Item::ValueItem(Value::Int32Value(2)),
+                    ],
+                ),
             )],
         );
 
@@ -259,10 +265,7 @@ mod enumeration {
     fn with_struct() {
         #[derive(Serialize)]
         enum TestEnum {
-            A {
-                a: i32,
-                b: i64,
-            },
+            A { a: i32, b: i64 },
         }
 
         #[derive(Serialize)]
@@ -270,16 +273,22 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let parsed_value = to_value(&Test { a: TestEnum::A { a: 1, b: 2 } }).unwrap();
+        let parsed_value = to_value(&Test {
+            a: TestEnum::A { a: 1, b: 2 },
+        })
+        .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::from("a"),
-                Value::Record(vec![Attr::of("A")], vec![
-                    Item::Slot(Value::from("a"),Value::Int32Value(1)),
-                    Item::Slot(Value::from("b"),Value::Int64Value(2)),
-                ]),
+                Value::Record(
+                    vec![Attr::of("A")],
+                    vec![
+                        Item::Slot(Value::from("a"), Value::Int32Value(1)),
+                        Item::Slot(Value::from("b"), Value::Int64Value(2)),
+                    ],
+                ),
             )],
         );
 
@@ -472,8 +481,8 @@ mod struct_valid_types {
 
 #[cfg(test)]
 mod illegal_types {
-    use crate::structure::form::from::{SerializerError, to_value};
     use crate::structure::form::from::tests::assert_err;
+    use crate::structure::form::from::{to_value, SerializerError};
 
     use super::*;
 
@@ -563,8 +572,8 @@ mod illegal_types {
 #[cfg(test)]
 mod compound_types {
     use crate::model::Attr;
-    use crate::structure::form::from::{SerializerError, to_value};
     use crate::structure::form::from::tests::assert_err;
+    use crate::structure::form::from::{to_value, SerializerError};
 
     use super::*;
 

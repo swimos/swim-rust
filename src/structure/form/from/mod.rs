@@ -40,7 +40,7 @@ pub fn to_value<T>(value: &T) -> Result<Value>
 where
     T: Serialize,
 {
-    let mut serializer = Serializer::new();
+    let mut serializer = Serializer::default();
     value.serialize(&mut serializer)?;
 
     Ok(serializer.output())
