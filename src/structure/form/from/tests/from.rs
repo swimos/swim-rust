@@ -20,7 +20,7 @@ use hamcrest2::prelude::*;
 
 use crate::model::Value::Record;
 use crate::model::{Item, Value};
-use crate::structure::form::from::FormParseErr;
+use crate::structure::form::FormParseErr;
 
 fn assert_success<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) {
     match r {

@@ -12,4 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use core::fmt;
+use serde::de::StdError;
+use serde::export::Formatter;
+use std::fmt::{Debug, Display};
+
+use crate::model::{Item, Value};
+
 mod from;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SerializerError {
+    Message(String),
+    UnsupportedType(String),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum FormParseErr {
+    None,
+    IncorrectType(Value),
+    Malformatted,
+    InvalidString(String),
+    IllegalItem(Item),
+    NotABoolean,
+}
+
+impl Display for FormParseErr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.to_string())
+    }
+}
+
+impl StdError for FormParseErr {}
+
+impl serde::ser::Error for FormParseErr {
+    fn custom<T>(_msg: T) -> Self
+    where
+        T: Display,
+    {
+        FormParseErr::InvalidString(String::from("ser::Error"))
+    }
+}

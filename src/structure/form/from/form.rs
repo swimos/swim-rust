@@ -19,7 +19,8 @@ use std::fmt::Display;
 use serde::{de, ser, Serialize};
 
 use crate::model::{Attr, Item, Value};
-use crate::structure::form::from::{Result, Serializer, SerializerError, SerializerState, State};
+use crate::structure::form::from::{Result, SerializerState, State, ValueSerializer};
+use crate::structure::form::SerializerError;
 
 impl ser::Error for SerializerError {
     fn custom<T: Display>(msg: T) -> Self {
@@ -48,199 +49,7 @@ impl std::error::Error for SerializerError {
     }
 }
 
-//noinspection RsTraitImplementation
-impl<'a> ser::Serializer for &'a mut Serializer {
-    type Ok = ();
-    type Error = SerializerError;
-
-    type SerializeSeq = Self;
-    type SerializeTuple = Self;
-    type SerializeTupleStruct = Self;
-    type SerializeTupleVariant = Self;
-    type SerializeMap = Self;
-    type SerializeStruct = Self;
-    type SerializeStructVariant = Self;
-
-    fn serialize_bool(self, v: bool) -> Result<()> {
-        self.push_value(Value::BooleanValue(v));
-        Ok(())
-    }
-
-    fn serialize_i8(self, v: i8) -> Result<()> {
-        self.serialize_i32(i32::from(v))
-    }
-
-    fn serialize_i16(self, v: i16) -> Result<()> {
-        self.serialize_i32(i32::from(v))
-    }
-
-    fn serialize_i32(self, v: i32) -> Result<()> {
-        self.push_value(Value::Int32Value(v));
-        Ok(())
-    }
-
-    fn serialize_i64(self, v: i64) -> Result<()> {
-        self.push_value(Value::Int64Value(v));
-        Ok(())
-    }
-
-    fn serialize_u8(self, _v: u8) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u8")))
-    }
-
-    fn serialize_u16(self, _v: u16) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u16")))
-    }
-
-    fn serialize_u32(self, _v: u32) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u32")))
-    }
-
-    fn serialize_u64(self, _v: u64) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u64")))
-    }
-
-    fn serialize_f32(self, v: f32) -> Result<()> {
-        self.serialize_f64(f64::from(v))
-    }
-
-    fn serialize_f64(self, v: f64) -> Result<()> {
-        self.push_value(Value::Float64Value(v));
-        Ok(())
-    }
-
-    fn serialize_char(self, v: char) -> Result<()> {
-        self.push_value(Value::Text(v.to_string()));
-        Ok(())
-    }
-
-    fn serialize_str(self, v: &str) -> Result<()> {
-        self.push_value(Value::Text(String::from(v)));
-        Ok(())
-    }
-
-    fn serialize_bytes(self, _v: &[u8]) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u8")))
-    }
-
-    fn serialize_none(self) -> Result<()> {
-        self.serialize_unit()
-    }
-
-    fn serialize_some<T>(self, value: &T) -> Result<()>
-    where
-        T: ?Sized + Serialize,
-    {
-        value.serialize(self)
-    }
-
-    fn serialize_unit(self) -> Result<()> {
-        self.push_value(Value::Extant);
-        Ok(())
-    }
-
-    fn serialize_unit_struct(self, name: &'static str) -> Result<()> {
-        self.push_attr(Attr::from(name));
-        self.serialize_unit()
-    }
-
-    fn serialize_unit_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        variant: &'static str,
-    ) -> Result<()> {
-        self.enter_nested(SerializerState::ReadingNested);
-        self.current_state.serializer_state = SerializerState::ReadingEnumName;
-
-        let result = self.serialize_str(variant);
-        self.current_state.serializer_state = SerializerState::ReadingNested;
-        self.exit_nested();
-
-        result
-    }
-
-    fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
-    where
-        T: ?Sized + Serialize,
-    {
-        self.push_attr(Attr::from(name));
-        value.serialize(self)
-    }
-
-    fn serialize_newtype_variant<T>(
-        self,
-        name: &'static str,
-        _variant_index: u32,
-        variant: &'static str,
-        value: &T,
-    ) -> Result<()>
-    where
-        T: ?Sized + Serialize,
-    {
-        self.push_attr(Attr::from(name));
-        self.current_state.attr_name = Some(variant.to_owned());
-        value.serialize(&mut *self)?;
-        Ok(())
-    }
-
-    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-        self.enter_nested(SerializerState::ReadingNested);
-        Ok(self)
-    }
-
-    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
-        self.serialize_seq(Some(len))
-    }
-
-    fn serialize_tuple_struct(
-        self,
-        name: &'static str,
-        len: usize,
-    ) -> Result<Self::SerializeTupleStruct> {
-        self.push_attr(Attr::from(name));
-        self.serialize_seq(Some(len))
-    }
-
-    fn serialize_tuple_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        variant: &'static str,
-        _len: usize,
-    ) -> Result<Self::SerializeTupleVariant> {
-        self.enter_nested(SerializerState::ReadingEnumName);
-        variant.serialize(&mut *self)?;
-        self.current_state.serializer_state = SerializerState::ReadingNested;
-        Ok(self)
-    }
-
-    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-        self.enter_nested(SerializerState::ReadingMap(false));
-        Ok(self)
-    }
-
-    fn serialize_struct(self, name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
-        self.enter_nested(SerializerState::ReadingNested);
-        self.push_attr(Attr::from(name));
-        Ok(self)
-    }
-
-    fn serialize_struct_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        variant: &'static str,
-        _len: usize,
-    ) -> Result<Self::SerializeStructVariant> {
-        self.enter_nested(SerializerState::ReadingEnumName);
-        variant.serialize(&mut *self)?;
-        self.current_state.serializer_state = SerializerState::ReadingNested;
-        Ok(self)
-    }
-}
-
-impl<'a> ser::SerializeSeq for &'a mut Serializer {
+impl<'a> ser::SerializeSeq for &'a mut ValueSerializer {
     type Ok = ();
     type Error = SerializerError;
 
@@ -257,7 +66,7 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeTuple for &'a mut Serializer {
+impl<'a> ser::SerializeTuple for &'a mut ValueSerializer {
     type Ok = ();
     type Error = SerializerError;
 
@@ -274,7 +83,7 @@ impl<'a> ser::SerializeTuple for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
+impl<'a> ser::SerializeTupleStruct for &'a mut ValueSerializer {
     type Ok = ();
     type Error = SerializerError;
 
@@ -291,7 +100,7 @@ impl<'a> ser::SerializeTupleStruct for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
+impl<'a> ser::SerializeTupleVariant for &'a mut ValueSerializer {
     type Ok = ();
     type Error = SerializerError;
 
@@ -308,7 +117,7 @@ impl<'a> ser::SerializeTupleVariant for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeMap for &'a mut Serializer {
+impl<'a> ser::SerializeMap for &'a mut ValueSerializer {
     type Ok = ();
     type Error = SerializerError;
 
@@ -343,7 +152,7 @@ impl<'a> ser::SerializeMap for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeStruct for &'a mut Serializer {
+impl<'a> ser::SerializeStruct for &'a mut ValueSerializer {
     type Ok = ();
     type Error = SerializerError;
 
@@ -362,7 +171,7 @@ impl<'a> ser::SerializeStruct for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeStructVariant for &'a mut Serializer {
+impl<'a> ser::SerializeStructVariant for &'a mut ValueSerializer {
     type Ok = ();
     type Error = SerializerError;
 
@@ -398,7 +207,7 @@ impl State {
     }
 }
 
-impl Default for Serializer {
+impl Default for ValueSerializer {
     fn default() -> Self {
         Self {
             current_state: State::default(),
@@ -407,7 +216,7 @@ impl Default for Serializer {
     }
 }
 
-impl Serializer {
+impl ValueSerializer {
     pub fn output(&mut self) -> Value {
         self.current_state.output.to_owned()
     }

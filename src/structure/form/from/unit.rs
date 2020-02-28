@@ -15,7 +15,7 @@
 use std::convert::TryFrom;
 
 use crate::model::{Item, Value};
-use crate::structure::form::from::FormParseErr;
+use crate::structure::form::FormParseErr;
 
 impl TryFrom<Value> for f64 {
     type Error = FormParseErr;
