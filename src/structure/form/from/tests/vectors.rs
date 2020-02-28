@@ -14,7 +14,7 @@
 
 use serde::Serialize;
 
-use crate::model::{Item, Value};
+use crate::model::{Attr, Item, Value};
 use crate::structure::form::from::to_value;
 
 #[test]
@@ -30,7 +30,7 @@ fn vector_of_tuples() {
 
     let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
-        Vec::new(),
+        vec![Attr::of("Parent")],
         vec![Item::Slot(
             Value::Text(String::from("seq")),
             Value::Record(
@@ -83,28 +83,28 @@ fn vector_of_structs() {
 
     let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
-        Vec::new(),
+        vec![Attr::of("Parent")],
         vec![Item::Slot(
             Value::Text(String::from("seq")),
             Value::Record(
                 Vec::new(),
                 vec![
                     Item::ValueItem(Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("Child")],
                         vec![Item::Slot(
                             Value::Text(String::from("id")),
                             Value::Int32Value(1),
                         )],
                     )),
                     Item::ValueItem(Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("Child")],
                         vec![Item::Slot(
                             Value::Text(String::from("id")),
                             Value::Int32Value(2),
                         )],
                     )),
                     Item::ValueItem(Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("Child")],
                         vec![Item::Slot(
                             Value::Text(String::from("id")),
                             Value::Int32Value(3),
@@ -131,7 +131,7 @@ fn simple_vector() {
 
     let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
-        Vec::new(),
+        vec![Attr::of("Test")],
         vec![Item::Slot(
             Value::Text(String::from("seq")),
             Value::Record(
@@ -168,7 +168,7 @@ fn nested_vectors() {
 
     let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
-        Vec::new(),
+        vec![Attr::of("Test")],
         vec![Item::Slot(
             Value::Text(String::from("seq")),
             Value::Record(

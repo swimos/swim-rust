@@ -14,13 +14,15 @@
 
 use serde::Serialize;
 
-use crate::model::Item::ValueItem;
 use crate::model::{Item, Value};
+use crate::model::Item::ValueItem;
 
 #[cfg(test)]
 mod tuples {
-    use super::*;
+    use crate::model::Attr;
     use crate::structure::form::from::to_value;
+
+    use super::*;
 
     #[test]
     fn struct_with_tuple() {
@@ -33,18 +35,19 @@ mod tuples {
         let test = Test { a: 1, b: (2, 3) };
 
         let parsed_value = to_value(&test).unwrap();
+        println!("{:?}", parsed_value);
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+                Item::of(("a", 1)),
                 Item::Slot(
-                    Value::Text(String::from("b")),
+                    Value::from("b"),
                     Value::Record(
                         Vec::new(),
                         vec![
-                            Item::ValueItem(Value::Int64Value(2)),
-                            Item::ValueItem(Value::Int64Value(3)),
+                            Item::of(Value::Int64Value(2)),
+                            Item::of(Value::Int64Value(3)),
                         ],
                     ),
                 ),
@@ -117,20 +120,9 @@ mod tuples {
 
 #[cfg(test)]
 mod valid_types {
-    use super::*;
     use crate::structure::form::from::to_value;
 
-    #[test]
-    fn enumeration() {
-        #[derive(Serialize)]
-        enum TestEnum {
-            A,
-        }
-
-        let parsed_value = to_value(&TestEnum::A).unwrap();
-        let expected = Value::Text(String::from("A"));
-        assert_eq!(parsed_value, expected);
-    }
+    use super::*;
 
     #[test]
     fn test_bool() {
@@ -204,12 +196,14 @@ mod valid_types {
 }
 
 #[cfg(test)]
-mod struct_valid_types {
-    use super::*;
+mod enumeration {
+    use crate::model::Attr;
     use crate::structure::form::from::to_value;
 
+    use super::*;
+
     #[test]
-    fn enumeration() {
+    fn simple() {
         #[derive(Serialize)]
         enum TestEnum {
             A,
@@ -221,15 +215,84 @@ mod struct_valid_types {
         }
 
         let parsed_value = to_value(&Test { a: TestEnum::A }).unwrap();
+
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
-                Value::Text(String::from("a")),
-                Value::Text(String::from("A")),
+                Value::from("a"),
+                Value::Record(vec![Attr::of("A")], Vec::new()),
             )],
         );
+
         assert_eq!(parsed_value, expected);
     }
+
+    #[test]
+    fn with_tuple() {
+        #[derive(Serialize)]
+        enum TestEnum {
+            A(i32, i32),
+        }
+
+        #[derive(Serialize)]
+        struct Test {
+            a: TestEnum,
+        }
+
+        let parsed_value = to_value(&Test { a: TestEnum::A(1, 2) }).unwrap();
+
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::Slot(
+                Value::from("a"),
+                Value::Record(vec![Attr::of("A")], vec![
+                    Item::ValueItem(Value::Int32Value(1)),
+                    Item::ValueItem(Value::Int32Value(2)),
+                ]),
+            )],
+        );
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn with_struct() {
+        #[derive(Serialize)]
+        enum TestEnum {
+            A {
+                a: i32,
+                b: i64,
+            },
+        }
+
+        #[derive(Serialize)]
+        struct Test {
+            a: TestEnum,
+        }
+
+        let parsed_value = to_value(&Test { a: TestEnum::A { a: 1, b: 2 } }).unwrap();
+
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::Slot(
+                Value::from("a"),
+                Value::Record(vec![Attr::of("A")], vec![
+                    Item::Slot(Value::from("a"),Value::Int32Value(1)),
+                    Item::Slot(Value::from("b"),Value::Int64Value(2)),
+                ]),
+            )],
+        );
+
+        assert_eq!(parsed_value, expected);
+    }
+}
+
+#[cfg(test)]
+mod struct_valid_types {
+    use crate::model::Attr;
+    use crate::structure::form::from::to_value;
+
+    use super::*;
 
     #[test]
     fn test_bool() {
@@ -242,7 +305,7 @@ mod struct_valid_types {
 
         let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::BooleanValue(true),
@@ -264,7 +327,7 @@ mod struct_valid_types {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::Int32Value(1),
@@ -286,7 +349,7 @@ mod struct_valid_types {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::Int32Value(1),
@@ -308,7 +371,7 @@ mod struct_valid_types {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::Int32Value(1),
@@ -330,7 +393,7 @@ mod struct_valid_types {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::Int64Value(1),
@@ -352,7 +415,7 @@ mod struct_valid_types {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::Float64Value(1.0),
@@ -374,7 +437,7 @@ mod struct_valid_types {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::Float64Value(1.0),
@@ -396,7 +459,7 @@ mod struct_valid_types {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("a")),
                 Value::Text(String::from("s")),
@@ -409,10 +472,10 @@ mod struct_valid_types {
 
 #[cfg(test)]
 mod illegal_types {
+    use crate::structure::form::from::{SerializerError, to_value};
     use crate::structure::form::from::tests::assert_err;
 
     use super::*;
-    use crate::structure::form::from::{to_value, SerializerError};
 
     #[test]
     fn test_bytes() {
@@ -499,10 +562,11 @@ mod illegal_types {
 
 #[cfg(test)]
 mod compound_types {
+    use crate::model::Attr;
+    use crate::structure::form::from::{SerializerError, to_value};
     use crate::structure::form::from::tests::assert_err;
 
     use super::*;
-    use crate::structure::form::from::{to_value, SerializerError};
 
     #[test]
     fn simple_struct() {
@@ -523,7 +587,7 @@ mod compound_types {
 
         let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![
                 Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
                 Item::Slot(Value::Text(String::from("b")), Value::Float64Value(2.0)),
@@ -577,7 +641,7 @@ mod compound_types {
 
         let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("seq")),
                 Value::Record(
@@ -608,7 +672,7 @@ mod compound_types {
 
         let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![
                 Item::Slot(Value::Text(String::from("int")), Value::Int32Value(1)),
                 Item::Slot(

@@ -21,6 +21,7 @@ mod valid_types {
     use std::collections::BTreeMap;
 
     use super::*;
+    use crate::model::Attr;
     use crate::structure::form::from::to_value;
 
     #[test]
@@ -145,7 +146,7 @@ mod valid_types {
                 Item::Slot(
                     Value::Text(String::from("a")),
                     Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("Test")],
                         vec![Item::Slot(
                             Value::Text(String::from("a")),
                             Value::Float64Value(1.0),
@@ -155,7 +156,7 @@ mod valid_types {
                 Item::Slot(
                     Value::Text(String::from("b")),
                     Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("Test")],
                         vec![Item::Slot(
                             Value::Text(String::from("a")),
                             Value::Float64Value(2.0),

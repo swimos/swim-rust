@@ -16,11 +16,11 @@ use serde::Serialize;
 
 #[cfg(test)]
 mod valid {
-    use crate::model::{Item, Value};
+    use crate::model::{Attr, Item, Value};
     use crate::structure::form::from::tests::assert_err;
+    use crate::structure::form::from::{to_value, SerializerError};
 
     use super::*;
-    use crate::structure::form::from::{to_value, SerializerError};
 
     #[test]
     fn generic() {
@@ -36,7 +36,7 @@ mod valid {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Test")],
             vec![Item::Slot(
                 Value::Text(String::from("v")),
                 Value::Text(String::from("hello")),
@@ -101,13 +101,13 @@ mod valid {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("Parent")],
             vec![
                 Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
                 Item::Slot(
                     Value::Text(String::from("b")),
                     Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("Child")],
                         vec![
                             Item::Slot(Value::Text(String::from("a")), Value::Int64Value(1)),
                             Item::Slot(
@@ -120,7 +120,7 @@ mod valid {
                 Item::Slot(
                     Value::Text(String::from("c")),
                     Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("Child")],
                         vec![
                             Item::Slot(Value::Text(String::from("a")), Value::Int64Value(2)),
                             Item::Slot(
@@ -164,19 +164,19 @@ mod valid {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("TestStruct")],
             vec![
                 Item::Slot(Value::Text(String::from("a")), Value::Int32Value(0)),
                 Item::Slot(
                     Value::Text(String::from("b")),
                     Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("TestStruct")],
                         vec![
                             Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
                             Item::Slot(
                                 Value::Text(String::from("b")),
                                 Value::Record(
-                                    Vec::new(),
+                                    vec![Attr::of("TestStruct")],
                                     vec![
                                         Item::Slot(
                                             Value::Text(String::from("a")),
@@ -185,7 +185,7 @@ mod valid {
                                         Item::Slot(
                                             Value::Text(String::from("b")),
                                             Value::Record(
-                                                Vec::new(),
+                                                vec![Attr::of("TestStruct")],
                                                 vec![
                                                     Item::Slot(
                                                         Value::Text(String::from("a")),
@@ -194,7 +194,7 @@ mod valid {
                                                     Item::Slot(
                                                         Value::Text(String::from("b")),
                                                         Value::Record(
-                                                            Vec::new(),
+                                                            vec![Attr::of("TestStruct")],
                                                             vec![
                                                                 Item::Slot(
                                                                     Value::Text(String::from("a")),
@@ -256,17 +256,17 @@ mod valid {
         let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
-            Vec::new(),
+            vec![Attr::of("TestStruct")],
             vec![
                 Item::Slot(
                     Value::Text(String::from("a")),
                     Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("TestStruct")],
                         vec![
                             Item::Slot(
                                 Value::Text(String::from("a")),
                                 Value::Record(
-                                    Vec::new(),
+                                    vec![Attr::of("TestStruct")],
                                     vec![
                                         Item::Slot(Value::Text(String::from("a")), Value::Extant),
                                         Item::Slot(Value::Text(String::from("b")), Value::Extant),
@@ -276,7 +276,7 @@ mod valid {
                             Item::Slot(
                                 Value::Text(String::from("b")),
                                 Value::Record(
-                                    Vec::new(),
+                                    vec![Attr::of("TestStruct")],
                                     vec![
                                         Item::Slot(Value::Text(String::from("a")), Value::Extant),
                                         Item::Slot(Value::Text(String::from("b")), Value::Extant),
@@ -289,12 +289,12 @@ mod valid {
                 Item::Slot(
                     Value::Text(String::from("b")),
                     Value::Record(
-                        Vec::new(),
+                        vec![Attr::of("TestStruct")],
                         vec![
                             Item::Slot(
                                 Value::Text(String::from("a")),
                                 Value::Record(
-                                    Vec::new(),
+                                    vec![Attr::of("TestStruct")],
                                     vec![
                                         Item::Slot(Value::Text(String::from("a")), Value::Extant),
                                         Item::Slot(Value::Text(String::from("b")), Value::Extant),
@@ -304,7 +304,7 @@ mod valid {
                             Item::Slot(
                                 Value::Text(String::from("b")),
                                 Value::Record(
-                                    Vec::new(),
+                                    vec![Attr::of("TestStruct")],
                                     vec![
                                         Item::Slot(Value::Text(String::from("a")), Value::Extant),
                                         Item::Slot(Value::Text(String::from("b")), Value::Extant),

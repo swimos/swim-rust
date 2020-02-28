@@ -18,7 +18,7 @@ use std::fmt::Display;
 
 use serde::{de, ser, Serialize};
 
-use crate::model::{Item, Value};
+use crate::model::{Attr, Item, Value};
 use crate::structure::form::from::{Result, Serializer, SerializerError, SerializerState, State};
 
 impl ser::Error for SerializerError {
@@ -139,7 +139,8 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         Ok(())
     }
 
-    fn serialize_unit_struct(self, _name: &'static str) -> Result<()> {
+    fn serialize_unit_struct(self, name: &'static str) -> Result<()> {
+        self.push_attr(Attr::from(name));
         self.serialize_unit()
     }
 
@@ -149,19 +150,27 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         _variant_index: u32,
         variant: &'static str,
     ) -> Result<()> {
-        self.serialize_str(variant)
+        self.enter_nested(SerializerState::ReadingNested);
+        self.current_state.serializer_state = SerializerState::ReadingEnumName;
+
+        let result = self.serialize_str(variant);
+        self.current_state.serializer_state = SerializerState::ReadingNested;
+        self.exit_nested();
+
+        result
     }
 
-    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
+    fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + Serialize,
     {
+        self.push_attr(Attr::from(name));
         value.serialize(self)
     }
 
     fn serialize_newtype_variant<T>(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
         variant: &'static str,
         value: &T,
@@ -169,6 +178,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     where
         T: ?Sized + Serialize,
     {
+        self.push_attr(Attr::from(name));
         self.current_state.attr_name = Some(variant.to_owned());
         value.serialize(&mut *self)?;
         Ok(())
@@ -185,9 +195,10 @@ impl<'a> ser::Serializer for &'a mut Serializer {
 
     fn serialize_tuple_struct(
         self,
-        _name: &'static str,
+        name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct> {
+        self.push_attr(Attr::from(name));
         self.serialize_seq(Some(len))
     }
 
@@ -198,7 +209,9 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
+        self.enter_nested(SerializerState::ReadingEnumName);
         variant.serialize(&mut *self)?;
+        self.current_state.serializer_state = SerializerState::ReadingNested;
         Ok(self)
     }
 
@@ -207,8 +220,9 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         Ok(self)
     }
 
-    fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
+    fn serialize_struct(self, name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
         self.enter_nested(SerializerState::ReadingNested);
+        self.push_attr(Attr::from(name));
         Ok(self)
     }
 
@@ -219,7 +233,9 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant> {
+        self.enter_nested(SerializerState::ReadingEnumName);
         variant.serialize(&mut *self)?;
+        self.current_state.serializer_state = SerializerState::ReadingNested;
         Ok(self)
     }
 }
@@ -406,35 +422,47 @@ impl Serializer {
         }
     }
 
+    pub fn push_attr(&mut self, attr: Attr) {
+        if let Value::Record(attrs, _) = &mut self.current_state.output {
+            attrs.push(attr);
+        }
+    }
+
     pub fn push_value(&mut self, value: Value) {
         match &mut self.current_state.output {
-            Value::Record(_, ref mut items) => match self.current_state.serializer_state {
-                SerializerState::ReadingMap(reading_key) => match reading_key {
-                    true => {
-                        let item = Item::Slot(value, Value::Extant);
-                        items.push(item);
-                    }
-                    false => match items.last_mut() {
-                        Some(last_item) => match last_item {
-                            Item::Slot(_, ref mut val) => {
-                                *val = value;
-                            }
-                            i @ _ => {
-                                panic!("Illegal state. Incorrect item type: {:?}", i);
-                            }
+            Value::Record(ref mut attrs, ref mut items) => {
+                match self.current_state.serializer_state {
+                    SerializerState::ReadingMap(reading_key) => match reading_key {
+                        true => {
+                            let item = Item::Slot(value, Value::Extant);
+                            items.push(item);
+                        }
+                        false => match items.last_mut() {
+                            Some(last_item) => match last_item {
+                                Item::Slot(_, ref mut val) => {
+                                    *val = value;
+                                }
+                                i @ _ => {
+                                    panic!("Illegal state. Incorrect item type: {:?}", i);
+                                }
+                            },
+                            None => {}
                         },
-                        None => {}
                     },
-                },
-                _ => {
-                    let item = match &self.current_state.attr_name {
-                        Some(name) => Item::Slot(Value::Text(name.to_owned()), value),
-                        None => Item::ValueItem(value),
-                    };
+                    SerializerState::ReadingEnumName => match value {
+                        Value::Text(s) => attrs.push(Attr::from(s)),
+                        v => panic!("Illegal type for attribute: {:?}", v),
+                    },
+                    _ => {
+                        let item = match &self.current_state.attr_name {
+                            Some(name) => Item::Slot(Value::Text(name.to_owned()), value),
+                            None => Item::ValueItem(value),
+                        };
 
-                    items.push(item)
+                        items.push(item)
+                    }
                 }
-            },
+            }
             Value::Extant => {
                 self.current_state.output = value;
             }

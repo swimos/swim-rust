@@ -62,6 +62,7 @@ pub struct State {
 #[derive(Clone, Debug)]
 pub enum SerializerState {
     ReadingNested,
+    ReadingEnumName,
     // Reading key
     ReadingMap(bool),
     None,

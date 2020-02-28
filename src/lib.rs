@@ -29,4 +29,5 @@ pub mod iteratee;
 pub mod model;
 pub mod request;
 pub mod sink;
+pub mod structure;
 pub mod warp;
