@@ -130,13 +130,10 @@ impl Value {
                     if y.is_nan() {
                         Ordering::Greater
                     } else {
-                        let x = *n as f64;
-                        if x == *y {
-                            Ordering::Equal
-                        } else if x < *y {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
+                        match PartialOrd::partial_cmp(&(*n as f64), y) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
                         }
                     }
                 }
@@ -150,13 +147,10 @@ impl Value {
                     if y.is_nan() {
                         Ordering::Greater
                     } else {
-                        let x = *n as f64;
-                        if x == *y {
-                            Ordering::Equal
-                        } else if x < *y {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
+                        match PartialOrd::partial_cmp(&(*n as f64), y) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
                         }
                     }
                 }
@@ -168,13 +162,10 @@ impl Value {
                     if x.is_nan() {
                         Ordering::Less
                     } else {
-                        let y = *m as f64;
-                        if *x == y {
-                            Ordering::Equal
-                        } else if *x < y {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
+                        match PartialOrd::partial_cmp(x, &(*m as f64)) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
                         }
                     }
                 }
@@ -182,13 +173,10 @@ impl Value {
                     if x.is_nan() {
                         Ordering::Less
                     } else {
-                        let y = *m as f64;
-                        if *x == y {
-                            Ordering::Equal
-                        } else if *x < y {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
+                        match PartialOrd::partial_cmp(x, &(*m as f64)) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
                         }
                     }
                 }

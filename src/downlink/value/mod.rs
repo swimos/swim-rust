@@ -24,6 +24,9 @@ use crate::model::Value;
 use crate::request::Request;
 use std::fmt;
 
+#[cfg(test)]
+mod tests;
+
 pub enum Action {
     Set(Value, Option<Request<()>>),
     Get(Request<Arc<Value>>),
@@ -84,21 +87,16 @@ impl Action {
 
 /// Create a value downlink with back-pressure (it will only process set messages as rapidly
 /// as it can write commands to the output).
-pub fn create_back_pressure_downlink<Err, Updates, Commands>(
+pub fn create_back_pressure_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: mpsc::Sender<Command<Arc<Value>>>,
     buffer_size: usize,
-) -> Downlink<Err, mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
+) -> Downlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
 where
-    Err: From<item::MpscErr<Event<Arc<Value>>>>
-        + From<item::MpscErr<Command<Arc<Value>>>>
-        + Send
-        + Debug
-        + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
 {
-    let cmd_sink = item::for_mpsc_sender::<Command<Arc<Value>>, Err>(cmd_sender);
+    let cmd_sink = item::for_mpsc_sender::<Command<Arc<Value>>, DownlinkError>(cmd_sender);
     super::create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
 }
 
@@ -110,21 +108,16 @@ fn transform_err<T, Err: From<item::WatchErr<T>>>(
 
 /// Create a value downlink without back-pressure (it will process set operations as rapidly as it
 /// can and some outgoing message will be dropped).
-pub fn create_dropping_downlink<Err, Updates, Commands>(
+pub fn create_dropping_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: watch::Sender<Command<Arc<Value>>>,
     buffer_size: usize,
-) -> Downlink<Err, mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
+) -> Downlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
 where
-    Err: From<item::MpscErr<Event<Arc<Value>>>>
-        + From<item::WatchErr<Command<Arc<Value>>>>
-        + Send
-        + Debug
-        + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
 {
-    let err_trans = || transform_err::<Command<Arc<Value>>, Err>;
+    let err_trans = || transform_err::<Command<Arc<Value>>, DownlinkError>;
     let cmd_sink = item::map_err(cmd_sender, err_trans);
     super::create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
 }
@@ -139,18 +132,31 @@ impl StateMachine<Value, Action> for Arc<Value> {
     ) -> Response<Self::Ev, Self::Cmd> {
         let Model { data_state, state } = model;
         match op {
-            Operation::Start => Response::for_command(Command::Sync),
+            Operation::Start => {
+                if *state == DownlinkState::Synced {
+                    Response::none()
+                } else {
+                    Response::for_command(Command::Sync)
+                }
+            }
             Operation::Message(message) => match message {
                 Message::Linked => {
                     *state = DownlinkState::Linked;
                     Response::none()
                 }
                 Message::Synced => {
+                    let old_state = *state;
                     *state = DownlinkState::Synced;
-                    Response::for_event(Event(data_state.clone(), false))
+                    if old_state == DownlinkState::Synced {
+                        Response::none()
+                    } else {
+                        Response::for_event(Event(data_state.clone(), false))
+                    }
                 }
                 Message::Action(upd_value) => {
-                    *data_state = Arc::new(upd_value);
+                    if *state != DownlinkState::Unlinked {
+                        *data_state = Arc::new(upd_value);
+                    }
                     if *state == DownlinkState::Synced {
                         Response::for_event(Event(data_state.clone(), false))
                     } else {
