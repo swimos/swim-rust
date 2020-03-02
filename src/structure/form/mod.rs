@@ -15,57 +15,60 @@
 use core::fmt;
 use std::fmt::{Debug, Display};
 
-use serde::de::StdError;
 use serde::export::Formatter;
 use serde::Serialize;
 
 use crate::model::{Item, Value};
-use crate::structure::form::from::ValueSerializer;
+use crate::structure::form::to::ValueSerializer;
 
-mod from;
+mod to;
 
-pub type Result<T> = ::std::result::Result<T, SerializerError>;
+pub type Result<T> = ::std::result::Result<T, FormParseErr>;
 
 #[allow(dead_code)]
-pub fn to_value<T>(value: &T) -> Result<Value>
-where
-    T: Serialize,
-{
-    let mut serializer = ValueSerializer::default();
-    value.serialize(&mut serializer)?;
+pub struct FormOptions {}
 
-    Ok(serializer.output())
+#[allow(dead_code)]
+pub struct Form {
+    options: FormOptions,
+}
+
+impl Default for Form {
+    fn default() -> Self {
+        Form {
+            options: FormOptions {},
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl Form {
+    pub fn with_options(options: FormOptions) -> Self {
+        Form { options }
+    }
+
+    pub fn to_value<T>(&self, value: &T) -> Result<Value>
+    where
+        T: Serialize,
+    {
+        let mut serializer = ValueSerializer::default();
+        match value.serialize(&mut serializer) {
+            Ok(_) => Ok(serializer.output()),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum SerializerError {
+pub enum FormParseErr {
     Message(String),
     UnsupportedType(String),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum FormParseErr {
-    None,
     IncorrectType(Value),
-    Malformatted,
-    InvalidString(String),
     IllegalItem(Item),
-    NotABoolean,
 }
 
 impl Display for FormParseErr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.to_string())
-    }
-}
-
-impl StdError for FormParseErr {}
-
-impl serde::ser::Error for FormParseErr {
-    fn custom<T>(_msg: T) -> Self
-    where
-        T: Display,
-    {
-        FormParseErr::InvalidString(String::from("ser::Error"))
     }
 }

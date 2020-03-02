@@ -46,56 +46,47 @@ fn assert_err<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: FormPa
 
 #[test]
 fn from_bool() {
-    let r = bool::try_from(Value::BooleanValue(true));
+    let r = bool::try_from(Value::from(true));
     assert_success(r, true);
 
-    let r = bool::try_from(Value::BooleanValue(false));
+    let r = bool::try_from(Value::from(false));
     assert_success(r, false);
 
-    let r = bool::try_from(Value::Int32Value(1));
-    assert_err(r, FormParseErr::IncorrectType(Value::Int32Value(1)));
+    let r = bool::try_from(Value::from(1));
+    assert_err(r, FormParseErr::IncorrectType(Value::from(1)));
 
     let r = bool::try_from(Value::Int64Value(0));
     assert_err(r, FormParseErr::IncorrectType(Value::Int64Value(0)));
 
-    let r = bool::try_from(Value::Float64Value(1.0));
-    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(1.0)));
+    let r = bool::try_from(Value::from(1.0));
+    assert_err(r, FormParseErr::IncorrectType(Value::from(1.0)));
 
-    let r = bool::try_from(Value::Float64Value(0.0));
-    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(0.0)));
+    let r = bool::try_from(Value::from(0.0));
+    assert_err(r, FormParseErr::IncorrectType(Value::from(0.0)));
 
-    let r = bool::try_from(Value::Text(String::from("true")));
-    assert_err(
-        r,
-        FormParseErr::IncorrectType(Value::Text(String::from("true"))),
-    );
+    let r = bool::try_from(Value::from("true"));
+    assert_err(r, FormParseErr::IncorrectType(Value::from("true")));
 
-    let r = bool::try_from(Value::Text(String::from("false")));
-    assert_err(
-        r,
-        FormParseErr::IncorrectType(Value::Text(String::from("false"))),
-    );
+    let r = bool::try_from(Value::from("false"));
+    assert_err(r, FormParseErr::IncorrectType(Value::from("false")));
 
-    let r = bool::try_from(Value::Float64Value(2.0));
-    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(2.0)));
+    let r = bool::try_from(Value::from(2.0));
+    assert_err(r, FormParseErr::IncorrectType(Value::from(2.0)));
 }
 
 #[test]
 fn from_f64() {
-    let r = f64::try_from(Value::Float64Value(1.0));
+    let r = f64::try_from(Value::from(1.0));
     assert_success(r, 1.0);
 
-    let r = f64::try_from(Value::Int32Value(1));
+    let r = f64::try_from(Value::from(1));
     assert_success(r, 1.0);
 
     let r = f64::try_from(Value::Int64Value(1));
     assert_success(r, 1.0);
 
-    let r = f64::try_from(Value::Text(String::from("1.0")));
-    assert_err(
-        r,
-        FormParseErr::IncorrectType(Value::Text(String::from("1.0"))),
-    );
+    let r = f64::try_from(Value::from("1.0"));
+    assert_err(r, FormParseErr::IncorrectType(Value::from("1.0")));
 }
 
 #[test]
@@ -103,36 +94,30 @@ fn from_i64() {
     let r = i64::try_from(Value::Int64Value(1));
     assert_success(r, 1);
 
-    let r = i64::try_from(Value::Int32Value(1));
+    let r = i64::try_from(Value::from(1));
     assert_success(r, 1);
 
-    let r = i64::try_from(Value::Text(String::from("1")));
-    assert_err(
-        r,
-        FormParseErr::IncorrectType(Value::Text(String::from("1"))),
-    );
+    let r = i64::try_from(Value::from("1"));
+    assert_err(r, FormParseErr::IncorrectType(Value::from("1")));
 }
 
 #[test]
 fn from_str() {
-    let r = String::try_from(Value::Float64Value(1.0));
-    assert_err(r, FormParseErr::IncorrectType(Value::Float64Value(1.0)));
+    let r = String::try_from(Value::from(1.0));
+    assert_err(r, FormParseErr::IncorrectType(Value::from(1.0)));
 }
 
 #[test]
 fn vector_mismatched_types() {
     let r = Vec::<i64>::try_from(Record(
         Vec::new(),
-        vec![
-            Item::ValueItem(Value::Int64Value(1)),
-            Item::ValueItem(Value::Float64Value(1.0)),
-        ],
+        vec![Item::ValueItem(Value::Int64Value(1)), Item::from(1.0)],
     ));
 
     match r {
         Ok(_) => panic!("Parsed correctly with mismatched types."),
         Err(e) => {
-            assert_that!(e, eq(FormParseErr::IncorrectType(Value::Float64Value(1.0))));
+            assert_that!(e, eq(FormParseErr::IncorrectType(Value::from(1.0))));
         }
     }
 }
@@ -142,11 +127,11 @@ fn vector() {
     let r = Vec::<i64>::try_from(Record(
         Vec::new(),
         vec![
-            Item::ValueItem(Value::Int64Value(1)),
-            Item::ValueItem(Value::Int64Value(2)),
-            Item::ValueItem(Value::Int64Value(3)),
-            Item::ValueItem(Value::Int64Value(4)),
-            Item::ValueItem(Value::Int64Value(5)),
+            Item::from(1),
+            Item::from(2),
+            Item::from(3),
+            Item::from(4),
+            Item::from(5),
         ],
     ));
 

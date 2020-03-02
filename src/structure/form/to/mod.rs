@@ -12,25 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
-use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 
-use serde::{de, ser, Serialize};
+use serde::{de, ser, Serialize, Serializer};
 
 use crate::model::{Attr, Item, Value};
-use crate::structure::form::SerializerError;
+use crate::structure::form::FormParseErr;
 
 #[cfg(test)]
 mod tests;
 mod unit;
 
 use super::Result;
+use serde::ser::{
+    SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
+    SerializeTupleStruct, SerializeTupleVariant,
+};
 
 #[derive(Debug)]
 pub struct ValueSerializer {
-    pub current_state: State,
+    current_state: State,
     stack: Vec<State>,
 }
 
@@ -50,10 +52,11 @@ pub enum SerializerState {
     None,
 }
 
+// CLion/IntelliJ believes there is a missing implementation
 //noinspection RsTraitImplementation
-impl<'a> ser::Serializer for &'a mut ValueSerializer {
+impl<'a> Serializer for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     type SerializeSeq = Self;
     type SerializeTuple = Self;
@@ -64,7 +67,7 @@ impl<'a> ser::Serializer for &'a mut ValueSerializer {
     type SerializeStructVariant = Self;
 
     fn serialize_bool(self, v: bool) -> Result<()> {
-        self.push_value(Value::BooleanValue(v));
+        self.push_value(Value::from(v));
         Ok(())
     }
 
@@ -77,7 +80,7 @@ impl<'a> ser::Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_i32(self, v: i32) -> Result<()> {
-        self.push_value(Value::Int32Value(v));
+        self.push_value(Value::from(v));
         Ok(())
     }
 
@@ -87,19 +90,19 @@ impl<'a> ser::Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_u8(self, _v: u8) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u8")))
+        Err(FormParseErr::UnsupportedType(String::from("u8")))
     }
 
     fn serialize_u16(self, _v: u16) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u16")))
+        Err(FormParseErr::UnsupportedType(String::from("u16")))
     }
 
     fn serialize_u32(self, _v: u32) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u32")))
+        Err(FormParseErr::UnsupportedType(String::from("u32")))
     }
 
     fn serialize_u64(self, _v: u64) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u64")))
+        Err(FormParseErr::UnsupportedType(String::from("u64")))
     }
 
     fn serialize_f32(self, v: f32) -> Result<()> {
@@ -122,7 +125,7 @@ impl<'a> ser::Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_bytes(self, _v: &[u8]) -> Result<()> {
-        Err(SerializerError::UnsupportedType(String::from("u8")))
+        Err(FormParseErr::UnsupportedType(String::from("u8")))
     }
 
     fn serialize_none(self) -> Result<()> {
@@ -138,7 +141,7 @@ impl<'a> ser::Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_unit(self) -> Result<()> {
-        self.push_value(Value::Record(vec![Attr::of("Unit")], Vec::new()));
+        self.push_value(Value::of_attr("Unit"));
         Ok(())
     }
 
@@ -243,36 +246,30 @@ impl<'a> ser::Serializer for &'a mut ValueSerializer {
     }
 }
 
-impl ser::Error for SerializerError {
+impl ser::Error for FormParseErr {
     fn custom<T: Display>(msg: T) -> Self {
-        SerializerError::Message(msg.to_string())
+        FormParseErr::Message(msg.to_string())
     }
 }
 
-impl de::Error for SerializerError {
+impl de::Error for FormParseErr {
     fn custom<T: Display>(msg: T) -> Self {
-        SerializerError::Message(msg.to_string())
+        FormParseErr::Message(msg.to_string())
     }
 }
 
-impl Display for SerializerError {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str(Error::description(self))
-    }
-}
-
-impl std::error::Error for SerializerError {
+impl std::error::Error for FormParseErr {
     fn description(&self) -> &str {
         match *self {
-            SerializerError::Message(ref msg) => msg,
+            FormParseErr::Message(ref msg) => msg,
             _ => "TODO",
         }
     }
 }
 
-impl<'a> ser::SerializeSeq for &'a mut ValueSerializer {
+impl<'a> SerializeSeq for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<()>
     where
@@ -287,9 +284,9 @@ impl<'a> ser::SerializeSeq for &'a mut ValueSerializer {
     }
 }
 
-impl<'a> ser::SerializeTuple for &'a mut ValueSerializer {
+impl<'a> SerializeTuple for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     fn serialize_element<T>(&mut self, value: &T) -> Result<()>
     where
@@ -304,9 +301,9 @@ impl<'a> ser::SerializeTuple for &'a mut ValueSerializer {
     }
 }
 
-impl<'a> ser::SerializeTupleStruct for &'a mut ValueSerializer {
+impl<'a> SerializeTupleStruct for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
     where
@@ -321,9 +318,9 @@ impl<'a> ser::SerializeTupleStruct for &'a mut ValueSerializer {
     }
 }
 
-impl<'a> ser::SerializeTupleVariant for &'a mut ValueSerializer {
+impl<'a> SerializeTupleVariant for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
     where
@@ -338,9 +335,9 @@ impl<'a> ser::SerializeTupleVariant for &'a mut ValueSerializer {
     }
 }
 
-impl<'a> ser::SerializeMap for &'a mut ValueSerializer {
+impl<'a> SerializeMap for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     fn serialize_key<T>(&mut self, key: &T) -> Result<()>
     where
@@ -373,9 +370,9 @@ impl<'a> ser::SerializeMap for &'a mut ValueSerializer {
     }
 }
 
-impl<'a> ser::SerializeStruct for &'a mut ValueSerializer {
+impl<'a> SerializeStruct for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
     where
@@ -392,9 +389,9 @@ impl<'a> ser::SerializeStruct for &'a mut ValueSerializer {
     }
 }
 
-impl<'a> ser::SerializeStructVariant for &'a mut ValueSerializer {
+impl<'a> SerializeStructVariant for &'a mut ValueSerializer {
     type Ok = ();
-    type Error = SerializerError;
+    type Error = FormParseErr;
 
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
     where
