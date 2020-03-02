@@ -1,4 +1,5 @@
-use crate::connections::Connection;
+use crate::connections::{Client, ConnectionPool, Connection};
+use std::{thread, time};
 
 #[test]
 fn test_new_connection() {
@@ -6,7 +7,7 @@ fn test_new_connection() {
     let host = "ws://127.0.0.1:9001";
     let buffer_size = 5;
     // When
-    let (connection, transmitter) = Connection::new(host.clone(), buffer_size.clone()).unwrap();
+    let (connection, _transmitter) = Connection::new(host.clone(), buffer_size.clone()).unwrap();
     // Then
     assert!(connection.url.host().is_some());
     assert_eq!(9001, connection.url.port().unwrap());
@@ -22,4 +23,14 @@ fn test_new_connection_parse_error() {
     let result = Connection::new(host.clone(), buffer_size.clone());
     // Then
     assert!(result.is_err())
+}
+
+// Todo only for debugging. (Make sure to enable stdout)
+#[test]
+fn test_with_remote() {
+    let client = Client::new().unwrap();
+    let (connection_pool, mut handler) = ConnectionPool::new(5);
+    connection_pool.open(&client).unwrap();
+    handler.send_message("ws://127.0.0.1:9001", "@sync(node:\"/unit/foo\", lane:\"info\")").unwrap();
+    thread::sleep(time::Duration::from_secs(2));
 }
