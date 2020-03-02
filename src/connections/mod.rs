@@ -7,8 +7,8 @@ use futures_util::stream::SplitStream;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio_tungstenite::{connect_async, WebSocketStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::{connect_async, WebSocketStream};
 use url;
 
 #[cfg(test)]
@@ -24,7 +24,13 @@ struct ConnectionPool {
 impl ConnectionPool {
     fn new(buffer_size: usize) -> (ConnectionPool, ConnectionPoolHandler) {
         let (tx, rx) = mpsc::channel(buffer_size);
-        return (ConnectionPool { connections: HashMap::new(), rx }, ConnectionPoolHandler { tx });
+        return (
+            ConnectionPool {
+                connections: HashMap::new(),
+                rx,
+            },
+            ConnectionPoolHandler { tx },
+        );
     }
 
     fn open(self, client: &Client) -> Result<(), ConnectionError> {
@@ -42,19 +48,26 @@ impl ConnectionPool {
                     let handler = self.get_connection(&host).await?;
                     handler.send_message(&message).await?;
                 }
-                None => ()
+                None => (),
             }
         }
     }
 
-    async fn get_connection(&mut self, host: &str) -> Result<&mut ConnectionHandler, ConnectionError> {
+    async fn get_connection(
+        &mut self,
+        host: &str,
+    ) -> Result<&mut ConnectionHandler, ConnectionError> {
         if !self.connections.contains_key(host) {
             // Todo buffer size is hardcoded
             let (connection, connection_handler) = Connection::new(host, 5)?;
             connection.open().await?;
-            self.connections.insert(host.to_string(), connection_handler);
+            self.connections
+                .insert(host.to_string(), connection_handler);
         }
-        return Ok(self.connections.get_mut(host).ok_or(ConnectionError::ConnectError)?);
+        return Ok(self
+            .connections
+            .get_mut(host)
+            .ok_or(ConnectionError::ConnectError)?);
     }
 
     async fn receive_message(host: &str, message: Message) {
@@ -65,7 +78,7 @@ impl ConnectionPool {
 }
 
 struct ConnectionPoolHandler {
-    tx: mpsc::Sender<ConnectionPoolMessage>
+    tx: mpsc::Sender<ConnectionPoolMessage>,
 }
 
 impl ConnectionPoolHandler {
@@ -81,7 +94,10 @@ struct Connection {
 }
 
 impl Connection {
-    fn new(host: &str, buffer_size: usize) -> Result<(Connection, ConnectionHandler), ConnectionError> {
+    fn new(
+        host: &str,
+        buffer_size: usize,
+    ) -> Result<(Connection, ConnectionHandler), ConnectionError> {
         let url = url::Url::parse(&host)?;
         let (tx, rx) = mpsc::channel(buffer_size);
 
@@ -101,11 +117,15 @@ impl Connection {
     }
 
     async fn receive_messages(read_stream: SplitStream<WebSocketStream<TcpStream>>, host: String) {
-        read_stream.for_each(|response| async {
-            if let Ok(message) = response {
-                ConnectionPool::receive_message(&host, message).await;
-            }
-        }).await;
+        read_stream
+            .for_each(|response| {
+                async {
+                    if let Ok(message) = response {
+                        ConnectionPool::receive_message(&host, message).await;
+                    }
+                }
+            })
+            .await;
     }
 }
 
@@ -126,7 +146,6 @@ pub enum ConnectionError {
     ParseError,
     ConnectError,
     SendMessageError,
-
 }
 
 #[derive(Debug, Clone)]
@@ -134,25 +153,25 @@ pub enum ClientError {
     RuntimeError,
 }
 
-impl From<url::ParseError, > for ConnectionError {
+impl From<url::ParseError> for ConnectionError {
     fn from(_: url::ParseError) -> Self {
         ConnectionError::ParseError
     }
 }
 
-impl From<tokio::task::JoinError, > for ConnectionError {
+impl From<tokio::task::JoinError> for ConnectionError {
     fn from(_: tokio::task::JoinError) -> Self {
         ConnectionError::ConnectError
     }
 }
 
-impl From<tungstenite::error::Error, > for ConnectionError {
+impl From<tungstenite::error::Error> for ConnectionError {
     fn from(_: tungstenite::error::Error) -> Self {
         ConnectionError::ConnectError
     }
 }
 
-impl From<tokio::sync::mpsc::error::SendError<Message>, > for ConnectionError {
+impl From<tokio::sync::mpsc::error::SendError<Message>> for ConnectionError {
     fn from(_: tokio::sync::mpsc::error::SendError<Message>) -> Self {
         ConnectionError::SendMessageError
     }
@@ -180,13 +199,17 @@ impl Client {
         return Ok(Client { rt });
     }
 
-    fn schedule_task<F>(&self, task: impl Future<Output=Result<F, ConnectionError>> + Send + 'static)
-        where F: Send + 'static {
-        &self.rt.spawn(async move { task.await }.inspect(|response| {
-            match response {
+    fn schedule_task<F>(
+        &self,
+        task: impl Future<Output = Result<F, ConnectionError>> + Send + 'static,
+    ) where
+        F: Send + 'static,
+    {
+        &self.rt.spawn(
+            async move { task.await }.inspect(|response| match response {
                 Err(e) => println!("{:?}", e),
-                Ok(_) => ()
-            }
-        }));
+                Ok(_) => (),
+            }),
+        );
     }
 }

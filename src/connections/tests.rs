@@ -1,5 +1,6 @@
-use crate::connections::{Client, ConnectionPool, Connection};
 use std::{thread, time};
+
+use crate::connections::{Client, Connection, ConnectionPool};
 
 #[test]
 fn test_new_connection() {
@@ -31,6 +32,11 @@ fn test_with_remote() {
     let client = Client::new().unwrap();
     let (connection_pool, mut handler) = ConnectionPool::new(5);
     connection_pool.open(&client).unwrap();
-    handler.send_message("ws://127.0.0.1:9001", "@sync(node:\"/unit/foo\", lane:\"info\")").unwrap();
+    handler
+        .send_message(
+            "ws://127.0.0.1:9001",
+            "@sync(node:\"/unit/foo\", lane:\"info\")",
+        )
+        .unwrap();
     thread::sleep(time::Duration::from_secs(2));
 }
