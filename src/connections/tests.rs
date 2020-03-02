@@ -31,7 +31,7 @@ fn test_new_connection_parse_error() {
 fn test_with_remote() {
     let client = Client::new().unwrap();
     let (connection_pool, mut handler) = ConnectionPool::new(5);
-    connection_pool.open(&client).unwrap();
+    connection_pool.open(&client);
     handler
         .send_message(
             "ws://127.0.0.1:9001",
