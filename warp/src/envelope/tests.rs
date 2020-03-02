@@ -17,10 +17,10 @@ use std::convert::TryFrom;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use model::Value::Float64Value;
-use model::{Value, Attr, Item};
-use crate::envelope::{Envelope, LinkAddressed, LaneAddressed, HostAddressed, EnvelopeParseErr};
+use crate::envelope::{Envelope, EnvelopeParseErr, HostAddressed, LaneAddressed, LinkAddressed};
 use model::Item::ValueItem;
+use model::Value::Float64Value;
+use model::{Attr, Item, Value};
 
 fn run_test(record: Value, expected: Envelope) {
     let e = Envelope::try_from(record);

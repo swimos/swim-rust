@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use model::{Item, Value};
 use std::convert::TryFrom;
 use std::ops::Deref;
-use model::{Value, Item};
 
 #[cfg(test)]
 mod tests;
