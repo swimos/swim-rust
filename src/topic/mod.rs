@@ -71,10 +71,7 @@ pub struct MpscTopic<T: Clone> {
 }
 
 impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
-    pub async fn new(
-        input: mpsc::Receiver<T>,
-        buffer_size: usize,
-    ) -> (MpscTopic<T>, mpsc::Receiver<T>) {
+    pub fn new(input: mpsc::Receiver<T>, buffer_size: usize) -> (MpscTopic<T>, mpsc::Receiver<T>) {
         assert!(buffer_size > 0, "MPSC buffer size must be positive.");
         let (sub_tx, sub_rx) = mpsc::channel(1);
         let (tx, rx) = mpsc::channel(buffer_size);

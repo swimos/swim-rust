@@ -20,6 +20,7 @@ use futures::Stream;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
+use crate::downlink::raw::RawDownlink;
 use crate::model::Value;
 use crate::request::Request;
 use std::fmt;
@@ -92,7 +93,7 @@ pub fn create_back_pressure_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sender: mpsc::Sender<Command<Arc<Value>>>,
     buffer_size: usize,
-) -> Downlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
+) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
 where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
 {
@@ -113,7 +114,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sender: watch::Sender<Command<Arc<Value>>>,
     buffer_size: usize,
-) -> Downlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
+) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
 where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
 {

@@ -21,6 +21,7 @@ use crate::model::Value;
 use crate::request::Request;
 
 use super::*;
+use crate::downlink::raw::RawDownlink;
 use std::fmt::Formatter;
 
 #[cfg(test)]
@@ -311,7 +312,7 @@ pub fn create_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
-) -> Downlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
+) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
