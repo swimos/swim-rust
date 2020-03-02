@@ -26,27 +26,16 @@ mod to;
 pub type Result<T> = ::std::result::Result<T, FormParseErr>;
 
 #[allow(dead_code)]
-pub struct FormOptions {}
-
-#[allow(dead_code)]
-pub struct Form {
-    options: FormOptions,
-}
+pub struct Form {}
 
 impl Default for Form {
     fn default() -> Self {
-        Form {
-            options: FormOptions {},
-        }
+        Form {}
     }
 }
 
 #[allow(dead_code)]
 impl Form {
-    pub fn with_options(options: FormOptions) -> Self {
-        Form { options }
-    }
-
     pub fn to_value<T>(&self, value: &T) -> Result<Value>
     where
         T: Serialize,
