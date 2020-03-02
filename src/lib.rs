@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate crossbeam;
 extern crate futures;
 extern crate futures_util;
 extern crate tokio;
@@ -24,7 +23,6 @@ extern crate im;
 extern crate pin_utils;
 
 pub mod downlink;
-pub mod eff_cell;
 pub mod iteratee;
 pub mod model;
 pub mod request;
