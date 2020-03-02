@@ -255,9 +255,8 @@ async fn mpsc_topic_task<T: Clone>(
         match item {
             Some(Either::Left(SubRequest(cb))) => {
                 let (tx, rx) = mpsc::channel(buffer_size);
-                match cb.send(rx) {
-                    Ok(_) => outputs.push(tx),
-                    _ => {}
+                if cb.send(rx).is_ok() {
+                    outputs.push(tx);
                 }
             }
             Some(Either::Right(value)) => match outputs.len() {
