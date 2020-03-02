@@ -15,7 +15,9 @@
 use std::future::Future;
 
 use futures::future::{Map, Ready};
+use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
+use std::pin::Pin;
 use tokio::sync::{mpsc, watch};
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
@@ -29,21 +31,6 @@ pub trait ItemSink<'a, T> {
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
 }
 
-/// Wraps a type that cannot directly implement [`ItemSink`].
-pub struct ItemSinkWrapper<S, F> {
-    sink: S,
-    send_operation: F,
-}
-
-impl<S, F> ItemSinkWrapper<S, F> {
-    pub fn new(sink: S, send_operation: F) -> ItemSinkWrapper<S, F> {
-        ItemSinkWrapper {
-            sink,
-            send_operation,
-        }
-    }
-}
-
 pub type MpscErr<T> = mpsc::error::SendError<T>;
 pub type WatchErr<T> = watch::error::SendError<T>;
 
@@ -53,12 +40,55 @@ fn transform_err<T, Err: From<MpscErr<T>>>(result: Result<(), MpscErr<T>>) -> Re
 
 /// Wrap an [`mpsc::Sender`] as an item sink. It is not possible to implement the trait
 /// directly as the `send` method returns an anonymous type.
-pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + 'static>(
+pub fn for_mpsc_sender<T: Unpin + Send + 'static, Err: From<MpscErr<T>> + 'static>(
     sender: mpsc::Sender<T>,
 ) -> impl for<'a> ItemSink<'a, T, Error = Err> {
     let err_trans = || transform_err::<T, Err>;
 
-    map_err(ItemSinkWrapper::new(sender, mpsc::Sender::send), err_trans)
+    map_err(sender, err_trans)
+}
+
+pub struct MpscSend<'a, T> {
+    sender: Pin<&'a mut mpsc::Sender<T>>,
+    value: Option<T>,
+}
+
+impl<'a, T: Unpin> Future for MpscSend<'a, T> {
+    type Output = Result<(), mpsc::error::SendError<T>>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let MpscSend { sender, value } = self.get_mut();
+
+        match sender.poll_ready(cx) {
+            Poll::Ready(Ok(_)) => match value.take() {
+                Some(t) => match sender.try_send(t) {
+                    Ok(_) => Poll::Ready(Ok(())),
+                    Err(mpsc::error::TrySendError::Closed(t)) => {
+                        Poll::Ready(Err(mpsc::error::SendError(t)))
+                    }
+                    Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
+                },
+                _ => panic!("Send future evaluated twice."),
+            },
+            Poll::Ready(Err(_)) => match value.take() {
+                Some(t) => Poll::Ready(Err(mpsc::error::SendError(t))),
+                _ => panic!("Send future evaluated twice."),
+            },
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl<'a, T: Unpin + Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
+    type Error = mpsc::error::SendError<T>;
+    type SendFuture = MpscSend<'a, T>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        MpscSend {
+            sender: Pin::new(self),
+            value: Some(value),
+        }
+    }
 }
 
 /// Transform the error type of an [`ItemSink`].
@@ -69,24 +99,6 @@ where
     Fac: FnMut() -> F,
 {
     ItemSinkMapErr::new(sink, f)
-}
-
-impl<'a, T, Err, S, F, Fut> ItemSink<'a, T> for ItemSinkWrapper<S, F>
-where
-    S: 'a,
-    Fut: Future<Output = Result<(), Err>> + Send + 'a,
-    F: FnMut(&'a mut S, T) -> Fut,
-{
-    type Error = Err;
-    type SendFuture = Fut;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        let ItemSinkWrapper {
-            sink,
-            send_operation,
-        } = self;
-        send_operation(sink, value)
-    }
 }
 
 pub struct ItemSinkMapErr<Snk, Fac> {
