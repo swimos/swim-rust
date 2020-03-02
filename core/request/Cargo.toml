@@ -1,0 +1,8 @@
+[package]
+name = "request"
+version = "0.1.0"
+authors = ["SirCipher <tom@swim.ai>"]
+edition = "2018"
+
+[dependencies]
+tokio = { version = "0.2", features = ["full"] }

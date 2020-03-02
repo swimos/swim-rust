@@ -1,0 +1,11 @@
+[package]
+name = "warp"
+version = "0.1.0"
+authors = ["SirCipher <tom@swim.ai>"]
+edition = "2018"
+
+[dependencies]
+model = { path = "../core/model" }
+
+[dev-dependencies]
+hamcrest2 = "0.3"

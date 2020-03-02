@@ -1,0 +1,18 @@
+[package]
+name = "downlink"
+version = "0.1.0"
+authors = ["SirCipher <tom@swim.ai>"]
+edition = "2018"
+
+[dependencies]
+pin-utils = "0.1.0-alpha.4"
+futures = "0.3.4"
+futures-util = "0.3.4"
+tokio = { version = "0.2", features = ["full"] }
+im = "14.2.0"
+sink = { path = "../sink" }
+model = { path = "../core/model" }
+request = { path = "../core/request" }
+
+[dev-dependencies]
+hamcrest2 = "0.3"
