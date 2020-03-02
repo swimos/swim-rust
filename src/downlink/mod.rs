@@ -80,7 +80,7 @@ impl<T> From<watch::error::SendError<T>> for DownlinkError {
 impl<S> Sender<S> {
     /// Stop the downlink from running.
     pub async fn stop(mut self) -> Result<(), DownlinkError> {
-        match (&mut self).task.take() {
+        match self.task.take() {
             Some(t) => t.stop().await,
             _ => Ok(()),
         }

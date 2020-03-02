@@ -236,10 +236,7 @@ impl Debug for MapAction {
             MapAction::Get { request } => write!(f, "Get({:?})", request),
             MapAction::GetByKey { key, request } => write!(f, "GetByKey({:?}, {:?})", key, request),
             MapAction::Update {
-                key,
-                f: _,
-                before,
-                after,
+                key, before, after, ..
             } => write!(f, "Update({:?}, <closure>, {:?}, {:?})", key, before, after),
         }
     }

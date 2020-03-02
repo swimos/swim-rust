@@ -176,7 +176,7 @@ impl From<BadRecord> for ParseFailure {
 /// Parse a stream of ['Value']s from a stream of characters. More values will be read until either
 /// an error is encountered or the end of the stream is reached.
 pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseFailure>> + 'a {
-    let tokens = tokenize_str(repr).map(|t| Some(t)).chain(iter::once(None));
+    let tokens = tokenize_str(repr).map(Some).chain(iter::once(None));
 
     tokens
         .scan(Some(vec![]), |maybe_state, maybe_token| {
@@ -212,7 +212,7 @@ fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFa
         }) if depth == 1 => match parse_state {
             ValueParseState::ReadingAttribute(name) => {
                 attrs.push(Attr {
-                    name: name.to_owned(),
+                    name,
                     value: Value::Extant,
                 });
                 Some(Ok(Value::Record(attrs, items)))
@@ -406,9 +406,7 @@ impl<S: TokenStr> ReconToken<S> {
     fn unwrap_value(self) -> Option<Result<Value, String>> {
         match self {
             ReconToken::Identifier(name) => Some(Ok(Value::Text(name.into()))),
-            ReconToken::StringLiteral(name) => {
-                Some(unescape(name.borrow()).map(|unesc| Value::Text(unesc)))
-            }
+            ReconToken::StringLiteral(name) => Some(unescape(name.borrow()).map(Value::Text)),
             ReconToken::Int32Literal(n) => Some(Ok(Value::Int32Value(n))),
             ReconToken::Int64Literal(n) => Some(Ok(Value::Int64Value(n))),
             ReconToken::Float64Literal(x) => Some(Ok(Value::Float64Value(x))),
@@ -777,7 +775,7 @@ fn tokenize_str<'a>(
     let following = repr
         .char_indices()
         .skip(1)
-        .map(|ci| Some(ci))
+        .map(Some)
         .chain(iter::once(None));
 
     let mut token_buffer = InMemoryInput::new(repr);
@@ -927,12 +925,10 @@ fn push_down_and_close(
             }
             _ => Some(Err(BadRecord(offset, RecordError::BadStackOnClose))),
         }
+    } else if is_attr {
+        Some(Err(BadRecord(offset, RecordError::EmptyStackOnClose)))
     } else {
-        if is_attr {
-            Some(Err(BadRecord(offset, RecordError::EmptyStackOnClose)))
-        } else {
-            Some(Ok(value))
-        }
+        Some(Ok(value))
     }
 }
 
@@ -1158,7 +1154,7 @@ fn update_reading_attr<S: TokenStr>(
     match token {
         AttrMarker => {
             attrs.push(Attr {
-                name: name.to_owned(),
+                name,
                 value: Value::Extant,
             });
             repush(attrs, items, AttributeStart)

@@ -55,42 +55,18 @@ impl Envelope {
     /// Returns the tag (envelope type) of the current [`Envelope`] variant.
     pub fn tag(self) -> &'static str {
         match self {
-            Envelope::LinkRequest(_) => {
-                "link"
-            }
-            Envelope::SyncRequest(_) => {
-                "sync"
-            }
-            Envelope::LinkedResponse(_) => {
-                "linked"
-            }
-            Envelope::EventMessage(_) => {
-                "event"
-            }
-            Envelope::CommandMessage(_) => {
-                "command"
-            }
-            Envelope::SyncedResponse(_) => {
-                "synced"
-            }
-            Envelope::UnlinkRequest(_) => {
-                "unlink"
-            }
-            Envelope::UnlinkedResponse(_) => {
-                "unlinked"
-            }
-            Envelope::AuthRequest(_) => {
-                "auth"
-            }
-            Envelope::AuthedResponse(_) => {
-                "authed"
-            }
-            Envelope::DeauthRequest(_) => {
-                "deauth"
-            }
-            Envelope::DeauthedResponse(_) => {
-                "deauthed"
-            }
+            Envelope::LinkRequest(_) => "link",
+            Envelope::SyncRequest(_) => "sync",
+            Envelope::LinkedResponse(_) => "linked",
+            Envelope::EventMessage(_) => "event",
+            Envelope::CommandMessage(_) => "command",
+            Envelope::SyncedResponse(_) => "synced",
+            Envelope::UnlinkRequest(_) => "unlink",
+            Envelope::UnlinkedResponse(_) => "unlinked",
+            Envelope::AuthRequest(_) => "auth",
+            Envelope::AuthedResponse(_) => "authed",
+            Envelope::DeauthRequest(_) => "deauth",
+            Envelope::DeauthedResponse(_) => "deauthed",
         }
     }
 }
@@ -154,22 +130,16 @@ impl LaneAddressedBuilder {
             LaneAddressedBuilder {
                 node_uri: Some(node_uri),
                 lane_uri: Some(lane_uri),
-                body
-            } => {
-                Ok(LaneAddressed {
-                    node_uri,
-                    lane_uri,
-                    body,
-                })
-            }
-            LaneAddressedBuilder {
-                node_uri: None, ..
-            } => {
+                body,
+            } => Ok(LaneAddressed {
+                node_uri,
+                lane_uri,
+                body,
+            }),
+            LaneAddressedBuilder { node_uri: None, .. } => {
                 Err(EnvelopeParseErr::MissingHeader(String::from("node")))
             }
-            LaneAddressedBuilder {
-                lane_uri: None, ..
-            } => {
+            LaneAddressedBuilder { lane_uri: None, .. } => {
                 Err(EnvelopeParseErr::MissingHeader(String::from("lane")))
             }
         }
@@ -179,10 +149,7 @@ impl LaneAddressedBuilder {
 impl LinkAddressedBuilder {
     fn build(self) -> Result<LinkAddressed, EnvelopeParseErr> {
         match self {
-            LinkAddressedBuilder {
-                lane,
-                ..
-            } => {
+            LinkAddressedBuilder { lane, .. } => {
                 let lane = lane.build()?;
                 Ok(LinkAddressed {
                     lane,
@@ -197,68 +164,82 @@ impl LinkAddressedBuilder {
 /// Parses a [`LinkAddressed`] envelope from a vector of [`Item`]s. Returning a builder which
 /// can be used for validation or an [`EnvelopeParseErr`] with a cause if any errors are
 /// encountered.
-fn parse_link_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LinkAddressedBuilder, EnvelopeParseErr> {
-    items.iter().enumerate().try_fold(LinkAddressedBuilder {
-        lane: LaneAddressedBuilder {
-            node_uri: None,
-            lane_uri: None,
-            body,
+fn parse_link_addressed(
+    items: Vec<Item>,
+    body: Option<Value>,
+) -> Result<LinkAddressedBuilder, EnvelopeParseErr> {
+    items.iter().enumerate().try_fold(
+        LinkAddressedBuilder {
+            lane: LaneAddressedBuilder {
+                node_uri: None,
+                lane_uri: None,
+                body,
+            },
+            rate: None,
+            prio: None,
         },
-        rate: None,
-        prio: None,
-    }, |mut link_addressed, (index, item)| {
-        match item {
-            Item::Slot(slot_key, slot_value) => {
-                if let Value::Text(slot_key_val) = slot_key {
-                    match slot_key_val.as_str() {
-                        "prio" => {
-                            if let Value::Float64Value(slot_val) = slot_value {
-                                link_addressed.prio = Some(*slot_val);
-                                Ok(link_addressed)
-                            } else {
-                                Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
+        |mut link_addressed, (index, item)| {
+            match item {
+                Item::Slot(slot_key, slot_value) => {
+                    if let Value::Text(slot_key_val) = slot_key {
+                        match slot_key_val.as_str() {
+                            "prio" => {
+                                if let Value::Float64Value(slot_val) = slot_value {
+                                    link_addressed.prio = Some(*slot_val);
+                                    Ok(link_addressed)
+                                } else {
+                                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
+                                }
+                            }
+                            "rate" => {
+                                if let Value::Float64Value(slot_val) = slot_value {
+                                    link_addressed.rate = Some(*slot_val);
+                                    Ok(link_addressed)
+                                } else {
+                                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
+                                }
+                            }
+                            _ => {
+                                if let Value::Text(slot_val) = slot_value {
+                                    parse_lane_addressed_value(
+                                        slot_key_val,
+                                        slot_val,
+                                        &mut link_addressed.lane,
+                                    )?;
+                                    Ok(link_addressed)
+                                } else {
+                                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
+                                }
                             }
                         }
-                        "rate" => {
-                            if let Value::Float64Value(slot_val) = slot_value {
-                                link_addressed.rate = Some(*slot_val);
-                                Ok(link_addressed)
-                            } else {
-                                Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
-                            }
-                        }
-                        _ => {
-                            if let Value::Text(slot_val) = slot_value {
-                                parse_lane_addressed_value(slot_key_val, slot_val, &mut link_addressed.lane)?;
-                                Ok(link_addressed)
-                            } else {
-                                Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
-                            }
-                        }
+                    } else {
+                        Err(EnvelopeParseErr::UnexpectedType(slot_key.to_owned()))
                     }
-                } else {
-                    Err(EnvelopeParseErr::UnexpectedType(slot_key.to_owned()))
+                }
+                // Lane/Node URI without a key
+                Item::ValueItem(slot_value) => {
+                    parse_lane_addressed_index(index, slot_value, &mut link_addressed.lane)?;
+                    Ok(link_addressed)
                 }
             }
-            // Lane/Node URI without a key
-            Item::ValueItem(slot_value) => {
-                parse_lane_addressed_index(index, slot_value, &mut link_addressed.lane)?;
-                Ok(link_addressed)
-            }
-        }
-    })
+        },
+    )
 }
 
 /// Parses a [`LaneAddressed`] envelope from a vector of [`Item`]s. Returning a builder which
 /// can be used for validation or an [`EnvelopeParseErr`] with a cause if any errors are
 /// encountered. Both the `node_uri` and `lane_uri` [`Item`]s should be provided.
-fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAddressedBuilder, EnvelopeParseErr> {
-    items.iter().enumerate().try_fold(LaneAddressedBuilder {
-        node_uri: None,
-        lane_uri: None,
-        body,
-    }, |mut lane_addressed, (index, item)| {
-        match item {
+fn parse_lane_addressed(
+    items: Vec<Item>,
+    body: Option<Value>,
+) -> Result<LaneAddressedBuilder, EnvelopeParseErr> {
+    items.iter().enumerate().try_fold(
+        LaneAddressedBuilder {
+            node_uri: None,
+            lane_uri: None,
+            body,
+        },
+        |mut lane_addressed, (index, item)| match item {
             Item::Slot(Value::Text(slot_key), Value::Text(slot_value)) => {
                 parse_lane_addressed_value(slot_key, slot_value, &mut lane_addressed)?;
                 Ok(lane_addressed)
@@ -267,15 +248,16 @@ fn parse_lane_addressed(items: Vec<Item>, body: Option<Value>) -> Result<LaneAdd
                 parse_lane_addressed_index(index, slot_value, &mut lane_addressed)?;
                 Ok(lane_addressed)
             }
-            _ => {
-                Err(EnvelopeParseErr::UnexpectedItem(item.to_owned()))
-            }
-        }
-    })
+            _ => Err(EnvelopeParseErr::UnexpectedItem(item.to_owned())),
+        },
+    )
 }
 
-fn parse_lane_addressed_value(key: &str, val: &String, lane_addressed: &mut LaneAddressedBuilder)
-                              -> Result<(), EnvelopeParseErr> {
+fn parse_lane_addressed_value(
+    key: &str,
+    val: &str,
+    lane_addressed: &mut LaneAddressedBuilder,
+) -> Result<(), EnvelopeParseErr> {
     if key == "node" {
         match lane_addressed.node_uri {
             Some(_) => Err(EnvelopeParseErr::DuplicateHeader(String::from("node"))),
@@ -297,8 +279,11 @@ fn parse_lane_addressed_value(key: &str, val: &String, lane_addressed: &mut Lane
     }
 }
 
-fn parse_lane_addressed_index(index: usize, value: &Value, lane_addressed: &mut LaneAddressedBuilder)
-                              -> Result<(), EnvelopeParseErr> {
+fn parse_lane_addressed_index(
+    index: usize,
+    value: &Value,
+    lane_addressed: &mut LaneAddressedBuilder,
+) -> Result<(), EnvelopeParseErr> {
     if index == 0 {
         parse_lane_addressed_value("node", &value.to_string(), lane_addressed)
     } else if index == 1 {
@@ -308,29 +293,37 @@ fn parse_lane_addressed_index(index: usize, value: &Value, lane_addressed: &mut 
     }
 }
 
-fn to_linked_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
-    where F: Fn(LinkAddressed) -> Envelope {
+fn to_linked_addressed<F>(
+    value: Value,
+    body: Option<Value>,
+    func: F,
+) -> Result<Envelope, EnvelopeParseErr>
+where
+    F: Fn(LinkAddressed) -> Envelope,
+{
     match value {
         Value::Record(_, headers) => {
             let link_addressed = parse_link_addressed(headers, body)?.build()?;
             Ok(func(link_addressed))
         }
-        v @ _ => {
-            Err(EnvelopeParseErr::UnexpectedType(v))
-        }
+        v => Err(EnvelopeParseErr::UnexpectedType(v)),
     }
 }
 
-fn to_lane_addressed<F>(value: Value, body: Option<Value>, func: F) -> Result<Envelope, EnvelopeParseErr>
-    where F: Fn(LaneAddressed) -> Envelope {
+fn to_lane_addressed<F>(
+    value: Value,
+    body: Option<Value>,
+    func: F,
+) -> Result<Envelope, EnvelopeParseErr>
+where
+    F: Fn(LaneAddressed) -> Envelope,
+{
     match value {
         Value::Record(_, headers) => {
             let lane_builder = parse_lane_addressed(headers, body)?.build()?;
             Ok(func(lane_builder))
         }
-        v @ _ => {
-            Err(EnvelopeParseErr::UnexpectedType(v))
-        }
+        v => Err(EnvelopeParseErr::UnexpectedType(v)),
     }
 }
 
@@ -372,7 +365,7 @@ impl TryFrom<Value> for Envelope {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         let (mut attrs, mut body) = match value {
             Value::Record(a, i) => (a, i),
-            v @ _ => {
+            v => {
                 return Err(EnvelopeParseErr::UnexpectedType(v));
             }
         };
@@ -382,13 +375,11 @@ impl TryFrom<Value> for Envelope {
                 Some(Value::Record(attrs.drain(1..).collect(), body))
             } else if body.len() == 1 {
                 match body.pop() {
-                    Some(item) => {
-                        match item {
-                            Item::ValueItem(inner) => Some(inner),
-                            i @ _ => return Err(EnvelopeParseErr::UnexpectedItem(i))
-                        }
-                    }
-                    None => None
+                    Some(item) => match item {
+                        Item::ValueItem(inner) => Some(inner),
+                        i => return Err(EnvelopeParseErr::UnexpectedItem(i)),
+                    },
+                    None => None,
                 }
             } else {
                 None
@@ -397,65 +388,25 @@ impl TryFrom<Value> for Envelope {
 
         let envelope_type = match attrs.pop() {
             Some(v) => v,
-            None => return Err(EnvelopeParseErr::Malformatted)
+            None => return Err(EnvelopeParseErr::Malformatted),
         };
 
-        return match envelope_type.name.as_str() {
-            "event" => {
-                to_lane_addressed(envelope_type.value, body, |la| {
-                    Envelope::EventMessage(la)
-                })
-            }
-            "command" => {
-                to_lane_addressed(envelope_type.value, body, |la| {
-                    Envelope::CommandMessage(la)
-                })
-            }
-            "link" => {
-                to_linked_addressed(envelope_type.value, body, |la| {
-                    Envelope::LinkRequest(la)
-                })
-            }
-            "linked" => {
-                to_linked_addressed(envelope_type.value, body, |la| {
-                    Envelope::LinkedResponse(la)
-                })
-            }
-            "sync" => {
-                to_linked_addressed(envelope_type.value, body, |la| {
-                    Envelope::SyncRequest(la)
-                })
-            }
-            "synced" => {
-                to_lane_addressed(envelope_type.value, body, |la| {
-                    Envelope::SyncedResponse(la)
-                })
-            }
-            "unlink" => {
-                to_lane_addressed(envelope_type.value, body, |la| {
-                    Envelope::UnlinkRequest(la)
-                })
-            }
+        match envelope_type.name.as_str() {
+            "event" => to_lane_addressed(envelope_type.value, body, Envelope::EventMessage),
+            "command" => to_lane_addressed(envelope_type.value, body, Envelope::CommandMessage),
+            "link" => to_linked_addressed(envelope_type.value, body, Envelope::LinkRequest),
+            "linked" => to_linked_addressed(envelope_type.value, body, Envelope::LinkedResponse),
+            "sync" => to_linked_addressed(envelope_type.value, body, Envelope::SyncRequest),
+            "synced" => to_lane_addressed(envelope_type.value, body, Envelope::SyncedResponse),
+            "unlink" => to_lane_addressed(envelope_type.value, body, Envelope::UnlinkRequest),
             "unlinked" => {
-                to_lane_addressed(envelope_type.value, body, |la| {
-                    Envelope::UnlinkedResponse(la)
-                })
+                to_lane_addressed(envelope_type.value, body, { Envelope::UnlinkedResponse })
             }
-            "auth" => {
-                Ok(Envelope::AuthRequest(HostAddressed { body }))
-            }
-            "authed" => {
-                Ok(Envelope::AuthedResponse(HostAddressed { body }))
-            }
-            "deauth" => {
-                Ok(Envelope::DeauthRequest(HostAddressed { body }))
-            }
-            "deauthed" => {
-                Ok(Envelope::DeauthedResponse(HostAddressed { body }))
-            }
-            s @ _ => {
-                Err(EnvelopeParseErr::UnknownTag(String::from(s)))
-            }
-        };
+            "auth" => Ok(Envelope::AuthRequest(HostAddressed { body })),
+            "authed" => Ok(Envelope::AuthedResponse(HostAddressed { body })),
+            "deauth" => Ok(Envelope::DeauthRequest(HostAddressed { body })),
+            "deauthed" => Ok(Envelope::DeauthedResponse(HostAddressed { body })),
+            s => Err(EnvelopeParseErr::UnknownTag(String::from(s))),
+        }
     }
 }

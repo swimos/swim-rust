@@ -7,4 +7,15 @@ os:
 
 rust:
   - stable
+
 cache: cargo
+
+before_script:
+  - rustup component add clippy
+  - rustup component add rustfmt
+
+script:
+  - cargo rustc -- -D warnings
+  - cargo test
+  - cargo fmt -- --check
+  - cargo clippy --all-features -- -D warnings
