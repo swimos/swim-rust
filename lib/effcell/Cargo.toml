@@ -1,0 +1,8 @@
+[package]
+name = "effcell"
+version = "0.1.0"
+authors = ["SirCipher <tom@swim.ai>"]
+edition = "2018"
+
+[dependencies]
+crossbeam = "0.7"

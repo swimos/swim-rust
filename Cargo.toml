@@ -3,6 +3,7 @@ members = [
     "core/model",
     "core/request",
     "downlink",
+    "lib/effcell",
     "lib/iteratee",
     "sink",
     "warp"
