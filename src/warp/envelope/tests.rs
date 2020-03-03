@@ -471,7 +471,7 @@ fn run_test_expect_err(record: Value, expected: EnvelopeParseErr) {
     let e = Envelope::try_from(record);
 
     match e {
-        Ok(r) => panic!("Expected enveloped to not parse: {:?}", r),
+        Ok(r) => panic!("Expected envelope to not parse: {:?}", r),
         Err(e) => {
             assert_eq!(e, expected);
         }

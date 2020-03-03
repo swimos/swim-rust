@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
+use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
@@ -22,7 +22,8 @@ use tokio::sync::watch;
 
 use crate::model::Value;
 use crate::request::Request;
-use std::fmt;
+
+use super::*;
 
 #[cfg(test)]
 mod tests;

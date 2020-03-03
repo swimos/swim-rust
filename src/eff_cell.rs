@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crossbeam::atomic::AtomicCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
+use crossbeam::atomic::AtomicCell;
 
 pub trait EffCell<'a> {
     type Contents;

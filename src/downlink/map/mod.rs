@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Formatter;
 use std::sync::Arc;
 
 use im::ordmap::OrdMap;
@@ -21,7 +22,6 @@ use crate::model::Value;
 use crate::request::Request;
 
 use super::*;
-use std::fmt::Formatter;
 
 #[cfg(test)]
 mod tests;

@@ -12,22 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate crossbeam;
-extern crate futures;
-extern crate futures_util;
-extern crate tokio;
-extern crate tokio_util;
-//extern crate tokio_tungstenite;
-extern crate bytes;
-extern crate either;
-extern crate im;
-extern crate pin_utils;
+use crate::model::Value;
+use crate::structure::form::FormParseErr;
 
-pub mod downlink;
-pub mod eff_cell;
-pub mod iteratee;
-pub mod model;
-pub mod request;
-pub mod sink;
-pub mod structure;
-pub mod warp;
+#[cfg(test)]
+mod simple_data_types;
+
+#[cfg(test)]
+mod map;
+
+#[cfg(test)]
+mod nested;
+
+#[cfg(test)]
+mod vectors;
+
+#[cfg(test)]
+mod from;
+
+pub fn assert_err(parsed: Result<Value, FormParseErr>, expected: FormParseErr) {
+    match parsed {
+        Ok(v) => {
+            eprintln!("Expected error: {:?}", v);
+            panic!();
+        }
+        Err(e) => assert_eq!(e, expected),
+    }
+}
