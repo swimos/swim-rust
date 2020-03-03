@@ -14,11 +14,9 @@
 
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::convert::TryFrom;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
-use std::iter;
 
 use bytes::*;
 use either::Either;
@@ -63,7 +61,8 @@ pub enum Value {
     /// # Examples
     ///
     /// ```
-    /// use swim_rust::model::Value;
+    ///
+    /// use common::model::Value;
     ///
     /// assert_eq!(Value::text("an_identifier").to_string(), "an_identifier");
     /// assert_eq!(Value::text("2morrow").to_string(), r#""2morrow""#);
@@ -377,7 +376,8 @@ impl Attr {
     /// #Examples
     ///
     /// ```
-    /// use swim_rust::model::*;
+    ///
+    /// use common::model::{Attr, Value};
     ///
     /// assert_eq!(Attr::of("name"), Attr { name: String::from("name"), value: Value::Extant });
     /// assert_eq!(Attr::of(("key", 1)), Attr { name: String::from("key"), value: Value::Int32Value(1) });
@@ -460,7 +460,7 @@ impl Item {
     /// #Examples
     ///
     /// ```
-    /// use swim_rust::model::*;
+    /// use common::model::{Attr, Item, Value};
     ///
     /// assert_eq!(Item::of("name"), Item::ValueItem(Value::text("name")));
     /// assert_eq!(Item::of(("key", 1)), Item::Slot(Value::text("key"), Value::Int32Value(1)));
@@ -475,7 +475,8 @@ impl Item {
     /// #Examples
     ///
     /// ```
-    /// use swim_rust::model::*;
+    /// use common::model::{Value, Item};
+    ///
     /// assert_eq!(Item::slot("key", 1), Item::Slot(Value::text("key"), Value::Int32Value(1)));
     /// ```
     pub fn slot<K: Into<Value>, V: Into<Value>>(key: K, value: V) -> Item {

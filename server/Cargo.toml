@@ -1,0 +1,12 @@
+[package]
+name = "server"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+common = { path = "../common" }
+utilities = { path = "../utilities" }
+
+[dev-dependencies]
+hamcrest2 = "0.3"
