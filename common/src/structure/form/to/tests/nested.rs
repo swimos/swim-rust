@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::structure::assert_err;
 use serde::Serialize;
 
 #[cfg(test)]
 mod valid {
     use crate::model::{Attr, Item, Value};
-    use crate::structure::form::to::tests::assert_err;
     use crate::structure::form::{Form, FormParseErr};
 
     use super::*;

@@ -16,16 +16,22 @@ use core::fmt;
 use std::fmt::{Debug, Display};
 
 use serde::export::Formatter;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{Item, Value};
+use crate::structure::form::from::ValueDeserializer;
 use crate::structure::form::to::ValueSerializer;
+
+#[allow(dead_code)]
+mod from;
+
+#[allow(dead_code)]
+mod reference;
 
 mod to;
 
 pub type Result<T> = ::std::result::Result<T, FormParseErr>;
 
-#[allow(dead_code)]
 pub struct Form {}
 
 impl Default for Form {
@@ -45,6 +51,16 @@ impl Form {
             Ok(_) => Ok(serializer.output()),
             Err(e) => Err(e),
         }
+    }
+
+    pub fn from_value<'de, T>(&self, value: &'de Value) -> Result<T>
+    where
+        T: Deserialize<'de>,
+    {
+        let mut deserializer = ValueDeserializer::from_value(value);
+        let t = T::deserialize(&mut deserializer)?;
+
+        Ok(t)
     }
 }
 

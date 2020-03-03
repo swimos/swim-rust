@@ -15,6 +15,7 @@
 use serde::Serialize;
 
 use crate::model::{Item, Value};
+use crate::structure::assert_err;
 
 #[cfg(test)]
 mod tuples {
@@ -402,7 +403,6 @@ mod struct_valid_types {
 
 #[cfg(test)]
 mod illegal_types {
-    use crate::structure::form::to::tests::assert_err;
     use crate::structure::form::{Form, FormParseErr};
 
     use super::*;
@@ -493,7 +493,6 @@ mod illegal_types {
 #[cfg(test)]
 mod compound_types {
     use crate::model::Attr;
-    use crate::structure::form::to::tests::assert_err;
     use crate::structure::form::{Form, FormParseErr};
 
     use super::*;

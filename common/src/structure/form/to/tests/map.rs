@@ -15,6 +15,7 @@
 use serde::Serialize;
 
 use crate::model::{Item, Value};
+use crate::structure::assert_err;
 
 #[cfg(test)]
 mod valid_types {
@@ -133,9 +134,9 @@ mod valid_types {
 
 #[cfg(test)]
 mod invalid_types {
+    use super::*;
     use std::collections::BTreeMap;
 
-    use crate::structure::form::to::tests::assert_err;
     use crate::structure::form::{Form, FormParseErr};
 
     #[test]

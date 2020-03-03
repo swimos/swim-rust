@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::Value;
-use crate::structure::form::FormParseErr;
-
 #[cfg(test)]
 mod simple_data_types;
 
@@ -29,13 +26,3 @@ mod vectors;
 
 #[cfg(test)]
 mod from;
-
-pub fn assert_err(parsed: Result<Value, FormParseErr>, expected: FormParseErr) {
-    match parsed {
-        Ok(v) => {
-            eprintln!("Expected error: {:?}", v);
-            panic!();
-        }
-        Err(e) => assert_eq!(e, expected),
-    }
-}
