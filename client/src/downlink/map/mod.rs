@@ -18,10 +18,9 @@ use std::sync::Arc;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
-use crate::model::Value;
-use crate::request::Request;
-
 use super::*;
+use common::model::Value;
+use common::request::Request;
 
 #[cfg(test)]
 mod tests;

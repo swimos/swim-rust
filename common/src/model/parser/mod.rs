@@ -20,9 +20,10 @@ use bytes::{Buf, BytesMut};
 
 use token_buffer::*;
 
-use crate::iteratee::*;
-
-use super::*;
+use crate::model::{Attr, Item, Value};
+use core::iter;
+use std::convert::TryFrom;
+use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
 mod tests;
@@ -34,7 +35,7 @@ mod token_buffer;
 /// #Examples
 ///
 /// ```
-/// use swim_rust::model::parser::*;
+/// use common::model::parser::is_identifier_start;
 ///
 /// assert!(is_identifier_start('a'));
 /// assert!(is_identifier_start('ℵ'));
@@ -68,8 +69,8 @@ pub fn is_identifier_start(c: char) -> bool {
 /// #Examples
 ///
 /// ```
-/// use swim_rust::model::parser::*;
 ///
+/// use common::model::parser::is_identifier_char;
 /// assert!(is_identifier_char('a'));
 /// assert!(is_identifier_char('ℵ'));
 /// assert!(is_identifier_char('_'));
@@ -87,7 +88,7 @@ pub fn is_identifier_char(c: char) -> bool {
 /// #Examples
 ///
 /// ```
-/// use swim_rust::model::parser::*;
+/// use common::model::parser::is_identifier;
 ///
 /// assert!(is_identifier("name"));
 /// assert!(is_identifier("name2"));

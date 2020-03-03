@@ -17,6 +17,7 @@ use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
+use common::request::Request;
 
 fn make_model(state: DownlinkState, contents: ValMap) -> Model<ValMap> {
     Model {

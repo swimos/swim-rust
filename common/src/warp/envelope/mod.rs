@@ -332,9 +332,9 @@ where
 ///
 /// # Examples
 /// ```
-/// use swim_rust::warp::envelope::*;
 /// use std::convert::TryFrom;
-/// use swim_rust::model::{Value, Attr, Item};
+/// use common::model::{Value, Attr, Item};
+/// use common::warp::envelope::{Envelope, LaneAddressed};
 ///
 /// let record = Value::Record(
 ///         vec![

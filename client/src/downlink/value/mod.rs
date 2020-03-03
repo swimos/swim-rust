@@ -20,10 +20,9 @@ use futures::Stream;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
-use crate::model::Value;
-use crate::request::Request;
-
 use super::*;
+use common::model::Value;
+use common::request::Request;
 
 #[cfg(test)]
 mod tests;
