@@ -1,16 +1,14 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::process::Output;
 
 use futures::future::FutureExt;
 use futures::StreamExt;
-use futures_util::stream::{SplitStream, Stream};
-use tokio::net::TcpStream;
+use futures_util::stream::Stream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
+use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::{connect_async, WebSocketStream};
 use url;
 
 #[cfg(test)]
@@ -48,7 +46,15 @@ impl ConnectionPool {
             let response = self.rx.recv().await;
             match response {
                 Some(connection_pool_message) => {
-                    let mut handler = self.get_connection(&connection_pool_message.host).await?;
+                    if !self.connections.contains_key(&connection_pool_message.host) {
+                        self.open_connection(&connection_pool_message.host).await?;
+                    }
+
+                    let handler = self
+                        .connections
+                        .get_mut(&connection_pool_message.host)
+                        .ok_or(ConnectionError::ConnectError)?;
+
                     handler
                         .send_message(&connection_pool_message.message)
                         .await?;
@@ -58,14 +64,13 @@ impl ConnectionPool {
         }
     }
 
-    async fn get_connection(&mut self, host: &str) -> Result<ConnectionHandler, ConnectionError> {
-        if !self.connections.contains_key(host) {
-            // Todo buffer size is hardcoded
-            let (connection, connection_handler) = Connection::new(host, 5)?;
-            connection.open().await?;
-            self.connections
-                .insert(host.to_string(), connection_handler);
-        }
+    async fn open_connection(&mut self, host: &str) -> Result<ConnectionHandler, ConnectionError> {
+        // Todo buffer size is hardcoded
+        let (connection, connection_handler) = Connection::new(host, 5)?;
+        connection.open().await?;
+        self.connections
+            .insert(host.to_string(), connection_handler);
+
         Ok(self
             .connections
             .get(host)
@@ -150,7 +155,7 @@ impl ConnectionHandler {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionError {
     ParseError,
     ConnectError,
