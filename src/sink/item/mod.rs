@@ -14,7 +14,7 @@
 
 use std::future::Future;
 
-use futures::future::{Map, Ready};
+use futures::future::{BoxFuture, Map, Ready};
 use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
 use std::pin::Pin;
@@ -29,6 +29,19 @@ pub trait ItemSink<'a, T> {
 
     /// Attempt to send an item into the sink.
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
+}
+
+pub type BoxItemSink<T, E> =
+    Box<dyn for<'a> ItemSink<'a, T, Error = E, SendFuture = BoxFuture<'a, Result<(), E>>>>;
+
+pub fn boxed<T, E, Snk>(sink: Snk) -> BoxItemSink<T, E>
+where
+    T: 'static,
+    Snk: for<'a> ItemSink<'a, T, Error = E> + 'static,
+{
+    let boxing_sink = BoxingSink(sink);
+    let boxed: BoxItemSink<T, E> = Box::new(boxing_sink);
+    boxed
 }
 
 pub type MpscErr<T> = mpsc::error::SendError<T>;
@@ -134,5 +147,29 @@ impl<'a, T: Send + 'a> ItemSink<'a, T> for watch::Sender<T> {
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         future::ready(self.broadcast(value))
+    }
+}
+
+struct BoxingSink<Snk>(Snk);
+
+impl<'a, T, Snk> ItemSink<'a, T> for BoxingSink<Snk>
+where
+    Snk: ItemSink<'a, T> + 'a,
+    T: 'a,
+{
+    type Error = Snk::Error;
+    type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        FutureExt::boxed(self.0.send_item(value))
+    }
+}
+
+impl<'a, T, E: 'a> ItemSink<'a, T> for BoxItemSink<T, E> {
+    type Error = E;
+    type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        (**self).send_item(value)
     }
 }

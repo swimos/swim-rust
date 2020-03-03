@@ -16,10 +16,11 @@ use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
 use either::Either;
-use futures::future::ready;
 use futures::future::Ready;
+use futures::future::{ready, BoxFuture};
+use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
-use futures::{future, Future, Stream, StreamExt};
+use futures::{future, Future, FutureExt, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_utils::unsafe_pinned;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
@@ -30,10 +31,20 @@ pub enum SubscriptionError {
 }
 
 pub trait Topic<T: Clone> {
-    type Receiver: Stream<Item = T>;
-    type Fut: Future<Output = Result<Self::Receiver, SubscriptionError>> + 'static;
+    type Receiver: Stream<Item = T> + Send + 'static;
+    type Fut: Future<Output = Result<Self::Receiver, SubscriptionError>> + Send + 'static;
 
     fn subscribe(&mut self) -> Self::Fut;
+
+    fn boxed_topic(self) -> BoxTopic<T>
+    where
+        T: Send + 'static,
+        Self: Sized + 'static,
+    {
+        let boxing_topic = BoxingTopic(self);
+        let boxed: BoxTopic<T> = Box::new(boxing_topic);
+        boxed
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -42,7 +53,7 @@ pub struct WatchTopic<T: Clone> {
 }
 
 #[derive(Clone, Debug)]
-pub struct WatchTopicReceiver<T: Clone> {
+pub struct WatchTopicReceiver<T: Clone + Send> {
     _owner: Arc<watch::Receiver<T>>,
     receiver: watch::Receiver<T>,
 }
@@ -87,7 +98,7 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
     }
 }
 
-impl<T: Clone> WatchTopic<T> {
+impl<T: Clone + Send> WatchTopic<T> {
     pub fn new(receiver: watch::Receiver<T>) -> (Self, WatchTopicReceiver<T>) {
         let duplicate = receiver.clone();
         let owner = Arc::new(receiver);
@@ -102,11 +113,11 @@ impl<T: Clone> WatchTopic<T> {
     }
 }
 
-impl<T: Clone> WatchTopicReceiver<T> {
+impl<T: Clone + Send> WatchTopicReceiver<T> {
     unsafe_pinned!(receiver: watch::Receiver<T>);
 }
 
-impl<T: Clone> Stream for WatchTopicReceiver<T> {
+impl<T: Clone + Send> Stream for WatchTopicReceiver<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -114,7 +125,7 @@ impl<T: Clone> Stream for WatchTopicReceiver<T> {
     }
 }
 
-impl<T: Clone + 'static> Topic<T> for WatchTopic<T> {
+impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
     type Receiver = WatchTopicReceiver<T>;
     type Fut = Ready<Result<Self::Receiver, SubscriptionError>>;
 
@@ -156,7 +167,7 @@ impl<T: Clone> Clone for BroadcastReceiver<T> {
     }
 }
 
-impl<T: Clone + 'static> Topic<T> for BroadcastTopic<T> {
+impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     type Receiver = BroadcastReceiver<T>;
     type Fut = Ready<Result<Self::Receiver, SubscriptionError>>;
 
@@ -217,7 +228,7 @@ impl<T> Future for SendFuture<T> {
     }
 }
 
-impl<T: Clone + 'static> Topic<T> for MpscTopic<T> {
+impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
     type Receiver = mpsc::Receiver<T>;
     type Fut = SendFuture<T>;
 
@@ -297,4 +308,57 @@ fn remove_terminated<T: Clone>(
             _ => None,
         })
         .collect()
+}
+
+pub struct BoxResult<F> {
+    f: F,
+}
+
+impl<F> BoxResult<F> {
+    unsafe_pinned!(f: F);
+}
+
+impl<S, T, F> Future for BoxResult<F>
+where
+    F: Future<Output = Result<S, SubscriptionError>>,
+    S: Stream<Item = T> + Send + 'static,
+{
+    type Output = Result<BoxStream<'static, T>, SubscriptionError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.f().poll(cx) {
+            Poll::Ready(stream_result) => Poll::Ready(stream_result.map(StreamExt::boxed)),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+struct BoxingTopic<Top>(Top);
+
+impl<T: Clone + Send + 'static, Top: Topic<T>> Topic<T> for BoxingTopic<Top> {
+    type Receiver = BoxStream<'static, T>;
+    type Fut = BoxFuture<'static, Result<Self::Receiver, SubscriptionError>>;
+
+    fn subscribe(&mut self) -> Self::Fut {
+        FutureExt::boxed(BoxResult {
+            f: self.0.subscribe(),
+        })
+    }
+}
+
+pub type BoxTopic<T> = Box<
+    dyn Topic<
+        T,
+        Receiver = BoxStream<'static, T>,
+        Fut = BoxFuture<'static, Result<BoxStream<'static, T>, SubscriptionError>>,
+    >,
+>;
+
+impl<T: Clone + 'static> Topic<T> for BoxTopic<T> {
+    type Receiver = BoxStream<'static, T>;
+    type Fut = BoxFuture<'static, Result<BoxStream<'static, T>, SubscriptionError>>;
+
+    fn subscribe(&mut self) -> Self::Fut {
+        (**self).subscribe()
+    }
 }

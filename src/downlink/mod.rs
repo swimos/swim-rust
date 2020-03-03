@@ -22,8 +22,8 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::sink::item;
-use crate::sink::item::ItemSink;
-use futures::stream::FusedStream;
+use crate::sink::item::{BoxItemSink, ItemSink};
+use futures::stream::{BoxStream, FusedStream};
 use std::fmt::Debug;
 use tokio::sync::watch;
 
@@ -32,6 +32,67 @@ pub mod raw;
 pub mod value;
 
 pub(self) use self::raw::create_downlink;
+use crate::topic::{BoxTopic, SubscriptionError, Topic};
+use futures::future::BoxFuture;
+
+pub trait Downlink<Act, Upd: Clone>:
+    Topic<Upd> + for<'a> ItemSink<'a, Act, Error = DownlinkError>
+{
+    type DlTopic: Topic<Upd>;
+    type DlSink: for<'a> ItemSink<'a, Act, Error = DownlinkError>;
+
+    fn split(self) -> (Self::DlTopic, Self::DlSink);
+
+    fn boxed(self) -> BoxedDownlink<Act, Upd>
+    where
+        Self: Sized,
+        Self::DlTopic: Sized + 'static,
+        Self::DlSink: Sized + 'static,
+        Upd: Send + 'static,
+        Act: 'static,
+    {
+        let (topic, sink) = self.split();
+        let boxed_topic = topic.boxed_topic();
+        let boxed_sink = item::boxed(sink);
+        BoxedDownlink {
+            topic: boxed_topic,
+            sink: boxed_sink,
+        }
+    }
+}
+
+pub struct BoxedDownlink<Act, Upd: Clone> {
+    topic: BoxTopic<Upd>,
+    sink: BoxItemSink<Act, DownlinkError>,
+}
+
+impl<Act, Upd: Clone + 'static> Topic<Upd> for BoxedDownlink<Act, Upd> {
+    type Receiver = BoxStream<'static, Upd>;
+    type Fut = BoxFuture<'static, Result<BoxStream<'static, Upd>, SubscriptionError>>;
+
+    fn subscribe(&mut self) -> Self::Fut {
+        self.topic.subscribe()
+    }
+}
+
+impl<'a, Act, Upd: Clone> ItemSink<'a, Act> for BoxedDownlink<Act, Upd> {
+    type Error = DownlinkError;
+    type SendFuture = BoxFuture<'a, Result<(), DownlinkError>>;
+
+    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
+        self.sink.send_item(value)
+    }
+}
+
+impl<Act, Upd: Clone + 'static> Downlink<Act, Upd> for BoxedDownlink<Act, Upd> {
+    type DlTopic = BoxTopic<Upd>;
+    type DlSink = BoxItemSink<Act, DownlinkError>;
+
+    fn split(self) -> (Self::DlTopic, Self::DlSink) {
+        let BoxedDownlink { topic, sink } = self;
+        (topic, sink)
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DownlinkError {

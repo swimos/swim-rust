@@ -16,7 +16,6 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::*;
 use crate::sink::item::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
