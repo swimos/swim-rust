@@ -21,9 +21,6 @@ use crate::structure::form::{FormParseErr, Result};
 #[cfg(test)]
 mod tests;
 
-#[allow(dead_code, unused_variables, unused_imports)]
-mod statemachine;
-
 #[derive(Debug)]
 pub struct ValueDeserializer<'s, 'de: 's> {
     current_state: State<'s>,
