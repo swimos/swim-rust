@@ -18,6 +18,8 @@ use crate::sink::item::{ItemSink, MpscSend};
 use crate::topic::{MpscTopic, SendFuture, Topic};
 use tokio::sync::mpsc;
 
+/// A downlink where subscribers consume via independent queues that will block if any one falls
+/// behind.
 pub struct QueueDownlink<Act, Upd: Clone> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: MpscTopic<Upd>,

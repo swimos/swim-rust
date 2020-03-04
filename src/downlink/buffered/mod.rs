@@ -19,6 +19,8 @@ use futures::future::Ready;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
+/// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
+/// records if any fall behind.
 pub struct BufferedDownlink<Act, Upd: Clone> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: BroadcastTopic<Upd>,

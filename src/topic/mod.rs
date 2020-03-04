@@ -30,12 +30,17 @@ pub enum SubscriptionError {
     TopicClosed,
 }
 
+/// A trait for one-to many channels. A topic may have any number of subscribers which are added
+/// asynchronously using the `subscribe` method. Each subscription can be consumed as a stream.
 pub trait Topic<T: Clone> {
     type Receiver: Stream<Item = T> + Send + 'static;
     type Fut: Future<Output = Result<Self::Receiver, SubscriptionError>> + Send + 'static;
 
+    /// Asynchronously add a new subscriber to the topic.
     fn subscribe(&mut self) -> Self::Fut;
 
+    /// Box the topic so that it can be subscribed to dynamically and will hand out boxed
+    /// streams to subscribers.
     fn boxed_topic(self) -> BoxTopic<T>
     where
         T: Send + 'static,
@@ -47,6 +52,8 @@ pub trait Topic<T: Clone> {
     }
 }
 
+/// A topic implementation backed by a Tokio watch channel. Subscribers will only see the latest
+/// output record since the last time the polled and so may (and likely will) miss outputs.
 #[derive(Clone, Debug)]
 pub struct WatchTopic<T: Clone> {
     receiver: Weak<watch::Receiver<T>>,
@@ -58,6 +65,9 @@ pub struct WatchTopicReceiver<T: Clone + Send> {
     receiver: watch::Receiver<T>,
 }
 
+/// A topic implementation backed by a Tokio broadcast channel. The topic has an intermediate
+/// queue from which all subscribers read. If the queue fills (records are being produced faster
+/// than they are consumed) the topic will begin discarding records, starting with the oldest.
 #[derive(Clone, Debug)]
 pub struct BroadcastTopic<T: Clone> {
     pub sender: broadcast::Sender<T>,
@@ -93,6 +103,8 @@ impl<T: Clone> BroadcastReceiver<T> {
     unsafe_pinned!(receiver: broadcast::Receiver<T>);
 }
 
+/// A topic where every subscriber is represented by a Tokio MPSC queue. If any one subscriber falls
+/// behind, all of the subscribers will block until it catches up.
 #[derive(Clone, Debug)]
 pub struct MpscTopic<T: Clone> {
     sub_sender: mpsc::Sender<SubRequest<T>>,
@@ -262,6 +274,7 @@ impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
     }
 }
 
+/// The internal task that keeps the queues of an MPSC topic filled.
 async fn mpsc_topic_task<T: Clone>(
     input: mpsc::Receiver<T>,
     init_sender: mpsc::Sender<T>,
@@ -351,6 +364,7 @@ where
     }
 }
 
+/// A topic that boxes the subscription method return type for a wrapped topic.
 struct BoxingTopic<Top>(Top);
 
 impl<T: Clone + Send + 'static, Top: Topic<T>> Topic<T> for BoxingTopic<Top> {
@@ -364,6 +378,7 @@ impl<T: Clone + Send + 'static, Top: Topic<T>> Topic<T> for BoxingTopic<Top> {
     }
 }
 
+/// The type of boxed topics.
 pub type BoxTopic<T> = Box<
     dyn Topic<
         T,

@@ -19,6 +19,8 @@ use futures::future::Ready;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
+/// A downlink where subscribers observe the latest output record whenever the poll the receiver
+/// stream.
 pub struct DroppingDownlink<Act, Upd: Clone> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: WatchTopic<Upd>,
