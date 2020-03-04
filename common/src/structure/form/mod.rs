@@ -22,7 +22,7 @@ use crate::model::{Item, Value};
 use crate::structure::form::from::ValueDeserializer;
 use crate::structure::form::to::ValueSerializer;
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_variables, unused_imports)]
 mod from;
 
 #[allow(dead_code)]
@@ -53,11 +53,15 @@ impl Form {
         }
     }
 
-    pub fn from_value<'de, T>(&self, value: &'de Value) -> Result<T>
+    pub fn from_value<'de, T>(&self, value: &'de mut Value) -> Result<T>
     where
         T: Deserialize<'de>,
     {
-        let mut deserializer = ValueDeserializer::from_value(value);
+        let mut deserializer = match value {
+            Value::Record(_, _) => ValueDeserializer::for_values(value),
+            _ => ValueDeserializer::for_single_value(value),
+        };
+
         let t = T::deserialize(&mut deserializer)?;
 
         Ok(t)
@@ -70,6 +74,8 @@ pub enum FormParseErr {
     UnsupportedType(String),
     IncorrectType(Value),
     IllegalItem(Item),
+    IllegalState(String),
+    Malformatted,
 }
 
 impl Display for FormParseErr {

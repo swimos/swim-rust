@@ -15,7 +15,7 @@
 use crate::model::Value;
 use crate::structure::form::FormParseErr;
 
-mod form;
+pub mod form;
 
 pub fn assert_err(parsed: Result<Value, FormParseErr>, expected: FormParseErr) {
     match parsed {

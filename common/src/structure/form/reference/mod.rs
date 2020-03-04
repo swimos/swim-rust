@@ -636,3 +636,50 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
         Deserializer::deserialize_map(self.de, visitor)
     }
 }
+
+#[test]
+fn abc() {
+    #[derive(Deserialize, PartialEq, Debug)]
+    struct Test {
+        a: u32,
+        b: u32,
+        c: u32,
+    }
+
+    let j = r#"{"b":1,"c":2,"a":3}"#;
+    let expected = Test { a: 3, b: 1, c: 2 };
+
+    assert_eq!(expected, from_str(j).unwrap());
+}
+
+#[test]
+fn test_struct() {
+    #[derive(Deserialize, PartialEq, Debug)]
+    struct Test {
+        int: u32,
+        seq: Vec<String>,
+    }
+
+    let j = r#"{"int":1,"seq":["a","b"]}"#;
+    let expected = Test {
+        int: 1,
+        seq: vec!["a".to_owned(), "b".to_owned()],
+    };
+    assert_eq!(expected, from_str(j).unwrap());
+}
+
+#[test]
+fn test_enum() {
+    #[derive(Deserialize, PartialEq, Debug)]
+    enum E {
+        Unit,
+        Newtype(u32),
+        Tuple(u32, u32),
+        Struct { a: u32 },
+    }
+
+    let j = r#"{"Struct":{"a":1}}"#;
+    let expected = E::Struct { a: 1 };
+
+    assert_eq!(expected, from_str(j).unwrap());
+}

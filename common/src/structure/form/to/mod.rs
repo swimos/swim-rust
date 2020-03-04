@@ -444,13 +444,6 @@ impl ValueSerializer {
         self.current_state = ss;
     }
 
-    pub fn pop_state(&mut self) -> State {
-        match self.stack.pop() {
-            Some(s) => s,
-            None => panic!("Stack underflow"),
-        }
-    }
-
     pub fn push_attr(&mut self, attr: Attr) {
         if let Value::Record(attrs, _) = &mut self.current_state.output {
             attrs.push(attr);
