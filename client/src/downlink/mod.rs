@@ -37,14 +37,21 @@ pub(self) use self::raw::create_downlink;
 use common::topic::{BoxTopic, SubscriptionError, Topic};
 use futures::future::BoxFuture;
 
+/// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
+/// downlink locally and `Upd` is the type of updates that an be observed on the client side.
 pub trait Downlink<Act, Upd: Clone>:
     Topic<Upd> + for<'a> ItemSink<'a, Act, Error = DownlinkError>
 {
+    /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
+
+    /// Type of the sink that can be used to apply actions to the downlink.
     type DlSink: for<'a> ItemSink<'a, Act, Error = DownlinkError>;
 
+    /// Split the downlink into a topic and sink.
     fn split(self) -> (Self::DlTopic, Self::DlSink);
 
+    /// Box the downlink so that it can be used dynamically.
     fn boxed(self) -> BoxedDownlink<Act, Upd>
     where
         Self: Sized,
