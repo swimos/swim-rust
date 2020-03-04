@@ -30,6 +30,19 @@ impl<T> Sender<mpsc::Sender<T>> {
     }
 }
 
+impl<'a, T> ItemSink<'a, T> for Sender<mpsc::Sender<T>>
+where
+    T: Unpin + Send + 'static,
+{
+    type Error = DownlinkError;
+    type SendFuture = MpscSend<'a, T, DownlinkError>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        let send: MpscSend<'a, T, DownlinkError> = MpscSend::new(&mut self.set_sink, value);
+        send
+    }
+}
+
 impl<T> Sender<watch::Sender<T>> {
     pub fn send(&mut self, value: T) -> Result<(), watch::error::SendError<T>> {
         self.set_sink.broadcast(value)

@@ -20,9 +20,11 @@ use tokio::sync::mpsc;
 use crate::model::Value;
 use crate::request::Request;
 
-use super::*;
 use crate::downlink::raw::RawDownlink;
-use std::fmt::Formatter;
+use crate::downlink::*;
+use crate::sink::item::ItemSink;
+use futures::Stream;
+use std::fmt::{Debug, Formatter};
 
 #[cfg(test)]
 mod tests;
@@ -320,7 +322,7 @@ where
         for<'b> ItemSink<'b, Command<MapModification<Arc<Value>>>, Error = Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    super::create_downlink(init, update_stream, cmd_sink, buffer_size)
+    crate::downlink::create_downlink(init, update_stream, cmd_sink, buffer_size)
 }
 
 impl StateMachine<MapModification<Value>, MapAction> for ValMap {

@@ -17,6 +17,7 @@ use std::future::Future;
 use futures::future::{BoxFuture, Map, Ready};
 use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
+use std::marker::PhantomData;
 use std::pin::Pin;
 use tokio::sync::{mpsc, watch};
 
@@ -61,30 +62,44 @@ pub fn for_mpsc_sender<T: Unpin + Send + 'static, Err: From<MpscErr<T>> + 'stati
     map_err(sender, err_trans)
 }
 
-pub struct MpscSend<'a, T> {
+pub struct MpscSend<'a, T, E> {
     sender: Pin<&'a mut mpsc::Sender<T>>,
     value: Option<T>,
+    _err: PhantomData<E>,
 }
 
-impl<'a, T: Unpin> Future for MpscSend<'a, T> {
-    type Output = Result<(), mpsc::error::SendError<T>>;
+impl<'a, T, E> MpscSend<'a, T, E> {
+    pub fn new(sender: &'a mut mpsc::Sender<T>, value: T) -> MpscSend<'a, T, E> {
+        MpscSend {
+            sender: Pin::new(sender),
+            value: Some(value),
+            _err: PhantomData,
+        }
+    }
+}
+
+impl<'a, T: Unpin, E> Future for MpscSend<'a, T, E>
+where
+    E: From<mpsc::error::SendError<T>> + Unpin,
+{
+    type Output = Result<(), E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let MpscSend { sender, value } = self.get_mut();
+        let MpscSend { sender, value, .. } = self.get_mut();
 
         match sender.poll_ready(cx) {
             Poll::Ready(Ok(_)) => match value.take() {
                 Some(t) => match sender.try_send(t) {
                     Ok(_) => Poll::Ready(Ok(())),
                     Err(mpsc::error::TrySendError::Closed(t)) => {
-                        Poll::Ready(Err(mpsc::error::SendError(t)))
+                        Poll::Ready(Err(mpsc::error::SendError(t).into()))
                     }
                     Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
                 },
                 _ => panic!("Send future evaluated twice."),
             },
             Poll::Ready(Err(_)) => match value.take() {
-                Some(t) => Poll::Ready(Err(mpsc::error::SendError(t))),
+                Some(t) => Poll::Ready(Err(mpsc::error::SendError(t).into())),
                 _ => panic!("Send future evaluated twice."),
             },
             Poll::Pending => Poll::Pending,
@@ -94,12 +109,13 @@ impl<'a, T: Unpin> Future for MpscSend<'a, T> {
 
 impl<'a, T: Unpin + Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
     type Error = mpsc::error::SendError<T>;
-    type SendFuture = MpscSend<'a, T>;
+    type SendFuture = MpscSend<'a, T, mpsc::error::SendError<T>>;
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         MpscSend {
             sender: Pin::new(self),
             value: Some(value),
+            _err: PhantomData,
         }
     }
 }

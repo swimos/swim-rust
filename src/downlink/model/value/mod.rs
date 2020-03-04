@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
@@ -21,8 +20,10 @@ use tokio::sync::mpsc;
 use tokio::sync::watch;
 
 use crate::downlink::raw::RawDownlink;
+use crate::downlink::*;
 use crate::model::Value;
 use crate::request::Request;
+use crate::sink::item;
 use std::fmt;
 
 #[cfg(test)]
@@ -98,7 +99,7 @@ where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
 {
     let cmd_sink = item::for_mpsc_sender::<Command<Arc<Value>>, DownlinkError>(cmd_sender);
-    super::create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
+    create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
 }
 
 fn transform_err<T, Err: From<item::WatchErr<T>>>(
@@ -120,7 +121,7 @@ where
 {
     let err_trans = || transform_err::<Command<Arc<Value>>, DownlinkError>;
     let cmd_sink = item::map_err(cmd_sender, err_trans);
-    super::create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
+    create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
 }
 
 impl StateMachine<Value, Action> for Arc<Value> {

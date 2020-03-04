@@ -60,7 +60,25 @@ pub struct WatchTopicReceiver<T: Clone + Send> {
 
 #[derive(Clone, Debug)]
 pub struct BroadcastTopic<T: Clone> {
-    sender: broadcast::Sender<T>,
+    pub sender: broadcast::Sender<T>,
+}
+
+impl<T: Clone> BroadcastTopic<T> {
+    pub fn new(
+        buffer_size: usize,
+    ) -> (
+        BroadcastTopic<T>,
+        broadcast::Sender<T>,
+        BroadcastReceiver<T>,
+    ) {
+        let (tx, rx) = broadcast::channel(buffer_size);
+        let topic = BroadcastTopic { sender: tx.clone() };
+        let rec = BroadcastReceiver {
+            sender: tx.clone(),
+            receiver: rx,
+        };
+        (topic, tx, rec)
+    }
 }
 
 #[derive(Debug)]
