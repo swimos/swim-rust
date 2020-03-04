@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::future::Future;
 
+use futures::{Sink, StreamExt};
 use futures::future::FutureExt;
-use futures::StreamExt;
+use futures::stream::SplitSink;
 use futures_util::stream::Stream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
@@ -117,17 +118,44 @@ impl Connection {
 
     async fn open(self) -> Result<(), ConnectionError> {
         let (ws_stream, _) = connect_async(&self.url).await?;
+        Ok(self.start(ws_stream).await)
+    }
+
+    async fn start<S>(self, ws_stream: S)
+        where
+            S: Stream<Item=Result<Message, tungstenite::error::Error>>
+            + Sink<Message>
+            + std::marker::Send
+            + 'static,
+    {
         let (write_stream, read_stream) = ws_stream.split();
 
         let receive = Connection::receive_messages(read_stream, self.url.to_string().to_owned());
-        let send = self.rx.map(Ok).forward(write_stream);
+        let send = self.send_message(write_stream);
 
         tokio::spawn(send);
         tokio::spawn(receive);
+    }
+
+    async fn send_message<S>(
+        self,
+        write_stream: SplitSink<S, Message>,
+    ) -> Result<(), ConnectionError>
+        where
+            S: Stream<Item=Result<Message, tungstenite::error::Error>>
+            + Sink<Message>
+            + std::marker::Send
+            + 'static,
+    {
+        self.rx
+            .map(Ok)
+            .forward(write_stream)
+            .await
+            .map_err(|_| ConnectionError::SendMessageError)?;
         Ok(())
     }
 
-    async fn receive_messages<S: Stream<Item = Result<Message, tungstenite::error::Error>>>(
+    async fn receive_messages<S: Stream<Item=Result<Message, tungstenite::error::Error>>>(
         read_stream: S,
         host: String,
     ) {
@@ -162,11 +190,6 @@ pub enum ConnectionError {
     SendMessageError,
 }
 
-#[derive(Debug, Clone)]
-pub enum ClientError {
-    RuntimeError,
-}
-
 impl From<url::ParseError> for ConnectionError {
     fn from(_: url::ParseError) -> Self {
         ConnectionError::ParseError
@@ -191,15 +214,20 @@ impl From<tokio::sync::mpsc::error::SendError<Message>> for ConnectionError {
     }
 }
 
-impl From<std::io::Error> for ClientError {
-    fn from(_: std::io::Error) -> Self {
-        ClientError::RuntimeError
-    }
-}
-
 impl From<TrySendError<ConnectionPoolMessage>> for ConnectionError {
     fn from(_: TrySendError<ConnectionPoolMessage>) -> Self {
         ConnectionError::SendMessageError
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ClientError {
+    RuntimeError,
+}
+
+impl From<std::io::Error> for ClientError {
+    fn from(_: std::io::Error) -> Self {
+        ClientError::RuntimeError
     }
 }
 
@@ -215,10 +243,10 @@ impl Client {
 
     fn schedule_task<F>(
         &self,
-        task: impl Future<Output = Result<F, ConnectionError>> + Send + 'static,
+        task: impl Future<Output=Result<F, ConnectionError>> + Send + 'static,
     ) -> JoinHandle<Result<F, ConnectionError>>
-    where
-        F: Send + 'static,
+        where
+            F: Send + 'static,
     {
         self.rt.spawn(
             async move { task.await }.inspect(|response| match response {
