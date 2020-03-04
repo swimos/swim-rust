@@ -3,7 +3,6 @@ use std::future::Future;
 
 use futures::{Sink, StreamExt};
 use futures::future::FutureExt;
-use futures::stream::SplitSink;
 use futures_util::stream::Stream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
@@ -23,15 +22,20 @@ struct ConnectionPoolMessage {
 struct ConnectionPool {
     connections: HashMap<String, ConnectionHandler>,
     rx: mpsc::Receiver<ConnectionPoolMessage>,
+    connections_rx: mpsc::Receiver<Message>,
+    connections_tx: mpsc::Sender<Message>,
 }
 
 impl ConnectionPool {
     fn new(buffer_size: usize) -> (ConnectionPool, ConnectionPoolHandler) {
         let (tx, rx) = mpsc::channel(buffer_size);
+        let (connections_tx, connections_rx) = mpsc::channel(buffer_size);
         (
             ConnectionPool {
                 connections: HashMap::new(),
                 rx,
+                connections_rx,
+                connections_tx,
             },
             ConnectionPoolHandler { tx },
         )
@@ -67,7 +71,8 @@ impl ConnectionPool {
 
     async fn open_connection(&mut self, host: &str) -> Result<ConnectionHandler, ConnectionError> {
         // Todo buffer size is hardcoded
-        let (connection, connection_handler) = Connection::new(host, 5)?;
+        let (connection, connection_handler) =
+            Connection::new(host, 5, self.connections_tx.clone())?;
         connection.open().await?;
         self.connections
             .insert(host.to_string(), connection_handler);
@@ -79,7 +84,7 @@ impl ConnectionPool {
             .clone())
     }
 
-    async fn receive_message(host: &str, message: Message) {
+    async fn receive_message(self, host: &str, message: Message) {
         println!("Host: {:?}", host);
         println!("Message: {:?}", message.to_text().unwrap());
         // TODO this will call the `receive_message` of the Router
@@ -103,17 +108,19 @@ impl ConnectionPoolHandler {
 struct Connection {
     url: url::Url,
     rx: mpsc::Receiver<Message>,
+    pool_tx: mpsc::Sender<Message>,
 }
 
 impl Connection {
     fn new(
         host: &str,
         buffer_size: usize,
+        pool_tx: mpsc::Sender<Message>,
     ) -> Result<(Connection, ConnectionHandler), ConnectionError> {
         let url = url::Url::parse(&host)?;
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        Ok((Connection { url, rx }, ConnectionHandler { tx }))
+        Ok((Connection { url, rx, pool_tx }, ConnectionHandler { tx }))
     }
 
     async fn open(self) -> Result<(), ConnectionError> {
@@ -130,22 +137,16 @@ impl Connection {
     {
         let (write_stream, read_stream) = ws_stream.split();
 
-        let receive = Connection::receive_messages(read_stream, self.url.to_string().to_owned());
+        let receive = Connection::receive_messages(self.pool_tx.clone(), read_stream);
         let send = self.send_message(write_stream);
 
         tokio::spawn(send);
         tokio::spawn(receive);
     }
 
-    async fn send_message<S>(
-        self,
-        write_stream: SplitSink<S, Message>,
-    ) -> Result<(), ConnectionError>
+    async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
         where
-            S: Stream<Item=Result<Message, tungstenite::error::Error>>
-            + Sink<Message>
-            + std::marker::Send
-            + 'static,
+            S: Sink<Message> + std::marker::Send + 'static,
     {
         self.rx
             .map(Ok)
@@ -155,15 +156,15 @@ impl Connection {
         Ok(())
     }
 
-    async fn receive_messages<S: Stream<Item=Result<Message, tungstenite::error::Error>>>(
-        read_stream: S,
-        host: String,
-    ) {
+    async fn receive_messages<S>(pool_tx: mpsc::Sender<Message>, read_stream: S)
+        where
+            S: Stream<Item=Result<Message, tungstenite::error::Error>>,
+    {
         read_stream
             .for_each(|response| {
                 async {
                     if let Ok(message) = response {
-                        ConnectionPool::receive_message(&host, message).await;
+                        pool_tx.clone().send(message).await;
                     }
                 }
             })
