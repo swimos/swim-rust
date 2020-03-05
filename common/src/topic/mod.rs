@@ -424,4 +424,10 @@ impl<T: Clone + 'static> Topic<T> for BoxTopic<T> {
     fn subscribe(&mut self) -> Self::Fut {
         (**self).subscribe()
     }
+
+    fn boxed_topic(self) -> BoxTopic<T> where
+        T: Send + 'static,
+        Self: Sized + 'static, {
+        self
+    }
 }
