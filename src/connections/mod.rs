@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::future::Future;
 
-use futures::{Sink, StreamExt};
 use futures::future::FutureExt;
+use futures::{Sink, StreamExt};
 use futures_util::stream::Stream;
+use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
@@ -125,12 +126,13 @@ impl Connection {
 
     async fn open(self) -> Result<(), ConnectionError> {
         let (ws_stream, _) = connect_async(&self.url).await?;
+        let ws_stream = ws_stream.map_err(|_| ConnectionError::SendMessageError);
         Ok(self.start(ws_stream).await)
     }
 
     async fn start<S>(self, ws_stream: S)
-        where
-            S: Stream<Item=Result<Message, tungstenite::error::Error>>
+    where
+        S: Stream<Item = Result<Message, ConnectionError>>
             + Sink<Message>
             + std::marker::Send
             + 'static,
@@ -145,8 +147,8 @@ impl Connection {
     }
 
     async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
-        where
-            S: Sink<Message> + std::marker::Send + 'static,
+    where
+        S: Sink<Message> + std::marker::Send + 'static,
     {
         self.rx
             .map(Ok)
@@ -156,19 +158,26 @@ impl Connection {
         Ok(())
     }
 
-    async fn receive_messages<S>(pool_tx: mpsc::Sender<Message>, read_stream: S)
-        where
-            S: Stream<Item=Result<Message, tungstenite::error::Error>>,
+    async fn receive_messages<S>(
+        pool_tx: mpsc::Sender<Message>,
+        read_stream: S,
+    ) -> Result<(), ConnectionError>
+    where
+        S: TryStreamExt<Ok = Message, Error = ConnectionError>,
     {
         read_stream
-            .for_each(|response| {
+            .try_for_each(|response| {
                 async {
-                    if let Ok(message) = response {
-                        pool_tx.clone().send(message).await;
-                    }
+                    pool_tx
+                        .clone()
+                        .send(response)
+                        .await
+                        .map_err(|_| ConnectionError::SendMessageError)
                 }
             })
-            .await;
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -244,10 +253,10 @@ impl Client {
 
     fn schedule_task<F>(
         &self,
-        task: impl Future<Output=Result<F, ConnectionError>> + Send + 'static,
+        task: impl Future<Output = Result<F, ConnectionError>> + Send + 'static,
     ) -> JoinHandle<Result<F, ConnectionError>>
-        where
-            F: Send + 'static,
+    where
+        F: Send + 'static,
     {
         self.rt.spawn(
             async move { task.await }.inspect(|response| match response {

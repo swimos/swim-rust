@@ -1,7 +1,7 @@
 use std::{thread, time};
 
-use futures::task::{Context, Poll};
 use futures::Sink;
+use futures::task::{Context, Poll};
 use futures_util::stream::Stream;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
@@ -59,7 +59,7 @@ async fn test_connection_receive_single_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    Connection::receive_messages(pool_tx, read_stream).await;
+    Connection::receive_messages(pool_tx, read_stream).await.unwrap();
     // Then
     assert_eq!("foo", pool_rx.try_recv().unwrap().to_text().unwrap());
 }
@@ -75,7 +75,7 @@ async fn test_connection_receive_multiple_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    Connection::receive_messages(pool_tx, read_stream).await;
+    Connection::receive_messages(pool_tx, read_stream).await.unwrap();
     // Then
     assert_eq!("foo", pool_rx.try_recv().unwrap().to_text().unwrap());
     assert_eq!("bar", pool_rx.try_recv().unwrap().to_text().unwrap());
@@ -147,7 +147,7 @@ struct TestReadStream {
 }
 
 impl Stream for TestReadStream {
-    type Item = Result<Message, tungstenite::error::Error>;
+    type Item = Result<Message, ConnectionError>;
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.items.is_empty() {
@@ -155,7 +155,7 @@ impl Stream for TestReadStream {
         } else {
             let message = self.items.drain(0..1).next();
             Poll::Ready(Some(
-                message.ok_or(tungstenite::error::Error::ConnectionClosed),
+                message.ok_or(ConnectionError::SendMessageError),
             ))
         }
     }
