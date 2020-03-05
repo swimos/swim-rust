@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::*;
+use crate::sink::item::ItemSender;
 
 #[cfg(test)]
 mod tests;
@@ -22,6 +23,15 @@ pub struct Sender<S> {
     pub set_sink: S,
     /// The task running the downlink.
     task: Option<DownlinkTask>,
+}
+
+impl<S> Sender<S> {
+    pub(in crate::downlink) fn new(set_sink: S, task: DownlinkTask) -> Sender<S> {
+        Sender {
+            set_sink,
+            task: Some(task),
+        }
+    }
 }
 
 impl<T> Sender<mpsc::Sender<T>> {
@@ -72,7 +82,11 @@ pub struct RawDownlink<S, R> {
 
 impl<S, R> RawDownlink<S, R> {
     //Private as downlinks should only be created by methods in this module and its children.
-    fn new(set_sink: S, event_stream: R, task: Option<DownlinkTask>) -> RawDownlink<S, R> {
+    pub(in crate::downlink) fn new(
+        set_sink: S,
+        event_stream: R,
+        task: Option<DownlinkTask>,
+    ) -> RawDownlink<S, R> {
         RawDownlink {
             receiver: Receiver { event_stream },
             sender: Sender { set_sink, task },
@@ -106,7 +120,7 @@ where
     State::Cmd: Send + 'static,
     Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
-    Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = Err> + Send + 'static,
+    Commands: ItemSender<Command<State::Cmd>, Err> + Send + 'static,
 {
     let model = Model::new(init);
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
@@ -134,9 +148,21 @@ where
     RawDownlink::new(act_tx, event_rx, Some(dl_task))
 }
 
-struct DownlinkTask {
+pub(in crate::downlink) struct DownlinkTask {
     join_handle: JoinHandle<Result<(), DownlinkError>>,
     stop_trigger: oneshot::Sender<()>,
+}
+
+impl DownlinkTask {
+    pub(in crate::downlink) fn new(
+        join_handle: JoinHandle<Result<(), DownlinkError>>,
+        stop_trigger: oneshot::Sender<()>,
+    ) -> DownlinkTask {
+        DownlinkTask {
+            join_handle,
+            stop_trigger,
+        }
+    }
 }
 
 impl DownlinkTask {
@@ -156,7 +182,17 @@ impl DownlinkTask {
 
 /// A task that consumes the operations applied to the downlink, updates the state and
 /// forwards events and commands to a pair of output sinks.
-async fn make_downlink_task<State, EC, EE, M, A, Ops, Acts, Commands, Events>(
+pub(in crate::downlink) async fn make_downlink_task<
+    State,
+    EC,
+    EE,
+    M,
+    A,
+    Ops,
+    Acts,
+    Commands,
+    Events,
+>(
     mut model: Model<State>,
     ops: Ops,
     acts: Acts,
@@ -228,7 +264,7 @@ where
 
 /// Combines together updates received from the Warp connection  and the stop signal
 /// into a single stream.
-fn combine_inputs<M, A, Upd>(
+pub(in crate::downlink) fn combine_inputs<M, A, Upd>(
     updates: Upd,
     stop: oneshot::Receiver<()>,
 ) -> impl FusedStream<Item = Operation<M, A>> + Send + 'static

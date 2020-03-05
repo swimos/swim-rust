@@ -19,7 +19,7 @@ use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
 use std::marker::PhantomData;
 use std::pin::Pin;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
 /// single operation. This can simplify operations where one can guarantee that the target sink
@@ -31,6 +31,13 @@ pub trait ItemSink<'a, T> {
     /// Attempt to send an item into the sink.
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
 }
+
+pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {}
+
+impl<X, T, E> ItemSender<T, E> for X where X: for<'a> ItemSink<'a, T, Error = E> {}
+
+#[derive(Clone, Debug)]
+pub struct SendError {}
 
 pub type BoxItemSink<T, E> =
     Box<dyn for<'a> ItemSink<'a, T, Error = E, SendFuture = BoxFuture<'a, Result<(), E>>>>;
@@ -47,8 +54,9 @@ where
 
 pub type MpscErr<T> = mpsc::error::SendError<T>;
 pub type WatchErr<T> = watch::error::SendError<T>;
+pub type BroadcastErr<T> = broadcast::SendError<T>;
 
-fn transform_err<T, Err: From<MpscErr<T>>>(result: Result<(), MpscErr<T>>) -> Result<(), Err> {
+fn transform_err<ErrIn, ErrOut: From<ErrIn>>(result: Result<(), ErrIn>) -> Result<(), ErrOut> {
     result.map_err(|e| e.into())
 }
 
@@ -57,9 +65,22 @@ fn transform_err<T, Err: From<MpscErr<T>>>(result: Result<(), MpscErr<T>>) -> Re
 pub fn for_mpsc_sender<T: Unpin + Send + 'static, Err: From<MpscErr<T>> + 'static>(
     sender: mpsc::Sender<T>,
 ) -> impl for<'a> ItemSink<'a, T, Error = Err> {
-    let err_trans = || transform_err::<T, Err>;
+    map_err(sender, || transform_err)
+}
 
-    map_err(sender, err_trans)
+pub fn for_watch_sender<T: Unpin + Clone + Send + 'static, Err: From<SendError> + 'static>(
+    sender: watch::Sender<Option<T>>,
+) -> impl for<'a> ItemSink<'a, T, Error = Err> {
+    map_err(WatchSink(sender), || transform_err)
+}
+
+pub fn for_broadcast_sender<
+    T: Unpin + Clone + Send + 'static,
+    Err: From<BroadcastErr<T>> + 'static,
+>(
+    sender: broadcast::Sender<T>,
+) -> impl for<'a> ItemSink<'a, T, Error = Err> {
+    map_err(sender, || transform_err)
 }
 
 pub struct MpscSend<'a, T, E> {
@@ -157,12 +178,41 @@ where
     }
 }
 
-impl<'a, T: Send + 'a> ItemSink<'a, T> for watch::Sender<T> {
-    type Error = watch::error::SendError<T>;
+pub struct WatchSink<T>(watch::Sender<Option<T>>);
+
+impl<T> WatchSink<T> {
+    pub fn broadcast(&self, value: T) -> Result<(), SendError> {
+        match self.0.broadcast(Some(value)) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(SendError {}),
+        }
+    }
+}
+
+impl<'a, T: Send + 'a> ItemSink<'a, T> for WatchSink<T> {
+    type Error = SendError;
     type SendFuture = Ready<Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         future::ready(self.broadcast(value))
+    }
+}
+
+impl<'a, T: Send + 'a> ItemSink<'a, T> for watch::Sender<T> {
+    type Error = WatchErr<T>;
+    type SendFuture = Ready<Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        future::ready(self.broadcast(value))
+    }
+}
+
+impl<'a, T: Send + 'a> ItemSink<'a, T> for broadcast::Sender<T> {
+    type Error = BroadcastErr<T>;
+    type SendFuture = Ready<Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        future::ready(self.send(value).map(|_| ()))
     }
 }
 

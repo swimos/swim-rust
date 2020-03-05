@@ -20,9 +20,12 @@ use tokio::sync::mpsc;
 use common::model::Value;
 use common::request::Request;
 
+use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
+use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
+use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
-use crate::sink::item::ItemSink;
+use crate::sink::item::ItemSender;
 use futures::Stream;
 use std::fmt::{Debug, Formatter};
 
@@ -310,7 +313,7 @@ impl ViewWithEvent {
 type MapLaneOperation = Operation<MapModification<Value>, MapAction>;
 
 /// Create a map downlink.
-pub fn create_downlink<Err, Updates, Commands>(
+pub fn create_raw_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -318,11 +321,64 @@ pub fn create_downlink<Err, Updates, Commands>(
 where
     Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands:
-        for<'b> ItemSink<'b, Command<MapModification<Arc<Value>>>, Error = Err> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
     crate::downlink::create_downlink(init, update_stream, cmd_sink, buffer_size)
+}
+
+/// Create a map downlink with an queue based multiplexing topic.
+pub fn create_queue_downlink<Err, Updates, Commands>(
+    update_stream: Updates,
+    cmd_sink: Commands,
+    buffer_size: usize,
+) -> (
+    QueueDownlink<MapAction, ViewWithEvent>,
+    QueueReceiver<ViewWithEvent>,
+)
+where
+    Err: Into<DownlinkError> + Send + 'static,
+    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
+{
+    let init: ValMap = OrdMap::new();
+    queue::make_downlink(init, update_stream, cmd_sink, buffer_size)
+}
+
+/// Create a value downlink with an dropping multiplexing topic.
+pub fn create_dropping_downlink<Err, Updates, Commands>(
+    update_stream: Updates,
+    cmd_sink: Commands,
+    buffer_size: usize,
+) -> (
+    DroppingDownlink<MapAction, ViewWithEvent>,
+    DroppingReceiver<ViewWithEvent>,
+)
+where
+    Err: Into<DownlinkError> + Send + 'static,
+    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
+{
+    let init: ValMap = OrdMap::new();
+    dropping::make_downlink(init, update_stream, cmd_sink, buffer_size)
+}
+
+/// Create a value downlink with an buffered multiplexing topic.
+pub fn create_buffered_downlink<Err, Updates, Commands>(
+    update_stream: Updates,
+    cmd_sink: Commands,
+    buffer_size: usize,
+) -> (
+    BufferedDownlink<MapAction, ViewWithEvent>,
+    BufferedReceiver<ViewWithEvent>,
+)
+where
+    Err: Into<DownlinkError> + Send + 'static,
+    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
+{
+    let init: ValMap = OrdMap::new();
+    buffered::make_downlink(init, update_stream, cmd_sink, buffer_size)
 }
 
 impl StateMachine<MapModification<Value>, MapAction> for ValMap {

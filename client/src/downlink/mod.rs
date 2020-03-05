@@ -25,6 +25,7 @@ use crate::sink::item;
 use crate::sink::item::{BoxItemSink, ItemSink, MpscSend};
 use futures::stream::{BoxStream, FusedStream};
 use std::fmt::Debug;
+use tokio::sync::broadcast;
 use tokio::sync::watch;
 
 pub mod buffered;
@@ -125,6 +126,18 @@ impl<T> From<mpsc::error::TrySendError<T>> for DownlinkError {
 
 impl<T> From<watch::error::SendError<T>> for DownlinkError {
     fn from(_: watch::error::SendError<T>) -> Self {
+        DownlinkError::DroppedChannel
+    }
+}
+
+impl From<item::SendError> for DownlinkError {
+    fn from(_: item::SendError) -> Self {
+        DownlinkError::DroppedChannel
+    }
+}
+
+impl<T> From<broadcast::SendError<T>> for DownlinkError {
+    fn from(_: broadcast::SendError<T>) -> Self {
         DownlinkError::DroppedChannel
     }
 }

@@ -52,17 +52,47 @@ pub trait Topic<T: Clone> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct WatchStream<T> {
+    inner: watch::Receiver<Option<T>>,
+}
+
+impl<T> WatchStream<T> {
+    unsafe_pinned!(inner: watch::Receiver<Option<T>>);
+}
+
+impl<T: Clone> WatchStream<T> {
+    pub async fn recv(&mut self) -> Option<T> {
+        match self.inner.recv().await {
+            Some(Some(t)) => Some(t),
+            _ => None,
+        }
+    }
+}
+
+impl<T: Clone> Stream for WatchStream<T> {
+    type Item = T;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.inner().poll_next(cx) {
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(Some(t))) => Poll::Ready(Some(t)),
+            _ => Poll::Pending,
+        }
+    }
+}
+
 /// A topic implementation backed by a Tokio watch channel. Subscribers will only see the latest
 /// output record since the last time the polled and so may (and likely will) miss outputs.
 #[derive(Clone, Debug)]
 pub struct WatchTopic<T: Clone> {
-    receiver: Weak<watch::Receiver<T>>,
+    receiver: Weak<watch::Receiver<Option<T>>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct WatchTopicReceiver<T: Clone + Send> {
-    _owner: Arc<watch::Receiver<T>>,
-    receiver: watch::Receiver<T>,
+    _owner: Arc<watch::Receiver<Option<T>>>,
+    receiver: WatchStream<T>,
 }
 
 /// A topic implementation backed by a Tokio broadcast channel. The topic has an intermediate
@@ -129,7 +159,7 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
 }
 
 impl<T: Clone + Send> WatchTopic<T> {
-    pub fn new(receiver: watch::Receiver<T>) -> (Self, WatchTopicReceiver<T>) {
+    pub fn new(receiver: watch::Receiver<Option<T>>) -> (Self, WatchTopicReceiver<T>) {
         let duplicate = receiver.clone();
         let owner = Arc::new(receiver);
         let topic = WatchTopic {
@@ -137,14 +167,14 @@ impl<T: Clone + Send> WatchTopic<T> {
         };
         let rec = WatchTopicReceiver {
             _owner: owner,
-            receiver: duplicate,
+            receiver: WatchStream { inner: duplicate },
         };
         (topic, rec)
     }
 }
 
 impl<T: Clone + Send> WatchTopicReceiver<T> {
-    unsafe_pinned!(receiver: watch::Receiver<T>);
+    unsafe_pinned!(receiver: WatchStream<T>);
 }
 
 impl<T: Clone + Send> Stream for WatchTopicReceiver<T> {
@@ -165,7 +195,7 @@ impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
                 let receiver = owner.as_ref().clone();
                 Ok(WatchTopicReceiver {
                     _owner: owner,
-                    receiver,
+                    receiver: WatchStream { inner: receiver },
                 })
             }
             _ => Err(SubscriptionError::TopicClosed),
