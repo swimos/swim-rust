@@ -278,7 +278,6 @@ mod struct_valid_types {
         }
 
         let test = Test { a: true };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", true)]);
 
@@ -293,9 +292,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
-
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1)]);
 
         assert_eq!(parsed_value, expected);
@@ -309,9 +306,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
-
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1)]);
 
         assert_eq!(parsed_value, expected);
@@ -325,9 +320,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
-
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1)]);
 
         assert_eq!(parsed_value, expected);
@@ -341,9 +334,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
-
         let expected = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::slot("a", Value::Int64Value(1))],
@@ -360,9 +351,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1.0 };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
-
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1.0)]);
 
         assert_eq!(parsed_value, expected);
@@ -376,9 +365,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1.0 };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
-
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1.0)]);
 
         assert_eq!(parsed_value, expected);
@@ -392,9 +379,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 's' };
-
         let parsed_value = Form::default().to_value(&test).unwrap();
-
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", "s")]);
 
         assert_eq!(parsed_value, expected);

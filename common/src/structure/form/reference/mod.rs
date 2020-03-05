@@ -678,8 +678,21 @@ fn test_enum() {
         Struct { a: u32 },
     }
 
-    let j = r#"{"Struct":{"a":1}}"#;
-    let expected = E::Struct { a: 1 };
+    let j = r#"{"Tuple":[1,2]}"#;
+    let expected = E::Tuple(1, 2);
+    assert_eq!(expected, from_str(j).unwrap());
+}
+
+#[test]
+fn struct_tuple() {
+    #[derive(Deserialize, PartialEq, Debug)]
+    struct Test {
+        a: u32,
+        b: (u32, u32),
+    }
+
+    let j = r#"{"a":1,"b":[2,3]}"#;
+    let expected = Test { a: 1, b: (2, 3) };
 
     assert_eq!(expected, from_str(j).unwrap());
 }

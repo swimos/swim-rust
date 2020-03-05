@@ -15,7 +15,7 @@
 use serde::de::{DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor};
 use serde::Deserializer;
 
-use crate::model::{Item, Value};
+use crate::model::{Attr, Item, Value};
 use crate::structure::form::{FormParseErr, Result};
 
 #[cfg(test)]
@@ -38,6 +38,7 @@ pub struct State<'s> {
 pub enum DeserializerState<'i> {
     ReadingRecord { item_index: usize },
     ReadingItem(&'i Item),
+    ReadingAttribute(&'i Attr),
     ReadingSingleValue,
     None,
 }
@@ -46,8 +47,8 @@ impl<'s, 'de: 's> ValueDeserializer<'s, 'de> {
     pub fn for_values(input: &'de Value) -> Self {
         ValueDeserializer {
             current_state: State {
-                deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
-                value: None,
+                deserializer_state: DeserializerState::None,
+                value: Some(input),
             },
             stack: vec![],
             input,
@@ -63,6 +64,13 @@ impl<'s, 'de: 's> ValueDeserializer<'s, 'de> {
             stack: vec![],
             input,
         }
+    }
+
+    pub fn push_record(&mut self, value: Option<&'s Value>) {
+        self.push_state(State {
+            deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
+            value,
+        });
     }
 
     pub fn push_state(&mut self, state: State<'s>) {
@@ -99,7 +107,15 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
                 Value::BooleanValue(_) => self.deserialize_bool(visitor),
             },
-            None => panic!(),
+            None => {
+                if let DeserializerState::ReadingAttribute(a) =
+                    self.current_state.deserializer_state
+                {
+                    visitor.visit_string(a.name.to_owned())
+                } else {
+                    panic!()
+                }
+            }
         }
     }
 
@@ -118,14 +134,14 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: i8")))
     }
 
     fn deserialize_i16<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: i16")))
     }
 
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
@@ -154,35 +170,35 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: u8")))
     }
 
     fn deserialize_u16<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: u16")))
     }
 
     fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: u32")))
     }
 
     fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: u64")))
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: f32")))
     }
 
     fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
@@ -200,14 +216,16 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from(
+            "Unsupported type: char",
+        )))
     }
 
     fn deserialize_str<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from("Unsupported type: str")))
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
@@ -225,24 +243,28 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from(
+            "Unsupported type: byte",
+        )))
     }
 
     fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(FormParseErr::Message(String::from(
+            "Unsupported type: byte",
+        )))
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        // todo
-        match &mut self.input {
-            Value::Extant => visitor.visit_none(),
-            v => Err(FormParseErr::IncorrectType(v.to_owned())),
+        match self.current_state.value {
+            Some(Value::Extant) => visitor.visit_none(),
+            Some(value @ Value::Record(_, _)) => visitor.visit_some(self),
+            _ => visitor.visit_some(self),
         }
     }
 
@@ -267,19 +289,52 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
         unimplemented!()
     }
 
-    fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        match &self.current_state.deserializer_state {
+            DeserializerState::ReadingRecord { ref item_index } => match self.current_state.value {
+                Some(Value::Record(attrs, items)) => {
+                    let value = match items.get(*item_index) {
+                        Some(Item::ValueItem(value)) => value,
+                        Some(Item::Slot(key, value)) => value,
+                        _ => panic!("Value out of sync with state"),
+                    };
+                }
+                _ => panic!("Value out of sync with state"),
+            },
+            DeserializerState::ReadingItem(item) => {
+                let value = match item {
+                    Item::ValueItem(value) => value,
+                    Item::Slot(key, value) => value,
+                };
+
+                self.push_record(Some(&value));
+            }
+            _ => self.push_record(self.current_state.value),
+        }
+
+        if let DeserializerState::ReadingItem(item) = &self.current_state.deserializer_state {
+            let value = match item {
+                Item::ValueItem(value) => value,
+                Item::Slot(key, value) => value,
+            };
+
+            self.push_state(State {
+                deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
+                value: Some(&value),
+            });
+        } else {
+            // self.push_state(State {
+            //     deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
+            //     value: Some(&value),
+            // });
+        }
+
+        Ok(visitor.visit_seq(RecordMap::new(&mut self))?)
     }
 
-    // Tuples look just like sequences in JSON. Some formats may be able to
-    // represent tuples more efficiently.
-    //
-    // As indicated by the length parameter, the `Deserialize` implementation
-    // for a tuple in the Serde data model is required to know the length of the
-    // tuple before even looking at the input data.
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -287,7 +342,6 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
         self.deserialize_seq(visitor)
     }
 
-    // Tuple structs look just like sequences in JSON.
     fn deserialize_tuple_struct<V>(
         self,
         _name: &'static str,
@@ -317,26 +371,56 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
-        match &self.input {
-            Value::Record(attrs, _) => match attrs.first() {
-                Some(a) => {
-                    if a.name == name {
-                        let state = State {
-                            deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
-                            value: Some(&self.input),
-                        };
+        if let DeserializerState::None = &self.current_state.deserializer_state {
+            self.current_state.value = Some(self.input);
+        }
 
-                        self.push_state(state);
-                        self.deserialize_map(visitor)
-                    } else {
-                        Err(FormParseErr::Malformatted)
+        match &self.current_state.value {
+            Some(value) => {
+                if let Value::Record(attrs, items) = value {
+                    match attrs.first() {
+                        Some(a) => {
+                            if a.name == name {
+                                let state = {
+                                    // If we're reading an item then we are reading a nested struct
+                                    if let DeserializerState::ReadingItem(item) =
+                                        self.current_state.deserializer_state
+                                    {
+                                        match item {
+                                            Item::ValueItem(v) => unimplemented!(),
+                                            Item::Slot(key, value) => State {
+                                                deserializer_state:
+                                                    DeserializerState::ReadingRecord {
+                                                        item_index: 0,
+                                                    },
+                                                value: Some(&value),
+                                            },
+                                        }
+                                    } else {
+                                        State {
+                                            deserializer_state: DeserializerState::ReadingRecord {
+                                                item_index: 0,
+                                            },
+                                            value: Some(&value),
+                                        }
+                                    }
+                                };
+
+                                self.push_state(state);
+                                self.deserialize_map(visitor)
+                            } else {
+                                Err(FormParseErr::Malformatted)
+                            }
+                        }
+                        None => Err(FormParseErr::Message(String::from(
+                            "Missing tag for struct",
+                        ))),
                     }
+                } else {
+                    unimplemented!()
                 }
-                None => Err(FormParseErr::Message(String::from(
-                    "Missing tag for struct",
-                ))),
-            },
-            v => unimplemented!("{:?}", v),
+            }
+            None => Err(FormParseErr::Message(String::from("Missing record"))),
         }
     }
 
@@ -344,12 +428,13 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
         self,
         _name: &'static str,
         _variants: &'static [&'static str],
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        let value = visitor.visit_enum(Enum::new(self))?;
+        Ok(value)
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
@@ -363,7 +448,7 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_any(_visitor)
     }
 }
 
@@ -385,11 +470,52 @@ impl<'a, 'de, 's> RecordMap<'a, 'de, 's> {
 impl<'de, 'a, 's> SeqAccess<'de> for RecordMap<'a, 'de, 's> {
     type Error = FormParseErr;
 
-    fn next_element_seed<T>(&mut self, _seed: T) -> Result<Option<T::Value>>
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,
     {
-        unimplemented!()
+        match self.de.current_state.value {
+            Some(v) => {
+                if let Value::Record(attrs, items) = v {
+                    let result = {
+                        match self.de.current_state.deserializer_state {
+                            DeserializerState::ReadingRecord { item_index } => {
+                                if item_index < items.len() {
+                                    let item = items.get(item_index).unwrap();
+                                    let value = match item {
+                                        Item::ValueItem(value) => value,
+                                        _ => panic!(),
+                                    };
+
+                                    self.de.push_state(State {
+                                        deserializer_state: DeserializerState::ReadingItem(item),
+                                        value: Some(value),
+                                    });
+
+                                    let result = seed.deserialize(&mut *self.de).map(Some);
+                                    self.de.pop_state();
+                                    result
+                                } else {
+                                    Ok(None)
+                                }
+                            }
+                            _ => unimplemented!("Illegal state"),
+                        }
+                    };
+
+                    if let DeserializerState::ReadingRecord { item_index } =
+                        &mut self.de.current_state.deserializer_state
+                    {
+                        *item_index += 1;
+                    }
+
+                    result
+                } else {
+                    seed.deserialize(&mut *self.de).map(Some)
+                }
+            }
+            None => unimplemented!(),
+        }
     }
 }
 
@@ -411,26 +537,25 @@ impl<'de, 'a, 's> MapAccess<'de> for RecordMap<'a, 'de, 's> {
                             let item = items.get(item_index).unwrap();
                             let value = match item {
                                 Item::Slot(key, value) => key,
-                                _ => panic!(),
+                                Item::ValueItem(value) => value,
                             };
 
                             self.de.push_state(State {
                                 deserializer_state: DeserializerState::ReadingItem(item),
                                 value: Some(value),
                             });
-
                             seed.deserialize(&mut *self.de).map(Some)
                         } else {
                             Ok(None)
                         }
                     }
-                    _v => unimplemented!(),
+                    _v => unimplemented!("Illegal state"),
                 }
             } else {
-                unimplemented!()
+                Ok(None)
             }
         } else {
-            unimplemented!()
+            Ok(None)
         }
     }
 
@@ -477,11 +602,30 @@ impl<'de, 'a, 's> EnumAccess<'de> for Enum<'a, 'de, 's> {
     type Error = FormParseErr;
     type Variant = Self;
 
-    fn variant_seed<V>(self, _seed: V) -> Result<(V::Value, Self::Variant)>
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
     where
         V: DeserializeSeed<'de>,
     {
-        unimplemented!()
+        if let Some(Value::Record(attrs, items)) = &self.de.current_state.value {
+            match attrs.first() {
+                Some(a) => {
+                    self.de.push_state(State {
+                        deserializer_state: DeserializerState::ReadingAttribute(a),
+                        value: None,
+                    });
+
+                    let val = seed.deserialize(&mut *self.de)?;
+                    self.de.pop_state();
+
+                    Ok((val, self))
+                }
+                None => Err(FormParseErr::Message(String::from(
+                    "Enum missing variant name",
+                ))),
+            }
+        } else {
+            unimplemented!()
+        }
     }
 }
 
@@ -489,11 +633,9 @@ impl<'de, 'a, 's> VariantAccess<'de> for Enum<'a, 'de, 's> {
     type Error = FormParseErr;
 
     fn unit_variant(self) -> Result<()> {
-        Err(FormParseErr::Message(String::from("Expected string")))
+        Ok(())
     }
 
-    // Newtype variants are represented in JSON as `{ NAME: VALUE }` so
-    // deserialize the value here.
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
     where
         T: DeserializeSeed<'de>,
@@ -512,6 +654,7 @@ impl<'de, 'a, 's> VariantAccess<'de> for Enum<'a, 'de, 's> {
     where
         V: Visitor<'de>,
     {
+        self.de.push_record(self.de.current_state.value);
         Deserializer::deserialize_map(self.de, visitor)
     }
 }

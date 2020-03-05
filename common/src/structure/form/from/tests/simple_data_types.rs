@@ -15,13 +15,263 @@
 use serde::Deserialize;
 
 use crate::model::Value;
+use crate::model::{Attr, Item};
 use crate::structure::form::Form;
 
 #[cfg(test)]
-mod structs {
-    use crate::model::{Attr, Item};
+mod illegal {
+    use crate::structure::form::FormParseErr;
 
     use super::*;
+
+    #[test]
+    fn mismatched_tag() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: i32,
+            b: i64,
+        }
+
+        let mut record = Value::Record(
+            vec![Attr::from("Incorrect")],
+            vec![
+                Item::from(("a", 1)),
+                Item::from(("b", Value::Int64Value(2))),
+            ],
+        );
+
+        let parsed_value = Form::default().from_value::<Test>(&mut record);
+
+        assert_eq!(parsed_value.unwrap_err(), FormParseErr::Malformatted);
+    }
+}
+
+#[cfg(test)]
+mod tuples {
+    use super::*;
+
+    #[test]
+    fn tuple_struct() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: i32,
+            b: (i64, i64),
+        }
+
+        let expected = Test { a: 1, b: (2, 3) };
+
+        let mut record = Value::Record(
+            vec![Attr::of("Test")],
+            vec![
+                Item::from(("a", 1)),
+                Item::slot(
+                    "b",
+                    Value::record(vec![
+                        Item::of(Value::Int64Value(2)),
+                        Item::of(Value::Int64Value(3)),
+                    ]),
+                ),
+            ],
+        );
+
+        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn tuple_struct_with_tuple() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test(i32, (i64, i64));
+
+        let expected = Test(1, (2, 3));
+
+        let mut record = Value::record(vec![
+            Item::from(1),
+            Item::from(Value::record(vec![
+                Item::from(Value::Int64Value(2)),
+                Item::from(Value::Int64Value(3)),
+            ])),
+        ]);
+
+        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn simple_tuple() {
+        let expected = (1, 2);
+        let mut record = Value::record(vec![Item::from(1), Item::from(2)]);
+        let parsed_value = Form::default()
+            .from_value::<(i32, i32)>(&mut record)
+            .unwrap();
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn struct_with_tuple() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: i32,
+            b: (i64, i64),
+        }
+
+        let expected = Test { a: 1, b: (2, 3) };
+
+        let mut record = Value::Record(
+            vec![Attr::of("Test")],
+            vec![
+                Item::of(("a", 1)),
+                Item::slot(
+                    "b",
+                    Value::record(vec![
+                        Item::of(Value::Int64Value(2)),
+                        Item::of(Value::Int64Value(3)),
+                    ]),
+                ),
+            ],
+        );
+
+        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+
+        assert_eq!(parsed_value, expected);
+    }
+}
+
+#[cfg(test)]
+mod enumeration {
+    use super::*;
+
+    #[test]
+    fn simple() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        enum TestEnum {
+            A,
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: TestEnum,
+        }
+
+        let mut record = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::slot("a", Value::of_attr("A"))],
+        );
+        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+
+        let expected = Test { a: TestEnum::A };
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn with_tuple() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        enum TestEnum {
+            A(i32, i32),
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: TestEnum,
+        }
+
+        let mut record = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::slot(
+                "a",
+                Value::Record(vec![Attr::of("A")], vec![Item::from(1), Item::from(2)]),
+            )],
+        );
+
+        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let expected = Test {
+            a: TestEnum::A(1, 2),
+        };
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn with_struct() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        enum TestEnum {
+            A { a: i32, b: i64 },
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: TestEnum,
+        }
+
+        let mut record = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::slot(
+                "a",
+                Value::Record(
+                    vec![Attr::of("A")],
+                    vec![Item::slot("a", 1), Item::slot("b", Value::Int64Value(2))],
+                ),
+            )],
+        );
+        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let expected = Test {
+            a: TestEnum::A { a: 1, b: 2 },
+        };
+
+        assert_eq!(parsed_value, expected);
+    }
+}
+
+#[cfg(test)]
+mod structs {
+    use super::*;
+
+    #[test]
+    fn nested_struct() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Parent {
+            a: i32,
+            b: i64,
+            c: Child,
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Child {
+            a: i32,
+            b: i64,
+        }
+
+        let test = Parent {
+            a: 1,
+            b: 2,
+            c: Child { a: 3, b: 4 },
+        };
+
+        let mut record = Value::Record(
+            vec![Attr::from("Parent")],
+            vec![
+                Item::from(("a", 1)),
+                Item::from(("b", Value::Int64Value(2))),
+                Item::from((
+                    "c",
+                    Value::Record(
+                        vec![Attr::from("Child")],
+                        vec![
+                            Item::from(("a", 3)),
+                            Item::from(("b", Value::Int64Value(4))),
+                        ],
+                    ),
+                )),
+            ],
+        );
+        let parsed_value = Form::default().from_value::<Parent>(&mut record).unwrap();
+        println!("{:?}", parsed_value);
+        assert_eq!(parsed_value, test);
+    }
 
     #[test]
     fn simple_struct() {
@@ -31,7 +281,7 @@ mod structs {
             b: i64,
         }
 
-        let _test = Test { a: 1, b: 2 };
+        let test = Test { a: 1, b: 2 };
 
         let mut record = Value::Record(
             vec![Attr::from("Test")],
@@ -40,9 +290,9 @@ mod structs {
                 Item::from(("b", Value::Int64Value(2))),
             ],
         );
-        let parsed_value = Form::default().from_value::<Test>(&mut record);
+        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
 
-        println!("{:?}", parsed_value);
+        assert_eq!(parsed_value, test);
     }
 }
 
@@ -55,9 +305,9 @@ mod valid_types {
         let parsed_value = Form::default()
             .from_value::<Option<String>>(&mut Value::Extant)
             .unwrap();
-        let expected = None;
+        let record = None;
 
-        assert_eq!(parsed_value, expected);
+        assert_eq!(parsed_value, record);
     }
 
     #[test]
