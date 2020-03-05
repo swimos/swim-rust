@@ -269,7 +269,7 @@ mod structs {
             ],
         );
         let parsed_value = Form::default().from_value::<Parent>(&mut record).unwrap();
-        println!("{:?}", parsed_value);
+
         assert_eq!(parsed_value, test);
     }
 

@@ -62,9 +62,11 @@ mod valid {
                 Item::from(("b", Value::Extant)),
             ],
         );
-        let parsed_value = Form::default().from_value::<TestStruct>(&mut record);
+        let parsed_value = Form::default()
+            .from_value::<TestStruct>(&mut record)
+            .unwrap();
 
-        println!("{:?}", parsed_value);
+        assert_eq!(parsed_value, expected);
     }
 
     #[test]
@@ -99,9 +101,11 @@ mod valid {
                 )),
             ],
         );
-        let parsed_value = Form::default().from_value::<TestStruct>(&mut record);
+        let parsed_value = Form::default()
+            .from_value::<TestStruct>(&mut record)
+            .unwrap();
 
-        println!("{:?}", parsed_value);
+        assert_eq!(parsed_value, expected);
     }
 
     #[test]

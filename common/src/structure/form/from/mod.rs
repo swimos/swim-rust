@@ -315,23 +315,6 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
             _ => self.push_record(self.current_state.value),
         }
 
-        if let DeserializerState::ReadingItem(item) = &self.current_state.deserializer_state {
-            let value = match item {
-                Item::ValueItem(value) => value,
-                Item::Slot(key, value) => value,
-            };
-
-            self.push_state(State {
-                deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
-                value: Some(&value),
-            });
-        } else {
-            // self.push_state(State {
-            //     deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
-            //     value: Some(&value),
-            // });
-        }
-
         Ok(visitor.visit_seq(RecordMap::new(&mut self))?)
     }
 
