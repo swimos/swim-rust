@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Formatter;
 use std::sync::Arc;
 
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
-use super::*;
 use common::model::Value;
 use common::request::Request;
+
+use crate::downlink::raw::RawDownlink;
+use crate::downlink::*;
+use crate::sink::item::ItemSink;
+use futures::Stream;
+use std::fmt::{Debug, Formatter};
 
 #[cfg(test)]
 mod tests;
@@ -310,7 +314,7 @@ pub fn create_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
-) -> Downlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
+) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
@@ -318,7 +322,7 @@ where
         for<'b> ItemSink<'b, Command<MapModification<Arc<Value>>>, Error = Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    super::create_downlink(init, update_stream, cmd_sink, buffer_size)
+    crate::downlink::create_downlink(init, update_stream, cmd_sink, buffer_size)
 }
 
 impl StateMachine<MapModification<Value>, MapAction> for ValMap {
