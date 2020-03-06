@@ -22,12 +22,13 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::sink::item;
-use crate::sink::item::{BoxItemSink, ItemSink, MpscSend};
+use crate::sink::item::{BoxItemSink, ItemSender, ItemSink, MpscSend};
 use futures::stream::{BoxStream, FusedStream};
 use std::fmt::Debug;
 use tokio::sync::broadcast;
 use tokio::sync::watch;
 
+pub mod any;
 pub mod buffered;
 pub mod dropping;
 pub mod model;
@@ -40,9 +41,7 @@ use futures::future::BoxFuture;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Act, Upd: Clone>:
-    Topic<Upd> + for<'a> ItemSink<'a, Act, Error = DownlinkError>
-{
+pub trait Downlink<Act, Upd: Clone>: Topic<Upd> + ItemSender<Act, DownlinkError> {
     /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
 

@@ -18,6 +18,7 @@ use crate::sink::item::ItemSender;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
 pub struct Sender<S> {
     /// A sink for local actions (sets, insertions, etc.)
     pub set_sink: S,
@@ -148,6 +149,7 @@ where
     RawDownlink::new(act_tx, event_rx, Some(dl_task))
 }
 
+#[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTask {
     join_handle: JoinHandle<Result<(), DownlinkError>>,
     stop_trigger: oneshot::Sender<()>,

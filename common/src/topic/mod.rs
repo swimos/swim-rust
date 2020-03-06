@@ -85,12 +85,12 @@ impl<T: Clone> Stream for WatchStream<T> {
 /// A topic implementation backed by a Tokio watch channel. Subscribers will only see the latest
 /// output record since the last time the polled and so may (and likely will) miss outputs.
 #[derive(Clone, Debug)]
-pub struct WatchTopic<T: Clone> {
+pub struct WatchTopic<T> {
     receiver: Weak<watch::Receiver<Option<T>>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct WatchTopicReceiver<T: Clone + Send> {
+pub struct WatchTopicReceiver<T> {
     _owner: Arc<watch::Receiver<Option<T>>>,
     receiver: WatchStream<T>,
 }
@@ -99,7 +99,7 @@ pub struct WatchTopicReceiver<T: Clone + Send> {
 /// queue from which all subscribers read. If the queue fills (records are being produced faster
 /// than they are consumed) the topic will begin discarding records, starting with the oldest.
 #[derive(Clone, Debug)]
-pub struct BroadcastTopic<T: Clone> {
+pub struct BroadcastTopic<T> {
     pub sender: broadcast::Sender<T>,
 }
 
@@ -122,7 +122,7 @@ impl<T: Clone> BroadcastTopic<T> {
 }
 
 #[derive(Debug)]
-pub struct BroadcastReceiver<T: Clone> {
+pub struct BroadcastReceiver<T> {
     sender: broadcast::Sender<T>,
     receiver: broadcast::Receiver<T>,
 }
@@ -136,7 +136,7 @@ impl<T: Clone> BroadcastReceiver<T> {
 /// A topic where every subscriber is represented by a Tokio MPSC queue. If any one subscriber falls
 /// behind, all of the subscribers will block until it catches up.
 #[derive(Clone, Debug)]
-pub struct MpscTopic<T: Clone> {
+pub struct MpscTopic<T> {
     sub_sender: mpsc::Sender<SubRequest<T>>,
     task: Arc<JoinHandle<()>>,
 }
@@ -425,9 +425,11 @@ impl<T: Clone + 'static> Topic<T> for BoxTopic<T> {
         (**self).subscribe()
     }
 
-    fn boxed_topic(self) -> BoxTopic<T> where
+    fn boxed_topic(self) -> BoxTopic<T>
+    where
         T: Send + 'static,
-        Self: Sized + 'static, {
+        Self: Sized + 'static,
+    {
         self
     }
 }

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
@@ -23,9 +24,16 @@ use tokio::sync::{mpsc, oneshot};
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.
-pub struct DroppingDownlink<Act, Upd: Clone> {
+#[derive(Debug)]
+pub struct DroppingDownlink<Act, Upd> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: WatchTopic<Event<Upd>>,
+}
+
+impl<Act, Upd> DroppingDownlink<Act, Upd> {
+    pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
+        AnyDownlink::Dropping(self)
+    }
 }
 
 pub type DroppingReceiver<T> = WatchTopicReceiver<Event<T>>;
@@ -67,7 +75,6 @@ where
 impl<'a, Act, Upd> ItemSink<'a, Act> for DroppingDownlink<Act, Upd>
 where
     Act: Unpin + Send + 'static,
-    Upd: Clone + Send + Sync + 'static,
 {
     type Error = DownlinkError;
     type SendFuture = MpscSend<'a, Act, DownlinkError>;

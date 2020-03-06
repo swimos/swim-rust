@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::raw;
+use crate::downlink::any::AnyDownlink;
 use crate::downlink::{Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
@@ -22,9 +23,16 @@ use tokio::sync::{mpsc, oneshot};
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.
-pub struct QueueDownlink<Act, Upd: Clone> {
+#[derive(Debug)]
+pub struct QueueDownlink<Act, Upd> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: MpscTopic<Event<Upd>>,
+}
+
+impl<Act, Upd> QueueDownlink<Act, Upd> {
+    pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
+        AnyDownlink::Queue(self)
+    }
 }
 
 impl<Act, Upd> QueueDownlink<Act, Upd>
@@ -65,7 +73,6 @@ where
 impl<'a, Act, Upd> ItemSink<'a, Act> for QueueDownlink<Act, Upd>
 where
     Act: Unpin + Send + 'static,
-    Upd: Clone + Send + Sync + 'static,
 {
     type Error = DownlinkError;
     type SendFuture = MpscSend<'a, Act, DownlinkError>;

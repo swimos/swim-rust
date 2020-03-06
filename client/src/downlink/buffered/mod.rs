@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
@@ -24,9 +25,16 @@ use tokio::sync::{mpsc, oneshot};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
-pub struct BufferedDownlink<Act, Upd: Clone> {
+#[derive(Debug)]
+pub struct BufferedDownlink<Act, Upd> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: BroadcastTopic<Event<Upd>>,
+}
+
+impl<Act, Upd> BufferedDownlink<Act, Upd> {
+    pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
+        AnyDownlink::Buffered(self)
+    }
 }
 
 pub type BufferedReceiver<T> = BroadcastReceiver<Event<T>>;
@@ -69,7 +77,6 @@ where
 impl<'a, Act, Upd> ItemSink<'a, Act> for BufferedDownlink<Act, Upd>
 where
     Act: Unpin + Send + 'static,
-    Upd: Clone + Send + Sync + 'static,
 {
     type Error = DownlinkError;
     type SendFuture = MpscSend<'a, Act, DownlinkError>;
