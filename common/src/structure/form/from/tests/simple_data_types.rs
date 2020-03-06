@@ -44,6 +44,40 @@ mod illegal {
 
         assert_eq!(parsed_value.unwrap_err(), FormParseErr::Malformatted);
     }
+
+    #[test]
+    fn missing_field() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: i32,
+            b: i64,
+        }
+
+        let record = Value::Record(
+            vec![Attr::from("Test")],
+            vec![
+                Item::from(("a", 1)),
+            ],
+        );
+
+        let parsed_value = Form::default().from_value::<Test>(&record);
+
+        assert_eq!(parsed_value.unwrap_err(), FormParseErr::Message(String::from("missing field `b`")));
+    }
+
+    #[test]
+    fn empty_record() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Test {
+            a: i32,
+            b: i64,
+        }
+
+        let record = Value::Record(Vec::new(), Vec::new());
+        let parsed_value = Form::default().from_value::<Test>(&record);
+
+        assert_eq!(parsed_value.unwrap_err(), FormParseErr::Message(String::from("Missing tag")));
+    }
 }
 
 #[cfg(test)]

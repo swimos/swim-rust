@@ -409,7 +409,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                             }
                         }
                         None => Err(FormParseErr::Message(String::from(
-                            "Missing tag for struct",
+                            "Missing tag",
                         ))),
                     }
                 } else {
