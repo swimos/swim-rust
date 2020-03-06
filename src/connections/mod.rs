@@ -124,13 +124,27 @@ impl Connection {
         Ok((Connection { url, rx, pool_tx }, ConnectionHandler { tx }))
     }
 
-    async fn open(self) -> Result<(), ConnectionError> {
+    async fn open(
+        self,
+    ) -> Result<
+        (
+            JoinHandle<Result<(), ConnectionError>>,
+            JoinHandle<Result<(), ConnectionError>>,
+        ),
+        ConnectionError,
+    > {
         let (ws_stream, _) = connect_async(&self.url).await?;
         let ws_stream = ws_stream.map_err(|_| ConnectionError::SendMessageError);
-        Ok(self.start(ws_stream).await)
+        Ok(self.start(ws_stream))
     }
 
-    async fn start<S>(self, ws_stream: S)
+    fn start<S>(
+        self,
+        ws_stream: S,
+    ) -> (
+        JoinHandle<Result<(), ConnectionError>>,
+        JoinHandle<Result<(), ConnectionError>>,
+    )
     where
         S: Stream<Item = Result<Message, ConnectionError>>
             + Sink<Message>
@@ -142,8 +156,10 @@ impl Connection {
         let receive = Connection::receive_messages(self.pool_tx.clone(), read_stream);
         let send = self.send_message(write_stream);
 
-        tokio::spawn(send);
-        tokio::spawn(receive);
+        let send_handle = tokio::spawn(send);
+        let receive_handle = tokio::spawn(receive);
+
+        (send_handle, receive_handle)
     }
 
     async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>

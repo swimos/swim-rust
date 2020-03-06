@@ -1,7 +1,7 @@
 use std::{thread, time};
 
-use futures::Sink;
 use futures::task::{Context, Poll};
+use futures::Sink;
 use futures_util::stream::Stream;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
@@ -51,6 +51,30 @@ fn test_new_connection() {
 }
 
 #[tokio::test]
+async fn test_connection_start() {
+    //Given
+    let host = "ws://127.0.0.1:9999";
+    let buffer_size = 5;
+    let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
+    let mut items = Vec::new();
+    items.push(Message::text("recv_foo"));
+    let (writer_tx, writer_rx) = std::sync::mpsc::channel::<Message>();
+    let ws_stream = TestReadWriteStream {
+        write_stream: TestWriteStream { tx: writer_tx },
+        read_stream: TestReadStream { items },
+    };
+    let (connection, mut handle) = Connection::new(host, buffer_size, pool_tx).unwrap();
+    handle.send_message("send_foo").await.unwrap();
+    //When
+    let (send_handle, receive_handle) = connection.start(ws_stream);
+    let _result = send_handle.await.unwrap();
+    let _result = receive_handle.await.unwrap().unwrap();
+    //Then
+    assert_eq!("send_foo", writer_rx.try_recv().unwrap().to_text().unwrap());
+    assert_eq!("recv_foo", pool_rx.try_recv().unwrap().to_text().unwrap());
+}
+
+#[tokio::test]
 async fn test_connection_receive_single_messages() {
     // Given
     let buffer_size = 5;
@@ -59,7 +83,9 @@ async fn test_connection_receive_single_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    Connection::receive_messages(pool_tx, read_stream).await.unwrap();
+    Connection::receive_messages(pool_tx, read_stream)
+        .await
+        .unwrap();
     // Then
     assert_eq!("foo", pool_rx.try_recv().unwrap().to_text().unwrap());
 }
@@ -75,7 +101,9 @@ async fn test_connection_receive_multiple_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    Connection::receive_messages(pool_tx, read_stream).await.unwrap();
+    Connection::receive_messages(pool_tx, read_stream)
+        .await
+        .unwrap();
     // Then
     assert_eq!("foo", pool_rx.try_recv().unwrap().to_text().unwrap());
     assert_eq!("bar", pool_rx.try_recv().unwrap().to_text().unwrap());
@@ -83,7 +111,40 @@ async fn test_connection_receive_multiple_messages() {
 }
 
 #[tokio::test]
-async fn test_connection_send_multiple_message() {}
+async fn test_connection_send_single_message() {
+    // Given
+    let host = "ws://127.0.0.1:9999";
+    let buffer_size = 5;
+    let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
+    let (writer_tx, writer_rx) = std::sync::mpsc::channel::<Message>();
+    let write_stream = TestWriteStream { tx: writer_tx };
+    let (connection, mut handle) = Connection::new(host, buffer_size, _pool_tx).unwrap();
+    // When
+    handle.send_message("foo").await.unwrap();
+    let _result = connection.send_message(write_stream).await;
+    // Then
+    assert_eq!("foo", writer_rx.try_recv().unwrap().to_text().unwrap());
+}
+
+#[tokio::test]
+async fn test_connection_send_multiple_messages() {
+    // Given
+    let host = "ws://127.0.0.1:9999";
+    let buffer_size = 5;
+    let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
+    let (writer_tx, writer_rx) = std::sync::mpsc::channel::<Message>();
+    let write_stream = TestWriteStream { tx: writer_tx };
+    let (connection, mut handle) = Connection::new(host, buffer_size, _pool_tx).unwrap();
+    // When
+    handle.send_message("foo").await.unwrap();
+    handle.send_message("bar").await.unwrap();
+    handle.send_message("baz").await.unwrap();
+    let _result = connection.send_message(write_stream).await;
+    // Then
+    assert_eq!("foo", writer_rx.try_recv().unwrap().to_text().unwrap());
+    assert_eq!("bar", writer_rx.try_recv().unwrap().to_text().unwrap());
+    assert_eq!("baz", writer_rx.try_recv().unwrap().to_text().unwrap());
+}
 
 #[test]
 fn test_connection_parse_error() {
@@ -142,6 +203,40 @@ fn test_with_remote() {
     thread::sleep(time::Duration::from_secs(2));
 }
 
+struct TestReadWriteStream {
+    read_stream: TestReadStream,
+    write_stream: TestWriteStream,
+}
+
+impl Stream for TestReadWriteStream {
+    type Item = Result<Message, ConnectionError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.read_stream).poll_next(cx)
+    }
+}
+
+impl Sink<Message> for TestReadWriteStream {
+    type Error = ();
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.write_stream).poll_ready(cx)
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+        Pin::new(&mut self.write_stream).start_send(item)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.write_stream).poll_flush(cx)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.write_stream).poll_close(cx)
+    }
+}
+
+
 struct TestReadStream {
     items: Vec<Message>,
 }
@@ -154,10 +249,33 @@ impl Stream for TestReadStream {
             Poll::Ready(None)
         } else {
             let message = self.items.drain(0..1).next();
-            Poll::Ready(Some(
-                message.ok_or(ConnectionError::SendMessageError),
-            ))
+            Poll::Ready(Some(message.ok_or(ConnectionError::SendMessageError)))
         }
+    }
+}
+
+struct TestWriteStream {
+    tx: std::sync::mpsc::Sender<Message>,
+}
+
+impl Sink<Message> for TestWriteStream {
+    type Error = ();
+
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+        self.tx.send(item).unwrap();
+        Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Err(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 }
 
