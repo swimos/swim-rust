@@ -32,6 +32,13 @@ pub mod futures {
         {
             try_into::MapTryInto::new(self)
         }
+
+        fn map_err_into<E2>(self) -> err_into::MapErrInto<Self, E2>
+        where
+            Self: Sized,
+        {
+            err_into::MapErrInto::new(self)
+        }
     }
 
     impl<X> FutureCombinators for X where X: Future {}
@@ -67,10 +74,7 @@ pub mod futures {
             type Output = T;
 
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                match self.future().poll(cx) {
-                    Poll::Pending => Poll::Pending,
-                    Poll::Ready(value) => Poll::Ready(value.into()),
-                }
+                self.future().poll(cx).map(Into::into)
             }
         }
     }
@@ -107,10 +111,44 @@ pub mod futures {
             type Output = Result<T, T::Error>;
 
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                match self.future().poll(cx) {
-                    Poll::Pending => Poll::Pending,
-                    Poll::Ready(value) => Poll::Ready(TryFrom::try_from(value)),
+                self.future().poll(cx).map(TryFrom::try_from)
+            }
+        }
+    }
+
+    pub mod err_into {
+        use futures::task::{Context, Poll};
+        use futures::Future;
+        use pin_project::pin_project;
+        use std::marker::PhantomData;
+        use std::pin::Pin;
+
+        #[pin_project]
+        pub struct MapErrInto<F, E> {
+            #[pin]
+            future: F,
+            _target: PhantomData<E>,
+        }
+
+        impl<F, E> MapErrInto<F, E> {
+            pub fn new(future: F) -> MapErrInto<F, E> {
+                MapErrInto {
+                    future,
+                    _target: PhantomData,
                 }
+            }
+        }
+
+        impl<F, T, E1, E2> Future for MapErrInto<F, E2>
+        where
+            F: Future<Output = Result<T, E1>>,
+            E2: From<E1>,
+        {
+            type Output = Result<T, E2>;
+
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                let projected = self.project();
+                projected.future.poll(cx).map_err(Into::into)
             }
         }
     }

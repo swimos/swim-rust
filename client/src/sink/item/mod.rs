@@ -61,6 +61,40 @@ pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + 'static>(
     map_err(ItemSinkWrapper::new(sender, mpsc::Sender::send), err_trans)
 }
 
+pub mod map_err {
+    use crate::sink::item::ItemSink;
+    use std::marker::PhantomData;
+    use utilities::combinators::futures::err_into::MapErrInto;
+    use utilities::combinators::futures::FutureCombinators;
+
+    pub struct ErrInto<Sender, E> {
+        sender: Sender,
+        _target: PhantomData<E>,
+    }
+
+    impl<Sender, E> ErrInto<Sender, E> {
+        pub fn new(sender: Sender) -> ErrInto<Sender, E> {
+            ErrInto {
+                sender,
+                _target: PhantomData,
+            }
+        }
+    }
+
+    impl<'a, T, E, Sender> super::ItemSink<'a, T> for ErrInto<Sender, E>
+    where
+        Sender: ItemSink<'a, T>,
+        E: From<Sender::Error> + Send + 'a,
+    {
+        type Error = E;
+        type SendFuture = MapErrInto<Sender::SendFuture, E>;
+
+        fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+            self.sender.send_item(value).map_err_into()
+        }
+    }
+}
+
 /// Transform the error type of an [`ItemSink`].
 pub fn map_err<T, E1, E2, Snk, Fac, F>(sink: Snk, f: Fac) -> ItemSinkMapErr<Snk, Fac>
 where
