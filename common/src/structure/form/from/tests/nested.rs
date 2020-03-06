@@ -15,7 +15,7 @@
 use serde::Deserialize;
 
 use crate::model::{Attr, Item, Value};
-use crate::structure::form::{Form};
+use crate::structure::form::Form;
 
 #[cfg(test)]
 mod valid {
@@ -61,9 +61,7 @@ mod valid {
                 Item::from(("b", Value::Extant)),
             ],
         );
-        let parsed_value = Form::default()
-            .from_value::<TestStruct>(&record)
-            .unwrap();
+        let parsed_value = Form::default().from_value::<TestStruct>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }
@@ -100,9 +98,7 @@ mod valid {
                 )),
             ],
         );
-        let parsed_value = Form::default()
-            .from_value::<TestStruct>(&record)
-            .unwrap();
+        let parsed_value = Form::default().from_value::<TestStruct>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }
@@ -176,9 +172,7 @@ mod valid {
             ],
         );
 
-        let parsed_value = Form::default()
-            .from_value::<TestStruct>(&record)
-            .unwrap();
+        let parsed_value = Form::default().from_value::<TestStruct>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }

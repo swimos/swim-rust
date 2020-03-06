@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::{Deserialize};
+use serde::Deserialize;
 
 use crate::model::{Attr, Item, Value};
 use crate::structure::form::Form;
-
-
-
 
 #[test]
 fn nested_vectors() {
@@ -95,7 +92,9 @@ fn vector_of_tuples() {
         seq: Vec<(i32, i32)>,
     }
 
-    let expected = Parent { seq: vec![(1, 2), (3, 4), (5, 6)] };
+    let expected = Parent {
+        seq: vec![(1, 2), (3, 4), (5, 6)],
+    };
 
     let record = Value::Record(
         vec![Attr::of("Parent")],

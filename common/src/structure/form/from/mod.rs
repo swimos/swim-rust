@@ -43,7 +43,7 @@ pub enum DeserializerState<'i> {
     None,
 }
 
-impl<'de> ValueDeserializer< 'de> {
+impl<'de> ValueDeserializer<'de> {
     pub fn for_values(input: &'de Value) -> Self {
         ValueDeserializer {
             current_state: State {
@@ -98,8 +98,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     type Error = FormParseErr;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match self.current_state.value {
             Some(value) => match value {
@@ -113,7 +113,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
             },
             None => {
                 if let DeserializerState::ReadingAttribute(a) =
-                self.current_state.deserializer_state
+                    self.current_state.deserializer_state
                 {
                     visitor.visit_string(a.name.to_owned())
                 } else {
@@ -124,8 +124,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         if let Some(Value::BooleanValue(b)) = &self.current_state.value {
             visitor.visit_bool(b.to_owned())
@@ -135,22 +135,22 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_i8<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from("Unsupported type: i8")))
     }
 
     fn deserialize_i16<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from("Unsupported type: i16")))
     }
 
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         if let Some(Value::Int32Value(i)) = &self.current_state.value {
             visitor.visit_i32(i.to_owned())
@@ -160,8 +160,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         if let Some(Value::Int64Value(i)) = &self.current_state.value {
             visitor.visit_i64(i.to_owned())
@@ -171,43 +171,43 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from("Unsupported type: u8")))
     }
 
     fn deserialize_u16<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from("Unsupported type: u16")))
     }
 
     fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from("Unsupported type: u32")))
     }
 
     fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from("Unsupported type: u64")))
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from("Unsupported type: f32")))
     }
 
     fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         if let Some(Value::Float64Value(f)) = &self.current_state.value {
             visitor.visit_f64(f.to_owned())
@@ -217,8 +217,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from(
             "Unsupported type: char",
@@ -226,19 +226,21 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         if let Some(Value::Text(t)) = &self.current_state.value {
             visitor.visit_borrowed_str(t)
         } else {
-            Err(FormParseErr::Message(String::from("Unexpected supported type: str")))
+            Err(FormParseErr::Message(String::from(
+                "Unexpected supported type: str",
+            )))
         }
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         if let Some(Value::Text(t)) = &self.current_state.value {
             visitor.visit_string(t.to_owned())
@@ -248,8 +250,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from(
             "Unsupported type: byte",
@@ -257,8 +259,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(FormParseErr::Message(String::from(
             "Unsupported type: byte",
@@ -266,8 +268,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match self.current_state.value {
             Some(Value::Extant) => visitor.visit_none(),
@@ -277,22 +279,22 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         unimplemented!()
     }
 
     fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_unit(visitor)
     }
 
     fn deserialize_newtype_struct<V>(self, _name: &'static str, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         unimplemented!()
     }
@@ -302,8 +304,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     // For tuples, no state has been assigned to the deserializer and so the current value is pushed as a record.
     // For nested collections, the current value is extracted from the current item that is being deserialized.
     fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match &self.current_state.deserializer_state {
             DeserializerState::ReadingRecord { ref item_index } => match self.current_state.value {
@@ -334,8 +336,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     }
 
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_seq(visitor)
     }
@@ -346,15 +348,15 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         _len: usize,
         visitor: V,
     ) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_seq(visitor)
     }
 
     fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         let state = {
             // If we're reading an item then we are reading a nested struct
@@ -390,8 +392,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         _fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         if let DeserializerState::None = &self.current_state.deserializer_state {
             self.current_state.value = Some(self.input);
@@ -408,9 +410,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                                 Err(FormParseErr::Malformatted)
                             }
                         }
-                        None => Err(FormParseErr::Message(String::from(
-                            "Missing tag",
-                        ))),
+                        None => Err(FormParseErr::Message(String::from("Missing tag"))),
                     }
                 } else {
                     unimplemented!()
@@ -426,29 +426,29 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         let value = visitor.visit_enum(Enum::new(self))?;
         Ok(value)
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_any(visitor)
     }
 
     fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_any(_visitor)
     }
 }
 
-struct RecordMap<'a, 'de: 'a, > {
+struct RecordMap<'a, 'de: 'a> {
     de: &'a mut ValueDeserializer<'de>,
 }
 
@@ -467,8 +467,8 @@ impl<'de, 'a> SeqAccess<'de> for RecordMap<'a, 'de> {
     type Error = FormParseErr;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-        where
-            T: DeserializeSeed<'de>,
+    where
+        T: DeserializeSeed<'de>,
     {
         match self.de.current_state.value {
             Some(v) => {
@@ -500,16 +500,14 @@ impl<'de, 'a> SeqAccess<'de> for RecordMap<'a, 'de> {
                                     Ok(None)
                                 }
                             }
-                            DeserializerState::ReadingItem(_item) => {
-                                Ok(None)
-                            }
+                            DeserializerState::ReadingItem(_item) => Ok(None),
 
                             _ => unimplemented!("Illegal state"),
                         }
                     };
 
                     if let DeserializerState::ReadingRecord { item_index } =
-                    &mut self.de.current_state.deserializer_state
+                        &mut self.de.current_state.deserializer_state
                     {
                         *item_index += 1;
                     }
@@ -528,11 +526,11 @@ impl<'de, 'a> MapAccess<'de> for RecordMap<'a, 'de> {
     type Error = FormParseErr;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
-        where
-            K: DeserializeSeed<'de>,
+    where
+        K: DeserializeSeed<'de>,
     {
         if let DeserializerState::ReadingRecord { item_index } =
-        self.de.current_state.deserializer_state
+            self.de.current_state.deserializer_state
         {
             if let Some(value) = self.de.current_state.value {
                 match value {
@@ -565,8 +563,8 @@ impl<'de, 'a> MapAccess<'de> for RecordMap<'a, 'de> {
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
-        where
-            V: DeserializeSeed<'de>,
+    where
+        V: DeserializeSeed<'de>,
     {
         if let DeserializerState::ReadingItem(item) = self.de.current_state.deserializer_state {
             if let Item::Slot(_, value) = item {
@@ -579,7 +577,7 @@ impl<'de, 'a> MapAccess<'de> for RecordMap<'a, 'de> {
             self.de.pop_state();
 
             if let DeserializerState::ReadingRecord { ref mut item_index } =
-            self.de.current_state.deserializer_state
+                self.de.current_state.deserializer_state
             {
                 *item_index += 1;
             }
@@ -608,8 +606,8 @@ impl<'de, 'a> EnumAccess<'de> for Enum<'a, 'de> {
     type Variant = Self;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
-        where
-            V: DeserializeSeed<'de>,
+    where
+        V: DeserializeSeed<'de>,
     {
         if let Some(Value::Record(attrs, _items)) = &self.de.current_state.value {
             match attrs.first() {
@@ -642,22 +640,22 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
     }
 
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
-        where
-            T: DeserializeSeed<'de>,
+    where
+        T: DeserializeSeed<'de>,
     {
         seed.deserialize(self.de)
     }
 
     fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Deserializer::deserialize_seq(self.de, visitor)
     }
 
     fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Deserializer::deserialize_map(self.de, visitor)
     }

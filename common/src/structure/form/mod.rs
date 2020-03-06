@@ -23,10 +23,6 @@ use crate::structure::form::from::ValueDeserializer;
 use crate::structure::form::to::ValueSerializer;
 
 mod from;
-
-#[allow(dead_code)]
-mod reference;
-
 mod to;
 
 pub type Result<T> = ::std::result::Result<T, FormParseErr>;

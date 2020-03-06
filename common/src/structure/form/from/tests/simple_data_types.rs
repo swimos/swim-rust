@@ -53,16 +53,14 @@ mod illegal {
             b: i64,
         }
 
-        let record = Value::Record(
-            vec![Attr::from("Test")],
-            vec![
-                Item::from(("a", 1)),
-            ],
-        );
+        let record = Value::Record(vec![Attr::from("Test")], vec![Item::from(("a", 1))]);
 
         let parsed_value = Form::default().from_value::<Test>(&record);
 
-        assert_eq!(parsed_value.unwrap_err(), FormParseErr::Message(String::from("missing field `b`")));
+        assert_eq!(
+            parsed_value.unwrap_err(),
+            FormParseErr::Message(String::from("missing field `b`"))
+        );
     }
 
     #[test]
@@ -76,7 +74,10 @@ mod illegal {
         let record = Value::Record(Vec::new(), Vec::new());
         let parsed_value = Form::default().from_value::<Test>(&record);
 
-        assert_eq!(parsed_value.unwrap_err(), FormParseErr::Message(String::from("Missing tag")));
+        assert_eq!(
+            parsed_value.unwrap_err(),
+            FormParseErr::Message(String::from("Missing tag"))
+        );
     }
 }
 
@@ -137,9 +138,7 @@ mod tuples {
     fn simple_tuple() {
         let expected = (1, 2);
         let record = Value::record(vec![Item::from(1), Item::from(2)]);
-        let parsed_value = Form::default()
-            .from_value::<(i32, i32)>(&record)
-            .unwrap();
+        let parsed_value = Form::default().from_value::<(i32, i32)>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }
