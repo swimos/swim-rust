@@ -31,7 +31,7 @@ fn nested_vectors() {
         seq: vec![vec![1, 2], vec![3, 4]],
     };
 
-    let mut record = Value::Record(
+    let record = Value::Record(
         vec![Attr::of("Test")],
         vec![Item::slot(
             "seq",
@@ -41,7 +41,7 @@ fn nested_vectors() {
             ]),
         )],
     );
-    let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+    let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
 
     assert_eq!(parsed_value, expected);
 }
@@ -62,7 +62,7 @@ fn vector_of_structs() {
         seq: vec![Child { id: 1 }, Child { id: 2 }, Child { id: 3 }],
     };
 
-    let mut record = Value::Record(
+    let record = Value::Record(
         vec![Attr::of("Parent")],
         vec![Item::slot(
             "seq",
@@ -83,7 +83,7 @@ fn vector_of_structs() {
         )],
     );
 
-    let parsed_value = Form::default().from_value::<Parent>(&mut record).unwrap();
+    let parsed_value = Form::default().from_value::<Parent>(&record).unwrap();
 
     assert_eq!(parsed_value, expected);
 }
@@ -97,7 +97,7 @@ fn vector_of_tuples() {
 
     let expected = Parent { seq: vec![(1, 2), (3, 4), (5, 6)] };
 
-    let mut record = Value::Record(
+    let record = Value::Record(
         vec![Attr::of("Parent")],
         vec![Item::slot(
             "seq",
@@ -109,7 +109,7 @@ fn vector_of_tuples() {
         )],
     );
 
-    let parsed_value = Form::default().from_value::<Parent>(&mut record).unwrap();
+    let parsed_value = Form::default().from_value::<Parent>(&record).unwrap();
 
     assert_eq!(parsed_value, expected);
 }
@@ -125,7 +125,7 @@ fn simple_vector() {
         seq: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     };
 
-    let mut record = Value::Record(
+    let record = Value::Record(
         vec![Attr::of("Parent")],
         vec![Item::Slot(
             Value::from("seq"),
@@ -144,7 +144,7 @@ fn simple_vector() {
         )],
     );
 
-    let parsed_value = Form::default().from_value::<Parent>(&mut record).unwrap();
+    let parsed_value = Form::default().from_value::<Parent>(&record).unwrap();
 
     assert_eq!(parsed_value, expected);
 }

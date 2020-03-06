@@ -35,8 +35,8 @@ mod valid {
             v: String::from("hello"),
         };
 
-        let mut record = Value::Record(vec![Attr::of("Test")], vec![Item::slot("v", "hello")]);
-        let parsed_value = Form::default().from_value::<Test<T>>(&mut record).unwrap();
+        let record = Value::Record(vec![Attr::of("Test")], vec![Item::slot("v", "hello")]);
+        let parsed_value = Form::default().from_value::<Test<T>>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }
@@ -54,7 +54,7 @@ mod valid {
             b: Box::new(None),
         };
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::from("TestStruct")],
             vec![
                 Item::from(("a", Value::Int32Value(1))),
@@ -62,7 +62,7 @@ mod valid {
             ],
         );
         let parsed_value = Form::default()
-            .from_value::<TestStruct>(&mut record)
+            .from_value::<TestStruct>(&record)
             .unwrap();
 
         assert_eq!(parsed_value, expected);
@@ -84,7 +84,7 @@ mod valid {
             })),
         };
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::from("TestStruct")],
             vec![
                 Item::from(("a", Value::Int32Value(1))),
@@ -101,7 +101,7 @@ mod valid {
             ],
         );
         let parsed_value = Form::default()
-            .from_value::<TestStruct>(&mut record)
+            .from_value::<TestStruct>(&record)
             .unwrap();
 
         assert_eq!(parsed_value, expected);
@@ -132,7 +132,7 @@ mod valid {
             })),
         };
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::of("TestStruct")],
             vec![
                 Item::slot("a", 0),
@@ -177,7 +177,7 @@ mod valid {
         );
 
         let parsed_value = Form::default()
-            .from_value::<TestStruct>(&mut record)
+            .from_value::<TestStruct>(&record)
             .unwrap();
 
         assert_eq!(parsed_value, expected);

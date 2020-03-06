@@ -52,7 +52,7 @@ impl Form {
         }
     }
 
-    pub fn from_value<'de, T>(&self, value: &'de mut Value) -> Result<T>
+    pub fn from_value<'de, T>(&self, value: &'de Value) -> Result<T>
     where
         T: Deserialize<'de>,
     {

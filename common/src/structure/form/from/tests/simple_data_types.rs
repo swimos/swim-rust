@@ -32,7 +32,7 @@ mod illegal {
             b: i64,
         }
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::from("Incorrect")],
             vec![
                 Item::from(("a", 1)),
@@ -40,7 +40,7 @@ mod illegal {
             ],
         );
 
-        let parsed_value = Form::default().from_value::<Test>(&mut record);
+        let parsed_value = Form::default().from_value::<Test>(&record);
 
         assert_eq!(parsed_value.unwrap_err(), FormParseErr::Malformatted);
     }
@@ -60,7 +60,7 @@ mod tuples {
 
         let expected = Test { a: 1, b: (2, 3) };
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::of("Test")],
             vec![
                 Item::from(("a", 1)),
@@ -74,7 +74,7 @@ mod tuples {
             ],
         );
 
-        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }
@@ -86,7 +86,7 @@ mod tuples {
 
         let expected = Test(1, (2, 3));
 
-        let mut record = Value::record(vec![
+        let record = Value::record(vec![
             Item::from(1),
             Item::from(Value::record(vec![
                 Item::from(Value::Int64Value(2)),
@@ -94,7 +94,7 @@ mod tuples {
             ])),
         ]);
 
-        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }
@@ -102,9 +102,9 @@ mod tuples {
     #[test]
     fn simple_tuple() {
         let expected = (1, 2);
-        let mut record = Value::record(vec![Item::from(1), Item::from(2)]);
+        let record = Value::record(vec![Item::from(1), Item::from(2)]);
         let parsed_value = Form::default()
-            .from_value::<(i32, i32)>(&mut record)
+            .from_value::<(i32, i32)>(&record)
             .unwrap();
 
         assert_eq!(parsed_value, expected);
@@ -120,7 +120,7 @@ mod tuples {
 
         let expected = Test { a: 1, b: (2, 3) };
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::of("Test")],
             vec![
                 Item::of(("a", 1)),
@@ -134,7 +134,7 @@ mod tuples {
             ],
         );
 
-        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
 
         assert_eq!(parsed_value, expected);
     }
@@ -156,11 +156,11 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::slot("a", Value::of_attr("A"))],
         );
-        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
 
         let expected = Test { a: TestEnum::A };
 
@@ -179,7 +179,7 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::slot(
                 "a",
@@ -187,7 +187,7 @@ mod enumeration {
             )],
         );
 
-        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
         let expected = Test {
             a: TestEnum::A(1, 2),
         };
@@ -207,7 +207,7 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::slot(
                 "a",
@@ -217,7 +217,7 @@ mod enumeration {
                 ),
             )],
         );
-        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
         let expected = Test {
             a: TestEnum::A { a: 1, b: 2 },
         };
@@ -251,7 +251,7 @@ mod structs {
             c: Child { a: 3, b: 4 },
         };
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::from("Parent")],
             vec![
                 Item::from(("a", 1)),
@@ -268,7 +268,7 @@ mod structs {
                 )),
             ],
         );
-        let parsed_value = Form::default().from_value::<Parent>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Parent>(&record).unwrap();
 
         assert_eq!(parsed_value, test);
     }
@@ -283,14 +283,14 @@ mod structs {
 
         let test = Test { a: 1, b: 2 };
 
-        let mut record = Value::Record(
+        let record = Value::Record(
             vec![Attr::from("Test")],
             vec![
                 Item::from(("a", 1)),
                 Item::from(("b", Value::Int64Value(2))),
             ],
         );
-        let parsed_value = Form::default().from_value::<Test>(&mut record).unwrap();
+        let parsed_value = Form::default().from_value::<Test>(&record).unwrap();
 
         assert_eq!(parsed_value, test);
     }
