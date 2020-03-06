@@ -12,19 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::Serialize;
+use serde::Deserialize;
 
 use crate::model::{Item, Value};
-use crate::structure::assert_err;
 
 #[cfg(test)]
 mod valid_types {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use crate::model::Attr;
     use crate::structure::form::Form;
 
     use super::*;
+
+    #[test]
+    fn set() {
+        let mut set = BTreeSet::new();
+        set.insert(1);
+        set.insert(2);
+        set.insert(3);
+        set.insert(4);
+        set.insert(5);
+
+        let record = Value::Record(
+            Vec::new(),
+            vec![
+                Item::from(1),
+                Item::from(2),
+                Item::from(3),
+                Item::from(4),
+                Item::from(5),
+            ],
+        );
+
+        let parsed_value = Form::default()
+            .from_value::<BTreeSet<i32>>(&record)
+            .unwrap();
+        assert_eq!(parsed_value, set);
+    }
 
     #[test]
     fn simple_map() {
@@ -33,14 +58,16 @@ mod valid_types {
         map.insert("b", 2);
         map.insert("c", 3);
 
-        let parsed_value = Form::default().to_value(&map).unwrap();
-
-        let expected = Value::Record(
+        let record = Value::Record(
             Vec::new(),
             vec![Item::slot("a", 1), Item::slot("b", 2), Item::slot("c", 3)],
         );
 
-        assert_eq!(parsed_value, expected);
+        let parsed_value = Form::default()
+            .from_value::<BTreeMap<&str, i32>>(&record)
+            .unwrap();
+
+        assert_eq!(parsed_value, map);
     }
 
     #[test]
@@ -49,8 +76,7 @@ mod valid_types {
         map.insert("a", vec![1, 2, 3]);
         map.insert("b", vec![1, 2, 3]);
 
-        let parsed_value = Form::default().to_value(&map).unwrap();
-        let expected = Value::Record(
+        let record = Value::Record(
             Vec::new(),
             vec![
                 Item::Slot(
@@ -64,7 +90,11 @@ mod valid_types {
             ],
         );
 
-        assert_eq!(parsed_value, expected);
+        let parsed_value = Form::default()
+            .from_value::<BTreeMap<&str, Vec<i32>>>(&record)
+            .unwrap();
+
+        assert_eq!(parsed_value, map);
     }
 
     #[test]
@@ -73,9 +103,7 @@ mod valid_types {
         map.insert("a", (1, 2, 3, 4, 5));
         map.insert("b", (6, 7, 8, 9, 10));
 
-        let parsed_value = Form::default().to_value(&map).unwrap();
-
-        let expected = Value::record(vec![
+        let record = Value::record(vec![
             Item::slot(
                 "a",
                 Value::record(vec![
@@ -98,12 +126,16 @@ mod valid_types {
             ),
         ]);
 
-        assert_eq!(parsed_value, expected);
+        let parsed_value = Form::default()
+            .from_value::<BTreeMap<&str, (i32, i32, i32, i32, i32)>>(&record)
+            .unwrap();
+
+        assert_eq!(parsed_value, map);
     }
 
     #[test]
     fn map_of_structs() {
-        #[derive(Serialize)]
+        #[derive(Deserialize, PartialEq, Debug)]
         struct Test {
             a: f64,
         }
@@ -112,9 +144,7 @@ mod valid_types {
         map.insert("a", Test { a: 1.0 });
         map.insert("b", Test { a: 2.0 });
 
-        let parsed_value = Form::default().to_value(&map).unwrap();
-
-        let expected = Value::Record(
+        let record = Value::Record(
             Vec::new(),
             vec![
                 Item::slot(
@@ -128,27 +158,10 @@ mod valid_types {
             ],
         );
 
-        assert_eq!(parsed_value, expected);
-    }
-}
+        let parsed_value = Form::default()
+            .from_value::<BTreeMap<&str, Test>>(&record)
+            .unwrap();
 
-#[cfg(test)]
-mod invalid_types {
-    use super::*;
-    use std::collections::BTreeMap;
-
-    use crate::structure::form::{Form, FormParseErr};
-
-    #[test]
-    fn invalid_nested_type() {
-        let mut map: BTreeMap<&str, Vec<u32>> = BTreeMap::new();
-        map.insert("a", vec![1, 2, 3]);
-        map.insert("b", vec![1, 2, 3]);
-
-        let parsed_value = Form::default().to_value(&map);
-        assert_err(
-            parsed_value,
-            FormParseErr::UnsupportedType(String::from("u32")),
-        );
+        assert_eq!(parsed_value, map);
     }
 }

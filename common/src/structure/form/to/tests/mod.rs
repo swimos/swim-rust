@@ -16,7 +16,7 @@
 mod simple_data_types;
 
 #[cfg(test)]
-mod map;
+mod collections;
 
 #[cfg(test)]
 mod nested;
