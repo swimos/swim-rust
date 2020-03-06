@@ -13,7 +13,10 @@
 // limitations under the License.
 
 #[cfg(test)]
+mod nested;
+
+#[cfg(test)]
 mod simple_data_types;
 
 #[cfg(test)]
-mod nested;
+mod vectors;

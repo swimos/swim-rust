@@ -55,6 +55,10 @@ impl<'s, 'de: 's> ValueDeserializer<'s, 'de> {
         }
     }
 
+    pub fn assert_stack_empty(&self) {
+        assert_eq!(self.stack.len(), 0);
+    }
+
     pub fn for_single_value(input: &'de Value) -> Self {
         ValueDeserializer {
             current_state: State {
@@ -289,6 +293,10 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
         unimplemented!()
     }
 
+    // Extracts the current value from what is being read.
+    // For records this is the current item (indexed by 'item_index' that has been set by the previous method call.
+    // For tuples, no state has been assigned to the deserializer and so the current value is pushed as a record.
+    // For nested collections, the current value is extracted from the current item that is being deserialized.
     fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -301,6 +309,7 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
                         Some(Item::Slot(key, value)) => value,
                         _ => panic!("Value out of sync with state"),
                     };
+                    self.push_record(Some(&value));
                 }
                 _ => panic!("Value out of sync with state"),
             },
@@ -309,13 +318,15 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
                     Item::ValueItem(value) => value,
                     Item::Slot(key, value) => value,
                 };
-
                 self.push_record(Some(&value));
             }
             _ => self.push_record(self.current_state.value),
         }
 
-        Ok(visitor.visit_seq(RecordMap::new(&mut self))?)
+        let result = Ok(visitor.visit_seq(RecordMap::new(&mut self))?);
+        self.pop_state();
+
+        result
     }
 
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
@@ -341,7 +352,31 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
+        let state = {
+            // If we're reading an item then we are reading a nested struct
+            if let DeserializerState::ReadingItem(item) = self.current_state.deserializer_state {
+                match item {
+                    Item::ValueItem(value) => State {
+                        deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
+                        value: Some(&value),
+                    },
+                    Item::Slot(key, value) => State {
+                        deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
+                        value: Some(&value),
+                    },
+                }
+            } else {
+                State {
+                    deserializer_state: DeserializerState::ReadingRecord { item_index: 0 },
+                    value: self.current_state.value,
+                }
+            }
+        };
+
+        self.push_state(state);
         let value = visitor.visit_map(RecordMap::new(&mut self))?;
+        self.pop_state();
+
         Ok(value)
     }
 
@@ -354,6 +389,7 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
     where
         V: Visitor<'de>,
     {
+        // println!("deserialize_struct");
         if let DeserializerState::None = &self.current_state.deserializer_state {
             self.current_state.value = Some(self.input);
         }
@@ -364,32 +400,6 @@ impl<'s, 'de: 's, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'s, 'de> {
                     match attrs.first() {
                         Some(a) => {
                             if a.name == name {
-                                let state = {
-                                    // If we're reading an item then we are reading a nested struct
-                                    if let DeserializerState::ReadingItem(item) =
-                                        self.current_state.deserializer_state
-                                    {
-                                        match item {
-                                            Item::ValueItem(v) => unimplemented!(),
-                                            Item::Slot(key, value) => State {
-                                                deserializer_state:
-                                                    DeserializerState::ReadingRecord {
-                                                        item_index: 0,
-                                                    },
-                                                value: Some(&value),
-                                            },
-                                        }
-                                    } else {
-                                        State {
-                                            deserializer_state: DeserializerState::ReadingRecord {
-                                                item_index: 0,
-                                            },
-                                            value: Some(&value),
-                                        }
-                                    }
-                                };
-
-                                self.push_state(state);
                                 self.deserialize_map(visitor)
                             } else {
                                 Err(FormParseErr::Malformatted)
@@ -467,7 +477,11 @@ impl<'de, 'a, 's> SeqAccess<'de> for RecordMap<'a, 'de, 's> {
                                     let item = items.get(item_index).unwrap();
                                     let value = match item {
                                         Item::ValueItem(value) => value,
-                                        _ => panic!(),
+                                        Item::Slot(_, _) => {
+                                            return Err(FormParseErr::Message(String::from(
+                                                "Malformatted record. Slot in place of ValueItem",
+                                            )));
+                                        }
                                     };
 
                                     self.de.push_state(State {
@@ -477,11 +491,18 @@ impl<'de, 'a, 's> SeqAccess<'de> for RecordMap<'a, 'de, 's> {
 
                                     let result = seed.deserialize(&mut *self.de).map(Some);
                                     self.de.pop_state();
+
                                     result
                                 } else {
+                                    // println!("Record: Ok(None)");
                                     Ok(None)
                                 }
                             }
+                            DeserializerState::ReadingItem(item) => {
+                                // println!("Item: Ok(None)");
+                                Ok(None)
+                            }
+
                             _ => unimplemented!("Illegal state"),
                         }
                     };
@@ -637,7 +658,6 @@ impl<'de, 'a, 's> VariantAccess<'de> for Enum<'a, 'de, 's> {
     where
         V: Visitor<'de>,
     {
-        self.de.push_record(self.de.current_state.value);
         Deserializer::deserialize_map(self.de, visitor)
     }
 }

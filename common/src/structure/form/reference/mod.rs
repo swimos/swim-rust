@@ -653,6 +653,20 @@ fn abc() {
 }
 
 #[test]
+fn nested() {
+    #[derive(Deserialize, PartialEq, Debug)]
+    struct Test {
+        seq: Vec<Vec<u32>>,
+    }
+
+    let j = r#"{"seq":[[1,2],[3,4]]}"#;
+    let expected = Test {
+        seq: vec![vec![1, 2], vec![3, 4]],
+    };
+    assert_eq!(expected, from_str(j).unwrap());
+}
+
+#[test]
 fn test_struct() {
     #[derive(Deserialize, PartialEq, Debug)]
     struct Test {
