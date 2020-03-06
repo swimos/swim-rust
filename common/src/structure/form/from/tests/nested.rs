@@ -15,11 +15,10 @@
 use serde::Deserialize;
 
 use crate::model::{Attr, Item, Value};
-use crate::structure::form::{Form, FormParseErr};
+use crate::structure::form::{Form};
 
 #[cfg(test)]
 mod valid {
-    use crate::structure::assert_err;
 
     use super::*;
 

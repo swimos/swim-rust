@@ -22,7 +22,6 @@ use crate::model::{Item, Value};
 use crate::structure::form::from::ValueDeserializer;
 use crate::structure::form::to::ValueSerializer;
 
-#[allow(dead_code, unused_variables, unused_imports)]
 mod from;
 
 #[allow(dead_code)]

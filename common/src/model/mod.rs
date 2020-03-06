@@ -25,8 +25,6 @@ use tokio_util::codec::Encoder;
 use crate::model::parser::is_identifier;
 
 pub mod parser;
-#[allow(dead_code, unused_variables)]
-pub mod serialization;
 
 #[allow(clippy::redundant_clone)]
 #[cfg(test)]
