@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use futures::future;
 use futures::{Sink, StreamExt};
 use futures_util::stream::Stream;
@@ -19,15 +20,19 @@ struct ConnectionPoolMessage {
     message: String,
 }
 
-struct ConnectionPool {
+struct ConnectionPool<T: ConnectionProducer + std::marker::Send + 'static> {
     connections: HashMap<String, ConnectionHandler>,
     rx: mpsc::Receiver<ConnectionPoolMessage>,
     connections_tx: Option<mpsc::Sender<Message>>,
     buffer_size: usize,
+    connection_producer: T,
 }
 
-impl ConnectionPool {
-    fn new(buffer_size: usize) -> (ConnectionPool, ConnectionPoolHandler) {
+impl<T: ConnectionProducer + std::marker::Send + 'static> ConnectionPool<T> {
+    fn new(
+        connection_producer: T,
+        buffer_size: usize,
+    ) -> (ConnectionPool<T>, ConnectionPoolHandler) {
         let (tx, rx) = mpsc::channel(buffer_size);
         (
             ConnectionPool {
@@ -35,6 +40,7 @@ impl ConnectionPool {
                 rx,
                 connections_tx: None,
                 buffer_size,
+                connection_producer,
             },
             ConnectionPoolHandler { tx },
         )
@@ -49,7 +55,7 @@ impl ConnectionPool {
         let (connections_tx, connections_rx) = mpsc::channel(self.buffer_size);
         self.connections_tx = Some(connections_tx);
         let send_handler = tokio::spawn(self.send_messages());
-        let receive_handler = tokio::spawn(ConnectionPool::receive_messages(connections_rx));
+        let receive_handler = tokio::spawn(ConnectionPool::<T>::receive_messages(connections_rx));
 
         (send_handler, receive_handler)
     }
@@ -78,7 +84,7 @@ impl ConnectionPool {
     }
 
     async fn open_connection(&mut self, host: &str) -> Result<ConnectionHandler, ConnectionError> {
-        let (connection, connection_handler) = Connection::new(
+        let (connection, connection_handler) = self.connection_producer.create_connection(
             host,
             self.buffer_size,
             self.connections_tx.as_ref().unwrap().clone(),
@@ -100,7 +106,7 @@ impl ConnectionPool {
             println!("{:?}", response);
             future::ready(())
         })
-            .await;
+        .await;
         Ok(())
     }
 }
@@ -119,22 +125,96 @@ impl ConnectionPoolHandler {
     }
 }
 
-struct Connection {
+trait ConnectionProducer {
+    type T: Connection + std::marker::Send + 'static;
+
+    fn create_connection(
+        &self,
+        host: &str,
+        buffer_size: usize,
+        pool_tx: mpsc::Sender<Message>,
+    ) -> Result<(Self::T, ConnectionHandler), ConnectionError>;
+}
+
+struct SwimConnectionProducer {}
+
+impl ConnectionProducer for SwimConnectionProducer {
+    type T = SwimConnection;
+
+    fn create_connection(
+        &self,
+        host: &str,
+        buffer_size: usize,
+        pool_tx: mpsc::Sender<Message>,
+    ) -> Result<(Self::T, ConnectionHandler), ConnectionError> {
+        SwimConnection::new(host, buffer_size, pool_tx)
+    }
+}
+
+#[async_trait]
+trait Connection: Sized {
+    fn new(
+        host: &str,
+        buffer_size: usize,
+        pool_tx: mpsc::Sender<Message>,
+    ) -> Result<(Self, ConnectionHandler), ConnectionError>;
+
+    async fn open(
+        self,
+    ) -> Result<
+        (
+            JoinHandle<Result<(), ConnectionError>>,
+            JoinHandle<Result<(), ConnectionError>>,
+        ),
+        ConnectionError,
+    >;
+
+    fn start<S>(
+        self,
+        ws_stream: S,
+    ) -> (
+        JoinHandle<Result<(), ConnectionError>>,
+        JoinHandle<Result<(), ConnectionError>>,
+    )
+    where
+        S: Stream<Item = Result<Message, ConnectionError>>
+            + Sink<Message>
+            + std::marker::Send
+            + 'static;
+
+    async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
+    where
+        S: Sink<Message> + std::marker::Send + 'static;
+
+    async fn receive_messages<S>(
+        pool_tx: mpsc::Sender<Message>,
+        read_stream: S,
+    ) -> Result<(), ConnectionError>
+    where
+        S: TryStreamExt<Ok = Message, Error = ConnectionError> + std::marker::Send + 'static;
+}
+
+struct SwimConnection {
     url: url::Url,
     rx: mpsc::Receiver<Message>,
     pool_tx: mpsc::Sender<Message>,
 }
 
-impl Connection {
+#[async_trait]
+impl Connection for SwimConnection {
+
     fn new(
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Message>,
-    ) -> Result<(Connection, ConnectionHandler), ConnectionError> {
+    ) -> Result<(SwimConnection, ConnectionHandler), ConnectionError> {
         let url = url::Url::parse(&host)?;
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        Ok((Connection { url, rx, pool_tx }, ConnectionHandler { tx }))
+        Ok((
+            SwimConnection { url, rx, pool_tx },
+            ConnectionHandler { tx },
+        ))
     }
 
     async fn open(
@@ -158,15 +238,15 @@ impl Connection {
         JoinHandle<Result<(), ConnectionError>>,
         JoinHandle<Result<(), ConnectionError>>,
     )
-        where
-            S: Stream<Item=Result<Message, ConnectionError>>
+    where
+        S: Stream<Item = Result<Message, ConnectionError>>
             + Sink<Message>
             + std::marker::Send
             + 'static,
     {
         let (write_stream, read_stream) = ws_stream.split();
 
-        let receive = Connection::receive_messages(self.pool_tx.clone(), read_stream);
+        let receive = SwimConnection::receive_messages(self.pool_tx.clone(), read_stream);
         let send = self.send_message(write_stream);
 
         let send_handle = tokio::spawn(send);
@@ -176,8 +256,8 @@ impl Connection {
     }
 
     async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
-        where
-            S: Sink<Message> + std::marker::Send + 'static,
+    where
+        S: Sink<Message> + std::marker::Send + 'static,
     {
         self.rx
             .map(Ok)
@@ -191,8 +271,8 @@ impl Connection {
         pool_tx: mpsc::Sender<Message>,
         read_stream: S,
     ) -> Result<(), ConnectionError>
-        where
-            S: TryStreamExt<Ok=Message, Error=ConnectionError>,
+    where
+        S: TryStreamExt<Ok = Message, Error = ConnectionError> + std::marker::Send + 'static,
     {
         read_stream
             .try_for_each(|response| {

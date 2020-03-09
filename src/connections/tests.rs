@@ -7,20 +7,31 @@ use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use crate::connections::{
-    Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage,
-};
+use crate::connections::{Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage, SwimConnection, SwimConnectionProducer, ConnectionHandler};
+use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
 
 #[test]
 fn test_new_connection_pool() {
     // Given
     let buffer_size = 5;
     // When
-    let (connection_pool, mut _handle) = ConnectionPool::new(buffer_size);
+    let (connection_pool, mut _handle) =
+        ConnectionPool::new(SwimConnectionProducer {}, buffer_size);
     // Then
     assert_eq!(0, connection_pool.connections.len());
     assert_eq!(buffer_size, connection_pool.buffer_size);
 }
+
+// #[test]
+// fn test_connection_pool_open() {
+//     // Given
+//     let buffer_size = 5;
+//     // When
+//     let host = "127.0.0.1";
+//     // Then
+//     let (mut connection_poo, mut handle) = ConnectionPool::new(buffer_size);
+// }
 
 #[test]
 fn test_connection_pool_send_message() {
@@ -28,7 +39,8 @@ fn test_connection_pool_send_message() {
     let buffer_size = 5;
     let host = "127.0.0.1";
     let text = "Hello";
-    let (mut connection_pool, mut handle) = ConnectionPool::new(buffer_size);
+    let (mut connection_pool, mut handle) =
+        ConnectionPool::new(SwimConnectionProducer {}, buffer_size);
     // When
     handle.send_message("127.0.0.1", "Hello").unwrap();
     let request: ConnectionPoolMessage = connection_pool.rx.try_recv().unwrap();
@@ -44,7 +56,7 @@ fn test_new_connection() {
     let buffer_size = 5;
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     // When
-    let (connection, _handle) = Connection::new(host, buffer_size, _pool_tx).unwrap();
+    let (connection, _handle) = SwimConnection::new(host, buffer_size, _pool_tx).unwrap();
     // Then
     assert!(connection.url.host().is_some());
     assert_eq!(9999, connection.url.port().unwrap());
@@ -64,7 +76,7 @@ async fn test_connection_start() {
         write_stream: TestWriteStream { tx: writer_tx },
         read_stream: TestReadStream { items },
     };
-    let (connection, mut handle) = Connection::new(host, buffer_size, pool_tx).unwrap();
+    let (connection, mut handle) = SwimConnection::new(host, buffer_size, pool_tx).unwrap();
     handle.send_message("send_foo").await.unwrap();
     //When
     let (send_handle, receive_handle) = connection.start(ws_stream);
@@ -84,7 +96,7 @@ async fn test_connection_receive_single_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    Connection::receive_messages(pool_tx, read_stream)
+    SwimConnection::receive_messages(pool_tx, read_stream)
         .await
         .unwrap();
     // Then
@@ -102,7 +114,7 @@ async fn test_connection_receive_multiple_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    Connection::receive_messages(pool_tx, read_stream)
+    SwimConnection::receive_messages(pool_tx, read_stream)
         .await
         .unwrap();
     // Then
@@ -119,7 +131,7 @@ async fn test_connection_send_single_message() {
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     let (writer_tx, writer_rx) = std::sync::mpsc::channel::<Message>();
     let write_stream = TestWriteStream { tx: writer_tx };
-    let (connection, mut handle) = Connection::new(host, buffer_size, _pool_tx).unwrap();
+    let (connection, mut handle) = SwimConnection::new(host, buffer_size, _pool_tx).unwrap();
     // When
     handle.send_message("foo").await.unwrap();
     let _result = connection.send_message(write_stream).await;
@@ -135,7 +147,7 @@ async fn test_connection_send_multiple_messages() {
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     let (writer_tx, writer_rx) = std::sync::mpsc::channel::<Message>();
     let write_stream = TestWriteStream { tx: writer_tx };
-    let (connection, mut handle) = Connection::new(host, buffer_size, _pool_tx).unwrap();
+    let (connection, mut handle) = SwimConnection::new(host, buffer_size, _pool_tx).unwrap();
     // When
     handle.send_message("foo").await.unwrap();
     handle.send_message("bar").await.unwrap();
@@ -154,7 +166,7 @@ fn test_connection_parse_error() {
     let buffer_size = 5;
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     // When
-    let result = Connection::new(host, buffer_size, _pool_tx);
+    let result = SwimConnection::new(host, buffer_size, _pool_tx);
     // Then
     assert!(result.is_err());
     assert_eq!(Some(ConnectionError::ParseError), result.err());
@@ -166,7 +178,7 @@ async fn test_connection_connect_error() {
     let host = "ws://127.0.0.1:9999";
     let buffer_size = 5;
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
-    let (connection, _handle) = Connection::new(host, buffer_size, _pool_tx).unwrap();
+    let (connection, _handle) = SwimConnection::new(host, buffer_size, _pool_tx).unwrap();
     // When
     let result = connection.open().await;
     // Then
@@ -180,7 +192,7 @@ async fn test_new_connection_send_message_error() {
     let host = "ws://127.0.0.1:9999";
     let buffer_size = 5;
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
-    let (connection, _handle) = Connection::new(host, buffer_size, _pool_tx).unwrap();
+    let (connection, _handle) = SwimConnection::new(host, buffer_size, _pool_tx).unwrap();
     let write_stream = TestErrorWriter {};
     // When
     let result = connection.send_message(write_stream).await;
@@ -190,18 +202,82 @@ async fn test_new_connection_send_message_error() {
 }
 
 // Todo only for debugging. (Make sure to enable stdout)
-#[tokio::test]
-async fn test_with_remote() {
-    let (connection_pool, mut handler) = ConnectionPool::new(5);
-    connection_pool.open();
-    handler
-        .send_message(
-            "ws://127.0.0.1:9001",
-            "@sync(node:\"/unit/foo\", lane:\"info\")",
-        )
-        .unwrap();
-    thread::sleep(time::Duration::from_secs(2));
+// #[tokio::test]
+// async fn test_with_remote() {
+//     let (connection_pool, mut handler) = ConnectionPool::new(SwimConnectionProducer {}, 5);
+//     let (send_handle, receive_handle) = connection_pool.open();
+//
+//     handler
+//         .send_message(
+//             "ws://127.0.0.1:9001",
+//             "@sync(node:\"/unit/foo\", lane:\"info\")",
+//         )
+//         .unwrap();
+//
+//     let _result = send_handle.await;
+//     let _result = receive_handle.await;
+//
+//     thread::sleep(time::Duration::from_secs(2));
+// }
+
+struct TestConnection {
+    url: url::Url,
+    rx: mpsc::Receiver<Message>,
+    pool_tx: mpsc::Sender<Message>,
 }
+
+// #[async_trait]
+// impl Connection for TestConnection {
+//     fn new(host: &str, buffer_size: usize, pool_tx: Sender<Message>) -> Result<(TestConnection, ConnectionHandler), ConnectionError> {
+//         let url = url::Url::parse(&host)?;
+//         let (tx, rx) = mpsc::channel(buffer_size);
+//
+//         Ok((
+//             TestConnection { url, rx, pool_tx },
+//             ConnectionHandler { tx },
+//         ))
+//     }
+//
+//     async fn open(self) -> Result<(JoinHandle<Result<(), ConnectionError>>, JoinHandle<Result<(), ConnectionError>>), ConnectionError> {
+//
+//         let mut items = Vec::new();
+//         items.push(Message::text("recv_foo"));
+//         let (writer_tx, writer_rx) = std::sync::mpsc::channel::<Message>();
+//         let ws_stream = TestReadWriteStream {
+//             write_stream: TestWriteStream { tx: writer_tx },
+//             read_stream: TestReadStream { items },
+//         };
+//
+//         let ws_stream = ws_stream.map_err(|_| ConnectionError::SendMessageError);
+//         Ok(self.start(ws_stream))
+//     }
+//
+//     fn start<S>(self, ws_stream: S) -> (JoinHandle<Result<(), ConnectionError>>, JoinHandle<Result<(), ConnectionError>>) where
+//         S: Stream<Item=Result<Message, ConnectionError>>
+//         + Sink<Message>
+//         + std::marker::Send
+//         + 'static {
+//         let (write_stream, read_stream) = ws_stream.split();
+//
+//         let receive = SwimConnection::receive_messages(self.pool_tx.clone(), read_stream);
+//         let send = self.send_message(write_stream);
+//
+//         let send_handle = tokio::spawn(send);
+//         let receive_handle = tokio::spawn(receive);
+//
+//         (send_handle, receive_handle)
+//     }
+//
+//     async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError> where
+//         S: Sink<Message> + std::marker::Send + 'static {
+//         unimplemented!()
+//     }
+//
+//     async fn receive_messages<S>(pool_tx: Sender<Message>, read_stream: S) -> Result<(), ConnectionError> where
+//         S: TryStreamExt<Ok=Message, Error=ConnectionError> + std::marker::Send + 'static {
+//         unimplemented!()
+//     }
+// }
 
 struct TestReadWriteStream {
     read_stream: TestReadStream,
