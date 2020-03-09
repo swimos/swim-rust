@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 use crate::connections::{
-    Client, Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage,
+    Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage,
 };
 
 #[test]
@@ -18,7 +18,8 @@ fn test_new_connection_pool() {
     // When
     let (connection_pool, mut _handle) = ConnectionPool::new(buffer_size);
     // Then
-    assert_eq!(0, connection_pool.connections.len())
+    assert_eq!(0, connection_pool.connections.len());
+    assert_eq!(buffer_size, connection_pool.buffer_size);
 }
 
 #[test]
@@ -189,11 +190,10 @@ async fn test_new_connection_send_message_error() {
 }
 
 // Todo only for debugging. (Make sure to enable stdout)
-#[test]
-fn test_with_remote() {
-    let client = Client::new().unwrap();
+#[tokio::test]
+async fn test_with_remote() {
     let (connection_pool, mut handler) = ConnectionPool::new(5);
-    connection_pool.open(&client);
+    connection_pool.open();
     handler
         .send_message(
             "ws://127.0.0.1:9001",
@@ -235,7 +235,6 @@ impl Sink<Message> for TestReadWriteStream {
         Pin::new(&mut self.write_stream).poll_close(cx)
     }
 }
-
 
 struct TestReadStream {
     items: Vec<Message>,
