@@ -25,10 +25,27 @@ use futures_util::select_biased;
 use pin_utils::unsafe_pinned;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+use std::error::Error;
+use std::fmt::Display;
+use serde::export::Formatter;
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SubscriptionError {
     TopicClosed,
 }
+
+impl Display for SubscriptionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            _ => write!(f, "All receivers for the topic were dropped.")
+        }
+    }
+}
+
+impl Error for SubscriptionError {}
 
 /// A trait for one-to many channels. A topic may have any number of subscribers which are added
 /// asynchronously using the `subscribe` method. Each subscription can be consumed as a stream.

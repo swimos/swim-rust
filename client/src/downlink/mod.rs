@@ -24,7 +24,7 @@ use tokio::task::JoinHandle;
 use crate::sink::item;
 use crate::sink::item::{BoxItemSink, ItemSender, ItemSink, MpscSend};
 use futures::stream::{BoxStream, FusedStream};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use tokio::sync::broadcast;
 use tokio::sync::watch;
 
@@ -110,6 +110,23 @@ pub enum DownlinkError {
     OperationStreamEnded,
     TransitionError,
 }
+
+impl Display for DownlinkError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownlinkError::DroppedChannel =>
+                write!(f, "An internal channel was dropped and the downlink is now closed."),
+            DownlinkError::TaskPanic =>
+                write!(f, "The downlink task panicked."),
+            DownlinkError::OperationStreamEnded =>
+                write!(f, "The input stream to the downlink ended."),
+            DownlinkError::TransitionError =>
+                write!(f, "The downlink state machine produced and error."),
+        }
+    }
+}
+
+impl std::error::Error for DownlinkError {}
 
 impl<T> From<mpsc::error::SendError<T>> for DownlinkError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
