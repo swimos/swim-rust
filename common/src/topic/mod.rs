@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
+use std::fmt::Display;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
@@ -23,11 +25,10 @@ use futures::task::{Context, Poll};
 use futures::{future, Future, FutureExt, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_utils::unsafe_pinned;
+use serde::export::Formatter;
+use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
-use std::error::Error;
-use std::fmt::Display;
-use serde::export::Formatter;
 
 #[cfg(test)]
 mod tests;
@@ -40,7 +41,7 @@ pub enum SubscriptionError {
 impl Display for SubscriptionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            _ => write!(f, "All receivers for the topic were dropped.")
+            _ => write!(f, "All receivers for the topic were dropped."),
         }
     }
 }
@@ -224,12 +225,18 @@ impl<T: Clone> Stream for BroadcastReceiver<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.receiver().poll_next(cx) {
-            Poll::Ready(Some(Ok(value))) => Poll::Ready(Some(value)),
-            Poll::Ready(Some(Err(broadcast::RecvError::Lagged(_)))) => Poll::Pending,
-            Poll::Ready(Some(Err(broadcast::RecvError::Closed))) => Poll::Ready(None),
-            Poll::Ready(_) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
+        let mut pinned_rec = self.receiver();
+        loop {
+            match pinned_rec.poll_recv(cx) {
+                Poll::Ready(r) => match r {
+                    Ok(t) => return Poll::Ready(Some(t)),
+                    Err(e) => match e {
+                        RecvError::Closed => return Poll::Ready(None),
+                        RecvError::Lagged(_) => continue,
+                    },
+                },
+                Poll::Pending => return Poll::Pending,
+            }
         }
     }
 }
@@ -249,10 +256,15 @@ impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     type Fut = Ready<Result<Self::Receiver, SubscriptionError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        ready(Ok(BroadcastReceiver {
-            sender: self.sender.clone(),
-            receiver: self.sender.subscribe(),
-        }))
+        let result = if self.sender.receiver_count() == 0 {
+            Err(SubscriptionError::TopicClosed)
+        } else {
+            Ok(BroadcastReceiver {
+                sender: self.sender.clone(),
+                receiver: self.sender.subscribe(),
+            })
+        };
+        ready(result)
     }
 }
 
