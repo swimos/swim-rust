@@ -205,7 +205,22 @@ trait Connection: Sized {
         read_stream: S,
     ) -> Result<(), ConnectionError>
     where
-        S: TryStreamExt<Ok = Message, Error = ConnectionError> + std::marker::Send + 'static;
+        S: TryStreamExt<Ok = Message, Error = ConnectionError> + std::marker::Send + 'static,
+    {
+        read_stream
+            .try_for_each(|response| {
+                async {
+                    pool_tx
+                        .clone()
+                        .send(response)
+                        .await
+                        .map_err(|_| ConnectionError::SendMessageError)
+                }
+            })
+            .await?;
+
+        Ok(())
+    }
 }
 
 struct SwimConnection {
@@ -279,28 +294,6 @@ impl Connection for SwimConnection {
             .forward(write_stream)
             .await
             .map_err(|_| ConnectionError::SendMessageError)?;
-        Ok(())
-    }
-
-    async fn receive_messages<S>(
-        pool_tx: mpsc::Sender<Message>,
-        read_stream: S,
-    ) -> Result<(), ConnectionError>
-    where
-        S: TryStreamExt<Ok = Message, Error = ConnectionError> + std::marker::Send + 'static,
-    {
-        read_stream
-            .try_for_each(|response| {
-                async {
-                    pool_tx
-                        .clone()
-                        .send(response)
-                        .await
-                        .map_err(|_| ConnectionError::SendMessageError)
-                }
-            })
-            .await?;
-
         Ok(())
     }
 }

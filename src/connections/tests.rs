@@ -54,7 +54,10 @@ async fn test_connection_pool_send_and_receive_message() {
     let _result = receive_handler.await;
     let _result = send_handler.await;
 
-    assert_eq!("recv_baz", router_rx.recv().await.unwrap().to_text().unwrap());
+    assert_eq!(
+        "recv_baz",
+        router_rx.recv().await.unwrap().to_text().unwrap()
+    );
     assert_eq!("send_bar", writer_rx.recv().unwrap().to_text().unwrap());
 }
 
@@ -241,7 +244,8 @@ async fn test_with_remote() {
         .send_message(
             "ws://127.0.0.1:9001",
             "@sync(node:\"/unit/foo\", lane:\"info\")",
-        ).unwrap();
+        )
+        .unwrap();
 
     thread::sleep(time::Duration::from_secs(2));
 }
@@ -329,8 +333,8 @@ impl Connection for TestConnection {
         JoinHandle<Result<(), ConnectionError>>,
         JoinHandle<Result<(), ConnectionError>>,
     )
-        where
-            S: Stream<Item=Result<Message, ConnectionError>>
+    where
+        S: Stream<Item = Result<Message, ConnectionError>>
             + Sink<Message>
             + std::marker::Send
             + 'static,
@@ -347,36 +351,14 @@ impl Connection for TestConnection {
     }
 
     async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
-        where
-            S: Sink<Message> + std::marker::Send + 'static,
+    where
+        S: Sink<Message> + std::marker::Send + 'static,
     {
         self.rx
             .map(Ok)
             .forward(write_stream)
             .await
             .map_err(|_| ConnectionError::SendMessageError)?;
-        Ok(())
-    }
-
-    async fn receive_messages<S>(
-        pool_tx: Sender<Message>,
-        read_stream: S,
-    ) -> Result<(), ConnectionError>
-        where
-            S: TryStreamExt<Ok=Message, Error=ConnectionError> + std::marker::Send + 'static,
-    {
-        read_stream
-            .try_for_each(|response| {
-                async {
-                    pool_tx
-                        .clone()
-                        .send(response)
-                        .await
-                        .map_err(|_| ConnectionError::SendMessageError)
-                }
-            })
-            .await?;
-
         Ok(())
     }
 }
