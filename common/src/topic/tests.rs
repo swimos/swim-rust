@@ -232,3 +232,80 @@ pub async fn multiple_receivers_mpsc_topic() {
     assert_that!(n1, eq(Some(7)));
     assert_that!(n2, eq(Some(7)));
 }
+
+#[tokio::test]
+pub async fn multiple_receivers_multiple_records_mpsc_topic() {
+    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (mut topic, rx1) = MpscTopic::new(rx, 5);
+
+    let maybe_rx = topic.subscribe().await;
+    assert_that!(&maybe_rx, ok());
+    let rx2 = maybe_rx.unwrap();
+
+    let send_result = tx.send(7).await;
+    assert_that!(&send_result, ok());
+    let send_result = tx.send(14).await;
+    assert_that!(&send_result, ok());
+    let send_result = tx.send(21).await;
+    assert_that!(&send_result, ok());
+
+    let n1 = rx1.take(3).collect::<Vec<_>>().await;
+    let n2 = rx2.take(3).collect::<Vec<_>>().await;
+
+    assert_that!(n1, eq(vec![7, 14, 21]));
+    assert_that!(n2, eq(vec![7, 14, 21]));
+}
+
+#[tokio::test]
+pub async fn first_receiver_dropped_for_mpsc_topic() {
+    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (mut topic, rx1) = MpscTopic::new(rx, 5);
+
+    let maybe_rx = topic.subscribe().await;
+    assert_that!(&maybe_rx, ok());
+    let mut rx2 = maybe_rx.unwrap();
+
+    drop(rx1);
+
+    let send_result = tx.send(7).await;
+    assert_that!(&send_result, ok());
+
+    let n2 = rx2.next().await;
+
+    assert_that!(n2, eq(Some(7)));
+}
+
+#[tokio::test]
+pub async fn additional_receiver_dropped_for_mpsc_topic() {
+    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (mut topic, mut rx1) = MpscTopic::new(rx, 5);
+
+    let maybe_rx = topic.subscribe().await;
+    assert_that!(&maybe_rx, ok());
+    let rx2 = maybe_rx.unwrap();
+
+    drop(rx2);
+
+    let send_result = tx.send(7).await;
+    assert_that!(&send_result, ok());
+
+    let n1 = rx1.next().await;
+
+    assert_that!(n1, eq(Some(7)));
+}
+
+#[tokio::test]
+pub async fn all_receivers_dropped_for_mpsc_topic() {
+    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (mut topic, rx1) = MpscTopic::new(rx, 5);
+
+    let maybe_rx = topic.subscribe().await;
+    assert_that!(&maybe_rx, ok());
+    let rx2: MpscTopicReceiver<i32> = maybe_rx.unwrap();
+
+    drop(rx1);
+    drop(rx2);
+
+    assert_that!(topic.subscribe().await, err());
+    assert_that!(tx.send(7).await, err());
+}

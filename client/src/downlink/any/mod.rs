@@ -18,9 +18,10 @@ use futures::{Future, Stream};
 use tokio::macros::support::Pin;
 
 use common::topic::{
-    BroadcastTopic, MpscTopic, SendRequest, Sequenced, SubscriptionError, Topic, WatchTopic,
+    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, SubscriptionError, Topic,
+    WatchTopic,
 };
-use pin_project::pin_project;
+use pin_project::{pin_project, project};
 
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
@@ -60,7 +61,7 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
 }
 
 pub type QueueSubFuture<Upd> =
-    Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<mpsc::Receiver<Event<Upd>>>>;
+    Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>>;
 pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, SubscriptionError>>;
 pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, SubscriptionError>>;
 
@@ -74,12 +75,13 @@ pub enum AnySubFuture<Upd> {
 impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
     type Output = Result<AnyReceiver<Upd>, SubscriptionError>;
 
+    #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let projected = self.project();
-        match projected {
-            __AnySubFutureProjection::Queue(fut) => fut.poll(cx).map_ok(AnyReceiver::Queue),
-            __AnySubFutureProjection::Dropping(fut) => fut.poll(cx).map_ok(AnyReceiver::Dropping),
-            __AnySubFutureProjection::Buffered(fut) => fut.poll(cx).map_ok(AnyReceiver::Buffered),
+        #[project]
+        match self.project() {
+            AnySubFuture::Queue(fut) => fut.poll(cx).map_ok(AnyReceiver::Queue),
+            AnySubFuture::Dropping(fut) => fut.poll(cx).map_ok(AnyReceiver::Dropping),
+            AnySubFuture::Buffered(fut) => fut.poll(cx).map_ok(AnyReceiver::Buffered),
         }
     }
 }

@@ -145,10 +145,46 @@ pub struct BroadcastReceiver<T> {
     receiver: broadcast::Receiver<T>,
 }
 
-struct SubRequest<T>(oneshot::Sender<mpsc::Receiver<T>>);
+struct SubRequest<T>(oneshot::Sender<MpscTopicReceiver<T>>);
 
 impl<T: Clone> BroadcastReceiver<T> {
     unsafe_pinned!(receiver: broadcast::Receiver<T>);
+}
+
+#[derive(Debug)]
+pub struct MpscTopicReceiver<T> {
+    sentinel: Option<Arc<()>>,
+    receiver: mpsc::Receiver<T>,
+}
+
+impl<T> MpscTopicReceiver<T> {
+    fn new(receiver: mpsc::Receiver<T>, sentinel: Arc<()>) -> MpscTopicReceiver<T> {
+        MpscTopicReceiver {
+            receiver,
+            sentinel: Some(sentinel),
+        }
+    }
+
+    pub async fn recv(&mut self) -> Option<T> {
+        self.receiver.recv().await
+    }
+
+    pub fn try_recv(&mut self) -> Result<T, mpsc::error::TryRecvError> {
+        self.receiver.try_recv()
+    }
+
+    pub fn close(&mut self) {
+        self.receiver.close();
+        self.sentinel.take();
+    }
+}
+
+impl<T: Clone + Send> Stream for MpscTopicReceiver<T> {
+    type Item = T;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().receiver.poll_next_unpin(cx)
+    }
 }
 
 /// A topic where every subscriber is represented by a Tokio MPSC queue. If any one subscriber falls
@@ -160,18 +196,23 @@ pub struct MpscTopic<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
-    pub fn new(input: mpsc::Receiver<T>, buffer_size: usize) -> (MpscTopic<T>, mpsc::Receiver<T>) {
+    pub fn new(
+        input: mpsc::Receiver<T>,
+        buffer_size: usize,
+    ) -> (MpscTopic<T>, MpscTopicReceiver<T>) {
         assert!(buffer_size > 0, "MPSC buffer size must be positive.");
         let (sub_tx, sub_rx) = mpsc::channel(1);
         let (tx, rx) = mpsc::channel(buffer_size);
-        let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size);
+
+        let sentinel = Arc::new(());
+        let task_fut = mpsc_topic_task(input, tx, Arc::downgrade(&sentinel), sub_rx, buffer_size);
         let task = tokio::task::spawn(task_fut);
         (
             MpscTopic {
                 sub_sender: sub_tx,
                 task: Arc::new(task),
             },
-            rx,
+            MpscTopicReceiver::new(rx, sentinel),
         )
     }
 }
@@ -348,12 +389,12 @@ impl<T> Future for SendRequest<T> {
 }
 
 impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
-    type Receiver = mpsc::Receiver<T>;
-    type Fut = Sequenced<SendRequest<T>, oneshot::Receiver<mpsc::Receiver<T>>>;
+    type Receiver = MpscTopicReceiver<T>;
+    type Fut = Sequenced<SendRequest<T>, oneshot::Receiver<MpscTopicReceiver<T>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         let MpscTopic { sub_sender, .. } = self;
-        let (sub_tx, sub_rx) = oneshot::channel::<mpsc::Receiver<T>>();
+        let (sub_tx, sub_rx) = oneshot::channel::<MpscTopicReceiver<T>>();
 
         Sequenced::new(
             SendRequest::new(sub_sender.clone(), SubRequest(sub_tx)),
@@ -366,6 +407,7 @@ impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
 async fn mpsc_topic_task<T: Clone>(
     input: mpsc::Receiver<T>,
     init_sender: mpsc::Sender<T>,
+    sentinel: Weak<()>,
     subscriptions: mpsc::Receiver<SubRequest<T>>,
     buffer_size: usize,
 ) {
@@ -380,12 +422,15 @@ async fn mpsc_topic_task<T: Clone>(
             value = in_fused.next() => value.map(Either::Right),
         };
         match item {
-            Some(Either::Left(SubRequest(cb))) => {
-                let (tx, rx) = mpsc::channel(buffer_size);
-                if cb.send(rx).is_ok() {
-                    outputs.push(tx);
+            Some(Either::Left(SubRequest(cb))) => match sentinel.upgrade() {
+                Some(rec_sentinel) => {
+                    let (tx, rx) = mpsc::channel(buffer_size);
+                    if cb.send(MpscTopicReceiver::new(rx, rec_sentinel)).is_ok() {
+                        outputs.push(tx);
+                    }
                 }
-            }
+                _ => break,
+            },
             Some(Either::Right(value)) => match outputs.len() {
                 0 => break,
                 1 => {

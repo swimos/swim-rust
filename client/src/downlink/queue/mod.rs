@@ -17,7 +17,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{MpscTopic, SendRequest, Sequenced, Topic};
+use common::topic::{MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, Topic};
 use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, oneshot};
 
@@ -40,7 +40,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     pub fn from_raw(
-        raw: raw::RawDownlink<mpsc::Sender<Act>, QueueReceiver<Upd>>,
+        raw: raw::RawDownlink<mpsc::Sender<Act>, mpsc::Receiver<Event<Upd>>>,
         buffer_size: usize,
     ) -> (QueueDownlink<Act, Upd>, QueueReceiver<Upd>) {
         let raw::RawDownlink {
@@ -63,7 +63,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = QueueReceiver<Upd>;
-    type Fut = Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<mpsc::Receiver<Event<Upd>>>>;
+    type Fut = Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()
@@ -96,7 +96,7 @@ where
     }
 }
 
-pub type QueueReceiver<T> = mpsc::Receiver<Event<T>>;
+pub type QueueReceiver<T> = MpscTopicReceiver<Event<T>>;
 
 pub(in crate::downlink) fn make_downlink<Err, M, A, State, Updates, Commands>(
     init: State,
