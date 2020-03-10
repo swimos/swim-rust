@@ -22,11 +22,13 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::sink::item;
-use crate::sink::item::{BoxItemSink, ItemSink, MpscSend};
+use crate::sink::item::{BoxItemSink, ItemSender, ItemSink, MpscSend};
 use futures::stream::{BoxStream, FusedStream};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
+use tokio::sync::broadcast;
 use tokio::sync::watch;
 
+pub mod any;
 pub mod buffered;
 pub mod dropping;
 pub mod model;
@@ -39,9 +41,7 @@ use futures::future::BoxFuture;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Act, Upd: Clone>:
-    Topic<Upd> + for<'a> ItemSink<'a, Act, Error = DownlinkError>
-{
+pub trait Downlink<Act, Upd: Clone>: Topic<Upd> + ItemSender<Act, DownlinkError> {
     /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
 
@@ -111,6 +111,26 @@ pub enum DownlinkError {
     TransitionError,
 }
 
+impl Display for DownlinkError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownlinkError::DroppedChannel => write!(
+                f,
+                "An internal channel was dropped and the downlink is now closed."
+            ),
+            DownlinkError::TaskPanic => write!(f, "The downlink task panicked."),
+            DownlinkError::OperationStreamEnded => {
+                write!(f, "The input stream to the downlink ended.")
+            }
+            DownlinkError::TransitionError => {
+                write!(f, "The downlink state machine produced and error.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for DownlinkError {}
+
 impl<T> From<mpsc::error::SendError<T>> for DownlinkError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
         DownlinkError::DroppedChannel
@@ -125,6 +145,18 @@ impl<T> From<mpsc::error::TrySendError<T>> for DownlinkError {
 
 impl<T> From<watch::error::SendError<T>> for DownlinkError {
     fn from(_: watch::error::SendError<T>) -> Self {
+        DownlinkError::DroppedChannel
+    }
+}
+
+impl From<item::SendError> for DownlinkError {
+    fn from(_: item::SendError) -> Self {
+        DownlinkError::DroppedChannel
+    }
+}
+
+impl<T> From<broadcast::SendError<T>> for DownlinkError {
+    fn from(_: broadcast::SendError<T>) -> Self {
         DownlinkError::DroppedChannel
     }
 }
@@ -244,9 +276,9 @@ pub enum TransitionError {
 /// This trait defines the interface that must be implemented for the state type of a downlink.
 trait StateMachine<M, A>: Sized {
     /// Type of events that will be issued to the owner of the downlink.
-    type Ev: Unpin;
+    type Ev;
     /// Type of commands that will be sent out to the Warp connection.
-    type Cmd: Unpin;
+    type Cmd;
 
     /// For an operation on the downlink, generate output messages.
     fn handle_operation(
