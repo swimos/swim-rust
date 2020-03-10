@@ -10,6 +10,7 @@ extern crate syn;
 
 use proc_macro::TokenStream;
 
+use proc_macro2::{Ident, Span};
 use syn::DeriveInput;
 
 use crate::parser::{Context, Parser};
@@ -40,16 +41,16 @@ fn expand_derive_serialize(
     let ident = parser.ident.clone();
     let field_assertions = parser.receiver_match_arm();
     let fields = parser.match_funcs();
-    println!("{:?}", fields);
+    let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
+    let dummy_const = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
 
     let quote = quote! {
-        use common as _common;
 
         #[automatically_derived]
         #[allow(unused_qualifications)]
         impl form_model::Form for #ident {
-            fn __assert_receiver_is_total_form(&self) {
-                match *self {
+            fn __assert_receiver_is_total_form(self) {
+                match self {
                     #ident { #(#field_assertions),*  } => {
                         #(#fields)*
                     }
@@ -69,7 +70,15 @@ fn expand_derive_serialize(
         }
     };
 
-    Ok(quote)
+    let res = quote! {
+        const #dummy_const: () = {
+            use common as _common;
+
+            #quote
+        };
+    };
+
+    Ok(res)
 }
 
 fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {

@@ -8,8 +8,13 @@ struct Parent {
     c: Child,
 }
 
+#[derive(Form)]
 struct Child {
-    a: u32,
+    d: Grandchild
+}
+
+struct Grandchild {
+    e: i32,
 }
 
 #[test]
@@ -17,7 +22,11 @@ fn test_parent() {
     let parent = Parent {
         a: 1,
         b: 2,
-        c: Child { a: 1 },
+        c: Child {
+            d: Grandchild {
+                e: 1
+            }
+        },
     };
 
     parent.__assert_receiver_is_total_form();

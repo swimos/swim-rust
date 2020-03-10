@@ -8,7 +8,7 @@ pub trait Form: Sized {
     // Reserved for macro implementation.
     // This should never be implemented by hand.
     #[doc(hidden)]
-    fn __assert_receiver_is_total_form(&self) {}
+    fn __assert_receiver_is_total_form(self) {}
 }
 
 impl Form for i32 {

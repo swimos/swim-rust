@@ -163,7 +163,7 @@ impl<'p> Parser<'p> {
                     let ident = Ident::new(&format!("__self__{}", index), Span::call_site());
 
                     quote_spanned! {span=>
-                        form_model::Form::try_into_value(& #ident );
+                        Form::__assert_receiver_is_total_form(#ident);
                     }
                 })
                 .collect(),
