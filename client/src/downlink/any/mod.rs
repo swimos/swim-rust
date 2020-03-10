@@ -104,7 +104,7 @@ where
 
 impl<'a, Act, Upd> ItemSink<'a, Act> for AnyDownlink<Act, Upd>
 where
-    Act: Unpin + Send + 'static,
+    Act: Send + 'static,
 {
     type Error = DownlinkError;
     type SendFuture = MpscSend<'a, Act, DownlinkError>;
@@ -142,7 +142,7 @@ where
 impl<Act, Upd> Downlink<Act, Event<Upd>> for AnyDownlink<Act, Upd>
 where
     Upd: Clone + Send + Sync + 'static,
-    Act: Unpin + Send + 'static,
+    Act: Send + 'static,
 {
     type DlTopic = AnyDownlinkTopic<Upd>;
     type DlSink = raw::Sender<mpsc::Sender<Act>>;

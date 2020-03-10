@@ -76,7 +76,7 @@ where
 
 impl<'a, Act, Upd> ItemSink<'a, Act> for BufferedDownlink<Act, Upd>
 where
-    Act: Unpin + Send + 'static,
+    Act: Send + 'static,
 {
     type Error = DownlinkError;
     type SendFuture = MpscSend<'a, Act, DownlinkError>;
@@ -88,7 +88,7 @@ where
 
 impl<Act, Upd> Downlink<Act, Event<Upd>> for BufferedDownlink<Act, Upd>
 where
-    Act: Unpin + Send + 'static,
+    Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     type DlTopic = BroadcastTopic<Event<Upd>>;

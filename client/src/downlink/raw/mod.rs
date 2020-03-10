@@ -43,7 +43,7 @@ impl<T> Sender<mpsc::Sender<T>> {
 
 impl<'a, T> ItemSink<'a, T> for Sender<mpsc::Sender<T>>
 where
-    T: Unpin + Send + 'static,
+    T: Send + 'static,
 {
     type Error = DownlinkError;
     type SendFuture = MpscSend<'a, T, DownlinkError>;

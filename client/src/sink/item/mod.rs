@@ -62,22 +62,19 @@ fn transform_err<ErrIn, ErrOut: From<ErrIn>>(result: Result<(), ErrIn>) -> Resul
 
 /// Wrap an [`mpsc::Sender`] as an item sink. It is not possible to implement the trait
 /// directly as the `send` method returns an anonymous type.
-pub fn for_mpsc_sender<T: Unpin + Send + 'static, Err: From<MpscErr<T>> + 'static>(
+pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + 'static>(
     sender: mpsc::Sender<T>,
 ) -> impl for<'a> ItemSink<'a, T, Error = Err> {
     map_err(sender, || transform_err)
 }
 
-pub fn for_watch_sender<T: Unpin + Clone + Send + 'static, Err: From<SendError> + 'static>(
+pub fn for_watch_sender<T: Clone + Send + 'static, Err: From<SendError> + 'static>(
     sender: watch::Sender<Option<T>>,
 ) -> impl for<'a> ItemSink<'a, T, Error = Err> {
     map_err(WatchSink(sender), || transform_err)
 }
 
-pub fn for_broadcast_sender<
-    T: Unpin + Clone + Send + 'static,
-    Err: From<BroadcastErr<T>> + 'static,
->(
+pub fn for_broadcast_sender<T: Clone + Send + 'static, Err: From<BroadcastErr<T>> + 'static>(
     sender: broadcast::Sender<T>,
 ) -> impl for<'a> ItemSink<'a, T, Error = Err> {
     map_err(sender, || transform_err)
@@ -89,6 +86,8 @@ pub struct MpscSend<'a, T, E> {
     _err: PhantomData<E>,
 }
 
+impl<'a, T, E> Unpin for MpscSend<'a, T, E> {}
+
 impl<'a, T, E> MpscSend<'a, T, E> {
     pub fn new(sender: &'a mut mpsc::Sender<T>, value: T) -> MpscSend<'a, T, E> {
         MpscSend {
@@ -99,9 +98,9 @@ impl<'a, T, E> MpscSend<'a, T, E> {
     }
 }
 
-impl<'a, T: Unpin, E> Future for MpscSend<'a, T, E>
+impl<'a, T, E> Future for MpscSend<'a, T, E>
 where
-    E: From<mpsc::error::SendError<T>> + Unpin,
+    E: From<mpsc::error::SendError<T>>,
 {
     type Output = Result<(), E>;
 
@@ -128,7 +127,7 @@ where
     }
 }
 
-impl<'a, T: Unpin + Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
+impl<'a, T: Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
     type Error = mpsc::error::SendError<T>;
     type SendFuture = MpscSend<'a, T, mpsc::error::SendError<T>>;
 

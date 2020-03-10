@@ -276,9 +276,9 @@ pub enum TransitionError {
 /// This trait defines the interface that must be implemented for the state type of a downlink.
 trait StateMachine<M, A>: Sized {
     /// Type of events that will be issued to the owner of the downlink.
-    type Ev: Unpin;
+    type Ev;
     /// Type of commands that will be sent out to the Warp connection.
-    type Cmd: Unpin;
+    type Cmd;
 
     /// For an operation on the downlink, generate output messages.
     fn handle_operation(

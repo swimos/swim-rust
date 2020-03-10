@@ -24,7 +24,7 @@ use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
 use futures::{future, Future, FutureExt, Stream, StreamExt};
 use futures_util::select_biased;
-use pin_utils::unsafe_pinned;
+use pin_project::pin_project;
 use serde::export::Formatter;
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
@@ -75,10 +75,6 @@ pub struct WatchStream<T> {
     inner: watch::Receiver<Option<T>>,
 }
 
-impl<T> WatchStream<T> {
-    unsafe_pinned!(inner: watch::Receiver<Option<T>>);
-}
-
 impl<T: Clone> WatchStream<T> {
     pub async fn recv(&mut self) -> Option<T> {
         match self.inner.recv().await {
@@ -92,7 +88,7 @@ impl<T: Clone> Stream for WatchStream<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.inner().poll_next(cx) {
+        match self.get_mut().inner.poll_next_unpin(cx) {
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Ready(Some(Some(t))) => Poll::Ready(Some(t)),
             _ => Poll::Pending,
@@ -146,10 +142,6 @@ pub struct BroadcastReceiver<T> {
 }
 
 struct SubRequest<T>(oneshot::Sender<MpscTopicReceiver<T>>);
-
-impl<T: Clone> BroadcastReceiver<T> {
-    unsafe_pinned!(receiver: broadcast::Receiver<T>);
-}
 
 #[derive(Debug)]
 pub struct MpscTopicReceiver<T> {
@@ -232,15 +224,11 @@ impl<T: Clone + Send> WatchTopic<T> {
     }
 }
 
-impl<T: Clone + Send> WatchTopicReceiver<T> {
-    unsafe_pinned!(receiver: WatchStream<T>);
-}
-
 impl<T: Clone + Send> Stream for WatchTopicReceiver<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.receiver().poll_next(cx)
+        self.get_mut().receiver.poll_next_unpin(cx)
     }
 }
 
@@ -266,7 +254,7 @@ impl<T: Clone> Stream for BroadcastReceiver<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut pinned_rec = self.receiver();
+        let mut pinned_rec = Pin::new(&mut self.get_mut().receiver);
         loop {
             match pinned_rec.poll_recv(cx) {
                 Poll::Ready(r) => match r {
@@ -474,12 +462,10 @@ fn remove_terminated<T: Clone>(
         .collect()
 }
 
+#[pin_project]
 pub struct BoxResult<F> {
+    #[pin]
     f: F,
-}
-
-impl<F> BoxResult<F> {
-    unsafe_pinned!(f: F);
 }
 
 impl<S, T, F> Future for BoxResult<F>
@@ -490,7 +476,7 @@ where
     type Output = Result<BoxStream<'static, T>, SubscriptionError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.f().poll(cx) {
+        match self.project().f.poll(cx) {
             Poll::Ready(stream_result) => Poll::Ready(stream_result.map(StreamExt::boxed)),
             Poll::Pending => Poll::Pending,
         }
