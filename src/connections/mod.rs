@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use futures::future;
 use futures::{Sink, StreamExt};
 use futures_util::stream::Stream;
 use futures_util::TryStreamExt;
@@ -24,6 +23,7 @@ struct ConnectionPool<T: ConnectionProducer + std::marker::Send + 'static> {
     connections: HashMap<String, ConnectionHandler>,
     rx: mpsc::Receiver<ConnectionPoolMessage>,
     connections_tx: Option<mpsc::Sender<Message>>,
+    router_tx: Option<mpsc::Sender<Message>>,
     buffer_size: usize,
     connection_producer: T,
 }
@@ -32,6 +32,7 @@ impl<T: ConnectionProducer + std::marker::Send + 'static> ConnectionPool<T> {
     fn new(
         connection_producer: T,
         buffer_size: usize,
+        router_tx: mpsc::Sender<Message>,
     ) -> (ConnectionPool<T>, ConnectionPoolHandler) {
         let (tx, rx) = mpsc::channel(buffer_size);
         (
@@ -39,6 +40,7 @@ impl<T: ConnectionProducer + std::marker::Send + 'static> ConnectionPool<T> {
                 connections: HashMap::new(),
                 rx,
                 connections_tx: None,
+                router_tx: Some(router_tx),
                 buffer_size,
                 connection_producer,
             },
@@ -48,47 +50,57 @@ impl<T: ConnectionProducer + std::marker::Send + 'static> ConnectionPool<T> {
 
     fn open(
         mut self,
-    ) -> (
-        JoinHandle<Result<(), ConnectionError>>,
-        JoinHandle<Result<(), ConnectionError>>,
-    ) {
+    ) -> Result<
+        (
+            JoinHandle<Result<(), ConnectionError>>,
+            JoinHandle<Result<(), ConnectionError>>,
+        ),
+        ConnectionError,
+    > {
+        let router_tx = self.router_tx.take().ok_or(ConnectionError::ConnectError)?;
         let (connections_tx, connections_rx) = mpsc::channel(self.buffer_size);
         self.connections_tx = Some(connections_tx);
         let send_handler = tokio::spawn(self.send_messages());
-        let receive_handler = tokio::spawn(ConnectionPool::<T>::receive_messages(connections_rx));
+        let receive_handler = tokio::spawn(ConnectionPool::<T>::receive_messages(
+            connections_rx,
+            router_tx,
+        ));
 
-        (send_handler, receive_handler)
+        Ok((send_handler, receive_handler))
     }
 
     async fn send_messages(mut self) -> Result<(), ConnectionError> {
         loop {
-            let response = self.rx.recv().await;
-            match response {
-                Some(connection_pool_message) => {
-                    if !self.connections.contains_key(&connection_pool_message.host) {
-                        self.open_connection(&connection_pool_message.host).await?;
-                    }
+            let connection_pool_message = self
+                .rx
+                .try_recv()
+                .map_err(|_| ConnectionError::SendMessageError)?;
 
-                    let handler = self
-                        .connections
-                        .get_mut(&connection_pool_message.host)
-                        .ok_or(ConnectionError::ConnectError)?;
-
-                    handler
-                        .send_message(&connection_pool_message.message)
-                        .await?;
-                }
-                None => (),
+            if !self.connections.contains_key(&connection_pool_message.host) {
+                self.open_connection(&connection_pool_message.host).await?;
             }
+
+            let handler = self
+                .connections
+                .get_mut(&connection_pool_message.host)
+                .ok_or(ConnectionError::ConnectError)?;
+
+            handler
+                .send_message(&connection_pool_message.message)
+                .await?;
         }
     }
 
     async fn open_connection(&mut self, host: &str) -> Result<ConnectionHandler, ConnectionError> {
-        let (connection, connection_handler) = self.connection_producer.create_connection(
-            host,
-            self.buffer_size,
-            self.connections_tx.as_ref().unwrap().clone(),
-        )?;
+        let pool_tx = self
+            .connections_tx
+            .as_ref()
+            .ok_or(ConnectionError::ConnectError)?
+            .clone();
+
+        let (connection, connection_handler) =
+            self.connection_producer
+                .create_connection(host, self.buffer_size, pool_tx)?;
         connection.open().await?;
         self.connections
             .insert(host.to_string(), connection_handler);
@@ -100,11 +112,19 @@ impl<T: ConnectionProducer + std::marker::Send + 'static> ConnectionPool<T> {
             .clone())
     }
 
-    async fn receive_messages(rx: mpsc::Receiver<Message>) -> Result<(), ConnectionError> {
+    async fn receive_messages(
+        rx: mpsc::Receiver<Message>,
+        tx: mpsc::Sender<Message>,
+    ) -> Result<(), ConnectionError> {
         rx.for_each(|response| {
-            // TODO connect this to the Router.
-            println!("{:?}", response);
-            future::ready(())
+            async {
+                // TODO print statement is for debugging only
+                println!("{:?}", response);
+                tx.clone()
+                    .send(response)
+                    .await
+                    .map_err(|_| ConnectionError::SendMessageError);
+            }
         })
         .await;
         Ok(())
@@ -153,12 +173,6 @@ impl ConnectionProducer for SwimConnectionProducer {
 
 #[async_trait]
 trait Connection: Sized {
-    fn new(
-        host: &str,
-        buffer_size: usize,
-        pool_tx: mpsc::Sender<Message>,
-    ) -> Result<(Self, ConnectionHandler), ConnectionError>;
-
     async fn open(
         self,
     ) -> Result<
@@ -200,9 +214,7 @@ struct SwimConnection {
     pool_tx: mpsc::Sender<Message>,
 }
 
-#[async_trait]
-impl Connection for SwimConnection {
-
+impl SwimConnection {
     fn new(
         host: &str,
         buffer_size: usize,
@@ -216,7 +228,10 @@ impl Connection for SwimConnection {
             ConnectionHandler { tx },
         ))
     }
+}
 
+#[async_trait]
+impl Connection for SwimConnection {
     async fn open(
         self,
     ) -> Result<
