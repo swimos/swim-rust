@@ -18,7 +18,6 @@ use crate::model::{Item, Value};
 use crate::structure::assert_err;
 use std::collections::BTreeSet;
 
-
 #[cfg(test)]
 mod valid_types {
     use std::collections::BTreeMap;

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::structure::assert_err;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod valid {
@@ -24,7 +24,7 @@ mod valid {
 
     #[test]
     fn generic() {
-        #[derive(Serialize)]
+        #[derive(Serialize, Deserialize)]
         struct Test<T> {
             v: T,
         }
