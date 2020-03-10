@@ -268,68 +268,97 @@ impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     }
 }
 
-pub struct SendFuture<T> {
+pub struct SendRequest<T> {
     sender: mpsc::Sender<SubRequest<T>>,
     request: Option<SubRequest<T>>,
-    result: oneshot::Receiver<mpsc::Receiver<T>>,
 }
 
-impl<T> Future for SendFuture<T> {
-    type Output = Result<mpsc::Receiver<T>, SubscriptionError>;
+impl<T> SendRequest<T> {
+    fn new(sender: mpsc::Sender<SubRequest<T>>, request: SubRequest<T>) -> SendRequest<T> {
+        SendRequest {
+            sender,
+            request: Some(request),
+        }
+    }
+}
+
+pub struct Sequenced<F1: Unpin, F2: Unpin> {
+    first: Option<F1>,
+    second: Option<F2>,
+}
+
+impl<F1: Unpin, F2: Unpin> Sequenced<F1, F2> {
+    fn new(first: F1, second: F2) -> Sequenced<F1, F2> {
+        Sequenced {
+            first: Some(first),
+            second: Some(second),
+        }
+    }
+}
+
+impl<F1, F2, T1, T2, E1, E2> Future for Sequenced<F1, F2>
+where
+    F1: Future<Output = Result<T1, E1>> + Unpin,
+    F2: Future<Output = Result<T2, E2>> + Unpin,
+{
+    type Output = Result<T2, SubscriptionError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let SendFuture {
-            sender,
-            request,
-            result,
+        let Sequenced {
+            first: maybe_first,
+            second: maybe_second,
         } = self.get_mut();
-        if request.is_some() {
-            let mut pinned_sender = Pin::new(sender);
-            match pinned_sender.poll_ready(cx) {
-                Poll::Ready(Err(_)) => match request.take() {
-                    None => {
-                        unreachable!();
+        if let Some(first) = maybe_first {
+            match Pin::new(first).poll(cx) {
+                Poll::Ready(result) => {
+                    maybe_first.take();
+                    match result {
+                        Ok(_) => {}
+                        Err(_) => return Poll::Ready(Err(SubscriptionError::TopicClosed)),
                     }
-                    Some(_) => Poll::Ready(Err(SubscriptionError::TopicClosed)),
-                },
-                Poll::Ready(_) => match request.take() {
-                    None => {
-                        panic!("Send future used more than once.");
-                    }
-                    Some(v) => match pinned_sender.try_send(v) {
-                        Ok(_) => Poll::Pending,
-                        Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
-                        Err(mpsc::error::TrySendError::Closed(_)) => {
-                            Poll::Ready(Err(SubscriptionError::TopicClosed))
-                        }
-                    },
-                },
-                Poll::Pending => Poll::Pending,
-            }
-        } else {
-            let pinned_res = Pin::new(result);
-            match pinned_res.poll(cx) {
-                Poll::Ready(Err(_)) => Poll::Ready(Err(SubscriptionError::TopicClosed)),
-                Poll::Ready(Ok(rec)) => Poll::Ready(Ok(rec)),
-                Poll::Pending => Poll::Pending,
+                }
+                Poll::Pending => return Poll::Pending,
             }
         }
+        match maybe_second {
+            Some(second) => Pin::new(second)
+                .poll(cx)
+                .map_err(|_| SubscriptionError::TopicClosed),
+            _ => panic!("Sequenced future used twice."),
+        }
+    }
+}
+
+impl<T> Future for SendRequest<T> {
+    type Output = Result<(), SubscriptionError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let SendRequest { sender, request } = self.get_mut();
+        sender.poll_ready(cx).map(|r| match r {
+            Ok(_) => match request.take() {
+                Some(req) => match sender.try_send(req) {
+                    Ok(_) => Ok(()),
+                    _ => Err(SubscriptionError::TopicClosed),
+                },
+                _ => panic!("Send future used twice."),
+            },
+            Err(_) => Err(SubscriptionError::TopicClosed),
+        })
     }
 }
 
 impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
     type Receiver = mpsc::Receiver<T>;
-    type Fut = SendFuture<T>;
+    type Fut = Sequenced<SendRequest<T>, oneshot::Receiver<mpsc::Receiver<T>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         let MpscTopic { sub_sender, .. } = self;
         let (sub_tx, sub_rx) = oneshot::channel::<mpsc::Receiver<T>>();
 
-        SendFuture {
-            sender: sub_sender.clone(),
-            request: Some(SubRequest(sub_tx)),
-            result: sub_rx,
-        }
+        Sequenced::new(
+            SendRequest::new(sub_sender.clone(), SubRequest(sub_tx)),
+            sub_rx,
+        )
     }
 }
 

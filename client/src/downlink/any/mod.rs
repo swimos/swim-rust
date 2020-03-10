@@ -17,7 +17,9 @@ use futures::task::{Context, Poll};
 use futures::{Future, Stream};
 use tokio::macros::support::Pin;
 
-use common::topic::{BroadcastTopic, MpscTopic, SendFuture, SubscriptionError, Topic, WatchTopic};
+use common::topic::{
+    BroadcastTopic, MpscTopic, SendRequest, Sequenced, SubscriptionError, Topic, WatchTopic,
+};
 use pin_project::pin_project;
 
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
@@ -26,7 +28,7 @@ use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw;
 use crate::downlink::{Downlink, DownlinkError, Event};
 use crate::sink::item::{ItemSink, MpscSend};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 /// Wrapper around any one of queueing, dropping and buffered downlink implementations. This
 /// itself implements the Downlink trait (although using it like this will be slightly less
@@ -57,7 +59,8 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
     }
 }
 
-pub type QueueSubFuture<Upd> = SendFuture<Event<Upd>>;
+pub type QueueSubFuture<Upd> =
+    Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<mpsc::Receiver<Event<Upd>>>>;
 pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, SubscriptionError>>;
 pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, SubscriptionError>>;
 

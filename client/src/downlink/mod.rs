@@ -114,14 +114,17 @@ pub enum DownlinkError {
 impl Display for DownlinkError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DownlinkError::DroppedChannel =>
-                write!(f, "An internal channel was dropped and the downlink is now closed."),
-            DownlinkError::TaskPanic =>
-                write!(f, "The downlink task panicked."),
-            DownlinkError::OperationStreamEnded =>
-                write!(f, "The input stream to the downlink ended."),
-            DownlinkError::TransitionError =>
-                write!(f, "The downlink state machine produced and error."),
+            DownlinkError::DroppedChannel => write!(
+                f,
+                "An internal channel was dropped and the downlink is now closed."
+            ),
+            DownlinkError::TaskPanic => write!(f, "The downlink task panicked."),
+            DownlinkError::OperationStreamEnded => {
+                write!(f, "The input stream to the downlink ended.")
+            }
+            DownlinkError::TransitionError => {
+                write!(f, "The downlink state machine produced and error.")
+            }
         }
     }
 }

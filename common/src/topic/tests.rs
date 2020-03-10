@@ -13,17 +13,17 @@
 // limitations under the License.
 
 use super::*;
+use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
-use tokio::sync::watch;
-use futures::StreamExt;
+use tokio::sync::{mpsc, watch};
 
 #[tokio::test]
 pub async fn receive_from_watch_topic() {
     let (tx, rx) = watch::channel(None);
     let (mut topic, mut rx1) = WatchTopic::new(rx);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let mut rx2 = maybe_rx.unwrap();
 
@@ -42,7 +42,7 @@ pub async fn miss_record_from_watch_topic() {
     let (tx, rx) = watch::channel(None);
     let (mut topic, mut rx1) = WatchTopic::new(rx);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let mut rx2 = maybe_rx.unwrap();
 
@@ -65,7 +65,7 @@ pub async fn single_receiver_dropped_for_watch_topic() {
     let (tx, rx) = watch::channel(None);
     let (mut topic, rx1) = WatchTopic::new(rx);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let mut rx2 = maybe_rx.unwrap();
 
@@ -84,7 +84,7 @@ pub async fn all_receivers_dropped_for_watch_topic() {
     let (tx, rx) = watch::channel(None);
     let (mut topic, rx1) = WatchTopic::new(rx);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let rx2 = maybe_rx.unwrap();
 
@@ -96,15 +96,13 @@ pub async fn all_receivers_dropped_for_watch_topic() {
 
     let send_result = tx.broadcast(Some(5));
     assert_that!(send_result, err());
-
 }
 
 #[tokio::test]
 pub async fn receive_from_broadcast_topic() {
-    let (mut topic, tx, mut rx1) =
-        BroadcastTopic::new(2);
+    let (mut topic, tx, mut rx1) = BroadcastTopic::new(2);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let mut rx2 = maybe_rx.unwrap();
 
@@ -120,10 +118,9 @@ pub async fn receive_from_broadcast_topic() {
 
 #[tokio::test]
 pub async fn receive_multiple_broadcast_topic() {
-    let (mut topic, tx, rx1) =
-        BroadcastTopic::new(2);
+    let (mut topic, tx, rx1) = BroadcastTopic::new(2);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let rx2 = maybe_rx.unwrap();
 
@@ -141,10 +138,9 @@ pub async fn receive_multiple_broadcast_topic() {
 
 #[tokio::test]
 pub async fn miss_record_from_broadcast_topic() {
-    let (mut topic, tx, mut rx1) =
-        BroadcastTopic::new(2);
+    let (mut topic, tx, mut rx1) = BroadcastTopic::new(2);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let rx2 = maybe_rx.unwrap();
 
@@ -171,10 +167,9 @@ pub async fn miss_record_from_broadcast_topic() {
 
 #[tokio::test]
 pub async fn single_receiver_dropped_for_broadcast_topic() {
-    let (mut topic, tx, rx1) =
-        BroadcastTopic::new(2);
+    let (mut topic, tx, rx1) = BroadcastTopic::new(2);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let mut rx2 = maybe_rx.unwrap();
 
@@ -190,10 +185,9 @@ pub async fn single_receiver_dropped_for_broadcast_topic() {
 
 #[tokio::test]
 pub async fn all_receivers_dropped_for_broadcast_topic() {
-    let (mut topic, tx, rx1) =
-        BroadcastTopic::new(2);
+    let (mut topic, tx, rx1) = BroadcastTopic::new(2);
 
-    let  maybe_rx = topic.subscribe().await;
+    let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
     let rx2 = maybe_rx.unwrap();
 
@@ -207,3 +201,34 @@ pub async fn all_receivers_dropped_for_broadcast_topic() {
     assert_that!(send_result, err());
 }
 
+#[tokio::test]
+pub async fn single_receiver_mpsc_topic() {
+    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (_topic, mut rx) = MpscTopic::new(rx, 5);
+
+    let send_result = tx.send(7).await;
+    assert_that!(&send_result, ok());
+
+    let n = rx.next().await;
+
+    assert_that!(n, eq(Some(7)));
+}
+
+#[tokio::test]
+pub async fn multiple_receivers_mpsc_topic() {
+    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (mut topic, mut rx1) = MpscTopic::new(rx, 5);
+
+    let maybe_rx = topic.subscribe().await;
+    assert_that!(&maybe_rx, ok());
+    let mut rx2 = maybe_rx.unwrap();
+
+    let send_result = tx.send(7).await;
+    assert_that!(&send_result, ok());
+
+    let n1 = rx1.next().await;
+    let n2 = rx2.next().await;
+
+    assert_that!(n1, eq(Some(7)));
+    assert_that!(n2, eq(Some(7)));
+}

@@ -17,7 +17,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{MpscTopic, SendFuture, Topic};
+use common::topic::{MpscTopic, SendRequest, Sequenced, Topic};
 use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, oneshot};
 
@@ -63,7 +63,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = QueueReceiver<Upd>;
-    type Fut = SendFuture<Event<Upd>>;
+    type Fut = Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<mpsc::Receiver<Event<Upd>>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()
