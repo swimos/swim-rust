@@ -1,0 +1,100 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::convert::TryFrom;
+
+use crate::model::{Item, Value};
+use crate::structure::form::FormParseErr;
+
+impl TryFrom<Value> for f64 {
+    type Error = FormParseErr;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int32Value(i) => Ok(i.into()),
+            Value::Int64Value(i) => Ok(i as f64),
+            Value::Float64Value(f) => Ok(f),
+            v => Err(FormParseErr::IncorrectType(v)),
+        }
+    }
+}
+
+impl TryFrom<Value> for i32 {
+    type Error = FormParseErr;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int32Value(i) => Ok(i),
+            v => Err(FormParseErr::IncorrectType(v)),
+        }
+    }
+}
+
+impl TryFrom<Value> for i64 {
+    type Error = FormParseErr;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int32Value(i) => Ok(i.into()),
+            Value::Int64Value(i) => Ok(i),
+            v => Err(FormParseErr::IncorrectType(v)),
+        }
+    }
+}
+
+impl TryFrom<Value> for bool {
+    type Error = FormParseErr;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::BooleanValue(b) => Ok(b),
+            v => Err(FormParseErr::IncorrectType(v)),
+        }
+    }
+}
+
+impl TryFrom<Value> for String {
+    type Error = FormParseErr;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Text(t) => Ok(t),
+            v => Err(FormParseErr::IncorrectType(v)),
+        }
+    }
+}
+
+impl<T: TryFrom<Value, Error = FormParseErr>> TryFrom<Value> for Vec<T> {
+    type Error = FormParseErr;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Record(attr, items) if attr.is_empty() => {
+                let length = items.len();
+                items.into_iter().try_fold(
+                    Vec::with_capacity(length),
+                    |mut results: Vec<T>, item| match item {
+                        Item::ValueItem(v) => {
+                            let result = T::try_from(v)?;
+                            results.push(result);
+                            Ok(results)
+                        }
+                        i => Err(FormParseErr::IllegalItem(i)),
+                    },
+                )
+            }
+            v => Err(FormParseErr::IncorrectType(v)),
+        }
+    }
+}
