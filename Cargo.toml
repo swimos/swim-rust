@@ -2,7 +2,6 @@
 members = [
     "forms/form_derive",
     "forms/form_model",
-    "forms/form_tests",
 
     "client",
     "common",

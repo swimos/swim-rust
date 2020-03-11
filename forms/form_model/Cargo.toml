@@ -6,6 +6,8 @@ edition = "2018"
 
 [dependencies]
 common = { path = "../../common" }
+form_derive = { path = "../form_derive"}
 
 [dev-dependencies]
 hamcrest2 = "0.3"
+trybuild = "1.0"

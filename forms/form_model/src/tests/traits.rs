@@ -20,7 +20,7 @@ use hamcrest2::prelude::*;
 use common::structure::form::{FormParseErr};
 use common::model::{Value, Item};
 use common::model::Value::Record;
-use super::Form;
+use super::super::Form;
 
 fn assert_success<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) {
     match r {
