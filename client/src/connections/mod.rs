@@ -18,69 +18,66 @@ struct ConnectionPoolMessage {
     message: String,
 }
 
-struct ConnectionPool<T: ConnectionProducer + Send + 'static> {
-    connections: HashMap<String, ConnectionHandler>,
-    rx: mpsc::Receiver<ConnectionPoolMessage>,
-    connections_tx: Option<mpsc::Sender<Message>>,
-    router_tx: Option<mpsc::Sender<Message>>,
-    buffer_size: usize,
-    connection_producer: T,
+struct ConnectionPool {
+    tx: mpsc::Sender<ConnectionPoolMessage>,
+    send_handler: JoinHandle<Result<(), ConnectionError>>,
+    receive_handler: JoinHandle<Result<(), ConnectionError>>,
 }
 
-impl<T: ConnectionProducer + Send + 'static> ConnectionPool<T> {
-    fn new(
-        connection_producer: T,
+impl ConnectionPool {
+    fn new<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         buffer_size: usize,
         router_tx: mpsc::Sender<Message>,
-    ) -> (ConnectionPool<T>, ConnectionPoolHandler) {
+        connection_producer: T,
+    ) -> ConnectionPool
+    {
         let (tx, rx) = mpsc::channel(buffer_size);
-        (
-            ConnectionPool {
-                connections: HashMap::new(),
-                rx,
-                connections_tx: None,
-                router_tx: Some(router_tx),
-                buffer_size,
-                connection_producer,
-            },
-            ConnectionPoolHandler { tx },
-        )
-    }
+        let connections = HashMap::new();
+        let (connections_tx, connections_rx) = mpsc::channel(buffer_size);
 
-    fn open(
-        mut self,
-    ) -> Result<
-        (
-            JoinHandle<Result<(), ConnectionError>>,
-            JoinHandle<Result<(), ConnectionError>>,
-        ),
-        ConnectionError,
-    > {
-        let router_tx = self.router_tx.take().ok_or(ConnectionError::ConnectError)?;
-        let (connections_tx, connections_rx) = mpsc::channel(self.buffer_size);
-        self.connections_tx = Some(connections_tx);
-        let send_handler = tokio::spawn(self.send_messages());
-        let receive_handler = tokio::spawn(ConnectionPool::<T>::receive_messages(
-            connections_rx,
-            router_tx,
+        let send_handler = tokio::spawn(ConnectionPool::send_messages(
+            rx,
+            connections,
+            connections_tx,
+            connection_producer,
+            buffer_size,
         ));
 
-        Ok((send_handler, receive_handler))
+        let receive_handler =
+            tokio::spawn(ConnectionPool::receive_messages(connections_rx, router_tx));
+
+        ConnectionPool {
+            tx,
+            send_handler,
+            receive_handler,
+        }
     }
 
-    async fn send_messages(mut self) -> Result<(), ConnectionError> {
+    async fn send_messages<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
+        mut rx: mpsc::Receiver<ConnectionPoolMessage>,
+        mut connections: HashMap<String, ConnectionHandler>,
+        connections_tx: mpsc::Sender<Message>,
+        connection_producer: T,
+        buffer_size: usize,
+    ) -> Result<(), ConnectionError> {
         loop {
-            let connection_pool_message = self
-                .rx
+            let connection_pool_message = rx
                 .try_recv()
                 .map_err(|_| ConnectionError::SendMessageError)?;
 
-            if !self.connections.contains_key(&connection_pool_message.host) {
-                self.open_connection(&connection_pool_message.host).await?;
+            if !&connections.contains_key(&connection_pool_message.host) {
+                let pool_tx = connections_tx.clone();
+
+                let (connection, connection_handler) = connection_producer.create_connection(
+                    &connection_pool_message.host,
+                    buffer_size,
+                    pool_tx,
+                )?;
+                connection.open().await?;
+                connections.insert(connection_pool_message.host.to_string(), connection_handler);
             }
 
-            let handler = self
-                .connections
+            let handler = connections
                 .get_mut(&connection_pool_message.host)
                 .ok_or(ConnectionError::ConnectError)?;
 
@@ -88,27 +85,6 @@ impl<T: ConnectionProducer + Send + 'static> ConnectionPool<T> {
                 .send_message(&connection_pool_message.message)
                 .await?;
         }
-    }
-
-    async fn open_connection(&mut self, host: &str) -> Result<ConnectionHandler, ConnectionError> {
-        let pool_tx = self
-            .connections_tx
-            .as_ref()
-            .ok_or(ConnectionError::ConnectError)?
-            .clone();
-
-        let (connection, connection_handler) =
-            self.connection_producer
-                .create_connection(host, self.buffer_size, pool_tx)?;
-        connection.open().await?;
-        self.connections
-            .insert(host.to_string(), connection_handler);
-
-        Ok(self
-            .connections
-            .get(host)
-            .ok_or(ConnectionError::ConnectError)?
-            .clone())
     }
 
     async fn receive_messages(
@@ -125,21 +101,17 @@ impl<T: ConnectionProducer + Send + 'static> ConnectionPool<T> {
                     .map_err(|_| ConnectionError::SendMessageError);
             }
         })
-        .await;
+            .await;
         Ok(())
     }
-}
 
-struct ConnectionPoolHandler {
-    tx: mpsc::Sender<ConnectionPoolMessage>,
-}
-
-impl ConnectionPoolHandler {
     fn send_message(&mut self, host: &str, message: &str) -> Result<(), ConnectionError> {
-        self.tx.try_send(ConnectionPoolMessage {
-            host: host.to_string(),
-            message: message.to_string(),
-        }).map_err(|_| ConnectionError::SendMessageError)
+        self.tx
+            .try_send(ConnectionPoolMessage {
+                host: host.to_string(),
+                message: message.to_string(),
+            })
+            .map_err(|_| ConnectionError::SendMessageError)
     }
 }
 
@@ -188,19 +160,19 @@ trait Connection: Sized {
         JoinHandle<Result<(), ConnectionError>>,
         JoinHandle<Result<(), ConnectionError>>,
     )
-    where
-        S: Stream<Item = Result<Message, ConnectionError>> + Sink<Message> + Send + 'static;
+        where
+            S: Stream<Item=Result<Message, ConnectionError>> + Sink<Message> + Send + 'static;
 
     async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
-    where
-        S: Sink<Message> + Send + 'static;
+        where
+            S: Sink<Message> + Send + 'static;
 
     async fn receive_messages<S>(
         pool_tx: mpsc::Sender<Message>,
         read_stream: S,
     ) -> Result<(), ConnectionError>
-    where
-        S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
+        where
+            S: TryStreamExt<Ok=Message, Error=ConnectionError> + Send + 'static,
     {
         read_stream
             .try_for_each(|response| {
@@ -263,8 +235,8 @@ impl Connection for SwimConnection {
         JoinHandle<Result<(), ConnectionError>>,
         JoinHandle<Result<(), ConnectionError>>,
     )
-    where
-        S: Stream<Item = Result<Message, ConnectionError>> + Sink<Message> + Send + 'static,
+        where
+            S: Stream<Item=Result<Message, ConnectionError>> + Sink<Message> + Send + 'static,
     {
         let (write_stream, read_stream) = ws_stream.split();
 
@@ -278,8 +250,8 @@ impl Connection for SwimConnection {
     }
 
     async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
-    where
-        S: Sink<Message> + Send + 'static,
+        where
+            S: Sink<Message> + Send + 'static,
     {
         self.rx
             .map(Ok)
