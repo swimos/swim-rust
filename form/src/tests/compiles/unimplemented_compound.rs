@@ -12,7 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod model;
-pub mod request;
-// pub mod structure;
-pub mod warp;
+use form::Form;
+use form_derive::*;
+
+#[derive(Form)]
+struct FormStruct {
+    a: i32,
+    b: Child,
+}
+
+struct Child {
+    a: i32
+}
+
+fn main() {
+    let f = FormStruct {
+        a: 1,
+        b: Child {
+            a: 2
+        },
+    };
+
+    f.__assert_receiver_is_total_form();
+}

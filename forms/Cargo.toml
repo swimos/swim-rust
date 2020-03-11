@@ -1,9 +1,0 @@
-[package]
-name = "forms"
-version = "0.1.0"
-authors = ["Swim.AI developers info@swim.ai"]
-edition = "2018"
-
-[dependencies]
-form_derive = { path = "form_derive" }
-form_model = { path = "form_model" }
