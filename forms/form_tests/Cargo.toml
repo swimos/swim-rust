@@ -8,3 +8,6 @@ edition = "2018"
 form_derive = { path = "../form_derive" }
 form_model = { path = "../form_model" }
 common = { path = "../../common" }
+
+[dev-dependencies]
+trybuild = "1.0"

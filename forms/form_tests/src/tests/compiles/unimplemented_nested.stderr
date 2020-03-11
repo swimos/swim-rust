@@ -1,0 +1,7 @@
+error[E0277]: the trait bound `u32: form_model::Form` is not satisfied
+  --> $DIR/unimplemented_nested.rs:25:10
+   |
+25 | #[derive(Form)]
+   |          ^^^^ the trait `form_model::Form` is not implemented for `u32`
+   |
+   = note: required by `form_model::Form::__assert_receiver_is_total_form`

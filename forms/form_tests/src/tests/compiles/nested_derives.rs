@@ -12,15 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use form_derive::Form;
+use form_model::Form;
 
-#[test]
-fn test_compiles() {
-    let t = trybuild::TestCases::new();
+#[derive(Form)]
+struct Parent {
+    a:i32,
+    b:Child
+}
 
-    t.pass("src/tests/compiles/single_derive.rs");
-    t.pass("src/tests/compiles/nested_derives.rs");
+#[derive(Form)]
+struct Child {
+    c:i32
+}
 
-    t.compile_fail("src/tests/compiles/unimplemented_compound.rs");
-    t.compile_fail("src/tests/compiles/unimplemented_nested.rs");
-    t.compile_fail("src/tests/compiles/unimplemented_primitive.rs");
+fn main() {
+    let f = Parent {
+        a:1,
+        b:Child {
+            c:1
+        }
+    };
+
+    f.__assert_receiver_is_total_form();
 }

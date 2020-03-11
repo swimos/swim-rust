@@ -45,16 +45,15 @@ fn expand_derive_serialize(
     let dummy_const = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
 
     let quote = quote! {
-
         #[automatically_derived]
         #[allow(unused_qualifications)]
         impl form_model::Form for #ident {
-            fn __assert_receiver_is_total_form(self) {
+            fn __assert_receiver_is_total_form(&self) {
                 match self {
                     #ident { #(#field_assertions),*  } => {
                         #(#fields)*
                     }
-                    _=>panic!("quote catch all")
+                    _=> panic!("quote catch all")
                 }
             }
 

@@ -13,14 +13,18 @@
 // limitations under the License.
 
 
-#[test]
-fn test_compiles() {
-    let t = trybuild::TestCases::new();
+use form_derive::Form;
+use form_model::Form;
 
-    t.pass("src/tests/compiles/single_derive.rs");
-    t.pass("src/tests/compiles/nested_derives.rs");
+#[derive(Form)]
+struct FormStruct {
+    a:u32
+}
 
-    t.compile_fail("src/tests/compiles/unimplemented_compound.rs");
-    t.compile_fail("src/tests/compiles/unimplemented_nested.rs");
-    t.compile_fail("src/tests/compiles/unimplemented_primitive.rs");
+fn main() {
+    let f = FormStruct {
+        a:1
+    };
+
+    f.__assert_receiver_is_total_form();
 }
