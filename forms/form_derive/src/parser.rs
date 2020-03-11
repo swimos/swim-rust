@@ -200,21 +200,18 @@ fn fields_from_ast<'a>(
     fields
         .iter()
         .enumerate()
-        .map(|(index, original_field)| {
-            let field = Field {
-                member: match &original_field.ident {
-                    Some(ident) => syn::Member::Named(ident.clone()),
-                    None => syn::Member::Unnamed(index.into()),
-                },
-                ty: &original_field.ty,
-                original: original_field,
-                name: match &original_field.ident {
-                    Some(ident) => ident.to_string().trim_start_matches("r#").to_owned(),
-                    None => index.to_string(),
-                },
-                ident: Ident::new(&format!("__self_0_{}", index), Span::call_site()),
-            };
-            field
+        .map(|(index, original_field)| Field {
+            member: match &original_field.ident {
+                Some(ident) => syn::Member::Named(ident.clone()),
+                None => syn::Member::Unnamed(index.into()),
+            },
+            ty: &original_field.ty,
+            original: original_field,
+            name: match &original_field.ident {
+                Some(ident) => ident.to_string().trim_start_matches("r#").to_owned(),
+                None => index.to_string(),
+            },
+            ident: Ident::new(&format!("__self_0_{}", index), Span::call_site()),
         })
         .collect()
 }

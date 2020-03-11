@@ -88,17 +88,19 @@ impl<T: Form> Form for Vec<T> {
         match value {
             Value::Record(attr, items) if attr.is_empty() => {
                 let length = items.len();
-                items.into_iter().try_fold(
-                    Vec::with_capacity(length),
-                    |mut results: Vec<T>, item| match item {
-                        Item::ValueItem(v) => {
-                            let result = T::try_from_value(v)?;
-                            results.push(result);
-                            Ok(results)
-                        }
-                        i => Err(FormParseErr::IllegalItem(i.to_owned())),
-                    },
-                )
+                items
+                    .iter()
+                    .try_fold(
+                        Vec::with_capacity(length),
+                        |mut results: Vec<T>, item| match item {
+                            Item::ValueItem(v) => {
+                                let result = T::try_from_value(v)?;
+                                results.push(result);
+                                Ok(results)
+                            }
+                            i => Err(FormParseErr::IllegalItem(i.to_owned())),
+                        },
+                    )
             }
             v => Err(FormParseErr::IncorrectType(v.to_owned())),
         }

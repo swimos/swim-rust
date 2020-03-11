@@ -17,10 +17,10 @@ use std::fmt::Debug;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use common::structure::form::{FormParseErr};
-use common::model::{Value, Item};
-use common::model::Value::Record;
 use super::super::Form;
+use common::model::Value::Record;
+use common::model::{Item, Value};
+use common::structure::form::FormParseErr;
 
 fn assert_success<T: PartialEq + Debug>(r: Result<T, FormParseErr>, expected: T) {
     match r {

@@ -1,9 +1,7 @@
 [workspace]
 members = [
-    "forms/form_derive",
-    "forms/form_model",
-
     "client",
+    "forms",
     "common",
     "server",
     "utilities"
