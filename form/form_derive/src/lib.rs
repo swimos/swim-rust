@@ -22,12 +22,27 @@ mod parser;
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
-    expand_derive_serialize(&input)
+    expand_derive_form(&input)
         .unwrap_or_else(to_compile_errors)
         .into()
 }
 
-fn expand_derive_serialize(
+#[proc_macro_attribute]
+pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let q = quote! {
+        use serde::{Serialize, Deserialize};
+        use crate::Form;
+
+        #[derive(Form, Serialize, Deserialize)]
+        #input
+    };
+
+    q.into()
+}
+
+fn expand_derive_form(
     input: &syn::DeriveInput,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let context = Context::new();
