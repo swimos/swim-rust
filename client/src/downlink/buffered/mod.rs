@@ -20,12 +20,11 @@ use common::topic::{BroadcastReceiver, BroadcastTopic, SubscriptionError, Topic}
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
-use tokio::sync::broadcast;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, watch, mpsc};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct BufferedDownlink<Act, Upd> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: BroadcastTopic<Event<Upd>>,
@@ -120,7 +119,8 @@ where
         let model = Model::new(init);
         let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
 
-        let (stop_tx, stop_rx) = oneshot::channel::<()>();
+        let (stop_tx, stop_rx) = watch::channel::<Option<()>>(None);
+        let (closed_tx, closed_rx) = watch::channel(None);
 
         let event_sink = item::for_broadcast_sender::<_, DownlinkError>(event_tx);
 
@@ -131,11 +131,12 @@ where
             act_rx.fuse(),
             cmd_sink,
             event_sink,
+            closed_tx
         );
 
         let join_handle = tokio::task::spawn(lane_task);
 
-        let dl_task = raw::DownlinkTask::new(join_handle, stop_tx);
+        let dl_task = raw::DownlinkTask::new(join_handle, stop_tx, closed_rx);
 
         raw::Sender::new(act_tx, dl_task)
     };

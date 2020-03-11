@@ -18,7 +18,6 @@ use futures::{future, stream, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_utils::pin_mut;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::sink::item;
@@ -34,6 +33,7 @@ pub mod dropping;
 pub mod model;
 pub mod queue;
 pub mod raw;
+//pub mod subscription;
 
 pub(self) use self::raw::create_downlink;
 use common::topic::{BoxTopic, SubscriptionError, Topic};

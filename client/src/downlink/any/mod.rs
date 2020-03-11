@@ -34,6 +34,7 @@ use tokio::sync::{mpsc, oneshot};
 /// Wrapper around any one of queueing, dropping and buffered downlink implementations. This
 /// itself implements the Downlink trait (although using it like this will be slightly less
 /// efficient than using the wrapped downlink directly).
+#[derive(Clone, Debug)]
 pub enum AnyDownlink<Act, Upd> {
     Queue(QueueDownlink<Act, Upd>),
     Dropping(DroppingDownlink<Act, Upd>),
