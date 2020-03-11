@@ -15,9 +15,8 @@
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-use crate::sink::item::*;
-
 use super::*;
+use crate::sink::item::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::time::Instant;
@@ -124,7 +123,7 @@ type Str<T> = mpsc::Receiver<T>;
 type Snk<T> = mpsc::Sender<T>;
 
 async fn make_test_dl() -> (
-    Downlink<Snk<AddTo>, Str<Event<i32>>>,
+    RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
     Snk<Message<Msg>>,
     Str<Command<i32>>,
 ) {
