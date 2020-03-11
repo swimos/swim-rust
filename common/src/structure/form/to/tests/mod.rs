@@ -23,6 +23,3 @@ mod nested;
 
 #[cfg(test)]
 mod vectors;
-
-#[cfg(test)]
-mod from;

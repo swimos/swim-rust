@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 common = { path = "../../common" }
+
+[dev-dependencies]
+hamcrest2 = "0.3"

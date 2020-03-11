@@ -17,12 +17,12 @@ use form_model::Form;
 
 #[derive(Form)]
 struct FormStruct {
-    a:i32
+    a: i32
 }
 
 fn main() {
     let f = FormStruct {
-        a:1
+        a: 1
     };
 
     f.__assert_receiver_is_total_form();

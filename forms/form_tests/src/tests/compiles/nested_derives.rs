@@ -17,21 +17,21 @@ use form_model::Form;
 
 #[derive(Form)]
 struct Parent {
-    a:i32,
-    b:Child
+    a: i32,
+    b: Child,
 }
 
 #[derive(Form)]
 struct Child {
-    c:i32
+    c: i32
 }
 
 fn main() {
     let f = Parent {
-        a:1,
-        b:Child {
-            c:1
-        }
+        a: 1,
+        b: Child {
+            c: 1
+        },
     };
 
     f.__assert_receiver_is_total_form();
