@@ -17,7 +17,7 @@ use trybuild::TestCases;
 #[cfg(test)]
 mod traits;
 
-// There has been some file contentionw hen the test cases are in their own functions (grouped) and
+// There has been some file contention when the test cases are in their own functions (grouped) and
 // so, for now, the cases are together.
 #[test]
 fn test_derive() {
@@ -31,4 +31,5 @@ fn test_derive() {
     t.compile_fail("src/tests/derive/unimplemented_primitive.rs");
 
     t.pass("src/tests/attribute/single_derive.rs");
+    t.pass("src/tests/attribute/multiple_derives.rs");
 }

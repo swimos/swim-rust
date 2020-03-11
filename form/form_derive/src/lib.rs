@@ -30,11 +30,16 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    let ident = input.ident.clone();
+
+    let ser = Ident::new(&format!("{}Serialize", ident.to_string()), Span::call_site());
+    let de = Ident::new(&format!("{}Deserialize", ident.to_string()), Span::call_site());
 
     let q = quote! {
-        use serde::{Serialize, Deserialize};
+        use serde::Serialize as #ser;
+        use serde::Deserialize as #de;
 
-        #[derive(Form, Serialize, Deserialize)]
+        #[derive(Form, #ser, #de)]
         #input
     };
 
