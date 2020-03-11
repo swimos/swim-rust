@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::Form;
-
 #[cfg(test)]
 mod traits;
 
@@ -27,20 +25,4 @@ fn test_compiles() {
     t.compile_fail("src/tests/compiles/unimplemented_compound.rs");
     t.compile_fail("src/tests/compiles/unimplemented_nested.rs");
     t.compile_fail("src/tests/compiles/unimplemented_primitive.rs");
-}
-
-#[derive(Form)]
-struct Parent {
-    a: i32,
-}
-
-#[derive(Form)]
-struct Child {
-    b: i32,
-}
-
-#[test]
-fn idk() {
-    let _p = Parent { a: 1 };
-    let _c = Child { b: 2 };
 }
