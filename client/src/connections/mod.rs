@@ -29,15 +29,12 @@ impl ConnectionPool {
         buffer_size: usize,
         router_tx: mpsc::Sender<Message>,
         connection_producer: T,
-    ) -> ConnectionPool
-    {
+    ) -> ConnectionPool {
         let (tx, rx) = mpsc::channel(buffer_size);
-        let connections = HashMap::new();
         let (connections_tx, connections_rx) = mpsc::channel(buffer_size);
 
         let send_handler = tokio::spawn(ConnectionPool::send_messages(
             rx,
-            connections,
             connections_tx,
             connection_producer,
             buffer_size,
@@ -55,11 +52,11 @@ impl ConnectionPool {
 
     async fn send_messages<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         mut rx: mpsc::Receiver<ConnectionPoolMessage>,
-        mut connections: HashMap<String, ConnectionHandler>,
         connections_tx: mpsc::Sender<Message>,
         connection_producer: T,
         buffer_size: usize,
     ) -> Result<(), ConnectionError> {
+        let mut connections = HashMap::new();
         loop {
             let connection_pool_message = rx
                 .try_recv()
