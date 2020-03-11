@@ -12,27 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use futures::Stream;
 use tokio::sync::mpsc;
-use tokio::sync::watch;
 
-use super::*;
+use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
+use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
+use crate::downlink::queue::{QueueDownlink, QueueReceiver};
+use crate::downlink::raw::RawDownlink;
+use crate::downlink::*;
+use crate::sink::item::ItemSender;
 use common::model::Value;
 use common::request::Request;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
 
+pub type SharedValue = Arc<Value>;
+
 pub enum Action {
     Set(Value, Option<Request<()>>),
-    Get(Request<Arc<Value>>),
+    Get(Request<SharedValue>),
     Update(
         Box<dyn FnOnce(&Value) -> Value + Send>,
-        Option<Request<Arc<Value>>>,
+        Option<Request<SharedValue>>,
     ),
 }
 
@@ -55,7 +61,7 @@ impl Action {
         Action::Set(val, Some(request))
     }
 
-    pub fn get(request: Request<Arc<Value>>) -> Action {
+    pub fn get(request: Request<SharedValue>) -> Action {
         Action::Get(request)
     }
 
@@ -70,7 +76,7 @@ impl Action {
         Action::Update(f, None)
     }
 
-    pub fn update_and_await<F>(f: F, request: Request<Arc<Value>>) -> Action
+    pub fn update_and_await<F>(f: F, request: Request<SharedValue>) -> Action
     where
         F: FnOnce(&Value) -> Value + Send + 'static,
     {
@@ -79,52 +85,84 @@ impl Action {
 
     pub fn update_box_and_await(
         f: Box<dyn FnOnce(&Value) -> Value + Send>,
-        request: Request<Arc<Value>>,
+        request: Request<SharedValue>,
     ) -> Action {
         Action::Update(f, Some(request))
     }
 }
 
-/// Create a value downlink with back-pressure (it will only process set messages as rapidly
-/// as it can write commands to the output).
-pub fn create_back_pressure_downlink<Updates, Commands>(
+/// Create a raw value downlink.
+pub fn create_raw_downlink<Err, Updates, Commands>(
     init: Value,
     update_stream: Updates,
-    cmd_sender: mpsc::Sender<Command<Arc<Value>>>,
+    cmd_sender: Commands,
     buffer_size: usize,
-) -> Downlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
+) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
+    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
 {
-    let cmd_sink = item::for_mpsc_sender::<Command<Arc<Value>>, DownlinkError>(cmd_sender);
-    super::create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
+    create_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
 }
 
-fn transform_err<T, Err: From<item::WatchErr<T>>>(
-    result: Result<(), item::WatchErr<T>>,
-) -> Result<(), Err> {
-    result.map_err(|e| e.into())
-}
-
-/// Create a value downlink without back-pressure (it will process set operations as rapidly as it
-/// can and some outgoing message will be dropped).
-pub fn create_dropping_downlink<Updates, Commands>(
+/// Create a value downlink with an queue based multiplexing topic.
+pub fn create_queue_downlink<Err, Updates, Commands>(
     init: Value,
     update_stream: Updates,
-    cmd_sender: watch::Sender<Command<Arc<Value>>>,
+    cmd_sender: Commands,
     buffer_size: usize,
-) -> Downlink<mpsc::Sender<Action>, mpsc::Receiver<Event<Arc<Value>>>>
+) -> (
+    QueueDownlink<Action, SharedValue>,
+    QueueReceiver<SharedValue>,
+)
 where
+    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
 {
-    let err_trans = || transform_err::<Command<Arc<Value>>, DownlinkError>;
-    let cmd_sink = item::map_err(cmd_sender, err_trans);
-    super::create_downlink(Arc::new(init), update_stream, cmd_sink, buffer_size)
+    queue::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
 }
 
-impl StateMachine<Value, Action> for Arc<Value> {
-    type Ev = Arc<Value>;
-    type Cmd = Arc<Value>;
+/// Create a value downlink with a dropping multiplexing topic.
+pub fn create_dropping_downlink<Err, Updates, Commands>(
+    init: Value,
+    update_stream: Updates,
+    cmd_sender: Commands,
+    buffer_size: usize,
+) -> (
+    DroppingDownlink<Action, SharedValue>,
+    DroppingReceiver<SharedValue>,
+)
+where
+    Err: Into<DownlinkError> + Send + 'static,
+    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+{
+    dropping::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+}
+
+/// Create a value downlink with an buffering multiplexing topic.
+pub fn create_buffered_downlink<Err, Updates, Commands>(
+    init: Value,
+    update_stream: Updates,
+    cmd_sender: Commands,
+    buffer_size: usize,
+) -> (
+    BufferedDownlink<Action, SharedValue>,
+    BufferedReceiver<SharedValue>,
+)
+where
+    Err: Into<DownlinkError> + Send + 'static,
+    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+{
+    buffered::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+}
+
+impl StateMachine<Value, Action> for SharedValue {
+    type Ev = SharedValue;
+    type Cmd = SharedValue;
 
     fn handle_operation(
         model: &mut Model<Self>,
