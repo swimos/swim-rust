@@ -33,7 +33,6 @@ pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let q = quote! {
         use serde::{Serialize, Deserialize};
-        use crate::Form;
 
         #[derive(Form, Serialize, Deserialize)]
         #input
