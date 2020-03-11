@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::error::Error;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
@@ -25,7 +25,6 @@ use futures::task::{Context, Poll};
 use futures::{future, Future, FutureExt, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_project::pin_project;
-use serde::export::Formatter;
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
