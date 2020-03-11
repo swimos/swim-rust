@@ -16,7 +16,10 @@ pub mod futures {
     use futures::Future;
     use std::convert::TryFrom;
 
+    /// Additional combinators for futures that all return nameable types.
+    ///
     pub trait FutureCombinators: Future {
+        /// Apply a transformation to the output of a future, using [`Into`].
         fn map_into<T>(self) -> into::MapInto<Self, T>
         where
             Self: Sized,
@@ -25,6 +28,7 @@ pub mod futures {
             into::MapInto::new(self)
         }
 
+        /// Apply a transformation to the otuput of a future, using [`TryInto`].
         fn try_map_into<T>(self) -> try_into::MapTryInto<Self, T>
         where
             Self: Sized,
@@ -33,6 +37,7 @@ pub mod futures {
             try_into::MapTryInto::new(self)
         }
 
+        /// Apply a transformation to the error of the output of a result valued future, using [`Into`].
         fn map_err_into<E2>(self) -> err_into::MapErrInto<Self, E2>
         where
             Self: Sized,
@@ -46,18 +51,18 @@ pub mod futures {
     pub mod into {
         use futures::task::{Context, Poll};
         use futures::Future;
-        use pin_utils::unsafe_pinned;
+        use pin_project::pin_project;
         use std::marker::PhantomData;
         use std::pin::Pin;
 
+        #[pin_project]
         pub struct MapInto<F, T> {
+            #[pin]
             future: F,
             _target: PhantomData<T>,
         }
 
         impl<F, T> MapInto<F, T> {
-            unsafe_pinned!(future: F);
-
             pub fn new(future: F) -> MapInto<F, T> {
                 MapInto {
                     future,
@@ -74,7 +79,7 @@ pub mod futures {
             type Output = T;
 
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                self.future().poll(cx).map(Into::into)
+                self.project().future.poll(cx).map(Into::into)
             }
         }
     }
@@ -82,19 +87,19 @@ pub mod futures {
     pub mod try_into {
         use futures::task::{Context, Poll};
         use futures::Future;
-        use pin_utils::unsafe_pinned;
+        use pin_project::pin_project;
         use std::convert::TryFrom;
         use std::marker::PhantomData;
         use std::pin::Pin;
 
+        #[pin_project]
         pub struct MapTryInto<F, T> {
+            #[pin]
             future: F,
             _target: PhantomData<T>,
         }
 
         impl<F, T> MapTryInto<F, T> {
-            unsafe_pinned!(future: F);
-
             pub fn new(future: F) -> MapTryInto<F, T> {
                 MapTryInto {
                     future,
@@ -111,7 +116,7 @@ pub mod futures {
             type Output = Result<T, T::Error>;
 
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                self.future().poll(cx).map(TryFrom::try_from)
+                self.project().future.poll(cx).map(TryFrom::try_from)
             }
         }
     }
