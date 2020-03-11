@@ -65,20 +65,18 @@ impl ConnectionPool {
             if !&connections.contains_key(&connection_pool_message.host) {
                 let pool_tx = connections_tx.clone();
 
-                let (connection, connection_handler) = connection_producer.create_connection(
-                    &connection_pool_message.host,
-                    buffer_size,
-                    pool_tx,
-                )?;
-                connection.open().await?;
-                connections.insert(connection_pool_message.host.to_string(), connection_handler);
+                let connection = connection_producer
+                    .create_connection(&connection_pool_message.host, buffer_size, pool_tx)
+                    .await?;
+
+                connections.insert(connection_pool_message.host.to_string(), connection);
             }
 
-            let handler = connections
+            let connection = connections
                 .get_mut(&connection_pool_message.host)
                 .ok_or(ConnectionError::ConnectError)?;
 
-            handler
+            connection
                 .send_message(&connection_pool_message.message)
                 .await?;
         }
@@ -112,57 +110,49 @@ impl ConnectionPool {
     }
 }
 
+#[async_trait]
 trait ConnectionProducer {
     type T: Connection + Send + 'static;
 
-    fn create_connection(
+    async fn create_connection(
         &self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Message>,
-    ) -> Result<(Self::T, ConnectionHandler), ConnectionError>;
+    ) -> Result<Self::T, ConnectionError>;
 }
 
 struct SwimConnectionProducer {}
 
+#[async_trait]
 impl ConnectionProducer for SwimConnectionProducer {
     type T = SwimConnection;
 
-    fn create_connection(
+    async fn create_connection(
         &self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Message>,
-    ) -> Result<(Self::T, ConnectionHandler), ConnectionError> {
-        SwimConnection::new(host, buffer_size, pool_tx)
+    ) -> Result<Self::T, ConnectionError> {
+        SwimConnection::new(host, buffer_size, pool_tx).await
     }
 }
 
 #[async_trait]
 trait Connection: Sized {
-    async fn open(
-        self,
-    ) -> Result<
-        (
-            JoinHandle<Result<(), ConnectionError>>,
-            JoinHandle<Result<(), ConnectionError>>,
-        ),
-        ConnectionError,
-    >;
-
-    fn start<S>(
-        self,
-        ws_stream: S,
-    ) -> (
-        JoinHandle<Result<(), ConnectionError>>,
-        JoinHandle<Result<(), ConnectionError>>,
-    )
+    async fn send_messages<S>(
+        write_stream: S,
+        rx: mpsc::Receiver<Message>,
+    ) -> Result<(), ConnectionError>
         where
-            S: Stream<Item=Result<Message, ConnectionError>> + Sink<Message> + Send + 'static;
-
-    async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
-        where
-            S: Sink<Message> + Send + 'static;
+            S: Sink<Message> + Send + 'static,
+    {
+        rx.map(Ok)
+            .forward(write_stream)
+            .await
+            .map_err(|_| ConnectionError::SendMessageError)?;
+        Ok(())
+    }
 
     async fn receive_messages<S>(
         pool_tx: mpsc::Sender<Message>,
@@ -185,86 +175,47 @@ trait Connection: Sized {
 
         Ok(())
     }
+
+    async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError>;
 }
 
 struct SwimConnection {
-    url: url::Url,
-    rx: mpsc::Receiver<Message>,
-    pool_tx: mpsc::Sender<Message>,
+    tx: mpsc::Sender<Message>,
+    send_handler: JoinHandle<Result<(), ConnectionError>>,
+    receive_handler: JoinHandle<Result<(), ConnectionError>>,
 }
 
 impl SwimConnection {
-    fn new(
+    async fn new(
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Message>,
-    ) -> Result<(SwimConnection, ConnectionHandler), ConnectionError> {
+    ) -> Result<SwimConnection, ConnectionError> {
         let url = url::Url::parse(&host)?;
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        Ok((
-            SwimConnection { url, rx, pool_tx },
-            ConnectionHandler { tx },
-        ))
+        let (ws_stream, _) = connect_async(url).await?;
+        let ws_stream = ws_stream.map_err(|_| ConnectionError::SendMessageError);
+
+        let (write_stream, read_stream) = ws_stream.split();
+
+        let receive = SwimConnection::receive_messages(pool_tx, read_stream);
+        let send = SwimConnection::send_messages(write_stream, rx);
+
+        let send_handler = tokio::spawn(send);
+        let receive_handler = tokio::spawn(receive);
+
+        Ok(SwimConnection {
+            tx,
+            send_handler,
+            receive_handler,
+        })
     }
 }
 
 #[async_trait]
 impl Connection for SwimConnection {
-    async fn open(
-        self,
-    ) -> Result<
-        (
-            JoinHandle<Result<(), ConnectionError>>,
-            JoinHandle<Result<(), ConnectionError>>,
-        ),
-        ConnectionError,
-    > {
-        let (ws_stream, _) = connect_async(&self.url).await?;
-        let ws_stream = ws_stream.map_err(|_| ConnectionError::SendMessageError);
-        Ok(self.start(ws_stream))
-    }
-
-    fn start<S>(
-        self,
-        ws_stream: S,
-    ) -> (
-        JoinHandle<Result<(), ConnectionError>>,
-        JoinHandle<Result<(), ConnectionError>>,
-    )
-        where
-            S: Stream<Item=Result<Message, ConnectionError>> + Sink<Message> + Send + 'static,
-    {
-        let (write_stream, read_stream) = ws_stream.split();
-
-        let receive = SwimConnection::receive_messages(self.pool_tx.clone(), read_stream);
-        let send = self.send_message(write_stream);
-
-        let send_handle = tokio::spawn(send);
-        let receive_handle = tokio::spawn(receive);
-
-        (send_handle, receive_handle)
-    }
-
-    async fn send_message<S>(self, write_stream: S) -> Result<(), ConnectionError>
-        where
-            S: Sink<Message> + Send + 'static,
-    {
-        self.rx
-            .map(Ok)
-            .forward(write_stream)
-            .await
-            .map_err(|_| ConnectionError::SendMessageError)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ConnectionHandler {
-    tx: mpsc::Sender<Message>,
-}
-
-impl ConnectionHandler {
+    //noinspection ALL
     async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
         self.tx.send(Message::text(message)).await?;
         Ok(())
