@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
+use std::fmt::Display;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
@@ -22,13 +24,29 @@ use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
 use futures::{future, Future, FutureExt, Stream, StreamExt};
 use futures_util::select_biased;
-use pin_utils::unsafe_pinned;
+use pin_project::pin_project;
+use serde::export::Formatter;
+use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SubscriptionError {
     TopicClosed,
 }
+
+impl Display for SubscriptionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            _ => write!(f, "All receivers for the topic were dropped."),
+        }
+    }
+}
+
+impl Error for SubscriptionError {}
 
 /// A trait for one-to many channels. A topic may have any number of subscribers which are added
 /// asynchronously using the `subscribe` method. Each subscription can be consumed as a stream.
@@ -52,24 +70,50 @@ pub trait Topic<T: Clone> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct WatchStream<T> {
+    inner: watch::Receiver<Option<T>>,
+}
+
+impl<T: Clone> WatchStream<T> {
+    pub async fn recv(&mut self) -> Option<T> {
+        match self.inner.recv().await {
+            Some(Some(t)) => Some(t),
+            _ => None,
+        }
+    }
+}
+
+impl<T: Clone> Stream for WatchStream<T> {
+    type Item = T;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.get_mut().inner.poll_next_unpin(cx) {
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(Some(t))) => Poll::Ready(Some(t)),
+            _ => Poll::Pending,
+        }
+    }
+}
+
 /// A topic implementation backed by a Tokio watch channel. Subscribers will only see the latest
 /// output record since the last time the polled and so may (and likely will) miss outputs.
 #[derive(Clone, Debug)]
-pub struct WatchTopic<T: Clone> {
-    receiver: Weak<watch::Receiver<T>>,
+pub struct WatchTopic<T> {
+    receiver: Weak<watch::Receiver<Option<T>>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct WatchTopicReceiver<T: Clone + Send> {
-    _owner: Arc<watch::Receiver<T>>,
-    receiver: watch::Receiver<T>,
+pub struct WatchTopicReceiver<T> {
+    _owner: Arc<watch::Receiver<Option<T>>>,
+    receiver: WatchStream<T>,
 }
 
 /// A topic implementation backed by a Tokio broadcast channel. The topic has an intermediate
 /// queue from which all subscribers read. If the queue fills (records are being produced faster
 /// than they are consumed) the topic will begin discarding records, starting with the oldest.
 #[derive(Clone, Debug)]
-pub struct BroadcastTopic<T: Clone> {
+pub struct BroadcastTopic<T> {
     pub sender: broadcast::Sender<T>,
 }
 
@@ -92,44 +136,81 @@ impl<T: Clone> BroadcastTopic<T> {
 }
 
 #[derive(Debug)]
-pub struct BroadcastReceiver<T: Clone> {
+pub struct BroadcastReceiver<T> {
     sender: broadcast::Sender<T>,
     receiver: broadcast::Receiver<T>,
 }
 
-struct SubRequest<T>(oneshot::Sender<mpsc::Receiver<T>>);
+struct SubRequest<T>(oneshot::Sender<MpscTopicReceiver<T>>);
 
-impl<T: Clone> BroadcastReceiver<T> {
-    unsafe_pinned!(receiver: broadcast::Receiver<T>);
+#[derive(Debug)]
+pub struct MpscTopicReceiver<T> {
+    sentinel: Option<Arc<()>>,
+    receiver: mpsc::Receiver<T>,
+}
+
+impl<T> MpscTopicReceiver<T> {
+    fn new(receiver: mpsc::Receiver<T>, sentinel: Arc<()>) -> MpscTopicReceiver<T> {
+        MpscTopicReceiver {
+            receiver,
+            sentinel: Some(sentinel),
+        }
+    }
+
+    pub async fn recv(&mut self) -> Option<T> {
+        self.receiver.recv().await
+    }
+
+    pub fn try_recv(&mut self) -> Result<T, mpsc::error::TryRecvError> {
+        self.receiver.try_recv()
+    }
+
+    pub fn close(&mut self) {
+        self.receiver.close();
+        self.sentinel.take();
+    }
+}
+
+impl<T: Clone + Send> Stream for MpscTopicReceiver<T> {
+    type Item = T;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().receiver.poll_next_unpin(cx)
+    }
 }
 
 /// A topic where every subscriber is represented by a Tokio MPSC queue. If any one subscriber falls
 /// behind, all of the subscribers will block until it catches up.
 #[derive(Clone, Debug)]
-pub struct MpscTopic<T: Clone> {
+pub struct MpscTopic<T> {
     sub_sender: mpsc::Sender<SubRequest<T>>,
     task: Arc<JoinHandle<()>>,
 }
 
 impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
-    pub fn new(input: mpsc::Receiver<T>, buffer_size: usize) -> (MpscTopic<T>, mpsc::Receiver<T>) {
+    pub fn new(
+        input: mpsc::Receiver<T>,
+        buffer_size: usize,
+    ) -> (MpscTopic<T>, MpscTopicReceiver<T>) {
         assert!(buffer_size > 0, "MPSC buffer size must be positive.");
         let (sub_tx, sub_rx) = mpsc::channel(1);
         let (tx, rx) = mpsc::channel(buffer_size);
-        let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size);
+
+        let sentinel = Arc::new(());
+        let task_fut = mpsc_topic_task(input, tx, Arc::downgrade(&sentinel), sub_rx, buffer_size);
         let task = tokio::task::spawn(task_fut);
         (
             MpscTopic {
                 sub_sender: sub_tx,
                 task: Arc::new(task),
             },
-            rx,
+            MpscTopicReceiver::new(rx, sentinel),
         )
     }
 }
 
 impl<T: Clone + Send> WatchTopic<T> {
-    pub fn new(receiver: watch::Receiver<T>) -> (Self, WatchTopicReceiver<T>) {
+    pub fn new(receiver: watch::Receiver<Option<T>>) -> (Self, WatchTopicReceiver<T>) {
         let duplicate = receiver.clone();
         let owner = Arc::new(receiver);
         let topic = WatchTopic {
@@ -137,21 +218,17 @@ impl<T: Clone + Send> WatchTopic<T> {
         };
         let rec = WatchTopicReceiver {
             _owner: owner,
-            receiver: duplicate,
+            receiver: WatchStream { inner: duplicate },
         };
         (topic, rec)
     }
-}
-
-impl<T: Clone + Send> WatchTopicReceiver<T> {
-    unsafe_pinned!(receiver: watch::Receiver<T>);
 }
 
 impl<T: Clone + Send> Stream for WatchTopicReceiver<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.receiver().poll_next(cx)
+        self.get_mut().receiver.poll_next_unpin(cx)
     }
 }
 
@@ -165,7 +242,7 @@ impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
                 let receiver = owner.as_ref().clone();
                 Ok(WatchTopicReceiver {
                     _owner: owner,
-                    receiver,
+                    receiver: WatchStream { inner: receiver },
                 })
             }
             _ => Err(SubscriptionError::TopicClosed),
@@ -177,12 +254,18 @@ impl<T: Clone> Stream for BroadcastReceiver<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.receiver().poll_next(cx) {
-            Poll::Ready(Some(Ok(value))) => Poll::Ready(Some(value)),
-            Poll::Ready(Some(Err(broadcast::RecvError::Lagged(_)))) => Poll::Pending,
-            Poll::Ready(Some(Err(broadcast::RecvError::Closed))) => Poll::Ready(None),
-            Poll::Ready(_) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
+        let mut pinned_rec = Pin::new(&mut self.get_mut().receiver);
+        loop {
+            match pinned_rec.poll_recv(cx) {
+                Poll::Ready(r) => match r {
+                    Ok(t) => return Poll::Ready(Some(t)),
+                    Err(e) => match e {
+                        RecvError::Closed => return Poll::Ready(None),
+                        RecvError::Lagged(_) => continue,
+                    },
+                },
+                Poll::Pending => return Poll::Pending,
+            }
         }
     }
 }
@@ -202,75 +285,109 @@ impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     type Fut = Ready<Result<Self::Receiver, SubscriptionError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        ready(Ok(BroadcastReceiver {
-            sender: self.sender.clone(),
-            receiver: self.sender.subscribe(),
-        }))
+        let result = if self.sender.receiver_count() == 0 {
+            Err(SubscriptionError::TopicClosed)
+        } else {
+            Ok(BroadcastReceiver {
+                sender: self.sender.clone(),
+                receiver: self.sender.subscribe(),
+            })
+        };
+        ready(result)
     }
 }
 
-pub struct SendFuture<T> {
+pub struct SendRequest<T> {
     sender: mpsc::Sender<SubRequest<T>>,
     request: Option<SubRequest<T>>,
-    result: oneshot::Receiver<mpsc::Receiver<T>>,
 }
 
-impl<T> Future for SendFuture<T> {
-    type Output = Result<mpsc::Receiver<T>, SubscriptionError>;
+impl<T> SendRequest<T> {
+    fn new(sender: mpsc::Sender<SubRequest<T>>, request: SubRequest<T>) -> SendRequest<T> {
+        SendRequest {
+            sender,
+            request: Some(request),
+        }
+    }
+}
+
+pub struct Sequenced<F1: Unpin, F2: Unpin> {
+    first: Option<F1>,
+    second: Option<F2>,
+}
+
+impl<F1: Unpin, F2: Unpin> Sequenced<F1, F2> {
+    fn new(first: F1, second: F2) -> Sequenced<F1, F2> {
+        Sequenced {
+            first: Some(first),
+            second: Some(second),
+        }
+    }
+}
+
+impl<F1, F2, T1, T2, E1, E2> Future for Sequenced<F1, F2>
+where
+    F1: Future<Output = Result<T1, E1>> + Unpin,
+    F2: Future<Output = Result<T2, E2>> + Unpin,
+{
+    type Output = Result<T2, SubscriptionError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let SendFuture {
-            sender,
-            request,
-            result,
+        let Sequenced {
+            first: maybe_first,
+            second: maybe_second,
         } = self.get_mut();
-        if request.is_some() {
-            let mut pinned_sender = Pin::new(sender);
-            match pinned_sender.poll_ready(cx) {
-                Poll::Ready(Err(_)) => match request.take() {
-                    None => {
-                        unreachable!();
+        if let Some(first) = maybe_first {
+            match Pin::new(first).poll(cx) {
+                Poll::Ready(result) => {
+                    maybe_first.take();
+                    match result {
+                        Ok(_) => {}
+                        Err(_) => return Poll::Ready(Err(SubscriptionError::TopicClosed)),
                     }
-                    Some(_) => Poll::Ready(Err(SubscriptionError::TopicClosed)),
-                },
-                Poll::Ready(_) => match request.take() {
-                    None => {
-                        panic!("Send future used more than once.");
-                    }
-                    Some(v) => match pinned_sender.try_send(v) {
-                        Ok(_) => Poll::Pending,
-                        Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
-                        Err(mpsc::error::TrySendError::Closed(_)) => {
-                            Poll::Ready(Err(SubscriptionError::TopicClosed))
-                        }
-                    },
-                },
-                Poll::Pending => Poll::Pending,
-            }
-        } else {
-            let pinned_res = Pin::new(result);
-            match pinned_res.poll(cx) {
-                Poll::Ready(Err(_)) => Poll::Ready(Err(SubscriptionError::TopicClosed)),
-                Poll::Ready(Ok(rec)) => Poll::Ready(Ok(rec)),
-                Poll::Pending => Poll::Pending,
+                }
+                Poll::Pending => return Poll::Pending,
             }
         }
+        match maybe_second {
+            Some(second) => Pin::new(second)
+                .poll(cx)
+                .map_err(|_| SubscriptionError::TopicClosed),
+            _ => panic!("Sequenced future used twice."),
+        }
+    }
+}
+
+impl<T> Future for SendRequest<T> {
+    type Output = Result<(), SubscriptionError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let SendRequest { sender, request } = self.get_mut();
+        sender.poll_ready(cx).map(|r| match r {
+            Ok(_) => match request.take() {
+                Some(req) => match sender.try_send(req) {
+                    Ok(_) => Ok(()),
+                    _ => Err(SubscriptionError::TopicClosed),
+                },
+                _ => panic!("Send future used twice."),
+            },
+            Err(_) => Err(SubscriptionError::TopicClosed),
+        })
     }
 }
 
 impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
-    type Receiver = mpsc::Receiver<T>;
-    type Fut = SendFuture<T>;
+    type Receiver = MpscTopicReceiver<T>;
+    type Fut = Sequenced<SendRequest<T>, oneshot::Receiver<MpscTopicReceiver<T>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         let MpscTopic { sub_sender, .. } = self;
-        let (sub_tx, sub_rx) = oneshot::channel::<mpsc::Receiver<T>>();
+        let (sub_tx, sub_rx) = oneshot::channel::<MpscTopicReceiver<T>>();
 
-        SendFuture {
-            sender: sub_sender.clone(),
-            request: Some(SubRequest(sub_tx)),
-            result: sub_rx,
-        }
+        Sequenced::new(
+            SendRequest::new(sub_sender.clone(), SubRequest(sub_tx)),
+            sub_rx,
+        )
     }
 }
 
@@ -278,6 +395,7 @@ impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
 async fn mpsc_topic_task<T: Clone>(
     input: mpsc::Receiver<T>,
     init_sender: mpsc::Sender<T>,
+    sentinel: Weak<()>,
     subscriptions: mpsc::Receiver<SubRequest<T>>,
     buffer_size: usize,
 ) {
@@ -292,12 +410,15 @@ async fn mpsc_topic_task<T: Clone>(
             value = in_fused.next() => value.map(Either::Right),
         };
         match item {
-            Some(Either::Left(SubRequest(cb))) => {
-                let (tx, rx) = mpsc::channel(buffer_size);
-                if cb.send(rx).is_ok() {
-                    outputs.push(tx);
+            Some(Either::Left(SubRequest(cb))) => match sentinel.upgrade() {
+                Some(rec_sentinel) => {
+                    let (tx, rx) = mpsc::channel(buffer_size);
+                    if cb.send(MpscTopicReceiver::new(rx, rec_sentinel)).is_ok() {
+                        outputs.push(tx);
+                    }
                 }
-            }
+                _ => break,
+            },
             Some(Either::Right(value)) => match outputs.len() {
                 0 => break,
                 1 => {
@@ -341,12 +462,10 @@ fn remove_terminated<T: Clone>(
         .collect()
 }
 
+#[pin_project]
 pub struct BoxResult<F> {
+    #[pin]
     f: F,
-}
-
-impl<F> BoxResult<F> {
-    unsafe_pinned!(f: F);
 }
 
 impl<S, T, F> Future for BoxResult<F>
@@ -357,7 +476,7 @@ where
     type Output = Result<BoxStream<'static, T>, SubscriptionError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.f().poll(cx) {
+        match self.project().f.poll(cx) {
             Poll::Ready(stream_result) => Poll::Ready(stream_result.map(StreamExt::boxed)),
             Poll::Pending => Poll::Pending,
         }
@@ -393,5 +512,13 @@ impl<T: Clone + 'static> Topic<T> for BoxTopic<T> {
 
     fn subscribe(&mut self) -> Self::Fut {
         (**self).subscribe()
+    }
+
+    fn boxed_topic(self) -> BoxTopic<T>
+    where
+        T: Send + 'static,
+        Self: Sized + 'static,
+    {
+        self
     }
 }
