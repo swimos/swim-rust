@@ -20,14 +20,14 @@ struct ConnectionPoolMessage {
     message: String,
 }
 
-struct ConnectionPool {
+pub struct ConnectionPool {
+    pub send_handler: JoinHandle<Result<(), ConnectionError>>,
+    pub receive_handler: JoinHandle<Result<(), ConnectionError>>,
     tx: mpsc::Sender<ConnectionPoolMessage>,
-    send_handler: JoinHandle<Result<(), ConnectionError>>,
-    receive_handler: JoinHandle<Result<(), ConnectionError>>,
 }
 
 impl ConnectionPool {
-    fn new<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
+    pub fn new<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<Message, ConnectionError>>,
         connection_producer: T,
@@ -50,6 +50,15 @@ impl ConnectionPool {
             send_handler,
             receive_handler,
         }
+    }
+
+    pub fn send_message(&mut self, host: &str, message: &str) -> Result<(), ConnectionError> {
+        self.tx
+            .try_send(ConnectionPoolMessage {
+                host: host.to_string(),
+                message: message.to_string(),
+            })
+            .map_err(|_| ConnectionError::SendMessageError)
     }
 
     async fn send_messages<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
@@ -82,19 +91,10 @@ impl ConnectionPool {
                 .await?;
         }
     }
-
-    fn send_message(&mut self, host: &str, message: &str) -> Result<(), ConnectionError> {
-        self.tx
-            .try_send(ConnectionPoolMessage {
-                host: host.to_string(),
-                message: message.to_string(),
-            })
-            .map_err(|_| ConnectionError::SendMessageError)
-    }
 }
 
 #[async_trait]
-trait ConnectionProducer {
+pub trait ConnectionProducer {
     type T: Connection + Send + 'static;
 
     async fn create_connection(
@@ -122,13 +122,13 @@ impl ConnectionProducer for SwimConnectionProducer {
 }
 
 #[async_trait]
-trait Connection: Sized {
+pub trait Connection: Sized {
     async fn send_messages<S>(
         write_stream: S,
         rx: mpsc::Receiver<Message>,
     ) -> Result<(), ConnectionError>
-    where
-        S: Sink<Message> + Send + 'static,
+        where
+            S: Sink<Message> + Send + 'static,
     {
         rx.map(Ok)
             .forward(write_stream)
@@ -142,8 +142,8 @@ trait Connection: Sized {
 
 struct SwimConnection {
     tx: mpsc::Sender<Message>,
-    send_handler: JoinHandle<Result<(), ConnectionError>>,
-    receive_handler: JoinHandle<Result<(), ConnectionError>>,
+    _send_handler: JoinHandle<Result<(), ConnectionError>>,
+    _receive_handler: JoinHandle<Result<(), ConnectionError>>,
 }
 
 impl SwimConnection {
@@ -167,8 +167,8 @@ impl SwimConnection {
 
         Ok(SwimConnection {
             tx,
-            send_handler,
-            receive_handler,
+            _send_handler: send_handler,
+            _receive_handler: receive_handler,
         })
     }
 }
@@ -184,10 +184,10 @@ impl Connection for SwimConnection {
 
 #[async_trait]
 trait WebsocketProducer {
-    type T: Stream<Item = Result<Message, ConnectionError>>
-        + Sink<Message>
-        + std::marker::Send
-        + 'static;
+    type T: Stream<Item=Result<Message, ConnectionError>>
+    + Sink<Message>
+    + std::marker::Send
+    + 'static;
 
     async fn connect(self, url: url::Url) -> Result<Self::T, ConnectionError>;
 }
@@ -211,8 +211,8 @@ async fn receive_messages<S>(
     tx: mpsc::Sender<Result<Message, ConnectionError>>,
     rx: S,
 ) -> Result<(), ConnectionError>
-where
-    S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
+    where
+        S: TryStreamExt<Ok=Message, Error=ConnectionError> + Send + 'static,
 {
     rx.try_for_each(|response: Message| {
         async {
@@ -224,7 +224,7 @@ where
                 .map_err(|_| ConnectionError::SendMessageError)
         }
     })
-    .await?;
+        .await?;
     Ok(())
 }
 
