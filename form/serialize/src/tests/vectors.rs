@@ -14,8 +14,8 @@
 
 use serde::Serialize;
 
-use crate::model::{Attr, Item, Value};
-use crate::structure::form::Form;
+use crate::tests::to_value;
+use common::model::{Attr, Item, Value};
 
 #[test]
 fn vector_of_tuples() {
@@ -28,7 +28,7 @@ fn vector_of_tuples() {
         seq: vec![(1, 2), (3, 4), (5, 6)],
     };
 
-    let parsed_value = Form::default().to_value(&test).unwrap();
+    let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
         vec![Attr::of("Parent")],
         vec![Item::slot(
@@ -60,7 +60,7 @@ fn vector_of_structs() {
         seq: vec![Child { id: 1 }, Child { id: 2 }, Child { id: 3 }],
     };
 
-    let parsed_value = Form::default().to_value(&test).unwrap();
+    let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
         vec![Attr::of("Parent")],
         vec![Item::slot(
@@ -96,7 +96,7 @@ fn simple_vector() {
         seq: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     };
 
-    let parsed_value = Form::default().to_value(&test).unwrap();
+    let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
         vec![Attr::of("Test")],
         vec![Item::slot(
@@ -130,7 +130,7 @@ fn nested_vectors() {
         seq: vec![vec!["a", "b"], vec!["c", "d"]],
     };
 
-    let parsed_value = Form::default().to_value(&test).unwrap();
+    let parsed_value = to_value(&test).unwrap();
     let expected = Value::Record(
         vec![Attr::of("Test")],
         vec![Item::slot(

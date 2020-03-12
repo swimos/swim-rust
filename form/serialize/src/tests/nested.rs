@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::Serialize;
-
+use crate::tests::assert_err;
+use crate::tests::to_value;
+use crate::FormSerializeErr;
+use common::model::{Attr, Item, Value};
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod valid {
-    use crate::model::{Attr, Item, Value};
-    use crate::structure::form::to::tests::assert_err;
-    use crate::structure::form::{Form, FormParseErr};
 
     use super::*;
 
     #[test]
     fn generic() {
-        #[derive(Serialize)]
+        #[derive(Serialize, Deserialize)]
         struct Test<T> {
             v: T,
         }
@@ -33,7 +33,7 @@ mod valid {
             v: String::from("hello"),
         };
 
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("v", "hello")]);
 
@@ -58,10 +58,10 @@ mod valid {
             b: Child { a: 0 },
         };
 
-        let parsed_value = Form::default().to_value(&test);
+        let parsed_value = to_value(&test);
         assert_err(
             parsed_value,
-            FormParseErr::UnsupportedType(String::from("u64")),
+            FormSerializeErr::UnsupportedType(String::from("u64")),
         );
     }
 
@@ -92,7 +92,7 @@ mod valid {
             },
         };
 
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Parent")],
@@ -149,7 +149,7 @@ mod valid {
             })),
         };
 
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("TestStruct")],
@@ -229,7 +229,7 @@ mod valid {
             })),
         };
 
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("TestStruct")],

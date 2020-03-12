@@ -12,7 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod model;
-pub mod request;
-pub mod topic;
-pub mod warp;
+use crate::ValueDeserializer;
+use common::model::Value;
+use serde::Deserialize;
+
+#[cfg(test)]
+mod nested;
+
+#[cfg(test)]
+mod collections;
+
+#[cfg(test)]
+mod simple_data_types;
+
+#[cfg(test)]
+mod vectors;
+
+fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
+where
+    T: Deserialize<'de>,
+{
+    let mut deserializer = match value {
+        Value::Record(_, _) => ValueDeserializer::for_values(value),
+        _ => ValueDeserializer::for_single_value(value),
+    };
+
+    let t = T::deserialize(&mut deserializer)?;
+    deserializer.assert_stack_empty();
+
+    Ok(t)
+}

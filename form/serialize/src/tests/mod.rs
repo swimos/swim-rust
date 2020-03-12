@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::Value;
-use crate::structure::form::FormParseErr;
+use crate::{FormSerializeErr, ValueSerializer};
+use common::model::Value;
 
 #[cfg(test)]
 mod simple_data_types;
 
 #[cfg(test)]
-mod map;
+mod collections;
 
 #[cfg(test)]
 mod nested;
@@ -27,10 +27,24 @@ mod nested;
 #[cfg(test)]
 mod vectors;
 
-#[cfg(test)]
-mod from;
+use super::Result;
+use serde::Serialize;
 
-pub fn assert_err(parsed: Result<Value, FormParseErr>, expected: FormParseErr) {
+pub fn to_value<T>(value: &T) -> Result<Value>
+where
+    T: Serialize,
+{
+    let mut serializer = ValueSerializer::default();
+    match value.serialize(&mut serializer) {
+        Ok(_) => Ok(serializer.output()),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn assert_err(
+    parsed: ::std::result::Result<Value, FormSerializeErr>,
+    expected: FormSerializeErr,
+) {
     match parsed {
         Ok(v) => {
             eprintln!("Expected error: {:?}", v);
