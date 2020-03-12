@@ -5,7 +5,6 @@ use futures::stream::ErrInto;
 use futures::{Sink, StreamExt};
 use futures_util::stream::Stream;
 use futures_util::TryStreamExt;
-use std::error::Error;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -30,11 +29,12 @@ struct ConnectionPool {
 impl ConnectionPool {
     fn new<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         buffer_size: usize,
-        router_tx: mpsc::Sender<Message>,
+        router_tx: mpsc::Sender<Result<Message, ConnectionError>>,
         connection_producer: T,
     ) -> ConnectionPool {
         let (tx, rx) = mpsc::channel(buffer_size);
-        let (connections_tx, connections_rx) = mpsc::channel(buffer_size);
+        let (connections_tx, connections_rx) =
+            mpsc::channel::<Result<Message, ConnectionError>>(buffer_size);
 
         let send_handler = tokio::spawn(ConnectionPool::send_messages(
             rx,
@@ -43,8 +43,7 @@ impl ConnectionPool {
             buffer_size,
         ));
 
-        let receive_handler =
-            tokio::spawn(ConnectionPool::receive_messages(connections_rx, router_tx));
+        let receive_handler = tokio::spawn(receive_messages(router_tx, connections_rx));
 
         ConnectionPool {
             tx,
@@ -55,14 +54,14 @@ impl ConnectionPool {
 
     async fn send_messages<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         mut rx: mpsc::Receiver<ConnectionPoolMessage>,
-        connections_tx: mpsc::Sender<Message>,
+        connections_tx: mpsc::Sender<Result<Message, ConnectionError>>,
         connection_producer: T,
         buffer_size: usize,
     ) -> Result<(), ConnectionError> {
         let mut connections = HashMap::new();
         loop {
-            let connection_pool_message = rx
-                .recv().await.ok_or(ConnectionError::SendMessageError)?;
+            let connection_pool_message =
+                rx.recv().await.ok_or(ConnectionError::SendMessageError)?;
 
             if !&connections.contains_key(&connection_pool_message.host) {
                 let pool_tx = connections_tx.clone();
@@ -84,24 +83,6 @@ impl ConnectionPool {
         }
     }
 
-    async fn receive_messages(
-        rx: mpsc::Receiver<Message>,
-        tx: mpsc::Sender<Message>,
-    ) -> Result<(), ConnectionError> {
-        rx.for_each(|response| {
-            async {
-                // TODO print statement is for debugging only
-                println!("{:?}", response);
-                tx.clone()
-                    .send(response)
-                    .await
-                    .map_err(|_| ConnectionError::SendMessageError);
-            }
-        })
-        .await;
-        Ok(())
-    }
-
     fn send_message(&mut self, host: &str, message: &str) -> Result<(), ConnectionError> {
         self.tx
             .try_send(ConnectionPoolMessage {
@@ -120,7 +101,7 @@ trait ConnectionProducer {
         &self,
         host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Message>,
+        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
     ) -> Result<Self::T, ConnectionError>;
 }
 
@@ -134,7 +115,7 @@ impl ConnectionProducer for SwimConnectionProducer {
         &self,
         host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Message>,
+        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
     ) -> Result<Self::T, ConnectionError> {
         SwimConnection::new(host, buffer_size, pool_tx, SwimWebsocketProducer {}).await
     }
@@ -156,28 +137,6 @@ trait Connection: Sized {
         Ok(())
     }
 
-    async fn receive_messages<S>(
-        pool_tx: mpsc::Sender<Message>,
-        read_stream: S,
-    ) -> Result<(), ConnectionError>
-    where
-        S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
-    {
-        read_stream
-            .try_for_each(|response| {
-                async {
-                    pool_tx
-                        .clone()
-                        .send(response)
-                        .await
-                        .map_err(|_| ConnectionError::SendMessageError)
-                }
-            })
-            .await?;
-
-        Ok(())
-    }
-
     async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError>;
 }
 
@@ -191,7 +150,7 @@ impl SwimConnection {
     async fn new<T: WebsocketProducer + Send + std::marker::Sync + 'static>(
         host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Message>,
+        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
         websocket_producer: T,
     ) -> Result<SwimConnection, ConnectionError> {
         let url = url::Url::parse(&host)?;
@@ -200,7 +159,7 @@ impl SwimConnection {
         let ws_stream = websocket_producer.connect(url).await?;
         let (write_stream, read_stream) = ws_stream.split();
 
-        let receive = SwimConnection::receive_messages(pool_tx, read_stream);
+        let receive = receive_messages(pool_tx, read_stream);
         let send = SwimConnection::send_messages(write_stream, rx);
 
         let send_handler = tokio::spawn(send);
@@ -246,6 +205,27 @@ impl WebsocketProducer for SwimWebsocketProducer {
         let ws_stream = ws_stream.err_into::<ConnectionError>();
         Ok(ws_stream)
     }
+}
+
+async fn receive_messages<S>(
+    tx: mpsc::Sender<Result<Message, ConnectionError>>,
+    rx: S,
+) -> Result<(), ConnectionError>
+where
+    S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
+{
+    rx.try_for_each(|response: Message| {
+        async {
+            // TODO print statement is for debugging only
+            println!("{:?}", response);
+            tx.clone()
+                .send(Ok(response))
+                .await
+                .map_err(|_| ConnectionError::SendMessageError)
+        }
+    })
+    .await?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq)]

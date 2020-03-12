@@ -1,21 +1,18 @@
-use std::{thread, time};
-
 use crate::connections::{
-    Connection, ConnectionError, ConnectionPool, ConnectionProducer, SwimConnection,
-    SwimConnectionProducer, SwimWebsocketProducer, WebsocketProducer,
+    receive_messages, Connection, ConnectionError, ConnectionPool, ConnectionProducer,
+    SwimConnection, SwimWebsocketProducer, WebsocketProducer,
 };
 use async_trait::async_trait;
 use futures::task::{Context, Poll};
-use futures::{Sink, StreamExt};
+use futures::Sink;
 use futures_util::stream::Stream;
-use futures_util::TryStreamExt;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 #[tokio::test]
-async fn test_connection_pool_send_and_receive_message() {
+async fn test_connection_pool_send_and_receive_messages() {
     // Given
     let buffer_size = 5;
     let host = "ws://127.0.0.1";
@@ -40,43 +37,46 @@ async fn test_connection_pool_send_and_receive_message() {
     // Then
     assert_eq!(
         "recv_baz",
-        router_rx.recv().await.unwrap().to_text().unwrap()
+        router_rx.recv().await.unwrap().unwrap().to_text().unwrap()
     );
     assert_eq!(
         "send_bar",
         writer_rx.recv().await.unwrap().to_text().unwrap()
     );
 }
+
+// #[tokio::test]
+// async fn test_connection_pool_send_message() {
+//     // Given
+//     let buffer_size = 5;
+//     let host = "ws://127.0.0.1";
+//     let text = "Hello";
+//     let (router_tx, mut router_rx) = mpsc::channel(5);
 //
-// // #[tokio::test]
-// // async fn test_connection_pool_send_message() {
-// //     Given
-// // let buffer_size = 5;
-// // let host = "ws://127.0.0.1";
-// // let text = "Hello";
-// // let (router_tx, mut router_rx) = mpsc::channel(5);
-// //
-// // let (writer_tx, mut writer_rx) = mpsc::channel(5);
-// // let write_stream = TestWriteStream { tx: writer_tx };
-// // let read_stream = TestReadStream { items: Vec::new() };
-// //
-// // let producer = TestConnectionProducer {
-// //     write_stream,
-// //     read_stream,
-// // };
-// //
-// // let mut connection_pool =
-// //     ConnectionPool::new(buffer_size, router_tx, producer);
+//     let (writer_tx, mut writer_rx) = mpsc::channel(5);
+//     let write_stream = TestWriteStream {
+//         tx: writer_tx,
+//         error: false,
+//     };
+//     let read_stream = TestReadStream { items: Vec::new() };
 //
-// // When
-// // connection_pool.send_message("ws://127.0.0.1", "Hello").unwrap();
-// // let request = router_rx.recv().await;
-// // Then
-// // println!("{:?}", request);
-// // assert_eq!(host, request.host);
-// // assert_eq!(text, request.message);
-// // }
+//     let producer = TestConnectionProducer {
+//         write_stream,
+//         read_stream,
+//     };
 //
+//     let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+//
+//     // When
+//     connection_pool
+//         .send_message("ws://127.0.0.1", "Hello")
+//         .unwrap();
+//     let request = router_rx.recv().await;
+//     // Then
+//     println!("{:?}", request);
+//     assert_eq!(host, request.host);
+//     assert_eq!(text, request.message);
+// }
 
 #[tokio::test]
 async fn test_connection_receive_single_messages() {
@@ -87,11 +87,12 @@ async fn test_connection_receive_single_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    SwimConnection::receive_messages(pool_tx, read_stream)
-        .await
-        .unwrap();
+    receive_messages(pool_tx, read_stream).await.unwrap();
     // Then
-    assert_eq!("foo", pool_rx.try_recv().unwrap().to_text().unwrap());
+    assert_eq!(
+        "foo",
+        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
+    );
 }
 
 #[tokio::test]
@@ -105,13 +106,20 @@ async fn test_connection_receive_multiple_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    SwimConnection::receive_messages(pool_tx, read_stream)
-        .await
-        .unwrap();
+    receive_messages(pool_tx, read_stream).await.unwrap();
     // Then
-    assert_eq!("foo", pool_rx.try_recv().unwrap().to_text().unwrap());
-    assert_eq!("bar", pool_rx.try_recv().unwrap().to_text().unwrap());
-    assert_eq!("baz", pool_rx.try_recv().unwrap().to_text().unwrap());
+    assert_eq!(
+        "foo",
+        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
+    );
+    assert_eq!(
+        "bar",
+        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
+    );
+    assert_eq!(
+        "baz",
+        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
+    );
 }
 
 #[tokio::test]
@@ -215,7 +223,7 @@ async fn test_new_connection_send_message_error() {
         error: true,
     };
     let read_stream = TestReadStream { items: Vec::new() };
-    let mut connection = SwimConnection::new(
+    let connection = SwimConnection::new(
         host,
         buffer_size,
         _pool_tx,
@@ -233,7 +241,10 @@ async fn test_new_connection_send_message_error() {
     assert_eq!(Some(ConnectionError::SendMessageError), result.err());
 }
 
-// Todo only for debugging. (Make sure to enable stdout)
+// // // Todo only for debugging. (Make sure to enable stdout)
+// use crate::connections::SwimConnectionProducer;
+// use std::{thread, time};
+//
 // #[tokio::test(core_threads = 2)]
 // async fn test_with_remote() {
 //     let (router_tx, _router_rx) = mpsc::channel(5);
@@ -263,7 +274,7 @@ impl ConnectionProducer for TestConnectionProducer {
         &self,
         _host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Message>,
+        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
     ) -> Result<Self::T, ConnectionError> {
         TestConnection::new(
             buffer_size,
@@ -283,13 +294,13 @@ struct TestConnection {
 impl TestConnection {
     fn new(
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Message>,
+        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
         write_stream: TestWriteStream,
         read_stream: TestReadStream,
     ) -> Result<TestConnection, ConnectionError> {
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let receive = TestConnection::receive_messages(pool_tx, read_stream);
+        let receive = receive_messages(pool_tx, read_stream);
         let send = TestConnection::send_messages(write_stream, rx);
 
         let send_handler = tokio::spawn(send);
@@ -321,7 +332,7 @@ struct TestWebsocketProducer {
 impl WebsocketProducer for TestWebsocketProducer {
     type T = TestReadWriteStream;
 
-    async fn connect(self, url: url::Url) -> Result<Self::T, ConnectionError> {
+    async fn connect(self, _url: url::Url) -> Result<Self::T, ConnectionError> {
         Ok(TestReadWriteStream {
             write_stream: self.write_stream.clone(),
             read_stream: self.read_stream.clone(),
