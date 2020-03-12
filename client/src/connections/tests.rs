@@ -12,6 +12,35 @@ use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 #[tokio::test]
+async fn test_connection_pool_send_single_message() {
+    // Given
+    let buffer_size = 5;
+    let host = "ws://127.0.0.1";
+    let text = "Hello";
+    let (router_tx, _router_rx) = mpsc::channel(5);
+
+    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream { items: Vec::new() };
+
+    let producer = TestConnectionProducer {
+        write_stream,
+        read_stream,
+    };
+
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+
+    // When
+    connection_pool.send_message(host, text).unwrap();
+
+    // Then
+    assert_eq!("Hello", writer_rx.recv().await.unwrap().to_text().unwrap());
+}
+
+#[tokio::test]
 async fn test_connection_pool_send_and_receive_messages() {
     // Given
     let buffer_size = 5;
@@ -44,39 +73,6 @@ async fn test_connection_pool_send_and_receive_messages() {
         writer_rx.recv().await.unwrap().to_text().unwrap()
     );
 }
-
-// #[tokio::test]
-// async fn test_connection_pool_send_message() {
-//     // Given
-//     let buffer_size = 5;
-//     let host = "ws://127.0.0.1";
-//     let text = "Hello";
-//     let (router_tx, mut router_rx) = mpsc::channel(5);
-//
-//     let (writer_tx, mut writer_rx) = mpsc::channel(5);
-//     let write_stream = TestWriteStream {
-//         tx: writer_tx,
-//         error: false,
-//     };
-//     let read_stream = TestReadStream { items: Vec::new() };
-//
-//     let producer = TestConnectionProducer {
-//         write_stream,
-//         read_stream,
-//     };
-//
-//     let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
-//
-//     // When
-//     connection_pool
-//         .send_message("ws://127.0.0.1", "Hello")
-//         .unwrap();
-//     let request = router_rx.recv().await;
-//     // Then
-//     println!("{:?}", request);
-//     assert_eq!(host, request.host);
-//     assert_eq!(text, request.message);
-// }
 
 #[tokio::test]
 async fn test_connection_receive_single_messages() {
@@ -235,7 +231,7 @@ async fn test_new_connection_send_message_error() {
     .await
     .unwrap();
     // When
-    let result = connection.send_handler.await.unwrap();
+    let result = connection._send_handler.await.unwrap();
     // Then
     assert!(result.is_err());
     assert_eq!(Some(ConnectionError::SendMessageError), result.err());
@@ -287,8 +283,8 @@ impl ConnectionProducer for TestConnectionProducer {
 
 struct TestConnection {
     tx: mpsc::Sender<Message>,
-    send_handler: JoinHandle<Result<(), ConnectionError>>,
-    receive_handler: JoinHandle<Result<(), ConnectionError>>,
+    _send_handler: JoinHandle<Result<(), ConnectionError>>,
+    _receive_handler: JoinHandle<Result<(), ConnectionError>>,
 }
 
 impl TestConnection {
@@ -308,8 +304,8 @@ impl TestConnection {
 
         Ok(TestConnection {
             tx,
-            send_handler,
-            receive_handler,
+            _send_handler: send_handler,
+            _receive_handler: receive_handler,
         })
     }
 }
