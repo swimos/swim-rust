@@ -14,7 +14,7 @@
 
 use std::pin::Pin;
 
-use futures::{future, stream, Stream, StreamExt};
+use futures::{future, stream, Stream};
 use futures_util::select_biased;
 use pin_utils::pin_mut;
 use tokio::sync::mpsc;

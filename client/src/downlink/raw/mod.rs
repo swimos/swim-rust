@@ -15,7 +15,7 @@
 use super::*;
 use crate::sink::item::ItemSender;
 use std::sync::Arc;
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 
 #[cfg(test)]
 mod tests;
@@ -202,7 +202,7 @@ pub(in crate::downlink) async fn make_downlink_task<
     acts: Acts,
     mut cmd_sink: Commands,
     mut ev_sink: Events,
-    mut on_complete: watch::Sender<Option<Result<(), DownlinkError>>>
+    on_complete: watch::Sender<Option<Result<(), DownlinkError>>>
 ) -> Result<(), DownlinkError>
 where
     EC: Into<DownlinkError>,

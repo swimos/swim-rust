@@ -33,12 +33,12 @@ pub trait ItemSink<'a, T> {
 }
 
 pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
-    fn map_err_into<E2>(self) -> map_err::ErrInto<Self, E2>
+    fn map_err_into<E2>(self) -> map_err::SenderErrInto<Self, E2>
     where
         Self: Sized,
         E2: From<E>,
     {
-        map_err::ErrInto::new(self)
+        map_err::SenderErrInto::new(self)
     }
 }
 
@@ -150,33 +150,33 @@ impl<'a, T: Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
 pub mod map_err {
     use crate::sink::item::ItemSink;
     use std::marker::PhantomData;
-    use utilities::combinators::futures::err_into::MapErrInto;
-    use utilities::combinators::futures::FutureCombinators;
+    use futures_util::future::TryFutureExt;
+    use futures::future::ErrInto;
 
-    pub struct ErrInto<Sender, E> {
+    pub struct SenderErrInto<Sender, E> {
         sender: Sender,
         _target: PhantomData<E>,
     }
 
-    impl<Sender, E> ErrInto<Sender, E> {
-        pub fn new(sender: Sender) -> ErrInto<Sender, E> {
-            ErrInto {
+    impl<Sender, E> SenderErrInto<Sender, E> {
+        pub fn new(sender: Sender) -> SenderErrInto<Sender, E> {
+            SenderErrInto {
                 sender,
                 _target: PhantomData,
             }
         }
     }
 
-    impl<'a, T, E, Sender> super::ItemSink<'a, T> for ErrInto<Sender, E>
+    impl<'a, T, E, Sender> super::ItemSink<'a, T> for SenderErrInto<Sender, E>
     where
         Sender: ItemSink<'a, T>,
         E: From<Sender::Error> + Send + 'a,
     {
         type Error = E;
-        type SendFuture = MapErrInto<Sender::SendFuture, E>;
+        type SendFuture = ErrInto<Sender::SendFuture, E>;
 
         fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-            self.sender.send_item(value).map_err_into()
+            self.sender.send_item(value).err_into()
         }
     }
 }
