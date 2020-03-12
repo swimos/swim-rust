@@ -121,7 +121,7 @@ impl<'p> Parser<'p> {
                 TypeContents::Struct(style, fields)
             }
             syn::Data::Union(_) => {
-                context.error_spanned_by(input, "Unions not implemented yet");
+                context.error_spanned_by(input, "Unions are not supported");
                 return None;
             }
         };

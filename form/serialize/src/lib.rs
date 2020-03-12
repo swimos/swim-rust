@@ -266,14 +266,7 @@ impl ser::Error for FormSerializeErr {
     }
 }
 
-impl std::error::Error for FormSerializeErr {
-    fn description(&self) -> &str {
-        match *self {
-            FormSerializeErr::Message(ref msg) => msg,
-            _ => "TODO",
-        }
-    }
-}
+impl std::error::Error for FormSerializeErr {}
 
 impl<'a> SerializeSeq for &'a mut ValueSerializer {
     type Ok = ();
