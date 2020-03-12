@@ -63,18 +63,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: i8",
-        )))
+        self.err_unsupported("i8")
     }
 
     fn deserialize_i16<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: i16",
-        )))
+        self.err_unsupported("i16")
     }
 
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
@@ -103,45 +99,35 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: u8",
-        )))
+        self.err_unsupported("u8")
     }
 
     fn deserialize_u16<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: u16",
-        )))
+        self.err_unsupported("u16")
     }
 
     fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: u32",
-        )))
+        self.err_unsupported("u32")
     }
 
     fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: u64",
-        )))
+        self.err_unsupported("u64")
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: f32",
-        )))
+        self.err_unsupported("f32")
     }
 
     fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
@@ -159,9 +145,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: char",
-        )))
+        self.err_unsupported("char")
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
@@ -171,9 +155,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Text(t)) = &self.current_state.value {
             visitor.visit_borrowed_str(t)
         } else {
-            Err(FormDeserializeErr::Message(String::from(
-                "Unsupported supported type: str",
-            )))
+            self.err_unsupported("str")
         }
     }
 
@@ -192,18 +174,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: byte",
-        )))
+        self.err_unsupported("byte")
     }
 
     fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(FormDeserializeErr::Message(String::from(
-            "Unsupported type: byte",
-        )))
+        self.err_unsupported("byte")
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>

@@ -54,19 +54,19 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_u8(self, _v: u8) -> Result<()> {
-        Err(FormSerializeErr::UnsupportedType(String::from("u8")))
+        self.err_unsupported("u8")
     }
 
     fn serialize_u16(self, _v: u16) -> Result<()> {
-        Err(FormSerializeErr::UnsupportedType(String::from("u16")))
+        self.err_unsupported("u16")
     }
 
     fn serialize_u32(self, _v: u32) -> Result<()> {
-        Err(FormSerializeErr::UnsupportedType(String::from("u32")))
+        self.err_unsupported("u32")
     }
 
     fn serialize_u64(self, _v: u64) -> Result<()> {
-        Err(FormSerializeErr::UnsupportedType(String::from("u64")))
+        self.err_unsupported("u64")
     }
 
     fn serialize_f32(self, v: f32) -> Result<()> {
@@ -89,7 +89,7 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_bytes(self, _v: &[u8]) -> Result<()> {
-        Err(FormSerializeErr::UnsupportedType(String::from("u8")))
+        self.err_unsupported("u8")
     }
 
     fn serialize_none(self) -> Result<()> {

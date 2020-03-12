@@ -157,6 +157,13 @@ impl ValueSerializer {
         }
     }
 
+    pub fn err_unsupported<V>(&self, t: &str) -> std::result::Result<V, FormSerializeErr> {
+        Err(FormSerializeErr::Message(String::from(&format!(
+            "Unsupported type: {}",
+            t
+        ))))
+    }
+
     pub fn enter_nested(&mut self, state: SerializerState) {
         if let SerializerState::None = self.current_state.serializer_state {
             self.current_state.serializer_state = state;

@@ -67,6 +67,13 @@ pub enum DeserializerState<'i> {
 }
 
 impl<'de> ValueDeserializer<'de> {
+    pub fn err_unsupported<V>(&self, t: &str) -> std::result::Result<V, FormDeserializeErr> {
+        Err(FormDeserializeErr::Message(String::from(&format!(
+            "Unsupported type: {}",
+            t
+        ))))
+    }
+
     pub fn for_values(input: &'de Value) -> Self {
         ValueDeserializer {
             current_state: State {
