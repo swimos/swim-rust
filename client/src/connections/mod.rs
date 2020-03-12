@@ -127,8 +127,8 @@ pub trait Connection: Sized {
         write_stream: S,
         rx: mpsc::Receiver<Message>,
     ) -> Result<(), ConnectionError>
-        where
-            S: Sink<Message> + Send + 'static,
+    where
+        S: Sink<Message> + Send + 'static,
     {
         rx.map(Ok)
             .forward(write_stream)
@@ -184,10 +184,10 @@ impl Connection for SwimConnection {
 
 #[async_trait]
 trait WebsocketProducer {
-    type T: Stream<Item=Result<Message, ConnectionError>>
-    + Sink<Message>
-    + std::marker::Send
-    + 'static;
+    type T: Stream<Item = Result<Message, ConnectionError>>
+        + Sink<Message>
+        + std::marker::Send
+        + 'static;
 
     async fn connect(self, url: url::Url) -> Result<Self::T, ConnectionError>;
 }
@@ -211,8 +211,8 @@ async fn receive_messages<S>(
     tx: mpsc::Sender<Result<Message, ConnectionError>>,
     rx: S,
 ) -> Result<(), ConnectionError>
-    where
-        S: TryStreamExt<Ok=Message, Error=ConnectionError> + Send + 'static,
+where
+    S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
 {
     rx.try_for_each(|response: Message| {
         async {
@@ -224,7 +224,7 @@ async fn receive_messages<S>(
                 .map_err(|_| ConnectionError::SendMessageError)
         }
     })
-        .await?;
+    .await?;
     Ok(())
 }
 
