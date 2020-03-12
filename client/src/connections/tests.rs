@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-#[tokio::test(core_threads = 2)]
+#[tokio::test]
 async fn test_connection_pool_send_and_receive_message() {
     // Given
     let buffer_size = 5;

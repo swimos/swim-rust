@@ -62,8 +62,7 @@ impl ConnectionPool {
         let mut connections = HashMap::new();
         loop {
             let connection_pool_message = rx
-                .try_recv()
-                .map_err(|_| ConnectionError::SendMessageError)?;
+                .recv().await.ok_or(ConnectionError::SendMessageError)?;
 
             if !&connections.contains_key(&connection_pool_message.host) {
                 let pool_tx = connections_tx.clone();
