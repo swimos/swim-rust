@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use futures::stream::ErrInto;
 use futures::{Sink, StreamExt};
 use futures_util::stream::Stream;
 use futures_util::TryStreamExt;
+use std::error::Error;
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::{connect_async, tungstenite, WebSocketStream};
 use url;
 
 #[cfg(test)]
@@ -96,7 +99,7 @@ impl ConnectionPool {
                     .map_err(|_| ConnectionError::SendMessageError);
             }
         })
-            .await;
+        .await;
         Ok(())
     }
 
@@ -134,7 +137,7 @@ impl ConnectionProducer for SwimConnectionProducer {
         buffer_size: usize,
         pool_tx: mpsc::Sender<Message>,
     ) -> Result<Self::T, ConnectionError> {
-        SwimConnection::new(host, buffer_size, pool_tx).await
+        SwimConnection::new(host, buffer_size, pool_tx, SwimWebsocketProducer {}).await
     }
 }
 
@@ -144,8 +147,8 @@ trait Connection: Sized {
         write_stream: S,
         rx: mpsc::Receiver<Message>,
     ) -> Result<(), ConnectionError>
-        where
-            S: Sink<Message> + Send + 'static,
+    where
+        S: Sink<Message> + Send + 'static,
     {
         rx.map(Ok)
             .forward(write_stream)
@@ -158,8 +161,8 @@ trait Connection: Sized {
         pool_tx: mpsc::Sender<Message>,
         read_stream: S,
     ) -> Result<(), ConnectionError>
-        where
-            S: TryStreamExt<Ok=Message, Error=ConnectionError> + Send + 'static,
+    where
+        S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
     {
         read_stream
             .try_for_each(|response| {
@@ -186,17 +189,16 @@ struct SwimConnection {
 }
 
 impl SwimConnection {
-    async fn new(
+    async fn new<T: WebsocketProducer + Send + std::marker::Sync + 'static>(
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Message>,
+        websocket_producer: T,
     ) -> Result<SwimConnection, ConnectionError> {
         let url = url::Url::parse(&host)?;
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let (ws_stream, _) = connect_async(url).await?;
-        let ws_stream = ws_stream.map_err(|_| ConnectionError::SendMessageError);
-
+        let ws_stream = websocket_producer.connect(url).await?;
         let (write_stream, read_stream) = ws_stream.split();
 
         let receive = SwimConnection::receive_messages(pool_tx, read_stream);
@@ -219,6 +221,31 @@ impl Connection for SwimConnection {
     async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
         self.tx.send(Message::text(message)).await?;
         Ok(())
+    }
+}
+
+#[async_trait]
+trait WebsocketProducer {
+    type T: Stream<Item = Result<Message, ConnectionError>>
+        + Sink<Message>
+        + std::marker::Send
+        + 'static;
+
+    async fn connect(self, url: url::Url) -> Result<Self::T, ConnectionError>;
+}
+
+struct SwimWebsocketProducer {}
+
+#[async_trait]
+impl WebsocketProducer for SwimWebsocketProducer {
+    type T = ErrInto<WebSocketStream<TcpStream>, ConnectionError>;
+
+    async fn connect(self, url: url::Url) -> Result<Self::T, ConnectionError> {
+        let (ws_stream, _) = connect_async(url)
+            .await
+            .map_err(|_| ConnectionError::ConnectError)?;
+        let ws_stream = ws_stream.err_into::<ConnectionError>();
+        Ok(ws_stream)
     }
 }
 
