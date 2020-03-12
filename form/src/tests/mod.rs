@@ -12,24 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use trybuild::TestCases;
-
 #[cfg(test)]
 mod traits;
-
-// There has been some file contention when the test cases are in their own functions (grouped) and
-// so, for now, the cases are together.
-#[test]
-fn test_derive() {
-    let t = TestCases::new();
-
-    t.pass("src/tests/derive/single_derive.rs");
-    t.pass("src/tests/derive/nested_derives.rs");
-
-    t.compile_fail("src/tests/derive/unimplemented_compound.rs");
-    t.compile_fail("src/tests/derive/unimplemented_nested.rs");
-    t.compile_fail("src/tests/derive/unimplemented_primitive.rs");
-
-    t.pass("src/tests/attribute/single_derive.rs");
-    t.pass("src/tests/attribute/multiple_derives.rs");
-}

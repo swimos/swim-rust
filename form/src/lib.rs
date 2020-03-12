@@ -5,18 +5,9 @@ use serialize::FormSerializeErr;
 #[cfg(test)]
 mod tests;
 
-#[macro_use]
-#[allow(unused_imports)]
-extern crate form_derive;
-
 pub trait Form: Sized {
     fn try_into_value(&self) -> Result<Value, FormSerializeErr>;
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr>;
-
-    // Reserved for macro implementation.
-    // This should never be implemented by hand.
-    #[doc(hidden)]
-    fn __assert_receiver_is_total_form(&self) {}
 }
 
 impl Form for f64 {

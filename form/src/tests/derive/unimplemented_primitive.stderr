@@ -1,7 +1,0 @@
-error[E0277]: the trait bound `u32: form::Form` is not satisfied
-  --> $DIR/unimplemented_primitive.rs:18:10
-   |
-18 | #[derive(Form)]
-   |          ^^^^ the trait `form::Form` is not implemented for `u32`
-   |
-   = note: required by `form::Form::__assert_receiver_is_total_form`

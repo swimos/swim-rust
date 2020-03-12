@@ -8,10 +8,8 @@ edition = "2018"
 serde = { version = "1.0", features = ["derive"] }
 
 common = { path = "../common" }
-form_derive = { path = "form_derive" }
 deserialize = { path = "deserialize" }
 serialize = { path = "serialize" }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-trybuild = "1.0"
