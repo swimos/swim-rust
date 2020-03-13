@@ -30,7 +30,7 @@ mod map_access;
 pub enum FormDeserializeErr {
     Message(String),
     UnsupportedType(String),
-    IncorrectType(Value),
+    IncorrectType(String),
     IllegalItem(Item),
     IllegalState(String),
     Malformatted,
@@ -69,6 +69,21 @@ pub enum DeserializerState<'i> {
 impl<'de> ValueDeserializer<'de> {
     pub fn err_unsupported<V>(&self, t: &str) -> std::result::Result<V, FormDeserializeErr> {
         Err(FormDeserializeErr::UnsupportedType(String::from(t)))
+    }
+
+    pub fn err_incorrect_type<V>(
+        &self,
+        expected: &str,
+        actual: Option<&Value>,
+    ) -> std::result::Result<V, FormDeserializeErr> {
+        match actual {
+            Some(v) => Err(FormDeserializeErr::IncorrectType(format!(
+                "Expected: {}, found: {}",
+                expected,
+                v.to_string()
+            ))),
+            None => Err(FormDeserializeErr::Message(String::from("Missing value"))),
+        }
     }
 
     pub fn for_values(input: &'de Value) -> Self {

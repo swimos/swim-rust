@@ -1,0 +1,15 @@
+warning: unused imports: `Attr`, `Item`, `Value`
+  --> $DIR/serialize_err.rs:17:21
+   |
+17 | use common::model::{Value, Attr, Item};
+   |                     ^^^^^  ^^^^  ^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+error[E0277]: the trait bound `u32: form::Form` is not satisfied
+  --> $DIR/serialize_err.rs:20:5
+   |
+20 |     #[form]
+   |     ^^^^^^^ the trait `form::Form` is not implemented for `u32`
+   |
+   = help: see issue #48214

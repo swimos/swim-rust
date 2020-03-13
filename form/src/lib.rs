@@ -20,9 +20,17 @@ impl Form for f64 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Float64Value(i) => Ok(*i),
-            v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
+            v => de_incorrect_type("f64", v),
         }
     }
+}
+
+pub fn de_incorrect_type<V>(expected: &str, actual: &Value) -> Result<V, FormDeserializeErr> {
+    Err(FormDeserializeErr::IncorrectType(format!(
+        "Expected: {}, found: {}",
+        expected,
+        actual.to_string()
+    )))
 }
 
 impl Form for i32 {
@@ -33,7 +41,7 @@ impl Form for i32 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Int32Value(i) => Ok(*i),
-            v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
+            v => de_incorrect_type("i32", v),
         }
     }
 }
@@ -46,7 +54,7 @@ impl Form for i64 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Int64Value(i) => Ok(*i),
-            v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
+            v => de_incorrect_type("i64", v),
         }
     }
 }
@@ -59,7 +67,7 @@ impl Form for bool {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::BooleanValue(i) => Ok(*i),
-            v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
+            v => de_incorrect_type("bool", v),
         }
     }
 }
@@ -72,7 +80,7 @@ impl Form for String {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Text(i) => Ok(i.to_owned()),
-            v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
+            v => de_incorrect_type("String", v),
         }
     }
 }
@@ -100,7 +108,7 @@ impl<T: Form> Form for Vec<T> {
                         },
                     )
             }
-            v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
+            v => de_incorrect_type("Vec<T>", v),
         }
     }
 }
