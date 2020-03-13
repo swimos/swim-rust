@@ -32,7 +32,7 @@ addons:
 
 
 env:
-  - SWIM_CRATES=['client','form','common','server','utilities']
+  - SWIM_CRATES=(client form common server utilities)
 
 
 after_success:
