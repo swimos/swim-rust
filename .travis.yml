@@ -32,6 +32,17 @@ addons:
       - binutils-dev
       - libiberty-dev
 
+
+env:
+  - SWIM_CRATES=(
+  client
+  form
+  common
+  server
+  utilities
+  )
+
+
 after_success:
   - |
     if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_RUST_VERSION" == "stable" ]]; then
@@ -45,7 +56,7 @@ after_success:
     sudo make install &&
     cd ../.. &&
     rm -rf kcov-master &&
-    for file in target/debug/swim-rust-*[^\.d]; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done &&
+    for crate in ${SWIM_CRATES[@]}; do for file in target/debug/$crate-*[^\.d]; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done; done &&
     bash <(curl -s https://codecov.io/bash) &&
     echo "Uploaded code coverage"
     fi
