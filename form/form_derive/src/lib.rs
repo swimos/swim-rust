@@ -117,9 +117,9 @@ fn expand_derive_form(
 
     let res = quote! {
         const #const_name: () = {
-            use form::common as _common;
-            use form::serialize as _serialize;
-            use form::deserialize as _deserialize;
+            use form::_common;
+            use form::_serialize;
+            use form::_deserialize;
             use form::Form;
 
             #quote

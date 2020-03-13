@@ -19,7 +19,7 @@ use deserialize::FormDeserializeErr;
 
 fn main() {
     #[form]
-    #[derive(Debug, PartialEq)]
+    #[derive(PartialEq)]
     struct Parent {
         a:i32
     }

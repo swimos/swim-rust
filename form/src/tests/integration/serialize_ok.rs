@@ -18,7 +18,7 @@ use common::model::{Value, Attr, Item};
 
 fn main() {
     #[form]
-    #[derive(Debug, PartialEq)]
+    #[derive(PartialEq)]
     struct Parent {
         a:i32
     }

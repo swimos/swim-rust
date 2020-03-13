@@ -44,20 +44,19 @@ impl Display for FormSerializeErr {
     }
 }
 
-#[derive(Debug)]
 pub struct ValueSerializer {
     current_state: State,
     stack: Vec<State>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct State {
     pub output: Value,
     pub serializer_state: SerializerState,
     pub attr_name: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum SerializerState {
     ReadingNested,
     ReadingEnumName,

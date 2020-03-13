@@ -37,3 +37,4 @@ fn test_derive() {
     t.compile_fail("src/tests/derive/unimplemented_primitive.rs");
     t.compile_fail("src/tests/derive/unimplemented_vector.rs");
 }
+

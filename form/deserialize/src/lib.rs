@@ -26,7 +26,7 @@ mod deserializer;
 mod enum_access;
 mod map_access;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum FormDeserializeErr {
     Message(String),
     UnsupportedType(String),
@@ -44,20 +44,19 @@ impl Display for FormDeserializeErr {
     }
 }
 
-#[derive(Debug)]
 pub struct ValueDeserializer<'de> {
     current_state: State<'de>,
     stack: Vec<State<'de>>,
     input: &'de Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct State<'de> {
     deserializer_state: DeserializerState<'de>,
     value: Option<&'de Value>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum DeserializerState<'i> {
     ReadingRecord { item_index: usize },
     ReadingItem(&'i Item),

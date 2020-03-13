@@ -56,7 +56,7 @@ pub enum TypeContents<'a> {
     Struct(CompoundType, Vec<Field<'a>>),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum CompoundType {
     Struct,
     Tuple,
