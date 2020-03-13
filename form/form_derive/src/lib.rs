@@ -1,6 +1,17 @@
-// #![feature(trace_macros)]
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-// trace_macros!(true);
 extern crate proc_macro;
 extern crate proc_macro2;
 #[macro_use]
@@ -67,10 +78,12 @@ fn expand_derive_form(
     let ident = parser.ident.clone();
     let assertions = parser.receiver_assert_quote(ident.clone());
     let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
-    let dummy_const = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
+    let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
 
     let quote = quote! {
         struct AssertReceiver;
+
+        #[automatically_derived]
         impl AssertReceiver {
             fn __assert() {
                  #(#assertions)*
@@ -103,10 +116,11 @@ fn expand_derive_form(
     };
 
     let res = quote! {
-        const #dummy_const: () = {
-            use common as _common;
-            use serialize as _serialize;
-            use deserialize as _deserialize;
+        const #const_name: () = {
+            use form::common as _common;
+            use form::serialize as _serialize;
+            use form::deserialize as _deserialize;
+            use form::Form;
 
             #quote
         };

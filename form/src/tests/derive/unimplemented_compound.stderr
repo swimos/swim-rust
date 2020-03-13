@@ -1,7 +1,7 @@
 error[E0277]: the trait bound `Child: form::Form` is not satisfied
-  --> $DIR/unimplemented_compound.rs:18:1
+  --> $DIR/unimplemented_compound.rs:17:1
    |
-18 | #[form]
+17 | #[form]
    | ^^^^^^^ the trait `form::Form` is not implemented for `Child`
    |
    = help: see issue #48214
