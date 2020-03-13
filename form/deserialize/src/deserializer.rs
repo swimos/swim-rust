@@ -337,7 +337,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                         None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
                     }
                 } else {
-                    unimplemented!("waffle")
+                    Err(FormDeserializeErr::IncorrectType(Value::Extant))
                 }
             }
             None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
