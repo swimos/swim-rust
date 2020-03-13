@@ -30,7 +30,6 @@ fn test_derive() {
 
     t.pass("src/tests/integration/serialize_ok.rs");
     t.pass("src/tests/integration/deserialize_ok.rs");
-    t.compile_fail("src/tests/integration/serialize_err.rs");
     t.pass("src/tests/integration/deserialize_err.rs");
 
     t.compile_fail("src/tests/derive/unimplemented_compound.rs");
