@@ -32,7 +32,7 @@ addons:
 
 
 env:
-  - SWIM_CRATES=(client form common server utilities)
+  - SWIM_CRATES="client form common server utilities"
 
 
 after_success:
@@ -48,7 +48,7 @@ after_success:
     sudo make install &&
     cd ../.. &&
     rm -rf kcov-master &&
-    for crate in ${SWIM_CRATES[@]}; do for file in target/debug/$crate-*[^\.d]; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done; done &&
+    for crate in $SWIM_CRATES; do for file in target/debug/$crate-*[^\.d]; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done; done &&
     bash <(curl -s https://codecov.io/bash) &&
     echo "Uploaded code coverage"
     fi
