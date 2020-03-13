@@ -5,6 +5,4 @@ members = [
     "common",
     "server",
     "utilities",
-    "serialize",
-    "deserialize"
 ]
