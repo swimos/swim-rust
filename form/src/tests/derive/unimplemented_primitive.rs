@@ -21,9 +21,7 @@ struct FormStruct {
 }
 
 fn main() {
-    let f = FormStruct {
+    let _ = FormStruct {
         a: 1
     };
-
-    f.__assert_receiver_is_total_form();
 }

@@ -64,24 +64,21 @@ fn expand_derive_form(
     context.check()?;
 
     let ident = parser.ident.clone();
-    let field_assertions = parser.receiver_match_arm();
-    let fields = parser.match_funcs();
+    let fields = parser.receiver_assert_quote(ident.clone());
     let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
     let dummy_const = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
 
     let quote = quote! {
+        struct __Discard;
+        impl __Discard {
+            fn __assertions(&self) {
+                 #(#fields)*
+            }
+        }
+
         #[automatically_derived]
         #[allow(unused_qualifications)]
         impl Form for #ident {
-            fn __assert_receiver_is_total_form(&self) {
-                match self {
-                    #ident { #(#field_assertions),*  } => {
-                        #(#fields)*
-                    }
-                    _=> panic!("quote catch all")
-                }
-            }
-
             #[inline]
             fn try_into_value(&self) -> Result<_common::model::Value, _serialize::FormSerializeErr> {
                 unimplemented!()
@@ -108,6 +105,9 @@ fn expand_derive_form(
 }
 
 fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
-    let compile_errors = errors.iter().map(syn::Error::to_compile_error);
+    let compile_errors = errors.iter().map(|i| {
+        println!("Waffle: {:?}", i);
+        syn::Error::to_compile_error(i)
+    });
     quote!(#(#compile_errors)*)
 }

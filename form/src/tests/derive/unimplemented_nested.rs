@@ -27,12 +27,10 @@ struct Child {
 }
 
 fn main() {
-    let f = Parent {
+    let _ = Parent {
         a: 1,
         b: Child {
             c: 1
         },
     };
-
-    f.__assert_receiver_is_total_form();
 }

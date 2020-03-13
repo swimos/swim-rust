@@ -19,10 +19,10 @@ use std::process::id;
 use proc_macro2::{Ident, Punct, Spacing, Span, TokenStream};
 use quote::ToTokens;
 use syn;
+use syn::DeriveInput;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Token;
-use syn::DeriveInput;
 
 pub struct Parser<'a> {
     pub ident: syn::Ident,
@@ -153,17 +153,21 @@ impl<'p> Parser<'p> {
         }
     }
 
-    pub fn match_funcs(&self) -> Vec<TokenStream> {
+    pub fn receiver_assert_quote(&self, parent_ident: Ident) -> Vec<TokenStream> {
         match &self.data {
             TypeContents::Struct(CompoundType::Struct, fields) => fields
                 .iter()
                 .enumerate()
                 .map(|(index, field)| {
                     let span = field.span();
-                    let ident = Ident::new(&format!("__self__{}", index), Span::call_site());
+                    let ty = field.ty;
+                    let receiver_ident = Ident::new(
+                        &format!("__Assert_{}_Receivers", field.ident.to_string()),
+                        Span::call_site(),
+                    );
 
                     quote_spanned! {span=>
-                        Form::__assert_receiver_is_total_form(&(*#ident));
+                        struct #receiver_ident where #ty: Form;
                     }
                 })
                 .collect(),

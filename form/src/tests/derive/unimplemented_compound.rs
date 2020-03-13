@@ -26,12 +26,10 @@ struct Child {
 }
 
 fn main() {
-    let f = FormStruct {
+    let _ = FormStruct {
         a: 1,
         b: Child {
             a: 2
         },
     };
-
-    f.__assert_receiver_is_total_form();
 }

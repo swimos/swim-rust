@@ -21,9 +21,7 @@ struct Parent {
 }
 
 fn main() {
-    let p = Parent {
+    let _ = Parent {
         a:1
     };
-
-    p.__assert_receiver_is_total_form();
 }
