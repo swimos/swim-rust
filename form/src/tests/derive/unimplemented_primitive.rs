@@ -15,7 +15,7 @@
 use form::Form;
 use form_derive::*;
 
-#[derive(Form)]
+#[form]
 struct FormStruct {
     a: u32
 }

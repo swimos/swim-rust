@@ -17,11 +17,20 @@ use form_derive::*;
 
 #[form]
 struct FormStruct {
-    a: i32
+    a: Vec<Child>
+}
+
+#[form]
+struct Child {
+    a:u32
 }
 
 fn main() {
     let _ = FormStruct {
-        a: 1
+        a: vec![
+            Child { a: 1 },
+            Child { a: 2 },
+            Child { a: 3 },
+        ]
     };
 }

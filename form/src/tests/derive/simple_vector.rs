@@ -12,25 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use form_derive::*;
 use form::Form;
+use form_derive::*;
 
 #[form]
-struct Parent {
-    a:i32,
-    b:Child,
-    c:Child
-}
-
-#[form]
-struct Child {
-    f:i32
+struct FormStruct {
+    a: Vec<i32>
 }
 
 fn main() {
-    let _ = Parent {
-        a:1,
-        b:Child{f:2},
-        c:Child{f:3}
+    let _ = FormStruct {
+        a: vec![1, 2, 3, 4, 5]
     };
 }

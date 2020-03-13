@@ -1,3 +1,5 @@
+// use serde::{Deserialize, Serialize};
+
 use common::model::{Item, Value};
 use deserialize::FormDeserializeErr;
 use serialize::FormSerializeErr;
@@ -10,14 +12,12 @@ pub trait Form: Sized {
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr>;
 }
 
-
-
 impl Form for f64 {
     fn try_into_value(&self) -> Result<Value, FormSerializeErr> {
         Ok(Value::Float64Value(*self))
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Float64Value(i) => Ok(*i),
             v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
@@ -30,7 +30,7 @@ impl Form for i32 {
         Ok(Value::Int32Value(*self))
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Int32Value(i) => Ok(*i),
             v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
@@ -43,7 +43,7 @@ impl Form for i64 {
         Ok(Value::Int64Value(*self))
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Int64Value(i) => Ok(*i),
             v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
@@ -56,7 +56,7 @@ impl Form for bool {
         Ok(Value::BooleanValue(*self))
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::BooleanValue(i) => Ok(*i),
             v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
@@ -69,7 +69,7 @@ impl Form for String {
         Ok(Value::Text(String::from(self)))
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Text(i) => Ok(i.to_owned()),
             v => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
@@ -82,7 +82,7 @@ impl<T: Form> Form for Vec<T> {
         unimplemented!()
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Record(attr, items) if attr.is_empty() => {
                 let length = items.len();

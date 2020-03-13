@@ -19,10 +19,10 @@ use std::process::id;
 use proc_macro2::{Ident, Punct, Spacing, Span, TokenStream};
 use quote::ToTokens;
 use syn;
-use syn::DeriveInput;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Token;
+use syn::DeriveInput;
 
 pub struct Parser<'a> {
     pub ident: syn::Ident,

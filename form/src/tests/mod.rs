@@ -25,11 +25,11 @@ fn test_derive() {
 
     t.pass("src/tests/derive/single_derive.rs");
     t.pass("src/tests/derive/nested_derives.rs");
+    t.pass("src/tests/derive/simple_vector.rs");
+    t.pass("src/tests/derive/vector_with_compound.rs");
 
     t.compile_fail("src/tests/derive/unimplemented_compound.rs");
     t.compile_fail("src/tests/derive/unimplemented_nested.rs");
     t.compile_fail("src/tests/derive/unimplemented_primitive.rs");
-
-    t.pass("src/tests/attribute/single_derive.rs");
-    t.pass("src/tests/attribute/multiple_derives.rs");
+    t.compile_fail("src/tests/derive/unimplemented_vector.rs");
 }

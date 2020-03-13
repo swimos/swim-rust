@@ -30,6 +30,7 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
     let ident = input.ident.clone();
 
     let ser = Ident::new(
@@ -81,12 +82,22 @@ fn expand_derive_form(
         impl Form for #ident {
             #[inline]
             fn try_into_value(&self) -> Result<_common::model::Value, _serialize::FormSerializeErr> {
-                unimplemented!()
+                let mut serializer = _serialize::ValueSerializer::default();
+                match self.serialize(&mut serializer) {
+                    Ok(_) => Ok(serializer.output()),
+                    Err(e) => Err(e),
+                }
             }
 
             #[inline]
             fn try_from_value(value: &_common::model::Value) -> Result<Self, _deserialize::FormDeserializeErr> {
-                unimplemented!()
+                let mut deserializer = match value {
+                    _common::model::Value::Record(_, _) => _deserialize::ValueDeserializer::for_values(value),
+                    _ => _deserialize::ValueDeserializer::for_single_value(value),
+                };
+
+                let result = Self::deserialize(&mut deserializer)?;
+                Ok(result)
             }
         }
     };

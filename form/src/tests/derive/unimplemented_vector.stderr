@@ -1,7 +1,7 @@
 error[E0277]: the trait bound `u32: form::Form` is not satisfied
-  --> $DIR/unimplemented_primitive.rs:18:1
+  --> $DIR/unimplemented_vector.rs:23:1
    |
-18 | #[form]
+23 | #[form]
    | ^^^^^^^ the trait `form::Form` is not implemented for `u32`
    |
    = help: see issue #48214

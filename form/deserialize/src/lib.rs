@@ -82,10 +82,6 @@ impl<'de> ValueDeserializer<'de> {
         }
     }
 
-    pub fn assert_stack_empty(&self) {
-        assert_eq!(self.stack.len(), 0);
-    }
-
     pub fn for_single_value(input: &'de Value) -> Self {
         ValueDeserializer {
             current_state: State {

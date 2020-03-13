@@ -15,13 +15,13 @@
 use form::Form;
 use form_derive::*;
 
-#[derive(Form)]
+#[form]
 struct Parent {
     a: i32,
     b: Child,
 }
 
-#[derive(Form)]
+#[form]
 struct Child {
     c: u32
 }
