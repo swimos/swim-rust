@@ -69,6 +69,35 @@ impl Envelope {
             Envelope::DeauthedResponse(_) => "deauthed",
         }
     }
+
+
+    pub fn sync(node: String, lane: String) -> Self {
+        Envelope::SyncRequest(LinkAddressed {
+            lane: LaneAddressed {
+                node_uri: node,
+                lane_uri: lane,
+                body: None,
+            },
+            rate: None,
+            prio: None,
+        })
+    }
+
+    pub fn unlink(node: String, lane: String) -> Self {
+        Envelope::UnlinkRequest(LaneAddressed {
+            node_uri: node,
+            lane_uri: lane,
+            body: None,
+        })
+    }
+
+    pub fn command(node: String, lane: String, body: Option<Value>) -> Self {
+        Envelope::CommandMessage(LaneAddressed {
+            node_uri: node,
+            lane_uri: lane,
+            body,
+        })
+    }
 }
 
 /// A simple [`Envelope`] payload to deliver to the other end of an active network connection.

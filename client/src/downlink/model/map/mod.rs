@@ -17,7 +17,7 @@ use std::sync::Arc;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
-use common::model::Value;
+use common::model::{Attr, Item, Value};
 use common::request::Request;
 
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
@@ -26,8 +26,12 @@ use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
 use crate::sink::item::ItemSender;
+use deserialize::FormDeserializeErr;
 use futures::Stream;
+use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
+use std::ops::Deref;
+use form::Form;
 
 #[cfg(test)]
 mod tests;
@@ -39,6 +43,188 @@ pub enum MapModification<V> {
     Take(usize),
     Skip(usize),
     Clear,
+}
+
+impl Form for MapModification<Value> {
+    fn as_value(&self) -> Value {
+        match self {
+            MapModification::Insert(key, value) => insert(key.clone(), value.clone()),
+            MapModification::Remove(key) => remove(key.clone()),
+            MapModification::Take(n) => take(*n),
+            MapModification::Skip(n) => skip(*n),
+            MapModification::Clear => clear(),
+        }
+    }
+
+    fn into_value(self) -> Value {
+        match self {
+            MapModification::Insert(key, value) => insert(key, value),
+            MapModification::Remove(key) => remove(key),
+            MapModification::Take(n) => take(n),
+            MapModification::Skip(n) => skip(n),
+            MapModification::Clear => clear(),
+        }
+    }
+
+    fn try_from_value(body: &Value) -> Result<Self, FormDeserializeErr> {
+        use Value::*;
+        if let Record(attrs, items) = body {
+            let mut attr_it = attrs.iter();
+            let head = attr_it.next();
+            let has_more = attr_it.next().is_some();
+            match head {
+                Some(first) if !has_more && items.is_empty() => {
+                    match first {
+                        Attr {name, value: Extant} if *name == "clear" =>
+                            Ok(MapModification::Clear),
+                        Attr {name, value: Int32Value(n)} =>
+                            extract_take_or_skip(&name, *n),
+                        Attr { name, value } if name == "remove" => {
+                            extract_key(value.clone()).map(MapModification::Remove)
+                        },
+                        Attr { name, value } if name == "insert" => {
+                            extract_key(value.clone()).map(|key| MapModification::Insert(key, Extant))
+                        },
+                        _ => Err(FormDeserializeErr::Malformatted),
+                    }
+                }
+                Some(Attr { name, value}) if *name == "insert" => {
+                    extract_key(value.clone()).map(
+                        |key| MapModification::Insert(key,
+                                                      Record(attrs.iter().skip(1).cloned().collect(), items.clone())))
+                },
+                _ => Err(FormDeserializeErr::Malformatted),
+            }
+        } else {
+            Err(FormDeserializeErr::IncorrectType("Invalid structure for map action.".to_string()))
+        }
+    }
+
+    fn try_convert(body: Value) -> Result<Self, FormDeserializeErr> {
+        use Value::*;
+        if let Record(attrs, items) = body {
+            let single_attr = items.is_empty() && attrs.len() < 2;
+            let mut attr_it = attrs.into_iter().fuse();
+            let head = attr_it.next();
+
+            match head {
+                Some(Attr {
+                         name,
+                         value: Extant,
+                     }) if name == "clear" && single_attr => Ok(MapModification::Clear),
+                Some(Attr {
+                         name,
+                         value: Int32Value(n),
+                     }) if single_attr => extract_take_or_skip(&name, n),
+                Some(Attr { name, value }) if name == "remove" && single_attr => {
+                    extract_key(value).map(MapModification::Remove)
+                }
+                Some(Attr { name, value }) if name == "insert" => {
+                    let attr_tail = attr_it.collect::<Vec<_>>();
+                    let insert_value = if attr_tail.is_empty() && items.is_empty() {
+                        Extant
+                    } else {
+                        Record(attr_tail, items)
+                    };
+                    extract_key(value).map(|key| MapModification::Insert(key, insert_value))
+                }
+                _ => Err(FormDeserializeErr::Malformatted),
+            }
+        } else {
+            Err(FormDeserializeErr::Malformatted)
+        }
+    }
+}
+
+
+fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
+    match attr_body {
+        Value::Record(attrs, items) if attrs.is_empty() && items.len() < 2 => {
+            match items.into_iter().next() {
+                Some(Item::Slot(Value::Text(name), key)) if name == "key" => Ok(key),
+                _ => Err(FormDeserializeErr::Message(
+                    "Invalid key specifier.".to_string(),
+                )),
+            }
+        }
+        _ => Err(FormDeserializeErr::Message(
+            "Invalid key specifier.".to_string(),
+        )),
+    }
+}
+
+fn extract_take_or_skip(
+    name: &String,
+    n: i32,
+) -> Result<MapModification<Value>, FormDeserializeErr> {
+    match name.as_str() {
+        "take" => {
+            if n >= 0 {
+                Ok(MapModification::Take(n as usize))
+            } else {
+                Err(FormDeserializeErr::Message(format!(
+                    "Invalid take size: {}",
+                    n
+                )))
+            }
+        }
+        "drop" => {
+            if n >= 0 {
+                Ok(MapModification::Skip(n as usize))
+            } else {
+                Err(FormDeserializeErr::Message(format!(
+                    "Invalid drop size: {}",
+                    n
+                )))
+            }
+        }
+        _ => Err(FormDeserializeErr::Message(format!(
+            "{} is not a map action.",
+            *name
+        ))),
+    }
+}
+
+fn clear() -> Value {
+    Value::of_attr("clear")
+}
+
+fn skip(n: usize) -> Value {
+    let num: i32 = n.try_into().unwrap_or(i32::max_value());
+    Value::of_attr(("drop", num))
+}
+
+fn take(n: usize) -> Value {
+    let num: i32 = n.try_into().unwrap_or(i32::max_value());
+    Value::of_attr(("take", num))
+}
+
+fn remove(key: Value) -> Value {
+    Value::of_attr(("remove", Value::singleton(("key", key))))
+}
+
+fn insert(key: Value, value: Value) -> Value {
+    let attr = Attr::of(("remove", Value::singleton(("key", key))));
+    match value {
+        Value::Extant => Value::of_attr(attr),
+        Value::Record(mut attrs, items) => {
+            attrs.insert(0, attr);
+            Value::Record(attrs, items)
+        }
+        ow => Value::Record(vec![attr], vec![Item::ValueItem(ow)]),
+    }
+}
+
+impl<V: Deref<Target = Value>> MapModification<V> {
+    pub fn envelope_body(self) -> Value {
+        match self {
+            MapModification::Insert(key, value) => insert(key, (*value).clone()),
+            MapModification::Remove(key) => remove(key),
+            MapModification::Take(n) => take(n),
+            MapModification::Skip(n) => skip(n),
+            MapModification::Clear => clear(),
+        }
+    }
 }
 
 pub enum MapAction {

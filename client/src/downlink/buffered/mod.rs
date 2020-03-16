@@ -16,7 +16,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{BroadcastReceiver, BroadcastTopic, SubscriptionError, Topic};
+use common::topic::{BroadcastReceiver, BroadcastTopic, TopicError, Topic};
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
@@ -24,10 +24,19 @@ use tokio::sync::{broadcast, watch, mpsc};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct BufferedDownlink<Act, Upd> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: BroadcastTopic<Event<Upd>>,
+}
+
+impl<Act, Upd> Clone for BufferedDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        BufferedDownlink {
+            input: self.input.clone(),
+            topic: self.topic.clone(),
+        }
+    }
 }
 
 impl<Act, Upd> BufferedDownlink<Act, Upd> {
@@ -66,7 +75,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = BufferedReceiver<Upd>;
-    type Fut = Ready<Result<BufferedReceiver<Upd>, SubscriptionError>>;
+    type Fut = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()

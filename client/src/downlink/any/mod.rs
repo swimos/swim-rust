@@ -18,7 +18,7 @@ use futures::{Future, Stream};
 use tokio::macros::support::Pin;
 
 use common::topic::{
-    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, SubscriptionError, Topic,
+    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, TopicError, Topic,
     WatchTopic,
 };
 use pin_project::{pin_project, project};
@@ -34,11 +34,21 @@ use tokio::sync::{mpsc, oneshot};
 /// Wrapper around any one of queueing, dropping and buffered downlink implementations. This
 /// itself implements the Downlink trait (although using it like this will be slightly less
 /// efficient than using the wrapped downlink directly).
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum AnyDownlink<Act, Upd> {
     Queue(QueueDownlink<Act, Upd>),
     Dropping(DroppingDownlink<Act, Upd>),
     Buffered(BufferedDownlink<Act, Upd>),
+}
+
+impl<Act, Upd> Clone for AnyDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        match self {
+            AnyDownlink::Queue(dl) => AnyDownlink::Queue((*dl).clone()),
+            AnyDownlink::Dropping(dl) => AnyDownlink::Dropping((*dl).clone()),
+            AnyDownlink::Buffered(dl) => AnyDownlink::Buffered((*dl).clone()),
+        }
+    }
 }
 
 #[pin_project]
@@ -63,8 +73,8 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
 
 pub type QueueSubFuture<Upd> =
     Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>>;
-pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, SubscriptionError>>;
-pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, SubscriptionError>>;
+pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
+pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
 
 #[pin_project]
 pub enum AnySubFuture<Upd> {
@@ -74,7 +84,7 @@ pub enum AnySubFuture<Upd> {
 }
 
 impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
-    type Output = Result<AnyReceiver<Upd>, SubscriptionError>;
+    type Output = Result<AnyReceiver<Upd>, TopicError>;
 
     #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

@@ -33,10 +33,10 @@ pub mod dropping;
 pub mod model;
 pub mod queue;
 pub mod raw;
-//pub mod subscription;
+pub mod subscription;
 
 pub(self) use self::raw::create_downlink;
-use common::topic::{BoxTopic, SubscriptionError, Topic};
+use common::topic::{BoxTopic, TopicError, Topic};
 use futures::future::BoxFuture;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
@@ -77,7 +77,7 @@ pub struct BoxedDownlink<Act, Upd: Clone> {
 
 impl<Act, Upd: Clone + 'static> Topic<Upd> for BoxedDownlink<Act, Upd> {
     type Receiver = BoxStream<'static, Upd>;
-    type Fut = BoxFuture<'static, Result<BoxStream<'static, Upd>, SubscriptionError>>;
+    type Fut = BoxFuture<'static, Result<BoxStream<'static, Upd>, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()

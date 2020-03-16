@@ -23,10 +23,19 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct QueueDownlink<Act, Upd> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: MpscTopic<Event<Upd>>,
+}
+
+impl<Act, Upd> Clone for QueueDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        QueueDownlink {
+            input: self.input.clone(),
+            topic: self.topic.clone(),
+        }
+    }
 }
 
 impl<Act, Upd> QueueDownlink<Act, Upd> {

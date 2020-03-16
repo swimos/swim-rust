@@ -16,17 +16,26 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{SubscriptionError, Topic, WatchTopic, WatchTopicReceiver};
+use common::topic::{TopicError, Topic, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, watch};
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DroppingDownlink<Act, Upd> {
     input: raw::Sender<mpsc::Sender<Act>>,
     topic: WatchTopic<Event<Upd>>,
+}
+
+impl<Act, Upd> Clone for DroppingDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        DroppingDownlink {
+            input: self.input.clone(),
+            topic: self.topic.clone(),
+        }
+    }
 }
 
 impl<Act, Upd> DroppingDownlink<Act, Upd> {
@@ -64,7 +73,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = DroppingReceiver<Upd>;
-    type Fut = Ready<Result<DroppingReceiver<Upd>, SubscriptionError>>;
+    type Fut = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()

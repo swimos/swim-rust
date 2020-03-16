@@ -40,6 +40,14 @@ pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
     {
         map_err::SenderErrInto::new(self)
     }
+
+    fn comap<S, F>(self, f: F) -> comap::ItemSenderComap<Self, F>
+    where
+        Self: Sized,
+        F: FnMut(S) -> T,
+    {
+        comap::ItemSenderComap::new(self, f)
+    }
 }
 
 impl<X, T, E> ItemSender<T, E> for X where X: for<'a> ItemSink<'a, T, Error = E> {}
@@ -240,5 +248,39 @@ impl<'a, T, E: 'a> ItemSink<'a, T> for BoxItemSink<T, E> {
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         (**self).send_item(value)
+    }
+}
+
+pub mod comap {
+    use super::ItemSink;
+
+    pub struct ItemSenderComap<Sender, F> {
+        sender: Sender,
+        f: F,
+    }
+
+    impl<Sender, F> ItemSenderComap<Sender, F> {
+
+        pub fn new(sender: Sender, f: F) -> ItemSenderComap<Sender, F> {
+            ItemSenderComap {
+                sender,
+                f,
+            }
+        }
+
+    }
+
+    impl<'a, S, T, Sender, F> ItemSink<'a, S> for ItemSenderComap<Sender, F>
+    where
+        Sender: ItemSink<'a, T>,
+        F: FnMut(S) -> T,
+    {
+        type Error = Sender::Error;
+        type SendFuture = Sender::SendFuture;
+
+        fn send_item(&'a mut self, value: S) -> Self::SendFuture {
+            let ItemSenderComap { sender, f} = self;
+            sender.send_item(f(value))
+        }
     }
 }

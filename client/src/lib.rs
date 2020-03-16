@@ -14,4 +14,5 @@
 
 pub mod configuration;
 pub mod downlink;
+pub mod router;
 pub mod sink;
