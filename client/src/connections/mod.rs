@@ -1,3 +1,17 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use std::collections::HashMap;
 
 use async_trait::async_trait;
@@ -15,7 +29,8 @@ use url;
 #[cfg(test)]
 mod tests;
 
-struct ConnectionPoolMessage {
+#[derive(Debug)]
+pub struct ConnectionPoolMessage {
     host: String,
     message: String,
 }
@@ -29,12 +44,12 @@ pub struct ConnectionPool {
 impl ConnectionPool {
     pub fn new<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         buffer_size: usize,
-        router_tx: mpsc::Sender<Result<Message, ConnectionError>>,
+        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
         connection_producer: T,
     ) -> ConnectionPool {
         let (tx, rx) = mpsc::channel(buffer_size);
         let (connections_tx, connections_rx) =
-            mpsc::channel::<Result<Message, ConnectionError>>(buffer_size);
+            mpsc::channel::<Result<ConnectionPoolMessage, ConnectionError>>(buffer_size);
 
         let send_handler = tokio::spawn(ConnectionPool::send_messages(
             rx,
@@ -43,7 +58,8 @@ impl ConnectionPool {
             buffer_size,
         ));
 
-        let receive_handler = tokio::spawn(receive_messages(router_tx, connections_rx));
+        let receive_handler =
+            tokio::spawn(ConnectionPool::receive_messages(router_tx, connections_rx));
 
         ConnectionPool {
             tx,
@@ -63,7 +79,7 @@ impl ConnectionPool {
 
     async fn send_messages<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         mut rx: mpsc::Receiver<ConnectionPoolMessage>,
-        connections_tx: mpsc::Sender<Result<Message, ConnectionError>>,
+        connections_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
         connection_producer: T,
         buffer_size: usize,
     ) -> Result<(), ConnectionError> {
@@ -91,6 +107,27 @@ impl ConnectionPool {
                 .await?;
         }
     }
+
+    async fn receive_messages<S>(
+        tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+        rx: S,
+    ) -> Result<(), ConnectionError>
+    where
+        S: TryStreamExt<Ok = ConnectionPoolMessage, Error = ConnectionError> + Send + 'static,
+    {
+        rx.try_for_each(|response: ConnectionPoolMessage| {
+            async {
+                // TODO print statement is for debugging only
+                println!("{:?}", response);
+                tx.clone()
+                    .send(Ok(response))
+                    .await
+                    .map_err(|_| ConnectionError::SendMessageError)
+            }
+        })
+        .await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -101,7 +138,7 @@ pub trait ConnectionProducer {
         &self,
         host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
+        pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     ) -> Result<Self::T, ConnectionError>;
 }
 
@@ -115,7 +152,7 @@ impl ConnectionProducer for SwimConnectionProducer {
         &self,
         host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
+        pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     ) -> Result<Self::T, ConnectionError> {
         SwimConnection::new(host, buffer_size, pool_tx, SwimWebsocketProducer {}).await
     }
@@ -137,6 +174,27 @@ pub trait Connection: Sized {
         Ok(())
     }
 
+    async fn receive_messages<S>(
+        tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+        rx: S,
+        host: String,
+    ) -> Result<(), ConnectionError>
+    where
+        S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
+    {
+        rx.try_for_each(|response: Message| async {
+            tx.clone()
+                .send(Ok(ConnectionPoolMessage {
+                    host: host.clone(),
+                    message: response.into_text()?,
+                }))
+                .await
+                .map_err(|_| ConnectionError::SendMessageError)
+        })
+        .await?;
+        Ok(())
+    }
+
     async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError>;
 }
 
@@ -150,7 +208,7 @@ impl SwimConnection {
     async fn new<T: WebsocketProducer + Send + std::marker::Sync + 'static>(
         host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
+        pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
         websocket_producer: T,
     ) -> Result<SwimConnection, ConnectionError> {
         let url = url::Url::parse(&host)?;
@@ -159,7 +217,7 @@ impl SwimConnection {
         let ws_stream = websocket_producer.connect(url).await?;
         let (write_stream, read_stream) = ws_stream.split();
 
-        let receive = receive_messages(pool_tx, read_stream);
+        let receive = SwimConnection::receive_messages(pool_tx, read_stream, host.to_owned());
         let send = SwimConnection::send_messages(write_stream, rx);
 
         let send_handler = tokio::spawn(send);
@@ -205,27 +263,6 @@ impl WebsocketProducer for SwimWebsocketProducer {
         let ws_stream = ws_stream.err_into::<ConnectionError>();
         Ok(ws_stream)
     }
-}
-
-async fn receive_messages<S>(
-    tx: mpsc::Sender<Result<Message, ConnectionError>>,
-    rx: S,
-) -> Result<(), ConnectionError>
-where
-    S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + 'static,
-{
-    rx.try_for_each(|response: Message| {
-        async {
-            // TODO print statement is for debugging only
-            println!("{:?}", response);
-            tx.clone()
-                .send(Ok(response))
-                .await
-                .map_err(|_| ConnectionError::SendMessageError)
-        }
-    })
-    .await?;
-    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq)]

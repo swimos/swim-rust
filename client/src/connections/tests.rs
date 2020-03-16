@@ -1,5 +1,19 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use crate::connections::{
-    receive_messages, Connection, ConnectionError, ConnectionPool, ConnectionProducer,
+    Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage, ConnectionProducer,
     SwimConnection, SwimWebsocketProducer, WebsocketProducer,
 };
 use async_trait::async_trait;
@@ -44,7 +58,7 @@ async fn test_connection_pool_send_single_message() {
 async fn test_connection_pool_send_and_receive_messages() {
     // Given
     let buffer_size = 5;
-    let host = "ws://127.0.0.1";
+    let host = String::from("ws://127.0.0.1");
     let mut items = Vec::new();
     items.push(Message::text("recv_baz"));
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
@@ -61,13 +75,15 @@ async fn test_connection_pool_send_and_receive_messages() {
     let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
 
     // When
-    connection_pool.send_message(host, "send_bar").unwrap();
+    connection_pool.send_message(&host, "send_bar").unwrap();
 
     // Then
-    assert_eq!(
-        "recv_baz",
-        router_rx.recv().await.unwrap().unwrap().to_text().unwrap()
-    );
+    let pool_message = router_rx.recv().await.unwrap().unwrap();
+
+    assert_eq!("recv_baz", &pool_message.message);
+
+    assert_eq!("ws://127.0.0.1", &pool_message.host);
+
     assert_eq!(
         "send_bar",
         writer_rx.recv().await.unwrap().to_text().unwrap()
@@ -78,23 +94,26 @@ async fn test_connection_pool_send_and_receive_messages() {
 async fn test_connection_receive_single_messages() {
     // Given
     let buffer_size = 5;
+    let host = String::from("ws://127.0.0.1");
     let mut items = Vec::new();
     items.push(Message::text("foo"));
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    receive_messages(pool_tx, read_stream).await.unwrap();
+    SwimConnection::receive_messages(pool_tx, read_stream, host)
+        .await
+        .unwrap();
     // Then
-    assert_eq!(
-        "foo",
-        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
-    );
+    let pool_message = pool_rx.try_recv().unwrap().unwrap();
+    assert_eq!("foo", &pool_message.message);
+    assert_eq!("ws://127.0.0.1", &pool_message.host);
 }
 
 #[tokio::test]
 async fn test_connection_receive_multiple_messages() {
     // Given
     let buffer_size = 5;
+    let host = String::from("ws://127.0.0.1");
     let mut items = Vec::new();
     items.push(Message::text("foo"));
     items.push(Message::text("bar"));
@@ -102,20 +121,23 @@ async fn test_connection_receive_multiple_messages() {
     let read_stream = TestReadStream { items };
     let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     // When
-    receive_messages(pool_tx, read_stream).await.unwrap();
+    SwimConnection::receive_messages(pool_tx, read_stream, host)
+        .await
+        .unwrap();
     // Then
-    assert_eq!(
-        "foo",
-        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
-    );
-    assert_eq!(
-        "bar",
-        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
-    );
-    assert_eq!(
-        "baz",
-        pool_rx.try_recv().unwrap().unwrap().to_text().unwrap()
-    );
+
+    let first_message = pool_rx.try_recv().unwrap().unwrap();
+    let second_message = pool_rx.try_recv().unwrap().unwrap();
+    let third_message = pool_rx.try_recv().unwrap().unwrap();
+
+    assert_eq!("foo", &first_message.message);
+    assert_eq!("ws://127.0.0.1", &first_message.host);
+
+    assert_eq!("bar", &second_message.message);
+    assert_eq!("ws://127.0.0.1", &first_message.host);
+
+    assert_eq!("baz", &third_message.message);
+    assert_eq!("ws://127.0.0.1", &first_message.host);
 }
 
 #[tokio::test]
@@ -237,26 +259,6 @@ async fn test_new_connection_send_message_error() {
     assert_eq!(Some(ConnectionError::SendMessageError), result.err());
 }
 
-// // // Todo only for debugging. (Make sure to enable stdout)
-// use crate::connections::SwimConnectionProducer;
-// use std::{thread, time};
-//
-// #[tokio::test(core_threads = 2)]
-// async fn test_with_remote() {
-//     let (router_tx, _router_rx) = mpsc::channel(5);
-//
-//     let mut connection_pool = ConnectionPool::new(5, router_tx, SwimConnectionProducer {});
-//
-//     connection_pool
-//         .send_message(
-//             "ws://127.0.0.1:9001",
-//             "@sync(node:\"/unit/foo\", lane:\"info\")",
-//         )
-//         .unwrap();
-//
-//     thread::sleep(time::Duration::from_secs(2));
-// }
-
 struct TestConnectionProducer {
     write_stream: TestWriteStream,
     read_stream: TestReadStream,
@@ -268,11 +270,12 @@ impl ConnectionProducer for TestConnectionProducer {
 
     async fn create_connection(
         &self,
-        _host: &str,
+        host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
+        pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     ) -> Result<Self::T, ConnectionError> {
         TestConnection::new(
+            host,
             buffer_size,
             pool_tx,
             self.write_stream.clone(),
@@ -289,14 +292,15 @@ struct TestConnection {
 
 impl TestConnection {
     fn new(
+        host: &str,
         buffer_size: usize,
-        pool_tx: mpsc::Sender<Result<Message, ConnectionError>>,
+        pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
         write_stream: TestWriteStream,
         read_stream: TestReadStream,
     ) -> Result<TestConnection, ConnectionError> {
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let receive = receive_messages(pool_tx, read_stream);
+        let receive = TestConnection::receive_messages(pool_tx, read_stream, host.to_owned());
         let send = TestConnection::send_messages(write_stream, rx);
 
         let send_handler = tokio::spawn(send);
