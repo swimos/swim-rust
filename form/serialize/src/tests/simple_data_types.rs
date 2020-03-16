@@ -14,12 +14,13 @@
 
 use serde::Serialize;
 
-use crate::model::{Item, Value};
+use crate::tests::assert_err;
+use crate::tests::to_value;
+use crate::FormSerializeErr;
+use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod tuples {
-    use crate::model::Attr;
-    use crate::structure::form::Form;
 
     use super::*;
 
@@ -33,7 +34,7 @@ mod tuples {
 
         let test = Test { a: 1, b: (2, 3) };
 
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
@@ -58,7 +59,7 @@ mod tuples {
         struct Test(i32, (i64, i64));
 
         let test = Test(1, (2, 3));
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::record(vec![
             Item::from(1),
@@ -77,7 +78,7 @@ mod tuples {
         struct Test(i32, i64);
 
         let test = Test(1, 2);
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::record(vec![Item::from(1), Item::ValueItem(Value::Int64Value(2))]);
 
@@ -87,7 +88,7 @@ mod tuples {
     #[test]
     fn simple_tuple() {
         let test = (1, 2);
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
 
         let expected = Value::record(vec![Item::from(1), Item::from(2)]);
 
@@ -97,13 +98,12 @@ mod tuples {
 
 #[cfg(test)]
 mod valid_types {
-    use crate::structure::form::Form;
 
     use super::*;
 
     #[test]
     fn test_bool() {
-        let parsed_value = Form::default().to_value(&true).unwrap();
+        let parsed_value = to_value(&true).unwrap();
         let expected = Value::from(true);
 
         assert_eq!(parsed_value, expected);
@@ -112,7 +112,7 @@ mod valid_types {
     #[test]
     fn test_i8() {
         let test: i8 = 1;
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::from(1);
 
         assert_eq!(parsed_value, expected);
@@ -121,7 +121,7 @@ mod valid_types {
     #[test]
     fn test_i16() {
         let test: i16 = 1;
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::from(1);
 
         assert_eq!(parsed_value, expected);
@@ -130,7 +130,7 @@ mod valid_types {
     #[test]
     fn test_i32() {
         let test: i32 = 1;
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::from(1);
 
         assert_eq!(parsed_value, expected);
@@ -139,7 +139,7 @@ mod valid_types {
     #[test]
     fn test_i64() {
         let test: i64 = 1;
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Int64Value(1);
 
         assert_eq!(parsed_value, expected);
@@ -148,7 +148,7 @@ mod valid_types {
     #[test]
     fn test_f32() {
         let test: f32 = 1.0;
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::from(1.0);
 
         assert_eq!(parsed_value, expected);
@@ -157,7 +157,7 @@ mod valid_types {
     #[test]
     fn test_f64() {
         let test: f64 = 1.0;
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::from(1.0);
 
         assert_eq!(parsed_value, expected);
@@ -165,7 +165,7 @@ mod valid_types {
 
     #[test]
     fn test_char() {
-        let parsed_value = Form::default().to_value(&'s').unwrap();
+        let parsed_value = to_value(&'s').unwrap();
         let expected = Value::from("s");
 
         assert_eq!(parsed_value, expected);
@@ -174,8 +174,6 @@ mod valid_types {
 
 #[cfg(test)]
 mod enumeration {
-    use crate::model::Attr;
-    use crate::structure::form::Form;
 
     use super::*;
 
@@ -191,7 +189,7 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let parsed_value = Form::default().to_value(&Test { a: TestEnum::A }).unwrap();
+        let parsed_value = to_value(&Test { a: TestEnum::A }).unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
@@ -213,11 +211,10 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let parsed_value = Form::default()
-            .to_value(&Test {
-                a: TestEnum::A(1, 2),
-            })
-            .unwrap();
+        let parsed_value = to_value(&Test {
+            a: TestEnum::A(1, 2),
+        })
+        .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
@@ -241,11 +238,10 @@ mod enumeration {
             a: TestEnum,
         }
 
-        let parsed_value = Form::default()
-            .to_value(&Test {
-                a: TestEnum::A { a: 1, b: 2 },
-            })
-            .unwrap();
+        let parsed_value = to_value(&Test {
+            a: TestEnum::A { a: 1, b: 2 },
+        })
+        .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
@@ -264,8 +260,6 @@ mod enumeration {
 
 #[cfg(test)]
 mod struct_valid_types {
-    use crate::model::Attr;
-    use crate::structure::form::Form;
 
     use super::*;
 
@@ -277,8 +271,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: true };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", true)]);
 
         assert_eq!(parsed_value, expected);
@@ -292,9 +285,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
-
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1)]);
 
         assert_eq!(parsed_value, expected);
@@ -308,9 +299,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
-
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1)]);
 
         assert_eq!(parsed_value, expected);
@@ -324,9 +313,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
-
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1)]);
 
         assert_eq!(parsed_value, expected);
@@ -340,9 +327,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1 };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
-
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::slot("a", Value::Int64Value(1))],
@@ -359,9 +344,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1.0 };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
-
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1.0)]);
 
         assert_eq!(parsed_value, expected);
@@ -375,9 +358,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 1.0 };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
-
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", 1.0)]);
 
         assert_eq!(parsed_value, expected);
@@ -391,9 +372,7 @@ mod struct_valid_types {
         }
 
         let test = Test { a: 's' };
-
-        let parsed_value = Form::default().to_value(&test).unwrap();
-
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("a", "s")]);
 
         assert_eq!(parsed_value, expected);
@@ -402,8 +381,6 @@ mod struct_valid_types {
 
 #[cfg(test)]
 mod illegal_types {
-    use crate::structure::form::to::tests::assert_err;
-    use crate::structure::form::{Form, FormParseErr};
 
     use super::*;
 
@@ -418,10 +395,10 @@ mod illegal_types {
             a: "abcd".as_bytes(),
         };
 
-        let parsed_value = Form::default().to_value(&test);
+        let parsed_value = to_value(&test);
         assert_err(
             parsed_value,
-            FormParseErr::UnsupportedType(String::from("u8")),
+            FormSerializeErr::UnsupportedType(String::from("u8")),
         );
     }
 
@@ -434,10 +411,10 @@ mod illegal_types {
 
         let test = Test { a: 1 };
 
-        let parsed_value = Form::default().to_value(&test);
+        let parsed_value = to_value(&test);
         assert_err(
             parsed_value,
-            FormParseErr::UnsupportedType(String::from("u8")),
+            FormSerializeErr::UnsupportedType(String::from("u8")),
         );
     }
 
@@ -450,10 +427,10 @@ mod illegal_types {
 
         let test = Test { a: 1 };
 
-        let parsed_value = Form::default().to_value(&test);
+        let parsed_value = to_value(&test);
         assert_err(
             parsed_value,
-            FormParseErr::UnsupportedType(String::from("u16")),
+            FormSerializeErr::UnsupportedType(String::from("u16")),
         );
     }
 
@@ -466,10 +443,10 @@ mod illegal_types {
 
         let test = Test { a: 1 };
 
-        let parsed_value = Form::default().to_value(&test);
+        let parsed_value = to_value(&test);
         assert_err(
             parsed_value,
-            FormParseErr::UnsupportedType(String::from("u32")),
+            FormSerializeErr::UnsupportedType(String::from("u32")),
         );
     }
 
@@ -482,19 +459,16 @@ mod illegal_types {
 
         let test = Test { a: 1 };
 
-        let parsed_value = Form::default().to_value(&test);
+        let parsed_value = to_value(&test);
         assert_err(
             parsed_value,
-            FormParseErr::UnsupportedType(String::from("u64")),
+            FormSerializeErr::UnsupportedType(String::from("u64")),
         );
     }
 }
 
 #[cfg(test)]
 mod compound_types {
-    use crate::model::Attr;
-    use crate::structure::form::to::tests::assert_err;
-    use crate::structure::form::{Form, FormParseErr};
 
     use super::*;
 
@@ -515,7 +489,7 @@ mod compound_types {
             d: String::from("hello"),
         };
 
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
             vec![Attr::of("Test")],
             vec![
@@ -548,10 +522,10 @@ mod compound_types {
             e: 1,
         };
 
-        let parsed_value = Form::default().to_value(&test);
+        let parsed_value = to_value(&test);
         assert_err(
             parsed_value,
-            FormParseErr::UnsupportedType(String::from("u64")),
+            FormSerializeErr::UnsupportedType(String::from("u64")),
         );
     }
 
@@ -565,7 +539,7 @@ mod compound_types {
         let test = Test {
             seq: vec!["a", "b"],
         };
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
             vec![Attr::of("Test")],
             vec![Item::slot(
@@ -590,7 +564,7 @@ mod compound_types {
             seq: vec!["a", "b"],
         };
 
-        let parsed_value = Form::default().to_value(&test).unwrap();
+        let parsed_value = to_value(&test).unwrap();
         let expected = Value::Record(
             vec![Attr::of("Test")],
             vec![

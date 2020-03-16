@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "client",
+    "form",
     "common",
     "server",
-    "utilities"
+    "utilities",
 ]
