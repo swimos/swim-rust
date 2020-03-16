@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::ser;
-
 use core::fmt;
 use std::fmt::{Debug, Display, Formatter};
+
+use serde::ser;
+
+use common::model::{Attr, Item, Value};
 
 pub type Result<T> = ::std::result::Result<T, FormSerializeErr>;
 
@@ -25,8 +27,6 @@ mod tests;
 mod collection_access;
 mod serializer;
 mod struct_access;
-
-use common::model::{Attr, Item, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FormSerializeErr {
@@ -44,20 +44,19 @@ impl Display for FormSerializeErr {
     }
 }
 
-#[derive(Debug)]
 pub struct ValueSerializer {
     current_state: State,
     stack: Vec<State>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct State {
     pub output: Value,
     pub serializer_state: SerializerState,
     pub attr_name: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum SerializerState {
     ReadingNested,
     ReadingEnumName,

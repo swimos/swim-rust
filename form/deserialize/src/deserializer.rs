@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use serde::de::Visitor;
+use serde::Deserializer;
+
+use common::model::{Item, Value};
+
 use crate::enum_access::Enum;
 use crate::map_access::RecordMap;
 use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
-use common::model::{Item, Value};
-use serde::de::Visitor;
-use serde::Deserializer;
 
 impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     type Error = FormDeserializeErr;
@@ -55,7 +57,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::BooleanValue(b)) = &self.current_state.value {
             visitor.visit_bool(*b)
         } else {
-            Err(FormDeserializeErr::Message(String::from("Unexpected type")))
+            self.err_incorrect_type("bool", self.current_state.value)
         }
     }
 
@@ -80,7 +82,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Int32Value(i)) = &self.current_state.value {
             visitor.visit_i32(*i)
         } else {
-            Err(FormDeserializeErr::Message(String::from("Unexpected type")))
+            self.err_incorrect_type("i32", self.current_state.value)
         }
     }
 
@@ -91,7 +93,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Int64Value(i)) = &self.current_state.value {
             visitor.visit_i64(*i)
         } else {
-            Err(FormDeserializeErr::Message(String::from("Unexpected type")))
+            self.err_incorrect_type("i64", self.current_state.value)
         }
     }
 
@@ -137,7 +139,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Float64Value(f)) = &self.current_state.value {
             visitor.visit_f64(*f)
         } else {
-            Err(FormDeserializeErr::Message(String::from("Unexpected type")))
+            self.err_incorrect_type("f64", self.current_state.value)
         }
     }
 
@@ -166,7 +168,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Text(t)) = &self.current_state.value {
             visitor.visit_string(t.to_owned())
         } else {
-            Err(FormDeserializeErr::Message(String::from("Unexpected type")))
+            self.err_incorrect_type("string", self.current_state.value)
         }
     }
 
@@ -253,7 +255,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
             result
         } else {
             match self.current_state.value {
-                Some(v) => Err(FormDeserializeErr::IncorrectType(v.to_owned())),
+                Some(v) => self.err_incorrect_type("Value::Record", Some(v)),
                 None => Err(FormDeserializeErr::Message(String::from("Missing value"))),
             }
         }
@@ -337,7 +339,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                         None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
                     }
                 } else {
-                    unimplemented!()
+                    self.err_incorrect_type("Value::Record", Some(&Value::Extant))
                 }
             }
             None => Err(FormDeserializeErr::Message(String::from("Missing record"))),

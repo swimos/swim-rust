@@ -12,31 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueDeserializer;
-use common::model::Value;
-use serde::Deserialize;
+use form_derive::*;
 
-#[cfg(test)]
-mod nested;
+#[form]
+struct FormStruct {
+    a: i32,
+    b: Child,
+}
 
-#[cfg(test)]
-mod collections;
+struct Child {
+    a: i32
+}
 
-#[cfg(test)]
-mod simple_data_types;
-
-#[cfg(test)]
-mod vectors;
-
-fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
-where
-    T: Deserialize<'de>,
-{
-    let mut deserializer = match value {
-        Value::Record(_, _) => ValueDeserializer::for_values(value),
-        _ => ValueDeserializer::for_single_value(value),
+fn main() {
+    let _ = FormStruct {
+        a: 1,
+        b: Child {
+            a: 2
+        },
     };
-
-    let t = T::deserialize(&mut deserializer)?;
-    Ok(t)
 }

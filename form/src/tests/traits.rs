@@ -19,9 +19,10 @@ use hamcrest2::prelude::*;
 
 use common::model::Value::Record;
 use common::model::{Item, Value};
+use deserialize::FormDeserializeErr;
 
 use super::super::Form;
-use deserialize::FormDeserializeErr;
+use crate::primitives::de_incorrect_type;
 
 fn assert_success<T: PartialEq + Debug>(r: Result<T, FormDeserializeErr>, expected: T) {
     match r {
@@ -50,32 +51,25 @@ fn assert_err<T: PartialEq + Debug>(
 
 #[test]
 fn from_bool() {
+    fn expect_err(from: Value) {
+        let r = bool::try_from_value(&from);
+        assert_err(r, de_incorrect_type::<bool>("bool", &from).err().unwrap());
+    }
+
     let r = bool::try_from_value(&Value::from(true));
     assert_success(r, true);
 
     let r = bool::try_from_value(&Value::from(false));
     assert_success(r, false);
 
-    let r = bool::try_from_value(&Value::from(1));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::from(1)));
+    expect_err(Value::from(1));
+    expect_err(Value::Int64Value(0));
 
-    let r = bool::try_from_value(&&Value::Int64Value(0));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::Int64Value(0)));
-
-    let r = bool::try_from_value(&Value::from(1.0));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::from(1.0)));
-
-    let r = bool::try_from_value(&Value::from(0.0));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::from(0.0)));
-
-    let r = bool::try_from_value(&Value::from("true"));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::from("true")));
-
-    let r = bool::try_from_value(&Value::from("false"));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::from("false")));
-
-    let r = bool::try_from_value(&Value::from(2.0));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::from(2.0)));
+    expect_err(Value::from(1.0));
+    expect_err(Value::from(0.0));
+    expect_err(Value::from("true"));
+    expect_err(Value::from("false"));
+    expect_err(Value::from(2.0));
 }
 
 #[test]
@@ -93,7 +87,12 @@ fn from_i64() {
 #[test]
 fn from_str() {
     let r = String::try_from_value(&Value::from(1.0));
-    assert_err(r, FormDeserializeErr::IncorrectType(Value::from(1.0)));
+    assert_err(
+        r,
+        de_incorrect_type::<bool>("String", &Value::from(1.0))
+            .err()
+            .unwrap(),
+    );
 }
 
 #[test]
@@ -106,7 +105,12 @@ fn vector_mismatched_types() {
     match r {
         Ok(_) => panic!("Parsed correctly with mismatched types."),
         Err(e) => {
-            assert_that!(e, eq(FormDeserializeErr::IncorrectType(Value::from(1.0))));
+            assert_that!(
+                e,
+                eq(de_incorrect_type::<bool>("i64", &Value::from(1.0))
+                    .err()
+                    .unwrap())
+            );
         }
     }
 }
