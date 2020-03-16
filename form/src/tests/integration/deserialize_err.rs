@@ -12,31 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueDeserializer;
-use common::model::Value;
-use serde::Deserialize;
+use form::Form;
+use form_derive::*;
+use common::model::{Value, Attr, Item};
+use deserialize::FormDeserializeErr;
 
-#[cfg(test)]
-mod nested;
+fn main() {
+    #[form]
+    #[derive(PartialEq)]
+    struct Parent {
+        a:i32
+    }
 
-#[cfg(test)]
-mod collections;
+    let record = Value::Record(
+        vec![Attr::from("Parent")],
+        vec![
+            Item::from(("a", 1.0)),
+        ],
+    );
 
-#[cfg(test)]
-mod simple_data_types;
+    let result = Parent::try_from_value(&record);
 
-#[cfg(test)]
-mod vectors;
-
-fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
-where
-    T: Deserialize<'de>,
-{
-    let mut deserializer = match value {
-        Value::Record(_, _) => ValueDeserializer::for_values(value),
-        _ => ValueDeserializer::for_single_value(value),
-    };
-
-    let t = T::deserialize(&mut deserializer)?;
-    Ok(t)
+    match result {
+        Ok(_) => panic!(),
+        Err(e) => assert_eq!(e, FormDeserializeErr::IncorrectType(String::from("Expected: i32, found: 1e0")))
+    }
 }
