@@ -15,6 +15,7 @@
 use form_derive::*;
 
 #[form]
+#[derive(Debug)]
 struct FormStruct {
     a: u32
 }

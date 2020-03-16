@@ -133,7 +133,6 @@ impl<'p> Parser<'p> {
         Some(item)
     }
 
-
     pub fn receiver_assert_quote(&self) -> Vec<TokenStream> {
         match &self.data {
             TypeContents::Struct(CompoundType::Struct, fields) => fields

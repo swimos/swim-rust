@@ -17,7 +17,7 @@ before_script:
 script:
   - cargo test
   - cargo fmt -- --check
-  - cargo clippy --all-features -- -D warnings
+  -
 
 addons:
   apt:
