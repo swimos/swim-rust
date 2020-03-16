@@ -26,7 +26,7 @@ use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 #[tokio::test]
-async fn test_connection_pool_send_single_message() {
+async fn test_connection_pool_send_single_message_single_connection() {
     // Given
     let buffer_size = 5;
     let host = "ws://127.0.0.1";
@@ -52,6 +52,270 @@ async fn test_connection_pool_send_single_message() {
 
     // Then
     assert_eq!("Hello", writer_rx.recv().await.unwrap().to_text().unwrap());
+}
+
+#[tokio::test]
+async fn test_connection_pool_send_multiple_messages_single_connection() {
+    // Given
+    let buffer_size = 5;
+    let host = "ws://127.0.0.1";
+    let first_text = "First_Text";
+    let second_text = "Second_Text";
+    let (router_tx, _router_rx) = mpsc::channel(5);
+
+    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream { items: Vec::new() };
+
+    let producer = TestConnectionProducer {
+        write_stream,
+        read_stream,
+    };
+
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+
+    // When
+    connection_pool.send_message(host, first_text).unwrap();
+    connection_pool.send_message(host, second_text).unwrap();
+
+    // Then
+    assert_eq!(
+        "First_Text",
+        writer_rx.recv().await.unwrap().to_text().unwrap()
+    );
+    assert_eq!(
+        "Second_Text",
+        writer_rx.recv().await.unwrap().to_text().unwrap()
+    );
+}
+
+#[tokio::test]
+async fn test_connection_pool_send_multiple_messages_multiple_connections() {
+    // Given
+    let buffer_size = 5;
+    let first_host = "ws://127.0.0.1";
+    let second_host = "ws://127.0.0.2";
+    let third_host = "ws://127.0.0.3";
+    let first_text = "First_Text";
+    let second_text = "Second_Text";
+    let third_text = "Third_Text";
+    let (router_tx, _router_rx) = mpsc::channel(5);
+
+    let mut read_streams = Vec::<TestReadStream>::new();
+    let mut write_streams = Vec::<TestWriteStream>::new();
+
+    let (first_writer_tx, mut first_writer_rx) = mpsc::channel(5);
+
+    let first_write_stream = TestWriteStream {
+        tx: first_writer_tx,
+        error: false,
+    };
+    let first_read_stream = TestReadStream { items: Vec::new() };
+
+    let (second_writer_tx, mut second_writer_rx) = mpsc::channel(5);
+
+    let second_write_stream = TestWriteStream {
+        tx: second_writer_tx,
+        error: false,
+    };
+    let second_read_stream = TestReadStream { items: Vec::new() };
+
+    let (third_writer_tx, mut third_writer_rx) = mpsc::channel(5);
+
+    let third_write_stream = TestWriteStream {
+        tx: third_writer_tx,
+        error: false,
+    };
+    let third_read_stream = TestReadStream { items: Vec::new() };
+
+    read_streams.push(first_read_stream);
+    write_streams.push(first_write_stream);
+    read_streams.push(second_read_stream);
+    write_streams.push(second_write_stream);
+    read_streams.push(third_read_stream);
+    write_streams.push(third_write_stream);
+
+    let producer = TestMultipleConnectionProducer {
+        write_streams,
+        read_streams,
+    };
+
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+
+    // When
+    connection_pool
+        .send_message(first_host, first_text)
+        .unwrap();
+    connection_pool
+        .send_message(second_host, second_text)
+        .unwrap();
+    connection_pool
+        .send_message(third_host, third_text)
+        .unwrap();
+
+    // Then
+    assert_eq!(
+        "First_Text",
+        first_writer_rx.recv().await.unwrap().to_text().unwrap()
+    );
+    assert_eq!(
+        "Second_Text",
+        second_writer_rx.recv().await.unwrap().to_text().unwrap()
+    );
+    assert_eq!(
+        "Third_Text",
+        third_writer_rx.recv().await.unwrap().to_text().unwrap()
+    );
+}
+
+#[tokio::test]
+async fn test_connection_pool_receive_single_message_single_connection() {
+    // Given
+    let buffer_size = 5;
+    let host = String::from("ws://127.0.0.1");
+    let mut items = Vec::new();
+    items.push(Message::text("new_message"));
+    let (writer_tx, _writer_rx) = mpsc::channel(5);
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream { items };
+    let (router_tx, mut router_rx) = mpsc::channel(5);
+    let producer = TestConnectionProducer {
+        write_stream,
+        read_stream,
+    };
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+
+    // When
+    connection_pool.send_message(&host, "").unwrap();
+
+    // Then
+    let pool_message = router_rx.recv().await.unwrap().unwrap();
+    assert_eq!("new_message", &pool_message.message);
+    assert_eq!("ws://127.0.0.1", &pool_message.host);
+}
+
+#[tokio::test]
+async fn test_connection_pool_receive_multiple_messages_single_connection() {
+    // Given
+    let buffer_size = 5;
+    let host = String::from("ws://127.0.0.1");
+    let mut items = Vec::new();
+    items.push(Message::text("first_message"));
+    items.push(Message::text("second_message"));
+    items.push(Message::text("third_message"));
+    let (writer_tx, _writer_rx) = mpsc::channel(5);
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream { items };
+    let (router_tx, mut router_rx) = mpsc::channel(5);
+    let producer = TestConnectionProducer {
+        write_stream,
+        read_stream,
+    };
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+
+    // When
+    connection_pool.send_message(&host, "").unwrap();
+
+    // Then
+    let first_pool_message = router_rx.recv().await.unwrap().unwrap();
+    let second_pool_message = router_rx.recv().await.unwrap().unwrap();
+    let third_pool_message = router_rx.recv().await.unwrap().unwrap();
+
+    assert_eq!("first_message", &first_pool_message.message);
+    assert_eq!("ws://127.0.0.1", &first_pool_message.host);
+    assert_eq!("second_message", &second_pool_message.message);
+    assert_eq!("ws://127.0.0.1", &second_pool_message.host);
+    assert_eq!("third_message", &third_pool_message.message);
+    assert_eq!("ws://127.0.0.1", &third_pool_message.host);
+}
+
+#[tokio::test]
+async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
+    // Given
+    let buffer_size = 5;
+
+    let mut first_items = Vec::new();
+    let mut second_items = Vec::new();
+    let mut third_items = Vec::new();
+
+    first_items.push(Message::text("first_message"));
+    second_items.push(Message::text("second_message"));
+    third_items.push(Message::text("third_message"));
+
+    let first_host = "ws://127.0.0.1";
+    let second_host = "ws://127.0.0.2";
+    let third_host = "ws://127.0.0.3";
+
+    let (router_tx, mut router_rx) = mpsc::channel(5);
+
+    let mut read_streams = Vec::<TestReadStream>::new();
+    let mut write_streams = Vec::<TestWriteStream>::new();
+
+    let (first_writer_tx, _first_writer_rx) = mpsc::channel(5);
+
+    let first_write_stream = TestWriteStream {
+        tx: first_writer_tx,
+        error: false,
+    };
+    let first_read_stream = TestReadStream { items: first_items };
+
+    let (second_writer_tx, _second_writer_rx) = mpsc::channel(5);
+
+    let second_write_stream = TestWriteStream {
+        tx: second_writer_tx,
+        error: false,
+    };
+    let second_read_stream = TestReadStream {
+        items: second_items,
+    };
+
+    let (third_writer_tx, _third_writer_rx) = mpsc::channel(5);
+
+    let third_write_stream = TestWriteStream {
+        tx: third_writer_tx,
+        error: false,
+    };
+    let third_read_stream = TestReadStream { items: third_items };
+
+    read_streams.push(first_read_stream);
+    write_streams.push(first_write_stream);
+    read_streams.push(second_read_stream);
+    write_streams.push(second_write_stream);
+    read_streams.push(third_read_stream);
+    write_streams.push(third_write_stream);
+
+    let producer = TestMultipleConnectionProducer {
+        write_streams,
+        read_streams,
+    };
+
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+
+    // When
+    connection_pool.send_message(first_host, "").unwrap();
+    connection_pool.send_message(second_host, "").unwrap();
+    connection_pool.send_message(third_host, "").unwrap();
+
+    // Then
+    let first_pool_message = router_rx.recv().await.unwrap().unwrap();
+    let second_pool_message = router_rx.recv().await.unwrap().unwrap();
+    let third_pool_message = router_rx.recv().await.unwrap().unwrap();
+
+    assert_eq!("first_message", &first_pool_message.message);
+    assert_eq!("ws://127.0.0.1", &first_pool_message.host);
+    assert_eq!("second_message", &second_pool_message.message);
+    assert_eq!("ws://127.0.0.2", &second_pool_message.host);
+    assert_eq!("third_message", &third_pool_message.message);
+    assert_eq!("ws://127.0.0.3", &third_pool_message.host);
 }
 
 #[tokio::test]
@@ -104,7 +368,7 @@ async fn test_connection_receive_single_messages() {
         .await
         .unwrap();
     // Then
-    let pool_message = pool_rx.try_recv().unwrap().unwrap();
+    let pool_message = pool_rx.recv().await.unwrap().unwrap();
     assert_eq!("foo", &pool_message.message);
     assert_eq!("ws://127.0.0.1", &pool_message.host);
 }
@@ -126,9 +390,9 @@ async fn test_connection_receive_multiple_messages() {
         .unwrap();
     // Then
 
-    let first_message = pool_rx.try_recv().unwrap().unwrap();
-    let second_message = pool_rx.try_recv().unwrap().unwrap();
-    let third_message = pool_rx.try_recv().unwrap().unwrap();
+    let first_message = pool_rx.recv().await.unwrap().unwrap();
+    let second_message = pool_rx.recv().await.unwrap().unwrap();
+    let third_message = pool_rx.recv().await.unwrap().unwrap();
 
     assert_eq!("foo", &first_message.message);
     assert_eq!("ws://127.0.0.1", &first_message.host);
@@ -203,6 +467,44 @@ async fn test_connection_send_multiple_messages() {
 }
 
 #[tokio::test]
+async fn test_connection_send_and_receive_messages() {
+    // Given
+    let host = "ws://127.0.0.1:9999";
+    let buffer_size = 5;
+    let mut items = Vec::new();
+    items.push(Message::text("message_received"));
+    let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
+    let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream { items };
+    let mut connection = SwimConnection::new(
+        host,
+        buffer_size,
+        pool_tx,
+        TestWebsocketProducer {
+            write_stream,
+            read_stream,
+        },
+    )
+    .await
+    .unwrap();
+    // When
+    connection.send_message("message_sent").await.unwrap();
+    // Then
+    let pool_message = pool_rx.recv().await.unwrap().unwrap();
+    assert_eq!("message_received", &pool_message.message);
+    assert_eq!("ws://127.0.0.1:9999", &pool_message.host);
+
+    assert_eq!(
+        "message_sent",
+        writer_rx.recv().await.unwrap().to_text().unwrap()
+    );
+}
+
+#[tokio::test]
 async fn test_connection_parse_error() {
     // Given
     let host = "foo";
@@ -269,7 +571,7 @@ impl ConnectionProducer for TestConnectionProducer {
     type T = TestConnection;
 
     async fn create_connection(
-        &self,
+        &mut self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
@@ -280,6 +582,31 @@ impl ConnectionProducer for TestConnectionProducer {
             pool_tx,
             self.write_stream.clone(),
             self.read_stream.clone(),
+        )
+    }
+}
+
+struct TestMultipleConnectionProducer {
+    write_streams: Vec<TestWriteStream>,
+    read_streams: Vec<TestReadStream>,
+}
+
+#[async_trait]
+impl ConnectionProducer for TestMultipleConnectionProducer {
+    type T = TestConnection;
+
+    async fn create_connection(
+        &mut self,
+        host: &str,
+        buffer_size: usize,
+        pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+    ) -> Result<Self::T, ConnectionError> {
+        TestConnection::new(
+            host,
+            buffer_size,
+            pool_tx,
+            self.write_streams.drain(0..1).next().unwrap(),
+            self.read_streams.drain(0..1).next().unwrap(),
         )
     }
 }

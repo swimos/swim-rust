@@ -80,7 +80,7 @@ impl ConnectionPool {
     async fn send_messages<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
         mut rx: mpsc::Receiver<ConnectionPoolMessage>,
         connections_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        connection_producer: T,
+        mut connection_producer: T,
         buffer_size: usize,
     ) -> Result<(), ConnectionError> {
         let mut connections = HashMap::new();
@@ -135,7 +135,7 @@ pub trait ConnectionProducer {
     type T: Connection + Send + 'static;
 
     async fn create_connection(
-        &self,
+        &mut self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
@@ -149,7 +149,7 @@ impl ConnectionProducer for SwimConnectionProducer {
     type T = SwimConnection;
 
     async fn create_connection(
-        &self,
+        &mut self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
