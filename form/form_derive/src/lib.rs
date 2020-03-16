@@ -94,11 +94,11 @@ fn expand_derive_form(
         #[allow(unused_qualifications)]
         impl Form for #ident {
             #[inline]
-            fn try_into_value(&self) -> Result<_common::model::Value, _serialize::FormSerializeErr> {
+            fn into_value(&self) -> _common::model::Value {
                 let mut serializer = _serialize::ValueSerializer::default();
                 match self.serialize(&mut serializer) {
-                    Ok(_) => Ok(serializer.output()),
-                    Err(e) => Err(e),
+                    Ok(_) => serializer.output(),
+                    Err(e) => unreachable!(e),
                 }
             }
 

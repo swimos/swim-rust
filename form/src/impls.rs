@@ -15,11 +15,10 @@
 use crate::Form;
 use common::model::{Item, Value};
 use deserialize::FormDeserializeErr;
-use serialize::FormSerializeErr;
 
 impl Form for f64 {
-    fn try_into_value(&self) -> Result<Value, FormSerializeErr> {
-        Ok(Value::Float64Value(*self))
+    fn into_value(&self) -> Value {
+        Value::Float64Value(*self)
     }
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
@@ -39,8 +38,8 @@ pub fn de_incorrect_type<V>(expected: &str, actual: &Value) -> Result<V, FormDes
 }
 
 impl Form for i32 {
-    fn try_into_value(&self) -> Result<Value, FormSerializeErr> {
-        Ok(Value::Int32Value(*self))
+    fn into_value(&self) -> Value {
+        Value::Int32Value(*self)
     }
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
@@ -52,8 +51,8 @@ impl Form for i32 {
 }
 
 impl Form for i64 {
-    fn try_into_value(&self) -> Result<Value, FormSerializeErr> {
-        Ok(Value::Int64Value(*self))
+    fn into_value(&self) -> Value {
+        Value::Int64Value(*self)
     }
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
@@ -65,8 +64,8 @@ impl Form for i64 {
 }
 
 impl Form for bool {
-    fn try_into_value(&self) -> Result<Value, FormSerializeErr> {
-        Ok(Value::BooleanValue(*self))
+    fn into_value(&self) -> Value {
+        Value::BooleanValue(*self)
     }
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
@@ -78,8 +77,8 @@ impl Form for bool {
 }
 
 impl Form for String {
-    fn try_into_value(&self) -> Result<Value, FormSerializeErr> {
-        Ok(Value::Text(String::from(self)))
+    fn into_value(&self) -> Value {
+        Value::Text(String::from(self))
     }
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
@@ -91,7 +90,7 @@ impl Form for String {
 }
 
 impl<T: Form> Form for Vec<T> {
-    fn try_into_value(&self) -> Result<Value, FormSerializeErr> {
+    fn into_value(&self) -> Value {
         unimplemented!()
     }
 

@@ -31,7 +31,7 @@ fn main() {
     );
 
     let parent = Parent { a: 1 };
-    let result = parent.try_into_value().unwrap();
+    let result = parent.into_value();
 
     assert_eq!(result, record)
 }

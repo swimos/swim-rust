@@ -22,7 +22,6 @@ pub extern crate serialize as _serialize;
 use common::model::Value;
 use deserialize::FormDeserializeErr;
 pub use form_derive::*;
-use serialize::FormSerializeErr;
 
 #[cfg(test)]
 mod tests;
@@ -68,6 +67,6 @@ pub mod impls;
 /// assert_eq!(result, msg);
 /// ```
 pub trait Form: Sized {
-    fn try_into_value(&self) -> std::result::Result<Value, FormSerializeErr>;
+    fn into_value(&self) -> Value;
     fn try_from_value(value: &Value) -> std::result::Result<Self, FormDeserializeErr>;
 }
