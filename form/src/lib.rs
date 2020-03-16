@@ -60,7 +60,7 @@ pub mod impls;
 ///     msg: String::from("Hello"),
 /// };
 ///
-/// let result = msg.into_value().unwrap();
+/// let result = msg.into_value();
 /// assert_eq!(record, result);
 ///
 /// let result = Message::try_from_value(&record).unwrap();

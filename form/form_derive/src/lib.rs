@@ -26,7 +26,7 @@ use syn::DeriveInput;
 
 use crate::parser::{Context, Parser};
 
-#[allow(dead_code, unused_imports, unused_variables)]
+#[allow(dead_code, unused_variables)]
 mod parser;
 
 #[proc_macro_derive(Form)]
@@ -76,7 +76,7 @@ fn expand_derive_form(
     context.check()?;
 
     let ident = parser.ident.clone();
-    let assertions = parser.receiver_assert_quote(ident.clone());
+    let assertions = parser.receiver_assert_quote();
     let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
     let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
 

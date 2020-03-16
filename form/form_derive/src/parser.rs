@@ -14,14 +14,12 @@
 
 use std::cell::RefCell;
 use std::fmt::Display;
-use std::process::id;
 
-use proc_macro2::{Ident, Punct, Spacing, Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::Token;
 use syn::DeriveInput;
 
 pub struct Parser<'a> {
@@ -135,30 +133,12 @@ impl<'p> Parser<'p> {
         Some(item)
     }
 
-    pub fn receiver_match_arm(&self) -> Vec<TokenStream> {
+
+    pub fn receiver_assert_quote(&self) -> Vec<TokenStream> {
         match &self.data {
             TypeContents::Struct(CompoundType::Struct, fields) => fields
                 .iter()
-                .enumerate()
-                .map(|(index, field)| {
-                    let ident = Ident::new(&format!("__self__{}", index), Span::call_site());
-                    let span = field.span();
-                    let field_name = Ident::new(&field.name, Span::call_site());
-                    let split = Punct::new(':', Spacing::Alone);
-
-                    quote_spanned!(span=> #field_name #split #ident)
-                })
-                .collect(),
-            _ => unimplemented!("receiver_match_arm"),
-        }
-    }
-
-    pub fn receiver_assert_quote(&self, parent_ident: Ident) -> Vec<TokenStream> {
-        match &self.data {
-            TypeContents::Struct(CompoundType::Struct, fields) => fields
-                .iter()
-                .enumerate()
-                .map(|(index, field)| {
+                .map(|field| {
                     let span = field.span();
                     let ty = field.ty;
                     let receiver_ident = Ident::new(
