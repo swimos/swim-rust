@@ -31,7 +31,7 @@ fn main() {
     );
 
     let parent = Parent { a: 1 };
-    let result = parent.into_value();
+    let result = parent.as_value();
 
     assert_eq!(result, record)
 }

@@ -60,13 +60,13 @@ pub mod impls;
 ///     msg: String::from("Hello"),
 /// };
 ///
-/// let result = msg.into_value();
+/// let result = msg.as_value();
 /// assert_eq!(record, result);
 ///
 /// let result = Message::try_from_value(&record).unwrap();
 /// assert_eq!(result, msg);
 /// ```
 pub trait Form: Sized {
-    fn into_value(&self) -> Value;
+    fn as_value(&self) -> Value;
     fn try_from_value(value: &Value) -> std::result::Result<Self, FormDeserializeErr>;
 }

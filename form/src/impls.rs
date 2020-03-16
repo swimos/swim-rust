@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::Form;
 use common::model::{Item, Value};
 use deserialize::FormDeserializeErr;
 
+use crate::Form;
+
 impl Form for f64 {
-    fn into_value(&self) -> Value {
+    fn as_value(&self) -> Value {
         Value::Float64Value(*self)
     }
 
@@ -38,7 +39,7 @@ pub fn de_incorrect_type<V>(expected: &str, actual: &Value) -> Result<V, FormDes
 }
 
 impl Form for i32 {
-    fn into_value(&self) -> Value {
+    fn as_value(&self) -> Value {
         Value::Int32Value(*self)
     }
 
@@ -51,7 +52,7 @@ impl Form for i32 {
 }
 
 impl Form for i64 {
-    fn into_value(&self) -> Value {
+    fn as_value(&self) -> Value {
         Value::Int64Value(*self)
     }
 
@@ -64,7 +65,7 @@ impl Form for i64 {
 }
 
 impl Form for bool {
-    fn into_value(&self) -> Value {
+    fn as_value(&self) -> Value {
         Value::BooleanValue(*self)
     }
 
@@ -77,7 +78,7 @@ impl Form for bool {
 }
 
 impl Form for String {
-    fn into_value(&self) -> Value {
+    fn as_value(&self) -> Value {
         Value::Text(String::from(self))
     }
 
@@ -90,8 +91,8 @@ impl Form for String {
 }
 
 impl<T: Form> Form for Vec<T> {
-    fn into_value(&self) -> Value {
-        unimplemented!()
+    fn as_value(&self) -> Value {
+        Value::record(self.iter().map(|t| Item::from(t.as_value())).collect())
     }
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
