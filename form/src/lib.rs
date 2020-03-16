@@ -26,7 +26,8 @@ pub use form_derive::*;
 #[cfg(test)]
 mod tests;
 
-pub mod impls;
+pub mod collections;
+pub mod primitives;
 
 /// The preferred approach to deriving forms is to use the attribute [`[#form]`] as this will derive
 /// [`Form`], [`Serialize`], and [`Deserialize`], as well as performing compile-time checking on the

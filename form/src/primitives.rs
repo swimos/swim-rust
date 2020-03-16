@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::{Item, Value};
+use common::model::Value;
 use deserialize::FormDeserializeErr;
 
 use crate::Form;
@@ -86,34 +86,6 @@ impl Form for String {
         match value {
             Value::Text(i) => Ok(i.to_owned()),
             v => de_incorrect_type("String", v),
-        }
-    }
-}
-
-impl<T: Form> Form for Vec<T> {
-    fn as_value(&self) -> Value {
-        Value::record(self.iter().map(|t| Item::from(t.as_value())).collect())
-    }
-
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
-        match value {
-            Value::Record(attr, items) if attr.is_empty() => {
-                let length = items.len();
-                items
-                    .iter()
-                    .try_fold(
-                        Vec::with_capacity(length),
-                        |mut results: Vec<T>, item| match item {
-                            Item::ValueItem(v) => {
-                                let result = T::try_from_value(v)?;
-                                results.push(result);
-                                Ok(results)
-                            }
-                            i => Err(FormDeserializeErr::IllegalItem(i.to_owned())),
-                        },
-                    )
-            }
-            v => de_incorrect_type("Vec<T>", v),
         }
     }
 }
