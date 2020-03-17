@@ -3,7 +3,9 @@ language: rust
 os:
   - linux
   - osx
+  if: branch = master
   - windows
+  if: branch = master
 
 rust:
   - stable
@@ -30,10 +32,8 @@ addons:
       - binutils-dev
       - libiberty-dev
 
-
 env:
   - SWIM_CRATES="client form common server utilities deserialize serialize"
-
 
 after_success:
   - |
