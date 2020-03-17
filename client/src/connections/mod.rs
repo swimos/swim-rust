@@ -109,24 +109,20 @@ impl ConnectionPool {
     }
 
     async fn receive_messages<S>(
-        tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        rx: S,
+        mut tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+        mut rx: S,
     ) -> Result<(), ConnectionError>
     where
-        S: TryStreamExt<Ok = ConnectionPoolMessage, Error = ConnectionError> + Send + 'static,
+        S: Stream<Item = Result<ConnectionPoolMessage, ConnectionError>> + Send + Unpin + 'static,
     {
-        rx.try_for_each(|response: ConnectionPoolMessage| {
-            async {
-                // TODO print statement is for debugging only
-                println!("{:?}", response);
-                tx.clone()
-                    .send(Ok(response))
-                    .await
-                    .map_err(|_| ConnectionError::SendMessageError)
-            }
-        })
-        .await?;
-        Ok(())
+        loop {
+            let response = rx.next().await.ok_or(ConnectionError::SendMessageError)?;
+            // TODO print statement is for debugging only
+            println!("{:?}", response);
+            tx.send(response)
+                .await
+                .map_err(|_| ConnectionError::SendMessageError)?;
+        }
     }
 }
 
