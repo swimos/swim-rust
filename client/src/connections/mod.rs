@@ -132,28 +132,28 @@ impl ConnectionPool {
 
 #[async_trait]
 pub trait ConnectionProducer {
-    type T: Connection + Send + 'static;
+    type ConnectionType: Connection + Send + 'static;
 
     async fn create_connection(
         &mut self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-    ) -> Result<Self::T, ConnectionError>;
+    ) -> Result<Self::ConnectionType, ConnectionError>;
 }
 
 struct SwimConnectionProducer {}
 
 #[async_trait]
 impl ConnectionProducer for SwimConnectionProducer {
-    type T = SwimConnection;
+    type ConnectionType = SwimConnection;
 
     async fn create_connection(
         &mut self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-    ) -> Result<Self::T, ConnectionError> {
+    ) -> Result<Self::ConnectionType, ConnectionError> {
         SwimConnection::new(host, buffer_size, pool_tx, SwimWebsocketProducer {}).await
     }
 }
@@ -195,7 +195,12 @@ pub trait Connection: Sized {
         Ok(())
     }
 
-    async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError>;
+    fn get_tx(&mut self) -> &mut mpsc::Sender<Message>;
+
+    async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
+        self.get_tx().send(Message::text(message)).await?;
+        Ok(())
+    }
 }
 
 struct SwimConnection {
@@ -233,30 +238,28 @@ impl SwimConnection {
 
 #[async_trait]
 impl Connection for SwimConnection {
-    //noinspection ALL
-    async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
-        self.tx.send(Message::text(message)).await?;
-        Ok(())
+    fn get_tx(&mut self) -> &mut mpsc::Sender<Message> {
+        &mut self.tx
     }
 }
 
 #[async_trait]
 trait WebsocketProducer {
-    type T: Stream<Item = Result<Message, ConnectionError>>
+    type WebsocketType: Stream<Item = Result<Message, ConnectionError>>
         + Sink<Message>
         + std::marker::Send
         + 'static;
 
-    async fn connect(self, url: url::Url) -> Result<Self::T, ConnectionError>;
+    async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError>;
 }
 
 struct SwimWebsocketProducer {}
 
 #[async_trait]
 impl WebsocketProducer for SwimWebsocketProducer {
-    type T = ErrInto<WebSocketStream<TcpStream>, ConnectionError>;
+    type WebsocketType = ErrInto<WebSocketStream<TcpStream>, ConnectionError>;
 
-    async fn connect(self, url: url::Url) -> Result<Self::T, ConnectionError> {
+    async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError> {
         let (ws_stream, _) = connect_async(url)
             .await
             .map_err(|_| ConnectionError::ConnectError)?;

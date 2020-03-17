@@ -568,14 +568,14 @@ struct TestConnectionProducer {
 
 #[async_trait]
 impl ConnectionProducer for TestConnectionProducer {
-    type T = TestConnection;
+    type ConnectionType = TestConnection;
 
     async fn create_connection(
         &mut self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-    ) -> Result<Self::T, ConnectionError> {
+    ) -> Result<Self::ConnectionType, ConnectionError> {
         TestConnection::new(
             host,
             buffer_size,
@@ -593,14 +593,14 @@ struct TestMultipleConnectionProducer {
 
 #[async_trait]
 impl ConnectionProducer for TestMultipleConnectionProducer {
-    type T = TestConnection;
+    type ConnectionType = TestConnection;
 
     async fn create_connection(
         &mut self,
         host: &str,
         buffer_size: usize,
         pool_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-    ) -> Result<Self::T, ConnectionError> {
+    ) -> Result<Self::ConnectionType, ConnectionError> {
         TestConnection::new(
             host,
             buffer_size,
@@ -643,10 +643,8 @@ impl TestConnection {
 
 #[async_trait]
 impl Connection for TestConnection {
-    //noinspection ALL
-    async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
-        self.tx.send(Message::text(message)).await?;
-        Ok(())
+    fn get_tx(&mut self) -> &mut mpsc::Sender<Message> {
+        &mut self.tx
     }
 }
 
@@ -657,9 +655,9 @@ struct TestWebsocketProducer {
 
 #[async_trait]
 impl WebsocketProducer for TestWebsocketProducer {
-    type T = TestReadWriteStream;
+    type WebsocketType = TestReadWriteStream;
 
-    async fn connect(self, _url: url::Url) -> Result<Self::T, ConnectionError> {
+    async fn connect(self, _url: url::Url) -> Result<Self::WebsocketType, ConnectionError> {
         Ok(TestReadWriteStream {
             write_stream: self.write_stream.clone(),
             read_stream: self.read_stream.clone(),
