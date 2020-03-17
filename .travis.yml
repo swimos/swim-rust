@@ -1,11 +1,12 @@
 language: rust
 
-os:
-  - linux
-  - osx
-  if: branch = master
-  - windows
-  if: branch = master
+matrix:
+  include:
+    - os: linux
+    - os: osx
+      if: branch = master
+    - os: windows
+      if: branch = master
 
 rust:
   - stable
