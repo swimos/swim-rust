@@ -265,7 +265,7 @@ where
             break Err(DownlinkError::OperationStreamEnded);
         }
     };
-    let _ = on_complete.broadcast(Some(result.clone()));
+    let _ = on_complete.broadcast(Some(result));
     result
 }
 

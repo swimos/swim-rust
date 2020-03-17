@@ -38,6 +38,7 @@ pub mod subscription;
 pub(self) use self::raw::create_downlink;
 use common::topic::{BoxTopic, TopicError, Topic};
 use futures::future::BoxFuture;
+use crate::router::RoutingError;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -109,6 +110,14 @@ pub enum DownlinkError {
     TaskPanic,
     OperationStreamEnded,
     TransitionError,
+}
+
+impl From<RoutingError> for DownlinkError {
+    fn from(e: RoutingError) -> Self {
+        match e {
+            RoutingError::RouterDropped => DownlinkError::DroppedChannel,
+        }
+    }
 }
 
 impl Display for DownlinkError {

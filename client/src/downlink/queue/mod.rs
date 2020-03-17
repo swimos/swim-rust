@@ -112,6 +112,7 @@ pub(in crate::downlink) fn make_downlink<Err, M, A, State, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    queue_size: usize,
 ) -> (QueueDownlink<A, State::Ev>, QueueReceiver<State::Ev>)
 where
     M: Send + 'static,
@@ -149,5 +150,5 @@ where
     let raw_dl = raw::RawDownlink::new(
         act_tx, event_rx, dl_task);
 
-    QueueDownlink::from_raw(raw_dl, buffer_size)
+    QueueDownlink::from_raw(raw_dl, queue_size)
 }

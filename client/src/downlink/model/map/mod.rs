@@ -154,10 +154,10 @@ fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
 }
 
 fn extract_take_or_skip(
-    name: &String,
+    name: &str,
     n: i32,
 ) -> Result<MapModification<Value>, FormDeserializeErr> {
-    match name.as_str() {
+    match name {
         "take" => {
             if n >= 0 {
                 Ok(MapModification::Take(n as usize))
@@ -180,7 +180,7 @@ fn extract_take_or_skip(
         }
         _ => Err(FormDeserializeErr::Message(format!(
             "{} is not a map action.",
-            *name
+            name
         ))),
     }
 }
@@ -518,6 +518,7 @@ pub fn create_queue_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    queue_size: usize,
 ) -> (
     QueueDownlink<MapAction, ViewWithEvent>,
     QueueReceiver<ViewWithEvent>,
@@ -528,7 +529,7 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    queue::make_downlink(init, update_stream, cmd_sink, buffer_size)
+    queue::make_downlink(init, update_stream, cmd_sink, buffer_size, queue_size)
 }
 
 /// Create a value downlink with an dropping multiplexing topic.
@@ -554,6 +555,7 @@ pub fn create_buffered_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    queue_size: usize,
 ) -> (
     BufferedDownlink<MapAction, ViewWithEvent>,
     BufferedReceiver<ViewWithEvent>,
@@ -564,7 +566,7 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    buffered::make_downlink(init, update_stream, cmd_sink, buffer_size)
+    buffered::make_downlink(init, update_stream, cmd_sink, buffer_size, queue_size)
 }
 
 impl StateMachine<MapModification<Value>, MapAction> for ValMap {

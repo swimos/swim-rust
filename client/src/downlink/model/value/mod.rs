@@ -112,6 +112,7 @@ pub fn create_queue_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    queue_size: usize,
 ) -> (
     QueueDownlink<Action, SharedValue>,
     QueueReceiver<SharedValue>,
@@ -121,7 +122,7 @@ where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
 {
-    queue::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+    queue::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size, queue_size)
 }
 
 /// Create a value downlink with a dropping multiplexing topic.
@@ -148,6 +149,7 @@ pub fn create_buffered_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    queue_size: usize,
 ) -> (
     BufferedDownlink<Action, SharedValue>,
     BufferedReceiver<SharedValue>,
@@ -157,7 +159,7 @@ where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
 {
-    buffered::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+    buffered::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size, queue_size)
 }
 
 impl StateMachine<Value, Action> for SharedValue {
