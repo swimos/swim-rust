@@ -92,10 +92,15 @@ impl Form for MapModification<Value> {
                 },
                 Some(Attr { name, value }) if *name == "insert" => {
                     extract_key(value.clone()).map(|key| {
-                        MapModification::Insert(
-                            key,
-                            Record(attrs.iter().skip(1).cloned().collect(), items.clone()),
-                        )
+                        let insert_value = if !has_more && items.len() < 2 {
+                            match items.first() {
+                                Some(Item::ValueItem(single)) => single.clone(),
+                                _ => Value::record(items.clone()),
+                            }
+                        } else {
+                            Record(attrs.iter().skip(1).cloned().collect(), items.clone())
+                        };
+                        MapModification::Insert(key, insert_value)
                     })
                 }
                 _ => Err(FormDeserializeErr::Malformatted),
@@ -128,8 +133,12 @@ impl Form for MapModification<Value> {
                 }
                 Some(Attr { name, value }) if name == "insert" => {
                     let attr_tail = attr_it.collect::<Vec<_>>();
-                    let insert_value = if attr_tail.is_empty() && items.is_empty() {
-                        Extant
+                    let insert_value = if attr_tail.is_empty() && items.len() < 2 {
+                        match items.into_iter().next() {
+                            Some(Item::ValueItem(single)) => single,
+                            Some(ow) => Value::singleton(ow),
+                            _ => Extant,
+                        }
                     } else {
                         Record(attr_tail, items)
                     };
@@ -207,7 +216,7 @@ fn remove(key: Value) -> Value {
 }
 
 fn insert(key: Value, value: Value) -> Value {
-    let attr = Attr::of(("remove", Value::singleton(("key", key))));
+    let attr = Attr::of(("insert", Value::singleton(("key", key))));
     match value {
         Value::Extant => Value::of_attr(attr),
         Value::Record(mut attrs, items) => {
