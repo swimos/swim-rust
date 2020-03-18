@@ -157,9 +157,9 @@ impl<'a, T: Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
 
 pub mod map_err {
     use crate::sink::item::ItemSink;
-    use std::marker::PhantomData;
-    use futures_util::future::TryFutureExt;
     use futures::future::ErrInto;
+    use futures_util::future::TryFutureExt;
+    use std::marker::PhantomData;
 
     pub struct SenderErrInto<Sender, E> {
         sender: Sender,
@@ -260,14 +260,9 @@ pub mod comap {
     }
 
     impl<Sender, F> ItemSenderComap<Sender, F> {
-
         pub fn new(sender: Sender, f: F) -> ItemSenderComap<Sender, F> {
-            ItemSenderComap {
-                sender,
-                f,
-            }
+            ItemSenderComap { sender, f }
         }
-
     }
 
     impl<'a, S, T, Sender, F> ItemSink<'a, S> for ItemSenderComap<Sender, F>
@@ -279,7 +274,7 @@ pub mod comap {
         type SendFuture = Sender::SendFuture;
 
         fn send_item(&'a mut self, value: S) -> Self::SendFuture {
-            let ItemSenderComap { sender, f} = self;
+            let ItemSenderComap { sender, f } = self;
             sender.send_item(f(value))
         }
     }

@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
-use common::warp::path::AbsolutePath;
-use crate::downlink::Command;
-use common::warp::envelope::Envelope;
-use crate::downlink::model::value::SharedValue;
 use crate::downlink::model::map::MapModification;
-use std::sync::Arc;
+use crate::downlink::model::value::SharedValue;
+use crate::downlink::Command;
+use common::model::Value;
+use common::warp::envelope::Envelope;
+use common::warp::path::AbsolutePath;
 use deserialize::FormDeserializeErr;
+use std::sync::Arc;
 
 pub enum EnvInterpError {
     MissingBody,
@@ -27,38 +27,44 @@ pub enum EnvInterpError {
     InvalidBody(FormDeserializeErr),
 }
 
-pub fn envelope_for<T, F>(to_body: F,
-                   path: &AbsolutePath,
-                   command: Command<T>) -> (String, Envelope)
+pub fn envelope_for<T, F>(
+    to_body: F,
+    path: &AbsolutePath,
+    command: Command<T>,
+) -> (String, Envelope)
 where
-    F: Fn(T) -> Option<Value>
+    F: Fn(T) -> Option<Value>,
 {
     let host = path.host.clone();
     let node = path.node.clone();
     let lane = path.lane.clone();
-    (host, match command {
-        Command::Sync => Envelope::sync(node, lane),
-        Command::Action(v) => Envelope::command(node, lane, to_body(v)),
-        Command::Unlink => Envelope::unlink(node, lane),
-    })
+    (
+        host,
+        match command {
+            Command::Sync => Envelope::sync(node, lane),
+            Command::Action(v) => Envelope::command(node, lane, to_body(v)),
+            Command::Unlink => Envelope::unlink(node, lane),
+        },
+    )
 }
 
-pub fn value_envelope(path: &AbsolutePath,
-                             command: Command<SharedValue>) -> (String, Envelope) {
+pub fn value_envelope(path: &AbsolutePath, command: Command<SharedValue>) -> (String, Envelope) {
     envelope_for(value::envelope_body, path, command)
 }
 
-pub fn map_envelope(path: &AbsolutePath,
-                             command: Command<MapModification<Arc<Value>>>) -> (String, Envelope) {
+pub fn map_envelope(
+    path: &AbsolutePath,
+    command: Command<MapModification<Arc<Value>>>,
+) -> (String, Envelope) {
     envelope_for(map::envelope_body, path, command)
 }
 
 pub mod value {
     use crate::downlink::model::value::SharedValue;
+    use crate::downlink::subscription::envelopes::EnvInterpError;
+    use crate::downlink::Message;
     use common::model::Value;
     use common::warp::envelope::{Envelope, LaneAddressed};
-    use crate::downlink::Message;
-    use crate::downlink::subscription::envelopes::EnvInterpError;
 
     pub fn envelope_body(v: SharedValue) -> Option<Value> {
         Some((*v).clone())
@@ -69,7 +75,9 @@ pub mod value {
             Envelope::LinkedResponse(_) => Ok(Message::Linked),
             Envelope::SyncedResponse(_) => Ok(Message::Synced),
             Envelope::UnlinkedResponse(_) => Ok(Message::Unlinked),
-            Envelope::EventMessage(LaneAddressed { body: Some(body), ..}) => Ok(Message::Action(body)),
+            Envelope::EventMessage(LaneAddressed {
+                body: Some(body), ..
+            }) => Ok(Message::Action(body)),
             Envelope::EventMessage(_) => Err(EnvInterpError::MissingBody),
             _ => Err(EnvInterpError::BadMessageKind),
         }
@@ -78,31 +86,32 @@ pub mod value {
 
 pub mod map {
     use crate::downlink::model::map::MapModification;
-    use std::sync::Arc;
+    use crate::downlink::subscription::envelopes::EnvInterpError;
+    use crate::downlink::Message;
     use common::model::Value;
     use common::warp::envelope::{Envelope, LaneAddressed};
-    use crate::downlink::Message;
-    use crate::downlink::subscription::envelopes::EnvInterpError;
     use form::Form;
+    use std::sync::Arc;
 
     pub(super) fn envelope_body(cmd: MapModification<Arc<Value>>) -> Option<Value> {
         Some(cmd.envelope_body())
     }
 
-    pub fn try_from_envelope(env: Envelope) -> Result<Message<MapModification<Value>>, EnvInterpError> {
+    pub fn try_from_envelope(
+        env: Envelope,
+    ) -> Result<Message<MapModification<Value>>, EnvInterpError> {
         match env {
             Envelope::LinkedResponse(_) => Ok(Message::Linked),
             Envelope::SyncedResponse(_) => Ok(Message::Synced),
             Envelope::UnlinkedResponse(_) => Ok(Message::Unlinked),
-            Envelope::EventMessage(LaneAddressed { body: Some(body), ..}) => {
-                match Form::try_convert(body) {
-                    Ok(modification) => Ok(Message::Action(modification)),
-                    Err(e) => Err(EnvInterpError::InvalidBody(e)),
-                }
+            Envelope::EventMessage(LaneAddressed {
+                body: Some(body), ..
+            }) => match Form::try_convert(body) {
+                Ok(modification) => Ok(Message::Action(modification)),
+                Err(e) => Err(EnvInterpError::InvalidBody(e)),
             },
             Envelope::EventMessage(_) => Err(EnvInterpError::MissingBody),
             _ => Err(EnvInterpError::BadMessageKind),
         }
     }
-
 }

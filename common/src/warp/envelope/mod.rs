@@ -70,7 +70,6 @@ impl Envelope {
         }
     }
 
-
     pub fn sync(node: String, lane: String) -> Self {
         Envelope::SyncRequest(LinkAddressed {
             lane: LaneAddressed {

@@ -27,11 +27,11 @@ use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
 use crate::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
+use form::Form;
 use futures::Stream;
 use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
-use form::Form;
 
 #[cfg(test)]
 mod tests;
@@ -73,30 +73,37 @@ impl Form for MapModification<Value> {
             let head = attr_it.next();
             let has_more = attr_it.next().is_some();
             match head {
-                Some(first) if !has_more && items.is_empty() => {
-                    match first {
-                        Attr {name, value: Extant} if *name == "clear" =>
-                            Ok(MapModification::Clear),
-                        Attr {name, value: Int32Value(n)} =>
-                            extract_take_or_skip(&name, *n),
-                        Attr { name, value } if name == "remove" => {
-                            extract_key(value.clone()).map(MapModification::Remove)
-                        },
-                        Attr { name, value } if name == "insert" => {
-                            extract_key(value.clone()).map(|key| MapModification::Insert(key, Extant))
-                        },
-                        _ => Err(FormDeserializeErr::Malformatted),
+                Some(first) if !has_more && items.is_empty() => match first {
+                    Attr {
+                        name,
+                        value: Extant,
+                    } if *name == "clear" => Ok(MapModification::Clear),
+                    Attr {
+                        name,
+                        value: Int32Value(n),
+                    } => extract_take_or_skip(&name, *n),
+                    Attr { name, value } if name == "remove" => {
+                        extract_key(value.clone()).map(MapModification::Remove)
                     }
-                }
-                Some(Attr { name, value}) if *name == "insert" => {
-                    extract_key(value.clone()).map(
-                        |key| MapModification::Insert(key,
-                                                      Record(attrs.iter().skip(1).cloned().collect(), items.clone())))
+                    Attr { name, value } if name == "insert" => {
+                        extract_key(value.clone()).map(|key| MapModification::Insert(key, Extant))
+                    }
+                    _ => Err(FormDeserializeErr::Malformatted),
                 },
+                Some(Attr { name, value }) if *name == "insert" => {
+                    extract_key(value.clone()).map(|key| {
+                        MapModification::Insert(
+                            key,
+                            Record(attrs.iter().skip(1).cloned().collect(), items.clone()),
+                        )
+                    })
+                }
                 _ => Err(FormDeserializeErr::Malformatted),
             }
         } else {
-            Err(FormDeserializeErr::IncorrectType("Invalid structure for map action.".to_string()))
+            Err(FormDeserializeErr::IncorrectType(
+                "Invalid structure for map action.".to_string(),
+            ))
         }
     }
 
@@ -109,13 +116,13 @@ impl Form for MapModification<Value> {
 
             match head {
                 Some(Attr {
-                         name,
-                         value: Extant,
-                     }) if name == "clear" && single_attr => Ok(MapModification::Clear),
+                    name,
+                    value: Extant,
+                }) if name == "clear" && single_attr => Ok(MapModification::Clear),
                 Some(Attr {
-                         name,
-                         value: Int32Value(n),
-                     }) if single_attr => extract_take_or_skip(&name, n),
+                    name,
+                    value: Int32Value(n),
+                }) if single_attr => extract_take_or_skip(&name, n),
                 Some(Attr { name, value }) if name == "remove" && single_attr => {
                     extract_key(value).map(MapModification::Remove)
                 }
@@ -136,7 +143,6 @@ impl Form for MapModification<Value> {
     }
 }
 
-
 fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
     match attr_body {
         Value::Record(attrs, items) if attrs.is_empty() && items.len() < 2 => {
@@ -153,10 +159,7 @@ fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
     }
 }
 
-fn extract_take_or_skip(
-    name: &str,
-    n: i32,
-) -> Result<MapModification<Value>, FormDeserializeErr> {
+fn extract_take_or_skip(name: &str, n: i32) -> Result<MapModification<Value>, FormDeserializeErr> {
     match name {
         "take" => {
             if n >= 0 {

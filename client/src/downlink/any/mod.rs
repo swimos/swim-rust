@@ -18,7 +18,7 @@ use futures::{Future, Stream};
 use tokio::macros::support::Pin;
 
 use common::topic::{
-    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, TopicError, Topic,
+    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, Topic, TopicError,
     WatchTopic,
 };
 use pin_project::{pin_project, project};

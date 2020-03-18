@@ -23,7 +23,6 @@ pub struct AbsolutePath {
 }
 
 impl AbsolutePath {
-
     pub fn new(host: &str, node: &str, lane: &str) -> AbsolutePath {
         AbsolutePath {
             host: host.to_string(),
@@ -43,17 +42,18 @@ impl AbsolutePath {
     /// assert_eq!(abs.split(), ("host".to_string(), RelativePath::new("node", "lane")));
     /// ```
     pub fn split(self) -> (String, RelativePath) {
-        let AbsolutePath {
-            host, node, lane
-        } = self;
+        let AbsolutePath { host, node, lane } = self;
         (host, RelativePath { node, lane })
     }
-
 }
 
 impl Display for AbsolutePath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "AbsolutePath[{}, {}, {}]", self.host, self.node, self.lane)
+        write!(
+            f,
+            "AbsolutePath[{}, {}, {}]",
+            self.host, self.node, self.lane
+        )
     }
 }
 
@@ -65,7 +65,6 @@ pub struct RelativePath {
 }
 
 impl RelativePath {
-
     pub fn new(node: &str, lane: &str) -> RelativePath {
         RelativePath {
             node: node.to_string(),
@@ -84,7 +83,7 @@ impl RelativePath {
     /// assert_eq!(rel.for_host("host"), AbsolutePath::new("host", "node", "lane"))
     /// ```
     pub fn for_host(self, host: &str) -> AbsolutePath {
-        let RelativePath { node, lane} = self;
+        let RelativePath { node, lane } = self;
         AbsolutePath {
             host: host.to_string(),
             node,

@@ -16,7 +16,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{TopicError, Topic, WatchTopic, WatchTopicReceiver};
+use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, watch};
@@ -137,15 +137,14 @@ where
         act_rx.fuse(),
         cmd_sink,
         event_sink,
-        closed_tx
+        closed_tx,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
 
     let dl_task = raw::DownlinkTask::new(join_handle, stop_tx, closed_rx);
 
-    let raw_dl = raw::RawDownlink::new(
-        act_tx, event_rx, dl_task);
+    let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 
     DroppingDownlink::from_raw(raw_dl)
 }

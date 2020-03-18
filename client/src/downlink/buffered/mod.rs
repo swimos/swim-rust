@@ -16,11 +16,11 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{BroadcastReceiver, BroadcastTopic, TopicError, Topic};
+use common::topic::{BroadcastReceiver, BroadcastTopic, Topic, TopicError};
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
-use tokio::sync::{broadcast, watch, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
@@ -141,7 +141,7 @@ where
             act_rx.fuse(),
             cmd_sink,
             event_sink,
-            closed_tx
+            closed_tx,
         );
 
         let join_handle = tokio::task::spawn(lane_task);

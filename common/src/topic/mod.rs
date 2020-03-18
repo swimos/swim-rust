@@ -127,7 +127,7 @@ pub struct BroadcastTopic<T> {
 impl<T> Clone for BroadcastTopic<T> {
     fn clone(&self) -> Self {
         BroadcastTopic {
-            sender: self.sender.clone()
+            sender: self.sender.clone(),
         }
     }
 }

@@ -139,16 +139,14 @@ where
         act_rx.fuse(),
         cmd_sink,
         event_sink,
-        closed_tx
+        closed_tx,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
 
-    let dl_task = raw::DownlinkTask::new(join_handle,
-                                         stop_tx, closed_rx);
+    let dl_task = raw::DownlinkTask::new(join_handle, stop_tx, closed_rx);
 
-    let raw_dl = raw::RawDownlink::new(
-        act_tx, event_rx, dl_task);
+    let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 
     QueueDownlink::from_raw(raw_dl, queue_size)
 }

@@ -13,20 +13,18 @@
 // limitations under the License.
 
 pub mod downlink {
+    use common::warp::path::AbsolutePath;
+    use std::collections::HashMap;
     use std::num::NonZeroUsize;
     use tokio::time::Duration;
-    use std::collections::HashMap;
-    use common::warp::path::AbsolutePath;
 
     /// Configuration for the creation and management of downlinks for a Warp client.
-    pub trait Config : Send + Sync {
-
+    pub trait Config: Send + Sync {
         /// Get the downlink configuration for a downlink a specific path.
         fn config_for(&self, path: &AbsolutePath) -> DownlinkParams;
 
         /// Get the global parameters for any downlink.
         fn client_params(&self) -> ClientParams;
-
     }
 
     /// Multiplexing strategy for the topic of events produced by a downlink.
@@ -77,10 +75,8 @@ pub mod downlink {
     }
 
     impl ConfigHierarchy {
-
         /// Create a new configuration store with just a default.
-        pub fn new(client_params: ClientParams,
-                   default: DownlinkParams) -> ConfigHierarchy {
+        pub fn new(client_params: ClientParams, default: DownlinkParams) -> ConfigHierarchy {
             ConfigHierarchy {
                 client_params,
                 default,
@@ -104,21 +100,23 @@ pub mod downlink {
     impl Config for ConfigHierarchy {
         fn config_for(&self, path: &AbsolutePath) -> DownlinkParams {
             let ConfigHierarchy {
-                default, by_host, by_lane,..
+                default,
+                by_host,
+                by_lane,
+                ..
             } = self;
             match by_lane.get(path) {
                 Some(params) => *params,
                 _ => match by_host.get(&path.host) {
                     Some(params) => *params,
-                    _ => *default
-                }
+                    _ => *default,
+                },
             }
         }
 
         fn client_params(&self) -> ClientParams {
             self.client_params
         }
-
     }
 
     impl<'a> Config for Box<dyn Config + 'a> {
@@ -129,7 +127,5 @@ pub mod downlink {
         fn client_params(&self) -> ClientParams {
             (**self).client_params()
         }
-
     }
-
 }

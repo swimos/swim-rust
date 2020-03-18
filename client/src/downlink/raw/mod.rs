@@ -14,8 +14,8 @@
 
 use super::*;
 use crate::sink::item::ItemSender;
-use std::sync::Arc;
 use futures::StreamExt;
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
@@ -89,7 +89,10 @@ impl<S, R> RawDownlink<S, R> {
     ) -> RawDownlink<S, R> {
         RawDownlink {
             receiver: Receiver { event_stream },
-            sender: Sender { set_sink, task: Arc::new(task) },
+            sender: Sender {
+                set_sink,
+                task: Arc::new(task),
+            },
         }
     }
 
@@ -138,7 +141,7 @@ where
         act_rx.fuse(),
         cmd_sink,
         event_sink,
-        closed_tx
+        closed_tx,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
@@ -176,7 +179,8 @@ impl DownlinkTask {
 impl DownlinkTask {
     async fn stop(&self) -> Result<(), DownlinkError> {
         let _ = self.stop_trigger.broadcast(Some(()));
-        self.stop_waiter.clone()
+        self.stop_waiter
+            .clone()
             .filter_map(future::ready)
             .next()
             .await
@@ -202,7 +206,7 @@ pub(in crate::downlink) async fn make_downlink_task<
     acts: Acts,
     mut cmd_sink: Commands,
     mut ev_sink: Events,
-    on_complete: watch::Sender<Option<Result<(), DownlinkError>>>
+    on_complete: watch::Sender<Option<Result<(), DownlinkError>>>,
 ) -> Result<(), DownlinkError>
 where
     EC: Into<DownlinkError>,
@@ -281,8 +285,7 @@ where
     Upd: Stream<Item = Message<M>> + Send + 'static,
 {
     let upd_operations = updates.map(Operation::Message);
-    let close_operations =
-        stop.filter_map(|u| future::ready(u.map(|_| Operation::Close)));
+    let close_operations = stop.filter_map(|u| future::ready(u.map(|_| Operation::Close)));
 
     let init = stream::once(future::ready(Operation::Start));
 
