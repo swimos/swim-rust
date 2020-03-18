@@ -54,7 +54,7 @@ pub struct Downlinks {
 
 impl Downlinks {
 
-    pub async fn new<C, R>(config: C, router: R) -> Downlinks
+    pub async fn new<C, R>(config: Arc<C>, router: R) -> Downlinks
     where
         C: Config + 'static,
         R: Router + 'static,
@@ -155,7 +155,7 @@ pub enum DownlinkRequest {
 }
 
 struct DownlinkTask<R> {
-    config: Box<dyn Config>,
+    config: Arc<dyn Config>,
     value: HashMap<AbsolutePath, ValueDownlink>,
     map: HashMap<AbsolutePath, MapDownlink>,
     router: R,
@@ -166,12 +166,12 @@ where
     R : Router,
 {
 
-    fn new<C>(config: C, router: R) -> DownlinkTask<R>
+    fn new<C>(config: Arc<C>, router: R) -> DownlinkTask<R>
     where
         C: Config + 'static,
     {
         DownlinkTask {
-            config: Box::new(config),
+            config,
             value: HashMap::new(),
             map: HashMap::new(),
             router,

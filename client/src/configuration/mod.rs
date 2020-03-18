@@ -18,37 +18,56 @@ pub mod downlink {
     use std::collections::HashMap;
     use common::warp::path::AbsolutePath;
 
+    /// Configuration for the creation and management of downlinks for a Warp client.
+    pub trait Config : Send + Sync {
+
+        /// Get the downlink configuration for a downlink a specific path.
+        fn config_for(&self, path: &AbsolutePath) -> DownlinkParams;
+
+        /// Get the global parameters for any downlink.
+        fn client_params(&self) -> ClientParams;
+
+    }
+
+    /// Multiplexing strategy for the topic of events produced by a downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub enum MuxMode {
+        /// Each consumer has an intermediate queues. If any one of these queues fills the
+        /// downlink will block.
         Queue(NonZeroUsize),
+        /// Each subscriber to the downlink will see only the most recent event each time it polls.
+        /// Subscribers could miss a large proportion of messages.
         Dropping,
+        /// All consumers read from a single intermediate queue. If this queue fills the oldest
+        /// values will be discarded. Lagging consumers could miss messages.
         Buffered(NonZeroUsize),
     }
 
-
+    /// Configuration parameters for a single downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub struct DownlinkParams {
+        /// Whether the downlink propagates back-pressure (not yet fully implemented so this is ignored).
         pub back_pressure: bool,
+
+        /// Multiplexing mode for the downlink.
         pub mux_mode: MuxMode,
+
+        /// Timeout after which an idle downlink will be closed (not yet implemented).
         pub idle_timout: Duration,
+
+        /// Buffer size for local actions performed on the downlink.
         pub buffer_size: NonZeroUsize,
     }
 
+    /// Configuration parameters for all downlinks.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub struct ClientParams {
+        /// Buffer size for servicing requests for new downlinks.
         pub dl_req_buffer_size: NonZeroUsize,
     }
 
-    pub trait Config : Send {
-
-        fn config_for(&self, path: &AbsolutePath) -> DownlinkParams;
-
-        fn client_params(&self) -> ClientParams;
-
-        fn duplicate(&self) -> Box<dyn Config>;
-
-    }
-
+    /// Basic [`Config`] implementation which allows for configuration to be specified by absolute
+    /// path or host and provides a default fallback.
     #[derive(Clone, Debug)]
     pub struct ConfigHierarchy {
         client_params: ClientParams,
@@ -59,7 +78,9 @@ pub mod downlink {
 
     impl ConfigHierarchy {
 
-        pub fn new(client_params: ClientParams, default: DownlinkParams) -> ConfigHierarchy {
+        /// Create a new configuration store with just a default.
+        pub fn new(client_params: ClientParams,
+                   default: DownlinkParams) -> ConfigHierarchy {
             ConfigHierarchy {
                 client_params,
                 default,
@@ -68,10 +89,13 @@ pub mod downlink {
             }
         }
 
+        /// Add specific configuration for a host.
         pub fn for_host(&mut self, host: &str, params: DownlinkParams) {
             self.by_host.insert(host.to_string(), params);
         }
 
+        /// Add specific configuration for an absolute path (this will override host level
+        /// configuration).
         pub fn for_lane(&mut self, lane: &AbsolutePath, params: DownlinkParams) {
             self.by_lane.insert(lane.clone(), params);
         }
@@ -95,9 +119,6 @@ pub mod downlink {
             self.client_params
         }
 
-        fn duplicate(&self) -> Box<dyn Config> {
-            Box::new(self.clone())
-        }
     }
 
     impl<'a> Config for Box<dyn Config + 'a> {
@@ -109,9 +130,6 @@ pub mod downlink {
             (**self).client_params()
         }
 
-        fn duplicate(&self) -> Box<dyn Config> {
-           (**self).duplicate()
-        }
     }
 
 }
