@@ -69,8 +69,10 @@ impl ConnectionPool {
 
     pub fn request_connection(
         &mut self,
-        host_url: url::Url,
+        host: &str,
     ) -> Result<oneshot::Receiver<ConnectionHandler>, ConnectionError> {
+        let host_url = url::Url::parse(host).map_err(|_| ConnectionError::ConnectError)?;
+
         let (tx, rx) = oneshot::channel();
 
         self.connection_request_tx
