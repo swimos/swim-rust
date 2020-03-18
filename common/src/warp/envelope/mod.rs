@@ -70,6 +70,18 @@ impl Envelope {
         }
     }
 
+    pub fn link(node: String, lane: String) -> Self {
+        Envelope::LinkRequest(LinkAddressed {
+            lane: LaneAddressed {
+                node_uri: node,
+                lane_uri: lane,
+                body: None,
+            },
+            rate: None,
+            prio: None,
+        })
+    }
+
     pub fn sync(node: String, lane: String) -> Self {
         Envelope::SyncRequest(LinkAddressed {
             lane: LaneAddressed {
@@ -87,6 +99,42 @@ impl Envelope {
             node_uri: node,
             lane_uri: lane,
             body: None,
+        })
+    }
+
+    pub fn unlinked(node: String, lane: String) -> Self {
+        Envelope::UnlinkedResponse(LaneAddressed {
+            node_uri: node,
+            lane_uri: lane,
+            body: None,
+        })
+    }
+
+    pub fn linked(node: String, lane: String) -> Self {
+        Envelope::LinkedResponse(LinkAddressed {
+            lane: LaneAddressed {
+                node_uri: node,
+                lane_uri: lane,
+                body: None,
+            },
+            rate: None,
+            prio: None,
+        })
+    }
+
+    pub fn synced(node: String, lane: String) -> Self {
+        Envelope::SyncedResponse(LaneAddressed {
+            node_uri: node,
+            lane_uri: lane,
+            body: None,
+        })
+    }
+
+    pub fn event(node: String, lane: String, body: Option<Value>) -> Self {
+        Envelope::EventMessage(LaneAddressed {
+            node_uri: node,
+            lane_uri: lane,
+            body,
         })
     }
 

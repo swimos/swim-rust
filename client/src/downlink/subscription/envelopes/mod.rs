@@ -19,19 +19,38 @@ use common::model::Value;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use deserialize::FormDeserializeErr;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-pub enum EnvInterpError {
+#[cfg(test)]
+mod tests;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::downlink) enum EnvInterpError {
     MissingBody,
     BadMessageKind,
     InvalidBody(FormDeserializeErr),
 }
 
-pub fn envelope_for<T, F>(
-    to_body: F,
-    path: &AbsolutePath,
-    command: Command<T>,
-) -> (String, Envelope)
+impl Display for EnvInterpError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EnvInterpError::MissingBody => write! {f, "The envelope body was expected but absent."},
+            EnvInterpError::BadMessageKind => {
+                write! {f, "An invalid envelope kind was encountered."}
+            }
+            EnvInterpError::InvalidBody(_) => {
+                write! {f, "The envelope body did not have the correct form."}
+            }
+        }
+    }
+}
+
+impl Error for EnvInterpError {}
+
+/// Convert a downlink [`Command`] into a Warp [`Envelope`].
+fn envelope_for<T, F>(to_body: F, path: &AbsolutePath, command: Command<T>) -> (String, Envelope)
 where
     F: Fn(T) -> Option<Value>,
 {
@@ -48,10 +67,12 @@ where
     )
 }
 
+/// Convert a downlink [`Command`], from a value lane, into a Warp [`Envelope`].
 pub fn value_envelope(path: &AbsolutePath, command: Command<SharedValue>) -> (String, Envelope) {
     envelope_for(value::envelope_body, path, command)
 }
 
+/// Convert a downlink [`Command`], from a map lane, into a Warp [`Envelope`].
 pub fn map_envelope(
     path: &AbsolutePath,
     command: Command<MapModification<Arc<Value>>>,
@@ -59,18 +80,20 @@ pub fn map_envelope(
     envelope_for(map::envelope_body, path, command)
 }
 
-pub mod value {
+pub(in crate::downlink) mod value {
     use crate::downlink::model::value::SharedValue;
     use crate::downlink::subscription::envelopes::EnvInterpError;
     use crate::downlink::Message;
     use common::model::Value;
     use common::warp::envelope::{Envelope, LaneAddressed};
 
-    pub fn envelope_body(v: SharedValue) -> Option<Value> {
+    pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Option<Value> {
         Some((*v).clone())
     }
 
-    pub fn try_from_envelope(env: Envelope) -> Result<Message<Value>, EnvInterpError> {
+    pub(in crate::downlink) fn try_from_envelope(
+        env: Envelope,
+    ) -> Result<Message<Value>, EnvInterpError> {
         match env {
             Envelope::LinkedResponse(_) => Ok(Message::Linked),
             Envelope::SyncedResponse(_) => Ok(Message::Synced),
@@ -84,7 +107,7 @@ pub mod value {
     }
 }
 
-pub mod map {
+pub(in crate::downlink) mod map {
     use crate::downlink::model::map::MapModification;
     use crate::downlink::subscription::envelopes::EnvInterpError;
     use crate::downlink::Message;
@@ -97,7 +120,7 @@ pub mod map {
         Some(cmd.envelope_body())
     }
 
-    pub fn try_from_envelope(
+    pub(in crate::downlink) fn try_from_envelope(
         env: Envelope,
     ) -> Result<Message<MapModification<Value>>, EnvInterpError> {
         match env {
