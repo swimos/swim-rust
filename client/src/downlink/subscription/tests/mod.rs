@@ -12,7 +12,152 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::*;
+use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
+use crate::downlink::any::TopicKind;
+use common::warp::path::AbsolutePath;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use tokio::time::Duration;
 
 mod harness;
+
+// Uses the same configuration for everything.
+fn default_config() -> ConfigHierarchy {
+    let client_params = ClientParams::new(2).unwrap();
+    let timeout = Duration::from_secs(60000);
+    let default_params = DownlinkParams::new_queue(true, 5, timeout, 5).unwrap();
+    ConfigHierarchy::new(client_params, default_params)
+}
+
+// Configuration overridden for a specific host.
+fn per_host_config() -> ConfigHierarchy {
+    let timeout = Duration::from_secs(60000);
+    let special_params = DownlinkParams::new_dropping(true, timeout, 5).unwrap();
+    let mut conf = default_config();
+    conf.for_host("host2", special_params);
+    conf
+}
+
+// Configuration overridden for a specific lane.
+fn per_lane_config() -> ConfigHierarchy {
+    let timeout = Duration::from_secs(60000);
+    let special_params = DownlinkParams::new_buffered(true, 5, timeout, 5).unwrap();
+    let mut conf = per_host_config();
+    conf.for_lane(
+        &AbsolutePath::new("host2", "my_agent", "my_lane"),
+        special_params,
+    );
+    conf
+}
+
+async fn dl_manager(conf: ConfigHierarchy) -> Downlinks {
+    let router = harness::StubRouter::new();
+    Downlinks::new(Arc::new(conf), router).await
+}
+
+#[tokio::test]
+async fn subscribe_value_lane_default_config() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_value(Value::Extant, path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Queue));
+}
+
+#[tokio::test]
+async fn subscribe_value_lane_per_host_config() {
+    let path = AbsolutePath::new("host2", "node", "lane");
+    let mut downlinks = dl_manager(per_host_config()).await;
+    let result = downlinks.subscribe_value(Value::Extant, path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Dropping));
+}
+
+#[tokio::test]
+async fn subscribe_value_lane_per_lane_config() {
+    let path = AbsolutePath::new("host2", "my_agent", "my_lane");
+    let mut downlinks = dl_manager(per_lane_config()).await;
+    let result = downlinks.subscribe_value(Value::Extant, path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Buffered));
+}
+
+#[tokio::test]
+async fn subscribe_map_lane_default_config() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_map(path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Queue));
+}
+
+#[tokio::test]
+async fn subscribe_map_lane_per_host_config() {
+    let path = AbsolutePath::new("host2", "node", "lane");
+    let mut downlinks = dl_manager(per_host_config()).await;
+    let result = downlinks.subscribe_map(path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Dropping));
+}
+
+#[tokio::test]
+async fn subscribe_map_lane_per_lane_config() {
+    let path = AbsolutePath::new("host2", "my_agent", "my_lane");
+    let mut downlinks = dl_manager(per_lane_config()).await;
+    let result = downlinks.subscribe_map(path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Buffered));
+}
+
+#[tokio::test]
+async fn request_map_dl_for_running_value_dl() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_value(Value::Extant, path.clone()).await;
+    assert_that!(&result, ok());
+    let _dl = result.unwrap();
+
+    let next_result = downlinks.subscribe_map(path).await;
+    assert_that!(&next_result, err());
+    let err = next_result.err().unwrap();
+    assert_that!(
+        err,
+        eq(SubscriptionError::bad_kind(
+            DownlinkKind::Map,
+            DownlinkKind::Value
+        ))
+    );
+}
+
+#[tokio::test]
+async fn request_value_dl_for_running_map_dl() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_map(path.clone()).await;
+    assert_that!(&result, ok());
+    let _dl = result.unwrap();
+
+    let next_result = downlinks.subscribe_value(Value::Extant, path).await;
+    assert_that!(&next_result, err());
+    let err = next_result.err().unwrap();
+    assert_that!(
+        err,
+        eq(SubscriptionError::bad_kind(
+            DownlinkKind::Value,
+            DownlinkKind::Map
+        ))
+    );
+}

@@ -51,10 +51,70 @@ pub mod downlink {
         pub mux_mode: MuxMode,
 
         /// Timeout after which an idle downlink will be closed (not yet implemented).
-        pub idle_timout: Duration,
+        pub idle_timeout: Duration,
 
         /// Buffer size for local actions performed on the downlink.
         pub buffer_size: NonZeroUsize,
+    }
+
+    impl DownlinkParams {
+        pub fn new(
+            back_pressure: bool,
+            mux_mode: MuxMode,
+            idle_timeout: Duration,
+            buffer_size: usize,
+        ) -> Result<DownlinkParams, String> {
+            if idle_timeout == Duration::from_millis(0) {
+                Err(BAD_TIMEOUT.to_string())
+            } else {
+                match NonZeroUsize::new(buffer_size) {
+                    Some(nz) => Ok(DownlinkParams {
+                        back_pressure,
+                        mux_mode,
+                        idle_timeout,
+                        buffer_size: nz,
+                    }),
+                    _ => Err(BAD_BUFFER_SIZE.to_string()),
+                }
+            }
+        }
+
+        pub fn new_queue(
+            back_pressure: bool,
+            queue_size: usize,
+            idle_timeout: Duration,
+            buffer_size: usize,
+        ) -> Result<DownlinkParams, String> {
+            match NonZeroUsize::new(queue_size) {
+                Some(nz) => Self::new(back_pressure, MuxMode::Queue(nz), idle_timeout, buffer_size),
+                _ => Err(BAD_BUFFER_SIZE.to_string()),
+            }
+        }
+
+        pub fn new_dropping(
+            back_pressure: bool,
+            idle_timeout: Duration,
+            buffer_size: usize,
+        ) -> Result<DownlinkParams, String> {
+            Self::new(back_pressure, MuxMode::Dropping, idle_timeout, buffer_size)
+        }
+
+        pub fn new_buffered(
+            back_pressure: bool,
+            queue_size: usize,
+            idle_timeout: Duration,
+            buffer_size: usize,
+        ) -> Result<DownlinkParams, String> {
+            match NonZeroUsize::new(queue_size) {
+                Some(nz) => Self::new(
+                    back_pressure,
+                    MuxMode::Buffered(nz),
+                    idle_timeout,
+                    buffer_size,
+                ),
+                _ => Err(BAD_BUFFER_SIZE.to_string()),
+            }
+        }
     }
 
     /// Configuration parameters for all downlinks.
@@ -62,6 +122,20 @@ pub mod downlink {
     pub struct ClientParams {
         /// Buffer size for servicing requests for new downlinks.
         pub dl_req_buffer_size: NonZeroUsize,
+    }
+
+    const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
+    const BAD_TIMEOUT: &str = "Timeout must be positive.";
+
+    impl ClientParams {
+        pub fn new(dl_req_buffer_size: usize) -> Result<ClientParams, String> {
+            match NonZeroUsize::new(dl_req_buffer_size) {
+                Some(nz) => Ok(ClientParams {
+                    dl_req_buffer_size: nz,
+                }),
+                _ => Err(BAD_BUFFER_SIZE.to_string()),
+            }
+        }
     }
 
     /// Basic [`Config`] implementation which allows for configuration to be specified by absolute

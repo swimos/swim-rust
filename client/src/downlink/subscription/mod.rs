@@ -94,7 +94,7 @@ impl Downlinks {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DownlinkKind {
     Value,
     Map,
@@ -109,7 +109,7 @@ impl Display for DownlinkKind {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SubscriptionError {
     BadKind {
         expected: DownlinkKind,

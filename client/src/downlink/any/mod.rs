@@ -29,7 +29,25 @@ use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw;
 use crate::downlink::{Downlink, DownlinkError, Event};
 use crate::sink::item::{ItemSink, MpscSend};
+use std::fmt::{Display, Formatter};
 use tokio::sync::{mpsc, oneshot};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TopicKind {
+    Queue,
+    Dropping,
+    Buffered,
+}
+
+impl Display for TopicKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TopicKind::Queue => write!(f, "Queue"),
+            TopicKind::Dropping => write!(f, "Dropping"),
+            TopicKind::Buffered => write!(f, "Buffered"),
+        }
+    }
+}
 
 /// Wrapper around any one of queueing, dropping and buffered downlink implementations. This
 /// itself implements the Downlink trait (although using it like this will be slightly less
@@ -39,6 +57,16 @@ pub enum AnyDownlink<Act, Upd> {
     Queue(QueueDownlink<Act, Upd>),
     Dropping(DroppingDownlink<Act, Upd>),
     Buffered(BufferedDownlink<Act, Upd>),
+}
+
+impl<Act, Upd> AnyDownlink<Act, Upd> {
+    pub fn kind(&self) -> TopicKind {
+        match self {
+            AnyDownlink::Queue(_) => TopicKind::Queue,
+            AnyDownlink::Dropping(_) => TopicKind::Dropping,
+            AnyDownlink::Buffered(_) => TopicKind::Buffered,
+        }
+    }
 }
 
 impl<Act, Upd> Clone for AnyDownlink<Act, Upd> {
@@ -52,6 +80,7 @@ impl<Act, Upd> Clone for AnyDownlink<Act, Upd> {
 }
 
 #[pin_project]
+#[derive(Debug)]
 pub enum AnyReceiver<Upd> {
     Queue(#[pin] QueueReceiver<Upd>),
     Dropping(#[pin] DroppingReceiver<Upd>),
