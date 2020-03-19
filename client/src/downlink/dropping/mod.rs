@@ -42,6 +42,10 @@ impl<Act, Upd> DroppingDownlink<Act, Upd> {
     pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
         AnyDownlink::Dropping(self)
     }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.input.same_sender(&other.input)
+    }
 }
 
 pub type DroppingReceiver<T> = WatchTopicReceiver<Event<T>>;

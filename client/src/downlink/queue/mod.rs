@@ -42,6 +42,10 @@ impl<Act, Upd> QueueDownlink<Act, Upd> {
     pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
         AnyDownlink::Queue(self)
     }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.input.same_sender(&other.input)
+    }
 }
 
 impl<Act, Upd> QueueDownlink<Act, Upd>

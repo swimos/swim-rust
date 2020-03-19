@@ -43,6 +43,10 @@ impl<Act, Upd> BufferedDownlink<Act, Upd> {
     pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
         AnyDownlink::Buffered(self)
     }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.input.same_sender(&other.input)
+    }
 }
 
 pub type BufferedReceiver<T> = BroadcastReceiver<Event<T>>;

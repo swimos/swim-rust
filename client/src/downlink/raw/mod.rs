@@ -35,6 +35,10 @@ impl<S> Sender<S> {
             task: Arc::new(task),
         }
     }
+
+    pub fn same_sender(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.task, &other.task)
+    }
 }
 
 impl<T> Sender<mpsc::Sender<T>> {

@@ -161,3 +161,33 @@ async fn request_value_dl_for_running_map_dl() {
         ))
     );
 }
+
+#[tokio::test]
+async fn subscribe_value_twice() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result1 = downlinks.subscribe_value(Value::Extant, path.clone()).await;
+    assert_that!(&result1, ok());
+    let (dl1, _rec1) = result1.unwrap();
+
+    let result2 = downlinks.subscribe_value(Value::Extant, path).await;
+    assert_that!(&result2, ok());
+    let (dl2, _rec2) = result2.unwrap();
+
+    assert!(dl1.same_downlink(&dl2));
+}
+
+#[tokio::test]
+async fn subscribe_map_twice() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result1 = downlinks.subscribe_map(path.clone()).await;
+    assert_that!(&result1, ok());
+    let (dl1, _rec1) = result1.unwrap();
+
+    let result2 = downlinks.subscribe_map(path).await;
+    assert_that!(&result2, ok());
+    let (dl2, _rec2) = result2.unwrap();
+
+    assert!(dl1.same_downlink(&dl2));
+}
