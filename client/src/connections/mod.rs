@@ -38,7 +38,7 @@ pub struct ConnectionPoolMessage {
 
 pub struct ConnectionRequest {
     host_url: url::Url,
-    tx: oneshot::Sender<ConnectionSender>,
+    tx: oneshot::Sender<Result<ConnectionSender, ConnectionError>>,
 }
 
 pub struct ConnectionPool {
@@ -79,7 +79,7 @@ impl ConnectionPool {
     pub fn request_connection(
         &mut self,
         host_url: url::Url,
-    ) -> Result<oneshot::Receiver<ConnectionSender>, ConnectionError> {
+    ) -> Result<oneshot::Receiver<Result<ConnectionSender, ConnectionError>>, ConnectionError> {
         let (tx, rx) = oneshot::channel();
 
         self.connection_request_tx
@@ -101,8 +101,7 @@ async fn accept_connection_requests<T: ConnectionFactory + Send + Sync + 'static
     router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     buffer_size: usize,
 ) -> Result<(), ConnectionError> {
-    let mut connections = HashMap::new();
-
+    let mut connections: HashMap<String, T::ConnectionType> = HashMap::new();
     loop {
         let connection_request = rx.recv().await.ok_or(ConnectionError::ConnectError)?;
         let ConnectionRequest {
@@ -112,20 +111,28 @@ async fn accept_connection_requests<T: ConnectionFactory + Send + Sync + 'static
 
         let host = host_url.as_str().to_owned();
 
-        if !&connections.contains_key(&host) {
-            let connection = connection_factory
+        let sender = if connections.contains_key(&host) {
+            Ok(connections
+                .get_mut(&host)
+                .ok_or(ConnectionError::ConnectError)?
+                .get_sender())
+        } else {
+            let connection_result = connection_factory
                 .create_connection(host_url, buffer_size, router_tx.clone())
-                .await?;
+                .await;
 
-            connections.insert(host.clone(), connection);
-        }
-
-        let connection = connections
-            .get_mut(&host)
-            .ok_or(ConnectionError::ConnectError)?;
+            match connection_result {
+                Ok(mut connection) => {
+                    let sender = connection.get_sender();
+                    connections.insert(host.clone(), connection);
+                    Ok(sender)
+                }
+                Err(error) => Err(error),
+            }
+        };
 
         request_tx
-            .send(connection.get_sender())
+            .send(sender)
             .map_err(|_| ConnectionError::ConnectError)?;
     }
 }

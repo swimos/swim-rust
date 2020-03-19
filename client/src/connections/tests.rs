@@ -51,7 +51,7 @@ async fn test_connection_pool_send_single_message_single_connection() {
     let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
     let rx = connection_pool.request_connection(host_url).unwrap();
-    let mut connection_sender = rx.await.unwrap();
+    let mut connection_sender = rx.await.unwrap().unwrap();
     // When
     connection_sender.send_message(text).await.unwrap();
 
@@ -88,10 +88,10 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     let rx = connection_pool
         .request_connection(host_url.clone())
         .unwrap();
-    let mut first_connection_sender = rx.await.unwrap();
+    let mut first_connection_sender = rx.await.unwrap().unwrap();
 
     let rx = connection_pool.request_connection(host_url).unwrap();
-    let mut second_connection_sender = rx.await.unwrap();
+    let mut second_connection_sender = rx.await.unwrap().unwrap();
     // When
     first_connection_sender
         .send_message(first_text)
@@ -176,13 +176,13 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
     let rx = connection_pool.request_connection(first_host_url).unwrap();
-    let mut first_connection_sender = rx.await.unwrap();
+    let mut first_connection_sender = rx.await.unwrap().unwrap();
 
     let rx = connection_pool.request_connection(second_host_url).unwrap();
-    let mut second_connection_sender = rx.await.unwrap();
+    let mut second_connection_sender = rx.await.unwrap().unwrap();
 
     let rx = connection_pool.request_connection(third_host_url).unwrap();
-    let mut third_connection_sender = rx.await.unwrap();
+    let mut third_connection_sender = rx.await.unwrap().unwrap();
 
     // When
     first_connection_sender
@@ -398,7 +398,7 @@ async fn test_connection_pool_send_and_receive_messages() {
     let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
     let rx = connection_pool.request_connection(host_url).unwrap();
-    let mut connection_sender = rx.await.unwrap();
+    let mut connection_sender = rx.await.unwrap().unwrap();
     // When
     connection_sender.send_message("send_bar").await.unwrap();
     // Then
@@ -411,6 +411,83 @@ async fn test_connection_pool_send_and_receive_messages() {
     assert_eq!(
         writer_rx.recv().await.unwrap().to_text().unwrap(),
         "send_bar"
+    );
+}
+
+#[tokio::test]
+async fn test_connection_pool_connection_error() {
+    // Given
+    let buffer_size = 5;
+    let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
+    let (router_tx, _router_rx) = mpsc::channel(5);
+    let (writer_tx, _writer_rx) = mpsc::channel(5);
+
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream {
+        items: Vec::new(),
+        error: false,
+    };
+
+    let factory = TestErrorConnectionFactory {
+        error_connection_count: 1,
+        write_stream,
+        read_stream,
+    };
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
+
+    // When
+    let rx = connection_pool
+        .request_connection(host_url.clone())
+        .unwrap();
+    let connection_sender = rx.await.unwrap();
+
+    // Then
+    assert!(connection_sender.is_err());
+}
+
+#[tokio::test]
+async fn test_connection_pool_connection_error_send_message() {
+    // Given
+    let buffer_size = 5;
+    let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
+    let text = "Test_message";
+    let (router_tx, _router_rx) = mpsc::channel(5);
+    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream {
+        items: Vec::new(),
+        error: false,
+    };
+
+    let factory = TestErrorConnectionFactory {
+        error_connection_count: 1,
+        write_stream,
+        read_stream,
+    };
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
+
+    // When
+    let rx = connection_pool
+        .request_connection(host_url.clone())
+        .unwrap();
+    let first_connection_sender = rx.await.unwrap();
+
+    let rx = connection_pool.request_connection(host_url).unwrap();
+    let mut second_connection_sender = rx.await.unwrap().unwrap();
+    second_connection_sender.send_message(text).await.unwrap();
+
+    // Then
+    assert!(first_connection_sender.is_err());
+    assert_eq!(
+        writer_rx.recv().await.unwrap().into_text().unwrap(),
+        "Test_message"
     );
 }
 
@@ -729,17 +806,48 @@ impl ConnectionFactory for TestMultipleConnectionFactory {
 
     async fn create_connection(
         &mut self,
-        host: url::Url,
+        host_url: url::Url,
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     ) -> Result<Self::ConnectionType, ConnectionError> {
         TestConnection::new(
-            host,
+            host_url,
             buffer_size,
             router_tx,
             self.write_streams.drain(0..1).next().unwrap(),
             self.read_streams.drain(0..1).next().unwrap(),
         )
+    }
+}
+
+struct TestErrorConnectionFactory {
+    error_connection_count: u32,
+    write_stream: TestWriteStream,
+    read_stream: TestReadStream,
+}
+
+#[async_trait]
+impl ConnectionFactory for TestErrorConnectionFactory {
+    type ConnectionType = TestConnection;
+
+    async fn create_connection(
+        &mut self,
+        host_url: url::Url,
+        buffer_size: usize,
+        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+    ) -> Result<Self::ConnectionType, ConnectionError> {
+        if self.error_connection_count > 0 {
+            self.error_connection_count = self.error_connection_count - 1;
+            Err(ConnectionError::ConnectError)
+        } else {
+            TestConnection::new(
+                host_url,
+                buffer_size,
+                router_tx,
+                self.write_stream.clone(),
+                self.read_stream.clone(),
+            )
+        }
     }
 }
 
@@ -751,7 +859,7 @@ struct TestConnection {
 
 impl TestConnection {
     fn new(
-        host: url::Url,
+        host_url: url::Url,
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
         write_stream: TestWriteStream,
@@ -759,8 +867,11 @@ impl TestConnection {
     ) -> Result<TestConnection, ConnectionError> {
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let receive =
-            TestConnection::receive_messages(read_stream, router_tx, host.to_string().to_owned());
+        let receive = TestConnection::receive_messages(
+            read_stream,
+            router_tx,
+            host_url.to_string().to_owned(),
+        );
         let send = TestConnection::send_messages(write_stream, rx);
 
         let send_handler = tokio::spawn(send);
