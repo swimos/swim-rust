@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::connections::{
-    Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage, ConnectionProducer,
-    SwimConnection, SwimWebsocketProducer, WebsocketProducer,
+    Connection, ConnectionError, ConnectionFactory, ConnectionPool, ConnectionPoolMessage,
+    SwimConnection, SwimWebsocketFactory, WebsocketFactory,
 };
 use async_trait::async_trait;
 use futures::task::{Context, Poll};
@@ -29,7 +29,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 async fn test_connection_pool_send_single_message_single_connection() {
     // Given
     let buffer_size = 5;
-    let host = "ws://127.0.0.1";
+    let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let text = "Hello";
     let (router_tx, _router_rx) = mpsc::channel(5);
 
@@ -43,18 +43,18 @@ async fn test_connection_pool_send_single_message_single_connection() {
         error: false,
     };
 
-    let producer = TestConnectionProducer {
+    let factory = TestConnectionFactory {
         write_stream,
         read_stream,
     };
 
-    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
-    let rx = connection_pool.request_connection(host).unwrap();
-    let mut connection_handler = rx.await.unwrap();
+    let rx = connection_pool.request_connection(host_url).unwrap();
+    let mut connection_sender = rx.await.unwrap();
 
     // When
-    connection_handler.send_message(text).await.unwrap();
+    connection_sender.send_message(text).await.unwrap();
 
     // Then
     assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "Hello");
@@ -64,7 +64,7 @@ async fn test_connection_pool_send_single_message_single_connection() {
 async fn test_connection_pool_send_multiple_messages_single_connection() {
     // Given
     let buffer_size = 5;
-    let host = "ws://127.0.0.1";
+    let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let first_text = "First_Text";
     let second_text = "Second_Text";
     let (router_tx, _router_rx) = mpsc::channel(5);
@@ -79,24 +79,26 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
         error: false,
     };
 
-    let producer = TestConnectionProducer {
+    let factory = TestConnectionFactory {
         write_stream,
         read_stream,
     };
 
-    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
-    let rx = connection_pool.request_connection(host.clone()).unwrap();
-    let mut first_connection_handler = rx.await.unwrap();
+    let rx = connection_pool
+        .request_connection(host_url.clone())
+        .unwrap();
+    let mut first_connection_sender = rx.await.unwrap();
 
-    let rx = connection_pool.request_connection(host.clone()).unwrap();
-    let mut second_connection_handler = rx.await.unwrap();
+    let rx = connection_pool.request_connection(host_url).unwrap();
+    let mut second_connection_sender = rx.await.unwrap();
     // When
-    first_connection_handler
+    first_connection_sender
         .send_message(first_text)
         .await
         .unwrap();
-    second_connection_handler
+    second_connection_sender
         .send_message(second_text)
         .await
         .unwrap();
@@ -116,9 +118,9 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
 async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     // Given
     let buffer_size = 5;
-    let first_host = "ws://127.0.0.1";
-    let second_host = "ws://127.0.0.2";
-    let third_host = "ws://127.0.0.3";
+    let first_host_url = url::Url::parse("ws://127.0.0.1").unwrap();
+    let second_host_url = url::Url::parse("ws://127.0.0.2").unwrap();
+    let third_host_url = url::Url::parse("ws://127.0.0.3").unwrap();
     let first_text = "First_Text";
     let second_text = "Second_Text";
     let third_text = "Third_Text";
@@ -167,32 +169,32 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     read_streams.push(third_read_stream);
     write_streams.push(third_write_stream);
 
-    let producer = TestMultipleConnectionProducer {
+    let factory = TestMultipleConnectionFactory {
         write_streams,
         read_streams,
     };
 
-    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
-    let rx = connection_pool.request_connection(first_host).unwrap();
-    let mut first_connection_handler = rx.await.unwrap();
+    let rx = connection_pool.request_connection(first_host_url).unwrap();
+    let mut first_connection_sender = rx.await.unwrap();
 
-    let rx = connection_pool.request_connection(second_host).unwrap();
-    let mut second_connection_handler = rx.await.unwrap();
+    let rx = connection_pool.request_connection(second_host_url).unwrap();
+    let mut second_connection_sender = rx.await.unwrap();
 
-    let rx = connection_pool.request_connection(third_host).unwrap();
-    let mut third_connection_handler = rx.await.unwrap();
+    let rx = connection_pool.request_connection(third_host_url).unwrap();
+    let mut third_connection_sender = rx.await.unwrap();
 
     // When
-    first_connection_handler
+    first_connection_sender
         .send_message(first_text)
         .await
         .unwrap();
-    second_connection_handler
+    second_connection_sender
         .send_message(second_text)
         .await
         .unwrap();
-    third_connection_handler
+    third_connection_sender
         .send_message(third_text)
         .await
         .unwrap();
@@ -216,7 +218,7 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
 async fn test_connection_pool_receive_single_message_single_connection() {
     // Given
     let buffer_size = 5;
-    let host = "ws://127.0.0.1";
+    let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let mut items = Vec::new();
     items.push(Message::text("new_message"));
     let (writer_tx, _writer_rx) = mpsc::channel(5);
@@ -229,14 +231,14 @@ async fn test_connection_pool_receive_single_message_single_connection() {
         error: false,
     };
     let (router_tx, mut router_rx) = mpsc::channel(5);
-    let producer = TestConnectionProducer {
+    let factory = TestConnectionFactory {
         write_stream,
         read_stream,
     };
-    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
     // When
-    let _rx = connection_pool.request_connection(host).unwrap();
+    let _rx = connection_pool.request_connection(host_url).unwrap();
 
     // Then
     let pool_message = router_rx.recv().await.unwrap().unwrap();
@@ -248,7 +250,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
 async fn test_connection_pool_receive_multiple_messages_single_connection() {
     // Given
     let buffer_size = 5;
-    let host = "ws://127.0.0.1";
+    let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let mut items = Vec::new();
     items.push(Message::text("first_message"));
     items.push(Message::text("second_message"));
@@ -263,14 +265,14 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
         error: false,
     };
     let (router_tx, mut router_rx) = mpsc::channel(5);
-    let producer = TestConnectionProducer {
+    let factory = TestConnectionFactory {
         write_stream,
         read_stream,
     };
-    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
     // When
-    let _rx = connection_pool.request_connection(host).unwrap();
+    let _rx = connection_pool.request_connection(host_url).unwrap();
 
     // Then
     let first_pool_message = router_rx.recv().await.unwrap().unwrap();
@@ -298,9 +300,9 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     second_items.push(Message::text("second_message"));
     third_items.push(Message::text("third_message"));
 
-    let first_host = "ws://127.0.0.1";
-    let second_host = "ws://127.0.0.2";
-    let third_host = "ws://127.0.0.3";
+    let first_host_url = url::Url::parse("ws://127.0.0.1").unwrap();
+    let second_host_url = url::Url::parse("ws://127.0.0.2").unwrap();
+    let third_host_url = url::Url::parse("ws://127.0.0.3").unwrap();
 
     let (router_tx, mut router_rx) = mpsc::channel(5);
 
@@ -347,18 +349,18 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     read_streams.push(third_read_stream);
     write_streams.push(third_write_stream);
 
-    let producer = TestMultipleConnectionProducer {
+    let factory = TestMultipleConnectionFactory {
         write_streams,
         read_streams,
     };
 
-    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
     // When
 
-    let _rx = connection_pool.request_connection(first_host).unwrap();
-    let _rx = connection_pool.request_connection(second_host).unwrap();
-    let _rx = connection_pool.request_connection(third_host).unwrap();
+    let _rx = connection_pool.request_connection(first_host_url).unwrap();
+    let _rx = connection_pool.request_connection(second_host_url).unwrap();
+    let _rx = connection_pool.request_connection(third_host_url).unwrap();
 
     // Then
     let first_pool_message = router_rx.recv().await.unwrap().unwrap();
@@ -377,7 +379,7 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
 async fn test_connection_pool_send_and_receive_messages() {
     // Given
     let buffer_size = 5;
-    let host = "ws://127.0.0.1";
+    let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let mut items = Vec::new();
     items.push(Message::text("recv_baz"));
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
@@ -390,16 +392,16 @@ async fn test_connection_pool_send_and_receive_messages() {
         error: false,
     };
     let (router_tx, mut router_rx) = mpsc::channel(5);
-    let producer = TestConnectionProducer {
+    let factory = TestConnectionFactory {
         write_stream,
         read_stream,
     };
-    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, producer);
+    let mut connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
 
-    let rx = connection_pool.request_connection(host).unwrap();
-    let mut connection_handler = rx.await.unwrap();
+    let rx = connection_pool.request_connection(host_url).unwrap();
+    let mut connection_sender = rx.await.unwrap();
     // When
-    connection_handler.send_message("send_bar").await.unwrap();
+    connection_sender.send_message("send_bar").await.unwrap();
     // Then
     let pool_message = router_rx.recv().await.unwrap().unwrap();
 
@@ -484,16 +486,16 @@ async fn test_connection_send_single_message() {
         host,
         buffer_size,
         _pool_tx,
-        TestWebsocketProducer {
+        TestWebsocketFactory {
             write_stream,
             read_stream,
         },
     )
     .await
     .unwrap();
-    let mut connection_handler = connection.get_handler();
+    let mut connection_sender = connection.get_sender();
     // When
-    connection_handler.send_message("foo").await.unwrap();
+    connection_sender.send_message("foo").await.unwrap();
     // Then
     assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "foo");
 }
@@ -517,18 +519,18 @@ async fn test_connection_send_multiple_messages() {
         host,
         buffer_size,
         _pool_tx,
-        TestWebsocketProducer {
+        TestWebsocketFactory {
             write_stream,
             read_stream,
         },
     )
     .await
     .unwrap();
-    let mut connection_handler = connection.get_handler();
+    let mut connection_sender = connection.get_sender();
     // When
-    connection_handler.send_message("foo").await.unwrap();
-    connection_handler.send_message("bar").await.unwrap();
-    connection_handler.send_message("baz").await.unwrap();
+    connection_sender.send_message("foo").await.unwrap();
+    connection_sender.send_message("bar").await.unwrap();
+    connection_sender.send_message("baz").await.unwrap();
     // Then
     assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "foo");
     assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "bar");
@@ -556,16 +558,16 @@ async fn test_connection_send_and_receive_messages() {
         host,
         buffer_size,
         pool_tx,
-        TestWebsocketProducer {
+        TestWebsocketFactory {
             write_stream,
             read_stream,
         },
     )
     .await
     .unwrap();
-    let mut connection_handler = connection.get_handler();
+    let mut connection_sender = connection.get_sender();
     // When
-    connection_handler
+    connection_sender
         .send_message("message_sent")
         .await
         .unwrap();
@@ -600,7 +602,7 @@ async fn test_connection_receive_message_error() {
         host,
         buffer_size,
         _pool_tx,
-        TestWebsocketProducer {
+        TestWebsocketFactory {
             write_stream,
             read_stream,
         },
@@ -621,7 +623,7 @@ async fn test_connection_connect_error() {
     let buffer_size = 5;
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     // When
-    let result = SwimConnection::new(host, buffer_size, _pool_tx, SwimWebsocketProducer {}).await;
+    let result = SwimConnection::new(host, buffer_size, _pool_tx, SwimWebsocketFactory {}).await;
     // Then
     assert!(result.is_err());
     assert_eq!(result.err(), Some(ConnectionError::ConnectError));
@@ -647,7 +649,7 @@ async fn test_new_connection_send_message_error() {
         host,
         buffer_size,
         _pool_tx,
-        TestWebsocketProducer {
+        TestWebsocketFactory {
             write_stream,
             read_stream,
         },
@@ -661,13 +663,13 @@ async fn test_new_connection_send_message_error() {
     assert_eq!(result.err(), Some(ConnectionError::SendMessageError));
 }
 
-struct TestConnectionProducer {
+struct TestConnectionFactory {
     write_stream: TestWriteStream,
     read_stream: TestReadStream,
 }
 
 #[async_trait]
-impl ConnectionProducer for TestConnectionProducer {
+impl ConnectionFactory for TestConnectionFactory {
     type ConnectionType = TestConnection;
 
     async fn create_connection(
@@ -686,13 +688,13 @@ impl ConnectionProducer for TestConnectionProducer {
     }
 }
 
-struct TestMultipleConnectionProducer {
+struct TestMultipleConnectionFactory {
     write_streams: Vec<TestWriteStream>,
     read_streams: Vec<TestReadStream>,
 }
 
 #[async_trait]
-impl ConnectionProducer for TestMultipleConnectionProducer {
+impl ConnectionFactory for TestMultipleConnectionFactory {
     type ConnectionType = TestConnection;
 
     async fn create_connection(
@@ -749,13 +751,13 @@ impl Connection for TestConnection {
     }
 }
 
-struct TestWebsocketProducer {
+struct TestWebsocketFactory {
     write_stream: TestWriteStream,
     read_stream: TestReadStream,
 }
 
 #[async_trait]
-impl WebsocketProducer for TestWebsocketProducer {
+impl WebsocketFactory for TestWebsocketFactory {
     type WebsocketType = TestReadWriteStream;
 
     async fn connect(self, _url: url::Url) -> Result<Self::WebsocketType, ConnectionError> {

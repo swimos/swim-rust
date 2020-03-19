@@ -25,7 +25,6 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::{connect_async, tungstenite, WebSocketStream};
-use url;
 
 #[cfg(test)]
 mod tests;
@@ -38,41 +37,39 @@ pub struct ConnectionPoolMessage {
 
 pub struct ConnectionRequest {
     host_url: url::Url,
-    tx: oneshot::Sender<ConnectionHandler>,
+    tx: oneshot::Sender<ConnectionSender>,
 }
 
 pub struct ConnectionPool {
-    pub connection_request_handler: JoinHandle<Result<(), ConnectionError>>,
+    pub connection_requests_handler: JoinHandle<Result<(), ConnectionError>>,
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
 }
 
 impl ConnectionPool {
-    pub fn new<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
+    pub fn new<T: ConnectionFactory + Send + Sync + 'static>(
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        connection_producer: T,
+        connection_factory: T,
     ) -> ConnectionPool {
         let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
 
-        let connection_request_handler = tokio::spawn(ConnectionPool::open_connection(
+        let connection_requests_handler = tokio::spawn(accept_connection_requests(
             connection_request_rx,
-            connection_producer,
+            connection_factory,
             router_tx,
             buffer_size,
         ));
 
         ConnectionPool {
-            connection_request_handler,
+            connection_requests_handler,
             connection_request_tx,
         }
     }
 
     pub fn request_connection(
         &mut self,
-        host: &str,
-    ) -> Result<oneshot::Receiver<ConnectionHandler>, ConnectionError> {
-        let host_url = url::Url::parse(host).map_err(|_| ConnectionError::ConnectError)?;
-
+        host_url: url::Url,
+    ) -> Result<oneshot::Receiver<ConnectionSender>, ConnectionError> {
         let (tx, rx) = oneshot::channel();
 
         self.connection_request_tx
@@ -81,45 +78,45 @@ impl ConnectionPool {
 
         Ok(rx)
     }
+}
 
-    pub async fn open_connection<T: ConnectionProducer + Send + std::marker::Sync + 'static>(
-        mut rx: mpsc::Receiver<ConnectionRequest>,
-        mut connection_producer: T,
-        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        buffer_size: usize,
-    ) -> Result<(), ConnectionError> {
-        let mut connections = HashMap::new();
+async fn accept_connection_requests<T: ConnectionFactory + Send + Sync + 'static>(
+    mut rx: mpsc::Receiver<ConnectionRequest>,
+    mut connection_factory: T,
+    router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+    buffer_size: usize,
+) -> Result<(), ConnectionError> {
+    let mut connections = HashMap::new();
 
-        loop {
-            let connection_request = rx.recv().await.ok_or(ConnectionError::ConnectError)?;
-            let ConnectionRequest {
-                host_url,
-                tx: request_tx,
-            } = connection_request;
+    loop {
+        let connection_request = rx.recv().await.ok_or(ConnectionError::ConnectError)?;
+        let ConnectionRequest {
+            host_url,
+            tx: request_tx,
+        } = connection_request;
 
-            let host = host_url.as_str().to_owned();
+        let host = host_url.as_str().to_owned();
 
-            if !&connections.contains_key(&host) {
-                let connection = connection_producer
-                    .create_connection(host_url, buffer_size, router_tx.clone())
-                    .await?;
+        if !&connections.contains_key(&host) {
+            let connection = connection_factory
+                .create_connection(host_url, buffer_size, router_tx.clone())
+                .await?;
 
-                connections.insert(host.clone(), connection);
-            }
-
-            let connection = connections
-                .get_mut(&host)
-                .ok_or(ConnectionError::ConnectError)?;
-
-            request_tx
-                .send(connection.get_handler())
-                .map_err(|_| ConnectionError::ConnectError)?;
+            connections.insert(host.clone(), connection);
         }
+
+        let connection = connections
+            .get_mut(&host)
+            .ok_or(ConnectionError::ConnectError)?;
+
+        request_tx
+            .send(connection.get_sender())
+            .map_err(|_| ConnectionError::ConnectError)?;
     }
 }
 
 #[async_trait]
-pub trait ConnectionProducer {
+pub trait ConnectionFactory {
     type ConnectionType: Connection + Send + 'static;
 
     async fn create_connection(
@@ -130,10 +127,10 @@ pub trait ConnectionProducer {
     ) -> Result<Self::ConnectionType, ConnectionError>;
 }
 
-struct SwimConnectionProducer {}
+struct SwimConnectionFactory {}
 
 #[async_trait]
-impl ConnectionProducer for SwimConnectionProducer {
+impl ConnectionFactory for SwimConnectionFactory {
     type ConnectionType = SwimConnection;
 
     async fn create_connection(
@@ -142,7 +139,7 @@ impl ConnectionProducer for SwimConnectionProducer {
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     ) -> Result<Self::ConnectionType, ConnectionError> {
-        SwimConnection::new(host_url, buffer_size, router_tx, SwimWebsocketProducer {}).await
+        SwimConnection::new(host_url, buffer_size, router_tx, SwimWebsocketFactory {}).await
     }
 }
 
@@ -191,8 +188,8 @@ pub trait Connection: Sized {
         }
     }
 
-    fn get_handler(&mut self) -> ConnectionHandler {
-        ConnectionHandler {
+    fn get_sender(&mut self) -> ConnectionSender {
+        ConnectionSender {
             tx: self.get_tx().clone(),
         }
     }
@@ -207,16 +204,16 @@ struct SwimConnection {
 }
 
 impl SwimConnection {
-    async fn new<T: WebsocketProducer + Send + std::marker::Sync + 'static>(
+    async fn new<T: WebsocketFactory + Send + Sync + 'static>(
         host_url: url::Url,
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        websocket_producer: T,
+        websocket_factory: T,
     ) -> Result<SwimConnection, ConnectionError> {
         let host = host_url.as_str().to_owned();
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let ws_stream = websocket_producer.connect(host_url).await?;
+        let ws_stream = websocket_factory.connect(host_url).await?;
         let (write_sink, read_stream) = ws_stream.split();
 
         let receive = SwimConnection::receive_messages(read_stream, router_tx, host);
@@ -233,17 +230,16 @@ impl SwimConnection {
     }
 }
 
-pub struct ConnectionHandler {
+pub struct ConnectionSender {
     tx: mpsc::Sender<Message>,
 }
 
-impl ConnectionHandler {
+impl ConnectionSender {
     pub async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
         self.tx
             .send(Message::text(message))
             .await
-            .map_err(|_| ConnectionError::SendMessageError)?;
-        Ok(())
+            .map_err(|_| ConnectionError::SendMessageError)
     }
 }
 
@@ -255,19 +251,19 @@ impl Connection for SwimConnection {
 }
 
 #[async_trait]
-trait WebsocketProducer {
+trait WebsocketFactory {
     type WebsocketType: Stream<Item = Result<Message, ConnectionError>>
         + Sink<Message>
-        + std::marker::Send
+        + Send
         + 'static;
 
     async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError>;
 }
 
-struct SwimWebsocketProducer {}
+struct SwimWebsocketFactory {}
 
 #[async_trait]
-impl WebsocketProducer for SwimWebsocketProducer {
+impl WebsocketFactory for SwimWebsocketFactory {
     type WebsocketType = ErrInto<WebSocketStream<TcpStream>, ConnectionError>;
 
     async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError> {
