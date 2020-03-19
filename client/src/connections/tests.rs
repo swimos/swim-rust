@@ -52,7 +52,6 @@ async fn test_connection_pool_send_single_message_single_connection() {
 
     let rx = connection_pool.request_connection(host_url).unwrap();
     let mut connection_sender = rx.await.unwrap();
-
     // When
     connection_sender.send_message(text).await.unwrap();
 
@@ -413,6 +412,37 @@ async fn test_connection_pool_send_and_receive_messages() {
         writer_rx.recv().await.unwrap().to_text().unwrap(),
         "send_bar"
     );
+}
+
+#[tokio::test]
+async fn test_connection_pool_close() {
+    // Given
+    let buffer_size = 5;
+    let (router_tx, mut router_rx) = mpsc::channel(5);
+
+    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+    let write_stream = TestWriteStream {
+        tx: writer_tx,
+        error: false,
+    };
+    let read_stream = TestReadStream {
+        items: Vec::new(),
+        error: false,
+    };
+
+    let factory = TestConnectionFactory {
+        write_stream,
+        read_stream,
+    };
+
+    let connection_pool = ConnectionPool::new(buffer_size, router_tx, factory);
+
+    // When
+    connection_pool.close().await;
+
+    // Then
+    assert!(router_rx.recv().await.is_none());
+    assert!(writer_rx.recv().await.is_none());
 }
 
 #[tokio::test]

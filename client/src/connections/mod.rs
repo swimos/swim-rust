@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use futures::future::{AbortHandle, Abortable, Aborted};
 use futures::stream::ErrInto;
 use futures::{Sink, StreamExt};
 use futures_util::stream::Stream;
@@ -41,7 +42,8 @@ pub struct ConnectionRequest {
 }
 
 pub struct ConnectionPool {
-    pub connection_requests_handler: JoinHandle<Result<(), ConnectionError>>,
+    connection_requests_abort_handle: AbortHandle,
+    connection_requests_handler: JoinHandle<Result<Result<(), ConnectionError>, Aborted>>,
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
 }
 
@@ -53,14 +55,22 @@ impl ConnectionPool {
     ) -> ConnectionPool {
         let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
 
-        let connection_requests_handler = tokio::spawn(accept_connection_requests(
-            connection_request_rx,
-            connection_factory,
-            router_tx,
-            buffer_size,
-        ));
+        let (connection_requests_abort_handle, abort_registration) = AbortHandle::new_pair();
+
+        let accept_connection_requests_future = Abortable::new(
+            accept_connection_requests(
+                connection_request_rx,
+                connection_factory,
+                router_tx,
+                buffer_size,
+            ),
+            abort_registration,
+        );
+
+        let connection_requests_handler = tokio::spawn(accept_connection_requests_future);
 
         ConnectionPool {
+            connection_requests_abort_handle,
             connection_requests_handler,
             connection_request_tx,
         }
@@ -77,6 +87,11 @@ impl ConnectionPool {
             .map_err(|_| ConnectionError::ConnectError)?;
 
         Ok(rx)
+    }
+
+    pub async fn close(self) {
+        self.connection_requests_abort_handle.abort();
+        let _ = self.connection_requests_handler.await;
     }
 }
 
@@ -280,6 +295,7 @@ pub enum ConnectionError {
     ConnectError,
     SendMessageError,
     ReceiveMessageError,
+    ClosedError,
 }
 
 impl From<tokio::task::JoinError> for ConnectionError {
@@ -291,5 +307,11 @@ impl From<tokio::task::JoinError> for ConnectionError {
 impl From<tungstenite::error::Error> for ConnectionError {
     fn from(_: tungstenite::error::Error) -> Self {
         ConnectionError::ConnectError
+    }
+}
+
+impl From<Aborted> for ConnectionError {
+    fn from(_: Aborted) -> Self {
+        ConnectionError::ClosedError
     }
 }
