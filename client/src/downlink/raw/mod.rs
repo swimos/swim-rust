@@ -18,7 +18,7 @@ use futures::StreamExt;
 use std::sync::Arc;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
 #[derive(Debug, Clone)]
 pub struct Sender<S> {

@@ -38,6 +38,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 pub mod envelopes;
+#[cfg(test)]
+pub mod tests;
 
 pub type ValueDownlink = AnyDownlink<value::Action, SharedValue>;
 pub type MapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
@@ -273,7 +275,7 @@ where
                                 Err(_) => {
                                     self.value_downlinks.remove(&path);
                                     Ok(self.create_new_value(init, path).await)
-                                },
+                                }
                             }
                         }
                         _ => match self.map_downlinks.get(&path) {
@@ -295,7 +297,7 @@ where
                                 Err(_) => {
                                     self.map_downlinks.remove(&path);
                                     Ok(self.create_new_map(path).await)
-                                },
+                                }
                             }
                         }
                         _ => match self.value_downlinks.get(&path) {

@@ -21,6 +21,9 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use tokio::sync::{broadcast, mpsc, watch};
 
+pub mod drop_all;
+pub mod fail_all;
+
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
 /// single operation. This can simplify operations where one can guarantee that the target sink
 /// is a queue and will not be performing IO directly (for example in lane models).
