@@ -164,8 +164,8 @@ pub enum DownlinkRequest {
 
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
-    value: HashMap<AbsolutePath, ValueDownlink>,
-    map: HashMap<AbsolutePath, MapDownlink>,
+    value_downlinks: HashMap<AbsolutePath, ValueDownlink>,
+    map_downlinks: HashMap<AbsolutePath, MapDownlink>,
     router: R,
 }
 
@@ -179,8 +179,8 @@ where
     {
         DownlinkTask {
             config,
-            value: HashMap::new(),
-            map: HashMap::new(),
+            value_downlinks: HashMap::new(),
+            map_downlinks: HashMap::new(),
             router,
         }
     }
@@ -218,7 +218,7 @@ where
                 (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
             }
         };
-        self.value.insert(path, dl.clone());
+        self.value_downlinks.insert(path, dl.clone());
         (dl, rec)
     }
 
@@ -250,7 +250,7 @@ where
                 (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
             }
         };
-        self.map.insert(path, dl.clone());
+        self.map_downlinks.insert(path, dl.clone());
         (dl, rec)
     }
 
@@ -265,14 +265,18 @@ where
         while let Some(request) = pinned_requests.next().await {
             match request {
                 DownlinkRequest::Value(init, path, value_req) => {
-                    let dl = match self.value.get(&path) {
+                    let dl = match self.value_downlinks.get(&path) {
                         Some(dl) => {
                             let mut dl_clone = dl.clone();
-                            //TODO Handle cased where downlink closed.
-                            let rec = dl_clone.subscribe().await.unwrap();
-                            Ok((dl_clone, rec))
+                            match dl_clone.subscribe().await {
+                                Ok(rec) => Ok((dl_clone, rec)),
+                                Err(_) => {
+                                    self.value_downlinks.remove(&path);
+                                    Ok(self.create_new_value(init, path).await)
+                                },
+                            }
                         }
-                        _ => match self.map.get(&path) {
+                        _ => match self.map_downlinks.get(&path) {
                             Some(_) => Err(SubscriptionError::bad_kind(
                                 DownlinkKind::Value,
                                 DownlinkKind::Map,
@@ -283,14 +287,18 @@ where
                     let _ = value_req.send(dl);
                 }
                 DownlinkRequest::Map(path, map_req) => {
-                    let dl = match self.map.get(&path) {
+                    let dl = match self.map_downlinks.get(&path) {
                         Some(dl) => {
                             let mut dl_clone = dl.clone();
-                            //TODO Handle cased where downlink closed.
-                            let rec = dl_clone.subscribe().await.unwrap();
-                            Ok((dl_clone, rec))
+                            match dl_clone.subscribe().await {
+                                Ok(rec) => Ok((dl_clone, rec)),
+                                Err(_) => {
+                                    self.map_downlinks.remove(&path);
+                                    Ok(self.create_new_map(path).await)
+                                },
+                            }
                         }
-                        _ => match self.value.get(&path) {
+                        _ => match self.value_downlinks.get(&path) {
                             Some(_) => Err(SubscriptionError::bad_kind(
                                 DownlinkKind::Map,
                                 DownlinkKind::Value,
