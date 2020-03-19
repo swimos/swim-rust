@@ -191,3 +191,35 @@ async fn subscribe_map_twice() {
 
     assert!(dl1.same_downlink(&dl2));
 }
+
+#[tokio::test]
+async fn replace_value_after_terminated() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result1 = downlinks.subscribe_value(Value::Extant, path.clone()).await;
+    assert_that!(&result1, ok());
+    let (dl1, rec1) = result1.unwrap();
+    //Dropping the only live receiver causes the downlink to stop.
+    drop(rec1);
+    let result2 = downlinks.subscribe_value(Value::Extant, path).await;
+    assert_that!(&result2, ok());
+    let (dl2, _rec2) = result2.unwrap();
+
+    assert!(!dl1.same_downlink(&dl2));
+}
+
+#[tokio::test]
+async fn replace_map_after_terminated() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result1 = downlinks.subscribe_map(path.clone()).await;
+    assert_that!(&result1, ok());
+    let (dl1, rec1) = result1.unwrap();
+    //Dropping the only live receiver causes the downlink to stop.
+    drop(rec1);
+    let result2 = downlinks.subscribe_map(path).await;
+    assert_that!(&result2, ok());
+    let (dl2, _rec2) = result2.unwrap();
+
+    assert!(!dl1.same_downlink(&dl2));
+}

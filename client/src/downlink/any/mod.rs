@@ -70,13 +70,10 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
 
     pub fn same_downlink(&self, other: &Self) -> bool {
         match (self, other) {
-            (AnyDownlink::Queue(ql), AnyDownlink::Queue(qr)) =>
-                ql.same_downlink(qr),
-            (AnyDownlink::Dropping(dl), AnyDownlink::Dropping(dr)) =>
-                dl.same_downlink(dr),
-            (AnyDownlink::Buffered(bl), AnyDownlink::Buffered(br)) =>
-                bl.same_downlink(br),
-            _ => false
+            (AnyDownlink::Queue(ql), AnyDownlink::Queue(qr)) => ql.same_downlink(qr),
+            (AnyDownlink::Dropping(dl), AnyDownlink::Dropping(dr)) => dl.same_downlink(dr),
+            (AnyDownlink::Buffered(bl), AnyDownlink::Buffered(br)) => bl.same_downlink(br),
+            _ => false,
         }
     }
 }
