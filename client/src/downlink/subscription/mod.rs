@@ -52,7 +52,10 @@ pub struct Downlinks {
     _task: JoinHandle<()>,
 }
 
+/// Contains all running Warp downlinks and allows requests for downlink subscriptions.
 impl Downlinks {
+    /// Create a new downlink manager, using the specified configuration, which will attach all
+    /// create downlinks to the provided router.
     pub async fn new<C, R>(config: Arc<C>, router: R) -> Downlinks
     where
         C: Config + 'static,
@@ -68,6 +71,9 @@ impl Downlinks {
         }
     }
 
+    /// Attempt to subscribe to a value lane. The downlink is returned with a single active
+    /// subscription to its events (if there are ever no subscribers the downlink will stop
+    /// running.
     pub async fn subscribe_value(
         &mut self,
         init: Value,
@@ -81,6 +87,9 @@ impl Downlinks {
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 
+    /// Attempt to subscribe to a map lane. The downlink is returned with a single active
+    /// subscription to its events (if there are ever no subscribers the downlink will stop
+    /// running.
     pub async fn subscribe_map(
         &mut self,
         path: AbsolutePath,
@@ -187,7 +196,7 @@ where
         }
     }
 
-    async fn create_new_value(
+    async fn create_new_value_downlink(
         &mut self,
         init: Value,
         path: AbsolutePath,
@@ -224,7 +233,7 @@ where
         (dl, rec)
     }
 
-    async fn create_new_map(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
+    async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
         use crate::downlink::model::map::*;
 
         let config = self.config.config_for(&path);
@@ -274,7 +283,7 @@ where
                                 Ok(rec) => Ok((dl_clone, rec)),
                                 Err(_) => {
                                     self.value_downlinks.remove(&path);
-                                    Ok(self.create_new_value(init, path).await)
+                                    Ok(self.create_new_value_downlink(init, path).await)
                                 }
                             }
                         }
@@ -283,7 +292,7 @@ where
                                 DownlinkKind::Value,
                                 DownlinkKind::Map,
                             )),
-                            _ => Ok(self.create_new_value(init, path).await),
+                            _ => Ok(self.create_new_value_downlink(init, path).await),
                         },
                     };
                     let _ = value_req.send(dl);
@@ -296,7 +305,7 @@ where
                                 Ok(rec) => Ok((dl_clone, rec)),
                                 Err(_) => {
                                     self.map_downlinks.remove(&path);
-                                    Ok(self.create_new_map(path).await)
+                                    Ok(self.create_new_map_downlink(path).await)
                                 }
                             }
                         }
@@ -305,7 +314,7 @@ where
                                 DownlinkKind::Map,
                                 DownlinkKind::Value,
                             )),
-                            _ => Ok(self.create_new_map(path).await),
+                            _ => Ok(self.create_new_map_downlink(path).await),
                         },
                     };
                     let _ = map_req.send(dl);
