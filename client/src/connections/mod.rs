@@ -30,17 +30,22 @@ use tokio_tungstenite::{connect_async, tungstenite, WebSocketStream};
 #[cfg(test)]
 mod tests;
 
+/// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
 pub struct ConnectionPoolMessage {
+    /// The URL of the remote host.
     host: String,
+    /// The message from the remote host.
     message: String,
 }
 
-pub struct ConnectionRequest {
+struct ConnectionRequest {
     host_url: url::Url,
     tx: oneshot::Sender<Result<ConnectionSender, ConnectionError>>,
 }
 
+/// Connection pool is responsible for managing the opening and closing of connections
+/// to remote hosts.
 pub struct ConnectionPool {
     connection_requests_abort_handle: AbortHandle,
     connection_requests_handler: JoinHandle<Result<Result<(), ConnectionError>, Aborted>>,
@@ -48,6 +53,15 @@ pub struct ConnectionPool {
 }
 
 impl ConnectionPool {
+    /// Creates a new connection pool for managing connections to remote hosts.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_size`             - The buffer size of the internal channels in the connection
+    ///                               pool as an integer.
+    /// * `router_tx`               - Transmitting end of a channel for receiving messages
+    ///                               from the connections in the pool.
+    /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
     pub fn new<T: ConnectionFactory + Send + Sync + 'static>(
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
@@ -76,6 +90,19 @@ impl ConnectionPool {
         }
     }
 
+    /// Sends and asynchronous request for a connection to a specific host.
+    ///
+    /// # Arguments
+    ///
+    /// * `host_url`        - The URL of the remote host.
+    ///
+    /// # Returns
+    ///
+    /// The receiving end of a oneshot channel that can be awaited. The value from the channel is a
+    /// `Result` containing either a `ConnectionSender` that can be used to send messages to the
+    /// remote host or a `ConnectionError`.
+    ///
+    ///
     pub fn request_connection(
         &mut self,
         host_url: url::Url,
@@ -89,6 +116,8 @@ impl ConnectionPool {
         Ok(rx)
     }
 
+    /// Stops the pool from accepting new connection requests and closes down all existing
+    /// connections.
     pub async fn close(self) {
         self.connection_requests_abort_handle.abort();
         let _ = self.connection_requests_handler.await;
@@ -137,10 +166,14 @@ async fn accept_connection_requests<T: ConnectionFactory + Send + Sync + 'static
     }
 }
 
+/// Trait for a factory that can produce connections.
 #[async_trait]
 pub trait ConnectionFactory {
+    /// The type of the connections that this factory produces.
     type ConnectionType: Connection + Send + 'static;
 
+    /// Creates a new connection and returns a `Result` with either the connection
+    /// or a `ConnectionError`.
     async fn create_connection(
         &mut self,
         host_url: url::Url,
@@ -165,8 +198,12 @@ impl ConnectionFactory for SwimConnectionFactory {
     }
 }
 
+/// Trait for a connection to a remote host.
 #[async_trait]
 pub trait Connection: Sized {
+    /// Return a reference to the transmitting end of the channel in the connection.
+    fn get_tx(&mut self) -> &mut mpsc::Sender<Message>;
+
     async fn send_messages<S>(
         write_sink: S,
         rx: mpsc::Receiver<Message>,
@@ -215,8 +252,6 @@ pub trait Connection: Sized {
             tx: self.get_tx().clone(),
         }
     }
-
-    fn get_tx(&mut self) -> &mut mpsc::Sender<Message>;
 }
 
 struct SwimConnection {
@@ -252,11 +287,22 @@ impl SwimConnection {
     }
 }
 
+/// Wrapper for the transmitting end of a channel to an open connection.
 pub struct ConnectionSender {
     tx: mpsc::Sender<Message>,
 }
 
 impl ConnectionSender {
+    /// Sends a message asynchronously to the remote host of the connection.
+    ///
+    /// # Arguments
+    ///
+    /// * `message`         - Message to be sent to the remote host.
+    ///
+    /// # Returns
+    ///
+    /// `Ok` if the message has been sent.
+    /// `ConnectionError` if it failed.
     pub async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
         self.tx
             .send(Message::text(message))
@@ -297,11 +343,16 @@ impl WebsocketFactory for SwimWebsocketFactory {
     }
 }
 
+/// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionError {
+    /// Error that occurred when connecting to a remote host.
     ConnectError,
+    /// Error that occurred when sending messages.
     SendMessageError,
+    /// Error that occurred when receiving messages.
     ReceiveMessageError,
+    /// Error that occurred when closing down connections.
     ClosedError,
 }
 
