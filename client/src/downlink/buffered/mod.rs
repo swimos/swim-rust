@@ -16,12 +16,11 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{BroadcastReceiver, BroadcastTopic, SubscriptionError, Topic};
+use common::topic::{BroadcastReceiver, BroadcastTopic, Topic, TopicError};
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
-use tokio::sync::broadcast;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, watch};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
@@ -31,9 +30,22 @@ pub struct BufferedDownlink<Act, Upd> {
     topic: BroadcastTopic<Event<Upd>>,
 }
 
+impl<Act, Upd> Clone for BufferedDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        BufferedDownlink {
+            input: self.input.clone(),
+            topic: self.topic.clone(),
+        }
+    }
+}
+
 impl<Act, Upd> BufferedDownlink<Act, Upd> {
     pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
         AnyDownlink::Buffered(self)
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.input.same_sender(&other.input)
     }
 }
 
@@ -67,7 +79,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = BufferedReceiver<Upd>;
-    type Fut = Ready<Result<BufferedReceiver<Upd>, SubscriptionError>>;
+    type Fut = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()
@@ -105,6 +117,7 @@ pub(in crate::downlink) fn make_downlink<Err, M, A, State, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    queue_size: usize,
 ) -> (BufferedDownlink<A, State::Ev>, BufferedReceiver<State::Ev>)
 where
     M: Send + 'static,
@@ -120,7 +133,8 @@ where
         let model = Model::new(init);
         let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
 
-        let (stop_tx, stop_rx) = oneshot::channel::<()>();
+        let (stop_tx, stop_rx) = watch::channel::<Option<()>>(None);
+        let (closed_tx, closed_rx) = watch::channel(None);
 
         let event_sink = item::for_broadcast_sender::<_, DownlinkError>(event_tx);
 
@@ -131,14 +145,15 @@ where
             act_rx.fuse(),
             cmd_sink,
             event_sink,
+            closed_tx,
         );
 
         let join_handle = tokio::task::spawn(lane_task);
 
-        let dl_task = raw::DownlinkTask::new(join_handle, stop_tx);
+        let dl_task = raw::DownlinkTask::new(join_handle, stop_tx, closed_rx);
 
         raw::Sender::new(act_tx, dl_task)
     };
 
-    BufferedDownlink::assemble(fac, buffer_size)
+    BufferedDownlink::assemble(fac, queue_size)
 }

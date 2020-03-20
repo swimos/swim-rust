@@ -18,7 +18,7 @@ use futures::{Future, Stream};
 use tokio::macros::support::Pin;
 
 use common::topic::{
-    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, SubscriptionError, Topic,
+    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, Topic, TopicError,
     WatchTopic,
 };
 use pin_project::{pin_project, project};
@@ -29,18 +29,67 @@ use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw;
 use crate::downlink::{Downlink, DownlinkError, Event};
 use crate::sink::item::{ItemSink, MpscSend};
+use std::fmt::{Display, Formatter};
 use tokio::sync::{mpsc, oneshot};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TopicKind {
+    Queue,
+    Dropping,
+    Buffered,
+}
+
+impl Display for TopicKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TopicKind::Queue => write!(f, "Queue"),
+            TopicKind::Dropping => write!(f, "Dropping"),
+            TopicKind::Buffered => write!(f, "Buffered"),
+        }
+    }
+}
 
 /// Wrapper around any one of queueing, dropping and buffered downlink implementations. This
 /// itself implements the Downlink trait (although using it like this will be slightly less
 /// efficient than using the wrapped downlink directly).
+#[derive(Debug)]
 pub enum AnyDownlink<Act, Upd> {
     Queue(QueueDownlink<Act, Upd>),
     Dropping(DroppingDownlink<Act, Upd>),
     Buffered(BufferedDownlink<Act, Upd>),
 }
 
+impl<Act, Upd> AnyDownlink<Act, Upd> {
+    pub fn kind(&self) -> TopicKind {
+        match self {
+            AnyDownlink::Queue(_) => TopicKind::Queue,
+            AnyDownlink::Dropping(_) => TopicKind::Dropping,
+            AnyDownlink::Buffered(_) => TopicKind::Buffered,
+        }
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        match (self, other) {
+            (AnyDownlink::Queue(ql), AnyDownlink::Queue(qr)) => ql.same_downlink(qr),
+            (AnyDownlink::Dropping(dl), AnyDownlink::Dropping(dr)) => dl.same_downlink(dr),
+            (AnyDownlink::Buffered(bl), AnyDownlink::Buffered(br)) => bl.same_downlink(br),
+            _ => false,
+        }
+    }
+}
+
+impl<Act, Upd> Clone for AnyDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        match self {
+            AnyDownlink::Queue(dl) => AnyDownlink::Queue((*dl).clone()),
+            AnyDownlink::Dropping(dl) => AnyDownlink::Dropping((*dl).clone()),
+            AnyDownlink::Buffered(dl) => AnyDownlink::Buffered((*dl).clone()),
+        }
+    }
+}
+
 #[pin_project]
+#[derive(Debug)]
 pub enum AnyReceiver<Upd> {
     Queue(#[pin] QueueReceiver<Upd>),
     Dropping(#[pin] DroppingReceiver<Upd>),
@@ -62,8 +111,8 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
 
 pub type QueueSubFuture<Upd> =
     Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>>;
-pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, SubscriptionError>>;
-pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, SubscriptionError>>;
+pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
+pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
 
 #[pin_project]
 pub enum AnySubFuture<Upd> {
@@ -73,7 +122,7 @@ pub enum AnySubFuture<Upd> {
 }
 
 impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
-    type Output = Result<AnyReceiver<Upd>, SubscriptionError>;
+    type Output = Result<AnyReceiver<Upd>, TopicError>;
 
     #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

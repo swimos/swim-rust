@@ -26,7 +26,7 @@ mod deserializer;
 mod enum_access;
 mod map_access;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum FormDeserializeErr {
     Message(String),
     UnsupportedType(String),

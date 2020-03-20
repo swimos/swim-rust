@@ -14,11 +14,10 @@
 
 use std::pin::Pin;
 
-use futures::{future, stream, Stream, StreamExt};
+use futures::{future, stream, Stream};
 use futures_util::select_biased;
 use pin_utils::pin_mut;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::sink::item;
@@ -34,9 +33,11 @@ pub mod dropping;
 pub mod model;
 pub mod queue;
 pub mod raw;
+pub mod subscription;
 
 pub(self) use self::raw::create_downlink;
-use common::topic::{BoxTopic, SubscriptionError, Topic};
+use crate::router::RoutingError;
+use common::topic::{BoxTopic, Topic, TopicError};
 use futures::future::BoxFuture;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
@@ -77,7 +78,7 @@ pub struct BoxedDownlink<Act, Upd: Clone> {
 
 impl<Act, Upd: Clone + 'static> Topic<Upd> for BoxedDownlink<Act, Upd> {
     type Receiver = BoxStream<'static, Upd>;
-    type Fut = BoxFuture<'static, Result<BoxStream<'static, Upd>, SubscriptionError>>;
+    type Fut = BoxFuture<'static, Result<BoxStream<'static, Upd>, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()
@@ -109,6 +110,14 @@ pub enum DownlinkError {
     TaskPanic,
     OperationStreamEnded,
     TransitionError,
+}
+
+impl From<RoutingError> for DownlinkError {
+    fn from(e: RoutingError) -> Self {
+        match e {
+            RoutingError::RouterDropped => DownlinkError::DroppedChannel,
+        }
+    }
 }
 
 impl Display for DownlinkError {

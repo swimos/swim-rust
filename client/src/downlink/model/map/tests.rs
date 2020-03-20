@@ -1205,3 +1205,169 @@ fn clear_action_dropped_receiver() {
     assert_that!(cmd, eq(MapModification::Clear));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 }
+
+#[test]
+pub fn clear_to_value() {
+    let expected = Value::of_attr("clear");
+    assert_that!(&Form::into_value(MapModification::Clear), eq(&expected));
+    assert_that!(&Form::as_value(&MapModification::Clear), eq(&expected));
+}
+
+type MapModResult = Result<MapModification<Value>, FormDeserializeErr>;
+
+#[test]
+pub fn clear_from_value() {
+    let rep = Value::of_attr("clear");
+    let result1: MapModResult = Form::try_from_value(&rep);
+    assert_that!(result1, eq(Ok(MapModification::Clear)));
+    let result2: MapModResult = Form::try_convert(rep);
+    assert_that!(result2, eq(Ok(MapModification::Clear)));
+}
+
+#[test]
+pub fn take_to_value() {
+    let expected = Value::of_attr(("take", 3));
+    assert_that!(&Form::into_value(MapModification::Take(3)), eq(&expected));
+    assert_that!(&Form::as_value(&MapModification::Take(3)), eq(&expected));
+}
+
+#[test]
+pub fn take_from_value() {
+    let rep = Value::of_attr(("take", 3));
+    let result1: MapModResult = Form::try_from_value(&rep);
+    assert_that!(result1, eq(Ok(MapModification::Take(3))));
+    let result2: MapModResult = Form::try_convert(rep);
+    assert_that!(result2, eq(Ok(MapModification::Take(3))));
+}
+
+#[test]
+pub fn skip_to_value() {
+    let expected = Value::of_attr(("drop", 5));
+    assert_that!(&Form::into_value(MapModification::Skip(5)), eq(&expected));
+    assert_that!(&Form::as_value(&MapModification::Skip(5)), eq(&expected));
+}
+
+#[test]
+pub fn skip_from_value() {
+    let rep = Value::of_attr(("drop", 5));
+    let result1: MapModResult = Form::try_from_value(&rep);
+    assert_that!(result1, eq(Ok(MapModification::Skip(5))));
+    let result2: MapModResult = Form::try_convert(rep);
+    assert_that!(result2, eq(Ok(MapModification::Skip(5))));
+}
+
+#[test]
+pub fn remove_to_value() {
+    let expected = Value::of_attr(("remove", Value::record(vec![Item::slot("key", "hello")])));
+    assert_that!(
+        &Form::into_value(MapModification::Remove(Value::text("hello"))),
+        eq(&expected)
+    );
+    assert_that!(
+        &Form::as_value(&MapModification::Remove(Value::text("hello"))),
+        eq(&expected)
+    );
+}
+
+#[test]
+pub fn remove_from_value() {
+    let rep = Value::of_attr(("remove", Value::record(vec![Item::slot("key", "hello")])));
+    let result1: MapModResult = Form::try_from_value(&rep);
+    assert_that!(
+        result1,
+        eq(Ok(MapModification::Remove(Value::text("hello"))))
+    );
+    let result2: MapModResult = Form::try_convert(rep);
+    assert_that!(
+        result2,
+        eq(Ok(MapModification::Remove(Value::text("hello"))))
+    );
+}
+
+#[test]
+pub fn simple_insert_to_value() {
+    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let body = Item::ValueItem(Value::Int32Value(2));
+    let expected = Value::Record(vec![attr], vec![body]);
+    assert_that!(
+        &Form::into_value(MapModification::Insert(
+            Value::text("hello"),
+            Value::Int32Value(2)
+        )),
+        eq(&expected)
+    );
+    assert_that!(
+        &Form::as_value(&MapModification::Insert(
+            Value::text("hello"),
+            Value::Int32Value(2)
+        )),
+        eq(&expected)
+    );
+}
+
+#[test]
+pub fn simple_insert_from_value() {
+    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let body = Item::ValueItem(Value::Int32Value(2));
+    let rep = Value::Record(vec![attr], vec![body]);
+    let result1: MapModResult = Form::try_from_value(&rep);
+    assert_that!(
+        result1,
+        eq(Ok(MapModification::Insert(
+            Value::text("hello"),
+            Value::Int32Value(2)
+        )))
+    );
+    let result2: MapModResult = Form::try_convert(rep);
+    assert_that!(
+        result2,
+        eq(Ok(MapModification::Insert(
+            Value::text("hello"),
+            Value::Int32Value(2)
+        )))
+    );
+}
+
+#[test]
+pub fn complex_insert_to_value() {
+    let body = Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]);
+    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let expected = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+    assert_that!(
+        &Form::into_value(MapModification::Insert(Value::text("hello"), body.clone())),
+        eq(&expected)
+    );
+    assert_that!(
+        &Form::as_value(&MapModification::Insert(Value::text("hello"), body.clone())),
+        eq(&expected)
+    );
+}
+
+#[test]
+pub fn complex_insert_from_value() {
+    let body = Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]);
+    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let rep = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+    let result1: MapModResult = Form::try_from_value(&rep);
+    assert_that!(
+        result1,
+        eq(Ok(MapModification::Insert(
+            Value::text("hello"),
+            body.clone()
+        )))
+    );
+    let result2: MapModResult = Form::try_convert(rep);
+    assert_that!(
+        result2,
+        eq(Ok(MapModification::Insert(
+            Value::text("hello"),
+            body.clone()
+        )))
+    );
+}

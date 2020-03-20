@@ -16,11 +16,10 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
-use common::topic::{SubscriptionError, Topic, WatchTopic, WatchTopicReceiver};
+use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
-use tokio::sync::watch;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, watch};
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.
@@ -30,9 +29,22 @@ pub struct DroppingDownlink<Act, Upd> {
     topic: WatchTopic<Event<Upd>>,
 }
 
+impl<Act, Upd> Clone for DroppingDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        DroppingDownlink {
+            input: self.input.clone(),
+            topic: self.topic.clone(),
+        }
+    }
+}
+
 impl<Act, Upd> DroppingDownlink<Act, Upd> {
     pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
         AnyDownlink::Dropping(self)
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.input.same_sender(&other.input)
     }
 }
 
@@ -65,7 +77,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = DroppingReceiver<Upd>;
-    type Fut = Ready<Result<DroppingReceiver<Upd>, SubscriptionError>>;
+    type Fut = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()
@@ -117,7 +129,8 @@ where
     let model = Model::new(init);
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
     let (event_tx, event_rx) = watch::channel::<Option<Event<State::Ev>>>(None);
-    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    let (stop_tx, stop_rx) = watch::channel::<Option<()>>(None);
+    let (closed_tx, closed_rx) = watch::channel(None);
 
     let event_sink = item::for_watch_sender::<_, DownlinkError>(event_tx);
 
@@ -128,13 +141,14 @@ where
         act_rx.fuse(),
         cmd_sink,
         event_sink,
+        closed_tx,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
 
-    let dl_task = raw::DownlinkTask::new(join_handle, stop_tx);
+    let dl_task = raw::DownlinkTask::new(join_handle, stop_tx, closed_rx);
 
-    let raw_dl = raw::RawDownlink::new(act_tx, event_rx, Some(dl_task));
+    let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 
     DroppingDownlink::from_raw(raw_dl)
 }
