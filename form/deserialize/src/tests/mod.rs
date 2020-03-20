@@ -38,7 +38,5 @@ where
     };
 
     let t = T::deserialize(&mut deserializer)?;
-    deserializer.assert_stack_empty();
-
     Ok(t)
 }

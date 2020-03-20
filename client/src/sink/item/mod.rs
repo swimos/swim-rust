@@ -14,12 +14,15 @@
 
 use std::future::Future;
 
-use futures::future::{BoxFuture, Map, Ready};
+use futures::future::{BoxFuture, Ready};
 use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use tokio::sync::{broadcast, mpsc, watch};
+
+pub mod drop_all;
+pub mod fail_all;
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
 /// single operation. This can simplify operations where one can guarantee that the target sink
@@ -32,7 +35,23 @@ pub trait ItemSink<'a, T> {
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
 }
 
-pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {}
+pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
+    fn map_err_into<E2>(self) -> map_err::SenderErrInto<Self, E2>
+    where
+        Self: Sized,
+        E2: From<E>,
+    {
+        map_err::SenderErrInto::new(self)
+    }
+
+    fn comap<S, F>(self, f: F) -> comap::ItemSenderComap<Self, F>
+    where
+        Self: Sized,
+        F: FnMut(S) -> T,
+    {
+        comap::ItemSenderComap::new(self, f)
+    }
+}
 
 impl<X, T, E> ItemSender<T, E> for X where X: for<'a> ItemSink<'a, T, Error = E> {}
 
@@ -56,28 +75,27 @@ pub type MpscErr<T> = mpsc::error::SendError<T>;
 pub type WatchErr<T> = watch::error::SendError<T>;
 pub type BroadcastErr<T> = broadcast::SendError<T>;
 
-fn transform_err<ErrIn, ErrOut: From<ErrIn>>(result: Result<(), ErrIn>) -> Result<(), ErrOut> {
-    result.map_err(|e| e.into())
-}
-
 /// Wrap an [`mpsc::Sender`] as an item sink. It is not possible to implement the trait
 /// directly as the `send` method returns an anonymous type.
-pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + 'static>(
+pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + Send + 'static>(
     sender: mpsc::Sender<T>,
-) -> impl for<'a> ItemSink<'a, T, Error = Err> {
-    map_err(sender, || transform_err)
+) -> impl ItemSender<T, Err> {
+    sender.map_err_into()
 }
 
-pub fn for_watch_sender<T: Clone + Send + 'static, Err: From<SendError> + 'static>(
+pub fn for_watch_sender<T: Clone + Send + 'static, Err: From<SendError> + Send + 'static>(
     sender: watch::Sender<Option<T>>,
-) -> impl for<'a> ItemSink<'a, T, Error = Err> {
-    map_err(WatchSink(sender), || transform_err)
+) -> impl ItemSender<T, Err> {
+    WatchSink(sender).map_err_into()
 }
 
-pub fn for_broadcast_sender<T: Clone + Send + 'static, Err: From<BroadcastErr<T>> + 'static>(
+pub fn for_broadcast_sender<
+    T: Clone + Send + 'static,
+    Err: From<BroadcastErr<T>> + Send + 'static,
+>(
     sender: broadcast::Sender<T>,
-) -> impl for<'a> ItemSink<'a, T, Error = Err> {
-    map_err(sender, || transform_err)
+) -> impl ItemSender<T, Err> {
+    sender.map_err_into()
 }
 
 pub struct MpscSend<'a, T, E> {
@@ -140,40 +158,37 @@ impl<'a, T: Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
     }
 }
 
-/// Transform the error type of an [`ItemSink`].
-pub fn map_err<T, E1, E2, Snk, Fac, F>(sink: Snk, f: Fac) -> ItemSinkMapErr<Snk, Fac>
-where
-    Snk: for<'a> ItemSink<'a, T, Error = E1>,
-    F: FnMut(Result<(), E1>) -> Result<(), E2>,
-    Fac: FnMut() -> F,
-{
-    ItemSinkMapErr::new(sink, f)
-}
+pub mod map_err {
+    use crate::sink::item::ItemSink;
+    use futures::future::ErrInto;
+    use futures_util::future::TryFutureExt;
+    use std::marker::PhantomData;
 
-pub struct ItemSinkMapErr<Snk, Fac> {
-    sink: Snk,
-    fac: Fac,
-}
-
-impl<Snk, Fac> ItemSinkMapErr<Snk, Fac> {
-    fn new(sink: Snk, fac: Fac) -> ItemSinkMapErr<Snk, Fac> {
-        ItemSinkMapErr { sink, fac }
+    pub struct SenderErrInto<Sender, E> {
+        sender: Sender,
+        _target: PhantomData<E>,
     }
-}
 
-impl<'a, T, E1, E2, Snk, Fac, F> ItemSink<'a, T> for ItemSinkMapErr<Snk, Fac>
-where
-    Snk: ItemSink<'a, T, Error = E1>,
-    F: FnMut(Result<(), E1>) -> Result<(), E2> + Send + 'a,
-    Fac: FnMut() -> F,
-{
-    type Error = E2;
-    type SendFuture = Map<Snk::SendFuture, F>;
+    impl<Sender, E> SenderErrInto<Sender, E> {
+        pub fn new(sender: Sender) -> SenderErrInto<Sender, E> {
+            SenderErrInto {
+                sender,
+                _target: PhantomData,
+            }
+        }
+    }
 
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        let ItemSinkMapErr { sink, fac } = self;
-        let f: F = fac();
-        sink.send_item(value).map(f)
+    impl<'a, T, E, Sender> super::ItemSink<'a, T> for SenderErrInto<Sender, E>
+    where
+        Sender: ItemSink<'a, T>,
+        E: From<Sender::Error> + Send + 'a,
+    {
+        type Error = E;
+        type SendFuture = ErrInto<Sender::SendFuture, E>;
+
+        fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+            self.sender.send_item(value).err_into()
+        }
     }
 }
 
@@ -236,5 +251,34 @@ impl<'a, T, E: 'a> ItemSink<'a, T> for BoxItemSink<T, E> {
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         (**self).send_item(value)
+    }
+}
+
+pub mod comap {
+    use super::ItemSink;
+
+    pub struct ItemSenderComap<Sender, F> {
+        sender: Sender,
+        f: F,
+    }
+
+    impl<Sender, F> ItemSenderComap<Sender, F> {
+        pub fn new(sender: Sender, f: F) -> ItemSenderComap<Sender, F> {
+            ItemSenderComap { sender, f }
+        }
+    }
+
+    impl<'a, S, T, Sender, F> ItemSink<'a, S> for ItemSenderComap<Sender, F>
+    where
+        Sender: ItemSink<'a, T>,
+        F: FnMut(S) -> T,
+    {
+        type Error = Sender::Error;
+        type SendFuture = Sender::SendFuture;
+
+        fn send_item(&'a mut self, value: S) -> Self::SendFuture {
+            let ItemSenderComap { sender, f } = self;
+            sender.send_item(f(value))
+        }
     }
 }

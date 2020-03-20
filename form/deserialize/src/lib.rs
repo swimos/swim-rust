@@ -26,11 +26,11 @@ mod deserializer;
 mod enum_access;
 mod map_access;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum FormDeserializeErr {
     Message(String),
     UnsupportedType(String),
-    IncorrectType(Value),
+    IncorrectType(String),
     IllegalItem(Item),
     IllegalState(String),
     Malformatted,
@@ -44,20 +44,19 @@ impl Display for FormDeserializeErr {
     }
 }
 
-#[derive(Debug)]
 pub struct ValueDeserializer<'de> {
     current_state: State<'de>,
     stack: Vec<State<'de>>,
     input: &'de Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct State<'de> {
     deserializer_state: DeserializerState<'de>,
     value: Option<&'de Value>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum DeserializerState<'i> {
     ReadingRecord { item_index: usize },
     ReadingItem(&'i Item),
@@ -71,6 +70,21 @@ impl<'de> ValueDeserializer<'de> {
         Err(FormDeserializeErr::UnsupportedType(String::from(t)))
     }
 
+    pub fn err_incorrect_type<V>(
+        &self,
+        expected: &str,
+        actual: Option<&Value>,
+    ) -> std::result::Result<V, FormDeserializeErr> {
+        match actual {
+            Some(v) => Err(FormDeserializeErr::IncorrectType(format!(
+                "Expected: {}, found: {}",
+                expected,
+                v.to_string()
+            ))),
+            None => Err(FormDeserializeErr::Message(String::from("Missing value"))),
+        }
+    }
+
     pub fn for_values(input: &'de Value) -> Self {
         ValueDeserializer {
             current_state: State {
@@ -80,10 +94,6 @@ impl<'de> ValueDeserializer<'de> {
             stack: vec![],
             input,
         }
-    }
-
-    pub fn assert_stack_empty(&self) {
-        assert_eq!(self.stack.len(), 0);
     }
 
     pub fn for_single_value(input: &'de Value) -> Self {

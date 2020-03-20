@@ -14,24 +14,30 @@
 
 use super::*;
 use crate::sink::item::ItemSender;
+use futures::StreamExt;
+use std::sync::Arc;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sender<S> {
     /// A sink for local actions (sets, insertions, etc.)
     pub set_sink: S,
     /// The task running the downlink.
-    task: Option<DownlinkTask>,
+    task: Arc<DownlinkTask>,
 }
 
 impl<S> Sender<S> {
     pub(in crate::downlink) fn new(set_sink: S, task: DownlinkTask) -> Sender<S> {
         Sender {
             set_sink,
-            task: Some(task),
+            task: Arc::new(task),
         }
+    }
+
+    pub fn same_sender(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.task, &other.task)
     }
 }
 
@@ -62,11 +68,8 @@ impl<T> Sender<watch::Sender<T>> {
 
 impl<S> Sender<S> {
     /// Stop the downlink from running.
-    pub async fn stop(mut self) -> Result<(), DownlinkError> {
-        match self.task.take() {
-            Some(t) => t.stop().await,
-            _ => Ok(()),
-        }
+    pub async fn stop(&self) -> Result<(), DownlinkError> {
+        self.task.stop().await
     }
 }
 
@@ -86,11 +89,14 @@ impl<S, R> RawDownlink<S, R> {
     pub(in crate::downlink) fn new(
         set_sink: S,
         event_stream: R,
-        task: Option<DownlinkTask>,
+        task: DownlinkTask,
     ) -> RawDownlink<S, R> {
         RawDownlink {
             receiver: Receiver { event_stream },
-            sender: Sender { set_sink, task },
+            sender: Sender {
+                set_sink,
+                task: Arc::new(task),
+            },
         }
     }
 
@@ -126,9 +132,11 @@ where
     let model = Model::new(init);
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
     let (event_tx, event_rx) = mpsc::channel::<Event<State::Ev>>(buffer_size);
-    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    let (stop_tx, stop_rx) = watch::channel::<Option<()>>(None);
 
     let event_sink = item::for_mpsc_sender::<_, DownlinkError>(event_tx);
+
+    let (closed_tx, closed_rx) = watch::channel(None);
 
     // The task that maintains the internal state of the lane.
     let lane_task = make_downlink_task(
@@ -137,6 +145,7 @@ where
         act_rx.fuse(),
         cmd_sink,
         event_sink,
+        closed_tx,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
@@ -144,41 +153,42 @@ where
     let dl_task = DownlinkTask {
         join_handle,
         stop_trigger: stop_tx,
+        stop_waiter: closed_rx,
     };
 
-    RawDownlink::new(act_tx, event_rx, Some(dl_task))
+    RawDownlink::new(act_tx, event_rx, dl_task)
 }
 
 #[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTask {
     join_handle: JoinHandle<Result<(), DownlinkError>>,
-    stop_trigger: oneshot::Sender<()>,
+    stop_trigger: watch::Sender<Option<()>>,
+    stop_waiter: watch::Receiver<Option<Result<(), DownlinkError>>>,
 }
 
 impl DownlinkTask {
     pub(in crate::downlink) fn new(
         join_handle: JoinHandle<Result<(), DownlinkError>>,
-        stop_trigger: oneshot::Sender<()>,
+        stop_trigger: watch::Sender<Option<()>>,
+        stop_waiter: watch::Receiver<Option<Result<(), DownlinkError>>>,
     ) -> DownlinkTask {
         DownlinkTask {
             join_handle,
             stop_trigger,
+            stop_waiter,
         }
     }
 }
 
 impl DownlinkTask {
-    async fn stop(self) -> Result<(), DownlinkError> {
-        match self.stop_trigger.send(()) {
-            Ok(_) => match self.join_handle.await {
-                Ok(r) => r,
-                Err(_) => Err(DownlinkError::TaskPanic),
-            },
-            Err(_) => match self.join_handle.await {
-                Ok(r) => r,
-                Err(_) => Err(DownlinkError::TaskPanic),
-            },
-        }
+    async fn stop(&self) -> Result<(), DownlinkError> {
+        let _ = self.stop_trigger.broadcast(Some(()));
+        self.stop_waiter
+            .clone()
+            .filter_map(future::ready)
+            .next()
+            .await
+            .unwrap_or(Ok(()))
     }
 }
 
@@ -200,6 +210,7 @@ pub(in crate::downlink) async fn make_downlink_task<
     acts: Acts,
     mut cmd_sink: Commands,
     mut ev_sink: Events,
+    on_complete: watch::Sender<Option<Result<(), DownlinkError>>>,
 ) -> Result<(), DownlinkError>
 where
     EC: Into<DownlinkError>,
@@ -217,7 +228,7 @@ where
 
     let mut read_act = false;
 
-    loop {
+    let result = loop {
         let next_op = if model.state == DownlinkState::Synced {
             if read_act {
                 read_act = false;
@@ -261,14 +272,16 @@ where
         } else {
             break Err(DownlinkError::OperationStreamEnded);
         }
-    }
+    };
+    let _ = on_complete.broadcast(Some(result));
+    result
 }
 
 /// Combines together updates received from the Warp connection  and the stop signal
 /// into a single stream.
 pub(in crate::downlink) fn combine_inputs<M, A, Upd>(
     updates: Upd,
-    stop: oneshot::Receiver<()>,
+    stop: watch::Receiver<Option<()>>,
 ) -> impl FusedStream<Item = Operation<M, A>> + Send + 'static
 where
     M: Send + 'static,
@@ -276,7 +289,7 @@ where
     Upd: Stream<Item = Message<M>> + Send + 'static,
 {
     let upd_operations = updates.map(Operation::Message);
-    let close_operations = stream::once(stop).map(|_| Operation::Close);
+    let close_operations = stop.filter_map(|u| future::ready(u.map(|_| Operation::Close)));
 
     let init = stream::once(future::ready(Operation::Start));
 

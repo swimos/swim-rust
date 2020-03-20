@@ -19,7 +19,7 @@ use crate::sink::item;
 use crate::sink::item::{ItemSink, MpscSend};
 use common::topic::{MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, Topic};
 use futures::{Stream, StreamExt};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.
@@ -29,9 +29,22 @@ pub struct QueueDownlink<Act, Upd> {
     topic: MpscTopic<Event<Upd>>,
 }
 
+impl<Act, Upd> Clone for QueueDownlink<Act, Upd> {
+    fn clone(&self) -> Self {
+        QueueDownlink {
+            input: self.input.clone(),
+            topic: self.topic.clone(),
+        }
+    }
+}
+
 impl<Act, Upd> QueueDownlink<Act, Upd> {
     pub fn any_dl(self) -> AnyDownlink<Act, Upd> {
         AnyDownlink::Queue(self)
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.input.same_sender(&other.input)
     }
 }
 
@@ -103,6 +116,7 @@ pub(in crate::downlink) fn make_downlink<Err, M, A, State, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    queue_size: usize,
 ) -> (QueueDownlink<A, State::Ev>, QueueReceiver<State::Ev>)
 where
     M: Send + 'static,
@@ -117,7 +131,8 @@ where
     let model = Model::new(init);
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
     let (event_tx, event_rx) = mpsc::channel::<Event<State::Ev>>(buffer_size);
-    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    let (stop_tx, stop_rx) = watch::channel::<Option<()>>(None);
+    let (closed_tx, closed_rx) = watch::channel(None);
 
     let event_sink = item::for_mpsc_sender::<_, DownlinkError>(event_tx);
 
@@ -128,13 +143,14 @@ where
         act_rx.fuse(),
         cmd_sink,
         event_sink,
+        closed_tx,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
 
-    let dl_task = raw::DownlinkTask::new(join_handle, stop_tx);
+    let dl_task = raw::DownlinkTask::new(join_handle, stop_tx, closed_rx);
 
-    let raw_dl = raw::RawDownlink::new(act_tx, event_rx, Some(dl_task));
+    let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 
-    QueueDownlink::from_raw(raw_dl, buffer_size)
+    QueueDownlink::from_raw(raw_dl, queue_size)
 }

@@ -15,7 +15,9 @@ async-trait = "0.1.24"
 tokio-tungstenite = "0.10.1"
 url = "2.1.1"
 common = { path = "../common" }
+utilities = { path = "../utilities" }
 form = { path = "../form" }
+deserialize = { path = "../form/deserialize"}
 
 [dev-dependencies]
 hamcrest2 = "0.3"
