@@ -182,12 +182,15 @@ pub trait ConnectionFactory {
     ) -> Result<Self::ConnectionType, ConnectionError>;
 }
 
-struct SwimConnectionFactory {}
+/// Factory that can produce Swim connections to remote hosts.
+pub struct SwimConnectionFactory {}
 
 #[async_trait]
 impl ConnectionFactory for SwimConnectionFactory {
     type ConnectionType = SwimConnection;
 
+    /// Creates a new Swim connection and returns a `Result` with either the connection
+    /// or a `ConnectionError`.
     async fn create_connection(
         &mut self,
         host_url: url::Url,
@@ -254,13 +257,15 @@ pub trait Connection: Sized {
     }
 }
 
-struct SwimConnection {
+/// Connection to a remote host.
+pub struct SwimConnection {
     tx: mpsc::Sender<Message>,
     _send_handler: JoinHandle<Result<(), ConnectionError>>,
     _receive_handler: JoinHandle<Result<(), ConnectionError>>,
 }
 
 impl SwimConnection {
+    /// Creates a new websocket connection to a remote host that can send and receive messages.
     async fn new<T: WebsocketFactory + Send + Sync + 'static>(
         host_url: url::Url,
         buffer_size: usize,

@@ -12,12 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::connections::{
+    ConnectionError, ConnectionPool, ConnectionPoolMessage, SwimConnectionFactory,
+};
+use crate::sink::item::drop_all::{drop_all, DropAll};
 use crate::sink::item::ItemSender;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
+use futures::future::{ready, Ready};
 use futures::{Future, Stream};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use tokio::sync::mpsc;
+
+#[cfg(test)]
+mod tests;
 
 pub trait Router: Send {
     type ConnectionStream: Stream<Item = Envelope> + Send + 'static;
@@ -30,6 +39,61 @@ pub trait Router: Send {
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut;
 
     fn general_sink(&mut self) -> Self::GeneralFut;
+}
+
+// struct SwimRouterItemSender {}
+//
+// impl ItemSender<Envelope, RoutingError> for SwimRouterItemSender {}
+
+// impl ItemSender<Envelope, tokio::sync::mpsc::error::SendError<Envelope>> for mpsc::Sender<Envelope> {}
+
+pub struct SwimRouter {}
+
+impl SwimRouter {
+    fn new(buffer_size: usize) -> SwimRouter {
+        let (router_tx, router_rx) = mpsc::channel(buffer_size);
+        let mut connection_pool =
+            ConnectionPool::new(buffer_size, router_tx, SwimConnectionFactory {});
+
+        let receive = SwimRouter::receive_messages_from_pool(router_rx);
+        let send = SwimRouter::send_messages_to_pool(connection_pool);
+
+        // Todo Add the handlers to the SwimRouter
+        let send_handler = tokio::spawn(send);
+        let receive_handler = tokio::spawn(receive);
+
+        SwimRouter {}
+    }
+
+    // rx receives messages directly from every open connection in the pool
+    async fn receive_messages_from_pool(
+        router_rx: mpsc::Receiver<Result<ConnectionPoolMessage, ConnectionError>>,
+    ) {
+    }
+
+    async fn send_messages_to_pool(connection_pool: ConnectionPool) {}
+}
+
+impl Router for SwimRouter {
+    type ConnectionStream = mpsc::Receiver<Envelope>;
+    type ConnectionSink = DropAll<Envelope, RoutingError>;
+    type GeneralSink = DropAll<(String, Envelope), RoutingError>;
+    type ConnectionFut = Ready<(Self::ConnectionSink, Self::ConnectionStream)>;
+    type GeneralFut = Ready<Self::GeneralSink>;
+
+    fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
+        // Todo remove unwrap
+        let host_url = url::Url::parse(&target.host).unwrap();
+
+        let (envelope_tx, envelope_rx) = mpsc::channel::<Envelope>(5);
+
+        ready((drop_all(), envelope_rx))
+    }
+
+    fn general_sink(&mut self) -> Self::GeneralFut {
+        //Todo
+        unimplemented!()
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
