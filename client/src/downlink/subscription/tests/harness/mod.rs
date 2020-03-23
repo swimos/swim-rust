@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::router::{Router, RoutingError};
-use crate::sink::item::drop_all::{drop_all, DropAll};
+use common::sink::item::drop_all::{drop_all, DropAll};
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use futures::future::{ready, Ready};

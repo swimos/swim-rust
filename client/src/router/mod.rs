@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sink::item::ItemSender;
+use common::sink::item::ItemSender;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use futures::{Future, Stream};
