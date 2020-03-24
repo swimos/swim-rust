@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::connections::factory::WebsocketFactory;
 use crate::connections::{
     Connection, ConnectionError, ConnectionFactory, ConnectionPool, ConnectionPoolMessage,
-    SwimConnection, SwimWebsocketFactory, WebsocketFactory,
+    SwimConnection,
 };
 use async_trait::async_trait;
+use futures::future::{ready, Ready};
 use futures::task::{Context, Poll};
 use futures::Sink;
 use futures_util::stream::Stream;
@@ -24,6 +27,7 @@ use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use url::Url;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -730,7 +734,8 @@ async fn test_connection_connect_error() {
     let buffer_size = 5;
     let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     // When
-    let result = SwimConnection::new(host, buffer_size, _pool_tx, SwimWebsocketFactory {}).await;
+    let factory = TungsteniteWsFactory::new(buffer_size).await;
+    let result = SwimConnection::new(host, buffer_size, _pool_tx, factory).await;
     // Then
     assert!(result.is_err());
     assert_eq!(result.err(), Some(ConnectionError::ConnectError));
@@ -897,48 +902,13 @@ struct TestWebsocketFactory {
     read_stream: TestReadStream,
 }
 
-#[async_trait]
 impl WebsocketFactory for TestWebsocketFactory {
-    type WebsocketType = TestReadWriteStream;
+    type WsStream = TestReadStream;
+    type WsSink = TestWriteStream;
+    type ConnectFut = Ready<Result<(Self::WsSink, Self::WsStream), ConnectionError>>;
 
-    async fn connect(self, _url: url::Url) -> Result<Self::WebsocketType, ConnectionError> {
-        Ok(TestReadWriteStream {
-            write_stream: self.write_stream.clone(),
-            read_stream: self.read_stream.clone(),
-        })
-    }
-}
-
-struct TestReadWriteStream {
-    read_stream: TestReadStream,
-    write_stream: TestWriteStream,
-}
-
-impl Stream for TestReadWriteStream {
-    type Item = Result<Message, ConnectionError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut self.read_stream).poll_next(cx)
-    }
-}
-
-impl Sink<Message> for TestReadWriteStream {
-    type Error = ();
-
-    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.write_stream).poll_ready(cx)
-    }
-
-    fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
-        Pin::new(&mut self.write_stream).start_send(item)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.write_stream).poll_flush(cx)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.write_stream).poll_close(cx)
+    fn connect(&mut self, _url: Url) -> Self::ConnectFut {
+        ready(Ok((self.write_stream.clone(), self.read_stream.clone())))
     }
 }
 

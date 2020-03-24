@@ -81,10 +81,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = QueueReceiver<Upd>;
-    type Fut = ErrInto<
-        SendAndAwait<Request<EventReceiver<Upd>>, EventReceiver<Upd>>,
-        TopicError,
-    >;
+    type Fut = ErrInto<SendAndAwait<Request<EventReceiver<Upd>>, EventReceiver<Upd>>, TopicError>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()

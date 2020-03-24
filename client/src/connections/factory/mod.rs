@@ -17,8 +17,8 @@ use futures::{Future, Sink, Stream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub trait WebsocketFactory {
-    type WsStream: Stream<Item = Result<Message, ConnectionError>> + Send + 'static;
-    type WsSink: Sink<Message> + Send + 'static;
+    type WsStream: Stream<Item = Result<Message, ConnectionError>> + Unpin + Send + 'static;
+    type WsSink: Sink<Message> + Unpin + Send + 'static;
 
     type ConnectFut: Future<Output = Result<(Self::WsSink, Self::WsStream), ConnectionError>>
         + Send
@@ -59,12 +59,14 @@ pub mod tungstenite {
         _task: JoinHandle<()>,
     }
 
-    pub async fn new(buffer_size: usize) -> TungsteniteWsFactory {
-        let (tx, rx) = mpsc::channel(buffer_size);
-        let task = tokio::task::spawn(factory_task(rx));
-        TungsteniteWsFactory {
-            sender: tx,
-            _task: task,
+    impl TungsteniteWsFactory {
+        pub async fn new(buffer_size: usize) -> TungsteniteWsFactory {
+            let (tx, rx) = mpsc::channel(buffer_size);
+            let task = tokio::task::spawn(factory_task(rx));
+            TungsteniteWsFactory {
+                sender: tx,
+                _task: task,
+            }
         }
     }
 

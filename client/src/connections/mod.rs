@@ -16,16 +16,13 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use futures::future::{AbortHandle, Abortable, Aborted};
-use futures::stream::ErrInto;
 use futures::{Sink, StreamExt};
-use futures_util::stream::Stream;
 use futures_util::TryStreamExt;
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::{connect_async, tungstenite, WebSocketStream};
 
 pub mod factory;
 
@@ -196,7 +193,9 @@ impl ConnectionFactory for SwimConnectionFactory {
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     ) -> Result<Self::ConnectionType, ConnectionError> {
-        SwimConnection::new(host_url, buffer_size, router_tx, SwimWebsocketFactory {}).await
+        //TODO Proper configuration.
+        let factory = TungsteniteWsFactory::new(buffer_size).await;
+        SwimConnection::new(host_url, buffer_size, router_tx, factory).await
     }
 }
 
@@ -267,13 +266,12 @@ impl SwimConnection {
         host_url: url::Url,
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        websocket_factory: T,
+        mut websocket_factory: T,
     ) -> Result<SwimConnection, ConnectionError> {
         let host = host_url.as_str().to_owned();
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let ws_stream = websocket_factory.connect(host_url).await?;
-        let (write_sink, read_stream) = ws_stream.split();
+        let (write_sink, read_stream) = websocket_factory.connect(host_url).await?;
 
         let receive = SwimConnection::receive_messages(read_stream, router_tx, host);
         let send = SwimConnection::send_messages(write_sink, rx);
@@ -320,32 +318,6 @@ impl Connection for SwimConnection {
     }
 }
 
-#[async_trait]
-trait WebsocketFactory {
-    type WebsocketType: Stream<Item = Result<Message, ConnectionError>>
-        + Sink<Message>
-        + Send
-        + 'static;
-
-    async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError>;
-}
-
-struct SwimWebsocketFactory {}
-
-#[async_trait]
-impl WebsocketFactory for SwimWebsocketFactory {
-    type WebsocketType = ErrInto<WebSocketStream<TcpStream>, ConnectionError>;
-
-    async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError> {
-        let (ws_stream, _) = connect_async(url)
-            .await
-            .map_err(|_| ConnectionError::ConnectError)?;
-        let ws_stream = ws_stream.err_into::<ConnectionError>();
-        unimplemented!()
-        //Ok(ws_stream)
-    }
-}
-
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionError {
@@ -377,6 +349,8 @@ impl From<Aborted> for ConnectionError {
     }
 }
 
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::connections::factory::WebsocketFactory;
 use common::request::request_future::RequestError;
 use tungstenite::error::Error as TError;
 

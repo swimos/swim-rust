@@ -331,10 +331,7 @@ impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
 
 impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
     type Receiver = MpscTopicReceiver<T>;
-    type Fut = ErrInto<
-        SendAndAwait<Request<Self::Receiver>, Self::Receiver>,
-        TopicError,
-    >;
+    type Fut = ErrInto<SendAndAwait<Request<Self::Receiver>, Self::Receiver>, TopicError>;
 
     fn subscribe(&mut self) -> Self::Fut {
         let MpscTopic { sub_sender, .. } = self;
