@@ -12,15 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::Ready;
+use futures::future::{ErrInto, Ready};
 use futures::task::{Context, Poll};
 use futures::{Future, Stream};
 use tokio::macros::support::Pin;
 
-use common::topic::{
-    BroadcastTopic, MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, Topic, TopicError,
-    WatchTopic,
-};
+use common::topic::{BroadcastTopic, MpscTopic, MpscTopicReceiver, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};
 
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
@@ -29,6 +26,8 @@ use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw;
 use crate::downlink::{Downlink, DownlinkError, Event};
 use crate::sink::item::{ItemSink, MpscSend};
+use common::request::request_future::{RequestFuture, Sequenced};
+use common::request::Request;
 use std::fmt::{Display, Formatter};
 use tokio::sync::{mpsc, oneshot};
 
@@ -109,13 +108,18 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
     }
 }
 
-pub type QueueSubFuture<Upd> =
-    Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>>;
+pub type QueueSubFuture<Upd> = ErrInto<
+    Sequenced<
+        RequestFuture<Request<MpscTopicReceiver<Event<Upd>>>>,
+        oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>,
+    >,
+    TopicError,
+>;
 pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
 pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
 
 #[pin_project]
-pub enum AnySubFuture<Upd> {
+pub enum AnySubFuture<Upd: Send + 'static> {
     Queue(#[pin] QueueSubFuture<Upd>),
     Dropping(#[pin] DroppingSubFuture<Upd>),
     Buffered(#[pin] BufferedSubFuture<Upd>),
@@ -128,7 +132,7 @@ impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         #[project]
         match self.project() {
-            AnySubFuture::Queue(fut) => fut.poll(cx).map_ok(AnyReceiver::Queue),
+            AnySubFuture::Queue(fut) => fut.poll(cx).map_ok(AnyReceiver::Queue).map_err(Into::into),
             AnySubFuture::Dropping(fut) => fut.poll(cx).map_ok(AnyReceiver::Dropping),
             AnySubFuture::Buffered(fut) => fut.poll(cx).map_ok(AnyReceiver::Buffered),
         }

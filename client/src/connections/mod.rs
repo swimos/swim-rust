@@ -27,6 +27,8 @@ use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::{connect_async, tungstenite, WebSocketStream};
 
+pub mod factory;
+
 #[cfg(test)]
 mod tests;
 
@@ -339,7 +341,8 @@ impl WebsocketFactory for SwimWebsocketFactory {
             .await
             .map_err(|_| ConnectionError::ConnectError)?;
         let ws_stream = ws_stream.err_into::<ConnectionError>();
-        Ok(ws_stream)
+        unimplemented!()
+        //Ok(ws_stream)
     }
 }
 
@@ -356,14 +359,14 @@ pub enum ConnectionError {
     ClosedError,
 }
 
-impl From<tokio::task::JoinError> for ConnectionError {
-    fn from(_: tokio::task::JoinError) -> Self {
-        ConnectionError::ConnectError
+impl From<RequestError> for ConnectionError {
+    fn from(_: RequestError) -> Self {
+        ConnectionError::ClosedError
     }
 }
 
-impl From<tungstenite::error::Error> for ConnectionError {
-    fn from(_: tungstenite::error::Error) -> Self {
+impl From<tokio::task::JoinError> for ConnectionError {
+    fn from(_: tokio::task::JoinError) -> Self {
         ConnectionError::ConnectError
     }
 }
@@ -371,5 +374,20 @@ impl From<tungstenite::error::Error> for ConnectionError {
 impl From<Aborted> for ConnectionError {
     fn from(_: Aborted) -> Self {
         ConnectionError::ClosedError
+    }
+}
+
+use common::request::request_future::RequestError;
+use tungstenite::error::Error as TError;
+
+impl From<tungstenite::error::Error> for ConnectionError {
+    fn from(e: TError) -> Self {
+        match e {
+            TError::ConnectionClosed | TError::AlreadyClosed => ConnectionError::ClosedError,
+            TError::Http(_) | TError::HttpFormat(_) | TError::Tls(_) => {
+                ConnectionError::ConnectError
+            }
+            _ => ConnectionError::ReceiveMessageError,
+        }
     }
 }

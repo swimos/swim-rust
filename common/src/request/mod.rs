@@ -14,6 +14,8 @@
 
 use tokio::sync::oneshot;
 
+pub mod request_future;
+
 #[derive(Debug)]
 pub struct Request<T> {
     satisfy: oneshot::Sender<T>,
@@ -24,10 +26,10 @@ impl<T> Request<T> {
         Request { satisfy: sender }
     }
 
-    pub fn send(self, data: T) -> Option<()> {
+    pub fn send(self, data: T) -> Result<(), ()> {
         match self.satisfy.send(data) {
-            Ok(_) => None,
-            Err(_) => Some(()),
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
         }
     }
 }

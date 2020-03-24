@@ -227,13 +227,13 @@ impl StateMachine<Value, Action> for SharedValue {
                         Event(data_state.clone(), true),
                         Command::Action(data_state.clone()),
                     );
-                    match maybe_resp.and_then(|req| req.send(())) {
+                    match maybe_resp.and_then(|req| req.send(()).err()) {
                         Some(_) => resp.with_error(TransitionError::ReceiverDropped),
                         _ => resp,
                     }
                 }
                 Action::Get(resp) => match resp.send(data_state.clone()) {
-                    Some(_) => Response::none().with_error(TransitionError::ReceiverDropped),
+                    Err(_) => Response::none().with_error(TransitionError::ReceiverDropped),
                     _ => Response::none(),
                 },
                 Action::Update(upd_fn, maybe_resp) => {
@@ -242,9 +242,9 @@ impl StateMachine<Value, Action> for SharedValue {
                         Event(data_state.clone(), true),
                         Command::Action(data_state.clone()),
                     );
-                    match maybe_resp.and_then(|req| req.send(data_state.clone())) {
+                    match maybe_resp.and_then(|req| req.send(data_state.clone()).err()) {
+                        None => resp,
                         Some(_) => resp.with_error(TransitionError::ReceiverDropped),
-                        _ => resp,
                     }
                 }
             },
