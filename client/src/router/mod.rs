@@ -15,7 +15,7 @@
 use crate::connections::{
     ConnectionError, ConnectionPool, ConnectionPoolMessage, SwimConnectionFactory,
 };
-use crate::sink::item::drop_all::{drop_all, DropAll};
+use crate::sink::item::map_err::SenderErrInto;
 use crate::sink::item::ItemSender;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
@@ -40,12 +40,6 @@ pub trait Router: Send {
 
     fn general_sink(&mut self) -> Self::GeneralFut;
 }
-
-// struct SwimRouterItemSender {}
-//
-// impl ItemSender<Envelope, RoutingError> for SwimRouterItemSender {}
-
-// impl ItemSender<Envelope, tokio::sync::mpsc::error::SendError<Envelope>> for mpsc::Sender<Envelope> {}
 
 pub struct SwimRouter {}
 
@@ -76,18 +70,19 @@ impl SwimRouter {
 
 impl Router for SwimRouter {
     type ConnectionStream = mpsc::Receiver<Envelope>;
-    type ConnectionSink = DropAll<Envelope, RoutingError>;
-    type GeneralSink = DropAll<(String, Envelope), RoutingError>;
+    type ConnectionSink = SenderErrInto<mpsc::Sender<Envelope>, RoutingError>;
+    type GeneralSink = SenderErrInto<mpsc::Sender<(String, Envelope)>, RoutingError>;
     type ConnectionFut = Ready<(Self::ConnectionSink, Self::ConnectionStream)>;
     type GeneralFut = Ready<Self::GeneralSink>;
 
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
         // Todo remove unwrap
         let host_url = url::Url::parse(&target.host).unwrap();
-
         let (envelope_tx, envelope_rx) = mpsc::channel::<Envelope>(5);
 
-        ready((drop_all(), envelope_rx))
+        let envelope_tx = envelope_tx.map_err_into();
+
+        ready((envelope_tx, envelope_rx))
     }
 
     fn general_sink(&mut self) -> Self::GeneralFut {
@@ -110,3 +105,10 @@ impl Display for RoutingError {
 }
 
 impl Error for RoutingError {}
+
+impl<T> From<mpsc::error::SendError<T>> for RoutingError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        //TODO add impl
+        unimplemented!()
+    }
+}
