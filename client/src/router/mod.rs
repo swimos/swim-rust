@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::connections::{
-    Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage, SwimConnectionFactory,
+    Connection, ConnectionError, ConnectionPool, ConnectionPoolMessage, ConnectionSender,
+    SwimConnection, SwimConnectionFactory,
 };
 use crate::sink::item::map_err::SenderErrInto;
 use crate::sink::item::{ItemSender, ItemSink};
@@ -24,6 +25,7 @@ use futures::{Future, Stream};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 #[cfg(test)]
 mod tests;
@@ -55,13 +57,17 @@ impl SwimRouter {
         // let (sinks_tx, sinks_rx) = mpsc::channel(buffer_size);
 
         // Todo Use this to create request_connection()
-        // let mut connection_pool =
-        //     ConnectionPool::new(buffer_size, router_tx, SwimConnectionFactory {});
+        let connection_pool = ConnectionPool::new(buffer_size, router_tx, SwimConnectionFactory {});
 
-        let receive = SwimRouter::receive_messages_from_pool(router_rx);
-        let send = SwimRouter::send_envelopes_to_pool(envelope_rx);
+        let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
+
+        let connections = SwimRouter::request_connection(connection_pool, connection_request_rx);
+
+        let receive = SwimRouter::receive_all_messages_from_pool(router_rx);
+        let send = SwimRouter::send_all_envelopes_to_pool(envelope_rx, connection_request_tx);
 
         // Todo Add the handlers to the SwimRouter
+        let connections_handler = tokio::spawn(connections);
         let send_handler = tokio::spawn(send);
         let receive_handler = tokio::spawn(receive);
 
@@ -69,7 +75,7 @@ impl SwimRouter {
     }
 
     // rx receives messages directly from every open connection in the pool
-    async fn receive_messages_from_pool(
+    async fn receive_all_messages_from_pool(
         mut router_rx: mpsc::Receiver<Result<ConnectionPoolMessage, ConnectionError>>,
     ) {
         loop {
@@ -77,31 +83,44 @@ impl SwimRouter {
             let ConnectionPoolMessage { host, message } = pool_message;
 
             //TODO this needs to be implemented
+            //We can have multiple sinks (downlinks) for a given host
             let mut sink = SwimRouter::request_sink(host);
             sink.send_item(text);
 
-            //TODO parse the message to envelope. This should be moved in the subtasks.
-
-            // let lane_addressed = LaneAddressed {
-            //     node_uri: String::from("node_uri"),
-            //     lane_uri: String::from("lane_uri"),
-            //     body: None,
-            // };
-            // let envelope = Envelope::EventMessage(lane_addressed);
             //
             // sink.send_item(envelope);
         }
     }
 
-    async fn send_envelopes_to_pool(mut envelope_rx: mpsc::Receiver<Envelope>) {
-        //Todo wrap message and host into one struct
+    async fn send_all_envelopes_to_pool(
+        mut envelope_rx: mpsc::Receiver<Envelope>,
+        mut connection_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
+    ) {
         loop {
             let envelope = envelope_rx.recv().await.unwrap();
             //TODO Parse the envelope to obtain host
-            let host = String::from("foo");
-            let mut connection = SwimRouter::request_connection(host);
+            let host = url::Url::parse("127.0.0.1").unwrap();
 
-            connection.send_message(&message);
+            let (connection_tx, connection_rx) = oneshot::channel();
+            connection_request_tx.send((host, connection_tx)).await;
+
+            //Todo This should be sent down to the host tasks.
+            // connection.send_message(&message);
+        }
+    }
+
+    async fn send_host_envelopes_to_pool(
+        mut connection_rx: oneshot::Receiver<ConnectionSender>,
+        mut envelope_rx: mpsc::Receiver<Envelope>,
+    ) {
+        let mut connection = connection_rx.await.unwrap();
+
+        loop {
+            //TODO parse the message to an envelope
+            let envelope = envelope_rx.recv().await.unwrap();
+            let message = "foo";
+
+            connection.send_message(message);
         }
     }
 }
