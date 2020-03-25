@@ -16,7 +16,7 @@ use super::ConnectionError;
 use futures::{Future, Sink, Stream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-pub trait WebsocketFactory {
+pub trait WebsocketFactory: Send + Sync {
     type WsStream: Stream<Item = Result<Message, ConnectionError>> + Unpin + Send + 'static;
     type WsSink: Sink<Message> + Unpin + Send + 'static;
 
