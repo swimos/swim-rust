@@ -72,18 +72,16 @@ impl ConnectionPool {
 
         let (connection_requests_abort_handle, abort_registration) = AbortHandle::new_pair();
 
-        let task = PoolTask::new(connection_request_rx,
-                                 connection_factory,
-                                 router_tx,
-                                 buffer_size);
-
-        let accept_connection_requests_future = Abortable::new(
-            task.run(),
-            abort_registration,
+        let task = PoolTask::new(
+            connection_request_rx,
+            connection_factory,
+            router_tx,
+            buffer_size,
         );
 
-        let connection_requests_handler =
-            tokio::task::spawn(accept_connection_requests_future);
+        let accept_connection_requests_future = Abortable::new(task.run(), abort_registration);
+
+        let connection_requests_handler = tokio::task::spawn(accept_connection_requests_future);
 
         ConnectionPool {
             connection_requests_abort_handle,
@@ -136,12 +134,16 @@ where
     buffer_size: usize,
 }
 
-impl<WsFac> PoolTask<WsFac> where WsFac: WebsocketFactory + 'static {
-
-    fn new(rx: mpsc::Receiver<ConnectionRequest>,
-           connection_factory: WsFac,
-           router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-           buffer_size: usize) -> Self {
+impl<WsFac> PoolTask<WsFac>
+where
+    WsFac: WebsocketFactory + 'static,
+{
+    fn new(
+        rx: mpsc::Receiver<ConnectionRequest>,
+        connection_factory: WsFac,
+        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+        buffer_size: usize,
+    ) -> Self {
         PoolTask {
             rx,
             connection_factory,
@@ -155,7 +157,7 @@ impl<WsFac> PoolTask<WsFac> where WsFac: WebsocketFactory + 'static {
             mut rx,
             mut connection_factory,
             router_tx,
-            buffer_size
+            buffer_size,
         } = self;
         let mut connections: HashMap<String, SwimConnection> = HashMap::new();
         loop {
@@ -171,7 +173,9 @@ impl<WsFac> PoolTask<WsFac> where WsFac: WebsocketFactory + 'static {
                 let conn = connections
                     .get_mut(&host)
                     .ok_or(ConnectionError::ConnectError)?;
-                Ok(ConnectionSender { tx: conn.tx.clone() })
+                Ok(ConnectionSender {
+                    tx: conn.tx.clone(),
+                })
             } else {
                 let connection_result = SwimConnection::new(
                     host_url,
@@ -179,11 +183,13 @@ impl<WsFac> PoolTask<WsFac> where WsFac: WebsocketFactory + 'static {
                     router_tx.clone(),
                     &mut connection_factory,
                 )
-                    .await;
+                .await;
 
                 match connection_result {
                     Ok(connection) => {
-                        let sender = ConnectionSender { tx: connection.tx.clone() };
+                        let sender = ConnectionSender {
+                            tx: connection.tx.clone(),
+                        };
                         connections.insert(host.clone(), connection);
                         Ok(sender)
                     }
@@ -196,7 +202,6 @@ impl<WsFac> PoolTask<WsFac> where WsFac: WebsocketFactory + 'static {
                 .map_err(|_| ConnectionError::ConnectError)?;
         }
     }
-
 }
 
 struct SendTask<S>
