@@ -25,7 +25,7 @@ use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
-use crate::sink::item::ItemSender;
+use common::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
 use form::Form;
 use futures::Stream;

@@ -28,7 +28,7 @@ use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw;
 use crate::downlink::{Downlink, DownlinkError, Event};
-use crate::sink::item::{ItemSink, MpscSend};
+use common::sink::item::{ItemSink, MpscSend};
 use std::fmt::{Display, Formatter};
 use tokio::sync::{mpsc, oneshot};
 

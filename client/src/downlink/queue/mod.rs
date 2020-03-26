@@ -15,8 +15,8 @@
 use super::raw;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::{Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
-use crate::sink::item;
-use crate::sink::item::{ItemSink, MpscSend};
+use common::sink::item;
+use common::sink::item::{ItemSink, MpscSend};
 use common::topic::{MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, Topic};
 use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, oneshot, watch};
