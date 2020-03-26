@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::Duration;
 
-use crate::sink::item::*;
+use common::sink::item::*;
 
 use super::*;
 

@@ -38,7 +38,7 @@ use crate::downlink::model::value;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
 use crate::router::Router;
-use crate::sink::item::ItemSender;
+use common::sink::item::ItemSender;
 
 pub mod envelopes;
 #[cfg(test)]

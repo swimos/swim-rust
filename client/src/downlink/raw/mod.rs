@@ -39,6 +39,10 @@ impl<S> Sender<S> {
         }
     }
 
+    pub fn is_running(&self) -> bool {
+        self.task.is_running()
+    }
+
     pub fn same_sender(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.task, &other.task)
     }
@@ -103,8 +107,12 @@ impl<S, R> RawDownlink<S, R> {
         }
     }
 
+    pub fn is_running(&self) -> bool {
+        self.sender.is_running()
+    }
+
     /// Stop the downlink from running.
-    pub async fn stop(self) -> Result<(), DownlinkError> {
+    pub async fn stop(&self) -> Result<(), DownlinkError> {
         self.sender.stop().await
     }
 
@@ -184,6 +192,11 @@ impl DownlinkTask {
 }
 
 impl DownlinkTask {
+    // The stop waiter is initialised to 'None' and only ever sends a value when the task finishes
+    fn is_running(&self) -> bool {
+        self.stop_waiter.borrow().is_none()
+    }
+
     async fn stop(&self) -> Result<(), DownlinkError> {
         let _ = self.stop_trigger.broadcast(Some(()));
         self.stop_waiter

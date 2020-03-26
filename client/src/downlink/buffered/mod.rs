@@ -21,8 +21,8 @@ use common::topic::{BroadcastReceiver, BroadcastTopic, Topic, TopicError};
 
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
-use crate::sink::item;
-use crate::sink::item::{ItemSink, MpscSend};
+use common::sink::item;
+use common::sink::item::{ItemSink, MpscSend};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
