@@ -25,8 +25,8 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub mod factory;
 
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
 
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]

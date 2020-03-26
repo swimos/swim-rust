@@ -66,7 +66,7 @@ pub mod async_factory {
     {
         /// Create a new factory where the task operates off a queue with [`buffer_size`] entries
         /// and uses [`connect_async`] to service the requests.
-        pub(in crate::connections::factory) async fn new<Fac, Fut>(
+        pub(in crate::connections) async fn new<Fac, Fut>(
             buffer_size: usize,
             connect_async: Fac,
         ) -> Self
