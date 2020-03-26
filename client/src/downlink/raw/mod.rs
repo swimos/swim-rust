@@ -192,7 +192,6 @@ impl DownlinkTask {
 }
 
 impl DownlinkTask {
-
     // The stop waiter is initialised to 'None' and only ever sends a value when the task finishes
     fn is_running(&self) -> bool {
         self.stop_waiter.borrow().is_none()
@@ -290,7 +289,7 @@ where
             break Err(DownlinkError::OperationStreamEnded);
         }
     };
-    println!("Complete");
+
     let _ = on_complete.broadcast(Some(result));
     result
 }
