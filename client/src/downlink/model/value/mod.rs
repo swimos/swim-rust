@@ -23,9 +23,9 @@ use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
-use crate::sink::item::ItemSender;
 use common::model::Value;
 use common::request::Request;
+use common::sink::item::ItemSender;
 use std::fmt;
 
 #[cfg(test)]

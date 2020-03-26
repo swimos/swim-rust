@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::*;
-use crate::sink::item::ItemSender;
+use common::sink::item::ItemSender;
 use futures::StreamExt;
 use std::sync::Arc;
 
