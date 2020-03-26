@@ -67,6 +67,8 @@ async fn subscribe_value_lane_default_config() {
     assert_that!(dl.kind(), eq(TopicKind::Queue));
 }
 
+
+
 #[tokio::test]
 async fn subscribe_value_lane_per_host_config() {
     let path = AbsolutePath::new("host2", "node", "lane");
@@ -178,6 +180,24 @@ async fn subscribe_value_twice() {
 }
 
 #[tokio::test]
+async fn drop_second_rcv() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result1 = downlinks.subscribe_value(Value::Extant, path.clone()).await;
+    assert_that!(&result1, ok());
+    let (dl1, _rec1) = result1.unwrap();
+
+    let result2 = downlinks.subscribe_value(Value::Extant, path).await;
+    assert_that!(&result2, ok());
+    let (dl2, rec2) = result2.unwrap();
+
+    assert!(dl1.same_downlink(&dl2));
+
+    drop(rec2);
+    assert_that!(dl1.is_running(), true);
+}
+
+#[tokio::test]
 async fn subscribe_map_twice() {
     let path = AbsolutePath::new("host", "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
@@ -190,23 +210,6 @@ async fn subscribe_map_twice() {
     let (dl2, _rec2) = result2.unwrap();
 
     assert!(dl1.same_downlink(&dl2));
-}
-
-#[tokio::test]
-async fn stopping() {
-    let path = AbsolutePath::new("host", "node", "lane");
-    let mut downlinks = dl_manager(default_config()).await;
-    let result1 = downlinks.subscribe_value(Value::Extant, path.clone()).await;
-    assert_that!(&result1, ok());
-    let (dl1, rec1) = result1.unwrap();
-
-    //Dropping the only live receiver causes the downlink to stop.
-    drop(rec1);
-    let result2 = downlinks.subscribe_value(Value::Extant, path).await;
-    assert_that!(&result2, ok());
-    let (dl2, _rec2) = result2.unwrap();
-
-    assert!(!dl1.same_downlink(&dl2));
 }
 
 #[tokio::test]
