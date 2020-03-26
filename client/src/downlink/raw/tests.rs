@@ -12,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
+use std::time::Instant;
 
-use super::*;
-use crate::sink::item::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
-use std::time::Instant;
 use tokio::stream::StreamExt;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
+use tokio::time::Duration;
+
+use crate::sink::item::*;
+
+use super::*;
 
 struct State(i32);
 
@@ -146,6 +149,17 @@ async fn sync_on_startup() {
     assert_that!(first_cmd, eq(Some(Command::Sync)));
     let stop_res = dl.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl.is_running(), false);
+
+    std::thread::sleep(Duration::from_secs(1));
+}
+
+#[tokio::test]
+async fn stop_downlink() {
+    let (dl, _messages, _commands) = make_test_dl().await;
+    let _ = dl.stop().await;
+
+    assert_that!(dl.is_running(), false)
 }
 
 #[tokio::test]
@@ -161,6 +175,7 @@ async fn event_on_sync() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
@@ -177,6 +192,7 @@ async fn ignore_update_before_link() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
@@ -193,6 +209,7 @@ async fn apply_updates_between_link_and_sync() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl_tx.is_running(), false);
 }
 
 /// Pre-synchronizes a downlink for tests that require the ['DownlinkState::Synced'] state.
@@ -233,6 +250,7 @@ async fn updates_processed_when_synced() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
@@ -251,6 +269,7 @@ async fn actions_processed_when_synced() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
@@ -282,6 +301,7 @@ async fn actions_paused_when_not_synced() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
@@ -325,6 +345,7 @@ async fn actions_paused_when_unlinked() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
+    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
@@ -349,4 +370,5 @@ async fn errors_propagate() {
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, err());
     assert_that!(stop_res.err().unwrap(), eq(DownlinkError::TransitionError));
+    assert_that!(dl_tx.is_running(), false);
 }

@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
-use crate::sink::item::ItemSender;
-use futures::StreamExt;
 use std::sync::Arc;
+
+use futures::StreamExt;
+
+use crate::sink::item::ItemSender;
+
+use super::*;
 
 #[cfg(test)]
 pub mod tests;
@@ -34,6 +37,10 @@ impl<S> Sender<S> {
             set_sink,
             task: Arc::new(task),
         }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.task.is_running()
     }
 
     pub fn same_sender(&self, other: &Self) -> bool {
@@ -100,8 +107,12 @@ impl<S, R> RawDownlink<S, R> {
         }
     }
 
+    pub fn is_running(&self) -> bool {
+        self.sender.is_running()
+    }
+
     /// Stop the downlink from running.
-    pub async fn stop(self) -> Result<(), DownlinkError> {
+    pub async fn stop(&self) -> Result<(), DownlinkError> {
         self.sender.stop().await
     }
 
@@ -181,6 +192,12 @@ impl DownlinkTask {
 }
 
 impl DownlinkTask {
+
+    // The stop waiter is initialised to 'None' and only ever sends a value when the task finishes
+    fn is_running(&self) -> bool {
+        self.stop_waiter.borrow().is_none()
+    }
+
     async fn stop(&self) -> Result<(), DownlinkError> {
         let _ = self.stop_trigger.broadcast(Some(()));
         self.stop_waiter
@@ -273,6 +290,7 @@ where
             break Err(DownlinkError::OperationStreamEnded);
         }
     };
+    println!("Complete");
     let _ = on_complete.broadcast(Some(result));
     result
 }

@@ -60,6 +60,14 @@ pub enum AnyDownlink<Act, Upd> {
 }
 
 impl<Act, Upd> AnyDownlink<Act, Upd> {
+    pub fn is_running(&self) -> bool {
+        match self {
+            AnyDownlink::Queue(dl) => dl.is_running(),
+            AnyDownlink::Dropping(dl) => dl.sender_running(),
+            AnyDownlink::Buffered(dl) => dl.sender_running(),
+        }
+    }
+
     pub fn kind(&self) -> TopicKind {
         match self {
             AnyDownlink::Queue(_) => TopicKind::Queue,

@@ -12,30 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::{Config, MuxMode};
-use crate::downlink::any::{AnyDownlink, AnyReceiver};
-use crate::downlink::model::map::{MapAction, ViewWithEvent};
-use crate::downlink::model::value;
-use crate::downlink::model::value::SharedValue;
-use crate::downlink::Command;
-use crate::router::Router;
-use crate::sink::item::ItemSender;
-use common::model::Value;
-use common::request::Request;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-use futures::Stream;
-use futures_util::future::TryFutureExt;
-use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
+
+use futures::Stream;
+use futures_util::future::TryFutureExt;
+use pin_utils::pin_mut;
 use tokio::stream::StreamExt;
+use tokio::sync::{mpsc, oneshot};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+
+use common::model::Value;
+use common::request::Request;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+
+use crate::configuration::downlink::{Config, MuxMode};
+use crate::downlink::any::{AnyDownlink, AnyReceiver};
+use crate::downlink::Command;
+use crate::downlink::model::map::{MapAction, ViewWithEvent};
+use crate::downlink::model::value;
+use crate::downlink::model::value::SharedValue;
+use crate::router::Router;
+use crate::sink::item::ItemSender;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -57,14 +60,15 @@ impl Downlinks {
     /// Create a new downlink manager, using the specified configuration, which will attach all
     /// create downlinks to the provided router.
     pub async fn new<C, R>(config: Arc<C>, router: R) -> Downlinks
-    where
-        C: Config + 'static,
-        R: Router + 'static,
+        where
+            C: Config + 'static,
+            R: Router + 'static,
     {
         let client_params = config.client_params();
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
         let task_handle = tokio::task::spawn(task.run(rx));
+
         Downlinks {
             sender: tx,
             _task: task_handle,
@@ -181,12 +185,12 @@ struct DownlinkTask<R> {
 }
 
 impl<R> DownlinkTask<R>
-where
-    R: Router,
+    where
+        R: Router,
 {
     fn new<C>(config: Arc<C>, router: R) -> DownlinkTask<R>
-    where
-        C: Config + 'static,
+        where
+            C: Config + 'static,
     {
         DownlinkTask {
             config,
@@ -266,8 +270,8 @@ where
     }
 
     async fn run<Req>(mut self, requests: Req)
-    where
-        Req: Stream<Item = DownlinkRequest>,
+        where
+            Req: Stream<Item=DownlinkRequest>,
     {
         pin_mut!(requests);
 

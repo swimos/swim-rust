@@ -46,6 +46,10 @@ impl<Act, Upd> QueueDownlink<Act, Upd> {
     pub fn same_downlink(&self, other: &Self) -> bool {
         self.input.same_sender(&other.input)
     }
+
+    pub fn is_running(&self) -> bool {
+        self.input.is_running()
+    }
 }
 
 impl<Act, Upd> QueueDownlink<Act, Upd>
