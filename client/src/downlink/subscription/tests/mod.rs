@@ -67,8 +67,6 @@ async fn subscribe_value_lane_default_config() {
     assert_that!(dl.kind(), eq(TopicKind::Queue));
 }
 
-
-
 #[tokio::test]
 async fn subscribe_value_lane_per_host_config() {
     let path = AbsolutePath::new("host2", "node", "lane");
