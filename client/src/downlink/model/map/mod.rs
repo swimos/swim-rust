@@ -717,7 +717,7 @@ fn handle_action(
                     Event(ViewWithEvent::insert(data_state, key.clone()), true),
                     Command::Action(MapModification::Insert(key, v_arc)),
                 ),
-                err,
+                err.is_err(),
             )
         }
         MapAction::Remove { key, old } => {
@@ -738,10 +738,10 @@ fn handle_action(
                         Event(ViewWithEvent::remove(data_state, key.clone()), true),
                         Command::Action(MapModification::Remove(key)),
                     ),
-                    err,
+                    err.is_err(),
                 )
             } else {
-                (Response::none(), err)
+                (Response::none(), err.is_err())
             }
         }
         MapAction::Take { n, before, after } => {
@@ -761,7 +761,7 @@ fn handle_action(
                     Event(ViewWithEvent::take(data_state, n), true),
                     Command::Action(MapModification::Take(n)),
                 ),
-                err1.or(err2),
+                err1.is_err() || err2.is_err(),
             )
         }
         MapAction::Skip { n, before, after } => {
@@ -781,7 +781,7 @@ fn handle_action(
                     Event(ViewWithEvent::skip(data_state, n), true),
                     Command::Action(MapModification::Skip(n)),
                 ),
-                err1.or(err2),
+                err1.is_err() || err2.is_err(),
             )
         }
         MapAction::Clear { before } => {
@@ -800,16 +800,16 @@ fn handle_action(
                     Event(ViewWithEvent::clear(data_state), true),
                     Command::Action(MapModification::Clear),
                 ),
-                err,
+                err.is_err(),
             )
         }
         MapAction::Get { request } => {
             let err = request.send(data_state.clone());
-            (Response::none(), err)
+            (Response::none(), err.is_err())
         }
         MapAction::GetByKey { key, request } => {
             let err = request.send(data_state.get(&key).cloned());
-            (Response::none(), err)
+            (Response::none(), err.is_err())
         }
         MapAction::Update {
             key,
@@ -830,10 +830,7 @@ fn handle_action(
                             Event(ViewWithEvent::insert(data_state, key.clone()), true),
                             Command::Action(MapModification::Insert(key, v_arc)),
                         ),
-                        match err1.or(err2) {
-                            None => Ok(()),
-                            Some(_) => Err(()),
-                        },
+                        err1.is_some() || err2.is_some(),
                     )
                 }
                 _ if prev.is_some() => {
@@ -845,18 +842,16 @@ fn handle_action(
                             Event(ViewWithEvent::remove(data_state, key.clone()), true),
                             Command::Action(MapModification::Remove(key)),
                         ),
-                        match err1.or(err2) {
-                            None => Ok(()),
-                            Some(_) => Err(()),
-                        },
+                        err1.is_some() || err2.is_some(),
                     )
                 }
-                _ => (Response::none(), Ok(())),
+                _ => (Response::none(), false),
             }
         }
     };
-    match err {
-        Err(_) => resp.with_error(TransitionError::ReceiverDropped),
-        _ => resp,
+    if err {
+        resp.with_error(TransitionError::ReceiverDropped)
+    } else {
+        resp
     }
 }
