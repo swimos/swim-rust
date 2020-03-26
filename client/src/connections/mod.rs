@@ -34,9 +34,9 @@ mod tests;
 #[derive(Debug)]
 pub struct ConnectionPoolMessage {
     /// The URL of the remote host.
-    host: String,
+    pub host: String,
     /// The message from the remote host.
-    message: String,
+    pub message: String,
 }
 
 struct ConnectionRequest {
