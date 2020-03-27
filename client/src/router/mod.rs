@@ -45,8 +45,6 @@ pub trait Router: Send {
 }
 
 pub struct SwimRouter {
-    // host_send_task_tx: mpsc::Sender<(url::Url, mpsc::Sender<Envelope>)>,
-    connection_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
     task_request_tx: mpsc::Sender<url::Url>,
     envelope_tx: mpsc::Sender<Envelope>,
 }
@@ -61,32 +59,27 @@ impl SwimRouter {
         let connection_pool = ConnectionPool::new(buffer_size, router_tx, SwimConnectionFactory {});
 
         let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
+
         let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
-        let (host_send_task_tx, host_send_task_rx) = mpsc::channel(buffer_size);
 
         let connections = SwimRouter::request_connections(connection_pool, connection_request_rx);
-        let task_spawner = SwimRouter::request_send_host_envelopes_task(
-            task_request_rx,
-            host_send_task_tx,
-            connection_request_tx.clone(),
-        );
 
-        let envelope_routing =
-            SwimRouter::send_all_envelopes_to_pool(envelope_rx, host_send_task_rx);
+        let envelope_routing = SwimRouter::send_all_envelopes_to_pool(
+            envelope_rx,
+            task_request_rx,
+            connection_request_tx,
+        );
 
         // let sinks = SwimRouter::request_sinks(sink_request_rx);
         // let receive = SwimRouter::receive_all_messages_from_pool(router_rx, sink_request_tx);
 
         // Todo Add the handlers to the SwimRouter
         let connections_handler = tokio::spawn(connections);
-        let tasks_spawner_handler = tokio::spawn(task_spawner);
         let envelope_routing_handler = tokio::spawn(envelope_routing);
         // let sinks_handler = tokio::spawn(sinks);
         // let receive_handler = tokio::spawn(receive);
 
         SwimRouter {
-            // host_send_task_tx,
-            connection_request_tx,
             task_request_tx,
             envelope_tx,
         }
@@ -96,16 +89,30 @@ impl SwimRouter {
 
     async fn send_all_envelopes_to_pool(
         mut envelope_rx: mpsc::Receiver<Envelope>,
-        mut host_task_rx: mpsc::Receiver<(url::Url, mpsc::Sender<Envelope>)>,
+        mut task_request_rx: mpsc::Receiver<url::Url>,
+        mut connection_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
     ) {
         let mut host_tasks: HashMap<String, mpsc::Sender<Envelope>> = HashMap::new();
 
         //TODO refactor this with an enum and a match after the select based on the enum value.
         loop {
             tokio::select! {
-                Some((host, host_tx)) = host_task_rx.recv() => {
-                    host_tasks.insert(host.to_string(), host_tx);
-                    println!("{:?}", host);
+                Some(host_url) = task_request_rx.recv() => {
+
+                    let host = host_url.to_string();
+                    if !host_tasks.contains_key(&host) {
+
+                        let (envelope_tx, envelope_rx) = mpsc::channel(5);
+
+                        let host_task = SwimRouter::send_host_envelopes_to_pool(
+                            host_url.clone(),
+                            envelope_rx,
+                            connection_request_tx.clone(),
+                        );
+
+                        host_tasks.insert(host.clone(), envelope_tx);
+                        tokio::spawn(host_task);
+                    }
                 }
                 Some(envelope) = envelope_rx.recv() => {
 
@@ -138,37 +145,6 @@ impl SwimRouter {
         }
     }
 
-    async fn request_send_host_envelopes_task(
-        mut task_request_rx: mpsc::Receiver<url::Url>,
-        mut task_tx: mpsc::Sender<(url::Url, mpsc::Sender<Envelope>)>,
-        mut connection_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
-    ) {
-        let mut host_tasks: HashMap<String, mpsc::Sender<Envelope>> = HashMap::new();
-
-        loop {
-            let host_url = task_request_rx.recv().await.unwrap();
-            let host = host_url.to_string();
-
-            if !host_tasks.contains_key(&host) {
-                let (envelope_tx, envelope_rx) = mpsc::channel(5);
-
-                let host_task = SwimRouter::send_host_envelopes_to_pool(
-                    host_url.clone(),
-                    envelope_rx,
-                    connection_request_tx.clone(),
-                );
-
-                host_tasks.insert(host.clone(), envelope_tx);
-                tokio::spawn(host_task);
-            }
-
-            let envelope_tx = host_tasks.get_mut(&host).unwrap().clone();
-
-            task_tx.send((host_url, envelope_tx)).await;
-        }
-    }
-
-    //Todo this should be able to receive a new connection if the given one is closed
     async fn send_host_envelopes_to_pool(
         host_url: url::Url,
         mut envelope_rx: mpsc::Receiver<Envelope>,
@@ -186,6 +162,7 @@ impl SwimRouter {
 
             //TODO parse the envelope to a message
             let message = "@sync(node:\"/unit/foo\", lane:\"info\")";
+            println!("{:?}", host_url.to_string());
             println!("{:?}", message);
             connection.send_message(message).await;
         }
