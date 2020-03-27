@@ -17,7 +17,7 @@ use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use futures::Stream;
+use futures::{select, Stream};
 use futures_util::future::TryFutureExt;
 use pin_utils::pin_mut;
 use tokio::stream::StreamExt;
@@ -25,9 +25,11 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tokio::time::{Duration, Instant};
 
 use common::model::Value;
 use common::request::Request;
+use common::sink::item::ItemSender;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 
@@ -38,7 +40,6 @@ use crate::downlink::model::value;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
 use crate::router::Router;
-use common::sink::item::ItemSender;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -177,7 +178,7 @@ pub enum DownlinkRequest {
     Map(AbsolutePath, Request<Result<(MapDownlink, MapReceiver)>>),
 }
 
-struct DownlinkTask<R> {
+pub struct DownlinkTask<R> {
     config: Arc<dyn Config>,
     value_downlinks: HashMap<AbsolutePath, ValueDownlink>,
     map_downlinks: HashMap<AbsolutePath, MapDownlink>,
@@ -269,60 +270,89 @@ where
         (dl, rec)
     }
 
+    fn remove_inactive(&mut self) {}
+
     async fn run<Req>(mut self, requests: Req)
     where
-        Req: Stream<Item = DownlinkRequest>,
+        Req: Stream<Item = DownlinkRequest> + Unpin,
     {
+        use futures::StreamExt as FuturesStreamExt;
+
         pin_mut!(requests);
 
-        let mut pinned_requests: Pin<&mut Req> = requests;
+        let interval_timer = tokio::time::interval_at(Instant::now(), Duration::from_millis(1))
+            .then(|_| futures::future::ready(()));
 
-        while let Some(request) = pinned_requests.next().await {
-            match request {
-                DownlinkRequest::Value(init, path, value_req) => {
-                    let dl = match self.value_downlinks.get(&path) {
-                        Some(dl) => {
-                            let mut dl_clone = dl.clone();
-                            match dl_clone.subscribe().await {
-                                Ok(rec) => Ok((dl_clone, rec)),
-                                Err(_) => {
-                                    self.value_downlinks.remove(&path);
-                                    Ok(self.create_new_value_downlink(init, path).await)
-                                }
+        let pinned_requests: Pin<&mut Req> = requests;
+        let mut fused_timer = FuturesStreamExt::fuse(interval_timer);
+        let mut fused_rx = FuturesStreamExt::fuse(pinned_requests);
+
+        let (_closed_tx, _closed_rx) = mpsc::channel::<i32>(1);
+        let mut _fused_closed_rx = FuturesStreamExt::fuse(_closed_rx);
+
+        loop {
+            select! {
+                s = fused_timer.select_next_some() => {
+                    println!("Fused timer finished");
+                    self.remove_inactive();
+                },
+                opt = FuturesStreamExt::next(&mut fused_rx) => {
+                    match opt {
+                        Some(request) => self.handle_request(request).await,
+                        None => return,
+                    };
+                }
+
+                complete => panic!("Downlink prune task unexpectedly finished"),
+            }
+        }
+    }
+
+    async fn handle_request(&mut self, request: DownlinkRequest) {
+        match request {
+            DownlinkRequest::Value(init, path, value_req) => {
+                let dl = match self.value_downlinks.get(&path) {
+                    Some(dl) => {
+                        let mut dl_clone = dl.clone();
+                        match dl_clone.subscribe().await {
+                            Ok(rec) => Ok((dl_clone, rec)),
+                            Err(_) => {
+                                self.value_downlinks.remove(&path);
+                                Ok(self.create_new_value_downlink(init, path).await)
                             }
                         }
-                        _ => match self.map_downlinks.get(&path) {
-                            Some(_) => Err(SubscriptionError::bad_kind(
-                                DownlinkKind::Value,
-                                DownlinkKind::Map,
-                            )),
-                            _ => Ok(self.create_new_value_downlink(init, path).await),
-                        },
-                    };
-                    let _ = value_req.send(dl);
-                }
-                DownlinkRequest::Map(path, map_req) => {
-                    let dl = match self.map_downlinks.get(&path) {
-                        Some(dl) => {
-                            let mut dl_clone = dl.clone();
-                            match dl_clone.subscribe().await {
-                                Ok(rec) => Ok((dl_clone, rec)),
-                                Err(_) => {
-                                    self.map_downlinks.remove(&path);
-                                    Ok(self.create_new_map_downlink(path).await)
-                                }
+                    }
+                    _ => match self.map_downlinks.get(&path) {
+                        Some(_) => Err(SubscriptionError::bad_kind(
+                            DownlinkKind::Value,
+                            DownlinkKind::Map,
+                        )),
+                        _ => Ok(self.create_new_value_downlink(init, path).await),
+                    },
+                };
+                let _ = value_req.send(dl);
+            }
+            DownlinkRequest::Map(path, map_req) => {
+                let dl = match self.map_downlinks.get(&path) {
+                    Some(dl) => {
+                        let mut dl_clone = dl.clone();
+                        match dl_clone.subscribe().await {
+                            Ok(rec) => Ok((dl_clone, rec)),
+                            Err(_) => {
+                                self.map_downlinks.remove(&path);
+                                Ok(self.create_new_map_downlink(path).await)
                             }
                         }
-                        _ => match self.value_downlinks.get(&path) {
-                            Some(_) => Err(SubscriptionError::bad_kind(
-                                DownlinkKind::Map,
-                                DownlinkKind::Value,
-                            )),
-                            _ => Ok(self.create_new_map_downlink(path).await),
-                        },
-                    };
-                    let _ = map_req.send(dl);
-                }
+                    }
+                    _ => match self.value_downlinks.get(&path) {
+                        Some(_) => Err(SubscriptionError::bad_kind(
+                            DownlinkKind::Map,
+                            DownlinkKind::Value,
+                        )),
+                        _ => Ok(self.create_new_map_downlink(path).await),
+                    },
+                };
+                let _ = map_req.send(dl);
             }
         }
     }
