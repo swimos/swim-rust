@@ -18,6 +18,7 @@ use common::warp::path::AbsolutePath;
 use futures::{Future, Stream};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use tokio::sync::mpsc::error::SendError;
 
 pub trait Router: Send {
     type ConnectionStream: Stream<Item = Envelope> + Send + 'static;
@@ -42,6 +43,12 @@ impl Display for RoutingError {
         match self {
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
         }
+    }
+}
+
+impl<T> From<SendError<T>> for RoutingError {
+    fn from(_: SendError<T>) -> Self {
+        RoutingError::RouterDropped
     }
 }
 
