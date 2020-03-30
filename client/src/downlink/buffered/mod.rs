@@ -23,6 +23,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 use common::sink::item;
 use common::sink::item::{ItemSink, MpscSend};
+use common::warp::path::AbsolutePath;
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
@@ -48,10 +49,6 @@ impl<Act, Upd> BufferedDownlink<Act, Upd> {
 
     pub fn same_downlink(&self, other: &Self) -> bool {
         self.input.same_sender(&other.input)
-    }
-
-    pub fn sender_running(&self) -> bool {
-        self.input.is_running()
     }
 }
 
@@ -124,6 +121,7 @@ pub(in crate::downlink) fn make_downlink<Err, M, A, State, Updates, Commands>(
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (BufferedDownlink<A, State::Ev>, BufferedReceiver<State::Ev>)
 where
     M: Send + 'static,
@@ -143,7 +141,6 @@ where
         let (closed_tx, closed_rx) = watch::channel(None);
 
         let event_sink = item::for_broadcast_sender::<_, DownlinkError>(event_tx);
-
         // The task that maintains the internal state of the lane.
         let lane_task = raw::make_downlink_task(
             model,
@@ -152,6 +149,7 @@ where
             cmd_sink,
             event_sink,
             closed_tx,
+            stop_notifier,
         );
 
         let join_handle = tokio::task::spawn(lane_task);

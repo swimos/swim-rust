@@ -26,6 +26,7 @@ use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
 use common::sink::item::ItemSender;
+use common::warp::path::AbsolutePath;
 use deserialize::FormDeserializeErr;
 use form::Form;
 use futures::Stream;
@@ -515,6 +516,7 @@ pub fn create_raw_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Err: Into<DownlinkError> + Send + 'static,
@@ -522,7 +524,7 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    crate::downlink::create_downlink(init, update_stream, cmd_sink, buffer_size)
+    crate::downlink::create_downlink(init, update_stream, cmd_sink, buffer_size, stop_notifier)
 }
 
 /// Create a map downlink with an queue based multiplexing topic.
@@ -531,6 +533,7 @@ pub fn create_queue_downlink<Err, Updates, Commands>(
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (
     QueueDownlink<MapAction, ViewWithEvent>,
     QueueReceiver<ViewWithEvent>,
@@ -541,7 +544,14 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    queue::make_downlink(init, update_stream, cmd_sink, buffer_size, queue_size)
+    queue::make_downlink(
+        init,
+        update_stream,
+        cmd_sink,
+        buffer_size,
+        queue_size,
+        stop_notifier,
+    )
 }
 
 /// Create a value downlink with an dropping multiplexing topic.
@@ -549,6 +559,7 @@ pub fn create_dropping_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (
     DroppingDownlink<MapAction, ViewWithEvent>,
     DroppingReceiver<ViewWithEvent>,
@@ -559,7 +570,7 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    dropping::make_downlink(init, update_stream, cmd_sink, buffer_size)
+    dropping::make_downlink(init, update_stream, cmd_sink, buffer_size, stop_notifier)
 }
 
 /// Create a value downlink with an buffered multiplexing topic.
@@ -568,6 +579,7 @@ pub fn create_buffered_downlink<Err, Updates, Commands>(
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (
     BufferedDownlink<MapAction, ViewWithEvent>,
     BufferedReceiver<ViewWithEvent>,
@@ -578,7 +590,14 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
     let init: ValMap = OrdMap::new();
-    buffered::make_downlink(init, update_stream, cmd_sink, buffer_size, queue_size)
+    buffered::make_downlink(
+        init,
+        update_stream,
+        cmd_sink,
+        buffer_size,
+        queue_size,
+        stop_notifier,
+    )
 }
 
 impl StateMachine<MapModification<Value>, MapAction> for ValMap {

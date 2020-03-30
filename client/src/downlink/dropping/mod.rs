@@ -17,6 +17,7 @@ use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Mod
 use common::sink::item;
 use common::sink::item::{ItemSink, MpscSend};
 use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
+use common::warp::path::AbsolutePath;
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, watch};
@@ -45,10 +46,6 @@ impl<Act, Upd> DroppingDownlink<Act, Upd> {
 
     pub fn same_downlink(&self, other: &Self) -> bool {
         self.input.same_sender(&other.input)
-    }
-
-    pub fn sender_running(&self) -> bool {
-        self.input.is_running()
     }
 }
 
@@ -119,6 +116,7 @@ pub(in crate::downlink) fn make_downlink<Err, M, A, State, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (DroppingDownlink<A, State::Ev>, DroppingReceiver<State::Ev>)
 where
     M: Send + 'static,
@@ -146,6 +144,7 @@ where
         cmd_sink,
         event_sink,
         closed_tx,
+        stop_notifier,
     );
 
     let join_handle = tokio::task::spawn(lane_task);

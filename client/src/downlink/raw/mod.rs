@@ -17,6 +17,7 @@ use std::sync::Arc;
 use futures::StreamExt;
 
 use common::sink::item::ItemSender;
+use common::warp::path::AbsolutePath;
 
 use super::*;
 
@@ -37,10 +38,6 @@ impl<S> Sender<S> {
             set_sink,
             task: Arc::new(task),
         }
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.task.is_running()
     }
 
     pub fn same_sender(&self, other: &Self) -> bool {
@@ -107,10 +104,6 @@ impl<S, R> RawDownlink<S, R> {
         }
     }
 
-    pub fn is_running(&self) -> bool {
-        self.sender.is_running()
-    }
-
     /// Stop the downlink from running.
     pub async fn stop(&self) -> Result<(), DownlinkError> {
         self.sender.stop().await
@@ -129,6 +122,7 @@ pub(in crate::downlink) fn create_downlink<Err, M, A, State, Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> RawDownlink<mpsc::Sender<A>, mpsc::Receiver<Event<State::Ev>>>
 where
     M: Send + 'static,
@@ -157,6 +151,7 @@ where
         cmd_sink,
         event_sink,
         closed_tx,
+        stop_notifier,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
@@ -177,6 +172,12 @@ pub(in crate::downlink) struct DownlinkTask {
     stop_waiter: watch::Receiver<Option<Result<(), DownlinkError>>>,
 }
 
+impl Drop for DownlinkTask {
+    fn drop(&mut self) {
+        let _ = self.stop_trigger.broadcast(Some(()));
+    }
+}
+
 impl DownlinkTask {
     pub(in crate::downlink) fn new(
         join_handle: JoinHandle<Result<(), DownlinkError>>,
@@ -192,11 +193,6 @@ impl DownlinkTask {
 }
 
 impl DownlinkTask {
-    // The stop waiter is initialised to 'None' and only ever sends a value when the task finishes
-    fn is_running(&self) -> bool {
-        self.stop_waiter.borrow().is_none()
-    }
-
     async fn stop(&self) -> Result<(), DownlinkError> {
         let _ = self.stop_trigger.broadcast(Some(()));
         self.stop_waiter
@@ -227,6 +223,7 @@ pub(in crate::downlink) async fn make_downlink_task<
     mut cmd_sink: Commands,
     mut ev_sink: Events,
     on_complete: watch::Sender<Option<Result<(), DownlinkError>>>,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> Result<(), DownlinkError>
 where
     EC: Into<DownlinkError>,
@@ -239,10 +236,13 @@ where
 {
     pin_mut!(ops);
     pin_mut!(acts);
+
     let mut ops_str: Pin<&mut Ops> = ops;
     let mut act_str: Pin<&mut Acts> = acts;
 
     let mut read_act = false;
+
+    let (downlink_path, stop_tx) = stop_notifier;
 
     let result = loop {
         let next_op = if model.state == DownlinkState::Synced {
@@ -289,7 +289,10 @@ where
             break Err(DownlinkError::OperationStreamEnded);
         }
     };
+
+    let _ = stop_tx.send(downlink_path);
     let _ = on_complete.broadcast(Some(result));
+
     result
 }
 

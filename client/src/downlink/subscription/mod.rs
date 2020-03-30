@@ -21,7 +21,7 @@ use futures::{select, Stream};
 use futures_util::future::TryFutureExt;
 use pin_utils::pin_mut;
 use tokio::stream::StreamExt;
-use tokio::sync::mpsc::error::SendError;
+use tokio::sync::mpsc::error::{SendError, TryRecvError};
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -106,6 +106,15 @@ impl Downlinks {
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
     }
+
+    pub async fn downlink_running(&mut self, path: &AbsolutePath) -> Result<bool> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(DownlinkRequest::IsRunning(path.clone(), Request::new(tx)))
+            .err_into::<SubscriptionError>()
+            .await?;
+        rx.await.map_err(Into::into).and_then(|r| r)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -176,6 +185,7 @@ pub enum DownlinkRequest {
         Request<Result<(ValueDownlink, ValueReceiver)>>,
     ),
     Map(AbsolutePath, Request<Result<(MapDownlink, MapReceiver)>>),
+    IsRunning(AbsolutePath, Request<Result<bool>>),
 }
 
 pub struct DownlinkTask<R> {
@@ -183,6 +193,8 @@ pub struct DownlinkTask<R> {
     value_downlinks: HashMap<AbsolutePath, ValueDownlink>,
     map_downlinks: HashMap<AbsolutePath, MapDownlink>,
     router: R,
+    stop_tx: mpsc::UnboundedSender<AbsolutePath>,
+    stop_rx: mpsc::UnboundedReceiver<AbsolutePath>,
 }
 
 impl<R> DownlinkTask<R>
@@ -193,11 +205,15 @@ where
     where
         C: Config + 'static,
     {
+        let (stop_tx, stop_rx) = mpsc::unbounded_channel();
+
         DownlinkTask {
             config,
             value_downlinks: HashMap::new(),
             map_downlinks: HashMap::new(),
             router,
+            stop_tx,
+            stop_rx,
         }
     }
 
@@ -205,11 +221,14 @@ where
         &mut self,
         init: Value,
         path: AbsolutePath,
+        stop_tx: mpsc::UnboundedSender<AbsolutePath>,
     ) -> (ValueDownlink, ValueReceiver) {
         use crate::downlink::model::value::*;
 
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
+
+        let stop_notifier = (path.clone(), stop_tx);
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|env| envelopes::value::try_from_envelope(env).ok());
@@ -220,17 +239,30 @@ where
         let buffer_size = config.buffer_size.get();
         let (dl, rec) = match config.mux_mode {
             MuxMode::Queue(n) => {
-                let (dl, rec) =
-                    create_queue_downlink(init, updates, cmd_sink, buffer_size, n.get());
+                let (dl, rec) = create_queue_downlink(
+                    init,
+                    updates,
+                    cmd_sink,
+                    buffer_size,
+                    n.get(),
+                    stop_notifier,
+                );
                 (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
             }
             MuxMode::Dropping => {
-                let (dl, rec) = create_dropping_downlink(init, updates, cmd_sink, buffer_size);
+                let (dl, rec) =
+                    create_dropping_downlink(init, updates, cmd_sink, buffer_size, stop_notifier);
                 (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
             }
             MuxMode::Buffered(n) => {
-                let (dl, rec) =
-                    create_buffered_downlink(init, updates, cmd_sink, buffer_size, n.get());
+                let (dl, rec) = create_buffered_downlink(
+                    init,
+                    updates,
+                    cmd_sink,
+                    buffer_size,
+                    n.get(),
+                    stop_notifier,
+                );
                 (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
             }
         };
@@ -238,11 +270,17 @@ where
         (dl, rec)
     }
 
-    async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
+    async fn create_new_map_downlink(
+        &mut self,
+        path: AbsolutePath,
+        stop_tx: mpsc::UnboundedSender<AbsolutePath>,
+    ) -> (MapDownlink, MapReceiver) {
         use crate::downlink::model::map::*;
 
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
+
+        let stop_notifier = (path.clone(), stop_tx);
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|env| envelopes::map::try_from_envelope(env).ok());
@@ -254,15 +292,23 @@ where
         let buffer_size = config.buffer_size.get();
         let (dl, rec) = match config.mux_mode {
             MuxMode::Queue(n) => {
-                let (dl, rec) = create_queue_downlink(updates, cmd_sink, buffer_size, n.get());
+                let (dl, rec) =
+                    create_queue_downlink(updates, cmd_sink, buffer_size, n.get(), stop_notifier);
                 (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
             }
             MuxMode::Dropping => {
-                let (dl, rec) = create_dropping_downlink(updates, cmd_sink, buffer_size);
+                let (dl, rec) =
+                    create_dropping_downlink(updates, cmd_sink, buffer_size, stop_notifier);
                 (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
             }
             MuxMode::Buffered(n) => {
-                let (dl, rec) = create_buffered_downlink(updates, cmd_sink, buffer_size, n.get());
+                let (dl, rec) = create_buffered_downlink(
+                    updates,
+                    cmd_sink,
+                    buffer_size,
+                    n.get(),
+                    stop_notifier,
+                );
                 (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
             }
         };
@@ -270,7 +316,13 @@ where
         (dl, rec)
     }
 
-    fn remove_inactive(&mut self) {}
+    fn remove_downlink(&mut self, path: AbsolutePath) {
+        if self.map_downlinks.contains_key(&path) {
+            self.map_downlinks.remove(&path);
+        } else if self.value_downlinks.contains_key(&path) {
+            self.value_downlinks.remove(&path);
+        }
+    }
 
     async fn run<Req>(mut self, requests: Req)
     where
@@ -279,36 +331,40 @@ where
         use futures::StreamExt as FuturesStreamExt;
 
         pin_mut!(requests);
+        let pinned_requests: Pin<&mut Req> = requests;
 
         let interval_timer = tokio::time::interval_at(Instant::now(), Duration::from_millis(1))
             .then(|_| futures::future::ready(()));
 
-        let pinned_requests: Pin<&mut Req> = requests;
         let mut fused_timer = FuturesStreamExt::fuse(interval_timer);
         let mut fused_rx = FuturesStreamExt::fuse(pinned_requests);
 
-        let (_closed_tx, _closed_rx) = mpsc::channel::<i32>(1);
-        let mut _fused_closed_rx = FuturesStreamExt::fuse(_closed_rx);
-
         loop {
             select! {
-                s = fused_timer.select_next_some() => {
-                    println!("Fused timer finished");
-                    self.remove_inactive();
-                },
                 opt = FuturesStreamExt::next(&mut fused_rx) => {
                     match opt {
                         Some(request) => self.handle_request(request).await,
-                        None => return,
-                    };
-                }
-
-                complete => panic!("Downlink prune task unexpectedly finished"),
+                        None => return
+                    }
+                },
+                s = FuturesStreamExt::select_next_some(&mut fused_timer) => {
+                    match self.stop_rx.try_recv() {
+                        Ok(path) => self.remove_downlink(path),
+                        Err(e) => {
+                            match e {
+                                TryRecvError::Empty => {},
+                                TryRecvError::Closed => panic!("Downlink close stream closed unexpectedly"),
+                            }
+                        }
+                    }
+                },
             }
         }
     }
 
     async fn handle_request(&mut self, request: DownlinkRequest) {
+        let stop_tx = self.stop_tx.clone();
+
         match request {
             DownlinkRequest::Value(init, path, value_req) => {
                 let dl = match self.value_downlinks.get(&path) {
@@ -318,7 +374,7 @@ where
                             Ok(rec) => Ok((dl_clone, rec)),
                             Err(_) => {
                                 self.value_downlinks.remove(&path);
-                                Ok(self.create_new_value_downlink(init, path).await)
+                                Ok(self.create_new_value_downlink(init, path, stop_tx).await)
                             }
                         }
                     }
@@ -327,7 +383,7 @@ where
                             DownlinkKind::Value,
                             DownlinkKind::Map,
                         )),
-                        _ => Ok(self.create_new_value_downlink(init, path).await),
+                        _ => Ok(self.create_new_value_downlink(init, path, stop_tx).await),
                     },
                 };
                 let _ = value_req.send(dl);
@@ -340,7 +396,7 @@ where
                             Ok(rec) => Ok((dl_clone, rec)),
                             Err(_) => {
                                 self.map_downlinks.remove(&path);
-                                Ok(self.create_new_map_downlink(path).await)
+                                Ok(self.create_new_map_downlink(path, stop_tx).await)
                             }
                         }
                     }
@@ -349,10 +405,15 @@ where
                             DownlinkKind::Map,
                             DownlinkKind::Value,
                         )),
-                        _ => Ok(self.create_new_map_downlink(path).await),
+                        _ => Ok(self.create_new_map_downlink(path, stop_tx).await),
                     },
                 };
                 let _ = map_req.send(dl);
+            }
+            DownlinkRequest::IsRunning(path, req) => {
+                let dl_running = self.value_downlinks.contains_key(&path)
+                    || self.map_downlinks.contains_key(&path);
+                let _ = req.send(Ok(dl_running));
             }
         }
     }

@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
-use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
-use crate::downlink::any::TopicKind;
-use common::warp::path::AbsolutePath;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use tokio::time::Duration;
+
+use common::warp::path::AbsolutePath;
+
+use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
+use crate::downlink::any::TopicKind;
+
+use super::*;
 
 mod harness;
 
@@ -192,7 +195,6 @@ async fn drop_second_rcv() {
     assert!(dl1.same_downlink(&dl2));
 
     drop(rec2);
-    assert_that!(dl1.is_running(), true);
 }
 
 #[tokio::test]
@@ -233,6 +235,7 @@ async fn replace_map_after_terminated() {
     let result1 = downlinks.subscribe_map(path.clone()).await;
     assert_that!(&result1, ok());
     let (dl1, rec1) = result1.unwrap();
+
     //Dropping the only live receiver causes the downlink to stop.
     drop(rec1);
     let result2 = downlinks.subscribe_map(path).await;

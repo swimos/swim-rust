@@ -18,8 +18,8 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::oneshot;
-use tokio::time::Duration;
 
 use common::sink::item::*;
 
@@ -129,7 +129,10 @@ async fn make_test_dl() -> (
     RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
     Snk<Message<Msg>>,
     Str<Command<i32>>,
+    UnboundedReceiver<AbsolutePath>,
 ) {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let (stop_tx, stop_rx) = mpsc::unbounded_channel();
     let (tx_in, rx_in) = mpsc::channel(10);
     let (tx_out, rx_out) = mpsc::channel::<Command<i32>>(10);
     let downlink = create_downlink(
@@ -137,34 +140,30 @@ async fn make_test_dl() -> (
         rx_in,
         for_mpsc_sender::<Command<i32>, DownlinkError>(tx_out),
         10,
+        (path, stop_tx),
     );
-    (downlink, tx_in, rx_out)
+    (downlink, tx_in, rx_out, stop_rx)
 }
 
 #[tokio::test]
 async fn sync_on_startup() {
-    let (dl, _messages, mut commands) = make_test_dl().await;
+    let (dl, _messages, mut commands, _stop_rx) = make_test_dl().await;
 
     let first_cmd = commands.next().await;
     assert_that!(first_cmd, eq(Some(Command::Sync)));
     let stop_res = dl.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl.is_running(), false);
-
-    std::thread::sleep(Duration::from_secs(1));
 }
 
 #[tokio::test]
 async fn stop_downlink() {
-    let (dl, _messages, _commands) = make_test_dl().await;
+    let (dl, _messages, _commands, _stop_rx) = make_test_dl().await;
     let _ = dl.stop().await;
-
-    assert_that!(dl.is_running(), false)
 }
 
 #[tokio::test]
 async fn event_on_sync() {
-    let (dl, mut messages, _commands) = make_test_dl().await;
+    let (dl, mut messages, _commands, _stop_rx) = make_test_dl().await;
     let (dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Linked).await, ok());
@@ -175,12 +174,11 @@ async fn event_on_sync() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
 async fn ignore_update_before_link() {
-    let (dl, mut messages, _commands) = make_test_dl().await;
+    let (dl, mut messages, _commands, _stop_rx) = make_test_dl().await;
     let (dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Action(Msg::of(12))).await, ok());
@@ -192,12 +190,11 @@ async fn ignore_update_before_link() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
 async fn apply_updates_between_link_and_sync() {
-    let (dl, mut messages, _commands) = make_test_dl().await;
+    let (dl, mut messages, _commands, _stop_rx) = make_test_dl().await;
     let (dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Linked).await, ok());
@@ -209,7 +206,6 @@ async fn apply_updates_between_link_and_sync() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl_tx.is_running(), false);
 }
 
 /// Pre-synchronizes a downlink for tests that require the ['DownlinkState::Synced'] state.
@@ -233,7 +229,7 @@ async fn sync_dl(
 
 #[tokio::test]
 async fn updates_processed_when_synced() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands, _stop_rx) = make_test_dl().await;
     let (dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -250,12 +246,11 @@ async fn updates_processed_when_synced() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
 async fn actions_processed_when_synced() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands, _stop_rx) = make_test_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -269,12 +264,11 @@ async fn actions_processed_when_synced() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
 async fn actions_paused_when_not_synced() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands, _stop_rx) = make_test_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -301,12 +295,11 @@ async fn actions_paused_when_not_synced() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
 async fn actions_paused_when_unlinked() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands, _stop_rx) = make_test_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -345,12 +338,11 @@ async fn actions_paused_when_unlinked() {
 
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, ok());
-    assert_that!(dl_tx.is_running(), false);
 }
 
 #[tokio::test]
 async fn errors_propagate() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands, _stop_rx) = make_test_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -370,5 +362,4 @@ async fn errors_propagate() {
     let stop_res = dl_tx.stop().await;
     assert_that!(stop_res, err());
     assert_that!(stop_res.err().unwrap(), eq(DownlinkError::TransitionError));
-    assert_that!(dl_tx.is_running(), false);
 }

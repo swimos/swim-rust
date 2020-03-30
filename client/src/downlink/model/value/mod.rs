@@ -26,6 +26,7 @@ use crate::downlink::*;
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::ItemSender;
+use common::warp::path::AbsolutePath;
 use std::fmt;
 
 #[cfg(test)]
@@ -97,13 +98,20 @@ pub fn create_raw_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
     Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
 {
-    create_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+    create_downlink(
+        Arc::new(init),
+        update_stream,
+        cmd_sender,
+        buffer_size,
+        stop_notifier,
+    )
 }
 
 /// Create a value downlink with an queue based multiplexing topic.
@@ -113,6 +121,7 @@ pub fn create_queue_downlink<Err, Updates, Commands>(
     cmd_sender: Commands,
     buffer_size: usize,
     queue_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (
     QueueDownlink<Action, SharedValue>,
     QueueReceiver<SharedValue>,
@@ -128,6 +137,7 @@ where
         cmd_sender,
         buffer_size,
         queue_size,
+        stop_notifier,
     )
 }
 
@@ -137,6 +147,7 @@ pub fn create_dropping_downlink<Err, Updates, Commands>(
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (
     DroppingDownlink<Action, SharedValue>,
     DroppingReceiver<SharedValue>,
@@ -146,7 +157,13 @@ where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
 {
-    dropping::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+    dropping::make_downlink(
+        Arc::new(init),
+        update_stream,
+        cmd_sender,
+        buffer_size,
+        stop_notifier,
+    )
 }
 
 /// Create a value downlink with an buffering multiplexing topic.
@@ -156,6 +173,7 @@ pub fn create_buffered_downlink<Err, Updates, Commands>(
     cmd_sender: Commands,
     buffer_size: usize,
     queue_size: usize,
+    stop_notifier: (AbsolutePath, mpsc::UnboundedSender<AbsolutePath>),
 ) -> (
     BufferedDownlink<Action, SharedValue>,
     BufferedReceiver<SharedValue>,
@@ -171,6 +189,7 @@ where
         cmd_sender,
         buffer_size,
         queue_size,
+        stop_notifier,
     )
 }
 
