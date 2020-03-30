@@ -17,16 +17,18 @@ use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
+use crate::request::request_future::{send_and_await, RequestError, SendAndAwait};
+use crate::request::Request;
 use either::Either;
-use futures::future::Ready;
 use futures::future::{ready, BoxFuture};
+use futures::future::{ErrInto, Ready};
 use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
-use futures::{future, Future, FutureExt, Stream, StreamExt};
+use futures::{future, Future, FutureExt, Stream, StreamExt, TryFutureExt};
 use futures_util::select_biased;
 use pin_project::pin_project;
 use tokio::sync::broadcast::RecvError;
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
 
 #[cfg(test)]
@@ -46,6 +48,12 @@ impl Display for TopicError {
 }
 
 impl Error for TopicError {}
+
+impl From<RequestError> for TopicError {
+    fn from(_: RequestError) -> Self {
+        TopicError::TopicClosed
+    }
+}
 
 /// A trait for one-to many channels. A topic may have any number of subscribers which are added
 /// asynchronously using the `subscribe` method. Each subscription can be consumed as a stream.
@@ -156,7 +164,7 @@ pub struct BroadcastReceiver<T> {
     receiver: broadcast::Receiver<T>,
 }
 
-struct SubRequest<T>(oneshot::Sender<MpscTopicReceiver<T>>);
+type SubRequest<T> = Request<MpscTopicReceiver<T>>;
 
 #[derive(Debug)]
 pub struct MpscTopicReceiver<T> {
@@ -321,97 +329,16 @@ impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     }
 }
 
-pub struct SendRequest<T> {
-    sender: mpsc::Sender<SubRequest<T>>,
-    request: Option<SubRequest<T>>,
-}
-
-impl<T> SendRequest<T> {
-    fn new(sender: mpsc::Sender<SubRequest<T>>, request: SubRequest<T>) -> SendRequest<T> {
-        SendRequest {
-            sender,
-            request: Some(request),
-        }
-    }
-}
-
-pub struct Sequenced<F1: Unpin, F2: Unpin> {
-    first: Option<F1>,
-    second: Option<F2>,
-}
-
-impl<F1: Unpin, F2: Unpin> Sequenced<F1, F2> {
-    fn new(first: F1, second: F2) -> Sequenced<F1, F2> {
-        Sequenced {
-            first: Some(first),
-            second: Some(second),
-        }
-    }
-}
-
-impl<F1, F2, T1, T2, E1, E2> Future for Sequenced<F1, F2>
-where
-    F1: Future<Output = Result<T1, E1>> + Unpin,
-    F2: Future<Output = Result<T2, E2>> + Unpin,
-{
-    type Output = Result<T2, TopicError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let Sequenced {
-            first: maybe_first,
-            second: maybe_second,
-        } = self.get_mut();
-        if let Some(first) = maybe_first {
-            match Pin::new(first).poll(cx) {
-                Poll::Ready(result) => {
-                    maybe_first.take();
-                    match result {
-                        Ok(_) => {}
-                        Err(_) => return Poll::Ready(Err(TopicError::TopicClosed)),
-                    }
-                }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-        match maybe_second {
-            Some(second) => Pin::new(second)
-                .poll(cx)
-                .map_err(|_| TopicError::TopicClosed),
-            _ => panic!("Sequenced future used twice."),
-        }
-    }
-}
-
-impl<T> Future for SendRequest<T> {
-    type Output = Result<(), TopicError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let SendRequest { sender, request } = self.get_mut();
-        sender.poll_ready(cx).map(|r| match r {
-            Ok(_) => match request.take() {
-                Some(req) => match sender.try_send(req) {
-                    Ok(_) => Ok(()),
-                    _ => Err(TopicError::TopicClosed),
-                },
-                _ => panic!("Send future used twice."),
-            },
-            Err(_) => Err(TopicError::TopicClosed),
-        })
-    }
-}
-
 impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
     type Receiver = MpscTopicReceiver<T>;
-    type Fut = Sequenced<SendRequest<T>, oneshot::Receiver<MpscTopicReceiver<T>>>;
+    type Fut = ErrInto<SendAndAwait<Request<Self::Receiver>, Self::Receiver>, TopicError>;
 
     fn subscribe(&mut self) -> Self::Fut {
         let MpscTopic { sub_sender, .. } = self;
-        let (sub_tx, sub_rx) = oneshot::channel::<MpscTopicReceiver<T>>();
 
-        Sequenced::new(
-            SendRequest::new(sub_sender.clone(), SubRequest(sub_tx)),
-            sub_rx,
-        )
+        let fut: SendAndAwait<Request<Self::Receiver>, Self::Receiver> = send_and_await(sub_sender);
+
+        TryFutureExt::err_into::<TopicError>(fut)
     }
 }
 
@@ -434,10 +361,10 @@ async fn mpsc_topic_task<T: Clone>(
             value = in_fused.next() => value.map(Either::Right),
         };
         match item {
-            Some(Either::Left(SubRequest(cb))) => match sentinel.upgrade() {
+            Some(Either::Left(req)) => match sentinel.upgrade() {
                 Some(rec_sentinel) => {
                     let (tx, rx) = mpsc::channel(buffer_size);
-                    if cb.send(MpscTopicReceiver::new(rx, rec_sentinel)).is_ok() {
+                    if req.send(MpscTopicReceiver::new(rx, rec_sentinel)).is_ok() {
                         outputs.push(tx);
                     }
                 }

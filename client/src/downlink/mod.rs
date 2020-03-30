@@ -20,8 +20,8 @@ use pin_utils::pin_mut;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::sink::item;
-use crate::sink::item::{BoxItemSink, ItemSender, ItemSink, MpscSend};
+use common::sink::item;
+use common::sink::item::{BoxItemSink, ItemSender, ItemSink, MpscSend};
 use futures::stream::{BoxStream, FusedStream};
 use std::fmt::{Debug, Display, Formatter};
 use tokio::sync::broadcast;

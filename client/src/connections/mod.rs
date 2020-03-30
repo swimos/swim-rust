@@ -14,18 +14,16 @@
 
 use std::collections::HashMap;
 
-use async_trait::async_trait;
 use futures::future::{AbortHandle, Abortable, Aborted};
-use futures::stream::ErrInto;
-use futures::{Sink, StreamExt};
-use futures_util::stream::Stream;
+use futures::{Sink, Stream, StreamExt};
 use futures_util::TryStreamExt;
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::{connect_async, tungstenite, WebSocketStream};
+
+pub mod factory;
 
 #[cfg(test)]
 mod tests;
@@ -62,26 +60,28 @@ impl ConnectionPool {
     /// * `router_tx`               - Transmitting end of a channel for receiving messages
     ///                               from the connections in the pool.
     /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
-    pub fn new<T: ConnectionFactory + Send + Sync + 'static>(
+    pub fn new<WsFac>(
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        connection_factory: T,
-    ) -> ConnectionPool {
+        connection_factory: WsFac,
+    ) -> ConnectionPool
+    where
+        WsFac: WebsocketFactory + 'static,
+    {
         let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
 
         let (connection_requests_abort_handle, abort_registration) = AbortHandle::new_pair();
 
-        let accept_connection_requests_future = Abortable::new(
-            accept_connection_requests(
-                connection_request_rx,
-                connection_factory,
-                router_tx,
-                buffer_size,
-            ),
-            abort_registration,
+        let task = PoolTask::new(
+            connection_request_rx,
+            connection_factory,
+            router_tx,
+            buffer_size,
         );
 
-        let connection_requests_handler = tokio::spawn(accept_connection_requests_future);
+        let accept_connection_requests_future = Abortable::new(task.run(), abort_registration);
+
+        let connection_requests_handler = tokio::task::spawn(accept_connection_requests_future);
 
         ConnectionPool {
             connection_requests_abort_handle,
@@ -124,111 +124,143 @@ impl ConnectionPool {
     }
 }
 
-async fn accept_connection_requests<T: ConnectionFactory + Send + Sync + 'static>(
-    mut rx: mpsc::Receiver<ConnectionRequest>,
-    mut connection_factory: T,
+struct PoolTask<WsFac>
+where
+    WsFac: WebsocketFactory + 'static,
+{
+    rx: mpsc::Receiver<ConnectionRequest>,
+    connection_factory: WsFac,
     router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     buffer_size: usize,
-) -> Result<(), ConnectionError> {
-    let mut connections: HashMap<String, T::ConnectionType> = HashMap::new();
-    loop {
-        let connection_request = rx.recv().await.ok_or(ConnectionError::ConnectError)?;
-        let ConnectionRequest {
-            host_url,
-            tx: request_tx,
-        } = connection_request;
+}
 
-        let host = host_url.as_str().to_owned();
+impl<WsFac> PoolTask<WsFac>
+where
+    WsFac: WebsocketFactory + 'static,
+{
+    fn new(
+        rx: mpsc::Receiver<ConnectionRequest>,
+        connection_factory: WsFac,
+        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+        buffer_size: usize,
+    ) -> Self {
+        PoolTask {
+            rx,
+            connection_factory,
+            router_tx,
+            buffer_size,
+        }
+    }
 
-        let sender = if connections.contains_key(&host) {
-            Ok(connections
-                .get_mut(&host)
-                .ok_or(ConnectionError::ConnectError)?
-                .get_sender())
-        } else {
-            let connection_result = connection_factory
-                .create_connection(host_url, buffer_size, router_tx.clone())
+    async fn run(self) -> Result<(), ConnectionError> {
+        let PoolTask {
+            mut rx,
+            mut connection_factory,
+            router_tx,
+            buffer_size,
+        } = self;
+        let mut connections: HashMap<String, SwimConnection> = HashMap::new();
+        loop {
+            let connection_request = rx.recv().await.ok_or(ConnectionError::ConnectError)?;
+            let ConnectionRequest {
+                host_url,
+                tx: request_tx,
+            } = connection_request;
+
+            let host = host_url.as_str().to_owned();
+
+            let sender = if connections.contains_key(&host) {
+                let conn = connections
+                    .get_mut(&host)
+                    .ok_or(ConnectionError::ConnectError)?;
+                Ok(ConnectionSender {
+                    tx: conn.tx.clone(),
+                })
+            } else {
+                let connection_result = SwimConnection::new(
+                    host_url,
+                    buffer_size,
+                    router_tx.clone(),
+                    &mut connection_factory,
+                )
                 .await;
 
-            match connection_result {
-                Ok(mut connection) => {
-                    let sender = connection.get_sender();
-                    connections.insert(host.clone(), connection);
-                    Ok(sender)
+                match connection_result {
+                    Ok(connection) => {
+                        let sender = ConnectionSender {
+                            tx: connection.tx.clone(),
+                        };
+                        connections.insert(host.clone(), connection);
+                        Ok(sender)
+                    }
+                    Err(error) => Err(error),
                 }
-                Err(error) => Err(error),
-            }
-        };
+            };
 
-        request_tx
-            .send(sender)
-            .map_err(|_| ConnectionError::ConnectError)?;
+            request_tx
+                .send(sender)
+                .map_err(|_| ConnectionError::ConnectError)?;
+        }
     }
 }
 
-/// Trait for a factory that can produce connections.
-#[async_trait]
-pub trait ConnectionFactory {
-    /// The type of the connections that this factory produces.
-    type ConnectionType: Connection + Send + 'static;
-
-    /// Creates a new connection and returns a `Result` with either the connection
-    /// or a `ConnectionError`.
-    async fn create_connection(
-        &mut self,
-        host_url: url::Url,
-        buffer_size: usize,
-        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-    ) -> Result<Self::ConnectionType, ConnectionError>;
+struct SendTask<S>
+where
+    S: Sink<Message> + Send + 'static + Unpin,
+{
+    write_sink: S,
+    rx: mpsc::Receiver<Message>,
 }
 
-/// Factory that can produce Swim connections to remote hosts.
-pub struct SwimConnectionFactory {}
-
-#[async_trait]
-impl ConnectionFactory for SwimConnectionFactory {
-    type ConnectionType = SwimConnection;
-
-    /// Creates a new Swim connection and returns a `Result` with either the connection
-    /// or a `ConnectionError`.
-    async fn create_connection(
-        &mut self,
-        host_url: url::Url,
-        buffer_size: usize,
-        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-    ) -> Result<Self::ConnectionType, ConnectionError> {
-        SwimConnection::new(host_url, buffer_size, router_tx, SwimWebsocketFactory {}).await
+impl<S> SendTask<S>
+where
+    S: Sink<Message> + Send + 'static + Unpin,
+{
+    fn new(write_sink: S, rx: mpsc::Receiver<Message>) -> Self {
+        SendTask { write_sink, rx }
     }
-}
 
-/// Trait for a connection to a remote host.
-#[async_trait]
-pub trait Connection: Sized {
-    /// Return a reference to the transmitting end of the channel in the connection.
-    fn get_tx(&mut self) -> &mut mpsc::Sender<Message>;
-
-    async fn send_messages<S>(
-        write_sink: S,
-        rx: mpsc::Receiver<Message>,
-    ) -> Result<(), ConnectionError>
-    where
-        S: Sink<Message> + Send + 'static + Unpin,
-    {
+    async fn run(self) -> Result<(), ConnectionError> {
+        let SendTask { write_sink, rx } = self;
         rx.map(Ok)
             .forward(write_sink)
             .await
-            .map_err(|_| ConnectionError::SendMessageError)?;
-        Ok(())
+            .map_err(|_| ConnectionError::SendMessageError)
+    }
+}
+
+struct ReceiveTask<S>
+where
+    S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
+{
+    read_stream: S,
+    router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+    host: String,
+}
+
+impl<S> ReceiveTask<S>
+where
+    S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
+{
+    fn new(
+        read_stream: S,
+        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
+        host: String,
+    ) -> Self {
+        ReceiveTask {
+            read_stream,
+            router_tx,
+            host,
+        }
     }
 
-    async fn receive_messages<S>(
-        mut read_stream: S,
-        mut router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        host: String,
-    ) -> Result<(), ConnectionError>
-    where
-        S: TryStreamExt<Ok = Message, Error = ConnectionError> + Send + Unpin + 'static,
-    {
+    async fn run(self) -> Result<(), ConnectionError> {
+        let ReceiveTask {
+            mut read_stream,
+            mut router_tx,
+            host,
+        } = self;
+
         loop {
             let message = read_stream
                 .try_next()
@@ -249,12 +281,6 @@ pub trait Connection: Sized {
                 .map_err(|_| ConnectionError::ReceiveMessageError)?;
         }
     }
-
-    fn get_sender(&mut self) -> ConnectionSender {
-        ConnectionSender {
-            tx: self.get_tx().clone(),
-        }
-    }
 }
 
 /// Connection to a remote host.
@@ -265,24 +291,22 @@ pub struct SwimConnection {
 }
 
 impl SwimConnection {
-    /// Creates a new websocket connection to a remote host that can send and receive messages.
     async fn new<T: WebsocketFactory + Send + Sync + 'static>(
         host_url: url::Url,
         buffer_size: usize,
         router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        websocket_factory: T,
+        websocket_factory: &mut T,
     ) -> Result<SwimConnection, ConnectionError> {
         let host = host_url.as_str().to_owned();
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let ws_stream = websocket_factory.connect(host_url).await?;
-        let (write_sink, read_stream) = ws_stream.split();
+        let (write_sink, read_stream) = websocket_factory.connect(host_url).await?;
 
-        let receive = SwimConnection::receive_messages(read_stream, router_tx, host);
-        let send = SwimConnection::send_messages(write_sink, rx);
+        let receive = ReceiveTask::new(read_stream, router_tx, host);
+        let send = SendTask::new(write_sink, rx);
 
-        let send_handler = tokio::spawn(send);
-        let receive_handler = tokio::spawn(receive);
+        let send_handler = tokio::spawn(send.run());
+        let receive_handler = tokio::spawn(receive.run());
 
         Ok(SwimConnection {
             tx,
@@ -293,6 +317,7 @@ impl SwimConnection {
 }
 
 /// Wrapper for the transmitting end of a channel to an open connection.
+#[derive(Debug, Clone)]
 pub struct ConnectionSender {
     tx: mpsc::Sender<Message>,
 }
@@ -316,38 +341,6 @@ impl ConnectionSender {
     }
 }
 
-#[async_trait]
-impl Connection for SwimConnection {
-    fn get_tx(&mut self) -> &mut mpsc::Sender<Message> {
-        &mut self.tx
-    }
-}
-
-#[async_trait]
-trait WebsocketFactory {
-    type WebsocketType: Stream<Item = Result<Message, ConnectionError>>
-        + Sink<Message>
-        + Send
-        + 'static;
-
-    async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError>;
-}
-
-struct SwimWebsocketFactory {}
-
-#[async_trait]
-impl WebsocketFactory for SwimWebsocketFactory {
-    type WebsocketType = ErrInto<WebSocketStream<TcpStream>, ConnectionError>;
-
-    async fn connect(self, url: url::Url) -> Result<Self::WebsocketType, ConnectionError> {
-        let (ws_stream, _) = connect_async(url)
-            .await
-            .map_err(|_| ConnectionError::ConnectError)?;
-        let ws_stream = ws_stream.err_into::<ConnectionError>();
-        Ok(ws_stream)
-    }
-}
-
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionError {
@@ -361,14 +354,14 @@ pub enum ConnectionError {
     ClosedError,
 }
 
-impl From<tokio::task::JoinError> for ConnectionError {
-    fn from(_: tokio::task::JoinError) -> Self {
-        ConnectionError::ConnectError
+impl From<RequestError> for ConnectionError {
+    fn from(_: RequestError) -> Self {
+        ConnectionError::ClosedError
     }
 }
 
-impl From<tungstenite::error::Error> for ConnectionError {
-    fn from(_: tungstenite::error::Error) -> Self {
+impl From<tokio::task::JoinError> for ConnectionError {
+    fn from(_: tokio::task::JoinError) -> Self {
         ConnectionError::ConnectError
     }
 }
@@ -376,5 +369,21 @@ impl From<tungstenite::error::Error> for ConnectionError {
 impl From<Aborted> for ConnectionError {
     fn from(_: Aborted) -> Self {
         ConnectionError::ClosedError
+    }
+}
+
+use crate::connections::factory::WebsocketFactory;
+use common::request::request_future::RequestError;
+use tungstenite::error::Error as TError;
+
+impl From<tungstenite::error::Error> for ConnectionError {
+    fn from(e: TError) -> Self {
+        match e {
+            TError::ConnectionClosed | TError::AlreadyClosed => ConnectionError::ClosedError,
+            TError::Http(_) | TError::HttpFormat(_) | TError::Tls(_) => {
+                ConnectionError::ConnectError
+            }
+            _ => ConnectionError::ReceiveMessageError,
+        }
     }
 }

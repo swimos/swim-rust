@@ -14,8 +14,8 @@
 
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
-use crate::sink::item;
-use crate::sink::item::{ItemSink, MpscSend};
+use common::sink::item;
+use common::sink::item::{ItemSink, MpscSend};
 use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};

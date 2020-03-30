@@ -17,7 +17,7 @@ use crate::connections::{
     SwimConnection, SwimConnectionFactory,
 };
 use crate::sink::item::map_err::SenderErrInto;
-use crate::sink::item::{ItemSender, ItemSink};
+use common::sink::item::{ItemSender, ItemSink};
 use common::warp::envelope::{Envelope, LaneAddressed};
 use common::warp::path::AbsolutePath;
 use futures::future::{poll_fn, ready, PollFn, Ready};
