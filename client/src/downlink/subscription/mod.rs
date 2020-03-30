@@ -36,6 +36,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use crate::downlink::watch_adapter::value::ValuePump;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -210,7 +211,14 @@ where
         let sink_path = path.clone();
         let cmd_sink = sink
             .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&sink_path, cmd).1);
-        let (dl, rec) = value_downlink_for_sink(cmd_sink, init, updates, &config);
+
+        let (dl, rec) = if config.back_pressure {
+            value_downlink_for_sink(cmd_sink, init, updates, &config)
+        } else {
+            let pressure_release = ValuePump::new(cmd_sink);
+            value_downlink_for_sink(pressure_release, init, updates, &config)
+        };
+
         self.value_downlinks.insert(path, dl.clone());
         (dl, rec)
     }
