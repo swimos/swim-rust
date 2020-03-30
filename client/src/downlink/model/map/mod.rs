@@ -658,7 +658,7 @@ fn update_and_notify<Upd>(
     data_state: &mut ValMap,
     update: Upd,
     request: Option<Request<ValMap>>,
-) -> Option<()>
+) -> Result<(), ()>
 where
     Upd: FnOnce(&mut ValMap) -> (),
 {
@@ -670,7 +670,7 @@ where
         }
         _ => {
             update(data_state);
-            None
+            Ok(())
         }
     }
 }
@@ -680,7 +680,7 @@ fn update_and_notify_prev<Upd>(
     key: &Value,
     update: Upd,
     request: Option<Request<Option<Arc<Value>>>>,
-) -> Option<()>
+) -> Result<(), ()>
 where
     Upd: FnOnce(&mut ValMap) -> (),
 {
@@ -692,7 +692,7 @@ where
         }
         _ => {
             update(data_state);
-            None
+            Ok(())
         }
     }
 }
@@ -717,7 +717,7 @@ fn handle_action(
                     Event(ViewWithEvent::insert(data_state, key.clone()), true),
                     Command::Action(MapModification::Insert(key, v_arc)),
                 ),
-                err,
+                err.is_err(),
             )
         }
         MapAction::Remove { key, old } => {
@@ -729,7 +729,7 @@ fn handle_action(
                 }
                 _ => {
                     let old = data_state.remove(&key);
-                    (None, old.is_some())
+                    (Ok(()), old.is_some())
                 }
             };
             if did_rem {
@@ -738,10 +738,10 @@ fn handle_action(
                         Event(ViewWithEvent::remove(data_state, key.clone()), true),
                         Command::Action(MapModification::Remove(key)),
                     ),
-                    err,
+                    err.is_err(),
                 )
             } else {
-                (Response::none(), err)
+                (Response::none(), err.is_err())
             }
         }
         MapAction::Take { n, before, after } => {
@@ -752,13 +752,16 @@ fn handle_action(
                 },
                 before,
             );
-            let err2 = after.and_then(|req| req.send(data_state.clone()));
+            let err2 = match after {
+                None => Ok(()),
+                Some(req) => req.send(data_state.clone()),
+            };
             (
                 Response::of(
                     Event(ViewWithEvent::take(data_state, n), true),
                     Command::Action(MapModification::Take(n)),
                 ),
-                err1.or(err2),
+                err1.is_err() || err2.is_err(),
             )
         }
         MapAction::Skip { n, before, after } => {
@@ -769,13 +772,16 @@ fn handle_action(
                 },
                 before,
             );
-            let err2 = after.and_then(|req| req.send(data_state.clone()));
+            let err2 = match after {
+                None => Ok(()),
+                Some(req) => req.send(data_state.clone()),
+            };
             (
                 Response::of(
                     Event(ViewWithEvent::skip(data_state, n), true),
                     Command::Action(MapModification::Skip(n)),
                 ),
-                err1.or(err2),
+                err1.is_err() || err2.is_err(),
             )
         }
         MapAction::Clear { before } => {
@@ -786,7 +792,7 @@ fn handle_action(
                 }
                 _ => {
                     data_state.clear();
-                    None
+                    Ok(())
                 }
             };
             (
@@ -794,16 +800,16 @@ fn handle_action(
                     Event(ViewWithEvent::clear(data_state), true),
                     Command::Action(MapModification::Clear),
                 ),
-                err,
+                err.is_err(),
             )
         }
         MapAction::Get { request } => {
             let err = request.send(data_state.clone());
-            (Response::none(), err)
+            (Response::none(), err.is_err())
         }
         MapAction::GetByKey { key, request } => {
             let err = request.send(data_state.get(&key).cloned());
-            (Response::none(), err)
+            (Response::none(), err.is_err())
         }
         MapAction::Update {
             key,
@@ -817,34 +823,35 @@ fn handle_action(
                 Some(new_val) => {
                     let v_arc = Arc::new(new_val);
                     let replaced = data_state.insert(key.clone(), v_arc.clone());
-                    let err1 = old.and_then(|req| req.send(replaced));
-                    let err2 = replacement.and_then(|req| req.send(Some(v_arc.clone())));
+                    let err1 = old.and_then(|req| req.send(replaced).err());
+                    let err2 = replacement.and_then(|req| req.send(Some(v_arc.clone())).err());
                     (
                         Response::of(
                             Event(ViewWithEvent::insert(data_state, key.clone()), true),
                             Command::Action(MapModification::Insert(key, v_arc)),
                         ),
-                        err1.or(err2),
+                        err1.is_some() || err2.is_some(),
                     )
                 }
                 _ if prev.is_some() => {
                     let removed = data_state.remove(&key);
-                    let err1 = old.and_then(|req| req.send(removed));
-                    let err2 = replacement.and_then(|req| req.send(None));
+                    let err1 = old.and_then(|req| req.send(removed).err());
+                    let err2 = replacement.and_then(|req| req.send(None).err());
                     (
                         Response::of(
                             Event(ViewWithEvent::remove(data_state, key.clone()), true),
                             Command::Action(MapModification::Remove(key)),
                         ),
-                        err1.or(err2),
+                        err1.is_some() || err2.is_some(),
                     )
                 }
-                _ => (Response::none(), None),
+                _ => (Response::none(), false),
             }
         }
     };
-    match err {
-        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
-        _ => resp,
+    if err {
+        resp.with_error(TransitionError::ReceiverDropped)
+    } else {
+        resp
     }
 }

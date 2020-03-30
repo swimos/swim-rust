@@ -15,11 +15,14 @@
 use super::raw;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::{Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
+use common::request::request_future::SendAndAwait;
+use common::request::Request;
 use common::sink::item;
 use common::sink::item::{ItemSink, MpscSend};
-use common::topic::{MpscTopic, MpscTopicReceiver, SendRequest, Sequenced, Topic};
+use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
+use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, watch};
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.
@@ -71,12 +74,14 @@ where
     }
 }
 
+type EventReceiver<Upd> = MpscTopicReceiver<Event<Upd>>;
+
 impl<Act, Upd> Topic<Event<Upd>> for QueueDownlink<Act, Upd>
 where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = QueueReceiver<Upd>;
-    type Fut = Sequenced<SendRequest<Event<Upd>>, oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>>;
+    type Fut = ErrInto<SendAndAwait<Request<EventReceiver<Upd>>, EventReceiver<Upd>>, TopicError>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.topic.subscribe()
