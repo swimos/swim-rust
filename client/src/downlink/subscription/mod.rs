@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::{Config, MuxMode};
+use crate::configuration::downlink::{Config, DownlinkParams, MuxMode};
 use crate::downlink::any::{AnyDownlink, AnyReceiver};
-use crate::downlink::model::map::{MapAction, ViewWithEvent};
+use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value;
-use crate::downlink::model::value::SharedValue;
-use crate::downlink::Command;
-use crate::router::Router;
+use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::{Command, Message};
+use crate::router::{Router, RoutingError};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::ItemSender;
@@ -201,8 +201,6 @@ where
         init: Value,
         path: AbsolutePath,
     ) -> (ValueDownlink, ValueReceiver) {
-        use crate::downlink::model::value::*;
-
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
 
@@ -212,30 +210,12 @@ where
         let sink_path = path.clone();
         let cmd_sink = sink
             .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&sink_path, cmd).1);
-        let buffer_size = config.buffer_size.get();
-        let (dl, rec) = match config.mux_mode {
-            MuxMode::Queue(n) => {
-                let (dl, rec) =
-                    create_queue_downlink(init, updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
-            }
-            MuxMode::Dropping => {
-                let (dl, rec) = create_dropping_downlink(init, updates, cmd_sink, buffer_size);
-                (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
-            }
-            MuxMode::Buffered(n) => {
-                let (dl, rec) =
-                    create_buffered_downlink(init, updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
-            }
-        };
+        let (dl, rec) = value_downlink_for_sink(cmd_sink, init, updates, &config);
         self.value_downlinks.insert(path, dl.clone());
         (dl, rec)
     }
 
     async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
-        use crate::downlink::model::map::*;
-
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
 
@@ -246,21 +226,8 @@ where
         let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
             envelopes::map_envelope(&sink_path, cmd).1
         });
-        let buffer_size = config.buffer_size.get();
-        let (dl, rec) = match config.mux_mode {
-            MuxMode::Queue(n) => {
-                let (dl, rec) = create_queue_downlink(updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
-            }
-            MuxMode::Dropping => {
-                let (dl, rec) = create_dropping_downlink(updates, cmd_sink, buffer_size);
-                (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
-            }
-            MuxMode::Buffered(n) => {
-                let (dl, rec) = create_buffered_downlink(updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
-            }
-        };
+
+        let (dl, rec) = map_downlink_for_sink(cmd_sink, updates, &config);
         self.map_downlinks.insert(path, dl.clone());
         (dl, rec)
     }
@@ -320,6 +287,64 @@ where
                     let _ = map_req.send(dl);
                 }
             }
+        }
+    }
+}
+
+fn value_downlink_for_sink<Updates, Snk>(
+    cmd_sink: Snk,
+    init: Value,
+    updates: Updates,
+    config: &DownlinkParams,
+) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
+where
+    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
+{
+    use crate::downlink::model::value::*;
+    let buffer_size = config.buffer_size.get();
+    match config.mux_mode {
+        MuxMode::Queue(n) => {
+            let (dl, rec) = create_queue_downlink(init, updates, cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
+        }
+        MuxMode::Dropping => {
+            let (dl, rec) = create_dropping_downlink(init, updates, cmd_sink, buffer_size);
+            (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
+        }
+        MuxMode::Buffered(n) => {
+            let (dl, rec) = create_buffered_downlink(init, updates, cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
+        }
+    }
+}
+
+fn map_downlink_for_sink<Updates, Snk>(
+    cmd_sink: Snk,
+    updates: Updates,
+    config: &DownlinkParams,
+) -> (
+    AnyDownlink<MapAction, ViewWithEvent>,
+    AnyReceiver<ViewWithEvent>,
+)
+where
+    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+{
+    use crate::downlink::model::map::*;
+    let buffer_size = config.buffer_size.get();
+    match config.mux_mode {
+        MuxMode::Queue(n) => {
+            let (dl, rec) = create_queue_downlink(updates, cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
+        }
+        MuxMode::Dropping => {
+            let (dl, rec) = create_dropping_downlink(updates, cmd_sink, buffer_size);
+            (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
+        }
+        MuxMode::Buffered(n) => {
+            let (dl, rec) = create_buffered_downlink(updates, cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }
 }
