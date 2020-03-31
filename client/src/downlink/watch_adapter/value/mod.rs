@@ -18,6 +18,9 @@ use futures::future::{ready, Ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
+#[cfg(test)]
+mod tests;
+
 /// Joins a watch receiver to an MPSC sender to prevent back-pressure propagating between
 /// two queues.
 pub struct ValuePump<T> {
