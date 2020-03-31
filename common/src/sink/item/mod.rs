@@ -14,14 +14,16 @@
 
 use std::future::Future;
 
-use futures::future::{BoxFuture, Ready};
+use futures::future::{ready, BoxFuture, Ready};
 use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use tokio::sync::{broadcast, mpsc, watch};
 
+pub mod comap;
 pub mod drop_all;
+pub mod either;
 pub mod fail_all;
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
@@ -254,68 +256,13 @@ impl<'a, T, E: 'a> ItemSink<'a, T> for BoxItemSink<T, E> {
     }
 }
 
-pub mod comap {
-    use super::ItemSink;
+impl<'a, T> ItemSink<'a, T> for Vec<T> {
+    //TODO Ideally this should be ! but that is still experimental.
+    type Error = ();
+    type SendFuture = Ready<Result<(), ()>>;
 
-    #[derive(Clone, Debug)]
-    pub struct ItemSenderComap<Sender, F> {
-        sender: Sender,
-        f: F,
-    }
-
-    impl<Sender, F> ItemSenderComap<Sender, F> {
-        pub fn new(sender: Sender, f: F) -> ItemSenderComap<Sender, F> {
-            ItemSenderComap { sender, f }
-        }
-    }
-
-    impl<'a, S, T, Sender, F> ItemSink<'a, S> for ItemSenderComap<Sender, F>
-    where
-        Sender: ItemSink<'a, T>,
-        F: FnMut(S) -> T,
-    {
-        type Error = Sender::Error;
-        type SendFuture = Sender::SendFuture;
-
-        fn send_item(&'a mut self, value: S) -> Self::SendFuture {
-            let ItemSenderComap { sender, f } = self;
-            sender.send_item(f(value))
-        }
-    }
-}
-
-pub mod either {
-
-    use super::ItemSink;
-    use either::Either;
-    use futures_util::future::Either as EitherFuture;
-
-    /// An item sink that delegates to one of two other sinks.
-    #[derive(Clone, Debug)]
-    pub struct EitherSink<S1, S2> {
-        left: S1,
-        right: S2,
-    }
-
-    impl<S1, S2> EitherSink<S1, S2> {
-        pub fn new(left: S1, right: S2) -> Self {
-            EitherSink { left, right }
-        }
-    }
-
-    impl<'a, T1, T2, S1, S2> ItemSink<'a, Either<T1, T2>> for EitherSink<S1, S2>
-    where
-        S1: ItemSink<'a, T1>,
-        S2: ItemSink<'a, T2, Error = S1::Error>,
-    {
-        type Error = S1::Error;
-        type SendFuture = EitherFuture<S1::SendFuture, S2::SendFuture>;
-
-        fn send_item(&'a mut self, value: Either<T1, T2>) -> Self::SendFuture {
-            match value {
-                Either::Left(t1) => EitherFuture::Left(self.left.send_item(t1)),
-                Either::Right(t2) => EitherFuture::Right(self.right.send_item(t2)),
-            }
-        }
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        self.push(value);
+        ready(Ok(()))
     }
 }
