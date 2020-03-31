@@ -12,18 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::{Config, DownlinkParams, MuxMode};
+use crate::configuration::downlink::{
+    BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
+};
 use crate::downlink::any::{AnyDownlink, AnyReceiver};
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value;
 use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::watch_adapter::map::KeyedWatch;
+use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, Message};
 use crate::router::{Router, RoutingError};
 use common::model::Value;
 use common::request::Request;
+use common::sink::item::either::EitherSink;
 use common::sink::item::ItemSender;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
+use either::Either;
 use futures::Stream;
 use futures_util::future::TryFutureExt;
 use pin_utils::pin_mut;
@@ -36,7 +42,6 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use crate::downlink::watch_adapter::value::ValuePump;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -101,21 +106,6 @@ impl Downlinks {
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DownlinkKind {
-    Value,
-    Map,
-}
-
-impl Display for DownlinkKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DownlinkKind::Value => write!(f, "Value"),
-            DownlinkKind::Map => write!(f, "Map"),
-        }
     }
 }
 
@@ -212,11 +202,22 @@ where
         let cmd_sink = sink
             .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&sink_path, cmd).1);
 
-        let (dl, rec) = if config.back_pressure {
-            value_downlink_for_sink(cmd_sink, init, updates, &config)
-        } else {
-            let pressure_release = ValuePump::new(cmd_sink);
-            value_downlink_for_sink(pressure_release, init, updates, &config)
+        let (dl, rec) = match config.back_pressure {
+            BackpressureMode::Propagate => {
+                value_downlink_for_sink(cmd_sink, init, updates, &config)
+            }
+            BackpressureMode::Release { .. } => {
+                let pressure_release = ValuePump::new(cmd_sink.clone()).await;
+
+                let either_sink = EitherSink::new(cmd_sink, pressure_release).comap(
+                    move |cmd: Command<SharedValue>| match cmd {
+                        act @ Command::Action(_) => Either::Right(act),
+                        ow => Either::Left(ow),
+                    },
+                );
+
+                value_downlink_for_sink(either_sink, init, updates, &config)
+            }
         };
 
         self.value_downlinks.insert(path, dl.clone());
@@ -231,11 +232,47 @@ where
         let updates = incoming.filter_map(|env| envelopes::map::try_from_envelope(env).ok());
 
         let sink_path = path.clone();
-        let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
-            envelopes::map_envelope(&sink_path, cmd).1
-        });
 
-        let (dl, rec) = map_downlink_for_sink(cmd_sink, updates, &config);
+        let (dl, rec) = match config.back_pressure {
+            BackpressureMode::Propagate => {
+                let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
+                    envelopes::map_envelope(&sink_path, cmd).1
+                });
+                map_downlink_for_sink(cmd_sink, updates, &config)
+            }
+            BackpressureMode::Release {
+                input_buffer_size,
+                bridge_buffer_size,
+                max_active_keys,
+            } => {
+                let sink_path_duplicate = sink_path.clone();
+                let direct_sink =
+                    sink.clone()
+                        .comap(move |cmd: Command<MapModification<Arc<Value>>>| {
+                            envelopes::map_envelope(&sink_path_duplicate, cmd).1
+                        });
+                let action_sink = sink.comap(move |act: MapModification<Arc<Value>>| {
+                    envelopes::map_envelope(&sink_path, Command::Action(act)).1
+                });
+
+                let pressure_release = KeyedWatch::new(
+                    action_sink,
+                    input_buffer_size,
+                    bridge_buffer_size,
+                    max_active_keys,
+                )
+                .await;
+
+                let either_sink = EitherSink::new(direct_sink, pressure_release).comap(
+                    move |cmd: Command<MapModification<Arc<Value>>>| match cmd {
+                        Command::Action(act) => Either::Right(act),
+                        ow => Either::Left(ow),
+                    },
+                );
+                map_downlink_for_sink(either_sink, updates, &config)
+            }
+        };
+
         self.map_downlinks.insert(path, dl.clone());
         (dl, rec)
     }

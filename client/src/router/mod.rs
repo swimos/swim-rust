@@ -22,8 +22,8 @@ use tokio::sync::mpsc::error::SendError;
 
 pub trait Router: Send {
     type ConnectionStream: Stream<Item = Envelope> + Send + 'static;
-    type ConnectionSink: ItemSender<Envelope, RoutingError> + Send + 'static;
-    type GeneralSink: ItemSender<(String, Envelope), RoutingError> + Send + 'static;
+    type ConnectionSink: ItemSender<Envelope, RoutingError> + Clone + Sync + Send + 'static;
+    type GeneralSink: ItemSender<(String, Envelope), RoutingError> + Clone + Sync + Send + 'static;
 
     type ConnectionFut: Future<Output = (Self::ConnectionSink, Self::ConnectionStream)> + Send;
     type GeneralFut: Future<Output = Self::GeneralSink> + Send;

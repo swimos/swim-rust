@@ -15,8 +15,34 @@
 pub mod downlink {
     use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
+    use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
     use tokio::time::Duration;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub enum DownlinkKind {
+        Value,
+        Map,
+    }
+
+    impl Display for DownlinkKind {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                DownlinkKind::Value => write!(f, "Value"),
+                DownlinkKind::Map => write!(f, "Map"),
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    pub enum BackpressureMode {
+        Propagate,
+        Release {
+            input_buffer_size: usize,
+            bridge_buffer_size: usize,
+            max_active_keys: usize,
+        },
+    }
 
     /// Configuration for the creation and management of downlinks for a Warp client.
     pub trait Config: Send + Sync {
@@ -45,7 +71,7 @@ pub mod downlink {
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub struct DownlinkParams {
         /// Whether the downlink propagates back-pressure (not yet fully implemented so this is ignored).
-        pub back_pressure: bool,
+        pub back_pressure: BackpressureMode,
 
         /// Multiplexing mode for the downlink.
         pub mux_mode: MuxMode,
@@ -59,7 +85,7 @@ pub mod downlink {
 
     impl DownlinkParams {
         pub fn new(
-            back_pressure: bool,
+            back_pressure: BackpressureMode,
             mux_mode: MuxMode,
             idle_timeout: Duration,
             buffer_size: usize,
@@ -80,7 +106,7 @@ pub mod downlink {
         }
 
         pub fn new_queue(
-            back_pressure: bool,
+            back_pressure: BackpressureMode,
             queue_size: usize,
             idle_timeout: Duration,
             buffer_size: usize,
@@ -92,7 +118,7 @@ pub mod downlink {
         }
 
         pub fn new_dropping(
-            back_pressure: bool,
+            back_pressure: BackpressureMode,
             idle_timeout: Duration,
             buffer_size: usize,
         ) -> Result<DownlinkParams, String> {
@@ -100,7 +126,7 @@ pub mod downlink {
         }
 
         pub fn new_buffered(
-            back_pressure: bool,
+            back_pressure: BackpressureMode,
             queue_size: usize,
             idle_timeout: Duration,
             buffer_size: usize,

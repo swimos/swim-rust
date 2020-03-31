@@ -44,7 +44,7 @@ pub mod value {
     where
         T: Clone + Send + Sync + 'static,
     {
-        pub fn new<Snk>(sink: Snk) -> Self
+        pub async fn new<Snk>(sink: Snk) -> Self
         where
             Snk: ItemSender<T, RoutingError> + Send + 'static,
         {
