@@ -36,10 +36,16 @@ pub mod downlink {
 
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub enum BackpressureMode {
+        /// Propagate back-pressure through the downlink.
         Propagate,
+        /// Attempt to relieve back-pressure through the downlink as much as possible.
         Release {
+            /// Input queue size for the back-pressure relief component.
             input_buffer_size: usize,
+            /// Queue size for control messages between different components of the pressure
+            /// relief component. This only applies to map downlinks.
             bridge_buffer_size: usize,
+            /// Maximum number of active keys in the pressure relief component for map downlinks.
             max_active_keys: usize,
         },
     }
@@ -70,7 +76,7 @@ pub mod downlink {
     /// Configuration parameters for a single downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub struct DownlinkParams {
-        /// Whether the downlink propagates back-pressure (not yet fully implemented so this is ignored).
+        /// Whether the downlink propagates back-pressure.
         pub back_pressure: BackpressureMode,
 
         /// Multiplexing mode for the downlink.
