@@ -138,7 +138,6 @@ impl ConsumerTask {
         //TODO The eviction strategy throws away the sender for the oldest key which isn't ideal. This would preferably be an LRU cache
 
         while let Some(action) = self.input.recv().await {
-
             match classify(action) {
                 Either::Left(keyed) => {
                     if !self.handle_keyed(keyed).await {
@@ -179,7 +178,8 @@ impl ConsumerTask {
                         .next()
                         .and_then(|(age, key)| senders.remove(key).map(|sender| (*age, sender)));
                     if let Some((age, sender)) = first {
-                        if rx.await.is_err() { //Wait for the flush to complete.
+                        if rx.await.is_err() {
+                            //Wait for the flush to complete.
                             //The produce task has been dropped.
                             return false;
                         }
