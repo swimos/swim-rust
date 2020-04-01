@@ -18,6 +18,10 @@ use hamcrest2::prelude::*;
 use tokio::sync::mpsc;
 
 use super::*;
+use tokio::time::timeout;
+use std::time::Duration;
+
+const TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test(threaded_scheduler)]
 async fn single_pass_through() {
@@ -31,7 +35,7 @@ async fn single_pass_through() {
 
     assert_that!(result, ok());
 
-    let value = receiver.await.unwrap();
+    let value = timeout(TIMEOUT, receiver).await.unwrap().unwrap();
     assert_that!(value, eq(6));
 }
 
@@ -68,7 +72,7 @@ async fn send_multiple() {
         assert_that!(result, ok());
     }
 
-    let (in_order, observed, prev) = receiver.await.unwrap();
+    let (in_order, observed, prev) = timeout(TIMEOUT, receiver).await.unwrap().unwrap();
 
     assert!(in_order);
     assert_that!(observed, leq(10));
@@ -108,7 +112,7 @@ async fn send_multiple_chunks() {
         assert_that!(result, ok());
     }
 
-    let (mut rx, in_order1, observed1, prev) = receiver1.await.unwrap();
+    let (mut rx, in_order1, observed1, prev) = timeout(TIMEOUT, receiver1).await.unwrap().unwrap();
 
     assert!(in_order1);
     assert_that!(prev, eq(Some(4)));
@@ -140,7 +144,7 @@ async fn send_multiple_chunks() {
         assert_that!(result, ok());
     }
 
-    let (in_order2, observed2, prev) = receiver2.await.unwrap();
+    let (in_order2, observed2, prev) = timeout(TIMEOUT, receiver2).await.unwrap().unwrap();
 
     assert!(in_order2);
     assert_that!(observed1 + observed2, leq(10));

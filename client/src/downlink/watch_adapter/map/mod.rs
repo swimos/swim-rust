@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::downlink::model::map::MapModification;
 use crate::router::RoutingError;
 use common::model::Value;
@@ -103,6 +106,7 @@ enum SpecialAction {
 enum BridgeMessage {
     Register(watch::Receiver<Option<Mod>>),
     Special(SpecialAction, oneshot::Sender<()>),
+    Flush(oneshot::Sender<()>),
 }
 
 #[derive(Debug)]
@@ -187,13 +191,17 @@ impl ConsumerTask {
             Some(sender) => sender.broadcast(Some(action)).is_ok(),
             _ => {
                 if senders.len() > *max_active_keys {
+                    let (tx, rx) = oneshot::channel();
+                    if bridge.send_item(BridgeMessage::Flush(tx)).await.is_err() {
+                        return false;
+                    }
                     let first = ages
                         .iter()
                         .next()
                         .and_then(|(age, key)| senders.remove(key).map(|sender| (*age, sender)));
                     if let Some((age, sender)) = first {
-                        //Sending non instructs the producer to drop its receiver.
-                        if sender.broadcast(None).is_err() {
+                        if rx.await.is_err() //Wait for the flush to complete.
+                            || sender.broadcast(None).is_err() { //Sending None instructs the producer to drop its receiver.
                             //The produce task has been dropped.
                             return false;
                         }
@@ -269,9 +277,13 @@ where
         let mut bridge_fused = bridge.fuse();
 
         loop {
-            let maybe_event: Option<Either<BridgeMessage, Mod>> = select_biased! {
-                message = bridge_fused.next() => message.map(Either::Left),
-                output = key_streams.next() => output.map(Either::Right),
+            let maybe_event: Option<Either<BridgeMessage, Mod>> = if key_streams.is_empty() {
+                bridge_fused.next().await.map(Either::Left)
+            } else {
+                select_biased! {
+                    message = bridge_fused.next() => message.map(Either::Left),
+                    output = key_streams.next() => output.map(Either::Right),
+                }
             };
 
             if let Some(event) = maybe_event {
@@ -284,6 +296,12 @@ where
                     }
                     Either::Left(BridgeMessage::Special(action, cb)) => {
                         if !producer_handle_special(&mut sink, action, cb, &mut key_streams).await {
+                            // The consumer task or router was dropped.
+                            break;
+                        }
+                    }
+                    Either::Left(BridgeMessage::Flush(cb)) => {
+                        if !flush_key_streams(&mut sink, &mut key_streams).await || !cb.send(()).is_ok() {
                             // The consumer task or router was dropped.
                             break;
                         }
@@ -303,6 +321,23 @@ where
     }
 }
 
+async fn flush_key_streams<Str, Snk>(
+    sink: &mut Snk,
+    key_streams: &mut Str,
+) -> bool
+    where
+        Str: Stream<Item = Mod> + Unpin + Sync + 'static,
+        Snk: ItemSender<Mod, RoutingError>,
+{
+    while let Some(Some(modification)) = key_streams.next().now_or_never() {
+        if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
+            //Router was dropped.
+            return false;
+        }
+    }
+    true
+}
+
 async fn producer_handle_special<Str, Snk>(
     sink: &mut Snk,
     action: SpecialAction,
@@ -315,11 +350,8 @@ where
 {
     //Drain all of the keyed streams of immediately available values to
     //maintain ordering of events.
-    while let Some(Some(modification)) = key_streams.next().now_or_never() {
-        if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
-            //Router was dropped.
-            return false;
-        }
+    if !flush_key_streams(sink, key_streams).await {
+        return false;
     }
     //Dispatch the special event.
     let special = match action {
