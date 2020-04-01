@@ -19,17 +19,19 @@ use tokio::sync::mpsc;
 
 use super::*;
 
-#[tokio::test]
+#[tokio::test(threaded_scheduler)]
 async fn single_pass_through() {
     let (tx, mut rx) = mpsc::channel::<i32>(5);
 
     let mut pump = ValuePump::new(tx.map_err_into()).await;
 
+    let receiver = tokio::task::spawn(async move { rx.recv().await.unwrap() });
+
     let result = pump.send_item(6).await;
+
     assert_that!(result, ok());
 
-    let value = rx.recv().await.unwrap();
-
+    let value = receiver.await.unwrap();
     assert_that!(value, eq(6));
 }
 
@@ -39,24 +41,36 @@ async fn send_multiple() {
 
     let mut pump = ValuePump::new(tx.map_err_into()).await;
 
+    let receiver = tokio::task::spawn(async move {
+        let mut observed: i32 = 0;
+        let mut prev: Option<i32> = None;
+
+        let mut in_order = true;
+
+        while let Some(i) = rx.recv().await {
+            if let Some(p) = prev {
+                if p >= i {
+                    in_order = false;
+                    break;
+                }
+            }
+            prev = Some(i);
+            observed += 1;
+            if i == 9 {
+                break;
+            }
+        }
+        (in_order, observed, prev)
+    });
+
     for n in 0..10 {
         let result = pump.send_item(n).await;
         assert_that!(result, ok());
     }
 
-    let mut prev: Option<i32> = None;
+    let (in_order, observed, prev) = receiver.await.unwrap();
 
-    while let Some(i) = rx.recv().await {
-        if let Some(p) = prev {
-            assert_that!(i, greater_than(p));
-        }
-        prev = Some(i);
-        observed += 1;
-        if i == 9 {
-            break;
-        }
-    }
-    println!("{}", observed);
+    assert!(in_order);
     assert_that!(observed, leq(10));
     assert_that!(prev, eq(Some(9)));
 }
@@ -67,41 +81,68 @@ async fn send_multiple_chunks() {
 
     let mut pump = ValuePump::new(tx.map_err_into()).await;
 
+    let receiver1 = tokio::task::spawn(async move {
+        let mut observed: i32 = 0;
+        let mut prev: Option<i32> = None;
+
+        let mut in_order = true;
+
+        while let Some(i) = rx.recv().await {
+            if let Some(p) = prev {
+                if p >= i {
+                    in_order = false;
+                    break;
+                }
+            }
+            prev = Some(i);
+            observed += 1;
+            if i == 4 {
+                break;
+            }
+        }
+        (rx, in_order, observed, prev)
+    });
+
     for n in 0..5 {
         let result = pump.send_item(n).await;
         assert_that!(result, ok());
     }
 
-    let mut observed: i32 = 0;
-    let mut prev: Option<i32> = None;
+    let (mut rx, in_order1, observed1, prev) = receiver1.await.unwrap();
 
-    while let Some(i) = rx.recv().await {
-        if let Some(p) = prev {
-            assert_that!(i, greater_than(p));
-        }
-        prev = Some(i);
-        observed += 1;
-        if i == 4 {
-            break;
-        }
-    }
+    assert!(in_order1);
     assert_that!(prev, eq(Some(4)));
+
+    let receiver2 = tokio::task::spawn(async move {
+        let mut observed: i32 = 0;
+        let mut prev: Option<i32> = None;
+
+        let mut in_order = true;
+
+        while let Some(i) = rx.recv().await {
+            if let Some(p) = prev {
+                if p >= i {
+                    in_order = false;
+                    break;
+                }
+            }
+            prev = Some(i);
+            observed += 1;
+            if i == 9 {
+                break;
+            }
+        }
+        (in_order, observed, prev)
+    });
 
     for n in 5..10 {
         let result = pump.send_item(n).await;
         assert_that!(result, ok());
     }
 
-    while let Some(i) = rx.recv().await {
-        if let Some(p) = prev {
-            assert_that!(i, greater_than(p));
-        }
-        prev = Some(i);
-        observed += 1;
-        if i == 9 {
-            break;
-        }
-    }
-    assert_that!(observed, leq(10));
+    let (in_order2, observed2, prev) = receiver2.await.unwrap();
+
+    assert!(in_order2);
+    assert_that!(observed1 + observed2, leq(10));
     assert_that!(prev, eq(Some(9)));
 }
