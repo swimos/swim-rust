@@ -20,7 +20,6 @@ use crate::router::RoutingError;
 use common::model::Value;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use either::Either;
-use futures::future::ready;
 use futures::stream::SelectAll;
 use futures::{select_biased, Stream};
 use futures::{FutureExt, StreamExt};
@@ -104,7 +103,7 @@ enum SpecialAction {
 
 #[derive(Debug)]
 enum BridgeMessage {
-    Register(watch::Receiver<Option<Mod>>),
+    Register(watch::Receiver<Mod>),
     Special(SpecialAction, oneshot::Sender<()>),
     Flush(oneshot::Sender<()>),
 }
@@ -115,9 +114,8 @@ pub struct ConsumerTask {
     bridge: mpsc::Sender<BridgeMessage>,
     max_active_keys: usize,
     epoch: u64,
-    senders: HashMap<Value, watch::Sender<Option<Mod>>>,
+    senders: HashMap<Value, watch::Sender<Mod>>,
     ages: BTreeMap<u64, Value>,
-    expiring: Vec<watch::Sender<Option<Mod>>>,
 }
 
 impl ConsumerTask {
@@ -133,31 +131,13 @@ impl ConsumerTask {
             epoch: 0,
             senders: HashMap::new(),
             ages: BTreeMap::new(),
-            expiring: vec![],
         }
-    }
-
-    fn clear_expired(&mut self) {
-        let expiring = std::mem::take(&mut self.expiring);
-        self.expiring = expiring
-            .into_iter()
-            .filter_map(|mut sender: watch::Sender<Option<Mod>>| {
-                match sender.closed().now_or_never() {
-                    Some(_) => None,
-                    _ => Some(sender),
-                }
-            })
-            .collect()
     }
 
     async fn run(mut self) {
         //TODO The eviction strategy throws away the sender for the oldest key which isn't ideal. This would preferably be an LRU cache
 
         while let Some(action) = self.input.recv().await {
-            if !self.expiring.is_empty() {
-                //Clear out any closed senders.
-                self.clear_expired();
-            }
 
             match classify(action) {
                 Either::Left(keyed) => {
@@ -180,7 +160,6 @@ impl ConsumerTask {
         let ConsumerTask {
             senders,
             ages,
-            expiring,
             bridge,
             epoch,
             max_active_keys,
@@ -188,7 +167,7 @@ impl ConsumerTask {
         } = self;
         let KeyedAction(key, action) = keyed;
         match senders.get(&key) {
-            Some(sender) => sender.broadcast(Some(action)).is_ok(),
+            Some(sender) => sender.broadcast(action).is_ok(),
             _ => {
                 if senders.len() > *max_active_keys {
                     let (tx, rx) = oneshot::channel();
@@ -200,18 +179,15 @@ impl ConsumerTask {
                         .next()
                         .and_then(|(age, key)| senders.remove(key).map(|sender| (*age, sender)));
                     if let Some((age, sender)) = first {
-                        if rx.await.is_err() //Wait for the flush to complete.
-                            || sender.broadcast(None).is_err()
-                        {
-                            //Sending None instructs the producer to drop its receiver.
+                        if rx.await.is_err() { //Wait for the flush to complete.
                             //The produce task has been dropped.
                             return false;
                         }
-                        expiring.push(sender);
+                        drop(sender);
                         ages.remove(&age);
                     }
                 }
-                let (tx, rx) = watch::channel(Some(action));
+                let (tx, rx) = watch::channel(action);
                 let msg = BridgeMessage::Register(rx);
                 let entry = senders.entry(key);
                 let k = entry.key().clone();
@@ -291,10 +267,7 @@ where
             if let Some(event) = maybe_event {
                 match event {
                     Either::Left(BridgeMessage::Register(receiver)) => {
-                        let rec_str = receiver
-                            .take_while(|r| ready(r.is_some()))
-                            .filter_map(ready);
-                        key_streams.push(rec_str);
+                        key_streams.push(receiver);
                     }
                     Either::Left(BridgeMessage::Special(action, cb)) => {
                         if !producer_handle_special(&mut sink, action, cb, &mut key_streams).await {
