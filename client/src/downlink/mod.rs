@@ -116,6 +116,7 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
+            RoutingError::ConnectionError => DownlinkError::DroppedChannel,
         }
     }
 }

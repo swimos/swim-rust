@@ -33,6 +33,7 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 
 #[cfg(test)]
 mod tests;
@@ -51,16 +52,15 @@ pub trait Router: Send {
 }
 
 pub struct SwimRouter {
-    task_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>,
+    envelope_routing_host_request_tx: RoutingHostTaskRequestSender,
+    _request_connections_handler: JoinHandle<Result<(), RoutingError>>,
+    _request_envelope_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
 }
 
 impl SwimRouter {
-    async fn new(buffer_size: usize) -> SwimRouter {
+    pub async fn new(buffer_size: usize) -> SwimRouter {
         //Todo the router_rx is the receiving point for the connection pool messages.
         let (router_tx, _router_rx) = mpsc::channel(buffer_size);
-
-        let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
-        let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
 
         let connection_pool = ConnectionPool::new(
             buffer_size,
@@ -68,94 +68,30 @@ impl SwimRouter {
             TungsteniteWsFactory::new(buffer_size).await,
         );
 
-        // RequestConnectionsTask
-        let request_connections =
-            SwimRouter::request_connections(connection_pool, connection_request_rx);
+        let (request_connections_task, connection_request_tx) =
+            RequestConnectionsTask::new(connection_pool, buffer_size);
 
-        // RequestEnvelopeRoutingTasks
-        let request_route_tasks =
-            SwimRouter::request_envelope_route_tasks(task_request_rx, connection_request_tx);
+        let (request_envelope_routing_host_task, envelope_routing_host_request_tx) =
+            RequestEnvelopeRoutingHostTask::new(connection_request_tx, buffer_size);
+
+        // let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
+        // let request_route_tasks =
+        // SwimRouter::request_envelope_route_tasks(task_request_rx, connection_request_tx);
 
         // let sinks = SwimRouter::request_sinks(sink_request_rx);
         // let receive = SwimRouter::receive_all_messages_from_pool(router_rx, sink_request_tx);
 
-        // Todo Add the handlers to the router
-        let _request_connections_handler = tokio::spawn(request_connections);
-        let _request_route_tasks_handler = tokio::spawn(request_route_tasks);
+        let request_connections_handler = tokio::spawn(request_connections_task.run());
+        let request_envelope_routing_host_handler =
+            tokio::spawn(request_envelope_routing_host_task.run());
+
         // let sinks_handler = tokio::spawn(sinks);
         // let receive_handler = tokio::spawn(receive);
 
-        SwimRouter { task_request_tx }
-    }
-
-    //----------------------------------Downlink to Connection Pool---------------------------------
-
-    async fn request_envelope_route_tasks(
-        mut task_request_rx: mpsc::Receiver<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>,
-        connection_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
-    ) {
-        let mut host_route_tasks: HashMap<String, mpsc::Sender<Envelope>> = HashMap::new();
-
-        loop {
-            let (host_url, task_tx) = task_request_rx.recv().await.unwrap();
-            let host = host_url.to_string();
-
-            if !host_route_tasks.contains_key(&host) {
-                let (envelope_tx, envelope_rx) = mpsc::channel(5);
-
-                let host_route_task = SwimRouter::route_host_envelopes(
-                    host_url.clone(),
-                    envelope_rx,
-                    connection_request_tx.clone(),
-                );
-
-                host_route_tasks.insert(host.clone(), envelope_tx);
-                tokio::spawn(host_route_task);
-            }
-
-            let envelope_tx = host_route_tasks.get(&host.to_string()).unwrap().clone();
-            task_tx.send(envelope_tx).unwrap();
-        }
-    }
-
-    async fn request_connections(
-        mut pool: ConnectionPool,
-        mut connection_request_rx: mpsc::Receiver<(url::Url, oneshot::Sender<ConnectionSender>)>,
-    ) {
-        loop {
-            let (host, connection_tx) = connection_request_rx.recv().await.unwrap();
-            let connection = pool
-                .request_connection(host)
-                .unwrap()
-                .await
-                .unwrap()
-                .unwrap();
-
-            connection_tx.send(connection).unwrap();
-        }
-    }
-
-    async fn route_host_envelopes(
-        host_url: url::Url,
-        mut envelope_rx: mpsc::Receiver<Envelope>,
-        mut connection_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
-    ) {
-        loop {
-            let _envelope = envelope_rx.recv().await.unwrap();
-
-            //Todo extract this out of the loop and request new connection only when a failure occurs.
-            let (connection_tx, connection_rx) = oneshot::channel();
-            connection_request_tx
-                .send((host_url.clone(), connection_tx))
-                .await
-                .unwrap();
-            let mut connection = connection_rx.await.unwrap();
-
-            //TODO parse the envelope to a message
-            let message = "@sync(node:\"/unit/foo\", lane:\"info\")";
-            println!("{:?}", host_url.to_string());
-            println!("{:?}", message);
-            connection.send_message(message).await.unwrap();
+        SwimRouter {
+            envelope_routing_host_request_tx,
+            _request_connections_handler: request_connections_handler,
+            _request_envelope_routing_host_handler: request_envelope_routing_host_handler,
         }
     }
 
@@ -225,8 +161,181 @@ impl SwimRouter {
     }
 }
 
+//----------------------------------Downlink to Connection Pool---------------------------------
+
+type ConnectionRequestSender = mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>;
+type ConnectionRequestReceiver = mpsc::Receiver<(url::Url, oneshot::Sender<ConnectionSender>)>;
+
+struct RequestConnectionsTask {
+    connection_pool: ConnectionPool,
+    connection_request_rx: ConnectionRequestReceiver,
+}
+
+impl RequestConnectionsTask {
+    fn new(connection_pool: ConnectionPool, buffer_size: usize) -> (Self, ConnectionRequestSender) {
+        let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
+        (
+            RequestConnectionsTask {
+                connection_pool,
+                connection_request_rx,
+            },
+            connection_request_tx,
+        )
+    }
+
+    async fn run(self) -> Result<(), RoutingError> {
+        let RequestConnectionsTask {
+            mut connection_pool,
+            mut connection_request_rx,
+        } = self;
+
+        loop {
+            let (host, connection_tx) = connection_request_rx
+                .recv()
+                .await
+                .ok_or(RoutingError::ConnectionError)?;
+            let connection = connection_pool
+                .request_connection(host)
+                .map_err(|_| RoutingError::ConnectionError)?
+                .await
+                .map_err(|_| RoutingError::ConnectionError)?
+                .map_err(|_| RoutingError::ConnectionError)?;
+
+            connection_tx
+                .send(connection)
+                .map_err(|_| RoutingError::ConnectionError)?;
+        }
+    }
+}
+
+type RoutingHostTaskRequestSender =
+    mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
+
+type RoutingHostTaskRequestReceiver =
+    mpsc::Receiver<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
+
+struct RequestEnvelopeRoutingHostTask {
+    connection_request_tx: ConnectionRequestSender,
+    task_request_rx: RoutingHostTaskRequestReceiver,
+    buffer_size: usize,
+}
+
+impl RequestEnvelopeRoutingHostTask {
+    fn new(
+        connection_request_tx: ConnectionRequestSender,
+        buffer_size: usize,
+    ) -> (Self, RoutingHostTaskRequestSender) {
+        let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
+
+        (
+            RequestEnvelopeRoutingHostTask {
+                connection_request_tx,
+                task_request_rx,
+                buffer_size,
+            },
+            task_request_tx,
+        )
+    }
+
+    async fn run(self) -> Result<(), RoutingError> {
+        let RequestEnvelopeRoutingHostTask {
+            connection_request_tx,
+            mut task_request_rx,
+            buffer_size,
+        } = self;
+        let mut host_route_tasks: HashMap<String, mpsc::Sender<Envelope>> = HashMap::new();
+
+        loop {
+            let (host_url, task_tx) = task_request_rx
+                .recv()
+                .await
+                .ok_or(RoutingError::ConnectionError)?;
+            let host = host_url.to_string();
+
+            if !host_route_tasks.contains_key(&host) {
+                let (host_route_task, envelope_tx) = RouteHostEnvelopesTask::new(
+                    host_url,
+                    connection_request_tx.clone(),
+                    buffer_size,
+                );
+
+                host_route_tasks.insert(host.clone(), envelope_tx);
+                //Todo store this handler
+                let _host_route_handler = tokio::spawn(host_route_task.run());
+            }
+
+            let envelope_tx = host_route_tasks
+                .get(&host.to_string())
+                .ok_or(RoutingError::ConnectionError)?
+                .clone();
+            task_tx
+                .send(envelope_tx)
+                .map_err(|_| RoutingError::ConnectionError)?;
+        }
+    }
+}
+
+struct RouteHostEnvelopesTask {
+    host_url: url::Url,
+    envelope_rx: mpsc::Receiver<Envelope>,
+    connection_request_tx: ConnectionRequestSender,
+}
+
+impl RouteHostEnvelopesTask {
+    fn new(
+        host_url: url::Url,
+        connection_request_tx: ConnectionRequestSender,
+        buffer_size: usize,
+    ) -> (Self, mpsc::Sender<Envelope>) {
+        let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size);
+
+        (
+            RouteHostEnvelopesTask {
+                host_url,
+                envelope_rx,
+                connection_request_tx,
+            },
+            envelope_tx,
+        )
+    }
+
+    async fn run(self) -> Result<(), RoutingError> {
+        let RouteHostEnvelopesTask {
+            host_url,
+            mut envelope_rx,
+            mut connection_request_tx,
+        } = self;
+
+        loop {
+            let _envelope = envelope_rx
+                .recv()
+                .await
+                .ok_or(RoutingError::ConnectionError)?;
+
+            //Todo extract this out of the loop and request new connection only when a failure occurs.
+            let (connection_tx, connection_rx) = oneshot::channel();
+            connection_request_tx
+                .send((host_url.clone(), connection_tx))
+                .await
+                .map_err(|_| RoutingError::ConnectionError)?;
+            let mut connection = connection_rx
+                .await
+                .map_err(|_| RoutingError::ConnectionError)?;
+
+            //TODO parse the envelope to a message
+            let message = "@sync(node:\"/unit/foo\", lane:\"info\")";
+            println!("{:?}", host_url.to_string());
+            println!("{:?}", message);
+            connection
+                .send_message(message)
+                .await
+                .map_err(|_| RoutingError::ConnectionError)?;
+        }
+    }
+}
+
 pub struct SwimRouterConnection {
-    task_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>,
+    task_request_tx: RoutingHostTaskRequestSender,
     host_url: url::Url,
     task_tx: Option<oneshot::Sender<mpsc::Sender<Envelope>>>,
     task_rx: oneshot::Receiver<mpsc::Sender<Envelope>>,
@@ -235,10 +344,7 @@ pub struct SwimRouterConnection {
 impl Unpin for SwimRouterConnection {}
 
 impl SwimRouterConnection {
-    pub fn new(
-        task_request_tx: mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>,
-        host_url: url::Url,
-    ) -> Self {
+    pub fn new(task_request_tx: RoutingHostTaskRequestSender, host_url: url::Url) -> Self {
         let (task_tx, task_rx) = oneshot::channel();
 
         SwimRouterConnection {
@@ -268,13 +374,15 @@ impl Future for SwimRouterConnection {
         let (_, envelope_rx) = mpsc::channel::<Envelope>(5);
 
         match task_request_tx.poll_ready(cx).map(|r| match r {
-            Ok(_) => match task_tx.take() {
-                Some(tx) => match task_request_tx.try_send((host_url.clone(), tx)) {
-                    Ok(_) => (),
-                    _ => panic!("Error."),
-                },
-                _ => (),
-            },
+            Ok(_) => {
+                if let Some(tx) = task_tx.take() {
+                    match task_request_tx.try_send((host_url.clone(), tx)) {
+                        Ok(_) => (),
+                        _ => panic!("Error."),
+                    }
+                }
+            }
+
             _ => panic!("Error."),
         }) {
             Poll::Ready(_) => {}
@@ -303,7 +411,7 @@ impl Router for SwimRouter {
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
         let host_url = url::Url::parse(&target.host).unwrap();
 
-        SwimRouterConnection::new(self.task_request_tx.clone(), host_url)
+        SwimRouterConnection::new(self.envelope_routing_host_request_tx.clone(), host_url)
     }
 
     fn general_sink(&mut self) -> Self::GeneralFut {
@@ -315,12 +423,14 @@ impl Router for SwimRouter {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RoutingError {
     RouterDropped,
+    ConnectionError,
 }
 
 impl Display for RoutingError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
+            RoutingError::ConnectionError => write!(f, "Connection error."),
         }
     }
 }
