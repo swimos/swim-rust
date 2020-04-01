@@ -18,8 +18,8 @@ use hamcrest2::prelude::*;
 use tokio::sync::mpsc;
 
 use super::*;
-use tokio::time::timeout;
 use std::time::Duration;
+use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 

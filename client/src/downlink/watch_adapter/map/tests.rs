@@ -18,18 +18,18 @@ use hamcrest2::prelude::*;
 use tokio::sync::mpsc;
 
 use super::*;
-use tokio::time::timeout;
 use std::time::Duration;
+use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
 
-async fn validate_receive(mut rx: mpsc::Receiver<MapModification<Arc<Value>>>,
-    end_state: BTreeMap<Value, Value>) -> Result<(), BTreeMap<Value, Value>> {
-
+async fn validate_receive(
+    mut rx: mpsc::Receiver<MapModification<Arc<Value>>>,
+    end_state: BTreeMap<Value, Value>,
+) -> Result<(), BTreeMap<Value, Value>> {
     let mut map = BTreeMap::new();
-    while let Ok(Some(modification)) =
-    timeout(SHORT_TIMEOUT, rx.recv()).await {
+    while let Ok(Some(modification)) = timeout(SHORT_TIMEOUT, rx.recv()).await {
         match modification {
             MapModification::Insert(k, v) => {
                 map.insert(k, (*v).clone());
@@ -63,18 +63,20 @@ async fn single_pass_through() {
     let key = Value::Int32Value(1);
     let value = Arc::new(Value::Int32Value(5));
 
-    let receiver = tokio::task::spawn(async move {
-        rx.recv().await
-    });
+    let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(MapModification::Insert(key.clone(), value.clone())).await;
+    let result = watcher
+        .send_item(MapModification::Insert(key.clone(), value.clone()))
+        .await;
     assert_that!(result, ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
     assert_that!(&output, ok());
 
-    assert_that!(output.unwrap(), eq(Some(MapModification::Insert(key, value))));
-
+    assert_that!(
+        output.unwrap(),
+        eq(Some(MapModification::Insert(key, value)))
+    );
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -160,7 +162,7 @@ async fn multiple_keys_multiple_values() {
         MapModification::Insert(key1.clone(), value1.clone()),
         MapModification::Insert(key2.clone(), value2.clone()),
         MapModification::Insert(key1.clone(), value3.clone()),
-        MapModification::Remove(key2.clone())
+        MapModification::Remove(key2.clone()),
     ];
 
     let mut expected = BTreeMap::new();
@@ -186,9 +188,7 @@ async fn single_clear() {
 
     let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
 
-    let receiver = tokio::task::spawn(async move {
-        rx.recv().await
-    });
+    let receiver = tokio::task::spawn(async move { rx.recv().await });
 
     let result = watcher.send_item(MapModification::Clear).await;
     assert_that!(result, ok());
@@ -197,7 +197,6 @@ async fn single_clear() {
     assert_that!(&output, ok());
 
     assert_that!(output.unwrap(), eq(Some(MapModification::Clear)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -206,9 +205,7 @@ async fn single_take() {
 
     let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
 
-    let receiver = tokio::task::spawn(async move {
-        rx.recv().await
-    });
+    let receiver = tokio::task::spawn(async move { rx.recv().await });
 
     let result = watcher.send_item(MapModification::Take(4)).await;
     assert_that!(result, ok());
@@ -217,7 +214,6 @@ async fn single_take() {
     assert_that!(&output, ok());
 
     assert_that!(output.unwrap(), eq(Some(MapModification::Take(4))));
-
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -226,9 +222,7 @@ async fn single_skip() {
 
     let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
 
-    let receiver = tokio::task::spawn(async move {
-        rx.recv().await
-    });
+    let receiver = tokio::task::spawn(async move { rx.recv().await });
 
     let result = watcher.send_item(MapModification::Skip(4)).await;
     assert_that!(result, ok());
@@ -237,7 +231,6 @@ async fn single_skip() {
     assert_that!(&output, ok());
 
     assert_that!(output.unwrap(), eq(Some(MapModification::Skip(4))));
-
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -286,11 +279,15 @@ async fn overflow_active_keys() {
 
     let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 2).await;
 
-    let mut modifications = (1..5).into_iter()
+    let mut modifications = (1..5)
+        .into_iter()
         .map(|i| MapModification::Insert(Value::Int32Value(i), Arc::new(Value::Int32Value(i))))
         .collect::<Vec<_>>();
 
-    modifications.push(MapModification::Insert(Value::Int32Value(1), Arc::new(Value::Int32Value(-1))));
+    modifications.push(MapModification::Insert(
+        Value::Int32Value(1),
+        Arc::new(Value::Int32Value(-1)),
+    ));
 
     let mut expected = BTreeMap::new();
     expected.insert(Value::Int32Value(1), Value::Int32Value(-1));

@@ -201,7 +201,9 @@ impl ConsumerTask {
                         .and_then(|(age, key)| senders.remove(key).map(|sender| (*age, sender)));
                     if let Some((age, sender)) = first {
                         if rx.await.is_err() //Wait for the flush to complete.
-                            || sender.broadcast(None).is_err() { //Sending None instructs the producer to drop its receiver.
+                            || sender.broadcast(None).is_err()
+                        {
+                            //Sending None instructs the producer to drop its receiver.
                             //The produce task has been dropped.
                             return false;
                         }
@@ -301,7 +303,9 @@ where
                         }
                     }
                     Either::Left(BridgeMessage::Flush(cb)) => {
-                        if !flush_key_streams(&mut sink, &mut key_streams).await || !cb.send(()).is_ok() {
+                        if !flush_key_streams(&mut sink, &mut key_streams).await
+                            || cb.send(()).is_err()
+                        {
                             // The consumer task or router was dropped.
                             break;
                         }
@@ -321,13 +325,10 @@ where
     }
 }
 
-async fn flush_key_streams<Str, Snk>(
-    sink: &mut Snk,
-    key_streams: &mut Str,
-) -> bool
-    where
-        Str: Stream<Item = Mod> + Unpin + Sync + 'static,
-        Snk: ItemSender<Mod, RoutingError>,
+async fn flush_key_streams<Str, Snk>(sink: &mut Snk, key_streams: &mut Str) -> bool
+where
+    Str: Stream<Item = Mod> + Unpin + Sync + 'static,
+    Snk: ItemSender<Mod, RoutingError>,
 {
     while let Some(Some(modification)) = key_streams.next().now_or_never() {
         if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
