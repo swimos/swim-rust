@@ -17,8 +17,7 @@ use crate::configuration::downlink::{
 };
 use crate::downlink::any::{AnyDownlink, AnyReceiver};
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
-use crate::downlink::model::value;
-use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, Message};
@@ -346,19 +345,20 @@ where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
-    use crate::downlink::model::value::*;
     let buffer_size = config.buffer_size.get();
     match config.mux_mode {
         MuxMode::Queue(n) => {
-            let (dl, rec) = create_queue_downlink(init, updates, cmd_sink, buffer_size, n.get());
+            let (dl, rec) =
+                value::create_queue_downlink(init, updates, cmd_sink, buffer_size, n.get());
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
         MuxMode::Dropping => {
-            let (dl, rec) = create_dropping_downlink(init, updates, cmd_sink, buffer_size);
+            let (dl, rec) = value::create_dropping_downlink(init, updates, cmd_sink, buffer_size);
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
         MuxMode::Buffered(n) => {
-            let (dl, rec) = create_buffered_downlink(init, updates, cmd_sink, buffer_size, n.get());
+            let (dl, rec) =
+                value::create_buffered_downlink(init, updates, cmd_sink, buffer_size, n.get());
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }
