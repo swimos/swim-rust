@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//----------------------------------Downlink to Connection Pool---------------------------------
-
 use crate::router::{ConnectionRequestSender, RoutingError};
 use common::warp::envelope::Envelope;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+
+//----------------------------------Downlink to Connection Pool---------------------------------
 
 pub type HostEnvelopeTaskRequestSender =
     mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
