@@ -20,6 +20,12 @@ pub struct DropAll<T, E> {
     _phantom: PhantomData<Result<T, E>>,
 }
 
+impl<T, E> Clone for DropAll<T, E> {
+    fn clone(&self) -> Self {
+        drop_all()
+    }
+}
+
 /// Create an [`ItemSender`] that does nothing with its inputs and always succeeds.
 pub fn drop_all<T, E>() -> DropAll<T, E> {
     DropAll {
