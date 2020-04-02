@@ -1,6 +1,6 @@
 use crate::router::{Router, SwimRouter};
 use common::sink::item::ItemSink;
-use common::warp::envelope::{Envelope, LaneAddressed};
+use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use std::{thread, time};
 
@@ -11,15 +11,9 @@ async fn foo() {
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
     let (mut sink, _stream) = router.connection_for(&path).await;
 
-    let lane_addressed = LaneAddressed {
-        node_uri: String::from("node_uri"),
-        lane_uri: String::from("lane_uri"),
-        body: None,
-    };
-
-    let envelope = Envelope::EventMessage(lane_addressed);
+    let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
 
     // thread::sleep(time::Duration::from_secs(5));
-    sink.send_item(envelope).await.unwrap();
+    sink.send_item(sync).await.unwrap();
     thread::sleep(time::Duration::from_secs(5));
 }
