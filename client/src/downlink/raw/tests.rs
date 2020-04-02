@@ -52,6 +52,11 @@ impl AddTo {
     }
 }
 
+fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) -> Response<Ev, Cmd> {
+    response.error = Some(err);
+    response
+}
+
 impl StateMachine<Msg, AddTo> for State {
     type Ev = i32;
     type Cmd = i32;
@@ -91,7 +96,7 @@ impl StateMachine<Msg, AddTo> for State {
                 match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
                         Ok(_) => resp,
-                        Err(_) => resp.with_error(TransitionError::ReceiverDropped),
+                        Err(_) => with_error(resp, TransitionError::ReceiverDropped),
                     },
                     _ => resp,
                 }
@@ -99,23 +104,33 @@ impl StateMachine<Msg, AddTo> for State {
             Operation::Action(AddTo(n, maybe_cb)) => {
                 let next = model.data_state.0 + n;
                 let resp = if next < 0 {
-                    Response::none().with_error(TransitionError::IllegalTransition(
-                        "State cannot be negative.".to_owned(),
-                    ))
+                    with_error(
+                        Response::none(),
+                        TransitionError::IllegalTransition("State cannot be negative.".to_owned()),
+                    )
                 } else {
                     model.data_state.0 = next;
-                    Response::of(Event(next, true), Command::Action(next))
+                    response_of(Event(next, true), Command::Action(next))
                 };
                 match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
                         Ok(_) => resp,
-                        Err(_) => resp.with_error(TransitionError::ReceiverDropped),
+                        Err(_) => with_error(resp, TransitionError::ReceiverDropped),
                     },
                     _ => resp,
                 }
             }
             Operation::Close => Response::none().then_terminate(),
         }
+    }
+}
+
+fn response_of<Ev, Cmd>(event: Event<Ev>, command: Command<Cmd>) -> Response<Ev, Cmd> {
+    Response {
+        event: Some(event),
+        command: Some(command),
+        error: None,
+        terminate: false,
     }
 }
 

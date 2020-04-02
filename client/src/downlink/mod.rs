@@ -256,22 +256,8 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
         }
     }
 
-    fn of(event: Event<Ev>, command: Command<Cmd>) -> Response<Ev, Cmd> {
-        Response {
-            event: Some(event),
-            command: Some(command),
-            error: None,
-            terminate: false,
-        }
-    }
-
     fn then_terminate(mut self) -> Self {
         self.terminate = true;
-        self
-    }
-
-    fn with_error(mut self, err: TransitionError) -> Self {
-        self.error = Some(err);
         self
     }
 }
@@ -295,4 +281,128 @@ trait StateMachine<M, A>: Sized {
         model: &mut Model<Self>,
         op: Operation<M, A>,
     ) -> Response<Self::Ev, Self::Cmd>;
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct BasicResponse<Ev, Cmd> {
+    event: Option<Ev>,
+    command: Option<Cmd>,
+    error: Option<TransitionError>,
+}
+
+impl<Ev, Cmd> BasicResponse<Ev, Cmd> {
+    fn none() -> Self {
+        BasicResponse {
+            event: None,
+            command: None,
+            error: None,
+        }
+    }
+
+    fn of(event: Ev, command: Cmd) -> Self {
+        BasicResponse {
+            event: Some(event),
+            command: Some(command),
+            error: None,
+        }
+    }
+
+    fn with_error(mut self, err: TransitionError) -> Self {
+        self.error = Some(err);
+        self
+    }
+}
+
+impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
+    fn from(basic: BasicResponse<Ev, Cmd>) -> Self {
+        let BasicResponse {
+            event,
+            command,
+            error,
+        } = basic;
+        Response {
+            event: event.map(|e| Event(e, true)),
+            command: command.map(Command::Action),
+            error,
+            terminate: false,
+        }
+    }
+}
+
+/// This trait is for simple, stateful downlinks that follow the standard synchronization model.
+trait BasicStateMachine<M, A> {
+    /// Type of events that will be issued to the owner of the downlink.
+    type Ev;
+    /// Type of commands that will be sent out to the Warp connection.
+    type Cmd;
+
+    /// Generate the initial event when the downlink enters the [`Synced`] state.
+    fn on_sync(&self) -> Self::Ev;
+
+    /// Update the state with a message, received between [`Linked`] and [`Synced`'].
+    fn handle_message_unsynced(&mut self, message: M);
+
+    /// Update the state with a message when in the [`Synced`] state, potentially generating an
+    /// event.
+    fn handle_message(&mut self, message: M) -> Option<Self::Ev>;
+
+    /// Handle a local action potentially generating an event and/or a command and/or an error.
+    fn handle_action(&mut self, action: A) -> BasicResponse<Self::Ev, Self::Cmd>;
+}
+
+//Adapter to make a BasicStateMachine into a StateMachine.
+impl<State, M, A> StateMachine<M, A> for State
+where
+    State: BasicStateMachine<M, A>,
+{
+    type Ev = <State as BasicStateMachine<M, A>>::Ev;
+    type Cmd = <State as BasicStateMachine<M, A>>::Cmd;
+
+    fn handle_operation(
+        model: &mut Model<Self>,
+        op: Operation<M, A>,
+    ) -> Response<Self::Ev, Self::Cmd> {
+        let Model { data_state, state } = model;
+        match op {
+            Operation::Start => {
+                if *state == DownlinkState::Synced {
+                    Response::none()
+                } else {
+                    Response::for_command(Command::Sync)
+                }
+            }
+            Operation::Message(message) => match message {
+                Message::Linked => {
+                    *state = DownlinkState::Linked;
+                    Response::none()
+                }
+                Message::Synced => {
+                    let old_state = *state;
+                    *state = DownlinkState::Synced;
+                    if old_state == DownlinkState::Synced {
+                        Response::none()
+                    } else {
+                        Response::for_event(Event(data_state.on_sync(), false))
+                    }
+                }
+                Message::Action(msg) => match *state {
+                    DownlinkState::Unlinked => Response::none(),
+                    DownlinkState::Linked => {
+                        data_state.handle_message_unsynced(msg);
+                        Response::none()
+                    }
+                    DownlinkState::Synced => match data_state.handle_message(msg) {
+                        Some(ev) => Response::for_event(Event(ev, false)),
+                        _ => Response::none(),
+                    },
+                },
+                Message::Unlinked => {
+                    *state = DownlinkState::Unlinked;
+                    Response::none().then_terminate()
+                }
+            },
+            Operation::Action(action) => data_state.handle_action(action).into(),
+            Operation::Close => Response::for_command(Command::Unlink).then_terminate(),
+        }
+    }
 }
