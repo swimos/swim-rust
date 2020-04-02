@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 pin-utils = "0.1.0-alpha.4"
 pin-project = "0.4.8"
+either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
 tokio = { version = "0.2", features = ["full"] }
