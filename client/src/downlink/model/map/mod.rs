@@ -508,8 +508,6 @@ impl ViewWithEvent {
     }
 }
 
-type MapLaneOperation = Operation<MapModification<Value>, MapAction>;
-
 /// Create a map downlink.
 pub fn create_raw_downlink<Err, Updates, Commands>(
     update_stream: Updates,
@@ -521,8 +519,7 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
-    let init: ValMap = OrdMap::new();
-    crate::downlink::create_downlink(init, update_stream, cmd_sink, buffer_size)
+    crate::downlink::create_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
 }
 
 /// Create a map downlink with an queue based multiplexing topic.
@@ -540,8 +537,13 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
-    let init: ValMap = OrdMap::new();
-    queue::make_downlink(init, update_stream, cmd_sink, buffer_size, queue_size)
+    queue::make_downlink(
+        MapModel::new(),
+        update_stream,
+        cmd_sink,
+        buffer_size,
+        queue_size,
+    )
 }
 
 /// Create a value downlink with an dropping multiplexing topic.
@@ -558,8 +560,7 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
-    let init: ValMap = OrdMap::new();
-    dropping::make_downlink(init, update_stream, cmd_sink, buffer_size)
+    dropping::make_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
 }
 
 /// Create a value downlink with an buffered multiplexing topic.
@@ -577,80 +578,82 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
 {
-    let init: ValMap = OrdMap::new();
-    buffered::make_downlink(init, update_stream, cmd_sink, buffer_size, queue_size)
+    buffered::make_downlink(
+        MapModel::new(),
+        update_stream,
+        cmd_sink,
+        buffer_size,
+        queue_size,
+    )
 }
 
-impl StateMachine<MapModification<Value>, MapAction> for ValMap {
+pub(in crate::downlink) struct MapModel {
+    state: ValMap,
+}
+
+impl MapModel {
+    fn new() -> Self {
+        MapModel {
+            state: ValMap::new(),
+        }
+    }
+}
+
+impl BasicStateMachine<MapModification<Value>, MapAction> for MapModel {
     type Ev = ViewWithEvent;
     type Cmd = MapModification<Arc<Value>>;
 
-    fn handle_operation(
-        model: &mut Model<ValMap>,
-        op: MapLaneOperation,
-    ) -> Response<Self::Ev, Self::Cmd> {
-        let Model { data_state, state } = model;
-        match op {
-            Operation::Start => {
-                if *state != DownlinkState::Synced {
-                    Response::for_command(Command::Sync)
-                } else {
-                    Response::none()
-                }
+    fn on_sync(&self) -> Self::Ev {
+        ViewWithEvent::initial(&self.state)
+    }
+
+    fn handle_message_unsynced(&mut self, message: MapModification<Value>) {
+        match message {
+            MapModification::Insert(k, v) => {
+                self.state.insert(k, Arc::new(v));
             }
-            Operation::Message(Message::Linked) => {
-                *state = DownlinkState::Linked;
-                Response::none()
+            MapModification::Remove(k) => {
+                self.state.remove(&k);
             }
-            Operation::Message(Message::Synced) => {
-                let state_before = *state;
-                *state = DownlinkState::Synced;
-                if state_before == DownlinkState::Synced {
-                    Response::none()
-                } else {
-                    Response::for_event(Event(ViewWithEvent::initial(data_state), false))
-                }
+            MapModification::Take(n) => {
+                self.state = self.state.take(n);
             }
-            Operation::Message(Message::Action(a)) => {
-                if *state != DownlinkState::Unlinked {
-                    let event = match a {
-                        MapModification::Insert(k, v) => {
-                            data_state.insert(k.clone(), Arc::new(v));
-                            ViewWithEvent::insert(data_state, k)
-                        }
-                        MapModification::Remove(k) => {
-                            data_state.remove(&k);
-                            ViewWithEvent::remove(data_state, k)
-                        }
-                        MapModification::Take(n) => {
-                            *data_state = data_state.take(n);
-                            ViewWithEvent::take(data_state, n)
-                        }
-                        MapModification::Skip(n) => {
-                            *data_state = data_state.skip(n);
-                            ViewWithEvent::skip(data_state, n)
-                        }
-                        MapModification::Clear => {
-                            data_state.clear();
-                            ViewWithEvent::clear(data_state)
-                        }
-                    };
-                    if *state == DownlinkState::Synced {
-                        Response::for_event(Event(event, false))
-                    } else {
-                        Response::none()
-                    }
-                } else {
-                    Response::none()
-                }
+            MapModification::Skip(n) => {
+                self.state = self.state.skip(n);
             }
-            Operation::Message(Message::Unlinked) => {
-                *state = DownlinkState::Unlinked;
-                Response::none().then_terminate()
+            MapModification::Clear => {
+                self.state.clear();
             }
-            Operation::Action(a) => handle_action(data_state, a),
-            Operation::Close => Response::for_command(Command::Unlink).then_terminate(),
-        }
+        };
+    }
+
+    fn handle_message(&mut self, message: MapModification<Value>) -> Option<Self::Ev> {
+        Some(match message {
+            MapModification::Insert(k, v) => {
+                self.state.insert(k.clone(), Arc::new(v));
+                ViewWithEvent::insert(&self.state, k)
+            }
+            MapModification::Remove(k) => {
+                self.state.remove(&k);
+                ViewWithEvent::remove(&self.state, k)
+            }
+            MapModification::Take(n) => {
+                self.state = self.state.take(n);
+                ViewWithEvent::take(&self.state, n)
+            }
+            MapModification::Skip(n) => {
+                self.state = self.state.skip(n);
+                ViewWithEvent::skip(&self.state, n)
+            }
+            MapModification::Clear => {
+                self.state.clear();
+                ViewWithEvent::clear(&self.state)
+            }
+        })
+    }
+
+    fn handle_action(&mut self, action: MapAction) -> BasicResponse<Self::Ev, Self::Cmd> {
+        process_action(&mut self.state, action)
     }
 }
 
@@ -697,10 +700,10 @@ where
     }
 }
 
-fn handle_action(
+fn process_action(
     data_state: &mut ValMap,
     action: MapAction,
-) -> Response<ViewWithEvent, MapModification<Arc<Value>>> {
+) -> BasicResponse<ViewWithEvent, MapModification<Arc<Value>>> {
     let (resp, err) = match action {
         MapAction::Insert { key, value, old } => {
             let v_arc = Arc::new(value);
@@ -713,9 +716,9 @@ fn handle_action(
                 old,
             );
             (
-                Response::of(
-                    Event(ViewWithEvent::insert(data_state, key.clone()), true),
-                    Command::Action(MapModification::Insert(key, v_arc)),
+                BasicResponse::of(
+                    ViewWithEvent::insert(data_state, key.clone()),
+                    MapModification::Insert(key, v_arc),
                 ),
                 err.is_err(),
             )
@@ -734,14 +737,14 @@ fn handle_action(
             };
             if did_rem {
                 (
-                    Response::of(
-                        Event(ViewWithEvent::remove(data_state, key.clone()), true),
-                        Command::Action(MapModification::Remove(key)),
+                    BasicResponse::of(
+                        ViewWithEvent::remove(data_state, key.clone()),
+                        MapModification::Remove(key),
                     ),
                     err.is_err(),
                 )
             } else {
-                (Response::none(), err.is_err())
+                (BasicResponse::none(), err.is_err())
             }
         }
         MapAction::Take { n, before, after } => {
@@ -757,10 +760,7 @@ fn handle_action(
                 Some(req) => req.send(data_state.clone()),
             };
             (
-                Response::of(
-                    Event(ViewWithEvent::take(data_state, n), true),
-                    Command::Action(MapModification::Take(n)),
-                ),
+                BasicResponse::of(ViewWithEvent::take(data_state, n), MapModification::Take(n)),
                 err1.is_err() || err2.is_err(),
             )
         }
@@ -777,10 +777,7 @@ fn handle_action(
                 Some(req) => req.send(data_state.clone()),
             };
             (
-                Response::of(
-                    Event(ViewWithEvent::skip(data_state, n), true),
-                    Command::Action(MapModification::Skip(n)),
-                ),
+                BasicResponse::of(ViewWithEvent::skip(data_state, n), MapModification::Skip(n)),
                 err1.is_err() || err2.is_err(),
             )
         }
@@ -796,20 +793,17 @@ fn handle_action(
                 }
             };
             (
-                Response::of(
-                    Event(ViewWithEvent::clear(data_state), true),
-                    Command::Action(MapModification::Clear),
-                ),
+                BasicResponse::of(ViewWithEvent::clear(data_state), MapModification::Clear),
                 err.is_err(),
             )
         }
         MapAction::Get { request } => {
             let err = request.send(data_state.clone());
-            (Response::none(), err.is_err())
+            (BasicResponse::none(), err.is_err())
         }
         MapAction::GetByKey { key, request } => {
             let err = request.send(data_state.get(&key).cloned());
-            (Response::none(), err.is_err())
+            (BasicResponse::none(), err.is_err())
         }
         MapAction::Update {
             key,
@@ -826,9 +820,9 @@ fn handle_action(
                     let err1 = old.and_then(|req| req.send(replaced).err());
                     let err2 = replacement.and_then(|req| req.send(Some(v_arc.clone())).err());
                     (
-                        Response::of(
-                            Event(ViewWithEvent::insert(data_state, key.clone()), true),
-                            Command::Action(MapModification::Insert(key, v_arc)),
+                        BasicResponse::of(
+                            ViewWithEvent::insert(data_state, key.clone()),
+                            MapModification::Insert(key, v_arc),
                         ),
                         err1.is_some() || err2.is_some(),
                     )
@@ -838,14 +832,14 @@ fn handle_action(
                     let err1 = old.and_then(|req| req.send(removed).err());
                     let err2 = replacement.and_then(|req| req.send(None).err());
                     (
-                        Response::of(
-                            Event(ViewWithEvent::remove(data_state, key.clone()), true),
-                            Command::Action(MapModification::Remove(key)),
+                        BasicResponse::of(
+                            ViewWithEvent::remove(data_state, key.clone()),
+                            MapModification::Remove(key),
                         ),
                         err1.is_some() || err2.is_some(),
                     )
                 }
-                _ => (Response::none(), false),
+                _ => (BasicResponse::none(), false),
             }
         }
     };
