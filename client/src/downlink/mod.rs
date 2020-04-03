@@ -109,7 +109,6 @@ impl<Act, Upd: Clone + 'static> Downlink<Act, Upd> for BoxedDownlink<Act, Upd> {
 pub enum DownlinkError {
     DroppedChannel,
     TaskPanic,
-    OperationStreamEnded,
     TransitionError,
 }
 
@@ -129,9 +128,6 @@ impl Display for DownlinkError {
                 "An internal channel was dropped and the downlink is now closed."
             ),
             DownlinkError::TaskPanic => write!(f, "The downlink task panicked."),
-            DownlinkError::OperationStreamEnded => {
-                write!(f, "The input stream to the downlink ended.")
-            }
             DownlinkError::TransitionError => {
                 write!(f, "The downlink state machine produced and error.")
             }

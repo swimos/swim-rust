@@ -15,7 +15,7 @@
 use super::*;
 use common::sink::item::ItemSender;
 use futures::task::{Context, Poll};
-use futures::{StreamExt, TryFutureExt};
+use futures::StreamExt;
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -185,6 +185,28 @@ pub(in crate::downlink) struct DownlinkTask<State, Commands, Events> {
     stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
 }
 
+enum TaskInput<M, A> {
+    Op(Operation<M, A>),
+    ActTerminated,
+    Terminated,
+}
+
+impl<M, A> TaskInput<M, A> {
+    fn from_action(maybe_action: Option<A>) -> TaskInput<M, A> {
+        match maybe_action {
+            Some(a) => TaskInput::Op(Operation::Action(a)),
+            _ => TaskInput::ActTerminated,
+        }
+    }
+
+    fn from_operation(maybe_action: Option<Operation<M, A>>) -> TaskInput<M, A> {
+        match maybe_action {
+            Some(op) => TaskInput::Op(op),
+            _ => TaskInput::Terminated,
+        }
+    }
+}
+
 impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
     pub(in crate::downlink) fn new(
         init: State,
@@ -224,50 +246,74 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
         let mut ops_str: Pin<&mut Ops> = ops;
         let mut act_str: Pin<&mut Acts> = acts;
 
+        let mut act_terminated = false;
+        let mut events_terminated = false;
         let mut read_act = false;
 
-        let result = loop {
-            let next_op = if model.state == DownlinkState::Synced {
-                if read_act {
-                    read_act = false;
-                    select_biased! {
-                        act_op = act_str.next() => act_op.map(Operation::Action),
-                        upd_op = ops_str.next() => upd_op,
+        let result: Result<(), DownlinkError> = loop {
+            let next_op: TaskInput<M, A> =
+                if model.state == DownlinkState::Synced && !act_terminated {
+                    if read_act {
+                        read_act = false;
+                        let input = select_biased! {
+                            act_op = act_str.next() => TaskInput::from_action(act_op),
+                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                        };
+                        input
+                    } else {
+                        read_act = true;
+                        let input = select_biased! {
+                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                            act_op = act_str.next() => TaskInput::from_action(act_op),
+                        };
+                        input
                     }
                 } else {
-                    read_act = true;
-                    select_biased! {
-                        upd_op = ops_str.next() => upd_op,
-                        act_op = act_str.next() => act_op.map(Operation::Action),
-                    }
-                }
-            } else {
-                ops_str.next().await
-            };
-
-            if let Some(op) = next_op {
-                let Response {
-                    event,
-                    command,
-                    error,
-                    terminate,
-                } = StateMachine::handle_operation(&mut model, op);
-                let result = match (event, command) {
-                    (Some(ev), Some(cmd)) => {
-                        ev_sink.send_item(ev).and_then(|_| cmd_sink.send_item(cmd)).await
-                    },
-                    (Some(event), _) => ev_sink.send_item(event).await,
-                    (_, Some(command)) => cmd_sink.send_item(command).await,
-                    _ => Ok(()),
+                    TaskInput::from_operation(ops_str.next().await)
                 };
 
-                if error.is_some() {
-                    break Err(DownlinkError::TransitionError); //TODO Handle this properly.
-                } else if terminate || result.is_err() {
-                    break result;
+            match next_op {
+                TaskInput::Op(op) => {
+                    let Response {
+                        event,
+                        command,
+                        error,
+                        terminate,
+                    } = StateMachine::handle_operation(&mut model, op);
+                    let result = match (event, command) {
+                        (Some(event), Some(cmd)) => {
+                            if !events_terminated && ev_sink.send_item(event).await.is_err() {
+                                events_terminated = true;
+                            }
+                            cmd_sink.send_item(cmd).await
+                        }
+                        (Some(event), _) => {
+                            if !events_terminated && ev_sink.send_item(event).await.is_err() {
+                                events_terminated = true;
+                            }
+                            Ok(())
+                        }
+                        (_, Some(command)) => cmd_sink.send_item(command).await,
+                        _ => Ok(()),
+                    };
+
+                    if error.is_some() {
+                        break Err(DownlinkError::TransitionError); //TODO Handle this properly.
+                    } else if terminate || result.is_err() {
+                        break result;
+                    } else if act_terminated && events_terminated {
+                        break Ok(());
+                    }
                 }
-            } else {
-                break Err(DownlinkError::OperationStreamEnded);
+                TaskInput::ActTerminated => {
+                    act_terminated = true;
+                    if events_terminated {
+                        break Ok(());
+                    }
+                }
+                TaskInput::Terminated => {
+                    break Ok(());
+                }
             }
         };
         let _ = stop_event.broadcast(Some(result));
