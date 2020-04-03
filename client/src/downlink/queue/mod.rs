@@ -22,6 +22,7 @@ use common::sink::item::{ItemSink, MpscSend};
 use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
+use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
@@ -60,13 +61,14 @@ where
         buffer_size: usize,
     ) -> (QueueDownlink<Act, Upd>, QueueReceiver<Upd>) {
         let raw::RawDownlink {
-            receiver: raw::Receiver { event_stream },
+            receiver,
             sender,
+            task,
         } = raw;
-        let (topic, first_receiver) = MpscTopic::new(event_stream, buffer_size);
+        let (topic, first_receiver) = MpscTopic::new(receiver, buffer_size);
         (
             QueueDownlink {
-                input: sender,
+                input: raw::Sender::new(sender, Arc::new(task)),
                 topic,
             },
             first_receiver,
@@ -136,24 +138,24 @@ where
     let model = Model::new(init);
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
     let (event_tx, event_rx) = mpsc::channel::<Event<State::Ev>>(buffer_size);
-    let (stop_tx, stop_rx) = watch::channel::<Option<()>>(None);
-    let (closed_tx, closed_rx) = watch::channel(None);
 
     let event_sink = item::for_mpsc_sender::<_, DownlinkError>(event_tx);
+
+    let (stopped_tx, stopped_rx) = watch::channel(None);
 
     // The task that maintains the internal state of the lane.
     let lane_task = raw::make_downlink_task(
         model,
-        raw::combine_inputs(update_stream, stop_rx),
+        raw::make_operation_stream(update_stream),
         act_rx.fuse(),
         cmd_sink,
         event_sink,
-        closed_tx,
+        stopped_tx,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
 
-    let dl_task = raw::DownlinkTask::new(join_handle, stop_tx, closed_rx);
+    let dl_task = raw::DownlinkTask::new(join_handle, stopped_rx);
 
     let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 

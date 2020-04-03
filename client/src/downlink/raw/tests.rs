@@ -120,7 +120,6 @@ impl StateMachine<Msg, AddTo> for State {
                     _ => resp,
                 }
             }
-            Operation::Close => Response::none().then_terminate(),
         }
     }
 }
@@ -155,33 +154,28 @@ async fn make_test_dl() -> (
 
 #[tokio::test]
 async fn sync_on_startup() {
-    let (dl, _messages, mut commands) = make_test_dl().await;
+    let (_dl, _messages, mut commands) = make_test_dl().await;
 
     let first_cmd = commands.next().await;
     assert_that!(first_cmd, eq(Some(Command::Sync)));
-    let stop_res = dl.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
 async fn event_on_sync() {
     let (dl, mut messages, _commands) = make_test_dl().await;
-    let (dl_tx, mut dl_rx) = dl.split();
+    let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Linked).await, ok());
     assert_that!(messages.send(Message::Synced).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(0, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
 async fn ignore_update_before_link() {
     let (dl, mut messages, _commands) = make_test_dl().await;
-    let (dl_tx, mut dl_rx) = dl.split();
+    let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Action(Msg::of(12))).await, ok());
     assert_that!(messages.send(Message::Linked).await, ok());
@@ -189,15 +183,12 @@ async fn ignore_update_before_link() {
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(0, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
 async fn apply_updates_between_link_and_sync() {
     let (dl, mut messages, _commands) = make_test_dl().await;
-    let (dl_tx, mut dl_rx) = dl.split();
+    let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Linked).await, ok());
     assert_that!(messages.send(Message::Action(Msg::of(12))).await, ok());
@@ -205,9 +196,6 @@ async fn apply_updates_between_link_and_sync() {
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(12, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 /// Pre-synchronizes a downlink for tests that require the ['DownlinkState::Synced'] state.
@@ -232,7 +220,7 @@ async fn sync_dl(
 #[tokio::test]
 async fn updates_processed_when_synced() {
     let (dl, mut messages, mut commands) = make_test_dl().await;
-    let (dl_tx, dl_rx) = dl.split();
+    let (_dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
 
@@ -245,9 +233,6 @@ async fn updates_processed_when_synced() {
     assert_that!(events.recv().await, eq(Some(Event(10, false))));
     assert_that!(events.recv().await, eq(Some(Event(20, false))));
     assert_that!(events.recv().await, eq(Some(Event(30, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -263,9 +248,6 @@ async fn actions_processed_when_synced() {
 
     assert_that!(events.recv().await, eq(Some(Event(5, true))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(5))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -294,9 +276,6 @@ async fn actions_paused_when_not_synced() {
 
     assert_that!(events.recv().await, eq(Some(Event(17, true))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -337,9 +316,6 @@ async fn actions_paused_when_unlinked() {
     //Event and command generated after the action is applied.
     assert_that!(events.recv().await, eq(Some(Event(17, true))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -361,7 +337,10 @@ async fn errors_propagate() {
     //Wait for the action the be executed.
     assert_that!(act_rx.await, ok());
 
-    let stop_res = dl_tx.stop().await;
+    let result = dl_tx.task.stop_await.clone().filter_map(|r| r).next().await;
+    assert_that!(result, some());
+    let stop_res = result.unwrap();
+
     assert_that!(stop_res, err());
     assert_that!(stop_res.err().unwrap(), eq(DownlinkError::TransitionError));
 }
