@@ -13,9 +13,10 @@
 // limitations under the License.
 
 use crate::downlink::any::AnyDownlink;
-use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
+use crate::downlink::raw::DownlinkTask;
+use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, StateMachine};
 use common::sink::item;
-use common::sink::item::{ItemSink, MpscSend};
+use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
@@ -112,7 +113,7 @@ where
     }
 }
 
-pub(in crate::downlink) fn make_downlink<Err, M, A, State, Updates, Commands>(
+pub(in crate::downlink) fn make_downlink<M, A, State, Updates, Commands>(
     init: State,
     update_stream: Updates,
     cmd_sink: Commands,
@@ -124,11 +125,9 @@ where
     State: StateMachine<M, A> + Send + 'static,
     State::Ev: Clone + Send + Sync + 'static,
     State::Cmd: Send + 'static,
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
-    Commands: for<'b> ItemSink<'b, Command<State::Cmd>, Error = Err> + Send + 'static,
+    Commands: ItemSender<Command<State::Cmd>, DownlinkError> + Send + 'static,
 {
-    let model = Model::new(init);
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
     let (event_tx, event_rx) = watch::channel::<Option<Event<State::Ev>>>(None);
 
@@ -137,18 +136,14 @@ where
     let (stopped_tx, stopped_rx) = watch::channel(None);
 
     // The task that maintains the internal state of the lane.
-    let lane_task = raw::make_downlink_task(
-        model,
-        raw::make_operation_stream(update_stream),
-        act_rx.fuse(),
-        cmd_sink,
-        event_sink,
-        stopped_tx,
-    );
+    // The task that maintains the internal state of the lane.
+    let task = DownlinkTask::new(init, cmd_sink, event_sink, stopped_tx);
+
+    let lane_task = task.run(raw::make_operation_stream(update_stream), act_rx.fuse());
 
     let join_handle = tokio::task::spawn(lane_task);
 
-    let dl_task = raw::DownlinkTask::new(join_handle, stopped_rx);
+    let dl_task = raw::DownlinkTaskHandle::new(join_handle, stopped_rx);
 
     let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 
