@@ -13,12 +13,101 @@
 // limitations under the License.
 
 use crate::connections::{ConnectionError, ConnectionPoolMessage};
+use crate::router::RoutingError;
 use common::warp::envelope::{Envelope, LaneAddressed};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 //-------------------------------Connection Pool to Downlink------------------------------------
+
+pub type HostMessageTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Sender<Envelope>)>;
+pub type HostMessageTaskRequestReceiver = mpsc::Receiver<(url::Url, mpsc::Sender<Envelope>)>;
+
+pub struct RequestMessageRoutingHostTask {
+    task_request_rx: HostMessageTaskRequestReceiver,
+    buffer_size: usize,
+}
+
+impl RequestMessageRoutingHostTask {
+    pub fn new(
+        buffer_size: usize,
+    ) -> (RequestMessageRoutingHostTask, HostMessageTaskRequestSender) {
+        let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
+
+        (
+            RequestMessageRoutingHostTask {
+                task_request_rx,
+                buffer_size,
+            },
+            task_request_tx,
+        )
+    }
+
+    pub async fn run(self) -> Result<(), RoutingError> {
+        let RequestMessageRoutingHostTask {
+            mut task_request_rx,
+            buffer_size,
+        } = self;
+
+        let mut host_route_tasks: HashMap<String, mpsc::Sender<mpsc::Sender<Envelope>>> =
+            HashMap::new();
+
+        loop {
+            // let (host_url, envelope_tx) = task_request_rx
+            //     .recv()
+            //     .await
+            //     .ok_or(RoutingError::ConnectionError)?;
+            //
+            // let host = host_url.to_string();
+            //
+            // if !host_route_tasks.contains_key(&host) {
+            //     // let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
+            //     // tokio::spawn(...)
+            // }
+            //
+            // host_route_tasks
+            //     .get_mut(&host.to_string())
+            //     .ok_or(RoutingError::ConnectionError)?
+            //     .send(envelope_tx)
+            //     .await
+            //     .map_err(|_| RoutingError::ConnectionError)?;
+        }
+    }
+}
+
+pub struct RouteHostMessagesTask {
+    connection_rx: mpsc::Receiver<ConnectionPoolMessage>,
+    downlink_channel_rx: mpsc::Receiver<mpsc::Sender<Envelope>>,
+}
+
+impl RouteHostMessagesTask {
+    pub fn new(
+        connection_rx: mpsc::Receiver<ConnectionPoolMessage>,
+        downlink_channel_rx: mpsc::Receiver<mpsc::Sender<Envelope>>,
+    ) {
+    }
+
+    pub async fn run(self) -> Result<(), RoutingError> {
+        let RouteHostMessagesTask {
+            mut connection_rx,
+            downlink_channel_rx,
+        } = self;
+
+        loop {
+            let message = connection_rx
+                .recv()
+                .await
+                .ok_or(RoutingError::ConnectionError)?;
+
+            //Todo parse the message
+            let envelope = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
+
+            //Todo add select for registering downlink channels
+            // downlink_channel_rx
+        }
+    }
+}
 
 // rx receives messages directly from every open connection in the pool
 async fn _receive_all_messages_from_pool(
