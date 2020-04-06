@@ -18,90 +18,140 @@ use common::warp::envelope::{Envelope, LaneAddressed};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio_tungstenite::tungstenite::protocol::Message;
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
-pub type HostMessageTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Sender<Envelope>)>;
-pub type HostMessageTaskRequestReceiver = mpsc::Receiver<(url::Url, mpsc::Sender<Envelope>)>;
+pub type HostMessageNewTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Receiver<Message>)>;
+pub type HostMessageNewTaskRequestReceiver = mpsc::Receiver<(url::Url, mpsc::Receiver<Message>)>;
+
+pub type HostMessageRegisterTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Sender<Envelope>)>;
+pub type HostMessageRegisterTaskRequestReceiver =
+    mpsc::Receiver<(url::Url, mpsc::Sender<Envelope>)>;
 
 pub struct RequestMessageRoutingHostTask {
-    task_request_rx: HostMessageTaskRequestReceiver,
+    new_task_request_rx: HostMessageNewTaskRequestReceiver,
+    register_task_request_rx: HostMessageRegisterTaskRequestReceiver,
     buffer_size: usize,
+}
+
+enum RequestTaskType {
+    New((url::Url, mpsc::Receiver<Message>)),
+    Register((url::Url, mpsc::Sender<Envelope>)),
 }
 
 impl RequestMessageRoutingHostTask {
     pub fn new(
         buffer_size: usize,
-    ) -> (RequestMessageRoutingHostTask, HostMessageTaskRequestSender) {
-        let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
+    ) -> (
+        RequestMessageRoutingHostTask,
+        HostMessageNewTaskRequestSender,
+        HostMessageRegisterTaskRequestSender,
+    ) {
+        let (new_task_request_tx, new_task_request_rx) = mpsc::channel(buffer_size);
+        let (register_task_request_tx, register_task_request_rx) = mpsc::channel(buffer_size);
 
         (
             RequestMessageRoutingHostTask {
-                task_request_rx,
+                new_task_request_rx,
+                register_task_request_rx,
                 buffer_size,
             },
-            task_request_tx,
+            new_task_request_tx,
+            register_task_request_tx,
         )
     }
 
+    //Todo new should happen before register
     pub async fn run(self) -> Result<(), RoutingError> {
         let RequestMessageRoutingHostTask {
-            mut task_request_rx,
+            mut new_task_request_rx,
+            mut register_task_request_rx,
             buffer_size,
         } = self;
 
-        let mut host_route_tasks: HashMap<String, mpsc::Sender<mpsc::Sender<Envelope>>> =
-            HashMap::new();
+        let mut host_route_tasks: HashMap<String, HostMessagesTaskRequestSender> = HashMap::new();
 
         loop {
-            // let (host_url, envelope_tx) = task_request_rx
-            //     .recv()
-            //     .await
-            //     .ok_or(RoutingError::ConnectionError)?;
-            //
-            // let host = host_url.to_string();
-            //
-            // if !host_route_tasks.contains_key(&host) {
-            //     // let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
-            //     // tokio::spawn(...)
-            // }
-            //
-            // host_route_tasks
-            //     .get_mut(&host.to_string())
-            //     .ok_or(RoutingError::ConnectionError)?
-            //     .send(envelope_tx)
-            //     .await
-            //     .map_err(|_| RoutingError::ConnectionError)?;
+            let task = tokio::select! {
+
+                Some(task_request) = new_task_request_rx.recv() => {
+                    Some(RequestTaskType::New(task_request))
+                }
+
+                Some(task_request) = register_task_request_rx.recv() => {
+                    Some(RequestTaskType::Register(task_request))
+                }
+
+                else => None,
+            };
+
+            let task = task.ok_or(RoutingError::ConnectionError)?;
+
+            match task {
+                RequestTaskType::New((host_url, connection_rx)) => {
+                    let (task, task_tx) = RouteHostMessagesTask::new(connection_rx, buffer_size);
+                    host_route_tasks.insert(host_url.to_string(), task_tx);
+
+                    tokio::spawn(task.run());
+
+                    println!("1");
+                }
+
+                RequestTaskType::Register((_host_url, _envelope_tx)) => {
+                    //Todo register the envelope senders with the tasks
+                    println!("2");
+                }
+            };
         }
     }
 }
 
+type HostMessagesTaskRequestSender = mpsc::Sender<mpsc::Sender<Envelope>>;
+type HostMessagesTaskRequestReceiver = mpsc::Receiver<mpsc::Sender<Envelope>>;
+
 pub struct RouteHostMessagesTask {
-    connection_rx: mpsc::Receiver<ConnectionPoolMessage>,
-    downlink_channel_rx: mpsc::Receiver<mpsc::Sender<Envelope>>,
+    connection_rx: mpsc::Receiver<Message>,
+    task_rx: HostMessagesTaskRequestReceiver,
+    buffer_size: usize,
 }
 
 impl RouteHostMessagesTask {
     pub fn new(
-        connection_rx: mpsc::Receiver<ConnectionPoolMessage>,
-        downlink_channel_rx: mpsc::Receiver<mpsc::Sender<Envelope>>,
-    ) {
+        connection_rx: mpsc::Receiver<Message>,
+        buffer_size: usize,
+    ) -> (RouteHostMessagesTask, HostMessagesTaskRequestSender) {
+        let (task_tx, task_rx) = mpsc::channel(buffer_size);
+
+        (
+            RouteHostMessagesTask {
+                connection_rx,
+                task_rx,
+                buffer_size,
+            },
+            task_tx,
+        )
     }
 
     pub async fn run(self) -> Result<(), RoutingError> {
         let RouteHostMessagesTask {
-            mut connection_rx,
-            downlink_channel_rx,
+            connection_rx: mut _connection_rx,
+            task_rx: mut _task_rx,
+            buffer_size: _buffer_size,
         } = self;
 
+        let mut _subscribers: Vec<mpsc::Sender<Envelope>> = Vec::new();
+
         loop {
-            let message = connection_rx
+            //Todo add select
+
+            let _message = _connection_rx
                 .recv()
                 .await
                 .ok_or(RoutingError::ConnectionError)?;
 
             //Todo parse the message
-            let envelope = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
+            // let envelope = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
 
             //Todo add select for registering downlink channels
             // downlink_channel_rx

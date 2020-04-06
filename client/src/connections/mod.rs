@@ -39,7 +39,7 @@ pub struct ConnectionPoolMessage {
 
 struct ConnectionRequest {
     host_url: url::Url,
-    tx: oneshot::Sender<Result<ConnectionSender, ConnectionError>>,
+    tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
 }
 
 /// Connection pool is responsible for managing the opening and closing of connections
@@ -60,11 +60,7 @@ impl ConnectionPool {
     /// * `router_tx`               - Transmitting end of a channel for receiving messages
     ///                               from the connections in the pool.
     /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
-    pub fn new<WsFac>(
-        buffer_size: usize,
-        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        connection_factory: WsFac,
-    ) -> ConnectionPool
+    pub fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> ConnectionPool
     where
         WsFac: WebsocketFactory + 'static,
     {
@@ -72,12 +68,7 @@ impl ConnectionPool {
 
         let (connection_requests_abort_handle, abort_registration) = AbortHandle::new_pair();
 
-        let task = PoolTask::new(
-            connection_request_rx,
-            connection_factory,
-            router_tx,
-            buffer_size,
-        );
+        let task = PoolTask::new(connection_request_rx, connection_factory, buffer_size);
 
         let accept_connection_requests_future = Abortable::new(task.run(), abort_registration);
 
@@ -106,7 +97,8 @@ impl ConnectionPool {
     pub fn request_connection(
         &mut self,
         host_url: url::Url,
-    ) -> Result<oneshot::Receiver<Result<ConnectionSender, ConnectionError>>, ConnectionError> {
+    ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>
+    {
         let (tx, rx) = oneshot::channel();
 
         self.connection_request_tx
@@ -130,7 +122,6 @@ where
 {
     rx: mpsc::Receiver<ConnectionRequest>,
     connection_factory: WsFac,
-    router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
     buffer_size: usize,
 }
 
@@ -141,13 +132,11 @@ where
     fn new(
         rx: mpsc::Receiver<ConnectionRequest>,
         connection_factory: WsFac,
-        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
         buffer_size: usize,
     ) -> Self {
         PoolTask {
             rx,
             connection_factory,
-            router_tx,
             buffer_size,
         }
     }
@@ -156,7 +145,6 @@ where
         let PoolTask {
             mut rx,
             mut connection_factory,
-            router_tx,
             buffer_size,
         } = self;
         let mut connections: HashMap<String, SwimConnection> = HashMap::new();
@@ -169,36 +157,37 @@ where
 
             let host = host_url.as_str().to_owned();
 
-            let sender = if connections.contains_key(&host) {
+            let connection_channel = if connections.contains_key(&host) {
                 let conn = connections
                     .get_mut(&host)
                     .ok_or(ConnectionError::ConnectError)?;
-                Ok(ConnectionSender {
-                    tx: conn.tx.clone(),
-                })
+
+                Ok((
+                    (ConnectionSender {
+                        tx: conn.tx.clone(),
+                    }),
+                    None,
+                ))
             } else {
-                let connection_result = SwimConnection::new(
-                    host_url,
-                    buffer_size,
-                    router_tx.clone(),
-                    &mut connection_factory,
-                )
-                .await;
+                let connection_result =
+                    SwimConnection::new(host_url, buffer_size, &mut connection_factory).await;
 
                 match connection_result {
-                    Ok(connection) => {
+                    Ok(mut connection) => {
                         let sender = ConnectionSender {
                             tx: connection.tx.clone(),
                         };
+                        let receiver = connection.rx.take().ok_or(ConnectionError::ConnectError)?;
+
                         connections.insert(host.clone(), connection);
-                        Ok(sender)
+                        Ok((sender, Some(receiver)))
                     }
                     Err(error) => Err(error),
                 }
             };
 
             request_tx
-                .send(sender)
+                .send(connection_channel)
                 .map_err(|_| ConnectionError::ConnectError)?;
         }
     }
@@ -234,31 +223,21 @@ where
     S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
 {
     read_stream: S,
-    router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-    host: String,
+    tx: mpsc::Sender<Message>,
 }
 
 impl<S> ReceiveTask<S>
 where
     S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
 {
-    fn new(
-        read_stream: S,
-        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
-        host: String,
-    ) -> Self {
-        ReceiveTask {
-            read_stream,
-            router_tx,
-            host,
-        }
+    fn new(read_stream: S, tx: mpsc::Sender<Message>) -> Self {
+        ReceiveTask { read_stream, tx }
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
         let ReceiveTask {
             mut read_stream,
-            mut router_tx,
-            host,
+            mut tx,
         } = self;
 
         loop {
@@ -268,15 +247,7 @@ where
                 .map_err(|_| ConnectionError::ReceiveMessageError)?
                 .ok_or(ConnectionError::ReceiveMessageError)?;
 
-            let message = message
-                .into_text()
-                .map_err(|_| ConnectionError::ReceiveMessageError)?;
-
-            router_tx
-                .send(Ok(ConnectionPoolMessage {
-                    host: host.clone(),
-                    message,
-                }))
+            tx.send(message)
                 .await
                 .map_err(|_| ConnectionError::ReceiveMessageError)?;
         }
@@ -286,6 +257,7 @@ where
 /// Connection to a remote host.
 pub struct SwimConnection {
     tx: mpsc::Sender<Message>,
+    rx: Option<mpsc::Receiver<Message>>,
     _send_handler: JoinHandle<Result<(), ConnectionError>>,
     _receive_handler: JoinHandle<Result<(), ConnectionError>>,
 }
@@ -294,27 +266,29 @@ impl SwimConnection {
     async fn new<T: WebsocketFactory + Send + Sync + 'static>(
         host_url: url::Url,
         buffer_size: usize,
-        router_tx: mpsc::Sender<Result<ConnectionPoolMessage, ConnectionError>>,
         websocket_factory: &mut T,
     ) -> Result<SwimConnection, ConnectionError> {
-        let host = host_url.as_str().to_owned();
-        let (tx, rx) = mpsc::channel(buffer_size);
+        let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
+        let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
 
         let (write_sink, read_stream) = websocket_factory.connect(host_url).await?;
 
-        let receive = ReceiveTask::new(read_stream, router_tx, host);
-        let send = SendTask::new(write_sink, rx);
+        let receive = ReceiveTask::new(read_stream, receiver_tx);
+        let send = SendTask::new(write_sink, sender_rx);
 
         let send_handler = tokio::spawn(send.run());
         let receive_handler = tokio::spawn(receive.run());
 
         Ok(SwimConnection {
-            tx,
+            tx: sender_tx,
+            rx: Some(receiver_rx),
             _send_handler: send_handler,
             _receive_handler: receive_handler,
         })
     }
 }
+
+pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
@@ -340,6 +314,8 @@ impl ConnectionSender {
             .map_err(|_| ConnectionError::SendMessageError)
     }
 }
+
+type ConnectionReceiver = mpsc::Receiver<Message>;
 
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, Clone, PartialEq)]

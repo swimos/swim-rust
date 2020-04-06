@@ -34,20 +34,16 @@ async fn test_connection_pool_send_single_message_single_connection() {
     let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let text = "Hello";
-    let (router_tx, _router_rx) = mpsc::channel(buffer_size);
 
     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
 
     let test_data = TestData::new(vec![], writer_tx);
 
-    let mut connection_pool = ConnectionPool::new(
-        buffer_size,
-        router_tx,
-        TestConnectionFactory::new(test_data).await,
-    );
+    let mut connection_pool =
+        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     let rx = connection_pool.request_connection(host_url).unwrap();
-    let mut connection_sender = rx.await.unwrap().unwrap();
+    let (mut connection_sender, _connection_receiver) = rx.await.unwrap().unwrap();
     // When
     connection_sender.send_message(text).await.unwrap();
 
@@ -62,25 +58,21 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let first_text = "First_Text";
     let second_text = "Second_Text";
-    let (router_tx, _router_rx) = mpsc::channel(5);
 
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(vec![], writer_tx);
 
-    let mut connection_pool = ConnectionPool::new(
-        buffer_size,
-        router_tx,
-        TestConnectionFactory::new(test_data).await,
-    );
+    let mut connection_pool =
+        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     let rx = connection_pool
         .request_connection(host_url.clone())
         .unwrap();
-    let mut first_connection_sender = rx.await.unwrap().unwrap();
+    let (mut first_connection_sender, _first_connection_receiver) = rx.await.unwrap().unwrap();
 
     let rx = connection_pool.request_connection(host_url).unwrap();
-    let mut second_connection_sender = rx.await.unwrap().unwrap();
+    let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
     // When
     first_connection_sender
         .send_message(first_text)
@@ -112,7 +104,6 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     let first_text = "First_Text";
     let second_text = "Second_Text";
     let third_text = "Third_Text";
-    let (router_tx, _router_rx) = mpsc::channel(5);
 
     let (first_writer_tx, mut first_writer_rx) = mpsc::channel(5);
 
@@ -128,18 +119,17 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
 
     let mut connection_pool = ConnectionPool::new(
         buffer_size,
-        router_tx,
         TestConnectionFactory::new_multiple(test_data).await,
     );
 
     let rx = connection_pool.request_connection(first_host_url).unwrap();
-    let mut first_connection_sender = rx.await.unwrap().unwrap();
+    let (mut first_connection_sender, _first_connection_receiver) = rx.await.unwrap().unwrap();
 
     let rx = connection_pool.request_connection(second_host_url).unwrap();
-    let mut second_connection_sender = rx.await.unwrap().unwrap();
+    let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
 
     let rx = connection_pool.request_connection(third_host_url).unwrap();
-    let mut third_connection_sender = rx.await.unwrap().unwrap();
+    let (mut third_connection_sender, _third_connection_receiver) = rx.await.unwrap().unwrap();
 
     // When
     first_connection_sender
@@ -179,21 +169,17 @@ async fn test_connection_pool_receive_single_message_single_connection() {
     items.push(Message::text("new_message"));
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
-    let (router_tx, mut router_rx) = mpsc::channel(5);
     let test_data = TestData::new(items, writer_tx);
-    let mut connection_pool = ConnectionPool::new(
-        buffer_size,
-        router_tx,
-        TestConnectionFactory::new(test_data).await,
-    );
+    let mut connection_pool =
+        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
-    let _rx = connection_pool.request_connection(host_url).unwrap();
+    let rx = connection_pool.request_connection(host_url).unwrap();
+    let (_connection_sender, connection_receiver) = rx.await.unwrap().unwrap();
 
     // Then
-    let pool_message = router_rx.recv().await.unwrap().unwrap();
-    assert_eq!(&pool_message.message, "new_message");
-    assert_eq!(&pool_message.host, "ws://127.0.0.1/");
+    let pool_message = connection_receiver.unwrap().recv().await.unwrap();
+    assert_eq!(pool_message.to_text().unwrap(), "new_message");
 }
 
 #[tokio::test]
@@ -207,28 +193,25 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
     items.push(Message::text("third_message"));
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
-    let (router_tx, mut router_rx) = mpsc::channel(5);
     let test_data = TestData::new(items, writer_tx);
-    let mut connection_pool = ConnectionPool::new(
-        buffer_size,
-        router_tx,
-        TestConnectionFactory::new(test_data).await,
-    );
+    let mut connection_pool =
+        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
-    let _rx = connection_pool.request_connection(host_url).unwrap();
+    let rx = connection_pool.request_connection(host_url).unwrap();
+
+    let (_connection_sender, connection_receiver) = rx.await.unwrap().unwrap();
+
+    let mut connection_receiver = connection_receiver.unwrap();
 
     // Then
-    let first_pool_message = router_rx.recv().await.unwrap().unwrap();
-    let second_pool_message = router_rx.recv().await.unwrap().unwrap();
-    let third_pool_message = router_rx.recv().await.unwrap().unwrap();
+    let first_pool_message = connection_receiver.recv().await.unwrap();
+    let second_pool_message = connection_receiver.recv().await.unwrap();
+    let third_pool_message = connection_receiver.recv().await.unwrap();
 
-    assert_eq!(&first_pool_message.message, "first_message");
-    assert_eq!(&first_pool_message.host, "ws://127.0.0.1/");
-    assert_eq!(&second_pool_message.message, "second_message");
-    assert_eq!(&second_pool_message.host, "ws://127.0.0.1/");
-    assert_eq!(&third_pool_message.message, "third_message");
-    assert_eq!(&third_pool_message.host, "ws://127.0.0.1/");
+    assert_eq!(first_pool_message.to_text().unwrap(), "first_message");
+    assert_eq!(second_pool_message.to_text().unwrap(), "second_message");
+    assert_eq!(third_pool_message.to_text().unwrap(), "third_message");
 }
 
 #[tokio::test]
@@ -248,8 +231,6 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     let second_host_url = url::Url::parse("ws://127.0.0.2").unwrap();
     let third_host_url = url::Url::parse("ws://127.0.0.3").unwrap();
 
-    let (router_tx, mut router_rx) = mpsc::channel(5);
-
     let (first_writer_tx, _first_writer_rx) = mpsc::channel(5);
     let (second_writer_tx, _second_writer_rx) = mpsc::channel(5);
     let (third_writer_tx, _third_writer_rx) = mpsc::channel(5);
@@ -262,27 +243,28 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
 
     let mut connection_pool = ConnectionPool::new(
         buffer_size,
-        router_tx,
         TestConnectionFactory::new_multiple(test_data).await,
     );
 
     // When
 
-    let _rx = connection_pool.request_connection(first_host_url).unwrap();
-    let _rx = connection_pool.request_connection(second_host_url).unwrap();
-    let _rx = connection_pool.request_connection(third_host_url).unwrap();
+    let rx = connection_pool.request_connection(first_host_url).unwrap();
+    let (_first_sender, mut first_receiver) = rx.await.unwrap().unwrap();
+
+    let rx = connection_pool.request_connection(second_host_url).unwrap();
+    let (_second_sender, mut second_receiver) = rx.await.unwrap().unwrap();
+
+    let rx = connection_pool.request_connection(third_host_url).unwrap();
+    let (_third_sender, mut third_receiver) = rx.await.unwrap().unwrap();
 
     // Then
-    let first_pool_message = router_rx.recv().await.unwrap().unwrap();
-    let second_pool_message = router_rx.recv().await.unwrap().unwrap();
-    let third_pool_message = router_rx.recv().await.unwrap().unwrap();
+    let first_pool_message = first_receiver.take().unwrap().recv().await.unwrap();
+    let second_pool_message = second_receiver.take().unwrap().recv().await.unwrap();
+    let third_pool_message = third_receiver.take().unwrap().recv().await.unwrap();
 
-    assert_eq!(&first_pool_message.message, "first_message");
-    assert_eq!(&first_pool_message.host, "ws://127.0.0.1/");
-    assert_eq!(&second_pool_message.message, "second_message");
-    assert_eq!(&second_pool_message.host, "ws://127.0.0.2/");
-    assert_eq!(&third_pool_message.message, "third_message");
-    assert_eq!(&third_pool_message.host, "ws://127.0.0.3/");
+    assert_eq!(first_pool_message.to_text().unwrap(), "first_message");
+    assert_eq!(second_pool_message.to_text().unwrap(), "second_message");
+    assert_eq!(third_pool_message.to_text().unwrap(), "third_message");
 }
 
 #[tokio::test]
@@ -294,26 +276,19 @@ async fn test_connection_pool_send_and_receive_messages() {
     items.push(Message::text("recv_baz"));
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
 
-    let (router_tx, mut router_rx) = mpsc::channel(5);
-
     let test_data = TestData::new(items, writer_tx);
 
-    let mut connection_pool = ConnectionPool::new(
-        buffer_size,
-        router_tx,
-        TestConnectionFactory::new(test_data).await,
-    );
+    let mut connection_pool =
+        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     let rx = connection_pool.request_connection(host_url).unwrap();
-    let mut connection_sender = rx.await.unwrap().unwrap();
+    let (mut connection_sender, connection_receiver) = rx.await.unwrap().unwrap();
     // When
     connection_sender.send_message("send_bar").await.unwrap();
     // Then
-    let pool_message = router_rx.recv().await.unwrap().unwrap();
+    let pool_message = connection_receiver.unwrap().recv().await.unwrap();
 
-    assert_eq!(&pool_message.message, "recv_baz");
-
-    assert_eq!(&pool_message.host, "ws://127.0.0.1/");
+    assert_eq!(pool_message.to_text().unwrap(), "recv_baz");
 
     assert_eq!(
         writer_rx.recv().await.unwrap().to_text().unwrap(),
@@ -326,11 +301,9 @@ async fn test_connection_pool_connection_error() {
     // Given
     let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
-    let (router_tx, _router_rx) = mpsc::channel(5);
 
     let mut connection_pool = ConnectionPool::new(
         buffer_size,
-        router_tx,
         TestConnectionFactory::new_multiple(vec![]).await,
     );
 
@@ -350,14 +323,12 @@ async fn test_connection_pool_connection_error_send_message() {
     let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1").unwrap();
     let text = "Test_message";
-    let (router_tx, _router_rx) = mpsc::channel(5);
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
 
     let test_data = vec![None, Some(TestData::new(vec![], writer_tx))];
 
     let mut connection_pool = ConnectionPool::new(
         buffer_size,
-        router_tx,
         TestConnectionFactory::new_multiple_with_errs(test_data).await,
     );
 
@@ -368,7 +339,7 @@ async fn test_connection_pool_connection_error_send_message() {
     let first_connection_sender = rx.await.unwrap();
 
     let rx = connection_pool.request_connection(host_url).unwrap();
-    let mut second_connection_sender = rx.await.unwrap().unwrap();
+    let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
     second_connection_sender.send_message(text).await.unwrap();
 
     // Then
@@ -383,23 +354,18 @@ async fn test_connection_pool_connection_error_send_message() {
 async fn test_connection_pool_close() {
     // Given
     let buffer_size = 5;
-    let (router_tx, mut router_rx) = mpsc::channel(5);
 
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(vec![], writer_tx);
 
-    let connection_pool = ConnectionPool::new(
-        buffer_size,
-        router_tx,
-        TestConnectionFactory::new(test_data).await,
-    );
+    let connection_pool =
+        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
     connection_pool.close().await;
 
     // Then
-    assert!(router_rx.recv().await.is_none());
     assert!(writer_rx.recv().await.is_none());
 }
 
@@ -408,14 +374,13 @@ async fn test_connection_send_single_message() {
     // Given
     let host = url::Url::parse("ws://127.0.0.1:9999").unwrap();
     let buffer_size = 5;
-    let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
 
     let test_data = TestData::new(vec![], writer_tx);
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, _pool_tx, &mut factory)
+    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -434,14 +399,13 @@ async fn test_connection_send_multiple_messages() {
     // Given
     let host = url::Url::parse("ws://127.0.0.1:9999").unwrap();
     let buffer_size = 5;
-    let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
 
     let test_data = TestData::new(vec![], writer_tx);
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, _pool_tx, &mut factory)
+    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -472,14 +436,13 @@ async fn test_connection_send_and_receive_messages() {
     let buffer_size = 5;
     let mut items = Vec::new();
     items.push(Message::text("message_received"));
-    let (pool_tx, mut pool_rx) = mpsc::channel(buffer_size);
     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
 
     let test_data = TestData::new(items, writer_tx);
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, pool_tx, &mut factory)
+    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -490,9 +453,8 @@ async fn test_connection_send_and_receive_messages() {
         .await
         .unwrap();
     // Then
-    let pool_message = pool_rx.recv().await.unwrap().unwrap();
-    assert_eq!(&pool_message.message, "message_received");
-    assert_eq!(&pool_message.host, "ws://127.0.0.1:9999/");
+    let pool_message = connection.rx.take().unwrap().recv().await.unwrap();
+    assert_eq!(pool_message.to_text().unwrap(), "message_received");
 
     assert_eq!(
         writer_rx.recv().await.unwrap().to_text().unwrap(),
@@ -505,7 +467,6 @@ async fn test_connection_receive_message_error() {
     // Given
     let host = url::Url::parse("ws://127.0.0.1:9999").unwrap();
     let buffer_size = 5;
-    let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
 
     let (writer_tx, _writer_rx) = mpsc::channel(buffer_size);
 
@@ -513,7 +474,7 @@ async fn test_connection_receive_message_error() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let connection = SwimConnection::new(host, buffer_size, _pool_tx, &mut factory)
+    let connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
     // When
@@ -528,7 +489,6 @@ async fn test_new_connection_send_message_error() {
     // Given
     let host = url::Url::parse("ws://127.0.0.1:9999").unwrap();
     let buffer_size = 5;
-    let (_pool_tx, _pool_rx) = mpsc::channel(buffer_size);
 
     let (writer_tx, _writer_rx) = mpsc::channel(buffer_size);
 
@@ -536,7 +496,7 @@ async fn test_new_connection_send_message_error() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let connection = SwimConnection::new(host, buffer_size, _pool_tx, &mut factory)
+    let connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
     // When

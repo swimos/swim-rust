@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::connections::{
-    ConnectionError, ConnectionPool, ConnectionPoolMessage, ConnectionSender,
+    ConnectionError, ConnectionPool, ConnectionSender,
 };
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
@@ -21,7 +21,8 @@ use crate::router::envelope_routing_task::{
     HostEnvelopeTaskRequestSender, RequestEnvelopeRoutingHostTask,
 };
 use crate::router::message_routing_task::{
-    HostMessageTaskRequestSender, RequestMessageRoutingHostTask, RouteHostMessagesTask,
+    HostMessageNewTaskRequestSender,
+    HostMessageRegisterTaskRequestSender, RequestMessageRoutingHostTask,
 };
 use common::request::request_future::SendAndAwait;
 use common::request::Request;
@@ -63,55 +64,47 @@ pub trait Router: Send {
 pub struct SwimRouter {
     buffer_size: usize,
     envelope_routing_host_request_tx: HostEnvelopeTaskRequestSender,
-    message_routing_host_request_tx: HostMessageTaskRequestSender,
+    message_routing_register_task_request_tx: HostMessageRegisterTaskRequestSender,
     _request_connections_handler: JoinHandle<Result<(), RoutingError>>,
     _request_envelope_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
+    _request_message_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
 }
 
 impl SwimRouter {
     pub async fn new(buffer_size: usize) -> SwimRouter {
-        //Todo the router_rx is the receiving point for the connection pool messages.
-        let (router_tx, _router_rx) = mpsc::channel(buffer_size);
+        let connection_pool =
+            ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
 
-        let connection_pool = ConnectionPool::new(
+        let (
+            request_message_routing_host_task,
+            message_routing_new_task_request_tx,
+            message_routing_register_task_request_tx,
+        ) = RequestMessageRoutingHostTask::new(buffer_size);
+
+        let (request_connections_task, connection_request_tx) = RequestConnectionsTask::new(
+            connection_pool,
+            message_routing_new_task_request_tx,
             buffer_size,
-            router_tx,
-            TungsteniteWsFactory::new(buffer_size).await,
         );
-
-        let (request_connections_task, connection_request_tx) =
-            RequestConnectionsTask::new(connection_pool, buffer_size);
 
         let (request_envelope_routing_host_task, envelope_routing_host_request_tx) =
             RequestEnvelopeRoutingHostTask::new(connection_request_tx, buffer_size);
-
-        let (request_message_routing_host_task, message_routing_host_request_tx) =
-            RequestMessageRoutingHostTask::new(buffer_size);
-
-        // let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
-        // let request_route_tasks =
-        // SwimRouter::request_envelope_route_tasks(task_request_rx, connection_request_tx);
-
-        // let sinks = SwimRouter::request_sinks(sink_request_rx);
-        // let receive = SwimRouter::receive_all_messages_from_pool(router_rx, sink_request_tx);
 
         let request_connections_handler = tokio::spawn(request_connections_task.run());
 
         let request_envelope_routing_host_handler =
             tokio::spawn(request_envelope_routing_host_task.run());
 
-        let request_message_routing_host_handler =
+        let _request_message_routing_host_handler =
             tokio::spawn(request_message_routing_host_task.run());
-
-        // let sinks_handler = tokio::spawn(sinks);
-        // let receive_handler = tokio::spawn(receive);
 
         SwimRouter {
             buffer_size,
             envelope_routing_host_request_tx,
-            message_routing_host_request_tx,
+            message_routing_register_task_request_tx,
             _request_connections_handler: request_connections_handler,
             _request_envelope_routing_host_handler: request_envelope_routing_host_handler,
+            _request_message_routing_host_handler,
         }
     }
 }
@@ -122,15 +115,21 @@ type ConnectionRequestReceiver = mpsc::Receiver<(url::Url, oneshot::Sender<Conne
 struct RequestConnectionsTask {
     connection_pool: ConnectionPool,
     connection_request_rx: ConnectionRequestReceiver,
+    message_routing_new_task_request_tx: HostMessageNewTaskRequestSender,
 }
 
 impl RequestConnectionsTask {
-    fn new(connection_pool: ConnectionPool, buffer_size: usize) -> (Self, ConnectionRequestSender) {
+    fn new(
+        connection_pool: ConnectionPool,
+        message_routing_new_task_request_tx: HostMessageNewTaskRequestSender,
+        buffer_size: usize,
+    ) -> (Self, ConnectionRequestSender) {
         let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
         (
             RequestConnectionsTask {
                 connection_pool,
                 connection_request_rx,
+                message_routing_new_task_request_tx,
             },
             connection_request_tx,
         )
@@ -140,7 +139,7 @@ impl RequestConnectionsTask {
         let RequestConnectionsTask {
             mut connection_pool,
             mut connection_request_rx,
-            // mut connection_output_tx,
+            mut message_routing_new_task_request_tx,
         } = self;
 
         loop {
@@ -148,25 +147,30 @@ impl RequestConnectionsTask {
                 .recv()
                 .await
                 .ok_or(RoutingError::ConnectionError)?;
-            let connection = connection_pool
-                .request_connection(host)
+            let (connection_sender, connection_receiver) = connection_pool
+                .request_connection(host.clone())
                 .map_err(|_| RoutingError::ConnectionError)?
                 .await
                 .map_err(|_| RoutingError::ConnectionError)?
                 .map_err(|_| RoutingError::ConnectionError)?;
 
-            // connection_output_tx.send(connection_rx).await;
-
             connection_tx
-                .send(connection)
+                .send(connection_sender)
                 .map_err(|_| RoutingError::ConnectionError)?;
+
+            if let Some(receiver) = connection_receiver {
+                message_routing_new_task_request_tx
+                    .send((host, receiver))
+                    .await
+                    .map_err(|_| RoutingError::ConnectionError)?
+            }
         }
     }
 }
 
 pub struct SwimRouterConnection {
     envelope_task_request_tx: HostEnvelopeTaskRequestSender,
-    message_task_request_tx: HostMessageTaskRequestSender,
+    message_register_task_request_tx: HostMessageRegisterTaskRequestSender,
     host_url: url::Url,
     envelope_task_tx: Option<oneshot::Sender<mpsc::Sender<Envelope>>>,
     envelope_task_rx: oneshot::Receiver<mpsc::Sender<Envelope>>,
@@ -179,7 +183,7 @@ impl Unpin for SwimRouterConnection {}
 impl SwimRouterConnection {
     pub fn new(
         envelope_task_request_tx: HostEnvelopeTaskRequestSender,
-        message_task_request_tx: HostMessageTaskRequestSender,
+        message_register_task_request_tx: HostMessageRegisterTaskRequestSender,
         host_url: url::Url,
         buffer_size: usize,
     ) -> Self {
@@ -188,7 +192,7 @@ impl SwimRouterConnection {
 
         SwimRouterConnection {
             envelope_task_request_tx,
-            message_task_request_tx,
+            message_register_task_request_tx,
             host_url,
             envelope_task_tx: Some(envelope_task_tx),
             envelope_task_rx,
@@ -207,7 +211,7 @@ impl Future for SwimRouterConnection {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let SwimRouterConnection {
             envelope_task_request_tx,
-            message_task_request_tx,
+            message_register_task_request_tx,
             host_url,
             envelope_task_tx,
             envelope_task_rx,
@@ -232,18 +236,20 @@ impl Future for SwimRouterConnection {
             Poll::Pending => return Poll::Pending,
         };
 
-        match message_task_request_tx.poll_ready(cx).map(|r| match r {
-            Ok(_) => {
-                if let Some(tx) = envelope_tx.take() {
-                    match message_task_request_tx.try_send((host_url.clone(), tx)) {
-                        Ok(_) => (),
-                        _ => panic!("Error."),
+        match message_register_task_request_tx
+            .poll_ready(cx)
+            .map(|r| match r {
+                Ok(_) => {
+                    if let Some(tx) = envelope_tx.take() {
+                        match message_register_task_request_tx.try_send((host_url.clone(), tx)) {
+                            Ok(_) => (),
+                            _ => panic!("Error."),
+                        }
                     }
                 }
-            }
 
-            _ => panic!("Error."),
-        }) {
+                _ => panic!("Error."),
+            }) {
             Poll::Ready(_) => {}
             Poll::Pending => return Poll::Pending,
         };
@@ -275,7 +281,7 @@ impl Router for SwimRouter {
 
         SwimRouterConnection::new(
             self.envelope_routing_host_request_tx.clone(),
-            self.message_routing_host_request_tx.clone(),
+            self.message_routing_register_task_request_tx.clone(),
             host_url,
             self.buffer_size,
         )
