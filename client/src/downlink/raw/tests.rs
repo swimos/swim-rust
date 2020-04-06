@@ -146,7 +146,7 @@ async fn make_test_dl() -> (
     let downlink = create_downlink(
         State(0),
         rx_in,
-        for_mpsc_sender::<Command<i32>, DownlinkError>(tx_out),
+        for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
         10,
     );
     (downlink, tx_in, rx_out)

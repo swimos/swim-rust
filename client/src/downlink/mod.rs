@@ -400,3 +400,39 @@ where
         }
     }
 }
+
+/// Merges a number of different channel send error types.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DroppedError;
+
+impl Display for DroppedError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Channel dropped.")
+    }
+}
+
+impl std::error::Error for DroppedError {}
+
+impl<T> From<mpsc::error::SendError<T>> for DroppedError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        DroppedError
+    }
+}
+
+impl<T> From<watch::error::SendError<T>> for DroppedError {
+    fn from(_: watch::error::SendError<T>) -> Self {
+        DroppedError
+    }
+}
+
+impl<T> From<broadcast::SendError<T>> for DroppedError {
+    fn from(_: broadcast::SendError<T>) -> Self {
+        DroppedError
+    }
+}
+
+impl From<common::sink::item::SendError> for DroppedError {
+    fn from(_: common::sink::item::SendError) -> Self {
+        DroppedError
+    }
+}

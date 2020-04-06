@@ -25,6 +25,7 @@ use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
+use crate::router::RoutingError;
 use common::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
 use form::Form;
@@ -516,7 +517,7 @@ pub fn create_raw_downlink<Updates, Commands>(
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, DownlinkError> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     crate::downlink::create_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
 }
@@ -533,7 +534,7 @@ pub fn create_queue_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, DownlinkError> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
         MapModel::new(),
@@ -555,7 +556,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, DownlinkError> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
 }
@@ -572,7 +573,7 @@ pub fn create_buffered_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, DownlinkError> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
         MapModel::new(),

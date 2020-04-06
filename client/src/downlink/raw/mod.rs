@@ -134,12 +134,12 @@ where
     State::Ev: Send + 'static,
     State::Cmd: Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
-    Commands: ItemSender<Command<State::Cmd>, DownlinkError> + Send + 'static,
+    Commands: ItemSender<Command<State::Cmd>, RoutingError> + Send + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
     let (event_tx, event_rx) = mpsc::channel::<Event<State::Ev>>(buffer_size);
 
-    let event_sink = item::for_mpsc_sender::<_, DownlinkError>(event_tx);
+    let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
 
     let (stopped_tx, stopped_rx) = watch::channel(None);
 
@@ -231,8 +231,8 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
         State: StateMachine<M, A>,
         Ops: FusedStream<Item = Operation<M, A>> + Send + 'static,
         Acts: FusedStream<Item = A> + Send + 'static,
-        Commands: ItemSender<Command<State::Cmd>, DownlinkError>,
-        Events: ItemSender<Event<State::Ev>, DownlinkError>,
+        Commands: ItemSender<Command<State::Cmd>, RoutingError>,
+        Events: ItemSender<Event<State::Ev>, DroppedError>,
     {
         let DownlinkTask {
             mut model,
@@ -300,7 +300,7 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
                     if error.is_some() {
                         break Err(DownlinkError::TransitionError); //TODO Handle this properly.
                     } else if terminate || result.is_err() {
-                        break result;
+                        break result.map_err(Into::into);
                     } else if act_terminated && events_terminated {
                         break Ok(());
                     }

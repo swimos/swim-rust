@@ -14,7 +14,10 @@
 
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::DownlinkTask;
-use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, StateMachine};
+use crate::downlink::{
+    raw, Command, Downlink, DownlinkError, DroppedError, Event, Message, StateMachine,
+};
+use crate::router::RoutingError;
 use common::sink::item;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
@@ -126,12 +129,12 @@ where
     State::Ev: Clone + Send + Sync + 'static,
     State::Cmd: Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
-    Commands: ItemSender<Command<State::Cmd>, DownlinkError> + Send + 'static,
+    Commands: ItemSender<Command<State::Cmd>, RoutingError> + Send + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
     let (event_tx, event_rx) = watch::channel::<Option<Event<State::Ev>>>(None);
 
-    let event_sink = item::for_watch_sender::<_, DownlinkError>(event_tx);
+    let event_sink = item::for_watch_sender::<_, DroppedError>(event_tx);
 
     let (stopped_tx, stopped_rx) = watch::channel(None);
 
