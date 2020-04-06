@@ -51,7 +51,7 @@ impl<Inner> DownlinkTopic<Inner> {
 }
 
 impl<Inner> DownlinkReceiver<Inner> {
-    fn new(inner_receiver: Inner, task: Arc<DownlinkTaskHandle>) -> Self
+    pub(in crate::downlink) fn new(inner_receiver: Inner, task: Arc<DownlinkTaskHandle>) -> Self
     where
         Inner: Stream,
     {
@@ -76,6 +76,12 @@ where
 
 pub struct MakeReceiver(Arc<DownlinkTaskHandle>);
 
+impl MakeReceiver {
+    pub(in crate::downlink) fn new(task: Arc<DownlinkTaskHandle>) -> Self {
+        MakeReceiver(task)
+    }
+}
+
 impl<Inner: Stream> Transformation<Result<Inner, TopicError>> for MakeReceiver {
     type Out = Result<DownlinkReceiver<Inner>, TopicError>;
 
@@ -95,7 +101,7 @@ where
 
     fn subscribe(&mut self) -> Self::Fut {
         let DownlinkTopic { inner, task } = self;
-        let attach = MakeReceiver(task.clone());
+        let attach = MakeReceiver::new(task.clone());
         TransformedFuture::new(inner.subscribe(), attach)
     }
 }

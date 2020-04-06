@@ -14,7 +14,8 @@
 
 use super::raw;
 use crate::downlink::any::AnyDownlink;
-use crate::downlink::raw::DownlinkTask;
+use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
+use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     Command, Downlink, DownlinkError, DroppedError, Event, Message, StateMachine,
 };
@@ -28,13 +29,15 @@ use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
+use utilities::future::TransformedFuture;
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.
 #[derive(Debug)]
 pub struct QueueDownlink<Act, Upd> {
-    input: raw::Sender<mpsc::Sender<Act>>,
+    input: mpsc::Sender<Act>,
     topic: MpscTopic<Event<Upd>>,
+    task: Arc<DownlinkTaskHandle>,
 }
 
 impl<Act, Upd> Clone for QueueDownlink<Act, Upd> {
@@ -42,6 +45,7 @@ impl<Act, Upd> Clone for QueueDownlink<Act, Upd> {
         QueueDownlink {
             input: self.input.clone(),
             topic: self.topic.clone(),
+            task: self.task.clone(),
         }
     }
 }
@@ -52,7 +56,7 @@ impl<Act, Upd> QueueDownlink<Act, Upd> {
     }
 
     pub fn same_downlink(&self, other: &Self) -> bool {
-        self.input.same_sender(&other.input)
+        Arc::ptr_eq(&self.task, &other.task)
     }
 }
 
@@ -69,11 +73,14 @@ where
             sender,
             task,
         } = raw;
-        let (topic, first_receiver) = MpscTopic::new(receiver, buffer_size);
+        let task_ptr = Arc::new(task);
+        let (topic, first) = MpscTopic::new(receiver, buffer_size);
+        let first_receiver = DownlinkReceiver::new(first, task_ptr.clone());
         (
             QueueDownlink {
-                input: raw::Sender::new(sender, Arc::new(task)),
+                input: sender,
                 topic,
+                task: task_ptr,
             },
             first_receiver,
         )
@@ -82,15 +89,19 @@ where
 
 type EventReceiver<Upd> = MpscTopicReceiver<Event<Upd>>;
 
+type OpenReceiver<Upd> =
+    ErrInto<SendAndAwait<Request<EventReceiver<Upd>>, EventReceiver<Upd>>, TopicError>;
+
 impl<Act, Upd> Topic<Event<Upd>> for QueueDownlink<Act, Upd>
 where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = QueueReceiver<Upd>;
-    type Fut = ErrInto<SendAndAwait<Request<EventReceiver<Upd>>, EventReceiver<Upd>>, TopicError>;
+    type Fut = TransformedFuture<OpenReceiver<Upd>, MakeReceiver>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        self.topic.subscribe()
+        let attach = MakeReceiver::new(self.task.clone());
+        TransformedFuture::new(self.topic.subscribe(), attach)
     }
 }
 
@@ -102,7 +113,7 @@ where
     type SendFuture = MpscSend<'a, Act, DownlinkError>;
 
     fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        self.input.send_item(value)
+        MpscSend::new(&mut self.input, value)
     }
 }
 
@@ -111,16 +122,19 @@ where
     Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
-    type DlTopic = MpscTopic<Event<Upd>>;
+    type DlTopic = DownlinkTopic<MpscTopic<Event<Upd>>>;
     type DlSink = raw::Sender<mpsc::Sender<Act>>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
-        let QueueDownlink { input, topic } = self;
-        (topic, input)
+        let QueueDownlink { input, topic, task } = self;
+        let sender = raw::Sender::new(input, task.clone());
+        let dl_topic = DownlinkTopic::new(topic, task);
+        (dl_topic, sender)
     }
 }
 
-pub type QueueReceiver<T> = MpscTopicReceiver<Event<T>>;
+pub type QueueTopicReceiver<T> = MpscTopicReceiver<Event<T>>;
+pub type QueueReceiver<T> = DownlinkReceiver<MpscTopicReceiver<Event<T>>>;
 
 pub(in crate::downlink) fn make_downlink<M, A, State, Updates, Commands>(
     init: State,

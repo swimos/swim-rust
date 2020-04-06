@@ -17,19 +17,21 @@ use futures::task::{Context, Poll};
 use futures::{Future, Stream};
 use tokio::macros::support::Pin;
 
-use common::topic::{BroadcastTopic, MpscTopic, MpscTopicReceiver, Topic, TopicError, WatchTopic};
+use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};
 
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver};
+use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver};
 use crate::downlink::raw;
+use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
 use crate::downlink::{Downlink, DownlinkError, Event};
 use common::request::request_future::{RequestFuture, Sequenced};
 use common::request::Request;
 use common::sink::item::{ItemSink, MpscSend};
 use std::fmt::{Display, Formatter};
 use tokio::sync::{mpsc, oneshot};
+use utilities::future::TransformedFuture;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopicKind {
@@ -108,12 +110,15 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
     }
 }
 
-pub type QueueSubFuture<Upd> = ErrInto<
-    Sequenced<
-        RequestFuture<Request<MpscTopicReceiver<Event<Upd>>>>,
-        oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>,
+pub type QueueSubFuture<Upd> = TransformedFuture<
+    ErrInto<
+        Sequenced<
+            RequestFuture<Request<QueueTopicReceiver<Upd>>>,
+            oneshot::Receiver<QueueTopicReceiver<Upd>>,
+        >,
+        TopicError,
     >,
-    TopicError,
+    MakeReceiver,
 >;
 pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
 pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
@@ -128,6 +133,7 @@ pub enum AnySubFuture<Upd: Send + 'static> {
 impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
     type Output = Result<AnyReceiver<Upd>, TopicError>;
 
+    //noinspection RsTypeCheck
     #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         #[project]
@@ -172,7 +178,7 @@ where
 }
 
 pub enum AnyDownlinkTopic<Upd> {
-    Queue(MpscTopic<Event<Upd>>),
+    Queue(DownlinkTopic<MpscTopic<Event<Upd>>>),
     Dropping(WatchTopic<Event<Upd>>),
     Buffered(BroadcastTopic<Event<Upd>>),
 }
