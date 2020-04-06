@@ -12,17 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::{
-    ConnectionError, ConnectionPool, ConnectionSender,
-};
+use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::router::envelope_routing_task::{
     HostEnvelopeTaskRequestSender, RequestEnvelopeRoutingHostTask,
 };
 use crate::router::message_routing_task::{
-    HostMessageNewTaskRequestSender,
-    HostMessageRegisterTaskRequestSender, RequestMessageRoutingHostTask,
+    HostMessageNewTaskRequestSender, HostMessageRegisterTaskRequestSender,
+    RequestMessageRoutingHostTask,
 };
 use common::request::request_future::SendAndAwait;
 use common::request::Request;
