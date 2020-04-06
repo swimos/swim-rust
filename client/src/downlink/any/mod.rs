@@ -21,7 +21,7 @@ use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};
 
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
-use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
+use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver, DroppingTopicReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver};
 use crate::downlink::raw;
 use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
@@ -120,7 +120,8 @@ pub type QueueSubFuture<Upd> = TransformedFuture<
     >,
     MakeReceiver,
 >;
-pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
+pub type DroppingSubFuture<Upd> =
+    TransformedFuture<Ready<Result<DroppingTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
 
 #[pin_project]
@@ -179,7 +180,7 @@ where
 
 pub enum AnyDownlinkTopic<Upd> {
     Queue(DownlinkTopic<MpscTopic<Event<Upd>>>),
-    Dropping(WatchTopic<Event<Upd>>),
+    Dropping(DownlinkTopic<WatchTopic<Event<Upd>>>),
     Buffered(BroadcastTopic<Event<Upd>>),
 }
 
