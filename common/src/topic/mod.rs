@@ -332,14 +332,10 @@ impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     type Fut = Ready<Result<Self::Receiver, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        let result = if self.sender.receiver_count() == 0 {
-            Err(TopicError::TopicClosed)
-        } else {
-            Ok(BroadcastReceiver {
-                sender: self.sender.clone(),
-                receiver: self.sender.subscribe(),
-            })
-        };
+        let result = Ok(BroadcastReceiver {
+            sender: self.sender.clone(),
+            receiver: self.sender.subscribe(),
+        });
         ready(result)
     }
 }
