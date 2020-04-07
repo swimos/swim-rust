@@ -21,7 +21,7 @@ use crate::model::{Item, Value};
 mod tests;
 
 /// A model to exchange over WARP connections.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Envelope {
     // @link
     LinkRequest(LinkAddressed),
@@ -148,14 +148,14 @@ impl Envelope {
 }
 
 /// A simple [`Envelope`] payload to deliver to the other end of an active network connection.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HostAddressed {
     pub body: Option<Value>,
 }
 
 /// An [`Envelope`]'s payload that is routed to a particular lane, of a particular node. Both the
 /// `node_uri` and `lane_uri` must be provided.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LaneAddressed {
     pub node_uri: String,
     pub lane_uri: String,
@@ -164,7 +164,7 @@ pub struct LaneAddressed {
 
 /// An [`Envelope`] to route along the path of a currently open link. If the `rate` or `prio` are
 /// not provided then they are set to `None`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LinkAddressed {
     pub lane: LaneAddressed,
     pub rate: Option<f64>,
