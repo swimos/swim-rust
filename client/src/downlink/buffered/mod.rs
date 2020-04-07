@@ -15,18 +15,15 @@
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
-use crate::downlink::{
-    raw, Command, Downlink, DownlinkError, DroppedError, Event, Message, StateMachine,
-};
+use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, StateMachine};
 use crate::router::RoutingError;
-use common::sink::item;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
-use common::topic::{BroadcastReceiver, BroadcastTopic, Topic, TopicError};
+use common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{mpsc, watch};
 use utilities::future::{SwimFutureExt, TransformedFuture};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
@@ -70,7 +67,7 @@ where
         buffer_size: usize,
     ) -> (BufferedDownlink<Act, Upd>, BufferedReceiver<Upd>)
     where
-        F: FnOnce(broadcast::Sender<Event<Upd>>) -> (mpsc::Sender<Act>, DownlinkTaskHandle),
+        F: FnOnce(BroadcastSender<Event<Upd>>) -> (mpsc::Sender<Act>, DownlinkTaskHandle),
     {
         let (topic, sender, first) = BroadcastTopic::new(buffer_size);
         let (input, task) = raw_factory(sender);
@@ -146,10 +143,10 @@ where
     Updates: Stream<Item = Message<M>> + Send + 'static,
     Commands: ItemSender<Command<State::Cmd>, RoutingError> + Send + 'static,
 {
-    let fac = move |event_tx: broadcast::Sender<Event<State::Ev>>| {
+    let fac = move |event_tx: BroadcastSender<Event<State::Ev>>| {
         let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
 
-        let event_sink = item::for_broadcast_sender::<_, DroppedError>(event_tx);
+        let event_sink = event_tx.map_err_into();
 
         let (stopped_tx, stopped_rx) = watch::channel(None);
 

@@ -15,10 +15,11 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use crate::request::request_future::{send_and_await, RequestError, SendAndAwait};
 use crate::request::Request;
+use crate::sink::item::ItemSink;
 use either::Either;
 use futures::future::{ready, BoxFuture};
 use futures::future::{ErrInto, Ready};
@@ -128,7 +129,35 @@ pub struct WatchTopicReceiver<T> {
 /// than they are consumed) the topic will begin discarding records, starting with the oldest.
 #[derive(Debug)]
 pub struct BroadcastTopic<T> {
-    pub sender: broadcast::Sender<T>,
+    pub sender: Arc<broadcast::Sender<T>>,
+}
+
+#[derive(Debug)]
+pub struct BroadcastSender<T> {
+    sender: Weak<broadcast::Sender<T>>,
+}
+
+impl<T> BroadcastSender<T> {
+    pub fn send(&self, value: T) -> Result<(), broadcast::SendError<T>> {
+        match self.sender.upgrade() {
+            Some(inner) => {
+                //A failure here just means that there are no subscribers so we can safely
+                //ignore it.
+                let _ = broadcast::Sender::send(&*inner, value);
+                Ok(())
+            }
+            _ => Err(broadcast::SendError(value)), //The topic and all subscribers have been dropped.
+        }
+    }
+}
+
+impl<'a, T: Send + 'a> ItemSink<'a, T> for BroadcastSender<T> {
+    type Error = broadcast::SendError<T>;
+    type SendFuture = Ready<Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        ready(self.send(value))
+    }
 }
 
 impl<T> Clone for BroadcastTopic<T> {
@@ -142,24 +171,26 @@ impl<T> Clone for BroadcastTopic<T> {
 impl<T: Clone> BroadcastTopic<T> {
     pub fn new(
         buffer_size: usize,
-    ) -> (
-        BroadcastTopic<T>,
-        broadcast::Sender<T>,
-        BroadcastReceiver<T>,
-    ) {
+    ) -> (BroadcastTopic<T>, BroadcastSender<T>, BroadcastReceiver<T>) {
         let (tx, rx) = broadcast::channel(buffer_size);
-        let topic = BroadcastTopic { sender: tx.clone() };
+        let inner = Arc::new(tx);
+        let topic = BroadcastTopic {
+            sender: inner.clone(),
+        };
         let rec = BroadcastReceiver {
-            sender: tx.clone(),
+            sender: inner.clone(),
             receiver: rx,
         };
-        (topic, tx, rec)
+        let sender = BroadcastSender {
+            sender: Arc::downgrade(&inner),
+        };
+        (topic, sender, rec)
     }
 }
 
 #[derive(Debug)]
 pub struct BroadcastReceiver<T> {
-    sender: broadcast::Sender<T>,
+    sender: Arc<broadcast::Sender<T>>,
     receiver: broadcast::Receiver<T>,
 }
 
