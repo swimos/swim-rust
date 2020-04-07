@@ -149,6 +149,7 @@ impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
 
 impl<Act, Upd> Topic<Event<Upd>> for AnyDownlink<Act, Upd>
 where
+    Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = AnyReceiver<Upd>;
