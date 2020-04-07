@@ -186,7 +186,7 @@ pub trait SwimFutureExt: Future {
     ///     }
     /// }
     ///
-    /// let n: i64 = block_on(ready(2).transform(Plus(3)));
+    /// let n: i32 = block_on(ready(2).transform(Plus(3)));
     /// assert_eq!(n, 5);
     ///
     /// ```
