@@ -15,7 +15,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use crate::request::request_future::{send_and_await, RequestError, SendAndAwait};
 use crate::request::Request;
@@ -167,16 +167,12 @@ type SubRequest<T> = Request<MpscTopicReceiver<T>>;
 
 #[derive(Debug)]
 pub struct MpscTopicReceiver<T> {
-    sentinel: Option<Arc<()>>,
     receiver: mpsc::Receiver<T>,
 }
 
 impl<T> MpscTopicReceiver<T> {
-    fn new(receiver: mpsc::Receiver<T>, sentinel: Arc<()>) -> MpscTopicReceiver<T> {
-        MpscTopicReceiver {
-            receiver,
-            sentinel: Some(sentinel),
-        }
+    fn new(receiver: mpsc::Receiver<T>) -> MpscTopicReceiver<T> {
+        MpscTopicReceiver { receiver }
     }
 
     pub async fn recv(&mut self) -> Option<T> {
@@ -189,7 +185,6 @@ impl<T> MpscTopicReceiver<T> {
 
     pub fn close(&mut self) {
         self.receiver.close();
-        self.sentinel.take();
     }
 }
 
@@ -227,15 +222,14 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
         let (sub_tx, sub_rx) = mpsc::channel(1);
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let sentinel = Arc::new(());
-        let task_fut = mpsc_topic_task(input, tx, Arc::downgrade(&sentinel), sub_rx, buffer_size);
+        let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size);
         let task = tokio::task::spawn(task_fut);
         (
             MpscTopic {
                 sub_sender: sub_tx,
                 task: Arc::new(task),
             },
-            MpscTopicReceiver::new(rx, sentinel),
+            MpscTopicReceiver::new(rx),
         )
     }
 }
@@ -336,7 +330,6 @@ impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
 async fn mpsc_topic_task<T: Clone>(
     input: mpsc::Receiver<T>,
     init_sender: mpsc::Sender<T>,
-    sentinel: Weak<()>,
     subscriptions: mpsc::Receiver<SubRequest<T>>,
     buffer_size: usize,
 ) {
@@ -351,17 +344,14 @@ async fn mpsc_topic_task<T: Clone>(
             value = in_fused.next() => value.map(Either::Right),
         };
         match item {
-            Some(Either::Left(req)) => match sentinel.upgrade() {
-                Some(rec_sentinel) => {
-                    let (tx, rx) = mpsc::channel(buffer_size);
-                    if req.send(MpscTopicReceiver::new(rx, rec_sentinel)).is_ok() {
-                        outputs.push(tx);
-                    }
+            Some(Either::Left(req)) => {
+                let (tx, rx) = mpsc::channel(buffer_size);
+                if req.send(MpscTopicReceiver::new(rx)).is_ok() {
+                    outputs.push(tx);
                 }
-                _ => break,
-            },
+            }
             Some(Either::Right(value)) => match outputs.len() {
-                0 => break,
+                0 => {}
                 1 => {
                     let result = outputs[0].send(value).await;
                     if result.is_err() {
