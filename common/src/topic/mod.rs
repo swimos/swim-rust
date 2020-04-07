@@ -107,7 +107,7 @@ impl<T: Clone> Stream for WatchStream<T> {
 /// output record since the last time the polled and so may (and likely will) miss outputs.
 #[derive(Debug)]
 pub struct WatchTopic<T> {
-    receiver: Weak<watch::Receiver<Option<T>>>,
+    receiver: watch::Receiver<Option<T>>,
 }
 
 impl<T> Clone for WatchTopic<T> {
@@ -120,7 +120,6 @@ impl<T> Clone for WatchTopic<T> {
 
 #[derive(Clone, Debug)]
 pub struct WatchTopicReceiver<T> {
-    _owner: Arc<watch::Receiver<Option<T>>>,
     receiver: WatchStream<T>,
 }
 
@@ -244,12 +243,8 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
 impl<T: Clone + Send> WatchTopic<T> {
     pub fn new(receiver: watch::Receiver<Option<T>>) -> (Self, WatchTopicReceiver<T>) {
         let duplicate = receiver.clone();
-        let owner = Arc::new(receiver);
-        let topic = WatchTopic {
-            receiver: Arc::downgrade(&owner),
-        };
+        let topic = WatchTopic { receiver };
         let rec = WatchTopicReceiver {
-            _owner: owner,
             receiver: WatchStream { inner: duplicate },
         };
         (topic, rec)
@@ -269,16 +264,11 @@ impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
     type Fut = Ready<Result<Self::Receiver, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        ready(match self.receiver.upgrade() {
-            Some(owner) => {
-                let receiver = owner.as_ref().clone();
-                Ok(WatchTopicReceiver {
-                    _owner: owner,
-                    receiver: WatchStream { inner: receiver },
-                })
-            }
-            _ => Err(TopicError::TopicClosed),
-        })
+        ready(Ok(WatchTopicReceiver {
+            receiver: WatchStream {
+                inner: self.receiver.clone(),
+            },
+        }))
     }
 }
 
