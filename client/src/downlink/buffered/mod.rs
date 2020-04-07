@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::downlink::any::AnyDownlink;
-use crate::downlink::raw::DownlinkTask;
+use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
+use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DroppedError, Event, Message, StateMachine,
 };
@@ -26,13 +27,15 @@ use futures::Stream;
 use futures_util::stream::StreamExt;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, watch};
+use utilities::future::{SwimFutureExt, TransformedFuture};
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
 #[derive(Debug)]
 pub struct BufferedDownlink<Act, Upd> {
-    input: raw::Sender<mpsc::Sender<Act>>,
+    input: mpsc::Sender<Act>,
     topic: BroadcastTopic<Event<Upd>>,
+    task: Arc<DownlinkTaskHandle>,
 }
 
 impl<Act, Upd> Clone for BufferedDownlink<Act, Upd> {
@@ -40,6 +43,7 @@ impl<Act, Upd> Clone for BufferedDownlink<Act, Upd> {
         BufferedDownlink {
             input: self.input.clone(),
             topic: self.topic.clone(),
+            task: self.task.clone(),
         }
     }
 }
@@ -50,29 +54,33 @@ impl<Act, Upd> BufferedDownlink<Act, Upd> {
     }
 
     pub fn same_downlink(&self, other: &Self) -> bool {
-        self.input.same_sender(&other.input)
+        Arc::ptr_eq(&self.task, &other.task)
     }
 }
 
-pub type BufferedReceiver<T> = BroadcastReceiver<Event<T>>;
+pub type BufferedTopicReceiver<T> = BroadcastReceiver<Event<T>>;
+pub type BufferedReceiver<T> = DownlinkReceiver<BroadcastReceiver<Event<T>>>;
 
 impl<Act, Upd> BufferedDownlink<Act, Upd>
 where
     Upd: Clone + Send + Sync + 'static,
 {
-    pub fn assemble<F>(
+    pub(in crate::downlink) fn assemble<F>(
         raw_factory: F,
         buffer_size: usize,
     ) -> (BufferedDownlink<Act, Upd>, BufferedReceiver<Upd>)
     where
-        F: FnOnce(broadcast::Sender<Event<Upd>>) -> raw::Sender<mpsc::Sender<Act>>,
+        F: FnOnce(broadcast::Sender<Event<Upd>>) -> (mpsc::Sender<Act>, DownlinkTaskHandle),
     {
-        let (topic, sender, first_receiver) = BroadcastTopic::new(buffer_size);
-        let raw_sender = raw_factory(sender);
+        let (topic, sender, first) = BroadcastTopic::new(buffer_size);
+        let (input, task) = raw_factory(sender);
+        let dl_task = Arc::new(task);
+        let first_receiver = DownlinkReceiver::new(first, dl_task.clone());
         (
             BufferedDownlink {
-                input: raw_sender,
+                input,
                 topic,
+                task: dl_task,
             },
             first_receiver,
         )
@@ -84,10 +92,13 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = BufferedReceiver<Upd>;
-    type Fut = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
+    type Fut =
+        TransformedFuture<Ready<Result<BufferedTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        self.topic.subscribe()
+        self.topic
+            .subscribe()
+            .transform(MakeReceiver::new(self.task.clone()))
     }
 }
 
@@ -99,7 +110,7 @@ where
     type SendFuture = MpscSend<'a, Act, DownlinkError>;
 
     fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        self.input.send_item(value)
+        MpscSend::new(&mut self.input, value)
     }
 }
 
@@ -108,12 +119,14 @@ where
     Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
-    type DlTopic = BroadcastTopic<Event<Upd>>;
+    type DlTopic = DownlinkTopic<BroadcastTopic<Event<Upd>>>;
     type DlSink = raw::Sender<mpsc::Sender<Act>>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
-        let BufferedDownlink { input, topic } = self;
-        (topic, input)
+        let BufferedDownlink { input, topic, task } = self;
+        let sender = raw::Sender::new(input, task.clone());
+        let dl_topic = DownlinkTopic::new(topic, task);
+        (dl_topic, sender)
     }
 }
 
@@ -149,7 +162,7 @@ where
 
         let dl_task = raw::DownlinkTaskHandle::new(join_handle, stopped_rx);
 
-        raw::Sender::new(act_tx, Arc::new(dl_task))
+        (act_tx, dl_task)
     };
 
     BufferedDownlink::assemble(fac, queue_size)

@@ -20,7 +20,7 @@ use tokio::macros::support::Pin;
 use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};
 
-use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
+use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver, BufferedTopicReceiver};
 use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver, DroppingTopicReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver};
 use crate::downlink::raw;
@@ -122,7 +122,8 @@ pub type QueueSubFuture<Upd> = TransformedFuture<
 >;
 pub type DroppingSubFuture<Upd> =
     TransformedFuture<Ready<Result<DroppingTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
-pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
+pub type BufferedSubFuture<Upd> =
+    TransformedFuture<Ready<Result<BufferedTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
 #[pin_project]
 pub enum AnySubFuture<Upd: Send + 'static> {
@@ -181,7 +182,7 @@ where
 pub enum AnyDownlinkTopic<Upd> {
     Queue(DownlinkTopic<MpscTopic<Event<Upd>>>),
     Dropping(DownlinkTopic<WatchTopic<Event<Upd>>>),
-    Buffered(BroadcastTopic<Event<Upd>>),
+    Buffered(DownlinkTopic<BroadcastTopic<Event<Upd>>>),
 }
 
 impl<Upd> Topic<Event<Upd>> for AnyDownlinkTopic<Upd>
