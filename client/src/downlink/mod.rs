@@ -12,17 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::pin::Pin;
-
-use futures::{future, stream, Stream};
-use futures_util::select_biased;
-use pin_utils::pin_mut;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 
-use common::sink::item;
-use common::sink::item::{BoxItemSink, ItemSender, ItemSink, MpscSend};
-use futures::stream::{BoxStream, FusedStream};
+use common::sink::item::{self, BoxItemSink, ItemSender, ItemSink};
+use futures::stream::BoxStream;
 use std::fmt::{Debug, Display, Formatter};
 use tokio::sync::broadcast;
 use tokio::sync::watch;

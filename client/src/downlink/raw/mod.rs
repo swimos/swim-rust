@@ -12,12 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
-use common::sink::item::ItemSender;
+use crate::downlink::{
+    Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message, Model,
+    Operation, Response, StateMachine,
+};
+use crate::router::RoutingError;
+use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
+use futures_util::future::ready;
+use futures_util::select_biased;
+use futures_util::stream::once;
+use pin_utils::pin_mut;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
 
 #[cfg(test)]
 pub mod tests;
@@ -149,7 +161,7 @@ where
     // The task that maintains the internal state of the lane.
     let task = DownlinkTask::new(init, cmd_sink, event_sink, completed.clone(), stopped_tx);
 
-    let lane_task = task.run(raw::make_operation_stream(update_stream), act_rx.fuse());
+    let lane_task = task.run(make_operation_stream(update_stream), act_rx.fuse());
 
     let join_handle = tokio::task::spawn(lane_task);
 
@@ -349,7 +361,7 @@ where
 {
     let upd_operations = updates.map(Operation::Message);
 
-    let init = stream::once(future::ready(Operation::Start));
+    let init = once(ready(Operation::Start));
 
     init.chain(upd_operations).fuse()
 }
