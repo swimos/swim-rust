@@ -27,6 +27,7 @@ use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
 use utilities::future::TransformedFuture;
@@ -99,7 +100,7 @@ impl<Act, Upd> QueueDownlink<Act, Upd> {
     }
 
     pub fn is_running(&self) -> bool {
-        unimplemented!()
+        !self.internal.task.is_complete()
     }
 }
 
@@ -186,7 +187,6 @@ where
         let dl_topic = DownlinkTopic::new(topic, internal);
         (dl_topic, sender)
     }
-
 }
 
 pub type QueueTopicReceiver<T> = MpscTopicReceiver<Event<T>>;
@@ -215,15 +215,16 @@ where
 
     let (stopped_tx, stopped_rx) = watch::channel(None);
 
+    let completed = Arc::new(AtomicBool::new(false));
+
     // The task that maintains the internal state of the lane.
-    // The task that maintains the internal state of the lane.
-    let task = DownlinkTask::new(init, cmd_sink, event_sink, stopped_tx);
+    let task = DownlinkTask::new(init, cmd_sink, event_sink, completed.clone(), stopped_tx);
 
     let lane_task = task.run(raw::make_operation_stream(update_stream), act_rx.fuse());
 
     let join_handle = tokio::task::spawn(lane_task);
 
-    let dl_task = raw::DownlinkTaskHandle::new(join_handle, stopped_rx);
+    let dl_task = raw::DownlinkTaskHandle::new(join_handle, stopped_rx, completed);
 
     let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 

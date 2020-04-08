@@ -20,8 +20,12 @@ use tokio::macros::support::Pin;
 use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};
 
-use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver, BufferedTopicReceiver, WeakBufferedDownlink};
-use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver, DroppingTopicReceiver, WeakDroppingDownlink};
+use crate::downlink::buffered::{
+    BufferedDownlink, BufferedReceiver, BufferedTopicReceiver, WeakBufferedDownlink,
+};
+use crate::downlink::dropping::{
+    DroppingDownlink, DroppingReceiver, DroppingTopicReceiver, WeakDroppingDownlink,
+};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver, WeakQueueDownlink};
 use crate::downlink::raw;
 use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
@@ -68,7 +72,6 @@ pub enum AnyWeakDownlink<Act, Upd> {
 }
 
 impl<Act, Upd> AnyWeakDownlink<Act, Upd> {
-
     pub fn upgrade(&self) -> Option<AnyDownlink<Act, Upd>> {
         match self {
             AnyWeakDownlink::Queue(qdl) => qdl.upgrade().map(AnyDownlink::Queue),
@@ -76,7 +79,6 @@ impl<Act, Upd> AnyWeakDownlink<Act, Upd> {
             AnyWeakDownlink::Buffered(bdl) => bdl.upgrade().map(AnyDownlink::Buffered),
         }
     }
-
 }
 
 impl<Act, Upd> AnyDownlink<Act, Upd> {

@@ -16,6 +16,7 @@ use super::*;
 use common::sink::item::ItemSender;
 use futures::task::{Context, Poll};
 use futures::StreamExt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -143,8 +144,10 @@ where
 
     let (stopped_tx, stopped_rx) = watch::channel(None);
 
+    let completed = Arc::new(AtomicBool::new(false));
+
     // The task that maintains the internal state of the lane.
-    let task = DownlinkTask::new(init, cmd_sink, event_sink, stopped_tx);
+    let task = DownlinkTask::new(init, cmd_sink, event_sink, completed.clone(), stopped_tx);
 
     let lane_task = task.run(raw::make_operation_stream(update_stream), act_rx.fuse());
 
@@ -153,6 +156,7 @@ where
     let dl_task = DownlinkTaskHandle {
         join_handle,
         stop_await: stopped_rx,
+        completed,
     };
 
     RawDownlink::new(act_tx, event_rx, dl_task)
@@ -162,17 +166,24 @@ where
 pub(in crate::downlink) struct DownlinkTaskHandle {
     join_handle: JoinHandle<Result<(), DownlinkError>>,
     pub(in crate::downlink) stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
+    completed: Arc<AtomicBool>,
 }
 
 impl DownlinkTaskHandle {
     pub(in crate::downlink) fn new(
         join_handle: JoinHandle<Result<(), DownlinkError>>,
         stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
+        completed: Arc<AtomicBool>,
     ) -> DownlinkTaskHandle {
         DownlinkTaskHandle {
             join_handle,
             stop_await,
+            completed,
         }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.completed.load(Ordering::SeqCst)
     }
 }
 
@@ -182,6 +193,7 @@ pub(in crate::downlink) struct DownlinkTask<State, Commands, Events> {
     model: Model<State>,
     cmd_sink: Commands,
     ev_sink: Events,
+    completed: Arc<AtomicBool>,
     stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
 }
 
@@ -212,12 +224,14 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
         init: State,
         cmd_sink: Commands,
         ev_sink: Events,
+        completed: Arc<AtomicBool>,
         stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
     ) -> Self {
         DownlinkTask {
             model: Model::new(init),
             cmd_sink,
             ev_sink,
+            completed,
             stop_event,
         }
     }
@@ -238,6 +252,7 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
             mut model,
             mut cmd_sink,
             mut ev_sink,
+            completed,
             stop_event,
         } = self;
 
@@ -316,6 +331,7 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
                 }
             }
         };
+        completed.store(true, Ordering::SeqCst);
         let _ = stop_event.broadcast(Some(result));
         result
     }

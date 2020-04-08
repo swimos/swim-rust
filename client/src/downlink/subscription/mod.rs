@@ -307,7 +307,6 @@ where
                                     Ok(self.create_new_value_downlink(init, path).await)
                                 }
                             }
-
                         }
                         _ => match self.map_downlinks.get(&path) {
                             Some(_) => Err(SubscriptionError::bad_kind(
