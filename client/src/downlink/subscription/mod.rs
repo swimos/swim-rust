@@ -15,7 +15,7 @@
 use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
 };
-use crate::downlink::any::{AnyDownlink, AnyReceiver};
+use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::watch_adapter::map::KeyedWatch;
@@ -47,7 +47,9 @@ pub mod envelopes;
 pub mod tests;
 
 pub type ValueDownlink = AnyDownlink<value::Action, SharedValue>;
+type WeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 pub type MapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
+type WeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
@@ -165,8 +167,8 @@ pub enum DownlinkRequest {
 
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
-    value_downlinks: HashMap<AbsolutePath, ValueDownlink>,
-    map_downlinks: HashMap<AbsolutePath, MapDownlink>,
+    value_downlinks: HashMap<AbsolutePath, WeakValueDownlink>,
+    map_downlinks: HashMap<AbsolutePath, WeakMapDownlink>,
     router: R,
 }
 
@@ -219,7 +221,7 @@ where
             }
         };
 
-        self.value_downlinks.insert(path, dl.clone());
+        self.value_downlinks.insert(path, dl.downgrade());
         (dl, rec)
     }
 
@@ -272,7 +274,7 @@ where
             }
         };
 
-        self.map_downlinks.insert(path, dl.clone());
+        self.map_downlinks.insert(path, dl.downgrade());
         (dl, rec)
     }
 
@@ -289,14 +291,23 @@ where
                 DownlinkRequest::Value(init, path, value_req) => {
                     let dl = match self.value_downlinks.get(&path) {
                         Some(dl) => {
-                            let mut dl_clone = dl.clone();
-                            match dl_clone.subscribe().await {
-                                Ok(rec) => Ok((dl_clone, rec)),
-                                Err(_) => {
+                            let maybe_dl = dl.upgrade();
+                            match maybe_dl {
+                                Some(mut dl_clone) if dl_clone.is_running() => {
+                                    match dl_clone.subscribe().await {
+                                        Ok(rec) => Ok((dl_clone, rec)),
+                                        Err(_) => {
+                                            self.value_downlinks.remove(&path);
+                                            Ok(self.create_new_value_downlink(init, path).await)
+                                        }
+                                    }
+                                }
+                                _ => {
                                     self.value_downlinks.remove(&path);
                                     Ok(self.create_new_value_downlink(init, path).await)
                                 }
                             }
+
                         }
                         _ => match self.map_downlinks.get(&path) {
                             Some(_) => Err(SubscriptionError::bad_kind(
@@ -311,10 +322,18 @@ where
                 DownlinkRequest::Map(path, map_req) => {
                     let dl = match self.map_downlinks.get(&path) {
                         Some(dl) => {
-                            let mut dl_clone = dl.clone();
-                            match dl_clone.subscribe().await {
-                                Ok(rec) => Ok((dl_clone, rec)),
-                                Err(_) => {
+                            let maybe_dl = dl.upgrade();
+                            match maybe_dl {
+                                Some(mut dl_clone) if dl_clone.is_running() => {
+                                    match dl_clone.subscribe().await {
+                                        Ok(rec) => Ok((dl_clone, rec)),
+                                        Err(_) => {
+                                            self.map_downlinks.remove(&path);
+                                            Ok(self.create_new_map_downlink(path).await)
+                                        }
+                                    }
+                                }
+                                _ => {
                                     self.map_downlinks.remove(&path);
                                     Ok(self.create_new_map_downlink(path).await)
                                 }

@@ -97,6 +97,10 @@ impl<Act, Upd> QueueDownlink<Act, Upd> {
     pub fn downgrade(&self) -> WeakQueueDownlink<Act, Upd> {
         WeakQueueDownlink(Arc::downgrade(&self.internal))
     }
+
+    pub fn is_running(&self) -> bool {
+        unimplemented!()
+    }
 }
 
 impl<Act, Upd> QueueDownlink<Act, Upd>
@@ -182,6 +186,7 @@ where
         let dl_topic = DownlinkTopic::new(topic, internal);
         (dl_topic, sender)
     }
+
 }
 
 pub type QueueTopicReceiver<T> = MpscTopicReceiver<Event<T>>;

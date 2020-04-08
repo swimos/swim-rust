@@ -95,6 +95,10 @@ impl<Act, Upd> DroppingDownlink<Act, Upd> {
     pub fn downgrade(&self) -> WeakDroppingDownlink<Act, Upd> {
         WeakDroppingDownlink(Arc::downgrade(&self.internal))
     }
+
+    pub fn is_running(&self) -> bool {
+        unimplemented!()
+    }
 }
 
 pub type DroppingTopicReceiver<T> = WatchTopicReceiver<Event<T>>;
@@ -178,6 +182,7 @@ where
         let dl_topic = DownlinkTopic::new(topic, internal);
         (dl_topic, sender)
     }
+
 }
 
 pub(in crate::downlink) fn make_downlink<M, A, State, Updates, Commands>(

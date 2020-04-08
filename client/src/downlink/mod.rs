@@ -115,6 +115,7 @@ impl<Act, Upd: Clone + 'static> Downlink<Act, Upd> for BoxedDownlink<Act, Upd> {
         let BoxedDownlink { topic, sink } = self;
         (topic, sink)
     }
+
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

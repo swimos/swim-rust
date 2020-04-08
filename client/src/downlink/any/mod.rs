@@ -20,9 +20,9 @@ use tokio::macros::support::Pin;
 use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};
 
-use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver, BufferedTopicReceiver};
-use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver, DroppingTopicReceiver};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver};
+use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver, BufferedTopicReceiver, WeakBufferedDownlink};
+use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver, DroppingTopicReceiver, WeakDroppingDownlink};
+use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver, WeakQueueDownlink};
 use crate::downlink::raw;
 use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
 use crate::downlink::{Downlink, DownlinkError, Event};
@@ -60,6 +60,25 @@ pub enum AnyDownlink<Act, Upd> {
     Buffered(BufferedDownlink<Act, Upd>),
 }
 
+#[derive(Debug)]
+pub enum AnyWeakDownlink<Act, Upd> {
+    Queue(WeakQueueDownlink<Act, Upd>),
+    Dropping(WeakDroppingDownlink<Act, Upd>),
+    Buffered(WeakBufferedDownlink<Act, Upd>),
+}
+
+impl<Act, Upd> AnyWeakDownlink<Act, Upd> {
+
+    pub fn upgrade(&self) -> Option<AnyDownlink<Act, Upd>> {
+        match self {
+            AnyWeakDownlink::Queue(qdl) => qdl.upgrade().map(AnyDownlink::Queue),
+            AnyWeakDownlink::Dropping(ddl) => ddl.upgrade().map(AnyDownlink::Dropping),
+            AnyWeakDownlink::Buffered(bdl) => bdl.upgrade().map(AnyDownlink::Buffered),
+        }
+    }
+
+}
+
 impl<Act, Upd> AnyDownlink<Act, Upd> {
     pub fn kind(&self) -> TopicKind {
         match self {
@@ -75,6 +94,22 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
             (AnyDownlink::Dropping(dl), AnyDownlink::Dropping(dr)) => dl.same_downlink(dr),
             (AnyDownlink::Buffered(bl), AnyDownlink::Buffered(br)) => bl.same_downlink(br),
             _ => false,
+        }
+    }
+
+    pub fn downgrade(&self) -> AnyWeakDownlink<Act, Upd> {
+        match self {
+            AnyDownlink::Queue(qdl) => AnyWeakDownlink::Queue(qdl.downgrade()),
+            AnyDownlink::Dropping(ddl) => AnyWeakDownlink::Dropping(ddl.downgrade()),
+            AnyDownlink::Buffered(bdl) => AnyWeakDownlink::Buffered(bdl.downgrade()),
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        match self {
+            AnyDownlink::Queue(qdl) => qdl.is_running(),
+            AnyDownlink::Dropping(ddl) => ddl.is_running(),
+            AnyDownlink::Buffered(bdl) => bdl.is_running(),
         }
     }
 }
