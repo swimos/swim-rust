@@ -23,6 +23,7 @@ use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
+use crate::router::RoutingError;
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::ItemSender;
@@ -92,16 +93,15 @@ impl Action {
 }
 
 /// Create a raw value downlink.
-pub fn create_raw_downlink<Err, Updates, Commands>(
+pub fn create_raw_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
 ) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     create_downlink(
         ValueModel::new(init),
@@ -112,7 +112,7 @@ where
 }
 
 /// Create a value downlink with an queue based multiplexing topic.
-pub fn create_queue_downlink<Err, Updates, Commands>(
+pub fn create_queue_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
@@ -123,9 +123,8 @@ pub fn create_queue_downlink<Err, Updates, Commands>(
     QueueReceiver<SharedValue>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
         ValueModel::new(init),
@@ -137,7 +136,7 @@ where
 }
 
 /// Create a value downlink with a dropping multiplexing topic.
-pub fn create_dropping_downlink<Err, Updates, Commands>(
+pub fn create_dropping_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
@@ -147,9 +146,8 @@ pub fn create_dropping_downlink<Err, Updates, Commands>(
     DroppingReceiver<SharedValue>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
         ValueModel::new(init),
@@ -160,7 +158,7 @@ where
 }
 
 /// Create a value downlink with an buffering multiplexing topic.
-pub fn create_buffered_downlink<Err, Updates, Commands>(
+pub fn create_buffered_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
@@ -171,9 +169,8 @@ pub fn create_buffered_downlink<Err, Updates, Commands>(
     BufferedReceiver<SharedValue>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
         ValueModel::new(init),

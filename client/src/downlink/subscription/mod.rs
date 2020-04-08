@@ -346,19 +346,21 @@ where
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     let buffer_size = config.buffer_size.get();
+    let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {
         MuxMode::Queue(n) => {
             let (dl, rec) =
-                value::create_queue_downlink(init, updates, cmd_sink, buffer_size, n.get());
+                value::create_queue_downlink(init, updates, dl_cmd_sink, buffer_size, n.get());
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
         MuxMode::Dropping => {
-            let (dl, rec) = value::create_dropping_downlink(init, updates, cmd_sink, buffer_size);
+            let (dl, rec) =
+                value::create_dropping_downlink(init, updates, dl_cmd_sink, buffer_size);
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
         MuxMode::Buffered(n) => {
             let (dl, rec) =
-                value::create_buffered_downlink(init, updates, cmd_sink, buffer_size, n.get());
+                value::create_buffered_downlink(init, updates, dl_cmd_sink, buffer_size, n.get());
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }
@@ -378,17 +380,18 @@ where
 {
     use crate::downlink::model::map::*;
     let buffer_size = config.buffer_size.get();
+    let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {
         MuxMode::Queue(n) => {
-            let (dl, rec) = create_queue_downlink(updates, cmd_sink, buffer_size, n.get());
+            let (dl, rec) = create_queue_downlink(updates, dl_cmd_sink, buffer_size, n.get());
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
         MuxMode::Dropping => {
-            let (dl, rec) = create_dropping_downlink(updates, cmd_sink, buffer_size);
+            let (dl, rec) = create_dropping_downlink(updates, dl_cmd_sink, buffer_size);
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
         MuxMode::Buffered(n) => {
-            let (dl, rec) = create_buffered_downlink(updates, cmd_sink, buffer_size, n.get());
+            let (dl, rec) = create_buffered_downlink(updates, dl_cmd_sink, buffer_size, n.get());
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }

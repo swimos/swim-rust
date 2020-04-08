@@ -17,6 +17,7 @@ use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
+use crate::downlink::{DownlinkState, Model, Operation, Response, StateMachine};
 
 fn make_model(state: DownlinkState, contents: ValMap) -> Model<MapModel> {
     Model {

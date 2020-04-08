@@ -20,11 +20,12 @@ use tokio::sync::mpsc;
 use common::model::{Attr, Item, Value};
 use common::request::Request;
 
-use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
-use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver};
+use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
+use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
+use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
-use crate::downlink::*;
+use crate::downlink::{BasicResponse, BasicStateMachine, Command, Event, Message, TransitionError};
+use crate::router::RoutingError;
 use common::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
 use form::Form;
@@ -509,21 +510,20 @@ impl ViewWithEvent {
 }
 
 /// Create a map downlink.
-pub fn create_raw_downlink<Err, Updates, Commands>(
+pub fn create_raw_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     crate::downlink::create_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
 }
 
 /// Create a map downlink with an queue based multiplexing topic.
-pub fn create_queue_downlink<Err, Updates, Commands>(
+pub fn create_queue_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -533,9 +533,8 @@ pub fn create_queue_downlink<Err, Updates, Commands>(
     QueueReceiver<ViewWithEvent>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
         MapModel::new(),
@@ -547,7 +546,7 @@ where
 }
 
 /// Create a value downlink with an dropping multiplexing topic.
-pub fn create_dropping_downlink<Err, Updates, Commands>(
+pub fn create_dropping_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -556,15 +555,14 @@ pub fn create_dropping_downlink<Err, Updates, Commands>(
     DroppingReceiver<ViewWithEvent>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
 }
 
 /// Create a value downlink with an buffered multiplexing topic.
-pub fn create_buffered_downlink<Err, Updates, Commands>(
+pub fn create_buffered_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -574,9 +572,8 @@ pub fn create_buffered_downlink<Err, Updates, Commands>(
     BufferedReceiver<ViewWithEvent>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, Err> + Send + 'static,
+    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
         MapModel::new(),
