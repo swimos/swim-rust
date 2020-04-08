@@ -64,6 +64,8 @@ pub enum AnyDownlink<Act, Upd> {
     Buffered(BufferedDownlink<Act, Upd>),
 }
 
+/// A weak handle on a downlink. Holding this will not keep the downlink running nor prevent
+/// its sender and topic from being dropped.
 #[derive(Debug)]
 pub enum AnyWeakDownlink<Act, Upd> {
     Queue(WeakQueueDownlink<Act, Upd>),
@@ -72,6 +74,7 @@ pub enum AnyWeakDownlink<Act, Upd> {
 }
 
 impl<Act, Upd> AnyWeakDownlink<Act, Upd> {
+    /// Attempt to upgrade this weak handle to a strong one.
     pub fn upgrade(&self) -> Option<AnyDownlink<Act, Upd>> {
         match self {
             AnyWeakDownlink::Queue(qdl) => qdl.upgrade().map(AnyDownlink::Queue),
@@ -99,6 +102,7 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
         }
     }
 
+    /// Downgrade this handle to a weak handle.
     pub fn downgrade(&self) -> AnyWeakDownlink<Act, Upd> {
         match self {
             AnyDownlink::Queue(qdl) => AnyWeakDownlink::Queue(qdl.downgrade()),
@@ -107,6 +111,7 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
         }
     }
 
+    /// Determine if the downlink is still running.
     pub fn is_running(&self) -> bool {
         match self {
             AnyDownlink::Queue(qdl) => qdl.is_running(),

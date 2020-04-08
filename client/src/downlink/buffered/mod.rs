@@ -45,10 +45,13 @@ struct Internal<Act, Upd> {
     task: DownlinkTaskHandle,
 }
 
+/// A weak handle on a buffered downlink. Holding this will not keep the downlink running nor prevent
+/// its sender and topic from being dropped.
 #[derive(Debug)]
 pub struct WeakBufferedDownlink<Act, Upd>(Weak<Internal<Act, Upd>>);
 
 impl<Act, Upd> WeakBufferedDownlink<Act, Upd> {
+    /// Attempt to upgrade this weak handle to a strong one.
     pub fn upgrade(&self) -> Option<BufferedDownlink<Act, Upd>> {
         self.0.upgrade().map(|internal| BufferedDownlink {
             input: internal.input.clone(),
@@ -93,10 +96,12 @@ impl<Act, Upd> BufferedDownlink<Act, Upd> {
         Arc::ptr_eq(&self.internal, &other.internal)
     }
 
+    /// Downgrade this handle to a weak handle.
     pub fn downgrade(&self) -> WeakBufferedDownlink<Act, Upd> {
         WeakBufferedDownlink(Arc::downgrade(&self.internal))
     }
 
+    /// Determine if the downlink is still running.
     pub fn is_running(&self) -> bool {
         !self.internal.task.is_complete()
     }
