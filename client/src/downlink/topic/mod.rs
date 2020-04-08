@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::downlink::DownlinkInternals;
 use common::topic::{Topic, TopicError};
 use futures::task::{Context, Poll};
 use futures::Stream;
@@ -19,7 +20,6 @@ use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::macros::support::Pin;
 use utilities::future::{Transformation, TransformedFuture};
-use crate::downlink::DownlinkInternals;
 
 /// A wrapper around a [`Topic`] containing a pointer to an associated downlink task.
 #[derive(Debug)]

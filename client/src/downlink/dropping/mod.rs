@@ -16,7 +16,8 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
-    raw, Command, Downlink, DownlinkError, DroppedError, Event, Message, StateMachine,
+    raw, Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
+    StateMachine,
 };
 use crate::router::RoutingError;
 use common::sink::item;
@@ -24,7 +25,8 @@ use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
-use std::sync::Arc;
+use std::fmt::{Debug, Formatter};
+use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
 use utilities::future::{SwimFutureExt, TransformedFuture};
 
@@ -34,7 +36,42 @@ use utilities::future::{SwimFutureExt, TransformedFuture};
 pub struct DroppingDownlink<Act, Upd> {
     input: mpsc::Sender<Act>,
     topic: WatchTopic<Event<Upd>>,
-    task: Arc<DownlinkTaskHandle>,
+    internal: Arc<Internal<Act, Upd>>,
+}
+
+struct Internal<Act, Upd> {
+    input: mpsc::Sender<Act>,
+    topic: WatchTopic<Event<Upd>>,
+    task: DownlinkTaskHandle,
+}
+
+#[derive(Debug)]
+pub struct WeakDroppingDownlink<Act, Upd>(Weak<Internal<Act, Upd>>);
+
+impl<Act, Upd> WeakDroppingDownlink<Act, Upd> {
+    pub fn upgrade(&self) -> Option<DroppingDownlink<Act, Upd>> {
+        self.0.upgrade().map(|internal| DroppingDownlink {
+            input: internal.input.clone(),
+            topic: internal.topic.clone(),
+            internal,
+        })
+    }
+}
+
+impl<Act, Upd> DownlinkInternals for Internal<Act, Upd>
+where
+    Act: Send,
+    Upd: Send + Sync,
+{
+    fn task_handle(&self) -> &DownlinkTaskHandle {
+        &self.task
+    }
+}
+
+impl<Act, Upd> Debug for Internal<Act, Upd> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<Queue Downlink Internals>")
+    }
 }
 
 impl<Act, Upd> Clone for DroppingDownlink<Act, Upd> {
@@ -42,7 +79,7 @@ impl<Act, Upd> Clone for DroppingDownlink<Act, Upd> {
         DroppingDownlink {
             input: self.input.clone(),
             topic: self.topic.clone(),
-            task: self.task.clone(),
+            internal: self.internal.clone(),
         }
     }
 }
@@ -53,7 +90,7 @@ impl<Act, Upd> DroppingDownlink<Act, Upd> {
     }
 
     pub fn same_downlink(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.task, &other.task)
+        Arc::ptr_eq(&self.internal, &other.internal)
     }
 }
 
@@ -62,6 +99,7 @@ pub type DroppingReceiver<T> = DownlinkReceiver<WatchTopicReceiver<Event<T>>>;
 
 impl<Act, Upd> DroppingDownlink<Act, Upd>
 where
+    Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     pub fn from_raw(
@@ -73,13 +111,18 @@ where
             task,
         } = raw;
         let (topic, first) = WatchTopic::new(receiver);
-        let dl_task = Arc::new(task);
-        let first_receiver = DownlinkReceiver::new(first, dl_task.clone());
+        let internal = Internal {
+            input: sender.clone(),
+            topic: topic.clone(),
+            task,
+        };
+        let internals_ptr = Arc::new(internal);
+        let first_receiver = DownlinkReceiver::new(first, internals_ptr.clone());
         (
             DroppingDownlink {
                 input: sender,
                 topic,
-                task: dl_task,
+                internal: internals_ptr,
             },
             first_receiver,
         )
@@ -88,6 +131,7 @@ where
 
 impl<Act, Upd> Topic<Event<Upd>> for DroppingDownlink<Act, Upd>
 where
+    Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = DroppingReceiver<Upd>;
@@ -97,7 +141,7 @@ where
     fn subscribe(&mut self) -> Self::Fut {
         self.topic
             .subscribe()
-            .transform(MakeReceiver::new(self.task.clone()))
+            .transform(MakeReceiver::new(self.internal.clone()))
     }
 }
 
@@ -122,9 +166,13 @@ where
     type DlSink = raw::Sender<mpsc::Sender<Act>>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
-        let DroppingDownlink { input, topic, task } = self;
-        let sender = raw::Sender::new(input, task.clone());
-        let dl_topic = DownlinkTopic::new(topic, task);
+        let DroppingDownlink {
+            input,
+            topic,
+            internal,
+        } = self;
+        let sender = raw::Sender::new(input, internal.clone());
+        let dl_topic = DownlinkTopic::new(topic, internal);
         (dl_topic, sender)
     }
 }

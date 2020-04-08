@@ -16,7 +16,9 @@ use super::raw;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
-use crate::downlink::{Command, Downlink, DownlinkError, DroppedError, Event, Message, StateMachine, DownlinkInternals};
+use crate::downlink::{
+    Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message, StateMachine,
+};
 use crate::router::RoutingError;
 use common::request::request_future::SendAndAwait;
 use common::request::Request;
@@ -25,10 +27,10 @@ use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
+use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
 use utilities::future::TransformedFuture;
-use std::fmt::{Debug, Formatter};
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.
@@ -49,17 +51,13 @@ struct Internal<Act, Upd> {
 pub struct WeakQueueDownlink<Act, Upd>(Weak<Internal<Act, Upd>>);
 
 impl<Act, Upd> WeakQueueDownlink<Act, Upd> {
-
     pub fn upgrade(&self) -> Option<QueueDownlink<Act, Upd>> {
-        self.0.upgrade().map(|internal| {
-            QueueDownlink {
-                input: internal.input.clone(),
-                topic: internal.topic.clone(),
-                internal
-            }
+        self.0.upgrade().map(|internal| QueueDownlink {
+            input: internal.input.clone(),
+            topic: internal.topic.clone(),
+            internal,
         })
     }
-
 }
 
 impl<Act, Upd> DownlinkInternals for Internal<Act, Upd>
@@ -176,7 +174,11 @@ where
     type DlSink = raw::Sender<mpsc::Sender<Act>>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
-        let QueueDownlink { input, topic, internal } = self;
+        let QueueDownlink {
+            input,
+            topic,
+            internal,
+        } = self;
         let sender = raw::Sender::new(input, internal.clone());
         let dl_topic = DownlinkTopic::new(topic, internal);
         (dl_topic, sender)

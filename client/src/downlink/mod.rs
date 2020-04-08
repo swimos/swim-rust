@@ -38,11 +38,10 @@ pub mod topic;
 pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
+use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::topic::{BoxTopic, Topic, TopicError};
 use futures::future::BoxFuture;
-use crate::downlink::raw::DownlinkTaskHandle;
-use std::ops::Deref;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -76,24 +75,12 @@ pub trait Downlink<Act, Upd: Clone>: Topic<Upd> + ItemSender<Act, DownlinkError>
 }
 
 pub(in crate::downlink) trait DownlinkInternals: Send + Sync + Debug {
-
     fn task_handle(&self) -> &DownlinkTaskHandle;
-
 }
 
 impl DownlinkInternals for DownlinkTaskHandle {
     fn task_handle(&self) -> &DownlinkTaskHandle {
         self
-    }
-}
-
-impl<D> DownlinkInternals for D
-where
-    D: Deref + Send + Sync + Debug + 'static,
-    D::Target: DownlinkInternals + 'static,
-{
-    fn task_handle(&self) -> &DownlinkTaskHandle {
-        (**self).task_handle()
     }
 }
 
