@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{Router, RoutingError};
+use crate::router::{Router, RouterEvent, RoutingError};
 use common::sink::item::drop_all::{drop_all, DropAll};
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
@@ -23,7 +23,7 @@ use futures::stream::{pending, Pending};
 pub struct StubRouter {}
 
 impl Router for StubRouter {
-    type ConnectionStream = Pending<Envelope>;
+    type ConnectionStream = Pending<RouterEvent>;
     type ConnectionSink = DropAll<Envelope, RoutingError>;
     type GeneralSink = DropAll<(String, Envelope), RoutingError>;
     type ConnectionFut = Ready<(Self::ConnectionSink, Self::ConnectionStream)>;

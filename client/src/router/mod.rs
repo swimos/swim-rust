@@ -19,7 +19,7 @@ use crate::router::envelope_routing_task::{
     HostEnvelopeTaskRequestSender, RequestEnvelopeRoutingHostTask,
 };
 use crate::router::message_routing_task::{
-    HostMessageNewTaskRequestSender, HostMessageRegisterTaskRequestSender,
+    ConnectionResponse, HostMessageNewTaskRequestSender, HostMessageRegisterTaskRequestSender,
     RequestMessageRoutingHostTask,
 };
 use common::request::request_future::SendAndAwait;
@@ -47,7 +47,7 @@ pub mod message_routing_task;
 mod tests;
 
 pub trait Router: Send {
-    type ConnectionStream: Stream<Item = Envelope> + Send + 'static;
+    type ConnectionStream: Stream<Item = RouterEvent> + Send + 'static;
     type ConnectionSink: ItemSender<Envelope, RoutingError> + Send + 'static;
     type GeneralSink: ItemSender<(String, Envelope), RoutingError> + Send + 'static;
 
@@ -145,25 +145,41 @@ impl RequestConnectionsTask {
                 .recv()
                 .await
                 .ok_or(RoutingError::ConnectionError)?;
-            let (connection_sender, connection_receiver) = connection_pool
+
+            match connection_pool
                 .request_connection(host.clone())
                 .map_err(|_| RoutingError::ConnectionError)?
                 .await
                 .map_err(|_| RoutingError::ConnectionError)?
-                .map_err(|_| RoutingError::ConnectionError)?;
+            {
+                Ok((connection_sender, connection_receiver)) => {
+                    connection_tx
+                        .send(connection_sender)
+                        .map_err(|_| RoutingError::ConnectionError)?;
 
-            connection_tx
-                .send(connection_sender)
-                .map_err(|_| RoutingError::ConnectionError)?;
+                    if let Some(receiver) = connection_receiver {
+                        message_routing_new_task_request_tx
+                            .send(ConnectionResponse::Success((host, receiver)))
+                            .await
+                            .map_err(|_| RoutingError::ConnectionError)?
+                    }
+                }
 
-            if let Some(receiver) = connection_receiver {
-                message_routing_new_task_request_tx
-                    .send((host, receiver))
+                Err(_) => message_routing_new_task_request_tx
+                    .send(ConnectionResponse::Failure(host))
                     .await
-                    .map_err(|_| RoutingError::ConnectionError)?
+                    .map_err(|_| RoutingError::ConnectionError)?,
             }
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RouterEvent {
+    Envelope(Envelope),
+    ConnectionClosed,
+    NotFound,
+    Stopping,
 }
 
 pub struct SwimRouterConnection {
@@ -172,8 +188,8 @@ pub struct SwimRouterConnection {
     host_url: url::Url,
     envelope_task_tx: Option<oneshot::Sender<mpsc::Sender<Envelope>>>,
     envelope_task_rx: oneshot::Receiver<mpsc::Sender<Envelope>>,
-    envelope_tx: Option<mpsc::Sender<Envelope>>,
-    envelope_rx: Option<mpsc::Receiver<Envelope>>,
+    event_tx: Option<mpsc::Sender<RouterEvent>>,
+    event_rx: Option<mpsc::Receiver<RouterEvent>>,
 }
 
 impl Unpin for SwimRouterConnection {}
@@ -186,7 +202,7 @@ impl SwimRouterConnection {
         buffer_size: usize,
     ) -> Self {
         let (envelope_task_tx, envelope_task_rx) = oneshot::channel();
-        let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size);
+        let (event_tx, event_rx) = mpsc::channel(buffer_size);
 
         SwimRouterConnection {
             envelope_task_request_tx,
@@ -194,8 +210,8 @@ impl SwimRouterConnection {
             host_url,
             envelope_task_tx: Some(envelope_task_tx),
             envelope_task_rx,
-            envelope_tx: Some(envelope_tx),
-            envelope_rx: Some(envelope_rx),
+            event_tx: Some(event_tx),
+            event_rx: Some(event_rx),
         }
     }
 }
@@ -203,7 +219,7 @@ impl SwimRouterConnection {
 impl Future for SwimRouterConnection {
     type Output = (
         SenderErrInto<mpsc::Sender<Envelope>, RoutingError>,
-        mpsc::Receiver<Envelope>,
+        mpsc::Receiver<RouterEvent>,
     );
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -213,8 +229,8 @@ impl Future for SwimRouterConnection {
             host_url,
             envelope_task_tx,
             envelope_task_rx,
-            envelope_tx,
-            envelope_rx,
+            event_tx,
+            event_rx,
         } = &mut self.get_mut();
 
         //Todo refactor this to remove duplication
@@ -238,7 +254,7 @@ impl Future for SwimRouterConnection {
             .poll_ready(cx)
             .map(|r| match r {
                 Ok(_) => {
-                    if let Some(tx) = envelope_tx.take() {
+                    if let Some(tx) = event_tx.take() {
                         match message_register_task_request_tx.try_send((host_url.clone(), tx)) {
                             Ok(_) => (),
                             _ => panic!("Error."),
@@ -255,7 +271,7 @@ impl Future for SwimRouterConnection {
         oneshot::Receiver::poll(Pin::new(envelope_task_rx), cx).map(|r| match r {
             Ok(envelope_tx) => (
                 envelope_tx.map_err_into::<RoutingError>(),
-                envelope_rx.take().unwrap(),
+                event_rx.take().unwrap(),
             ),
             _ => panic!("Error."),
         })
@@ -268,7 +284,7 @@ pub type ConnectionFuture<Str, Snk> =
     SendAndAwait<ConnReq<Snk, Str>, Result<(Snk, Str), ConnectionError>>;
 
 impl Router for SwimRouter {
-    type ConnectionStream = mpsc::Receiver<Envelope>;
+    type ConnectionStream = mpsc::Receiver<RouterEvent>;
     type ConnectionSink = SenderErrInto<mpsc::Sender<Envelope>, RoutingError>;
     type GeneralSink = SenderErrInto<mpsc::Sender<(String, Envelope)>, RoutingError>;
     type ConnectionFut = SwimRouterConnection;

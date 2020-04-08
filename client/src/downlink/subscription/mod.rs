@@ -18,7 +18,7 @@ use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
-use crate::router::Router;
+use crate::router::{Router, RouterEvent};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::ItemSender;
@@ -207,7 +207,10 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await;
 
         //TODO Do something with invalid envelopes rather than discarding them.
-        let updates = incoming.filter_map(|env| envelopes::value::try_from_envelope(env).ok());
+        let updates = incoming.filter_map(|event| match event {
+            RouterEvent::Envelope(env) => envelopes::value::try_from_envelope(env).ok(),
+            _ => None,
+        });
 
         let sink_path = path.clone();
         let cmd_sink = sink
@@ -240,7 +243,10 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await;
 
         //TODO Do something with invalid envelopes rather than discarding them.
-        let updates = incoming.filter_map(|env| envelopes::map::try_from_envelope(env).ok());
+        let updates = incoming.filter_map(|event| match event {
+            RouterEvent::Envelope(env) => envelopes::map::try_from_envelope(env).ok(),
+            _ => None,
+        });
 
         let sink_path = path.clone();
         let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {

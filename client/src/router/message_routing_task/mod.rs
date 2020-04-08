@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::RoutingError;
+use crate::router::{RouterEvent, RoutingError};
 use common::warp::envelope::Envelope;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -20,12 +20,17 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
-pub type HostMessageNewTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Receiver<Message>)>;
-pub type HostMessageNewTaskRequestReceiver = mpsc::Receiver<(url::Url, mpsc::Receiver<Message>)>;
+pub enum ConnectionResponse {
+    Success((url::Url, mpsc::Receiver<Message>)),
+    Failure(url::Url),
+}
 
-pub type HostMessageRegisterTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Sender<Envelope>)>;
+pub type HostMessageNewTaskRequestSender = mpsc::Sender<ConnectionResponse>;
+pub type HostMessageNewTaskRequestReceiver = mpsc::Receiver<ConnectionResponse>;
+
+pub type HostMessageRegisterTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Sender<RouterEvent>)>;
 pub type HostMessageRegisterTaskRequestReceiver =
-    mpsc::Receiver<(url::Url, mpsc::Sender<Envelope>)>;
+    mpsc::Receiver<(url::Url, mpsc::Sender<RouterEvent>)>;
 
 pub struct RequestMessageRoutingHostTask {
     new_task_request_rx: HostMessageNewTaskRequestReceiver,
@@ -67,8 +72,11 @@ impl RequestMessageRoutingHostTask {
         loop {
             let result = tokio::select! {
 
-                Some((url, channel)) = new_task_request_rx.recv() => {
-                    Some((url.to_string(), RequestTaskType::Connection(channel)))
+                Some(connection_response) = new_task_request_rx.recv() => {
+                     match connection_response{
+                        ConnectionResponse::Success((url, channel)) => Some((url.to_string(), RequestTaskType::Connection(channel))),
+                        ConnectionResponse::Failure(url) => Some((url.to_string(), RequestTaskType::Unreachable)),
+                    }
                 }
 
                 Some((url, channel)) = register_task_request_rx.recv() => {
@@ -100,8 +108,10 @@ impl RequestMessageRoutingHostTask {
 
 pub enum RequestTaskType {
     Connection(mpsc::Receiver<Message>),
-    Subscriber(mpsc::Sender<Envelope>),
+    Subscriber(mpsc::Sender<RouterEvent>),
     Message(Message),
+    Disconnect,
+    Unreachable,
 }
 
 type RequestTaskTypeSender = mpsc::Sender<RequestTaskType>;
@@ -122,7 +132,7 @@ impl RouteHostMessagesTask {
     pub async fn run(self) -> Result<(), RoutingError> {
         let RouteHostMessagesTask { mut task_rx } = self;
 
-        let mut subscribers: Vec<mpsc::Sender<Envelope>> = Vec::new();
+        let mut subscribers: Vec<mpsc::Sender<RouterEvent>> = Vec::new();
         let mut connection = None;
 
         loop {
@@ -134,9 +144,11 @@ impl RouteHostMessagesTask {
                         connection = Some(message_rx);
                     }
 
-                    RequestTaskType::Subscriber(envelope_tx) => {
-                        subscribers.push(envelope_tx);
+                    RequestTaskType::Subscriber(event_tx) => {
+                        subscribers.push(event_tx);
                     }
+
+                    RequestTaskType::Unreachable => println!("Unreachable Host"),
 
                     _ => {}
                 }
@@ -147,8 +159,11 @@ impl RouteHostMessagesTask {
                         Some(task_request)
                     }
 
-                    Some(message) =  connection.as_mut().ok_or(RoutingError::ConnectionError)?.recv() => {
-                        Some(RequestTaskType::Message(message))
+                    maybe_message = connection.as_mut().ok_or(RoutingError::ConnectionError)?.recv() => {
+                        match maybe_message{
+                            Some(message) => Some(RequestTaskType::Message(message)),
+                            None => Some(RequestTaskType::Disconnect),
+                        }
                     }
 
                     else => None,
@@ -161,17 +176,20 @@ impl RouteHostMessagesTask {
                         connection = Some(message_rx);
                     }
 
-                    RequestTaskType::Subscriber(envelope_tx) => {
-                        subscribers.push(envelope_tx);
+                    RequestTaskType::Subscriber(event_tx) => {
+                        subscribers.push(event_tx);
                     }
 
                     RequestTaskType::Message(message) => {
                         //Todo parse the message to envelope
                         println!("{:?}", message);
 
-                        let synced =
-                            Envelope::synced(String::from("node_uri"), String::from("lane_uri"));
+                        let synced = RouterEvent::Envelope(Envelope::synced(
+                            String::from("node_uri"),
+                            String::from("lane_uri"),
+                        ));
 
+                        //Todo this should send envelopes based on lane and node
                         for subscriber in subscribers.iter_mut() {
                             subscriber
                                 .send(synced.clone())
@@ -179,6 +197,20 @@ impl RouteHostMessagesTask {
                                 .map_err(|_| RoutingError::ConnectionError)?;
                         }
                     }
+
+                    RequestTaskType::Disconnect => {
+                        println!("Connection closed");
+                        connection = None;
+
+                        for subscriber in subscribers.iter_mut() {
+                            subscriber
+                                .send(RouterEvent::ConnectionClosed)
+                                .await
+                                .map_err(|_| RoutingError::ConnectionError)?;
+                        }
+                    }
+
+                    RequestTaskType::Unreachable => println!("Unreachable Host"),
                 }
             }
         }
