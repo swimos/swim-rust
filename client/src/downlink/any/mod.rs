@@ -135,14 +135,13 @@ pub enum AnySubFuture<Upd: Send + 'static> {
 impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
     type Output = Result<AnyReceiver<Upd>, TopicError>;
 
-    //noinspection RsTypeCheck
     #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         #[project]
         match self.project() {
-            AnySubFuture::Queue(fut) => fut.poll(cx).map_ok(AnyReceiver::Queue).map_err(Into::into),
-            AnySubFuture::Dropping(fut) => fut.poll(cx).map_ok(AnyReceiver::Dropping),
-            AnySubFuture::Buffered(fut) => fut.poll(cx).map_ok(AnyReceiver::Buffered),
+            AnySubFuture::Queue(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Queue)),
+            AnySubFuture::Dropping(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Dropping)),
+            AnySubFuture::Buffered(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Buffered)),
         }
     }
 }

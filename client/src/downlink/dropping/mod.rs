@@ -70,7 +70,7 @@ where
 
 impl<Act, Upd> Debug for Internal<Act, Upd> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<Queue Downlink Internals>")
+        write!(f, "<Dropping Downlink Internals>")
     }
 }
 
@@ -91,6 +91,10 @@ impl<Act, Upd> DroppingDownlink<Act, Upd> {
 
     pub fn same_downlink(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.internal, &other.internal)
+    }
+
+    pub fn downgrade(&self) -> WeakDroppingDownlink<Act, Upd> {
+        WeakDroppingDownlink(Arc::downgrade(&self.internal))
     }
 }
 
