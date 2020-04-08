@@ -20,8 +20,7 @@ use crate::downlink::{
     StateMachine,
 };
 use crate::router::RoutingError;
-use common::sink::item;
-use common::sink::item::{ItemSender, ItemSink, MpscSend};
+use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};

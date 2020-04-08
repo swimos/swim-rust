@@ -22,8 +22,7 @@ use crate::downlink::{
 use crate::router::RoutingError;
 use common::request::request_future::SendAndAwait;
 use common::request::Request;
-use common::sink::item;
-use common::sink::item::{ItemSender, ItemSink, MpscSend};
+use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
