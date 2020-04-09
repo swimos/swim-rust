@@ -25,8 +25,8 @@ use tokio_util::codec::Encoder;
 use crate::model::parser::is_identifier;
 
 pub mod parser;
+pub mod schema;
 
-#[allow(clippy::redundant_clone)]
 #[cfg(test)]
 mod tests;
 
@@ -76,6 +76,17 @@ pub enum Value {
     /// A compound [`Value`] consisting of any number of [`Attr`]s and [`Item`]s.
     ///
     Record(Vec<Attr>, Vec<Item>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueKind {
+    Extant,
+    Int32,
+    Int64,
+    Float64,
+    Boolean,
+    Text,
+    Record,
 }
 
 #[allow(clippy::float_cmp, clippy::cognitive_complexity)]
@@ -222,6 +233,18 @@ impl Value {
                 }
                 _ => Ordering::Less,
             },
+        }
+    }
+
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            Value::Extant => ValueKind::Extant,
+            Value::Int32Value(_) => ValueKind::Int32,
+            Value::Int64Value(_) => ValueKind::Int64,
+            Value::Float64Value(_) => ValueKind::Float64,
+            Value::BooleanValue(_) => ValueKind::Boolean,
+            Value::Text(_) => ValueKind::Text,
+            Value::Record(_, _) => ValueKind::Record,
         }
     }
 }
