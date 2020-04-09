@@ -19,6 +19,7 @@ use std::sync::{Arc, Weak};
 
 use crate::request::request_future::{send_and_await, RequestError, SendAndAwait};
 use crate::request::Request;
+use crate::sink::item::ItemSink;
 use either::Either;
 use futures::future::{ready, BoxFuture};
 use futures::future::{ErrInto, Ready};
@@ -107,7 +108,7 @@ impl<T: Clone> Stream for WatchStream<T> {
 /// output record since the last time the polled and so may (and likely will) miss outputs.
 #[derive(Debug)]
 pub struct WatchTopic<T> {
-    receiver: Weak<watch::Receiver<Option<T>>>,
+    receiver: watch::Receiver<Option<T>>,
 }
 
 impl<T> Clone for WatchTopic<T> {
@@ -120,7 +121,6 @@ impl<T> Clone for WatchTopic<T> {
 
 #[derive(Clone, Debug)]
 pub struct WatchTopicReceiver<T> {
-    _owner: Arc<watch::Receiver<Option<T>>>,
     receiver: WatchStream<T>,
 }
 
@@ -129,7 +129,35 @@ pub struct WatchTopicReceiver<T> {
 /// than they are consumed) the topic will begin discarding records, starting with the oldest.
 #[derive(Debug)]
 pub struct BroadcastTopic<T> {
-    pub sender: broadcast::Sender<T>,
+    pub sender: Arc<broadcast::Sender<T>>,
+}
+
+#[derive(Debug)]
+pub struct BroadcastSender<T> {
+    sender: Weak<broadcast::Sender<T>>,
+}
+
+impl<T> BroadcastSender<T> {
+    pub fn send(&self, value: T) -> Result<(), broadcast::SendError<T>> {
+        match self.sender.upgrade() {
+            Some(inner) => {
+                //A failure here just means that there are no subscribers so we can safely
+                //ignore it.
+                let _ = broadcast::Sender::send(&*inner, value);
+                Ok(())
+            }
+            _ => Err(broadcast::SendError(value)), //The topic and all subscribers have been dropped.
+        }
+    }
+}
+
+impl<'a, T: Send + 'a> ItemSink<'a, T> for BroadcastSender<T> {
+    type Error = broadcast::SendError<T>;
+    type SendFuture = Ready<Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        ready(self.send(value))
+    }
 }
 
 impl<T> Clone for BroadcastTopic<T> {
@@ -143,24 +171,26 @@ impl<T> Clone for BroadcastTopic<T> {
 impl<T: Clone> BroadcastTopic<T> {
     pub fn new(
         buffer_size: usize,
-    ) -> (
-        BroadcastTopic<T>,
-        broadcast::Sender<T>,
-        BroadcastReceiver<T>,
-    ) {
+    ) -> (BroadcastTopic<T>, BroadcastSender<T>, BroadcastReceiver<T>) {
         let (tx, rx) = broadcast::channel(buffer_size);
-        let topic = BroadcastTopic { sender: tx.clone() };
+        let inner = Arc::new(tx);
+        let topic = BroadcastTopic {
+            sender: inner.clone(),
+        };
         let rec = BroadcastReceiver {
-            sender: tx.clone(),
+            sender: inner.clone(),
             receiver: rx,
         };
-        (topic, tx, rec)
+        let sender = BroadcastSender {
+            sender: Arc::downgrade(&inner),
+        };
+        (topic, sender, rec)
     }
 }
 
 #[derive(Debug)]
 pub struct BroadcastReceiver<T> {
-    sender: broadcast::Sender<T>,
+    sender: Arc<broadcast::Sender<T>>,
     receiver: broadcast::Receiver<T>,
 }
 
@@ -168,16 +198,12 @@ type SubRequest<T> = Request<MpscTopicReceiver<T>>;
 
 #[derive(Debug)]
 pub struct MpscTopicReceiver<T> {
-    sentinel: Option<Arc<()>>,
     receiver: mpsc::Receiver<T>,
 }
 
 impl<T> MpscTopicReceiver<T> {
-    fn new(receiver: mpsc::Receiver<T>, sentinel: Arc<()>) -> MpscTopicReceiver<T> {
-        MpscTopicReceiver {
-            receiver,
-            sentinel: Some(sentinel),
-        }
+    fn new(receiver: mpsc::Receiver<T>) -> MpscTopicReceiver<T> {
+        MpscTopicReceiver { receiver }
     }
 
     pub async fn recv(&mut self) -> Option<T> {
@@ -190,7 +216,6 @@ impl<T> MpscTopicReceiver<T> {
 
     pub fn close(&mut self) {
         self.receiver.close();
-        self.sentinel.take();
     }
 }
 
@@ -228,15 +253,14 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
         let (sub_tx, sub_rx) = mpsc::channel(1);
         let (tx, rx) = mpsc::channel(buffer_size);
 
-        let sentinel = Arc::new(());
-        let task_fut = mpsc_topic_task(input, tx, Arc::downgrade(&sentinel), sub_rx, buffer_size);
+        let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size);
         let task = tokio::task::spawn(task_fut);
         (
             MpscTopic {
                 sub_sender: sub_tx,
                 task: Arc::new(task),
             },
-            MpscTopicReceiver::new(rx, sentinel),
+            MpscTopicReceiver::new(rx),
         )
     }
 }
@@ -244,12 +268,8 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
 impl<T: Clone + Send> WatchTopic<T> {
     pub fn new(receiver: watch::Receiver<Option<T>>) -> (Self, WatchTopicReceiver<T>) {
         let duplicate = receiver.clone();
-        let owner = Arc::new(receiver);
-        let topic = WatchTopic {
-            receiver: Arc::downgrade(&owner),
-        };
+        let topic = WatchTopic { receiver };
         let rec = WatchTopicReceiver {
-            _owner: owner,
             receiver: WatchStream { inner: duplicate },
         };
         (topic, rec)
@@ -269,16 +289,11 @@ impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
     type Fut = Ready<Result<Self::Receiver, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        ready(match self.receiver.upgrade() {
-            Some(owner) => {
-                let receiver = owner.as_ref().clone();
-                Ok(WatchTopicReceiver {
-                    _owner: owner,
-                    receiver: WatchStream { inner: receiver },
-                })
-            }
-            _ => Err(TopicError::TopicClosed),
-        })
+        ready(Ok(WatchTopicReceiver {
+            receiver: WatchStream {
+                inner: self.receiver.clone(),
+            },
+        }))
     }
 }
 
@@ -317,14 +332,10 @@ impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     type Fut = Ready<Result<Self::Receiver, TopicError>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        let result = if self.sender.receiver_count() == 0 {
-            Err(TopicError::TopicClosed)
-        } else {
-            Ok(BroadcastReceiver {
-                sender: self.sender.clone(),
-                receiver: self.sender.subscribe(),
-            })
-        };
+        let result = Ok(BroadcastReceiver {
+            sender: self.sender.clone(),
+            receiver: self.sender.subscribe(),
+        });
         ready(result)
     }
 }
@@ -346,7 +357,6 @@ impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
 async fn mpsc_topic_task<T: Clone>(
     input: mpsc::Receiver<T>,
     init_sender: mpsc::Sender<T>,
-    sentinel: Weak<()>,
     subscriptions: mpsc::Receiver<SubRequest<T>>,
     buffer_size: usize,
 ) {
@@ -361,17 +371,14 @@ async fn mpsc_topic_task<T: Clone>(
             value = in_fused.next() => value.map(Either::Right),
         };
         match item {
-            Some(Either::Left(req)) => match sentinel.upgrade() {
-                Some(rec_sentinel) => {
-                    let (tx, rx) = mpsc::channel(buffer_size);
-                    if req.send(MpscTopicReceiver::new(rx, rec_sentinel)).is_ok() {
-                        outputs.push(tx);
-                    }
+            Some(Either::Left(req)) => {
+                let (tx, rx) = mpsc::channel(buffer_size);
+                if req.send(MpscTopicReceiver::new(rx)).is_ok() {
+                    outputs.push(tx);
                 }
-                _ => break,
-            },
+            }
             Some(Either::Right(value)) => match outputs.len() {
-                0 => break,
+                0 => {}
                 1 => {
                     let result = outputs[0].send(value).await;
                     if result.is_err() {
