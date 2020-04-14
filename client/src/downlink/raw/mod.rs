@@ -195,7 +195,7 @@ impl DownlinkTaskHandle {
     }
 
     pub fn is_complete(&self) -> bool {
-        self.completed.load(Ordering::SeqCst)
+        self.completed.load(Ordering::Acquire)
     }
 }
 
@@ -343,7 +343,7 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
                 }
             }
         };
-        completed.store(true, Ordering::SeqCst);
+        completed.store(true, Ordering::Release);
         let _ = stop_event.broadcast(Some(result));
         result
     }
