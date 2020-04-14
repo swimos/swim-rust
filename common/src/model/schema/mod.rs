@@ -252,6 +252,7 @@ impl RecordLayout {
 #[derive(Clone, Debug, PartialEq)]
 pub enum StandardSchema {
     OfKind(ValueKind),
+    Equal(Value),
     InRangeInt {
         min: Option<(i64, bool)>,
         max: Option<(i64, bool)>,
@@ -270,6 +271,8 @@ pub enum StandardSchema {
     AllItems(Box<ItemSchema>),
     NumAttrs(usize),
     NumItems(usize),
+    Anything,
+    Nothing,
 }
 
 impl Schema<Value> for StandardSchema {
@@ -278,7 +281,7 @@ impl Schema<Value> for StandardSchema {
             StandardSchema::OfKind(kind) => &value.kind() == kind,
             StandardSchema::InRangeInt { min, max } => in_int_range(value, min, max),
             StandardSchema::InRangeFloat { min, max } => in_float_range(value, min, max),
-            StandardSchema::NonNan => as_f64(value).map(f64::is_nan).unwrap_or(false),
+            StandardSchema::NonNan => as_f64(value).map(|x| !f64::is_nan(x)).unwrap_or(false),
             StandardSchema::Finite => as_f64(value).map(f64::is_finite).unwrap_or(false),
             StandardSchema::Not(p) => !p.matches(value),
             StandardSchema::And(ps) => ps.iter().all(|schema| schema.matches(value)),
@@ -294,8 +297,71 @@ impl Schema<Value> for StandardSchema {
                 .unwrap_or(false),
             StandardSchema::Text(text_schema) => text_schema.matches_value(value),
             StandardSchema::Layout(layout) => layout.matches(value),
+            StandardSchema::Anything => true,
+            StandardSchema::Nothing => false,
+            StandardSchema::Equal(v) => value == v,
         }
     }
+}
+
+impl StandardSchema {
+
+    pub fn eq<T: Into<Value>>(value: T) -> Self {
+        StandardSchema::Equal(value.into())
+    }
+
+    pub fn inclusive_int_range(min: i64, max: i64) -> Self {
+        StandardSchema::InRangeInt { min: Some((min, true)), max: Some((max, true)) }
+    }
+
+    pub fn exclusive_int_range(min: i64, max: i64) -> Self {
+        StandardSchema::InRangeInt { min: Some((min, false)), max: Some((max, false)) }
+    }
+
+    pub fn int_range(min: i64, max: i64) -> Self {
+        StandardSchema::InRangeInt { min: Some((min, true)), max: Some((max, false)) }
+    }
+
+    pub fn until_int(n: i64, inclusive: bool) -> Self {
+        StandardSchema::InRangeInt { min: None, max: Some((n, inclusive)) }
+    }
+
+    pub fn after_int(n: i64, inclusive: bool) -> Self {
+        StandardSchema::InRangeInt { min: Some((n, inclusive)), max: None }
+    }
+
+    pub fn inclusive_float_range(min: f64, max: f64) -> Self {
+        StandardSchema::InRangeFloat { min: Some((min, true)), max: Some((max, true)) }
+    }
+
+    pub fn exclusive_float_range(min: f64, max: f64) -> Self {
+        StandardSchema::InRangeFloat { min: Some((min, false)), max: Some((max, false)) }
+    }
+
+    pub fn float_range(min: f64, max: f64) -> Self {
+        StandardSchema::InRangeFloat { min: Some((min, true)), max: Some((max, false)) }
+    }
+
+    pub fn until_float(x: f64, inclusive: bool) -> Self {
+        StandardSchema::InRangeFloat { min: None, max: Some((x, inclusive)) }
+    }
+
+    pub fn after_float(x: f64, inclusive: bool) -> Self {
+        StandardSchema::InRangeFloat { min: Some((x, inclusive)), max: None }
+    }
+
+    pub fn negate(self) -> Self {
+        StandardSchema::Not(Box::new(self))
+    }
+
+    pub fn and(self, other: Self) -> Self {
+        StandardSchema::And(vec![self, other])
+    }
+
+    pub fn or(self, other: Self) -> Self {
+        StandardSchema::Or(vec![self, other])
+    }
+
 }
 
 fn as_i64(value: &Value) -> Option<i64> {

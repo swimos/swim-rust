@@ -78,7 +78,7 @@ pub enum Value {
     Record(Vec<Attr>, Vec<Item>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ValueKind {
     Extant,
     Int32,
