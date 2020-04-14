@@ -85,6 +85,22 @@ pub struct AttrSchema {
     value_schema: StandardSchema,
 }
 
+impl AttrSchema {
+    pub fn new(name: TextSchema, value: StandardSchema) -> Self {
+        AttrSchema {
+            name_schema: name,
+            value_schema: value,
+        }
+    }
+
+    pub fn tag(name: TextSchema) -> Self {
+        AttrSchema {
+            name_schema: name,
+            value_schema: StandardSchema::OfKind(ValueKind::Extant),
+        }
+    }
+}
+
 impl Schema<Attr> for AttrSchema {
     fn matches(&self, attr: &Attr) -> bool {
         self.name_schema.matches_str(attr.name.borrow()) && self.value_schema.matches(&attr.value)
@@ -95,6 +111,15 @@ impl Schema<Attr> for AttrSchema {
 pub struct SlotSchema {
     key_schema: StandardSchema,
     value_schema: StandardSchema,
+}
+
+impl SlotSchema {
+    pub fn new(key: StandardSchema, value: StandardSchema) -> Self {
+        SlotSchema {
+            key_schema: key,
+            value_schema: value,
+        }
+    }
 }
 
 impl Schema<Item> for SlotSchema {
@@ -229,19 +254,29 @@ pub struct RecordLayout {
 }
 
 impl RecordLayout {
-    pub fn matches(&self, value: &Value) -> bool {
+    pub fn new(attrs: Option<Attributes>, items: Option<Items>, exhaustive: bool) -> Self {
+        RecordLayout {
+            attrs,
+            items,
+            exhaustive,
+        }
+    }
+}
+
+impl Schema<Value> for RecordLayout {
+    fn matches(&self, value: &Value) -> bool {
         match as_record(value) {
             Some((attrs, items)) => {
                 let attrs_match = self
                     .attrs
                     .as_ref()
                     .map(|attr_schema| attr_schema.matches(attrs, self.exhaustive))
-                    .unwrap_or(!self.exhaustive);
+                    .unwrap_or(attrs.is_empty() || !self.exhaustive);
                 let items_match = self
                     .items
                     .as_ref()
                     .map(|item_schema| item_schema.matches(items, self.exhaustive))
-                    .unwrap_or(!self.exhaustive);
+                    .unwrap_or(items.is_empty() || !self.exhaustive);
                 attrs_match && items_match
             }
             _ => false,
@@ -305,49 +340,78 @@ impl Schema<Value> for StandardSchema {
 }
 
 impl StandardSchema {
-
     pub fn eq<T: Into<Value>>(value: T) -> Self {
         StandardSchema::Equal(value.into())
     }
 
     pub fn inclusive_int_range(min: i64, max: i64) -> Self {
-        StandardSchema::InRangeInt { min: Some((min, true)), max: Some((max, true)) }
+        StandardSchema::InRangeInt {
+            min: Some((min, true)),
+            max: Some((max, true)),
+        }
     }
 
     pub fn exclusive_int_range(min: i64, max: i64) -> Self {
-        StandardSchema::InRangeInt { min: Some((min, false)), max: Some((max, false)) }
+        StandardSchema::InRangeInt {
+            min: Some((min, false)),
+            max: Some((max, false)),
+        }
     }
 
     pub fn int_range(min: i64, max: i64) -> Self {
-        StandardSchema::InRangeInt { min: Some((min, true)), max: Some((max, false)) }
+        StandardSchema::InRangeInt {
+            min: Some((min, true)),
+            max: Some((max, false)),
+        }
     }
 
     pub fn until_int(n: i64, inclusive: bool) -> Self {
-        StandardSchema::InRangeInt { min: None, max: Some((n, inclusive)) }
+        StandardSchema::InRangeInt {
+            min: None,
+            max: Some((n, inclusive)),
+        }
     }
 
     pub fn after_int(n: i64, inclusive: bool) -> Self {
-        StandardSchema::InRangeInt { min: Some((n, inclusive)), max: None }
+        StandardSchema::InRangeInt {
+            min: Some((n, inclusive)),
+            max: None,
+        }
     }
 
     pub fn inclusive_float_range(min: f64, max: f64) -> Self {
-        StandardSchema::InRangeFloat { min: Some((min, true)), max: Some((max, true)) }
+        StandardSchema::InRangeFloat {
+            min: Some((min, true)),
+            max: Some((max, true)),
+        }
     }
 
     pub fn exclusive_float_range(min: f64, max: f64) -> Self {
-        StandardSchema::InRangeFloat { min: Some((min, false)), max: Some((max, false)) }
+        StandardSchema::InRangeFloat {
+            min: Some((min, false)),
+            max: Some((max, false)),
+        }
     }
 
     pub fn float_range(min: f64, max: f64) -> Self {
-        StandardSchema::InRangeFloat { min: Some((min, true)), max: Some((max, false)) }
+        StandardSchema::InRangeFloat {
+            min: Some((min, true)),
+            max: Some((max, false)),
+        }
     }
 
     pub fn until_float(x: f64, inclusive: bool) -> Self {
-        StandardSchema::InRangeFloat { min: None, max: Some((x, inclusive)) }
+        StandardSchema::InRangeFloat {
+            min: None,
+            max: Some((x, inclusive)),
+        }
     }
 
     pub fn after_float(x: f64, inclusive: bool) -> Self {
-        StandardSchema::InRangeFloat { min: Some((x, inclusive)), max: None }
+        StandardSchema::InRangeFloat {
+            min: Some((x, inclusive)),
+            max: None,
+        }
     }
 
     pub fn negate(self) -> Self {
@@ -362,6 +426,9 @@ impl StandardSchema {
         StandardSchema::Or(vec![self, other])
     }
 
+    pub fn text(string: &str) -> Self {
+        StandardSchema::Text(TextSchema::exact(string))
+    }
 }
 
 fn as_i64(value: &Value) -> Option<i64> {
