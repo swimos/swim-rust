@@ -13,9 +13,12 @@
 // limitations under the License.
 
 use crate::model::{Attr, Item, Value, ValueKind};
-use regex::Regex;
+use regex::{Error as RegexError, Regex};
 use std::borrow::Borrow;
 use std::collections::HashSet;
+
+#[cfg(test)]
+mod tests;
 
 pub trait Schema<T> {
     fn matches(&self, value: &T) -> bool;
@@ -26,6 +29,16 @@ pub enum TextSchema {
     NonEmpty,
     Exact(String),
     Matches(Regex),
+}
+
+impl TextSchema {
+    pub fn exact(string: &str) -> TextSchema {
+        TextSchema::Exact(string.to_string())
+    }
+
+    pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
+        Regex::new(string).map(TextSchema::Matches)
+    }
 }
 
 impl PartialEq for TextSchema {
@@ -159,11 +172,7 @@ fn check_contained<T, S: Schema<T>>(schemas: &[S], items: &[T], exhaustive: bool
         .unwrap_or(false)
 }
 
-fn check_in_order<T, S: Schema<T>>(
-    schemas: &[(S, bool)],
-    items: &[T],
-    exhaustive: bool,
-) -> bool {
+fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustive: bool) -> bool {
     let mut schema_it = schemas.iter();
     let mut item_it = items.iter();
     let mut pending = item_it.next();
