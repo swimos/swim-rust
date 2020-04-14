@@ -626,3 +626,197 @@ fn has_slots_multiple_non_exhaustive() {
     assert!(schema.matches(&good2));
     assert!(schema.matches(&good3));
 }
+
+#[test]
+fn mandatory_attributes_in_order_exhaustive() {
+    let attrs = Attributes::AttrsInOrder(vec![
+        (
+            AttrSchema::new(
+                TextSchema::exact("name1"),
+                StandardSchema::OfKind(ValueKind::Int32),
+            ),
+            true,
+        ),
+        (
+            AttrSchema::new(
+                TextSchema::exact("name2"),
+                StandardSchema::OfKind(ValueKind::Text),
+            ),
+            true,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, true));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of(("other", 3)));
+    let bad2 = Value::of_attr(Attr::of(("name1", 2)));
+    let bad3 = Value::of_attrs(vec![
+        Attr::of(("name1", 3)),
+        Attr::of(("name2", "hello")),
+        Attr::of("other"),
+    ]);
+    let bad4 = Value::of_attrs(vec![Attr::of(("name2", "hello")), Attr::of(("name1", 3))]);
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
+
+    let good1 = Value::of_attrs(vec![Attr::of(("name1", 3)), Attr::of(("name2", "hello"))]);
+
+    assert!(schema.matches(&good1));
+}
+
+#[test]
+fn mandatory_attributes_in_order_non_exhaustive() {
+    let attrs = Attributes::AttrsInOrder(vec![
+        (
+            AttrSchema::new(
+                TextSchema::exact("name1"),
+                StandardSchema::OfKind(ValueKind::Int32),
+            ),
+            true,
+        ),
+        (
+            AttrSchema::new(
+                TextSchema::exact("name2"),
+                StandardSchema::OfKind(ValueKind::Text),
+            ),
+            true,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, false));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of(("other", 3)));
+    let bad2 = Value::of_attr(Attr::of(("name1", 2)));
+    let bad3 = Value::of_attrs(vec![
+        Attr::of("other"),
+        Attr::of(("name1", 3)),
+        Attr::of(("name2", "hello")),
+    ]);
+    let bad4 = Value::of_attrs(vec![Attr::of(("name2", "hello")), Attr::of(("name1", 3))]);
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
+
+    let good1 = Value::of_attrs(vec![Attr::of(("name1", 3)), Attr::of(("name2", "hello"))]);
+    let good2 = Value::of_attrs(vec![
+        Attr::of(("name1", 3)),
+        Attr::of(("name2", "hello")),
+        Attr::of("other"),
+    ]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+}
+
+#[test]
+fn optional_attribute_in_order_exhaustive() {
+    let attrs = Attributes::AttrsInOrder(vec![
+        (
+            AttrSchema::new(
+                TextSchema::exact("name1"),
+                StandardSchema::OfKind(ValueKind::Int32),
+            ),
+            true,
+        ),
+        (
+            AttrSchema::new(
+                TextSchema::exact("name2"),
+                StandardSchema::OfKind(ValueKind::Text),
+            ),
+            false,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, true));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of(("other", 3)));
+    let bad2 = Value::of_attrs(vec![
+        Attr::of(("name1", 3)),
+        Attr::of(("name2", "hello")),
+        Attr::of("other"),
+    ]);
+    let bad3 = Value::of_attrs(vec![Attr::of(("name2", "hello")), Attr::of(("name1", 3))]);
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+
+    let good1 = Value::of_attrs(vec![Attr::of(("name1", 3)), Attr::of(("name2", "hello"))]);
+    let good2 = Value::of_attr(Attr::of(("name1", 2)));
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+}
+
+#[test]
+fn optional_attribute_in_order_non_exhaustive() {
+    let attrs = Attributes::AttrsInOrder(vec![
+        (
+            AttrSchema::new(
+                TextSchema::exact("name1"),
+                StandardSchema::OfKind(ValueKind::Int32),
+            ),
+            true,
+        ),
+        (
+            AttrSchema::new(
+                TextSchema::exact("name2"),
+                StandardSchema::OfKind(ValueKind::Text),
+            ),
+            false,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, false));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of(("other", 3)));
+
+    let bad2 = Value::of_attrs(vec![
+        Attr::of("other"),
+        Attr::of(("name1", 3)),
+        Attr::of(("name2", "hello")),
+    ]);
+    let bad3 = Value::of_attrs(vec![Attr::of(("name2", "hello")), Attr::of(("name1", 3))]);
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+
+    let good1 = Value::of_attrs(vec![Attr::of(("name1", 3)), Attr::of(("name2", "hello"))]);
+    let good2 = Value::of_attrs(vec![
+        Attr::of(("name1", 3)),
+        Attr::of(("name2", "hello")),
+        Attr::of("other"),
+    ]);
+    let good3 = Value::of_attr(Attr::of(("name1", 2)));
+    let good4 = Value::of_attrs(vec![Attr::of(("name1", 3)), Attr::of("other")]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+    assert!(schema.matches(&good4));
+}
