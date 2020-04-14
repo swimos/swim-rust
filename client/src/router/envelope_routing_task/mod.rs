@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{ConnectionRequestSender, RoutingError};
+use crate::router::{
+    CloseRequestReceiver, CloseRequestSender, ConnectionRequestSender, RoutingError,
+};
 use common::warp::envelope::Envelope;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -29,6 +31,7 @@ type HostEnvelopeTaskRequestReceiver =
 pub struct RequestEnvelopeRoutingHostTask {
     connection_request_tx: ConnectionRequestSender,
     task_request_rx: HostEnvelopeTaskRequestReceiver,
+    close_request_rx: CloseRequestReceiver,
     buffer_size: usize,
 }
 
@@ -36,16 +39,19 @@ impl RequestEnvelopeRoutingHostTask {
     pub fn new(
         connection_request_tx: ConnectionRequestSender,
         buffer_size: usize,
-    ) -> (Self, HostEnvelopeTaskRequestSender) {
+    ) -> (Self, HostEnvelopeTaskRequestSender, CloseRequestSender) {
         let (task_request_tx, task_request_rx) = mpsc::channel(buffer_size);
+        let (close_request_tx, close_request_rx) = mpsc::channel(buffer_size);
 
         (
             RequestEnvelopeRoutingHostTask {
                 connection_request_tx,
                 task_request_rx,
+                close_request_rx,
                 buffer_size,
             },
             task_request_tx,
+            close_request_tx,
         )
     }
 
@@ -53,6 +59,8 @@ impl RequestEnvelopeRoutingHostTask {
         let RequestEnvelopeRoutingHostTask {
             connection_request_tx,
             mut task_request_rx,
+            //Todo
+            mut close_request_rx,
             buffer_size,
         } = self;
         let mut host_route_tasks: HashMap<String, mpsc::Sender<Envelope>> = HashMap::new();
