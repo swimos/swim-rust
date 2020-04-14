@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 use super::*;
+use crate::downlink::TransitionError;
 use common::sink::item::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
@@ -337,7 +338,14 @@ async fn errors_propagate() {
     //Wait for the action the be executed.
     assert_that!(act_rx.await, ok());
 
-    let result = dl_tx.task.stop_await.clone().filter_map(|r| r).next().await;
+    let result = dl_tx
+        .task
+        .task_handle()
+        .stop_await
+        .clone()
+        .filter_map(|r| r)
+        .next()
+        .await;
     assert_that!(result, some());
     let stop_res = result.unwrap();
 
