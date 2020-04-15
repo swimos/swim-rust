@@ -20,14 +20,20 @@ use std::collections::HashSet;
 #[cfg(test)]
 mod tests;
 
+/// A pattern against which values of a type can be tested.
 pub trait Schema<T> {
+    /// Determine if a value matches the schema.
     fn matches(&self, value: &T) -> bool;
 }
 
+/// Schema for UTF8 strings.
 #[derive(Clone, Debug)]
 pub enum TextSchema {
+    /// Matches if an only if the string is non-empty.
     NonEmpty,
+    /// Matches only a specific string.
     Exact(String),
+    /// Matches a string against a regular expression.
     Matches(Regex),
 }
 
@@ -79,6 +85,7 @@ impl Schema<String> for TextSchema {
     }
 }
 
+/// Schema for Recon [`Attr`]s.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AttrSchema {
     name_schema: TextSchema,
@@ -86,6 +93,12 @@ pub struct AttrSchema {
 }
 
 impl AttrSchema {
+    /// Create an attribute schema.
+    /// # Arguments
+    ///
+    /// * `name` - Schema for the name of the attribute.
+    /// * `value` - Schema for the value of the attribute.
+    ///
     pub fn new(name: TextSchema, value: StandardSchema) -> Self {
         AttrSchema {
             name_schema: name,
@@ -93,6 +106,11 @@ impl AttrSchema {
         }
     }
 
+    /// Create a schema that matches attributes without bodies.
+    /// # Arguments
+    ///
+    /// * `name` - Schema for the name of the attribute.
+    ///
     pub fn tag(name: TextSchema) -> Self {
         AttrSchema {
             name_schema: name,
@@ -107,6 +125,7 @@ impl Schema<Attr> for AttrSchema {
     }
 }
 
+/// Schema for Recon slots.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SlotSchema {
     key_schema: StandardSchema,
@@ -114,6 +133,12 @@ pub struct SlotSchema {
 }
 
 impl SlotSchema {
+    /// Create an slot schema.
+    /// # Arguments
+    ///
+    /// * `key` - Schema for the key of the attribute.
+    /// * `value` - Schema for the value of the attribute.
+    ///
     pub fn new(key: StandardSchema, value: StandardSchema) -> Self {
         SlotSchema {
             key_schema: key,
@@ -133,6 +158,7 @@ impl Schema<Item> for SlotSchema {
     }
 }
 
+/// Schema for Recon [`Item`]s.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ItemSchema {
     Field(SlotSchema),
@@ -151,9 +177,12 @@ impl Schema<Item> for ItemSchema {
     }
 }
 
+/// Schema for the attributes of a record.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Attributes {
+    /// A set of attributes that must be present.
     HasAttrs(Vec<AttrSchema>),
+    /// A list of attributes expected, in order an whether they are mandatory.
     AttrsInOrder(Vec<(AttrSchema, bool)>),
 }
 
@@ -231,9 +260,12 @@ fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustiv
     matched && (pending.is_none() || !exhaustive)
 }
 
+/// Schema for the items of a record.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Items {
+    /// A set of slots that must be present.
     HasSlots(Vec<SlotSchema>),
+    /// A list of items expected, in order an whether they are mandatory.
     ItemsInOrder(Vec<(ItemSchema, bool)>),
 }
 
@@ -246,6 +278,7 @@ impl Items {
     }
 }
 
+/// Schema for a Recon record.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecordLayout {
     attrs: Option<Attributes>,
@@ -254,6 +287,12 @@ pub struct RecordLayout {
 }
 
 impl RecordLayout {
+    /// Create a new record schema.
+    /// # Arguments
+    ///
+    /// * `attrs` - Schema for the attributes of the record.
+    /// * `items` - Schema for the attributes of the record.
+    /// * `exhaustive` - If true, not other attribute and items are permitted.
     pub fn new(attrs: Option<Attributes>, items: Option<Items>, exhaustive: bool) -> Self {
         RecordLayout {
             attrs,
@@ -286,27 +325,43 @@ impl Schema<Value> for RecordLayout {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StandardSchema {
+    /// Asserts that a [`Value`] is of a particular kind.
     OfKind(ValueKind),
+    /// Asserts that a [`Value`] takes a specific value.
     Equal(Value),
+    /// Asserts that a [`Value`] is an integer and within a specified range.
     InRangeInt {
         min: Option<(i64, bool)>,
         max: Option<(i64, bool)>,
     },
+    /// Asserts that a [`Value`] is a floating point number and in a specified range.
     InRangeFloat {
         min: Option<(f64, bool)>,
         max: Option<(f64, bool)>,
     },
+    /// Asserts that a [`Value`] is a non-NaN floating point number.
     NonNan,
+    /// Asserts that a [`Value`] is a finite floating point number.
     Finite,
+    /// Asserts that a [`Value`] is text and matches a specified [`TextSchema`].
     Text(TextSchema),
+    /// Inversion of another schema.
     Not(Box<StandardSchema>),
+    /// Conjunction of a number of other schemas.
     And(Vec<StandardSchema>),
+    /// Disjunction of a number of other schemas.
     Or(Vec<StandardSchema>),
+    /// Asserts that a [`Value`] is a record with a specified layout.
     Layout(RecordLayout),
+    /// Asserts that a [`Value`] is a record and all of its items match another schema.
     AllItems(Box<ItemSchema>),
+    /// Asserts that a [`Value`] has a specific number of attributes.
     NumAttrs(usize),
+    /// Asserts that a [`Value`] has a specific number of items.
     NumItems(usize),
+    /// Matches anything.
     Anything,
+    /// Matches nothing.
     Nothing,
 }
 
@@ -340,10 +395,12 @@ impl Schema<Value> for StandardSchema {
 }
 
 impl StandardSchema {
+    /// A schema that matches a specific [`Value`].
     pub fn eq<T: Into<Value>>(value: T) -> Self {
         StandardSchema::Equal(value.into())
     }
 
+    /// Matches integer values in an inclusive range.
     pub fn inclusive_int_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt {
             min: Some((min, true)),
@@ -351,6 +408,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches integer values in an exclusive range.
     pub fn exclusive_int_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt {
             min: Some((min, false)),
@@ -358,6 +416,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches integer values, inclusive below and exclusive above.
     pub fn int_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt {
             min: Some((min, true)),
@@ -365,6 +424,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches integer values less than (or less than or equal to) a value.
     pub fn until_int(n: i64, inclusive: bool) -> Self {
         StandardSchema::InRangeInt {
             min: None,
@@ -372,6 +432,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches integer values greater than (or greater than or equal to) a value.
     pub fn after_int(n: i64, inclusive: bool) -> Self {
         StandardSchema::InRangeInt {
             min: Some((n, inclusive)),
@@ -379,6 +440,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches floating point values in an inclusive range.
     pub fn inclusive_float_range(min: f64, max: f64) -> Self {
         StandardSchema::InRangeFloat {
             min: Some((min, true)),
@@ -386,6 +448,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches floating point values in an exclusive range.
     pub fn exclusive_float_range(min: f64, max: f64) -> Self {
         StandardSchema::InRangeFloat {
             min: Some((min, false)),
@@ -393,6 +456,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches floating point values, inclusive below and exclusive above.
     pub fn float_range(min: f64, max: f64) -> Self {
         StandardSchema::InRangeFloat {
             min: Some((min, true)),
@@ -400,6 +464,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches floating point values less than (or less than or equal to) a value.
     pub fn until_float(x: f64, inclusive: bool) -> Self {
         StandardSchema::InRangeFloat {
             min: None,
@@ -407,6 +472,7 @@ impl StandardSchema {
         }
     }
 
+    /// Matches floating point values greater than (or greater than or equal to) a value.
     pub fn after_float(x: f64, inclusive: bool) -> Self {
         StandardSchema::InRangeFloat {
             min: Some((x, inclusive)),
@@ -414,26 +480,32 @@ impl StandardSchema {
         }
     }
 
+    /// Negate this schema.
     pub fn negate(self) -> Self {
         StandardSchema::Not(Box::new(self))
     }
 
+    /// Form the conjunction of this schema with another.
     pub fn and(self, other: Self) -> Self {
         StandardSchema::And(vec![self, other])
     }
 
+    /// Form the disjunction of this schema with another.
     pub fn or(self, other: Self) -> Self {
         StandardSchema::Or(vec![self, other])
     }
 
+    /// A schema that matches a specific string.
     pub fn text(string: &str) -> Self {
         StandardSchema::Text(TextSchema::exact(string))
     }
 
+    /// A schema for records with items that all match a schema.
     pub fn array(elements: StandardSchema) -> Self {
         StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(elements)))
     }
 
+    /// A schema for records of slots with keys and values matching specific schemas.
     pub fn map(keys: StandardSchema, values: StandardSchema) -> Self {
         StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(keys, values))))
     }

@@ -827,7 +827,7 @@ fn mandatory_items_in_order_exhaustive() {
         (
             ItemSchema::Field(SlotSchema::new(
                 StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32)
+                StandardSchema::OfKind(ValueKind::Int32),
             )),
             true,
         ),
@@ -847,11 +847,7 @@ fn mandatory_items_in_order_exhaustive() {
 
     let bad1 = Value::singleton(("other", 3));
     let bad2 = Value::singleton(("name1", 2));
-    let bad3 = Value::from_vec(vec![
-        Item::slot("name1", 3),
-        Item::of(5),
-        Item::of("other"),
-    ]);
+    let bad3 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5), Item::of("other")]);
     let bad4 = Value::from_vec(vec![Item::of(5), Item::slot("name1", 3)]);
     let bad5 = Value::singleton(5);
 
@@ -872,7 +868,7 @@ fn mandatory_items_in_order_non_exhaustive() {
         (
             ItemSchema::Field(SlotSchema::new(
                 StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32)
+                StandardSchema::OfKind(ValueKind::Int32),
             )),
             true,
         ),
@@ -898,11 +894,7 @@ fn mandatory_items_in_order_non_exhaustive() {
     assert!(!schema.matches(&bad3));
 
     let good1 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5)]);
-    let good2 = Value::from_vec(vec![
-        Item::slot("name1", 3),
-        Item::of(5),
-        Item::of("other"),
-    ]);
+    let good2 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5), Item::of("other")]);
 
     assert!(schema.matches(&good1));
     assert!(schema.matches(&good2));
@@ -914,7 +906,7 @@ fn optional_item_in_order_exhaustive() {
         (
             ItemSchema::Field(SlotSchema::new(
                 StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32)
+                StandardSchema::OfKind(ValueKind::Int32),
             )),
             false,
         ),
@@ -934,11 +926,7 @@ fn optional_item_in_order_exhaustive() {
 
     let bad1 = Value::singleton(("other", 3));
     let bad2 = Value::singleton(("name1", 2));
-    let bad3 = Value::from_vec(vec![
-        Item::slot("name1", 3),
-        Item::of(5),
-        Item::of("other"),
-    ]);
+    let bad3 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5), Item::of("other")]);
     let bad4 = Value::from_vec(vec![Item::of(5), Item::slot("name1", 3)]);
     assert!(!schema.matches(&bad1));
     assert!(!schema.matches(&bad2));
@@ -958,7 +946,7 @@ fn optional_item_in_order_non_exhaustive() {
         (
             ItemSchema::Field(SlotSchema::new(
                 StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32)
+                StandardSchema::OfKind(ValueKind::Int32),
             )),
             false,
         ),
@@ -984,15 +972,8 @@ fn optional_item_in_order_non_exhaustive() {
 
     let good1 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5)]);
     let good2 = Value::singleton(5);
-    let good3 = Value::from_vec(vec![
-        Item::slot("name1", 3),
-        Item::of(5),
-        Item::of("other"),
-    ]);
-    let good4 = Value::from_vec(vec![
-        Item::of(5),
-        Item::of("other"),
-    ]);
+    let good3 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5), Item::of("other")]);
+    let good4 = Value::from_vec(vec![Item::of(5), Item::of("other")]);
     let good5 = Value::from_vec(vec![Item::of(5), Item::slot("name1", 3)]);
 
     assert!(schema.matches(&good1));
@@ -1017,19 +998,17 @@ fn array_of_values() {
 
 #[test]
 fn map_record() {
-    let schema = StandardSchema::map(StandardSchema::OfKind(ValueKind::Int32),
-                                     StandardSchema::OfKind(ValueKind::Text));
+    let schema = StandardSchema::map(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
 
-    let good_items = vec![
-        Item::slot(2, "a"),
-        Item::slot(-1, "b"),
-        Item::slot(12, "c")
-    ];
+    let good_items = vec![Item::slot(2, "a"), Item::slot(-1, "b"), Item::slot(12, "c")];
 
     let bad_items = vec![
         Item::slot("a", 2),
         Item::slot(-1, false),
-        Item::slot(12, "c")
+        Item::slot(12, "c"),
     ];
 
     assert!(schema.matches(&Value::empty_record()));
