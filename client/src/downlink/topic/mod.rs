@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::raw::DownlinkTaskHandle;
+use crate::downlink::DownlinkInternals;
 use common::topic::{Topic, TopicError};
 use futures::task::{Context, Poll};
 use futures::Stream;
@@ -25,7 +25,7 @@ use utilities::future::{Transformation, TransformedFuture};
 #[derive(Debug)]
 pub struct DownlinkTopic<Inner> {
     inner: Inner,
-    task: Arc<DownlinkTaskHandle>,
+    task: Arc<dyn DownlinkInternals>,
 }
 
 /// A wrapper around a topic receiver containing a pointer to an associated downlink task.
@@ -34,11 +34,11 @@ pub struct DownlinkTopic<Inner> {
 pub struct DownlinkReceiver<Inner> {
     #[pin]
     inner: Inner,
-    _task: Arc<DownlinkTaskHandle>,
+    _task: Arc<dyn DownlinkInternals>,
 }
 
 impl<Inner> DownlinkTopic<Inner> {
-    pub(in crate::downlink) fn new<T>(inner_topic: Inner, task: Arc<DownlinkTaskHandle>) -> Self
+    pub(in crate::downlink) fn new<T>(inner_topic: Inner, task: Arc<dyn DownlinkInternals>) -> Self
     where
         T: Clone,
         Inner: Topic<T>,
@@ -51,7 +51,7 @@ impl<Inner> DownlinkTopic<Inner> {
 }
 
 impl<Inner> DownlinkReceiver<Inner> {
-    pub(in crate::downlink) fn new(inner_receiver: Inner, task: Arc<DownlinkTaskHandle>) -> Self
+    pub(in crate::downlink) fn new(inner_receiver: Inner, task: Arc<dyn DownlinkInternals>) -> Self
     where
         Inner: Stream,
     {
@@ -74,10 +74,10 @@ where
     }
 }
 
-pub struct MakeReceiver(Arc<DownlinkTaskHandle>);
+pub struct MakeReceiver(Arc<dyn DownlinkInternals>);
 
 impl MakeReceiver {
-    pub(in crate::downlink) fn new(task: Arc<DownlinkTaskHandle>) -> Self {
+    pub(in crate::downlink) fn new(task: Arc<dyn DownlinkInternals>) -> Self {
         MakeReceiver(task)
     }
 }
