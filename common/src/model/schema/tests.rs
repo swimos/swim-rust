@@ -820,3 +820,184 @@ fn optional_attribute_in_order_non_exhaustive() {
     assert!(schema.matches(&good3));
     assert!(schema.matches(&good4));
 }
+
+#[test]
+fn mandatory_items_in_order_exhaustive() {
+    let items = Items::ItemsInOrder(vec![
+        (
+            ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Text(TextSchema::exact("name1")),
+                StandardSchema::OfKind(ValueKind::Int32)
+            )),
+            true,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
+            true,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), true));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(("other", 3));
+    let bad2 = Value::singleton(("name1", 2));
+    let bad3 = Value::from_vec(vec![
+        Item::slot("name1", 3),
+        Item::of(5),
+        Item::of("other"),
+    ]);
+    let bad4 = Value::from_vec(vec![Item::of(5), Item::slot("name1", 3)]);
+    let bad5 = Value::singleton(5);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
+    assert!(!schema.matches(&bad5));
+
+    let good1 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5)]);
+
+    assert!(schema.matches(&good1));
+}
+
+#[test]
+fn mandatory_items_in_order_non_exhaustive() {
+    let items = Items::ItemsInOrder(vec![
+        (
+            ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Text(TextSchema::exact("name1")),
+                StandardSchema::OfKind(ValueKind::Int32)
+            )),
+            true,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
+            true,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), false));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(("other", 3));
+    let bad2 = Value::singleton(("name1", 2));
+    let bad3 = Value::from_vec(vec![Item::of(5), Item::slot("name1", 3)]);
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+
+    let good1 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5)]);
+    let good2 = Value::from_vec(vec![
+        Item::slot("name1", 3),
+        Item::of(5),
+        Item::of("other"),
+    ]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+}
+
+#[test]
+fn optional_item_in_order_exhaustive() {
+    let items = Items::ItemsInOrder(vec![
+        (
+            ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Text(TextSchema::exact("name1")),
+                StandardSchema::OfKind(ValueKind::Int32)
+            )),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
+            true,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), true));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(("other", 3));
+    let bad2 = Value::singleton(("name1", 2));
+    let bad3 = Value::from_vec(vec![
+        Item::slot("name1", 3),
+        Item::of(5),
+        Item::of("other"),
+    ]);
+    let bad4 = Value::from_vec(vec![Item::of(5), Item::slot("name1", 3)]);
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
+
+    let good1 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5)]);
+    let good2 = Value::singleton(5);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+}
+
+#[test]
+fn optional_item_in_order_non_exhaustive() {
+    let items = Items::ItemsInOrder(vec![
+        (
+            ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Text(TextSchema::exact("name1")),
+                StandardSchema::OfKind(ValueKind::Int32)
+            )),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
+            true,
+        ),
+    ]);
+    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), false));
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(("other", 3));
+    let bad2 = Value::singleton(("name1", 2));
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+
+    let good1 = Value::from_vec(vec![Item::slot("name1", 3), Item::of(5)]);
+    let good2 = Value::singleton(5);
+    let good3 = Value::from_vec(vec![
+        Item::slot("name1", 3),
+        Item::of(5),
+        Item::of("other"),
+    ]);
+    let good4 = Value::from_vec(vec![
+        Item::of(5),
+        Item::of("other"),
+    ]);
+    let good5 = Value::from_vec(vec![Item::of(5), Item::slot("name1", 3)]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+    assert!(schema.matches(&good4));
+    assert!(schema.matches(&good5));
+}
