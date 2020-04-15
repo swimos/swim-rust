@@ -27,7 +27,7 @@ mod strategy;
 #[cfg(test)]
 mod tests;
 
-/// A retryable request that will attempt to fulful the request using the retry strategy provided.
+/// A retryable request that will attempt to fulfil the request using the retry strategy provided.
 /// Transient errors, such as a connection error will be retried but permanent errors such as sender
 /// being closed will cause the request to be cancelled straight away.
 #[pin_project]
@@ -129,11 +129,16 @@ where
     }
 }
 
+/// The current state of a retry attempt
 #[pin_project]
 enum RetryState<F> {
+    /// The current retry has not yet been started.
     NotStarted,
+    /// A retry has been started and the future [`F`] is currently pending.
     Pending(#[pin] F),
+    /// A retry is going to be attempted with the [`RetryStrategy`]
     Retrying,
+    /// The given [`RetryStrategy`] needs to sleep between retries for [`Delay`].
     Sleeping(#[pin] time::Delay),
 }
 
@@ -163,6 +168,10 @@ pub mod boxed_connection_sender {
     use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
     use crate::router::RoutingError;
 
+    /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`].
+    /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
+    /// the request using the given [`oneshot::Sender`] instance. If this fails then the future will
+    /// return [`ConnectionError`].
     pub struct BoxedConnSender {
         sender: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
         host: url::Url,

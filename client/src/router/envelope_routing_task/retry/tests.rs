@@ -14,6 +14,8 @@
 
 use crate::router::envelope_routing_task::retry::tests::boxed::FailingSink;
 use crate::router::envelope_routing_task::retry::{RetryErr, RetryStrategy};
+use tokio::time::Duration;
+use std::time::Instant;
 
 mod boxed {
     use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
@@ -45,9 +47,25 @@ mod boxed {
 }
 
 #[tokio::test]
-async fn simple_send() {
+async fn immediate() {
     use super::RetryableRequest;
     let result = RetryableRequest::send(FailingSink::new(5), 5, RetryStrategy::immediate(5)).await;
+
+    assert_eq!(result.err(), Some(RetryErr::RetriesExceeded))
+}
+
+#[tokio::test]
+async fn exponential() {
+    use super::RetryableRequest;
+    let max_interval = Duration::from_secs(2);
+    let max_backoff = Duration::from_secs(8);
+
+    let start = Instant::now();
+
+    let result = RetryableRequest::send(FailingSink::new(5), 5, RetryStrategy::exponential(max_interval, max_backoff)).await;
+
+    let duration = start.elapsed();
+    assert!(duration >= max_backoff && duration <= max_backoff + max_interval);
 
     assert_eq!(result.err(), Some(RetryErr::RetriesExceeded))
 }
