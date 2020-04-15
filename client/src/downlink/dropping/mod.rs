@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::any::AnyDownlink;
-use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
-use common::sink::item;
-use common::sink::item::{ItemSink, MpscSend};
-use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, watch};
+
+use common::sink::item;
+use common::sink::item::{ItemSink, MpscSend};
+use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
+
+use crate::downlink::any::AnyDownlink;
+use crate::downlink::{raw, Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.

@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::async_factory::*;
-use super::WebsocketFactory;
-use crate::connections::ConnectionError;
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use tokio::macros::support::Pin;
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+use crate::connections::ConnectionError;
+
+use super::async_factory::*;
+use super::WebsocketFactory;
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);

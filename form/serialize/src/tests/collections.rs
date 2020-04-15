@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::BTreeSet;
+
 use serde::Serialize;
+
+use common::model::{Attr, Item, Value};
 
 use crate::tests::assert_err;
 use crate::tests::to_value;
 use crate::FormSerializeErr;
-use common::model::{Attr, Item, Value};
-use std::collections::BTreeSet;
 
 #[cfg(test)]
 mod valid_types {
@@ -159,8 +161,9 @@ mod valid_types {
 
 #[cfg(test)]
 mod invalid_types {
-    use super::*;
     use std::collections::BTreeMap;
+
+    use super::*;
 
     #[test]
     fn invalid_nested_type() {

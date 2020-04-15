@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{Router, RouterEvent, RoutingError};
+use futures::future::{ready, Ready};
+use futures::stream::{pending, Pending};
+
 use common::sink::item::drop_all::{drop_all, DropAll};
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
-use futures::future::{ready, Ready};
-use futures::stream::{pending, Pending};
+
+use crate::router::{Router, RouterEvent, RoutingError};
 
 /// A mock [`Router`] where connections produce no data and all outputs are silently dropped.
 pub struct StubRouter {}

@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use core::iter;
 use std::borrow::Borrow;
+use std::convert::TryFrom;
 use std::io;
 use std::str::{from_utf8, from_utf8_unchecked, Utf8Error};
 
 use bytes::{Buf, BytesMut};
 
 use token_buffer::*;
+use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 use crate::model::{Attr, Item, Value};
-use core::iter;
-use std::convert::TryFrom;
-use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
 mod tests;

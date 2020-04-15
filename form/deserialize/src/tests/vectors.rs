@@ -14,8 +14,9 @@
 
 use serde::Deserialize;
 
-use crate::tests::from_value;
 use common::model::{Attr, Item, Value};
+
+use crate::tests::from_value;
 
 #[test]
 fn nested_vectors() {

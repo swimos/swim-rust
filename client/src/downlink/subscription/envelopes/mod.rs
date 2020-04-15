@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::model::map::MapModification;
-use crate::downlink::model::value::SharedValue;
-use crate::downlink::Command;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
+
 use common::model::Value;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use deserialize::FormDeserializeErr;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
+
+use crate::downlink::model::map::MapModification;
+use crate::downlink::model::value::SharedValue;
+use crate::downlink::Command;
 
 #[cfg(test)]
 mod tests;
@@ -81,11 +83,12 @@ pub fn map_envelope(
 }
 
 pub(in crate::downlink) mod value {
+    use common::model::Value;
+    use common::warp::envelope::{Envelope, LaneAddressed};
+
     use crate::downlink::model::value::SharedValue;
     use crate::downlink::subscription::envelopes::EnvInterpError;
     use crate::downlink::Message;
-    use common::model::Value;
-    use common::warp::envelope::{Envelope, LaneAddressed};
 
     pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Option<Value> {
         Some((*v).clone())
@@ -108,13 +111,15 @@ pub(in crate::downlink) mod value {
 }
 
 pub(in crate::downlink) mod map {
-    use crate::downlink::model::map::MapModification;
-    use crate::downlink::subscription::envelopes::EnvInterpError;
-    use crate::downlink::Message;
+    use std::sync::Arc;
+
     use common::model::Value;
     use common::warp::envelope::{Envelope, LaneAddressed};
     use form::Form;
-    use std::sync::Arc;
+
+    use crate::downlink::model::map::MapModification;
+    use crate::downlink::subscription::envelopes::EnvInterpError;
+    use crate::downlink::Message;
 
     pub(super) fn envelope_body(cmd: MapModification<Arc<Value>>) -> Option<Value> {
         Some(cmd.envelope_body())

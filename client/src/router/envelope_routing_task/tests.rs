@@ -12,29 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::{Attr, Item, Value};
-use deserialize::FormDeserializeErr;
-use form::Form;
-use form_derive::*;
+use tokio::time::Duration;
 
-fn main() {
-    #[form]
-    #[derive(PartialEq)]
-    struct Parent {
-        a: i32
-    }
+use common::sink::item::ItemSink;
+use common::warp::envelope::Envelope;
+use common::warp::path::AbsolutePath;
 
-    let record = Value::Record(
-        vec![Attr::from("Parent")],
-        vec![
-            Item::from(("a", 1.0)),
-        ],
-    );
+use crate::router::{Router, SwimRouter};
 
-    let result = Parent::try_from_value(&record);
+#[tokio::test]
+async fn envelope_routing_task() {
+    let mut router = SwimRouter::new(5).await;
 
-    match result {
-        Ok(_) => panic!(),
-        Err(e) => assert_eq!(e, FormDeserializeErr::IncorrectType(String::from("Expected: i32, found: 1e0")))
-    }
+    let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
+    let (mut sink, _stream) = router.connection_for(&path).await;
+
+    let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
+    let _ = sink.send_item(sync).await;
+
+    std::thread::sleep(Duration::from_secs(5));
 }

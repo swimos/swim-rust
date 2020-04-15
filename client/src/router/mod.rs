@@ -12,9 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::pin::Pin;
+
+use futures::future::Ready;
+use futures::stream;
+use futures::task::{Context, Poll};
+use futures::{Future, Stream};
+use tokio::stream::StreamExt;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tokio::time::Duration;
+
+use common::request::request_future::SendAndAwait;
+use common::request::Request;
+use common::sink::item::map_err::SenderErrInto;
+use common::sink::item::ItemSender;
+use common::warp::envelope::Envelope;
+use common::warp::path::AbsolutePath;
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
+use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
+use crate::router::envelope_routing_task::retry::RetryStrategy;
 use crate::router::envelope_routing_task::{
     HostEnvelopeTaskRequestSender, RequestEnvelopeRoutingHostTask,
 };
@@ -22,27 +45,9 @@ use crate::router::message_routing_task::{
     ConnectionResponse, HostMessageNewTaskRequestSender, HostMessageRegisterTaskRequestSender,
     RequestMessageRoutingHostTask,
 };
-use common::request::request_future::SendAndAwait;
-use common::request::Request;
-use common::sink::item::map_err::SenderErrInto;
-use common::sink::item::ItemSender;
-use common::warp::envelope::Envelope;
-use common::warp::path::AbsolutePath;
-use futures::future;
-use futures::future::Ready;
-use futures::stream;
-use futures::task::{Context, Poll};
-use futures::{Future, FutureExt, Stream};
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::pin::Pin;
-use tokio::stream::StreamExt;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 
 pub mod command_routing_task;
+pub mod configuration;
 pub mod envelope_routing_task;
 pub mod message_routing_task;
 
@@ -63,13 +68,13 @@ pub trait Router: Send {
 }
 
 pub struct SwimRouter {
-    buffer_size: usize,
+    configuration: RouterConfig,
     envelope_routing_host_request_tx: HostEnvelopeTaskRequestSender,
     message_routing_register_task_request_tx: HostMessageRegisterTaskRequestSender,
     _request_connections_handler: JoinHandle<Result<(), RoutingError>>,
     connections_task_close_request_tx: CloseRequestSender,
     _request_envelope_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
-    envelope_routing_task_close_request_tx: CloseRequestSender,
+    _envelope_routing_task_close_request_tx: CloseRequestSender,
     _request_message_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
     message_routing_task_close_request_tx: CloseRequestSender,
 }
@@ -78,6 +83,15 @@ impl SwimRouter {
     pub async fn new(buffer_size: usize) -> SwimRouter {
         let connection_pool =
             ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
+        // TODO: Accept as an argument
+        let configuration = RouterConfigBuilder::default()
+            .with_buffer_size(buffer_size)
+            .with_idle_timeout(100)
+            .with_retry_stategy(RetryStrategy::exponential(
+                Duration::from_secs(2),
+                Duration::from_secs(32),
+            ))
+            .build();
 
         let (
             request_message_routing_host_task,
@@ -90,14 +104,14 @@ impl SwimRouter {
             RequestConnectionsTask::new(
                 connection_pool,
                 message_routing_new_task_request_tx,
-                buffer_size,
+                configuration,
             );
 
         let (
             request_envelope_routing_host_task,
             envelope_routing_host_request_tx,
             envelope_routing_task_close_request_tx,
-        ) = RequestEnvelopeRoutingHostTask::new(connection_request_tx, buffer_size);
+        ) = RequestEnvelopeRoutingHostTask::new(connection_request_tx, configuration);
 
         let _request_connections_handler = tokio::spawn(request_connections_task.run());
 
@@ -108,13 +122,13 @@ impl SwimRouter {
             tokio::spawn(request_message_routing_host_task.run());
 
         SwimRouter {
-            buffer_size,
+            configuration,
             envelope_routing_host_request_tx,
             message_routing_register_task_request_tx,
             _request_connections_handler,
             connections_task_close_request_tx,
             _request_envelope_routing_host_handler,
-            envelope_routing_task_close_request_tx,
+            _envelope_routing_task_close_request_tx: envelope_routing_task_close_request_tx,
             _request_message_routing_host_handler,
             message_routing_task_close_request_tx,
         }
@@ -130,10 +144,13 @@ impl SwimRouter {
             .send(())
             .await
             .unwrap();
-        self._request_connections_handler.await.unwrap();
+        let _ = self._request_connections_handler.await.unwrap();
 
-        self.message_routing_task_close_request_tx.send(()).await.unwrap();
-        self._request_message_routing_host_handler.await.unwrap();
+        self.message_routing_task_close_request_tx
+            .send(())
+            .await
+            .unwrap();
+        let _ = self._request_message_routing_host_handler.await.unwrap();
     }
 }
 
@@ -154,10 +171,11 @@ impl RequestConnectionsTask {
     fn new(
         connection_pool: ConnectionPool,
         message_routing_new_task_request_tx: HostMessageNewTaskRequestSender,
-        buffer_size: usize,
+        config: RouterConfig,
     ) -> (Self, ConnectionRequestSender, CloseRequestSender) {
-        let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
-        let (close_request_tx, close_request_rx) = mpsc::channel(buffer_size);
+        let (connection_request_tx, connection_request_rx) =
+            mpsc::channel(config.buffer_size().get());
+        let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
 
         (
             RequestConnectionsTask {
@@ -174,8 +192,8 @@ impl RequestConnectionsTask {
     async fn run(self) -> Result<(), RoutingError> {
         let RequestConnectionsTask {
             mut connection_pool,
-            mut connection_request_rx,
-            mut close_request_rx,
+            connection_request_rx,
+            close_request_rx,
             mut message_routing_new_task_request_tx,
         } = self;
 
@@ -350,7 +368,7 @@ impl Router for SwimRouter {
             self.envelope_routing_host_request_tx.clone(),
             self.message_routing_register_task_request_tx.clone(),
             host_url,
-            self.buffer_size,
+            self.configuration.buffer_size().get(),
         )
     }
 

@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sink::item::ItemSink;
-use futures::future::{ready, Ready};
 use std::marker::PhantomData;
+
+use futures::future::{ready, Ready};
+
+use crate::sink::item::ItemSink;
 
 pub struct DropAll<T, E> {
     _phantom: PhantomData<Result<T, E>>,
@@ -38,10 +40,10 @@ impl<'a, T, E: Send + 'static> ItemSink<'a, T> for DropAll<T, E> {
 
 #[cfg(test)]
 pub mod tests {
-
-    use super::*;
     use hamcrest2::assert_that;
     use hamcrest2::prelude::*;
+
+    use super::*;
 
     #[tokio::test]
     async fn send_succeeds() {

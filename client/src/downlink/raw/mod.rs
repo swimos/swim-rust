@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
-use common::sink::item::ItemSender;
-use futures::StreamExt;
 use std::sync::Arc;
+
+use futures::StreamExt;
+
+use common::sink::item::ItemSender;
+
+use super::*;
 
 #[cfg(test)]
 pub mod tests;

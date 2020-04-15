@@ -12,20 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 
+use futures::future::BoxFuture;
+use futures::stream::{BoxStream, FusedStream};
 use futures::{future, stream, Stream};
 use futures_util::select_biased;
 use pin_utils::pin_mut;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use common::sink::item;
 use common::sink::item::{BoxItemSink, ItemSender, ItemSink, MpscSend};
-use futures::stream::{BoxStream, FusedStream};
-use std::fmt::{Debug, Display, Formatter};
-use tokio::sync::broadcast;
-use tokio::sync::watch;
+use common::topic::{BoxTopic, Topic, TopicError};
+
+use crate::router::RoutingError;
+
+pub(self) use self::raw::create_downlink;
 
 pub mod any;
 pub mod buffered;
@@ -34,11 +40,6 @@ pub mod model;
 pub mod queue;
 pub mod raw;
 pub mod subscription;
-
-pub(self) use self::raw::create_downlink;
-use crate::router::RoutingError;
-use common::topic::{BoxTopic, Topic, TopicError};
-use futures::future::BoxFuture;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.

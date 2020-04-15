@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{
-    combine_receive_connection_requests, CloseRequestReceiver, CloseRequestSender, RouterEvent,
-    RoutingError,
-};
-use common::warp::envelope::Envelope;
-use futures::{stream, StreamExt};
 use std::collections::HashMap;
-use tokio::sync::{mpsc, oneshot};
+
+use futures::{stream, StreamExt};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+use common::warp::envelope::Envelope;
+
+use crate::router::{CloseRequestReceiver, CloseRequestSender, RouterEvent, RoutingError};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
@@ -72,9 +72,9 @@ impl RequestMessageRoutingHostTask {
 
     pub async fn run(self) -> Result<(), RoutingError> {
         let RequestMessageRoutingHostTask {
-            mut new_task_request_rx,
-            mut register_task_request_rx,
-            mut close_request_rx,
+            new_task_request_rx,
+            register_task_request_rx,
+            close_request_rx,
             buffer_size,
         } = self;
 
@@ -98,8 +98,8 @@ impl RequestMessageRoutingHostTask {
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
-                for (_, mut task_handler) in host_task_join_handlers {
-                    task_handler
+                for (_, task_handler) in host_task_join_handlers {
+                    let _ = task_handler
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }

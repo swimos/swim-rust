@@ -17,8 +17,6 @@ use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
-use crate::request::request_future::{send_and_await, RequestError, SendAndAwait};
-use crate::request::Request;
 use either::Either;
 use futures::future::{ready, BoxFuture};
 use futures::future::{ErrInto, Ready};
@@ -26,10 +24,14 @@ use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
 use futures::{future, Future, FutureExt, Stream, StreamExt, TryFutureExt};
 use futures_util::select_biased;
-use pin_project::pin_project;
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
+
+use pin_project::pin_project;
+
+use crate::request::request_future::{send_and_await, RequestError, SendAndAwait};
+use crate::request::Request;
 
 #[cfg(test)]
 mod tests;

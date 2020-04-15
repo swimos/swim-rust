@@ -12,21 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use futures::Stream;
 use tokio::sync::mpsc;
 
+use common::model::Value;
+use common::request::Request;
+use common::sink::item::ItemSender;
+
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::*;
-use common::model::Value;
-use common::request::Request;
-use common::sink::item::ItemSender;
-use std::fmt;
 
 #[cfg(test)]
 mod tests;

@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{FormSerializeErr, Result, SerializerState, ValueSerializer};
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::Serialize;
+
+use crate::{FormSerializeErr, Result, SerializerState, ValueSerializer};
 
 impl<'a> SerializeSeq for &'a mut ValueSerializer {
     type Ok = ();

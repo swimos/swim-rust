@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
-use common::model::Value;
 use serde::de::{DeserializeSeed, EnumAccess, VariantAccess, Visitor};
 use serde::Deserializer;
+
+use common::model::Value;
+
+use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
 
 pub struct Enum<'a, 'de: 'a> {
     de: &'a mut ValueDeserializer<'de>,

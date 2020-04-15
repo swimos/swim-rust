@@ -13,15 +13,22 @@
 // limitations under the License.
 
 use std::collections::HashMap;
+use std::task::{Context, Poll};
 
 use futures::future::{AbortHandle, Abortable, Aborted};
 use futures::{Sink, Stream, StreamExt};
 use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::{ClosedError, TrySendError};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tungstenite::error::Error as TError;
+
+use common::request::request_future::RequestError;
+
+use crate::connections::factory::WebsocketFactory;
 
 pub mod factory;
 
@@ -313,6 +320,14 @@ impl ConnectionSender {
             .await
             .map_err(|_| ConnectionError::SendMessageError)
     }
+
+    pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ClosedError>> {
+        self.tx.poll_ready(cx)
+    }
+
+    pub fn try_send(&mut self, message: Message) -> Result<(), TrySendError<Message>> {
+        self.tx.try_send(message)
+    }
 }
 
 type ConnectionReceiver = mpsc::Receiver<Message>;
@@ -347,10 +362,6 @@ impl From<Aborted> for ConnectionError {
         ConnectionError::ClosedError
     }
 }
-
-use crate::connections::factory::WebsocketFactory;
-use common::request::request_future::RequestError;
-use tungstenite::error::Error as TError;
 
 impl From<tungstenite::error::Error> for ConnectionError {
     fn from(e: TError) -> Self {

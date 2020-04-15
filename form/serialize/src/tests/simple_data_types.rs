@@ -14,14 +14,14 @@
 
 use serde::Serialize;
 
+use common::model::{Attr, Item, Value};
+
 use crate::tests::assert_err;
 use crate::tests::to_value;
 use crate::FormSerializeErr;
-use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod tuples {
-
     use super::*;
 
     #[test]
@@ -98,7 +98,6 @@ mod tuples {
 
 #[cfg(test)]
 mod valid_types {
-
     use super::*;
 
     #[test]
@@ -174,7 +173,6 @@ mod valid_types {
 
 #[cfg(test)]
 mod enumeration {
-
     use super::*;
 
     #[test]
@@ -260,7 +258,6 @@ mod enumeration {
 
 #[cfg(test)]
 mod struct_valid_types {
-
     use super::*;
 
     #[test]
@@ -381,7 +378,6 @@ mod struct_valid_types {
 
 #[cfg(test)]
 mod illegal_types {
-
     use super::*;
 
     #[test]
@@ -469,7 +465,6 @@ mod illegal_types {
 
 #[cfg(test)]
 mod compound_types {
-
     use super::*;
 
     #[test]

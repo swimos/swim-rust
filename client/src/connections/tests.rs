@@ -12,21 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
-use crate::connections::factory::async_factory::AsyncFactory;
-use crate::connections::factory::errors::FlattenErrors;
-use crate::connections::factory::{async_factory, WebsocketFactory};
-use common::request::request_future::SendAndAwait;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
 use futures::future::ErrInto as FutErrInto;
 use futures::task::{Context, Poll};
 use futures::Sink;
 use futures_util::stream::Stream;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use url::Url;
+
+use common::request::request_future::SendAndAwait;
+
+use crate::connections::factory::async_factory::AsyncFactory;
+use crate::connections::factory::errors::FlattenErrors;
+use crate::connections::factory::{async_factory, WebsocketFactory};
+
+use super::*;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {

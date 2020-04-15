@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
 use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use tokio::sync::{mpsc, watch};
+
+use super::*;
 
 #[tokio::test]
 pub async fn receive_from_watch_topic() {

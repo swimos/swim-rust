@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
-use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
-use crate::downlink::any::TopicKind;
-use common::warp::path::AbsolutePath;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use tokio::time::Duration;
+
+use common::warp::path::AbsolutePath;
+
+use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
+use crate::downlink::any::TopicKind;
+
+use super::*;
 
 mod harness;
 

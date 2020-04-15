@@ -14,6 +14,8 @@ tokio-tls = "0.3.0"
 im = "14.2.0"
 tokio-tungstenite = { version = "0.10.1", features = ["tls"] }
 url = "2.1.1"
+rand = "0.7.3"
+
 common = { path = "../common" }
 utilities = { path = "../utilities" }
 form = { path = "../form" }

@@ -12,17 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::raw;
-use crate::downlink::any::AnyDownlink;
-use crate::downlink::{Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
+use futures::future::ErrInto;
+use futures::{Stream, StreamExt};
+use tokio::sync::{mpsc, watch};
+
 use common::request::request_future::SendAndAwait;
 use common::request::Request;
 use common::sink::item;
 use common::sink::item::{ItemSink, MpscSend};
 use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
-use futures::future::ErrInto;
-use futures::{Stream, StreamExt};
-use tokio::sync::{mpsc, watch};
+
+use crate::downlink::any::AnyDownlink;
+use crate::downlink::{Command, Downlink, DownlinkError, Event, Message, Model, StateMachine};
+
+use super::raw;
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.

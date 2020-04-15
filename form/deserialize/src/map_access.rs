@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
-use common::model::{Item, Value};
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess};
+
+use common::model::{Item, Value};
+
+use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
 
 pub struct RecordMap<'a, 'de: 'a> {
     de: &'a mut ValueDeserializer<'de>,

@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::{Display, Formatter};
+
 use futures::future::{ErrInto, Ready};
 use futures::task::{Context, Poll};
 use futures::{Future, Stream};
 use tokio::macros::support::Pin;
+use tokio::sync::{mpsc, oneshot};
 
+use common::request::request_future::{RequestFuture, Sequenced};
+use common::request::Request;
+use common::sink::item::{ItemSink, MpscSend};
 use common::topic::{BroadcastTopic, MpscTopic, MpscTopicReceiver, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};
 
@@ -25,11 +31,6 @@ use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::raw;
 use crate::downlink::{Downlink, DownlinkError, Event};
-use common::request::request_future::{RequestFuture, Sequenced};
-use common::request::Request;
-use common::sink::item::{ItemSink, MpscSend};
-use std::fmt::{Display, Formatter};
-use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopicKind {
@@ -192,6 +193,7 @@ where
         }
     }
 }
+
 impl<Act, Upd> Downlink<Act, Event<Upd>> for AnyDownlink<Act, Upd>
 where
     Upd: Clone + Send + Sync + 'static,

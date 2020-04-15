@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Instant;
+
+use hamcrest2::assert_that;
+use hamcrest2::prelude::*;
+use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-use super::*;
 use common::sink::item::*;
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-use std::time::Instant;
-use tokio::stream::StreamExt;
+
+use super::*;
 
 struct State(i32);
 

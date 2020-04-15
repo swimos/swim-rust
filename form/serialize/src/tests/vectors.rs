@@ -14,8 +14,9 @@
 
 use serde::Serialize;
 
-use crate::tests::to_value;
 use common::model::{Attr, Item, Value};
+
+use crate::tests::to_value;
 
 #[test]
 fn vector_of_tuples() {

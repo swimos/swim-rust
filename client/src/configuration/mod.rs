@@ -13,10 +13,12 @@
 // limitations under the License.
 
 pub mod downlink {
-    use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
     use std::num::NonZeroUsize;
+
     use tokio::time::Duration;
+
+    use common::warp::path::AbsolutePath;
 
     /// Configuration for the creation and management of downlinks for a Warp client.
     pub trait Config: Send + Sync {
