@@ -429,6 +429,14 @@ impl StandardSchema {
     pub fn text(string: &str) -> Self {
         StandardSchema::Text(TextSchema::exact(string))
     }
+
+    pub fn array(elements: StandardSchema) -> Self {
+        StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(elements)))
+    }
+
+    pub fn map(keys: StandardSchema, values: StandardSchema) -> Self {
+        StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(keys, values))))
+    }
 }
 
 fn as_i64(value: &Value) -> Option<i64> {

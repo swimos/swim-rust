@@ -1001,3 +1001,41 @@ fn optional_item_in_order_non_exhaustive() {
     assert!(schema.matches(&good4));
     assert!(schema.matches(&good5));
 }
+
+#[test]
+fn array_of_values() {
+    let schema = StandardSchema::array(StandardSchema::OfKind(ValueKind::Int32));
+
+    assert!(schema.matches(&Value::empty_record()));
+    assert!(schema.matches(&Value::from_vec(vec![1, 2, 3, 4])));
+    assert!(!schema.matches(&Value::from_vec(vec![1i64, 2i64, 3i64, 4i64])));
+    assert!(!schema.matches(&Value::from_vec(vec![Item::of(1), Item::of("hello")])));
+
+    let with_attr = Value::Record(vec![Attr::of("name")], vec![Item::of(1), Item::of(10)]);
+    assert!(schema.matches(&with_attr));
+}
+
+#[test]
+fn map_record() {
+    let schema = StandardSchema::map(StandardSchema::OfKind(ValueKind::Int32),
+                                     StandardSchema::OfKind(ValueKind::Text));
+
+    let good_items = vec![
+        Item::slot(2, "a"),
+        Item::slot(-1, "b"),
+        Item::slot(12, "c")
+    ];
+
+    let bad_items = vec![
+        Item::slot("a", 2),
+        Item::slot(-1, false),
+        Item::slot(12, "c")
+    ];
+
+    assert!(schema.matches(&Value::empty_record()));
+    assert!(schema.matches(&Value::from_vec(good_items.clone())));
+    assert!(!schema.matches(&Value::from_vec(bad_items)));
+
+    let with_attr = Value::Record(vec![Attr::of("name")], good_items.clone());
+    assert!(schema.matches(&with_attr));
+}
