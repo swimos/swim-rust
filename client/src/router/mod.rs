@@ -249,7 +249,7 @@ fn combine_receive_connection_requests(
 pub enum RouterEvent {
     Envelope(Envelope),
     ConnectionClosed,
-    NotFound,
+    Unreachable,
     Stopping,
 }
 
