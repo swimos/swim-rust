@@ -24,6 +24,12 @@ pub use strategy::RetryStrategy;
 
 mod strategy;
 
+#[cfg(test)]
+mod tests;
+
+/// A retryable request that will attempt to fulful the request using the retry strategy provided.
+/// Transient errors, such as a connection error will be retried but permanent errors such as sender
+/// being closed will cause the request to be cancelled straight away.
 #[pin_project]
 pub struct RetryableRequest<'fut, S, V>
 where
@@ -53,6 +59,7 @@ where
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub enum RetryErr {
     RetriesExceeded,
     SenderClosed,
@@ -98,18 +105,24 @@ where
                     };
                 }
                 RetryState::Retrying => match this.strategy.next() {
-                    Some(duration) => self
-                        .as_mut()
-                        .project()
-                        .state
-                        .set(RetryState::Sleeping(time::delay_for(duration))),
+                    Some(duration) => match duration {
+                        Some(duration) => {
+                            self.as_mut()
+                                .project()
+                                .state
+                                .set(RetryState::Sleeping(time::delay_for(duration)));
+                        }
+                        None => {
+                            self.as_mut().project().state.set(RetryState::NotStarted);
+                        }
+                    },
                     None => {
                         return Poll::Ready(Err(RetryErr::RetriesExceeded));
                     }
                 },
                 RetryState::Sleeping(timer) => {
                     ready!(timer.poll(cx));
-                    return Poll::Pending;
+                    self.as_mut().project().state.set(RetryState::NotStarted);
                 }
             }
         }
