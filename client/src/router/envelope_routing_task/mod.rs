@@ -23,9 +23,7 @@ use common::warp::envelope::Envelope;
 use crate::router::configuration::RouterConfig;
 use crate::router::envelope_routing_task::retry::boxed_connection_sender::BoxedConnSender;
 use crate::router::envelope_routing_task::retry::RetryableRequest;
-use crate::router::{
-    CloseRequestReceiver, CloseRequestSender, ConnectionRequestSender, RoutingError,
-};
+use crate::router::{CloseRequestReceiver, CloseRequestSender, ConnReqSendResult, RoutingError};
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -41,7 +39,7 @@ pub(crate) mod retry;
 mod tests;
 
 pub struct RequestEnvelopeRoutingHostTask {
-    connection_request_tx: ConnectionRequestSender,
+    connection_request_tx: ConnReqSendResult,
     task_request_rx: HostEnvelopeTaskRequestReceiver,
     _close_request_rx: CloseRequestReceiver,
     config: RouterConfig,
@@ -49,7 +47,7 @@ pub struct RequestEnvelopeRoutingHostTask {
 
 impl RequestEnvelopeRoutingHostTask {
     pub fn new(
-        connection_request_tx: ConnectionRequestSender,
+        connection_request_tx: ConnReqSendResult,
         config: RouterConfig,
     ) -> (Self, HostEnvelopeTaskRequestSender, CloseRequestSender) {
         let (task_request_tx, task_request_rx) = mpsc::channel(config.buffer_size().get());
@@ -106,14 +104,14 @@ impl RequestEnvelopeRoutingHostTask {
 struct RouteHostEnvelopesTask {
     host_url: url::Url,
     envelope_rx: mpsc::Receiver<Envelope>,
-    connection_request_tx: ConnectionRequestSender,
+    connection_request_tx: ConnReqSendResult,
     config: RouterConfig,
 }
 
 impl RouteHostEnvelopesTask {
     fn new(
         host_url: url::Url,
-        connection_request_tx: ConnectionRequestSender,
+        connection_request_tx: ConnReqSendResult,
         config: RouterConfig,
     ) -> (Self, mpsc::Sender<Envelope>) {
         let (envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());

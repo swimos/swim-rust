@@ -34,6 +34,7 @@ use tungstenite::error::Error as TError;
 use common::request::request_future::RequestError;
 
 use crate::connections::factory::WebsocketFactory;
+use std::borrow::Cow;
 
 pub mod factory;
 
@@ -380,7 +381,7 @@ impl ConnectionSender {
 type ConnectionReceiver = mpsc::Receiver<Message>;
 
 /// Connection error types returned by the connection pool and the connections.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ConnectionError {
     /// Error that occurred when connecting to a remote host.
     ConnectError,
@@ -390,6 +391,7 @@ pub enum ConnectionError {
     ReceiveMessageError,
     /// Error that occurred when closing down connections.
     ClosedError,
+    TungsteniteError(Cow<'static, str>),
 }
 
 impl From<RequestError> for ConnectionError {

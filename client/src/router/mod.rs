@@ -155,8 +155,14 @@ impl SwimRouter {
     }
 }
 
-type ConnectionRequestSender = mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>;
-type ConnectionRequestReceiver = mpsc::Receiver<(url::Url, oneshot::Sender<ConnectionSender>)>;
+pub type ConnReqSendResult = mpsc::Sender<(
+    url::Url,
+    oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+)>;
+type ConnectionRequestReceiver = mpsc::Receiver<(
+    url::Url,
+    oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+)>;
 
 pub type CloseRequestSender = mpsc::Sender<()>;
 pub type CloseRequestReceiver = mpsc::Receiver<()>;
@@ -173,7 +179,7 @@ impl RequestConnectionsTask {
         connection_pool: ConnectionPool,
         message_routing_new_task_request_tx: HostMessageNewTaskRequestSender,
         config: RouterConfig,
-    ) -> (Self, ConnectionRequestSender, CloseRequestSender) {
+    ) -> (Self, ConnReqSendResult, CloseRequestSender) {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
         let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
@@ -211,7 +217,7 @@ impl RequestConnectionsTask {
             {
                 Ok((connection_sender, connection_receiver)) => {
                     connection_tx
-                        .send(connection_sender)
+                        .send(Ok(connection_sender))
                         .map_err(|_| RoutingError::ConnectionError)?;
 
                     if let Some(receiver) = connection_receiver {
@@ -222,10 +228,16 @@ impl RequestConnectionsTask {
                     }
                 }
 
-                Err(_) => message_routing_new_task_request_tx
-                    .send(ConnectionResponse::Failure(host))
-                    .await
-                    .map_err(|_| RoutingError::ConnectionError)?,
+                Err(_e) => {
+                    // Need to return an error to the request so that it can cancel and not attempt
+                    // again
+                    let _ = connection_tx.send(Err(RoutingError::ConnectionError));
+
+                    message_routing_new_task_request_tx
+                        .send(ConnectionResponse::Failure(host))
+                        .await
+                        .map_err(|_| RoutingError::ConnectionError)?;
+                }
             }
         }
         Ok(())
@@ -233,7 +245,12 @@ impl RequestConnectionsTask {
 }
 
 enum ConnectionsRequestType {
-    NewConnection((url::Url, oneshot::Sender<ConnectionSender>)),
+    NewConnection(
+        (
+            url::Url,
+            oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+        ),
+    ),
     Close,
 }
 

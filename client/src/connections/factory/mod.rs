@@ -161,6 +161,7 @@ pub mod tungstenite {
     use tokio_tls::TlsStream;
     use tokio_tungstenite::stream::Stream as StreamSwitcher;
     use tokio_tungstenite::tungstenite::protocol::Message;
+    use tokio_tungstenite::tungstenite::Error;
     use tokio_tungstenite::*;
     use url::Url;
 
@@ -186,13 +187,59 @@ pub mod tungstenite {
         inner: async_factory::AsyncFactory<TungWsSink, TungWsStream>,
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn open_conn(url: url::Url) -> Result<(TungWsSink, TungWsStream), ConnectionError> {
+        tracing::info!("Connecting to URL {:?}", &url);
+
         match connect_async(url).await {
             Ok((ws_str, _)) => {
                 let (tx, rx) = ws_str.split();
                 Ok((tx, rx.err_into()))
             }
-            Err(_) => Err(ConnectionError::ConnectError),
+            Err(e) => {
+                match e {
+                    Error::Url(m) => {
+                        // Malformatted URL, permanent error
+                        let e = "Failed to connect to the host due to an invalid URL";
+                        tracing::error!(cause = %m, e);
+                        Err(ConnectionError::TungsteniteError(e.into()))
+                    }
+                    Error::Io(e) => {
+                        // This should be considered a fatal error. How should it be handled?
+                        let m = "IO error when attempting to connect to host";
+                        tracing::error!(cause = %e, m);
+                        Err(ConnectionError::TungsteniteError(m.into()))
+                    }
+                    Error::Tls(e) => {
+                        // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
+                        let m = "IO error when attempting to connect to host";
+                        tracing::error!(cause = %e, m);
+                        Err(ConnectionError::TungsteniteError(m.into()))
+                    }
+                    Error::Protocol(m) => {
+                        let e = "A protocol error occured when connecting to host";
+                        tracing::error!(cause = %m, e);
+                        Err(ConnectionError::TungsteniteError(e.into()))
+                    }
+                    Error::Http(code) => {
+                        // This should be expanded but for now it will suffice
+                        let m = "HTTP error when connecting to host";
+                        tracing::error!(cause = %code, m);
+                        Err(ConnectionError::TungsteniteError(m.into()))
+                    }
+                    Error::HttpFormat(e) => {
+                        // This should be expanded but for now it will suffice
+                        let m = "HTTP error when connecting to host";
+                        tracing::error!(cause = %e, m);
+                        Err(ConnectionError::TungsteniteError(m.into()))
+                    }
+                    e => {
+                        // Transient or unreachable errors
+                        tracing::error!(cause = %e, "Failed to connect to URL");
+                        Err(ConnectionError::ConnectError)
+                    }
+                }
+            }
         }
     }
 

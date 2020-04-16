@@ -93,7 +93,9 @@ where
                         Ok(_) => return Poll::Ready(Ok(())),
                         Err(e) => {
                             let new_state = match e {
-                                RetryErr::ConnectionError => RetryState::Retrying,
+                                RetryErr::ConnectionError => {
+                                    return Poll::Ready(Err(RetryErr::ConnectionError))
+                                }
                                 RetryErr::SenderClosed => RetryState::Retrying,
                                 RetryErr::RetriesExceeded => {
                                     return Poll::Ready(Err(RetryErr::RetriesExceeded));
@@ -161,27 +163,24 @@ pub mod boxed_connection_sender {
     use futures_util::future::BoxFuture;
     use futures_util::task::Waker;
     use tokio::sync::mpsc::error::TrySendError;
-    use tokio::sync::{mpsc, oneshot};
+    use tokio::sync::oneshot;
     use tokio_tungstenite::tungstenite::protocol::Message;
 
     use crate::connections::ConnectionSender;
     use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
-    use crate::router::RoutingError;
+    use crate::router::{ConnReqSendResult, RoutingError};
 
     /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
     /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
     /// the request using the given [`oneshot::Sender`] instance. If this fails then the future will
     /// return [`ConnectionError`].
     pub struct BoxedConnSender {
-        sender: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
+        sender: ConnReqSendResult,
         host: url::Url,
     }
 
     impl BoxedConnSender {
-        pub fn new(
-            sender: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
-            host: url::Url,
-        ) -> BoxedConnSender {
+        pub fn new(sender: ConnReqSendResult, host: url::Url) -> BoxedConnSender {
             BoxedConnSender { sender, host }
         }
     }
@@ -196,11 +195,7 @@ pub mod boxed_connection_sender {
     }
 
     impl<'a> RequestFuture<'a> {
-        fn new(
-            sender: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
-            host: url::Url,
-            value: Message,
-        ) -> RequestFuture<'a> {
+        fn new(sender: ConnReqSendResult, host: url::Url, value: Message) -> RequestFuture<'a> {
             RequestFuture {
                 sender,
                 host,
@@ -211,7 +206,7 @@ pub mod boxed_connection_sender {
     }
 
     pub struct RequestFuture<'a> {
-        sender: mpsc::Sender<(url::Url, oneshot::Sender<ConnectionSender>)>,
+        sender: ConnReqSendResult,
         host: url::Url,
         value: Message,
         state: State<'a>,
@@ -241,7 +236,7 @@ pub mod boxed_connection_sender {
 
                 let result = connection_rx
                     .await
-                    .map_err(|_| RoutingError::ConnectionError);
+                    .map_err(|_| RoutingError::ConnectionError)?;
 
                 waker.wake();
 
