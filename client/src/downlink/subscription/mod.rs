@@ -20,7 +20,7 @@ use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
-use crate::downlink::{Command, Message};
+use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RoutingError};
 use common::model::Value;
 use common::request::Request;
@@ -29,18 +29,21 @@ use common::sink::item::ItemSender;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 use either::Either;
+use futures::stream::Fuse;
 use futures::Stream;
-use futures_util::future::TryFutureExt;
+use futures_util::future::{ready, TryFutureExt};
+use futures_util::select_biased;
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::stream::StreamExt;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use utilities::future::{SwimFutureExt, Transformation, TransformedFuture};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -165,11 +168,46 @@ pub enum DownlinkRequest {
     Map(AbsolutePath, Request<Result<(MapDownlink, MapReceiver)>>),
 }
 
+type StopEvents = FuturesUnordered<TransformedFuture<StoppedFuture, MakeStopEvent>>;
+
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
     value_downlinks: HashMap<AbsolutePath, WeakValueDownlink>,
     map_downlinks: HashMap<AbsolutePath, WeakMapDownlink>,
+    stopped_watch: StopEvents,
     router: R,
+}
+
+/// Event that is generated after a downlink stops to allow it to be cleaned up.
+struct DownlinkStoppedEvent {
+    kind: DownlinkKind,
+    path: AbsolutePath,
+    //TODO Currently ignored, should be logged.
+    _error: Option<DownlinkError>,
+}
+
+struct MakeStopEvent {
+    kind: DownlinkKind,
+    path: AbsolutePath,
+}
+
+impl MakeStopEvent {
+    fn new(kind: DownlinkKind, path: AbsolutePath) -> Self {
+        MakeStopEvent { kind, path }
+    }
+}
+
+impl Transformation<std::result::Result<(), DownlinkError>> for MakeStopEvent {
+    type Out = DownlinkStoppedEvent;
+
+    fn transform(self, input: std::result::Result<(), DownlinkError>) -> Self::Out {
+        let MakeStopEvent { kind, path } = self;
+        DownlinkStoppedEvent {
+            kind,
+            path,
+            _error: input.err(),
+        }
+    }
 }
 
 impl<R> DownlinkTask<R>
@@ -184,6 +222,7 @@ where
             config,
             value_downlinks: HashMap::new(),
             map_downlinks: HashMap::new(),
+            stopped_watch: StopEvents::new(),
             router,
         }
     }
@@ -197,7 +236,8 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await;
 
         //TODO Do something with invalid envelopes rather than discarding them.
-        let updates = incoming.filter_map(|env| envelopes::value::try_from_envelope(env).ok());
+        let updates =
+            incoming.filter_map(|env| ready(envelopes::value::try_from_envelope(env).ok()));
 
         let sink_path = path.clone();
         let cmd_sink = sink
@@ -221,7 +261,11 @@ where
             }
         };
 
-        self.value_downlinks.insert(path, dl.downgrade());
+        self.value_downlinks.insert(path.clone(), dl.downgrade());
+        self.stopped_watch.push(
+            dl.await_stopped()
+                .transform(MakeStopEvent::new(DownlinkKind::Value, path)),
+        );
         (dl, rec)
     }
 
@@ -230,7 +274,7 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await;
 
         //TODO Do something with invalid envelopes rather than discarding them.
-        let updates = incoming.filter_map(|env| envelopes::map::try_from_envelope(env).ok());
+        let updates = incoming.filter_map(|env| ready(envelopes::map::try_from_envelope(env).ok()));
 
         let sink_path = path.clone();
 
@@ -274,7 +318,11 @@ where
             }
         };
 
-        self.map_downlinks.insert(path, dl.downgrade());
+        self.map_downlinks.insert(path.clone(), dl.downgrade());
+        self.stopped_watch.push(
+            dl.await_stopped()
+                .transform(MakeStopEvent::new(DownlinkKind::Map, path)),
+        );
         (dl, rec)
     }
 
@@ -284,11 +332,21 @@ where
     {
         pin_mut!(requests);
 
-        let mut pinned_requests: Pin<&mut Req> = requests;
+        let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
 
-        while let Some(request) = pinned_requests.next().await {
-            match request {
-                DownlinkRequest::Value(init, path, value_req) => {
+        loop {
+            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
+                if self.stopped_watch.is_empty() {
+                    pinned_requests.next().await.map(Either::Left)
+                } else {
+                    select_biased! {
+                        maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
+                        maybe_closed = self.stopped_watch.next() => maybe_closed.map(Either::Right),
+                    }
+                };
+
+            match item {
+                Some(Either::Left(DownlinkRequest::Value(init, path, value_req))) => {
                     let dl = match self.value_downlinks.get(&path) {
                         Some(dl) => {
                             let maybe_dl = dl.upgrade();
@@ -298,13 +356,15 @@ where
                                         Ok(rec) => Ok((dl_clone, rec)),
                                         Err(_) => {
                                             self.value_downlinks.remove(&path);
-                                            Ok(self.create_new_value_downlink(init, path).await)
+                                            Ok(self
+                                                .create_new_value_downlink(init, path.clone())
+                                                .await)
                                         }
                                     }
                                 }
                                 _ => {
                                     self.value_downlinks.remove(&path);
-                                    Ok(self.create_new_value_downlink(init, path).await)
+                                    Ok(self.create_new_value_downlink(init, path.clone()).await)
                                 }
                             }
                         }
@@ -313,12 +373,12 @@ where
                                 DownlinkKind::Value,
                                 DownlinkKind::Map,
                             )),
-                            _ => Ok(self.create_new_value_downlink(init, path).await),
+                            _ => Ok(self.create_new_value_downlink(init, path.clone()).await),
                         },
                     };
                     let _ = value_req.send(dl);
                 }
-                DownlinkRequest::Map(path, map_req) => {
+                Some(Either::Left(DownlinkRequest::Map(path, map_req))) => {
                     let dl = match self.map_downlinks.get(&path) {
                         Some(dl) => {
                             let maybe_dl = dl.upgrade();
@@ -328,13 +388,13 @@ where
                                         Ok(rec) => Ok((dl_clone, rec)),
                                         Err(_) => {
                                             self.map_downlinks.remove(&path);
-                                            Ok(self.create_new_map_downlink(path).await)
+                                            Ok(self.create_new_map_downlink(path.clone()).await)
                                         }
                                     }
                                 }
                                 _ => {
                                     self.map_downlinks.remove(&path);
-                                    Ok(self.create_new_map_downlink(path).await)
+                                    Ok(self.create_new_map_downlink(path.clone()).await)
                                 }
                             }
                         }
@@ -343,10 +403,33 @@ where
                                 DownlinkKind::Map,
                                 DownlinkKind::Value,
                             )),
-                            _ => Ok(self.create_new_map_downlink(path).await),
+                            _ => Ok(self.create_new_map_downlink(path.clone()).await),
                         },
                     };
                     let _ = map_req.send(dl);
+                }
+                Some(Either::Right(stop_event)) => match stop_event.kind {
+                    DownlinkKind::Value => {
+                        if let Some(weak_dl) = self.value_downlinks.get(&stop_event.path) {
+                            let is_running =
+                                weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
+                            if !is_running {
+                                self.value_downlinks.remove(&stop_event.path);
+                            }
+                        }
+                    }
+                    DownlinkKind::Map => {
+                        if let Some(weak_dl) = self.map_downlinks.get(&stop_event.path) {
+                            let is_running =
+                                weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
+                            if !is_running {
+                                self.map_downlinks.remove(&stop_event.path);
+                            }
+                        }
+                    }
+                },
+                None => {
+                    break;
                 }
             }
         }

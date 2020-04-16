@@ -14,13 +14,13 @@
 
 use crate::downlink::{
     Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message, Model,
-    Operation, Response, StateMachine,
+    Operation, Response, StateMachine, StoppedFuture,
 };
 use crate::router::RoutingError;
 use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{Stream, StreamExt, Future};
+use futures::{Stream, StreamExt};
 use futures_util::future::ready;
 use futures_util::select_biased;
 use futures_util::stream::once;
@@ -174,27 +174,6 @@ where
     RawDownlink::new(act_tx, event_rx, dl_task)
 }
 
-pub struct StoppedFuture(watch::Receiver<Option<Result<(), DownlinkError>>>);
-
-impl Future for StoppedFuture {
-    type Output = Result<(), DownlinkError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut receiver = Pin::new(&mut self.get_mut().0);
-        loop {
-            match receiver.poll_next_unpin(cx) {
-                Poll::Ready(None) => break Poll::Ready(Err(DownlinkError::DroppedChannel)),
-                Poll::Ready(Some(maybe)) => {
-                    if let Some(result) = maybe {
-                        break Poll::Ready(result);
-                    }
-                },
-                Poll::Pending => break Poll::Pending,
-            };
-        }
-    }
-}
-
 #[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTaskHandle {
     join_handle: JoinHandle<Result<(), DownlinkError>>,
@@ -215,10 +194,12 @@ impl DownlinkTaskHandle {
         }
     }
 
+    /// Read the flag indicating whether the downlink is still running.
     pub fn is_complete(&self) -> bool {
         self.completed.load(Ordering::Acquire)
     }
 
+    /// Get a future that will complete when the downlink stops running.
     pub fn await_stopped(&self) -> StoppedFuture {
         StoppedFuture(self.stop_await.clone())
     }

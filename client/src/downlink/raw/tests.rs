@@ -338,11 +338,7 @@ async fn errors_propagate() {
     //Wait for the action the be executed.
     assert_that!(act_rx.await, ok());
 
-    let stop_res = dl_tx
-        .task
-        .task_handle()
-        .await_stopped()
-        .await;
+    let stop_res = dl_tx.task.task_handle().await_stopped().await;
 
     assert_that!(stop_res, err());
     assert_that!(stop_res.err().unwrap(), eq(DownlinkError::TransitionError));
