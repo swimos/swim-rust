@@ -168,7 +168,7 @@ pub mod boxed_connection_sender {
     use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
     use crate::router::RoutingError;
 
-    /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`].
+    /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
     /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
     /// the request using the given [`oneshot::Sender`] instance. If this fails then the future will
     /// return [`ConnectionError`].

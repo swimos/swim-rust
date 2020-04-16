@@ -16,11 +16,14 @@ use std::num::NonZeroUsize;
 
 use crate::router::envelope_routing_task::retry::RetryStrategy;
 
+// TODO: This should be moved up to the `configuration` module. Or the 'configuration' module should pull the various configurations together from modules
 #[derive(Clone, Copy)]
 pub struct RouterConfig {
     retry_strategy: RetryStrategy,
-    // TODO: Implement with the reaper task
+    /// The maximum amount of time (in seconds) a connection can be inactive for before it will be culled.
     idle_timeout: NonZeroUsize,
+    /// How frequently (in seconds) inactive connections will be culled
+    conn_reaper_frequency: NonZeroUsize,
     buffer_size: NonZeroUsize,
 }
 
@@ -36,12 +39,17 @@ impl RouterConfig {
     pub fn idle_timeout(&self) -> NonZeroUsize {
         self.idle_timeout
     }
+
+    pub fn conn_reaper_frequency(&self) -> NonZeroUsize {
+        self.conn_reaper_frequency
+    }
 }
 
 pub struct RouterConfigBuilder {
     retry_strategy: Option<RetryStrategy>,
     idle_timeout: Option<usize>,
     buffer_size: Option<usize>,
+    conn_reaper_frequency: Option<usize>,
 }
 
 impl Default for RouterConfigBuilder {
@@ -50,6 +58,7 @@ impl Default for RouterConfigBuilder {
             retry_strategy: None,
             idle_timeout: None,
             buffer_size: None,
+            conn_reaper_frequency: None,
         }
     }
 }
@@ -70,6 +79,9 @@ impl RouterConfigBuilder {
                 .unwrap_or_else(|| panic!("Router retry strategy must be provided")),
             idle_timeout: { build_usize(self.idle_timeout, "Idle timeout") },
             buffer_size: { build_usize(self.idle_timeout, "Buffer size") },
+            conn_reaper_frequency: {
+                build_usize(self.conn_reaper_frequency, "Connection reaper frequency")
+            },
         }
     }
 
@@ -80,6 +92,14 @@ impl RouterConfigBuilder {
 
     pub fn with_idle_timeout(mut self, idle_timeout: usize) -> RouterConfigBuilder {
         self.idle_timeout = Some(idle_timeout);
+        self
+    }
+
+    pub fn with_conn_reaper_frequency(
+        mut self,
+        conn_reaper_frequency: usize,
+    ) -> RouterConfigBuilder {
+        self.conn_reaper_frequency = Some(conn_reaper_frequency);
         self
     }
 

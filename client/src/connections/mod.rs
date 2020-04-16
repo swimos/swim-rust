@@ -14,14 +14,19 @@
 
 use std::collections::HashMap;
 use std::task::{Context, Poll};
+use std::time::Instant;
 
+use either::Either;
 use futures::future::{AbortHandle, Abortable, Aborted};
+use futures::select;
 use futures::{Sink, Stream, StreamExt};
+use futures_util::FutureExt;
 use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, TrySendError};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio::time::Duration;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tungstenite::error::Error as TError;
@@ -77,7 +82,8 @@ impl ConnectionPool {
 
         let task = PoolTask::new(connection_request_rx, connection_factory, buffer_size);
 
-        let accept_connection_requests_future = Abortable::new(task.run(), abort_registration);
+        // TODO: Add configuration for connections
+        let accept_connection_requests_future = Abortable::new(task.run(5, 10), abort_registration);
 
         let connection_requests_handler = tokio::task::spawn(accept_connection_requests_future);
 
@@ -148,54 +154,89 @@ where
         }
     }
 
-    async fn run(self) -> Result<(), ConnectionError> {
+    async fn run(self, reaper_frequency: u64, conn_timeout: u64) -> Result<(), ConnectionError> {
         let PoolTask {
-            mut rx,
+            rx,
             mut connection_factory,
             buffer_size,
         } = self;
-        let mut connections: HashMap<String, SwimConnection> = HashMap::new();
+        let mut connections: HashMap<String, InnerConnection> = HashMap::new();
+
+        let timeout = std::time::Duration::from_secs(conn_timeout);
+        let mut prune_timer = tokio::time::delay_for(Duration::from_secs(reaper_frequency)).fuse();
+        let mut fused_requests = rx.fuse();
+
         loop {
-            let connection_request = rx.recv().await.ok_or(ConnectionError::ConnectError)?;
-            let ConnectionRequest {
-                host_url,
-                tx: request_tx,
-            } = connection_request;
-
-            let host = host_url.as_str().to_owned();
-
-            let connection_channel = if connections.contains_key(&host) {
-                let conn = connections
-                    .get_mut(&host)
-                    .ok_or(ConnectionError::ConnectError)?;
-
-                Ok((
-                    (ConnectionSender {
-                        tx: conn.tx.clone(),
-                    }),
-                    None,
-                ))
-            } else {
-                let connection_result =
-                    SwimConnection::new(host_url, buffer_size, &mut connection_factory).await;
-
-                match connection_result {
-                    Ok(mut connection) => {
-                        let sender = ConnectionSender {
-                            tx: connection.tx.clone(),
-                        };
-                        let receiver = connection.rx.take().ok_or(ConnectionError::ConnectError)?;
-
-                        connections.insert(host.clone(), connection);
-                        Ok((sender, Some(receiver)))
-                    }
-                    Err(error) => Err(error),
+            let either: Option<Either<(), ConnectionRequest>> = select! {
+                _ = prune_timer => Some(Either::Left(())),
+                req = fused_requests.next() => req.map(Either::Right),
+                complete => {
+                    // todo: define final state
+                    unimplemented!();
                 }
             };
 
-            request_tx
-                .send(connection_channel)
-                .map_err(|_| ConnectionError::ConnectError)?;
+            match either {
+                Some(Either::Left(_)) => {
+                    connections.retain(|_, v| v.last_accessed.elapsed() < timeout);
+                    prune_timer =
+                        tokio::time::delay_for(Duration::from_secs(reaper_frequency)).fuse();
+                }
+                Some(Either::Right(req)) => {
+                    let ConnectionRequest {
+                        host_url,
+                        tx: request_tx,
+                    } = req;
+
+                    let host = host_url.as_str().to_owned();
+
+                    let connection_channel = if connections.contains_key(&host) {
+                        let mut inner_connection = connections
+                            .get_mut(&host)
+                            .ok_or(ConnectionError::ConnectError)?;
+                        inner_connection.last_accessed = Instant::now();
+
+                        Ok((
+                            (ConnectionSender {
+                                tx: inner_connection.conn.tx.clone(),
+                            }),
+                            None,
+                        ))
+                    } else {
+                        let connection_result =
+                            SwimConnection::new(host_url, buffer_size, &mut connection_factory)
+                                .await;
+
+                        match connection_result {
+                            Ok(mut connection) => {
+                                let sender = ConnectionSender {
+                                    tx: connection.tx.clone(),
+                                };
+                                let receiver =
+                                    connection.rx.take().ok_or(ConnectionError::ConnectError)?;
+
+                                let inner_conn = InnerConnection {
+                                    conn: connection,
+                                    _birth: Instant::now(),
+                                    last_accessed: Instant::now(),
+                                };
+
+                                connections.insert(host.clone(), inner_conn);
+                                Ok((sender, Some(receiver)))
+                            }
+                            Err(error) => Err(error),
+                        }
+                    };
+
+                    request_tx
+                        .send(connection_channel)
+                        .map_err(|_| ConnectionError::ConnectError)?;
+                }
+                None => {
+                    // todo: define final state
+                    unimplemented!()
+                }
+            }
         }
     }
 }
@@ -259,6 +300,12 @@ where
                 .map_err(|_| ConnectionError::ReceiveMessageError)?;
         }
     }
+}
+
+struct InnerConnection {
+    conn: SwimConnection,
+    _birth: Instant,
+    last_accessed: Instant,
 }
 
 /// Connection to a remote host.

@@ -17,7 +17,7 @@ use std::time::Duration;
 use rand;
 use rand::Rng;
 
-/// The retry strategy that a ['RetryableRequest`] should use to determine when to perform the next
+/// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
 /// request.
 #[derive(Clone, Copy)]
 pub enum RetryStrategy {

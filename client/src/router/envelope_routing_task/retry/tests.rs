@@ -14,8 +14,8 @@
 
 use crate::router::envelope_routing_task::retry::tests::boxed::FailingSink;
 use crate::router::envelope_routing_task::retry::{RetryErr, RetryStrategy};
-use tokio::time::Duration;
 use std::time::Instant;
+use tokio::time::Duration;
 
 mod boxed {
     use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
@@ -62,7 +62,12 @@ async fn exponential() {
 
     let start = Instant::now();
 
-    let result = RetryableRequest::send(FailingSink::new(5), 5, RetryStrategy::exponential(max_interval, max_backoff)).await;
+    let result = RetryableRequest::send(
+        FailingSink::new(5),
+        5,
+        RetryStrategy::exponential(max_interval, max_backoff),
+    )
+    .await;
 
     let duration = start.elapsed();
     assert!(duration >= max_backoff && duration <= max_backoff + max_interval);

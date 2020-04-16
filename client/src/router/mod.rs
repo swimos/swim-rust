@@ -86,7 +86,8 @@ impl SwimRouter {
         // TODO: Accept as an argument
         let configuration = RouterConfigBuilder::default()
             .with_buffer_size(buffer_size)
-            .with_idle_timeout(100)
+            .with_idle_timeout(5)
+            .with_conn_reaper_frequency(10)
             .with_retry_stategy(RetryStrategy::exponential(
                 Duration::from_secs(2),
                 Duration::from_secs(32),
