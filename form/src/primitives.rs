@@ -15,7 +15,9 @@
 use common::model::Value;
 use deserialize::FormDeserializeErr;
 
-use crate::Form;
+use crate::_common::model::schema::StandardSchema;
+use crate::_common::model::ValueKind;
+use crate::{Form, ValidatedForm};
 
 impl Form for f64 {
     fn as_value(&self) -> Value {
@@ -27,6 +29,12 @@ impl Form for f64 {
             Value::Float64Value(i) => Ok(*i),
             v => de_incorrect_type("f64", v),
         }
+    }
+}
+
+impl ValidatedForm for f64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Float64)
     }
 }
 
@@ -51,6 +59,12 @@ impl Form for i32 {
     }
 }
 
+impl ValidatedForm for i32 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Int32)
+    }
+}
+
 impl Form for i64 {
     fn as_value(&self) -> Value {
         Value::Int64Value(*self)
@@ -61,6 +75,12 @@ impl Form for i64 {
             Value::Int64Value(i) => Ok(*i),
             v => de_incorrect_type("i64", v),
         }
+    }
+}
+
+impl ValidatedForm for i64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Int64)
     }
 }
 
@@ -77,6 +97,12 @@ impl Form for bool {
     }
 }
 
+impl ValidatedForm for bool {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Boolean)
+    }
+}
+
 impl Form for String {
     fn as_value(&self) -> Value {
         Value::Text(String::from(self))
@@ -87,5 +113,11 @@ impl Form for String {
             Value::Text(i) => Ok(i.to_owned()),
             v => de_incorrect_type("String", v),
         }
+    }
+}
+
+impl ValidatedForm for String {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Text)
     }
 }
