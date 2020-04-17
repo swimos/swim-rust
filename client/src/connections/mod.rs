@@ -120,7 +120,7 @@ impl ConnectionPool {
                 tx,
                 recreate: false,
             })
-            .map_err(|_| ConnectionError::ConnectError)?;
+            .map_err(|_| ConnectionError::ConnectError(None))?;
 
         Ok(rx)
     }
@@ -139,7 +139,7 @@ impl ConnectionPool {
                 tx,
                 recreate: true,
             })
-            .map_err(|_| ConnectionError::ConnectError)?;
+            .map_err(|_| ConnectionError::ConnectError(None))?;
 
         Ok(rx)
     }
@@ -224,8 +224,10 @@ where
                                 let sender = ConnectionSender {
                                     tx: connection.tx.clone(),
                                 };
-                                let receiver =
-                                    connection.rx.take().ok_or(ConnectionError::ConnectError)?;
+                                let receiver = connection
+                                    .rx
+                                    .take()
+                                    .ok_or(ConnectionError::ConnectError(None))?;
 
                                 let inner_conn = InnerConnection {
                                     conn: connection,
@@ -241,7 +243,7 @@ where
                     } else {
                         let mut inner_connection = connections
                             .get_mut(&host)
-                            .ok_or(ConnectionError::ConnectError)?;
+                            .ok_or(ConnectionError::ConnectError(None))?;
                         inner_connection.last_accessed = Instant::now();
 
                         Ok((
@@ -254,7 +256,7 @@ where
 
                     request_tx
                         .send(connection_channel)
-                        .map_err(|_| ConnectionError::ConnectError)?;
+                        .map_err(|_| ConnectionError::ConnectError(None))?;
                 }
                 None => {
                     // todo: define final state
@@ -406,16 +408,16 @@ type ConnectionReceiver = mpsc::Receiver<Message>;
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, PartialEq)]
 pub enum ConnectionError {
-    /// Error that occurred when connecting to a remote host.
-    ConnectError,
+    /// Error that occurred when connecting to a remote host. With an optional error message.
+    ConnectError(Option<Cow<'static, str>>),
     /// Error that occurred when sending messages.
     SendMessageError,
     /// Error that occurred when receiving messages.
     ReceiveMessageError,
     /// Error that occurred when closing down connections.
     ClosedError,
-
-    TungsteniteError(Cow<'static, str>),
+    /// A transient, possibly recoverage rror that has occured. Used to signal that reopening or
+    /// attempting a request again may resolve correctly.
     Transient,
 }
 
@@ -427,7 +429,7 @@ impl From<RequestError> for ConnectionError {
 
 impl From<tokio::task::JoinError> for ConnectionError {
     fn from(_: tokio::task::JoinError) -> Self {
-        ConnectionError::ConnectError
+        ConnectionError::ConnectError(None)
     }
 }
 
@@ -442,7 +444,7 @@ impl From<tungstenite::error::Error> for ConnectionError {
         match e {
             TError::ConnectionClosed | TError::AlreadyClosed => ConnectionError::ClosedError,
             TError::Http(_) | TError::HttpFormat(_) | TError::Tls(_) => {
-                ConnectionError::ConnectError
+                ConnectionError::ConnectError(None)
             }
             _ => ConnectionError::ReceiveMessageError,
         }

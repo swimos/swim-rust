@@ -647,7 +647,7 @@ impl MultipleTestData {
     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
         let i = self.n.fetch_add(1, Ordering::AcqRel);
         if i >= self.connections.len() {
-            Err(ConnectionError::ConnectError)
+            Err(ConnectionError::ConnectError(None))
         } else {
             let maybe_conn = &self.connections[i];
             match maybe_conn {
@@ -664,7 +664,7 @@ impl MultipleTestData {
                     };
                     Ok((output, input))
                 }
-                _ => Err(ConnectionError::ConnectError),
+                _ => Err(ConnectionError::ConnectError(None)),
             }
         }
     }

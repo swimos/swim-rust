@@ -60,7 +60,7 @@ impl Sink<Message> for TestSink {
 
 async fn open_conn(url: url::Url) -> Result<(TestSink, TestStream), ConnectionError> {
     if url.scheme() == "fail" {
-        Err(ConnectionError::ConnectError)
+        Err(ConnectionError::ConnectError(None))
     } else {
         Ok((TestSink(url.clone()), TestStream(url)))
     }
@@ -96,5 +96,5 @@ async fn fail_to_open() {
     let result = fac.connect(url.clone()).await;
     assert_that!(&result, err());
     let err = result.err().unwrap();
-    assert_that!(err, eq(ConnectionError::ConnectError));
+    assert_that!(err, eq(ConnectionError::ConnectError(None)));
 }

@@ -202,36 +202,38 @@ pub mod tungstenite {
                         // Malformatted URL, permanent error
                         let e = "Failed to connect to the host due to an invalid URL";
                         tracing::error!(cause = %m, e);
-                        Err(ConnectionError::TungsteniteError(e.into()))
+                        Err(ConnectionError::ConnectError(Some(e.into())))
                     }
                     Error::Io(e) => {
                         // This should be considered a fatal error. How should it be handled?
                         let m = "IO error when attempting to connect to host";
                         tracing::error!(cause = %e, m);
-                        Err(ConnectionError::TungsteniteError(m.into()))
+                        Err(ConnectionError::ConnectError(Some(m.into())))
                     }
                     Error::Tls(e) => {
                         // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
                         let m = "IO error when attempting to connect to host";
                         tracing::error!(cause = %e, m);
-                        Err(ConnectionError::TungsteniteError(m.into()))
+                        Err(ConnectionError::ConnectError(Some(m.into())))
                     }
                     Error::Protocol(m) => {
                         let e = "A protocol error occured when connecting to host";
                         tracing::error!(cause = %m, e);
-                        Err(ConnectionError::TungsteniteError(e.into()))
+                        Err(ConnectionError::ConnectError(Some(e.into())))
                     }
                     Error::Http(code) => {
-                        // This should be expanded but for now it will suffice
+                        // This should be expanded and determined if it is possibly a transient error
+                        // but for now it will suffice
                         let m = "HTTP error when connecting to host";
                         tracing::error!(cause = %code, m);
-                        Err(ConnectionError::TungsteniteError(m.into()))
+                        Err(ConnectionError::ConnectError(Some(m.into())))
                     }
                     Error::HttpFormat(e) => {
-                        // This should be expanded but for now it will suffice
+                        // This should be expanded and determined if it is possibly a transient error
+                        // but for now it will suffice
                         let m = "HTTP error when connecting to host";
                         tracing::error!(cause = %e, m);
-                        Err(ConnectionError::TungsteniteError(m.into()))
+                        Err(ConnectionError::ConnectError(Some(m.into())))
                     }
                     e => {
                         // Transient or unreachable errors
