@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::Deserialize;
-
-use common::model::Value;
-
 use crate::ValueDeserializer;
+use common::model::Value;
+use serde::Deserialize;
 
 #[cfg(test)]
 mod nested;

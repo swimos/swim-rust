@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::pin::Pin;
-
+use super::*;
 use futures::task::{Context, Poll};
 use futures::Future;
+use std::pin::Pin;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
-
-use super::*;
 
 pub struct Sequenced<F1: Unpin, F2: Unpin> {
     first: Option<F1>,

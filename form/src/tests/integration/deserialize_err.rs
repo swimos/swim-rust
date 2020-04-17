@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::{Attr, Item, Value};
-use deserialize::FormDeserializeErr;
 use form::Form;
 use form_derive::*;
+use common::model::{Value, Attr, Item};
+use deserialize::FormDeserializeErr;
 
 fn main() {
     #[form]
     #[derive(PartialEq)]
     struct Parent {
-        a: i32
+        a:i32
     }
 
     let record = Value::Record(

@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Instant;
-
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-use common::sink::item::*;
-
 use super::*;
+use crate::downlink::TransitionError;
+use common::sink::item::*;
+use hamcrest2::assert_that;
+use hamcrest2::prelude::*;
+use std::time::Instant;
+use tokio::stream::StreamExt;
 
 struct State(i32);
 
@@ -52,6 +51,11 @@ impl AddTo {
         self.1 = Some(cb);
         self
     }
+}
+
+fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) -> Response<Ev, Cmd> {
+    response.error = Some(err);
+    response
 }
 
 impl StateMachine<Msg, AddTo> for State {
@@ -93,7 +97,7 @@ impl StateMachine<Msg, AddTo> for State {
                 match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
                         Ok(_) => resp,
-                        Err(_) => resp.with_error(TransitionError::ReceiverDropped),
+                        Err(_) => with_error(resp, TransitionError::ReceiverDropped),
                     },
                     _ => resp,
                 }
@@ -101,23 +105,32 @@ impl StateMachine<Msg, AddTo> for State {
             Operation::Action(AddTo(n, maybe_cb)) => {
                 let next = model.data_state.0 + n;
                 let resp = if next < 0 {
-                    Response::none().with_error(TransitionError::IllegalTransition(
-                        "State cannot be negative.".to_owned(),
-                    ))
+                    with_error(
+                        Response::none(),
+                        TransitionError::IllegalTransition("State cannot be negative.".to_owned()),
+                    )
                 } else {
                     model.data_state.0 = next;
-                    Response::of(Event(next, true), Command::Action(next))
+                    response_of(Event(next, true), Command::Action(next))
                 };
                 match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
                         Ok(_) => resp,
-                        Err(_) => resp.with_error(TransitionError::ReceiverDropped),
+                        Err(_) => with_error(resp, TransitionError::ReceiverDropped),
                     },
                     _ => resp,
                 }
             }
-            Operation::Close => Response::none().then_terminate(),
         }
+    }
+}
+
+fn response_of<Ev, Cmd>(event: Event<Ev>, command: Command<Cmd>) -> Response<Ev, Cmd> {
+    Response {
+        event: Some(event),
+        command: Some(command),
+        error: None,
+        terminate: false,
     }
 }
 
@@ -134,7 +147,7 @@ async fn make_test_dl() -> (
     let downlink = create_downlink(
         State(0),
         rx_in,
-        for_mpsc_sender::<Command<i32>, DownlinkError>(tx_out),
+        for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
         10,
     );
     (downlink, tx_in, rx_out)
@@ -142,33 +155,28 @@ async fn make_test_dl() -> (
 
 #[tokio::test]
 async fn sync_on_startup() {
-    let (dl, _messages, mut commands) = make_test_dl().await;
+    let (_dl, _messages, mut commands) = make_test_dl().await;
 
     let first_cmd = commands.next().await;
     assert_that!(first_cmd, eq(Some(Command::Sync)));
-    let stop_res = dl.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
 async fn event_on_sync() {
     let (dl, mut messages, _commands) = make_test_dl().await;
-    let (dl_tx, mut dl_rx) = dl.split();
+    let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Linked).await, ok());
     assert_that!(messages.send(Message::Synced).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(0, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
 async fn ignore_update_before_link() {
     let (dl, mut messages, _commands) = make_test_dl().await;
-    let (dl_tx, mut dl_rx) = dl.split();
+    let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Action(Msg::of(12))).await, ok());
     assert_that!(messages.send(Message::Linked).await, ok());
@@ -176,15 +184,12 @@ async fn ignore_update_before_link() {
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(0, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
 async fn apply_updates_between_link_and_sync() {
     let (dl, mut messages, _commands) = make_test_dl().await;
-    let (dl_tx, mut dl_rx) = dl.split();
+    let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Message::Linked).await, ok());
     assert_that!(messages.send(Message::Action(Msg::of(12))).await, ok());
@@ -192,9 +197,6 @@ async fn apply_updates_between_link_and_sync() {
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(12, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 /// Pre-synchronizes a downlink for tests that require the ['DownlinkState::Synced'] state.
@@ -219,7 +221,7 @@ async fn sync_dl(
 #[tokio::test]
 async fn updates_processed_when_synced() {
     let (dl, mut messages, mut commands) = make_test_dl().await;
-    let (dl_tx, dl_rx) = dl.split();
+    let (_dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
 
@@ -232,9 +234,6 @@ async fn updates_processed_when_synced() {
     assert_that!(events.recv().await, eq(Some(Event(10, false))));
     assert_that!(events.recv().await, eq(Some(Event(20, false))));
     assert_that!(events.recv().await, eq(Some(Event(30, false))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -250,9 +249,6 @@ async fn actions_processed_when_synced() {
 
     assert_that!(events.recv().await, eq(Some(Event(5, true))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(5))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -281,9 +277,6 @@ async fn actions_paused_when_not_synced() {
 
     assert_that!(events.recv().await, eq(Some(Event(17, true))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -324,9 +317,6 @@ async fn actions_paused_when_unlinked() {
     //Event and command generated after the action is applied.
     assert_that!(events.recv().await, eq(Some(Event(17, true))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
-
-    let stop_res = dl_tx.stop().await;
-    assert_that!(stop_res, ok());
 }
 
 #[tokio::test]
@@ -348,7 +338,17 @@ async fn errors_propagate() {
     //Wait for the action the be executed.
     assert_that!(act_rx.await, ok());
 
-    let stop_res = dl_tx.stop().await;
+    let result = dl_tx
+        .task
+        .task_handle()
+        .stop_await
+        .clone()
+        .filter_map(|r| r)
+        .next()
+        .await;
+    assert_that!(result, some());
+    let stop_res = result.unwrap();
+
     assert_that!(stop_res, err());
     assert_that!(stop_res.err().unwrap(), eq(DownlinkError::TransitionError));
 }

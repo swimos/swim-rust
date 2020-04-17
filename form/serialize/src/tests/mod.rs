@@ -12,13 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::Serialize;
-
-use common::model::Value;
-
 use crate::{FormSerializeErr, ValueSerializer};
-
-use super::Result;
+use common::model::Value;
 
 #[cfg(test)]
 mod simple_data_types;
@@ -31,6 +26,9 @@ mod nested;
 
 #[cfg(test)]
 mod vectors;
+
+use super::Result;
+use serde::Serialize;
 
 pub fn to_value<T>(value: &T) -> Result<Value>
 where

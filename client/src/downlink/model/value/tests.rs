@@ -17,11 +17,12 @@ use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
+use crate::downlink::{DownlinkState, Model, Operation, Response, StateMachine};
 
-fn make_model(state: DownlinkState, n: i32) -> Model<Arc<Value>> {
+fn make_model(state: DownlinkState, n: i32) -> Model<ValueModel> {
     Model {
         state,
-        data_state: Arc::new(Value::Int32Value(n)),
+        data_state: ValueModel::new(Value::Int32Value(n)),
     }
 }
 
@@ -98,7 +99,7 @@ fn synced_response(start_state: DownlinkState) {
         assert_that!(response, eq(Response::none()));
     } else {
         let ev = only_event(&response);
-        assert!(Arc::ptr_eq(ev, &model.data_state));
+        assert!(Arc::ptr_eq(ev, &model.data_state.state));
     }
 }
 
@@ -134,7 +135,7 @@ fn update_message_unlinked() {
     );
 
     assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state, eq(Arc::new(Value::Int32Value(1))));
+    assert_that!(model.data_state.state, eq(Arc::new(Value::Int32Value(1))));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -147,7 +148,7 @@ fn update_message_linked() {
     );
 
     assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state, eq(Arc::new(Value::Int32Value(3))));
+    assert_that!(model.data_state.state, eq(Arc::new(Value::Int32Value(3))));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -161,9 +162,9 @@ fn update_message_synced() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(3));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     let ev = only_event(&response);
-    assert!(Arc::ptr_eq(ev, &model.data_state));
+    assert!(Arc::ptr_eq(ev, &model.data_state.state));
 }
 
 fn make_get() -> (Action, oneshot::Receiver<Arc<Value>>) {
@@ -179,13 +180,13 @@ fn get_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(13));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let get_val = result.unwrap();
-    assert!(Arc::ptr_eq(&get_val, &model.data_state));
+    assert!(Arc::ptr_eq(&get_val, &model.data_state.state));
 }
 
 #[test]
@@ -197,11 +198,19 @@ fn dropped_get() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(13));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     assert_that!(
         response,
-        eq(Response::none().with_error(TransitionError::ReceiverDropped))
+        eq(with_error(
+            Response::none(),
+            TransitionError::ReceiverDropped
+        ))
     );
+}
+
+fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) -> Response<Ev, Cmd> {
+    response.error = Some(err);
+    response
 }
 
 fn make_set(n: i32) -> (Action, oneshot::Receiver<()>) {
@@ -234,10 +243,10 @@ fn set_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(67));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state));
+    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
+    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
     assert_that!(err, none());
 
     assert_that!(rx.try_recv(), ok());
@@ -254,10 +263,10 @@ fn dropped_set_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(67));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state));
+    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
+    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
     assert_that!(&err, some());
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }
@@ -284,17 +293,17 @@ fn update_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state));
+    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
+    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
     assert_that!(err, none());
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let upd_val = result.unwrap();
-    assert!(Arc::ptr_eq(&upd_val, &model.data_state));
+    assert!(Arc::ptr_eq(&upd_val, &model.data_state.state));
 }
 
 #[test]
@@ -308,11 +317,11 @@ fn dropped_update_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state));
+    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
+    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
     assert_that!(&err, some());
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }

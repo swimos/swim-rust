@@ -56,7 +56,7 @@ mod tests;
 
 pub trait Router: Send {
     type ConnectionStream: Stream<Item = RouterEvent> + Send + 'static;
-    type ConnectionSink: ItemSender<Envelope, RoutingError> + Send + 'static;
+    type ConnectionSink: ItemSender<Envelope, RoutingError> + Send + Clone + Sync + 'static;
     type GeneralSink: ItemSender<(String, Envelope), RoutingError> + Send + 'static;
 
     type ConnectionFut: Future<Output = (Self::ConnectionSink, Self::ConnectionStream)> + Send;

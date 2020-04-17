@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::*;
+use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
+use crate::downlink::any::TopicKind;
+use common::warp::path::AbsolutePath;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use tokio::time::Duration;
-
-use common::warp::path::AbsolutePath;
-
-use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
-use crate::downlink::any::TopicKind;
-
-use super::*;
 
 mod harness;
 
@@ -29,14 +26,16 @@ mod harness;
 fn default_config() -> ConfigHierarchy {
     let client_params = ClientParams::new(2).unwrap();
     let timeout = Duration::from_secs(60000);
-    let default_params = DownlinkParams::new_queue(true, 5, timeout, 5).unwrap();
+    let default_params =
+        DownlinkParams::new_queue(BackpressureMode::Propagate, 5, timeout, 5).unwrap();
     ConfigHierarchy::new(client_params, default_params)
 }
 
 // Configuration overridden for a specific host.
 fn per_host_config() -> ConfigHierarchy {
     let timeout = Duration::from_secs(60000);
-    let special_params = DownlinkParams::new_dropping(true, timeout, 5).unwrap();
+    let special_params =
+        DownlinkParams::new_dropping(BackpressureMode::Propagate, timeout, 5).unwrap();
     let mut conf = default_config();
     conf.for_host("host2", special_params);
     conf
@@ -45,7 +44,8 @@ fn per_host_config() -> ConfigHierarchy {
 // Configuration overridden for a specific lane.
 fn per_lane_config() -> ConfigHierarchy {
     let timeout = Duration::from_secs(60000);
-    let special_params = DownlinkParams::new_buffered(true, 5, timeout, 5).unwrap();
+    let special_params =
+        DownlinkParams::new_buffered(BackpressureMode::Propagate, 5, timeout, 5).unwrap();
     let mut conf = per_host_config();
     conf.for_lane(
         &AbsolutePath::new("host2", "my_agent", "my_lane"),
@@ -193,36 +193,4 @@ async fn subscribe_map_twice() {
     let (dl2, _rec2) = result2.unwrap();
 
     assert!(dl1.same_downlink(&dl2));
-}
-
-#[tokio::test]
-async fn replace_value_after_terminated() {
-    let path = AbsolutePath::new("host", "node", "lane");
-    let mut downlinks = dl_manager(default_config()).await;
-    let result1 = downlinks.subscribe_value(Value::Extant, path.clone()).await;
-    assert_that!(&result1, ok());
-    let (dl1, rec1) = result1.unwrap();
-    //Dropping the only live receiver causes the downlink to stop.
-    drop(rec1);
-    let result2 = downlinks.subscribe_value(Value::Extant, path).await;
-    assert_that!(&result2, ok());
-    let (dl2, _rec2) = result2.unwrap();
-
-    assert!(!dl1.same_downlink(&dl2));
-}
-
-#[tokio::test]
-async fn replace_map_after_terminated() {
-    let path = AbsolutePath::new("host", "node", "lane");
-    let mut downlinks = dl_manager(default_config()).await;
-    let result1 = downlinks.subscribe_map(path.clone()).await;
-    assert_that!(&result1, ok());
-    let (dl1, rec1) = result1.unwrap();
-    //Dropping the only live receiver causes the downlink to stop.
-    drop(rec1);
-    let result2 = downlinks.subscribe_map(path).await;
-    assert_that!(&result2, ok());
-    let (dl2, _rec2) = result2.unwrap();
-
-    assert!(!dl1.same_downlink(&dl2));
 }

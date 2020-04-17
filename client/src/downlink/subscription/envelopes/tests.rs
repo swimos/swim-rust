@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use form::Form;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use common::model::Value::Int32Value;
-use form::Form;
-
-use crate::downlink::Message;
-
 use super::*;
+use crate::downlink::Message;
+use common::model::Value::Int32Value;
 
 fn path() -> AbsolutePath {
     AbsolutePath::new("host", "node", "lane")

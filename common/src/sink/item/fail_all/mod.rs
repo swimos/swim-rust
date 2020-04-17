@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
-
-use futures::future::{ready, Ready};
-
 use crate::sink::item::ItemSink;
+use futures::future::{ready, Ready};
+use std::marker::PhantomData;
 
 pub struct FailAll<T, E> {
     error: E,
@@ -42,10 +40,10 @@ impl<'a, T, E: Clone + Send + 'static> ItemSink<'a, T> for FailAll<T, E> {
 
 #[cfg(test)]
 pub mod tests {
-    use hamcrest2::assert_that;
-    use hamcrest2::prelude::*;
 
     use super::*;
+    use hamcrest2::assert_that;
+    use hamcrest2::prelude::*;
 
     #[tokio::test]
     async fn send_fails() {

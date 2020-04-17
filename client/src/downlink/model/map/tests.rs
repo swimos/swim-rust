@@ -17,19 +17,20 @@ use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
+use crate::downlink::{DownlinkState, Model, Operation, Response, StateMachine};
 
-fn make_model(state: DownlinkState, contents: ValMap) -> Model<ValMap> {
+fn make_model(state: DownlinkState, contents: ValMap) -> Model<MapModel> {
     Model {
         state,
-        data_state: contents,
+        data_state: MapModel { state: contents },
     }
 }
 
-fn make_empty_model(state: DownlinkState) -> Model<ValMap> {
+fn make_empty_model(state: DownlinkState) -> Model<MapModel> {
     make_model(state, ValMap::new())
 }
 
-fn make_model_with(state: DownlinkState, key: i32, value: String) -> Model<ValMap> {
+fn make_model_with(state: DownlinkState, key: i32, value: String) -> Model<MapModel> {
     let k = Value::Int32Value(key);
     let v = Arc::new(Value::Text(value));
     make_model(state, OrdMap::from(vec![(k, v)]))
@@ -109,7 +110,7 @@ fn synced_response(start_state: DownlinkState) {
     } else {
         let ViewWithEvent { view, event } = only_event(&response);
         assert_that!(event, eq(&MapEvent::Initial));
-        assert!(view.ptr_eq(&model.data_state));
+        assert!(view.ptr_eq(&model.data_state.state));
     }
 }
 
@@ -148,7 +149,7 @@ fn insert_message_unlinked() {
     );
 
     assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -166,7 +167,7 @@ fn remove_message_unlinked() {
     let expected = ValMap::from(vec![(k, Arc::new(v))]);
 
     assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state, eq(expected));
+    assert_that!(model.data_state.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -195,7 +196,7 @@ fn take_message_unlinked() {
     ]);
 
     assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state, eq(expected));
+    assert_that!(model.data_state.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -224,7 +225,7 @@ fn skip_message_unlinked() {
     ]);
 
     assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state, eq(expected));
+    assert_that!(model.data_state.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -253,7 +254,7 @@ fn clear_message_unlinked() {
     ]);
 
     assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state, eq(expected));
+    assert_that!(model.data_state.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -274,7 +275,7 @@ fn insert_message_linked() {
     let expected = ValMap::from(vec![(k, Arc::new(v))]);
 
     assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state, eq(expected));
+    assert_that!(model.data_state.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -289,7 +290,7 @@ fn remove_message_linked() {
     );
 
     assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -315,7 +316,7 @@ fn take_message_linked() {
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state, eq(expected));
+    assert_that!(model.data_state.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -341,7 +342,7 @@ fn skip_message_linked() {
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state, eq(expected));
+    assert_that!(model.data_state.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -365,7 +366,7 @@ fn clear_message_linked() {
     );
 
     assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -386,10 +387,10 @@ fn insert_message_synced() {
     let expected = ValMap::from(vec![(k.clone(), Arc::new(v))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     let expected_event = MapEvent::Insert(k);
     assert_that!(event, eq(&expected_event));
 }
@@ -405,10 +406,10 @@ fn remove_message_synced() {
     );
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     let expected_event = MapEvent::Remove(k);
     assert_that!(event, eq(&expected_event));
 }
@@ -435,10 +436,10 @@ fn take_message_synced() {
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     let expected_event = MapEvent::Take(1);
     assert_that!(event, eq(&expected_event));
 }
@@ -465,10 +466,10 @@ fn skip_message_synced() {
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     let expected_event = MapEvent::Skip(1);
     assert_that!(event, eq(&expected_event));
 }
@@ -493,10 +494,10 @@ fn clear_message_synced() {
     );
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     let expected_event = MapEvent::Clear;
     assert_that!(event, eq(&expected_event));
 }
@@ -522,13 +523,13 @@ fn get_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k, v)]);
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let get_val = result.unwrap();
-    assert!(get_val.ptr_eq(&model.data_state));
+    assert!(get_val.ptr_eq(&model.data_state.state));
 }
 
 #[test]
@@ -542,7 +543,7 @@ fn get_by_defined_key_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v)]);
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
@@ -550,7 +551,10 @@ fn get_by_defined_key_action() {
     let maybe_get_val = result.unwrap();
     assert_that!(&maybe_get_val, some());
     let get_val = maybe_get_val.unwrap();
-    assert!(Arc::ptr_eq(&get_val, model.data_state.get(&k).unwrap()));
+    assert!(Arc::ptr_eq(
+        &get_val,
+        model.data_state.state.get(&k).unwrap()
+    ));
 }
 
 #[test]
@@ -564,7 +568,7 @@ fn get_by_undefined_key_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v)]);
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
@@ -610,16 +614,16 @@ fn insert_to_undefined_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
         MapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
-            assert!(Arc::ptr_eq(&cmd_v, model.data_state.get(&k).unwrap()));
+            assert!(Arc::ptr_eq(&cmd_v, model.data_state.state.get(&k).unwrap()));
         }
         ow => {
             panic!("{:?} is not an insertion.", ow);
@@ -647,16 +651,16 @@ fn insert_action_dropped_listener() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
         MapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
-            assert!(Arc::ptr_eq(&cmd_v, model.data_state.get(&k).unwrap()));
+            assert!(Arc::ptr_eq(&cmd_v, model.data_state.state.get(&k).unwrap()));
         }
         ow => {
             panic!("{:?} is not an insertion.", ow);
@@ -679,16 +683,16 @@ fn insert_to_defined_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), Value::text(new_val.clone()))]);
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
         MapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
-            assert!(Arc::ptr_eq(&cmd_v, model.data_state.get(&k).unwrap()));
+            assert!(Arc::ptr_eq(&cmd_v, model.data_state.state.get(&k).unwrap()));
         }
         ow => {
             panic!("{:?} is not an insertion.", ow);
@@ -720,7 +724,7 @@ fn remove_undefined_action() {
     let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
@@ -739,11 +743,19 @@ fn remove_action_dropped_listener() {
     let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
     assert_that!(
         response,
-        eq(Response::none().with_error(TransitionError::ReceiverDropped))
+        eq(with_error(
+            Response::none(),
+            TransitionError::ReceiverDropped
+        ))
     );
+}
+
+fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) -> Response<Ev, Cmd> {
+    response.error = Some(err);
+    response
 }
 
 #[test]
@@ -758,11 +770,11 @@ fn remove_defined_action() {
 
     assert_that!(model.state, eq(DownlinkState::Synced));
 
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Remove(k.clone())));
     match cmd {
         MapModification::Remove(cmd_k) => {
@@ -813,7 +825,7 @@ fn take_action() {
         ]),
     );
 
-    let expected_before = model.data_state.clone();
+    let expected_before = model.data_state.state.clone();
 
     let (action, mut rx_before, mut rx_after) = make_take(1);
 
@@ -822,11 +834,11 @@ fn take_action() {
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, none());
@@ -839,7 +851,7 @@ fn take_action() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state));
+    assert!(after_val.ptr_eq(&model.data_state.state));
 }
 
 #[test]
@@ -866,11 +878,11 @@ fn take_action_dropped_before() {
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -878,7 +890,7 @@ fn take_action_dropped_before() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state));
+    assert!(after_val.ptr_eq(&model.data_state.state));
 }
 
 #[test]
@@ -896,7 +908,7 @@ fn take_action_dropped_after() {
         ]),
     );
 
-    let expected_before = model.data_state.clone();
+    let expected_before = model.data_state.state.clone();
 
     let (action, mut rx_before, rx_after) = make_take(1);
 
@@ -907,11 +919,11 @@ fn take_action_dropped_after() {
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -947,11 +959,11 @@ fn take_action_both_dropped() {
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -988,7 +1000,7 @@ fn skip_action() {
         ]),
     );
 
-    let expected_before = model.data_state.clone();
+    let expected_before = model.data_state.state.clone();
 
     let (action, mut rx_before, mut rx_after) = make_skip(1);
 
@@ -997,11 +1009,11 @@ fn skip_action() {
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, none());
@@ -1014,7 +1026,7 @@ fn skip_action() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state));
+    assert!(after_val.ptr_eq(&model.data_state.state));
 }
 
 #[test]
@@ -1041,11 +1053,11 @@ fn skip_action_dropped_before() {
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -1053,7 +1065,7 @@ fn skip_action_dropped_before() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state));
+    assert!(after_val.ptr_eq(&model.data_state.state));
 }
 
 #[test]
@@ -1071,7 +1083,7 @@ fn skip_action_dropped_after() {
         ]),
     );
 
-    let expected_before = model.data_state.clone();
+    let expected_before = model.data_state.state.clone();
 
     let (action, mut rx_before, rx_after) = make_skip(1);
 
@@ -1082,11 +1094,11 @@ fn skip_action_dropped_after() {
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -1122,11 +1134,11 @@ fn skip_action_dropped_both() {
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state, eq(&expected));
+    assert_that!(&model.data_state.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -1152,18 +1164,18 @@ fn clear_action() {
         ]),
     );
 
-    let expected_before = model.data_state.clone();
+    let expected_before = model.data_state.state.clone();
 
     let (action, mut rx_before) = make_clear();
 
     let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Clear));
     assert_that!(cmd, eq(MapModification::Clear));
     assert_that!(err, none());
@@ -1196,11 +1208,11 @@ fn clear_action_dropped_receiver() {
     let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
 
     assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.len(), eq(0));
+    assert_that!(model.data_state.state.len(), eq(0));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state));
+    assert!(view.ptr_eq(&model.data_state.state));
     assert_that!(event, eq(MapEvent::Clear));
     assert_that!(cmd, eq(MapModification::Clear));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));

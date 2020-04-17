@@ -21,7 +21,7 @@ struct FormStruct {
 
 #[form]
 struct Child {
-    a: u32
+    a:u32
 }
 
 fn main() {

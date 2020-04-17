@@ -12,25 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::{Display, Formatter};
-
 use futures::future::{ErrInto, Ready};
 use futures::task::{Context, Poll};
 use futures::{Future, Stream};
 use tokio::macros::support::Pin;
-use tokio::sync::{mpsc, oneshot};
 
+use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
+use pin_project::{pin_project, project};
+
+use crate::downlink::buffered::{
+    BufferedDownlink, BufferedReceiver, BufferedTopicReceiver, WeakBufferedDownlink,
+};
+use crate::downlink::dropping::{
+    DroppingDownlink, DroppingReceiver, DroppingTopicReceiver, WeakDroppingDownlink,
+};
+use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver, WeakQueueDownlink};
+use crate::downlink::raw;
+use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
+use crate::downlink::{Downlink, DownlinkError, Event};
 use common::request::request_future::{RequestFuture, Sequenced};
 use common::request::Request;
 use common::sink::item::{ItemSink, MpscSend};
-use common::topic::{BroadcastTopic, MpscTopic, MpscTopicReceiver, Topic, TopicError, WatchTopic};
-use pin_project::{pin_project, project};
-
-use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
-use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver};
-use crate::downlink::raw;
-use crate::downlink::{Downlink, DownlinkError, Event};
+use std::fmt::{Display, Formatter};
+use tokio::sync::{mpsc, oneshot};
+use utilities::future::TransformedFuture;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopicKind {
@@ -59,6 +64,26 @@ pub enum AnyDownlink<Act, Upd> {
     Buffered(BufferedDownlink<Act, Upd>),
 }
 
+/// A weak handle on a downlink. Holding this will not keep the downlink running nor prevent
+/// its sender and topic from being dropped.
+#[derive(Debug)]
+pub enum AnyWeakDownlink<Act, Upd> {
+    Queue(WeakQueueDownlink<Act, Upd>),
+    Dropping(WeakDroppingDownlink<Act, Upd>),
+    Buffered(WeakBufferedDownlink<Act, Upd>),
+}
+
+impl<Act, Upd> AnyWeakDownlink<Act, Upd> {
+    /// Attempt to upgrade this weak handle to a strong one.
+    pub fn upgrade(&self) -> Option<AnyDownlink<Act, Upd>> {
+        match self {
+            AnyWeakDownlink::Queue(qdl) => qdl.upgrade().map(AnyDownlink::Queue),
+            AnyWeakDownlink::Dropping(ddl) => ddl.upgrade().map(AnyDownlink::Dropping),
+            AnyWeakDownlink::Buffered(bdl) => bdl.upgrade().map(AnyDownlink::Buffered),
+        }
+    }
+}
+
 impl<Act, Upd> AnyDownlink<Act, Upd> {
     pub fn kind(&self) -> TopicKind {
         match self {
@@ -74,6 +99,24 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
             (AnyDownlink::Dropping(dl), AnyDownlink::Dropping(dr)) => dl.same_downlink(dr),
             (AnyDownlink::Buffered(bl), AnyDownlink::Buffered(br)) => bl.same_downlink(br),
             _ => false,
+        }
+    }
+
+    /// Downgrade this handle to a weak handle.
+    pub fn downgrade(&self) -> AnyWeakDownlink<Act, Upd> {
+        match self {
+            AnyDownlink::Queue(qdl) => AnyWeakDownlink::Queue(qdl.downgrade()),
+            AnyDownlink::Dropping(ddl) => AnyWeakDownlink::Dropping(ddl.downgrade()),
+            AnyDownlink::Buffered(bdl) => AnyWeakDownlink::Buffered(bdl.downgrade()),
+        }
+    }
+
+    /// Determine if the downlink is still running.
+    pub fn is_running(&self) -> bool {
+        match self {
+            AnyDownlink::Queue(qdl) => qdl.is_running(),
+            AnyDownlink::Dropping(ddl) => ddl.is_running(),
+            AnyDownlink::Buffered(bdl) => bdl.is_running(),
         }
     }
 }
@@ -109,15 +152,20 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
     }
 }
 
-pub type QueueSubFuture<Upd> = ErrInto<
-    Sequenced<
-        RequestFuture<Request<MpscTopicReceiver<Event<Upd>>>>,
-        oneshot::Receiver<MpscTopicReceiver<Event<Upd>>>,
+pub type QueueSubFuture<Upd> = TransformedFuture<
+    ErrInto<
+        Sequenced<
+            RequestFuture<Request<QueueTopicReceiver<Upd>>>,
+            oneshot::Receiver<QueueTopicReceiver<Upd>>,
+        >,
+        TopicError,
     >,
-    TopicError,
+    MakeReceiver,
 >;
-pub type DroppingSubFuture<Upd> = Ready<Result<DroppingReceiver<Upd>, TopicError>>;
-pub type BufferedSubFuture<Upd> = Ready<Result<BufferedReceiver<Upd>, TopicError>>;
+pub type DroppingSubFuture<Upd> =
+    TransformedFuture<Ready<Result<DroppingTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
+pub type BufferedSubFuture<Upd> =
+    TransformedFuture<Ready<Result<BufferedTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
 #[pin_project]
 pub enum AnySubFuture<Upd: Send + 'static> {
@@ -133,15 +181,16 @@ impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         #[project]
         match self.project() {
-            AnySubFuture::Queue(fut) => fut.poll(cx).map_ok(AnyReceiver::Queue).map_err(Into::into),
-            AnySubFuture::Dropping(fut) => fut.poll(cx).map_ok(AnyReceiver::Dropping),
-            AnySubFuture::Buffered(fut) => fut.poll(cx).map_ok(AnyReceiver::Buffered),
+            AnySubFuture::Queue(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Queue)),
+            AnySubFuture::Dropping(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Dropping)),
+            AnySubFuture::Buffered(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Buffered)),
         }
     }
 }
 
 impl<Act, Upd> Topic<Event<Upd>> for AnyDownlink<Act, Upd>
 where
+    Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = AnyReceiver<Upd>;
@@ -173,9 +222,9 @@ where
 }
 
 pub enum AnyDownlinkTopic<Upd> {
-    Queue(MpscTopic<Event<Upd>>),
-    Dropping(WatchTopic<Event<Upd>>),
-    Buffered(BroadcastTopic<Event<Upd>>),
+    Queue(DownlinkTopic<MpscTopic<Event<Upd>>>),
+    Dropping(DownlinkTopic<WatchTopic<Event<Upd>>>),
+    Buffered(DownlinkTopic<BroadcastTopic<Event<Upd>>>),
 }
 
 impl<Upd> Topic<Event<Upd>> for AnyDownlinkTopic<Upd>
@@ -193,7 +242,6 @@ where
         }
     }
 }
-
 impl<Act, Upd> Downlink<Act, Event<Upd>> for AnyDownlink<Act, Upd>
 where
     Upd: Clone + Send + Sync + 'static,

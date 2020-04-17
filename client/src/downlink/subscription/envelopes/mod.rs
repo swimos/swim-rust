@@ -12,18 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
-
+use crate::downlink::model::map::MapModification;
+use crate::downlink::model::value::SharedValue;
+use crate::downlink::Command;
 use common::model::Value;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use deserialize::FormDeserializeErr;
-
-use crate::downlink::model::map::MapModification;
-use crate::downlink::model::value::SharedValue;
-use crate::downlink::Command;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;

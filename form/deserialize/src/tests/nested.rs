@@ -14,12 +14,12 @@
 
 use serde::Deserialize;
 
-use common::model::{Attr, Item, Value};
-
 use crate::tests::from_value;
+use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod valid {
+
     use super::*;
 
     #[test]
