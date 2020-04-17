@@ -92,11 +92,11 @@ pub async fn all_receivers_dropped_for_watch_topic() {
     drop(rx1);
     drop(rx2);
 
-    let bad_rx = topic.subscribe().await;
-    assert_that!(bad_rx, err());
-
     let send_result = tx.broadcast(Some(5));
-    assert_that!(send_result, err());
+    assert_that!(send_result, ok());
+
+    let new_rx = topic.subscribe().await;
+    assert_that!(new_rx, ok());
 }
 
 #[tokio::test]
@@ -195,11 +195,11 @@ pub async fn all_receivers_dropped_for_broadcast_topic() {
     drop(rx1);
     drop(rx2);
 
-    let bad_rx = topic.subscribe().await;
-    assert_that!(bad_rx, err());
-
     let send_result = tx.send(5);
-    assert_that!(send_result, err());
+    assert_that!(send_result, ok());
+
+    let new_rx = topic.subscribe().await;
+    assert_that!(new_rx, ok());
 }
 
 #[tokio::test]
@@ -306,7 +306,7 @@ pub async fn all_receivers_dropped_for_mpsc_topic() {
 
     drop(rx1);
     drop(rx2);
+    assert_that!(tx.send(7).await, ok());
 
-    assert_that!(topic.subscribe().await, err());
-    assert_that!(tx.send(7).await, err());
+    assert_that!(topic.subscribe().await, ok());
 }

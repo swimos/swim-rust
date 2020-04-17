@@ -16,12 +16,14 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 
-use futures::future::{BoxFuture, Ready};
+use futures::future::{ready, BoxFuture, Ready};
 use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
 use tokio::sync::{broadcast, mpsc, watch};
 
+pub mod comap;
 pub mod drop_all;
+pub mod either;
 pub mod fail_all;
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
@@ -256,31 +258,13 @@ impl<'a, T, E: 'a> ItemSink<'a, T> for BoxItemSink<T, E> {
     }
 }
 
-pub mod comap {
-    use super::ItemSink;
+impl<'a, T> ItemSink<'a, T> for Vec<T> {
+    //TODO Ideally this should be ! but that is still experimental.
+    type Error = ();
+    type SendFuture = Ready<Result<(), ()>>;
 
-    pub struct ItemSenderComap<Sender, F> {
-        sender: Sender,
-        f: F,
-    }
-
-    impl<Sender, F> ItemSenderComap<Sender, F> {
-        pub fn new(sender: Sender, f: F) -> ItemSenderComap<Sender, F> {
-            ItemSenderComap { sender, f }
-        }
-    }
-
-    impl<'a, S, T, Sender, F> ItemSink<'a, S> for ItemSenderComap<Sender, F>
-    where
-        Sender: ItemSink<'a, T>,
-        F: FnMut(S) -> T,
-    {
-        type Error = Sender::Error;
-        type SendFuture = Sender::SendFuture;
-
-        fn send_item(&'a mut self, value: S) -> Self::SendFuture {
-            let ItemSenderComap { sender, f } = self;
-            sender.send_item(f(value))
-        }
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        self.push(value);
+        ready(Ok(()))
     }
 }

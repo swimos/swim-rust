@@ -12,40 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::configuration::downlink::{
+    BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
+};
+use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
+use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
+use crate::downlink::model::value::{self, Action, SharedValue};
+use crate::downlink::watch_adapter::map::KeyedWatch;
+use crate::downlink::watch_adapter::value::ValuePump;
+use crate::downlink::{Command, Message};
+use crate::router::{Router, RoutingError};
+use common::model::Value;
+use common::request::Request;
+use common::sink::item::either::EitherSink;
+use common::sink::item::ItemSender;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+use either::Either;
+use futures::Stream;
+use futures_util::future::TryFutureExt;
+use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
-
-use futures::Stream;
-use futures_util::future::TryFutureExt;
-use pin_utils::pin_mut;
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-use common::model::Value;
-use common::request::Request;
-use common::sink::item::ItemSender;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-
-use crate::configuration::downlink::{Config, MuxMode};
-use crate::downlink::any::{AnyDownlink, AnyReceiver};
-use crate::downlink::model::map::{MapAction, ViewWithEvent};
-use crate::downlink::model::value;
-use crate::downlink::model::value::SharedValue;
-use crate::downlink::Command;
-use crate::router::{Router, RouterEvent};
-
 pub mod envelopes;
 #[cfg(test)]
 pub mod tests;
 
 pub type ValueDownlink = AnyDownlink<value::Action, SharedValue>;
+type WeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 pub type MapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
+type WeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
@@ -107,21 +111,6 @@ impl Downlinks {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DownlinkKind {
-    Value,
-    Map,
-}
-
-impl Display for DownlinkKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DownlinkKind::Value => write!(f, "Value"),
-            DownlinkKind::Map => write!(f, "Map"),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SubscriptionError {
     BadKind {
         expected: DownlinkKind,
@@ -178,8 +167,8 @@ pub enum DownlinkRequest {
 
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
-    value_downlinks: HashMap<AbsolutePath, ValueDownlink>,
-    map_downlinks: HashMap<AbsolutePath, MapDownlink>,
+    value_downlinks: HashMap<AbsolutePath, WeakValueDownlink>,
+    map_downlinks: HashMap<AbsolutePath, WeakMapDownlink>,
     router: R,
 }
 
@@ -204,8 +193,6 @@ where
         init: Value,
         path: AbsolutePath,
     ) -> (ValueDownlink, ValueReceiver) {
-        use crate::downlink::model::value::*;
-
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
 
@@ -218,30 +205,30 @@ where
         let sink_path = path.clone();
         let cmd_sink = sink
             .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&sink_path, cmd).1);
-        let buffer_size = config.buffer_size.get();
-        let (dl, rec) = match config.mux_mode {
-            MuxMode::Queue(n) => {
-                let (dl, rec) =
-                    create_queue_downlink(init, updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
+
+        let (dl, rec) = match config.back_pressure {
+            BackpressureMode::Propagate => {
+                value_downlink_for_sink(cmd_sink, init, updates, &config)
             }
-            MuxMode::Dropping => {
-                let (dl, rec) = create_dropping_downlink(init, updates, cmd_sink, buffer_size);
-                (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
-            }
-            MuxMode::Buffered(n) => {
-                let (dl, rec) =
-                    create_buffered_downlink(init, updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
+            BackpressureMode::Release { .. } => {
+                let pressure_release = ValuePump::new(cmd_sink.clone()).await;
+
+                let either_sink = EitherSink::new(cmd_sink, pressure_release).comap(
+                    move |cmd: Command<SharedValue>| match cmd {
+                        act @ Command::Action(_) => Either::Right(act),
+                        ow => Either::Left(ow),
+                    },
+                );
+
+                value_downlink_for_sink(either_sink, init, updates, &config)
             }
         };
-        self.value_downlinks.insert(path, dl.clone());
+
+        self.value_downlinks.insert(path, dl.downgrade());
         (dl, rec)
     }
 
     async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
-        use crate::downlink::model::map::*;
-
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
 
@@ -252,25 +239,48 @@ where
         });
 
         let sink_path = path.clone();
-        let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
-            envelopes::map_envelope(&sink_path, cmd).1
-        });
-        let buffer_size = config.buffer_size.get();
-        let (dl, rec) = match config.mux_mode {
-            MuxMode::Queue(n) => {
-                let (dl, rec) = create_queue_downlink(updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
+
+        let (dl, rec) = match config.back_pressure {
+            BackpressureMode::Propagate => {
+                let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
+                    envelopes::map_envelope(&sink_path, cmd).1
+                });
+                map_downlink_for_sink(cmd_sink, updates, &config)
             }
-            MuxMode::Dropping => {
-                let (dl, rec) = create_dropping_downlink(updates, cmd_sink, buffer_size);
-                (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
-            }
-            MuxMode::Buffered(n) => {
-                let (dl, rec) = create_buffered_downlink(updates, cmd_sink, buffer_size, n.get());
-                (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
+            BackpressureMode::Release {
+                input_buffer_size,
+                bridge_buffer_size,
+                max_active_keys,
+            } => {
+                let sink_path_duplicate = sink_path.clone();
+                let direct_sink =
+                    sink.clone()
+                        .comap(move |cmd: Command<MapModification<Arc<Value>>>| {
+                            envelopes::map_envelope(&sink_path_duplicate, cmd).1
+                        });
+                let action_sink = sink.comap(move |act: MapModification<Arc<Value>>| {
+                    envelopes::map_envelope(&sink_path, Command::Action(act)).1
+                });
+
+                let pressure_release = KeyedWatch::new(
+                    action_sink,
+                    input_buffer_size,
+                    bridge_buffer_size,
+                    max_active_keys,
+                )
+                .await;
+
+                let either_sink = EitherSink::new(direct_sink, pressure_release).comap(
+                    move |cmd: Command<MapModification<Arc<Value>>>| match cmd {
+                        Command::Action(act) => Either::Right(act),
+                        ow => Either::Left(ow),
+                    },
+                );
+                map_downlink_for_sink(either_sink, updates, &config)
             }
         };
-        self.map_downlinks.insert(path, dl.clone());
+
+        self.map_downlinks.insert(path, dl.downgrade());
         (dl, rec)
     }
 
@@ -287,10 +297,18 @@ where
                 DownlinkRequest::Value(init, path, value_req) => {
                     let dl = match self.value_downlinks.get(&path) {
                         Some(dl) => {
-                            let mut dl_clone = dl.clone();
-                            match dl_clone.subscribe().await {
-                                Ok(rec) => Ok((dl_clone, rec)),
-                                Err(_) => {
+                            let maybe_dl = dl.upgrade();
+                            match maybe_dl {
+                                Some(mut dl_clone) if dl_clone.is_running() => {
+                                    match dl_clone.subscribe().await {
+                                        Ok(rec) => Ok((dl_clone, rec)),
+                                        Err(_) => {
+                                            self.value_downlinks.remove(&path);
+                                            Ok(self.create_new_value_downlink(init, path).await)
+                                        }
+                                    }
+                                }
+                                _ => {
                                     self.value_downlinks.remove(&path);
                                     Ok(self.create_new_value_downlink(init, path).await)
                                 }
@@ -309,10 +327,18 @@ where
                 DownlinkRequest::Map(path, map_req) => {
                     let dl = match self.map_downlinks.get(&path) {
                         Some(dl) => {
-                            let mut dl_clone = dl.clone();
-                            match dl_clone.subscribe().await {
-                                Ok(rec) => Ok((dl_clone, rec)),
-                                Err(_) => {
+                            let maybe_dl = dl.upgrade();
+                            match maybe_dl {
+                                Some(mut dl_clone) if dl_clone.is_running() => {
+                                    match dl_clone.subscribe().await {
+                                        Ok(rec) => Ok((dl_clone, rec)),
+                                        Err(_) => {
+                                            self.map_downlinks.remove(&path);
+                                            Ok(self.create_new_map_downlink(path).await)
+                                        }
+                                    }
+                                }
+                                _ => {
                                     self.map_downlinks.remove(&path);
                                     Ok(self.create_new_map_downlink(path).await)
                                 }
@@ -329,6 +355,68 @@ where
                     let _ = map_req.send(dl);
                 }
             }
+        }
+    }
+}
+
+fn value_downlink_for_sink<Updates, Snk>(
+    cmd_sink: Snk,
+    init: Value,
+    updates: Updates,
+    config: &DownlinkParams,
+) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
+where
+    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
+{
+    let buffer_size = config.buffer_size.get();
+    let dl_cmd_sink = cmd_sink.map_err_into();
+    match config.mux_mode {
+        MuxMode::Queue(n) => {
+            let (dl, rec) =
+                value::create_queue_downlink(init, updates, dl_cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
+        }
+        MuxMode::Dropping => {
+            let (dl, rec) =
+                value::create_dropping_downlink(init, updates, dl_cmd_sink, buffer_size);
+            (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
+        }
+        MuxMode::Buffered(n) => {
+            let (dl, rec) =
+                value::create_buffered_downlink(init, updates, dl_cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
+        }
+    }
+}
+
+fn map_downlink_for_sink<Updates, Snk>(
+    cmd_sink: Snk,
+    updates: Updates,
+    config: &DownlinkParams,
+) -> (
+    AnyDownlink<MapAction, ViewWithEvent>,
+    AnyReceiver<ViewWithEvent>,
+)
+where
+    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+{
+    use crate::downlink::model::map::*;
+    let buffer_size = config.buffer_size.get();
+    let dl_cmd_sink = cmd_sink.map_err_into();
+    match config.mux_mode {
+        MuxMode::Queue(n) => {
+            let (dl, rec) = create_queue_downlink(updates, dl_cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
+        }
+        MuxMode::Dropping => {
+            let (dl, rec) = create_dropping_downlink(updates, dl_cmd_sink, buffer_size);
+            (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
+        }
+        MuxMode::Buffered(n) => {
+            let (dl, rec) = create_buffered_downlink(updates, dl_cmd_sink, buffer_size, n.get());
+            (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }
 }

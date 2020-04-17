@@ -12,5 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod future;
-pub mod iteratee;
+pub mod map;
+pub mod value;

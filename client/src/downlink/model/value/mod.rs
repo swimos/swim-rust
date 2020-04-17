@@ -12,22 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use futures::Stream;
 use tokio::sync::mpsc;
 
+use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
+use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
+use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
+use crate::downlink::raw::RawDownlink;
+use crate::downlink::{
+    create_downlink, BasicResponse, BasicStateMachine, Command, Event, Message, TransitionError,
+};
+use crate::router::RoutingError;
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::ItemSender;
-
-use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
-use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver};
-use crate::downlink::raw::RawDownlink;
-use crate::downlink::*;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
@@ -93,22 +95,26 @@ impl Action {
 }
 
 /// Create a raw value downlink.
-pub fn create_raw_downlink<Err, Updates, Commands>(
+pub fn create_raw_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
 ) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
-    create_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+    create_downlink(
+        ValueModel::new(init),
+        update_stream,
+        cmd_sender,
+        buffer_size,
+    )
 }
 
 /// Create a value downlink with an queue based multiplexing topic.
-pub fn create_queue_downlink<Err, Updates, Commands>(
+pub fn create_queue_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
@@ -119,12 +125,11 @@ pub fn create_queue_downlink<Err, Updates, Commands>(
     QueueReceiver<SharedValue>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        Arc::new(init),
+        ValueModel::new(init),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -133,7 +138,7 @@ where
 }
 
 /// Create a value downlink with a dropping multiplexing topic.
-pub fn create_dropping_downlink<Err, Updates, Commands>(
+pub fn create_dropping_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
@@ -143,15 +148,19 @@ pub fn create_dropping_downlink<Err, Updates, Commands>(
     DroppingReceiver<SharedValue>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
-    dropping::make_downlink(Arc::new(init), update_stream, cmd_sender, buffer_size)
+    dropping::make_downlink(
+        ValueModel::new(init),
+        update_stream,
+        cmd_sender,
+        buffer_size,
+    )
 }
 
 /// Create a value downlink with an buffering multiplexing topic.
-pub fn create_buffered_downlink<Err, Updates, Commands>(
+pub fn create_buffered_downlink<Updates, Commands>(
     init: Value,
     update_stream: Updates,
     cmd_sender: Commands,
@@ -162,12 +171,11 @@ pub fn create_buffered_downlink<Err, Updates, Commands>(
     BufferedReceiver<SharedValue>,
 )
 where
-    Err: Into<DownlinkError> + Send + 'static,
     Updates: Stream<Item = Message<Value>> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, Err> + Send + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        Arc::new(init),
+        ValueModel::new(init),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -175,81 +183,57 @@ where
     )
 }
 
-impl StateMachine<Value, Action> for SharedValue {
+pub(in crate::downlink) struct ValueModel {
+    state: SharedValue,
+}
+
+impl ValueModel {
+    fn new(state: Value) -> Self {
+        ValueModel {
+            state: Arc::new(state),
+        }
+    }
+}
+
+impl BasicStateMachine<Value, Action> for ValueModel {
     type Ev = SharedValue;
     type Cmd = SharedValue;
 
-    fn handle_operation(
-        model: &mut Model<Self>,
-        op: Operation<Value, Action>,
-    ) -> Response<Self::Ev, Self::Cmd> {
-        let Model { data_state, state } = model;
-        match op {
-            Operation::Start => {
-                if *state == DownlinkState::Synced {
-                    Response::none()
-                } else {
-                    Response::for_command(Command::Sync)
+    fn on_sync(&self) -> Self::Ev {
+        self.state.clone()
+    }
+
+    fn handle_message_unsynced(&mut self, upd_value: Value) {
+        self.state = Arc::new(upd_value);
+    }
+
+    fn handle_message(&mut self, upd_value: Value) -> Option<Self::Ev> {
+        self.state = Arc::new(upd_value);
+        Some(self.state.clone())
+    }
+
+    fn handle_action(&mut self, action: Action) -> BasicResponse<Self::Ev, Self::Cmd> {
+        match action {
+            Action::Get(resp) => match resp.send(self.state.clone()) {
+                Err(_) => BasicResponse::none().with_error(TransitionError::ReceiverDropped),
+                _ => BasicResponse::none(),
+            },
+            Action::Set(set_value, maybe_resp) => {
+                self.state = Arc::new(set_value);
+                let resp = BasicResponse::of(self.state.clone(), self.state.clone());
+                match maybe_resp.and_then(|req| req.send(()).err()) {
+                    Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+                    _ => resp,
                 }
             }
-            Operation::Message(message) => match message {
-                Message::Linked => {
-                    *state = DownlinkState::Linked;
-                    Response::none()
+            Action::Update(upd_fn, maybe_resp) => {
+                self.state = Arc::new(upd_fn(self.state.as_ref()));
+                let resp = BasicResponse::of(self.state.clone(), self.state.clone());
+                match maybe_resp.and_then(|req| req.send(self.state.clone()).err()) {
+                    None => resp,
+                    Some(_) => resp.with_error(TransitionError::ReceiverDropped),
                 }
-                Message::Synced => {
-                    let old_state = *state;
-                    *state = DownlinkState::Synced;
-                    if old_state == DownlinkState::Synced {
-                        Response::none()
-                    } else {
-                        Response::for_event(Event(data_state.clone(), false))
-                    }
-                }
-                Message::Action(upd_value) => {
-                    if *state != DownlinkState::Unlinked {
-                        *data_state = Arc::new(upd_value);
-                    }
-                    if *state == DownlinkState::Synced {
-                        Response::for_event(Event(data_state.clone(), false))
-                    } else {
-                        Response::none()
-                    }
-                }
-                Message::Unlinked => {
-                    *state = DownlinkState::Unlinked;
-                    Response::none().then_terminate()
-                }
-            },
-            Operation::Action(action) => match action {
-                Action::Set(set_value, maybe_resp) => {
-                    *data_state = Arc::new(set_value);
-                    let resp = Response::of(
-                        Event(data_state.clone(), true),
-                        Command::Action(data_state.clone()),
-                    );
-                    match maybe_resp.and_then(|req| req.send(()).err()) {
-                        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
-                        _ => resp,
-                    }
-                }
-                Action::Get(resp) => match resp.send(data_state.clone()) {
-                    Err(_) => Response::none().with_error(TransitionError::ReceiverDropped),
-                    _ => Response::none(),
-                },
-                Action::Update(upd_fn, maybe_resp) => {
-                    *data_state = Arc::new(upd_fn(data_state.as_ref()));
-                    let resp = Response::of(
-                        Event(data_state.clone(), true),
-                        Command::Action(data_state.clone()),
-                    );
-                    match maybe_resp.and_then(|req| req.send(data_state.clone()).err()) {
-                        None => resp,
-                        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
-                    }
-                }
-            },
-            Operation::Close => Response::for_command(Command::Unlink).then_terminate(),
+            }
         }
     }
 }
