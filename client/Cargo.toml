@@ -16,7 +16,6 @@ im = "14.2.0"
 tokio-tungstenite = { version = "0.10.1", features = ["tls"] }
 url = "2.1.1"
 rand = "0.7.3"
-either = "1.5.3"
 tracing = { version = "0.1.13", features = ["log-always"] }
 tracing-subscriber = "0.2.3"
 tracing-futures = "0.2.3"

@@ -168,6 +168,7 @@ pub mod map_err {
 
     use crate::sink::item::ItemSink;
 
+    #[derive(Clone, Debug)]
     pub struct SenderErrInto<Sender, E> {
         sender: Sender,
         _target: PhantomData<E>,

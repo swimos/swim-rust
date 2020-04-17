@@ -21,7 +21,7 @@ use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, Message};
-use crate::router::{Router, RoutingError};
+use crate::router::{Router, RoutingError, RouterEvent};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::either::EitherSink;
