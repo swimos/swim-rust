@@ -416,7 +416,7 @@ pub enum ConnectionError {
     ReceiveMessageError,
     /// Error that occurred when closing down connections.
     ClosedError,
-    /// A transient, possibly recoverage rror that has occured. Used to signal that reopening or
+    /// A transient, possibly recoverable error that has occured. Used to signal that reopening or
     /// attempting a request again may resolve correctly.
     Transient,
 }
