@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::{Serialize, Serializer};
-
-use common::model::{Attr, Value};
-
 use crate::{FormSerializeErr, Result, SerializerState, ValueSerializer};
+use common::model::{Attr, Value};
+use serde::{Serialize, Serializer};
 
 // CLion/IntelliJ believes there is a missing implementation
 //noinspection RsTraitImplementation

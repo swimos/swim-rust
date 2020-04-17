@@ -14,13 +14,13 @@
 
 use serde::Deserialize;
 
-use common::model::{Attr, Item, Value};
-
 use crate::tests::from_value;
 use crate::FormDeserializeErr;
+use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod illegal {
+
     use super::*;
 
     #[test]

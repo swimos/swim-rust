@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use std::future::Future;
-use std::marker::PhantomData;
-use std::pin::Pin;
 
 use futures::future::{ready, BoxFuture, Ready};
 use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
+use std::marker::PhantomData;
+use std::pin::Pin;
 use tokio::sync::{broadcast, mpsc, watch};
 
 pub mod comap;
@@ -161,12 +161,10 @@ impl<'a, T: Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
 }
 
 pub mod map_err {
-    use std::marker::PhantomData;
-
+    use crate::sink::item::ItemSink;
     use futures::future::ErrInto;
     use futures_util::future::TryFutureExt;
-
-    use crate::sink::item::ItemSink;
+    use std::marker::PhantomData;
 
     #[derive(Clone, Debug)]
     pub struct SenderErrInto<Sender, E> {

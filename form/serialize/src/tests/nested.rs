@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::{Deserialize, Serialize};
-
-use common::model::{Attr, Item, Value};
-
 use crate::tests::assert_err;
 use crate::tests::to_value;
 use crate::FormSerializeErr;
-
+use common::model::{Attr, Item, Value};
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod valid {
+
     use super::*;
 
     #[test]

@@ -14,14 +14,14 @@
 
 use serde::Serialize;
 
-use common::model::{Attr, Item, Value};
-
 use crate::tests::assert_err;
 use crate::tests::to_value;
 use crate::FormSerializeErr;
+use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod tuples {
+
     use super::*;
 
     #[test]

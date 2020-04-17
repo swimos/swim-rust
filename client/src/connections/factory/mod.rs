@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{Future, Sink, Stream};
-use tokio_tungstenite::tungstenite::protocol::Message;
-
-use super::ConnectionError;
-
 #[cfg(test)]
 mod tests;
+
+use super::ConnectionError;
+use futures::{Future, Sink, Stream};
+use tokio_tungstenite::tungstenite::protocol::Message;
 
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
 /// to allow for alternative implementations to be provided during testing.
@@ -38,6 +37,11 @@ pub trait WebsocketFactory: Send + Sync {
 }
 
 pub mod async_factory {
+    use crate::connections::factory::errors::FlattenErrors;
+    use crate::connections::factory::WebsocketFactory;
+    use crate::connections::ConnectionError;
+    use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
+    use common::request::Request;
     use futures::future::ErrInto as FutErrInto;
     use futures::stream::StreamExt;
     use futures::TryFutureExt;
@@ -45,13 +49,6 @@ pub mod async_factory {
     use tokio::sync::{mpsc, oneshot};
     use tokio::task::JoinHandle;
     use tokio_tungstenite::tungstenite::protocol::Message;
-
-    use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
-    use common::request::Request;
-
-    use crate::connections::factory::errors::FlattenErrors;
-    use crate::connections::factory::WebsocketFactory;
-    use crate::connections::ConnectionError;
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str>(Request<Result<(Snk, Str), ConnectionError>>, url::Url);
@@ -155,23 +152,22 @@ pub mod errors {
 }
 
 pub mod tungstenite {
-    use futures::future::ErrInto as FutErrInto;
-    use futures::stream::{ErrInto as StrErrInto, SplitSink, SplitStream, StreamExt, TryStreamExt};
     use tokio::net::TcpStream;
     use tokio_tls::TlsStream;
+    use tokio_tungstenite::*;
+
+    use crate::connections::factory::WebsocketFactory;
+    use crate::connections::ConnectionError;
+    use common::request::request_future::SendAndAwait;
+    use futures::future::ErrInto as FutErrInto;
+    use futures::stream::{ErrInto as StrErrInto, SplitSink, SplitStream, StreamExt, TryStreamExt};
     use tokio_tungstenite::stream::Stream as StreamSwitcher;
     use tokio_tungstenite::tungstenite::protocol::Message;
     use tokio_tungstenite::tungstenite::Error;
-    use tokio_tungstenite::*;
     use url::Url;
 
-    use common::request::request_future::SendAndAwait;
-
-    use crate::connections::factory::errors::FlattenErrors;
-    use crate::connections::factory::WebsocketFactory;
-    use crate::connections::ConnectionError;
-
     use super::async_factory;
+    use crate::connections::factory::errors::FlattenErrors;
 
     pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 
