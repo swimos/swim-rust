@@ -255,14 +255,11 @@ impl RequestConnectionsTask {
                             let _ = connection_tx.send(Err(RoutingError::Transient));
                         }
                         // Permanent, unrecoverable error
-                        e => {
-                            tracing::error!(cause = ?e, "Error connecting to host");
+                        _ => {
                             let _ = connection_tx.send(Err(RoutingError::ConnectionError));
-
-                            message_routing_new_task_request_tx
+                            let _ = message_routing_new_task_request_tx
                                 .send(ConnectionResponse::Failure(host))
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?;
+                                .await;
                         }
                     }
                 }

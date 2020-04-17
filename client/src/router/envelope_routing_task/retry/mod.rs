@@ -90,6 +90,8 @@ where
             #[project]
             match this.state.project() {
                 RetryState::NotStarted => {
+                    tracing::trace!("Retryable request initialising");
+
                     let mut sink = this.sink;
                     let value = this.value.clone();
                     let r = sink.send_value(value, &this.ctx);
@@ -100,19 +102,21 @@ where
                 }
                 RetryState::Pending(mut fut) => {
                     match ready!(fut.poll_unpin(cx)) {
-                        Ok(_) => return Poll::Ready(Ok(())),
+                        Ok(_) => {
+                            return Poll::Ready(Ok(()));
+                        }
                         Err(e) => {
                             let new_state = match e {
                                 // Cancel the request
                                 RetryErr::ConnectionError => {
-                                    return Poll::Ready(Err(RetryErr::ConnectionError))
+                                    return Poll::Ready(Err(RetryErr::ConnectionError));
                                 }
                                 RetryErr::HostUnavailable | RetryErr::SenderClosed => {
                                     this.ctx.recreate = true;
                                     RetryState::Retrying
                                 }
                                 RetryErr::RetriesExceeded => {
-                                    return Poll::Ready(Err(RetryErr::RetriesExceeded))
+                                    return Poll::Ready(Err(RetryErr::RetriesExceeded));
                                 }
                             };
 
@@ -280,6 +284,7 @@ pub mod boxed_connection_sender {
             let RequestFuture { state, value, .. } = self.get_mut();
 
             if let State::NotStarted = state {
+                tracing::trace!("Requesting connection");
                 *state = State::AcquiringSender(f);
             }
 

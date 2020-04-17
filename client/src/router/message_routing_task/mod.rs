@@ -260,7 +260,6 @@ impl RouteHostMessagesTask {
                 }
             } else {
                 let result = tokio::select! {
-
                     Some(task_request) = task_rx.recv() => {
                         Some(task_request)
                     }

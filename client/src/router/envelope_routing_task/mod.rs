@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use futures::{stream, StreamExt};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 use common::warp::envelope::Envelope;
@@ -25,7 +26,6 @@ use crate::router::configuration::RouterConfig;
 use crate::router::envelope_routing_task::retry::boxed_connection_sender::BoxedConnSender;
 use crate::router::envelope_routing_task::retry::RetryableRequest;
 use crate::router::{CloseRequestReceiver, CloseRequestSender, ConnReqSender, RoutingError};
-use tokio::task::JoinHandle;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -193,6 +193,8 @@ impl RouteHostEnvelopesTask {
 
             match request {
                 RequestTaskType::Envelope(_envelope) => {
+                    tracing::debug!("Envelope routing task sending envelope");
+
                     RetryableRequest::send(
                         BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),
                         Message::Text(String::from("@sync(node:\"/unit/foo\", lane:\"info\")")),
@@ -203,6 +205,8 @@ impl RouteHostEnvelopesTask {
                     .map_err(|_| RoutingError::ConnectionError)?;
                 }
                 RequestTaskType::Close => {
+                    tracing::debug!("Envelope routing task closing");
+
                     break;
                 }
                 _ => {}

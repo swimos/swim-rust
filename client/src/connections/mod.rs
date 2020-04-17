@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
@@ -20,6 +23,7 @@ use either::Either;
 use futures::future::{AbortHandle, Abortable, Aborted};
 use futures::select;
 use futures::{Sink, Stream, StreamExt};
+use futures_util::future::TryFutureExt;
 use futures_util::FutureExt;
 use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
@@ -34,7 +38,6 @@ use tungstenite::error::Error as TError;
 use common::request::request_future::RequestError;
 
 use crate::connections::factory::WebsocketFactory;
-use std::borrow::Cow;
 
 pub mod factory;
 
@@ -214,28 +217,26 @@ where
 
                     let host = host_url.as_str().to_owned();
 
-                    let connection_channel = if !connections.contains_key(&host) || recreate {
+                    let recreate = match (recreate, connections.get(&host)) {
+                        // Connection has stopped and needs to be recreated
+                        (_, Some(inner)) if inner.stopped() => true,
+                        // Connection doesn't exist
+                        (false, None) => true,
+                        // Connection exists and is healthy
+                        (false, Some(_)) => false,
+                        // Connection doesn't exist
+                        (true, _) => true,
+                    };
+
+                    let connection_channel = if recreate {
                         let connection_result =
                             SwimConnection::new(host_url, buffer_size, &mut connection_factory)
                                 .await;
 
                         match connection_result {
-                            Ok(mut connection) => {
-                                let sender = ConnectionSender {
-                                    tx: connection.tx.clone(),
-                                };
-                                let receiver = connection
-                                    .rx
-                                    .take()
-                                    .ok_or(ConnectionError::ConnectError(None))?;
-
-                                let inner_conn = InnerConnection {
-                                    conn: connection,
-                                    _birth: Instant::now(),
-                                    last_accessed: Instant::now(),
-                                };
-
-                                let _ = connections.insert(host.clone(), inner_conn);
+                            Ok(connection) => {
+                                let (inner, sender, receiver) = InnerConnection::from(connection)?;
+                                let _ = connections.insert(host.clone(), inner);
                                 Ok((sender, Some(receiver)))
                             }
                             Err(error) => Err(error),
@@ -271,6 +272,7 @@ struct SendTask<S>
 where
     S: Sink<Message> + Send + 'static + Unpin,
 {
+    stopped: Arc<AtomicBool>,
     write_sink: S,
     rx: mpsc::Receiver<Message>,
 }
@@ -279,14 +281,27 @@ impl<S> SendTask<S>
 where
     S: Sink<Message> + Send + 'static + Unpin,
 {
-    fn new(write_sink: S, rx: mpsc::Receiver<Message>) -> Self {
-        SendTask { write_sink, rx }
+    fn new(write_sink: S, rx: mpsc::Receiver<Message>, stopped: Arc<AtomicBool>) -> Self {
+        SendTask {
+            stopped,
+            write_sink,
+            rx,
+        }
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
-        let SendTask { write_sink, rx } = self;
+        let SendTask {
+            stopped,
+            write_sink,
+            rx,
+        } = self;
+
         rx.map(Ok)
             .forward(write_sink)
+            .map_err(|_| {
+                stopped.store(true, Ordering::Release);
+                ConnectionError::SendMessageError
+            })
             .await
             .map_err(|_| ConnectionError::SendMessageError)
     }
@@ -296,6 +311,7 @@ struct ReceiveTask<S>
 where
     S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
 {
+    stopped: Arc<AtomicBool>,
     read_stream: S,
     tx: mpsc::Sender<Message>,
 }
@@ -304,24 +320,28 @@ impl<S> ReceiveTask<S>
 where
     S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
 {
-    fn new(read_stream: S, tx: mpsc::Sender<Message>) -> Self {
-        ReceiveTask { read_stream, tx }
+    fn new(read_stream: S, tx: mpsc::Sender<Message>, stopped: Arc<AtomicBool>) -> Self {
+        ReceiveTask {
+            stopped,
+            read_stream,
+            tx,
+        }
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
         let ReceiveTask {
+            stopped,
             mut read_stream,
             mut tx,
         } = self;
 
         loop {
-            let message = read_stream
-                .try_next()
-                .await
-                .map_err(|_| ConnectionError::ReceiveMessageError)?
-                .ok_or(ConnectionError::ReceiveMessageError)?;
+            let message: Option<Message> = read_stream.try_next().await.map_err(|_| {
+                stopped.store(true, Ordering::Release);
+                ConnectionError::ReceiveMessageError
+            })?;
 
-            tx.send(message)
+            tx.send(message.unwrap())
                 .await
                 .map_err(|_| ConnectionError::ReceiveMessageError)?;
         }
@@ -334,8 +354,30 @@ struct InnerConnection {
     last_accessed: Instant,
 }
 
+impl InnerConnection {
+    pub fn from(
+        mut conn: SwimConnection,
+    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<Message>), ConnectionError> {
+        let sender = ConnectionSender {
+            tx: conn.tx.clone(),
+        };
+        let receiver = conn.rx.take().ok_or(ConnectionError::ConnectError(None))?;
+
+        let inner = InnerConnection {
+            conn,
+            _birth: Instant::now(),
+            last_accessed: Instant::now(),
+        };
+        Ok((inner, sender, receiver))
+    }
+    pub fn stopped(&self) -> bool {
+        self.conn.stopped.load(Ordering::Acquire)
+    }
+}
+
 /// Connection to a remote host.
 pub struct SwimConnection {
+    stopped: Arc<AtomicBool>,
     tx: mpsc::Sender<Message>,
     rx: Option<mpsc::Receiver<Message>>,
     _send_handler: JoinHandle<Result<(), ConnectionError>>,
@@ -353,15 +395,18 @@ impl SwimConnection {
 
         let (write_sink, read_stream) = websocket_factory.connect(host_url).await?;
 
-        let receive = ReceiveTask::new(read_stream, receiver_tx);
-        let send = SendTask::new(write_sink, sender_rx);
+        let stopped = Arc::new(AtomicBool::new(false));
+
+        let receive = ReceiveTask::new(read_stream, receiver_tx, stopped.clone());
+        let send = SendTask::new(write_sink, sender_rx, stopped.clone());
 
         let send_handler = tokio::spawn(send.run());
         let receive_handler = tokio::spawn(receive.run());
 
         Ok(SwimConnection {
-            tx: sender_tx,
-            rx: Some(receiver_rx),
+            stopped,
+            tx: sender_tx,         // sink
+            rx: Some(receiver_rx), // stream
             _send_handler: send_handler,
             _receive_handler: receive_handler,
         })
