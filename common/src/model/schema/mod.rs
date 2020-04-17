@@ -440,7 +440,7 @@ impl StandardSchema {
     fn matches_rem(&self, record: &RefRecord) -> bool {
         if record.attrs.is_empty() {
             match record.items {
-                [Item::ValueItem(single)] => self.matches(single),
+                [Item::ValueItem(single)] => self.matches(single) || self.matches_ref(record),
                 _ => self.matches_ref(record),
             }
         } else {
@@ -458,12 +458,12 @@ fn matches_head_attr<'a>(
     match record.attrs.split_first() {
         Some((head, tail)) => match schema.matches_field(head) {
             FieldMatchResult::KeyOnly => false,
-            FieldMatchResult::Both => remainder.matches_ref(&RefRecord::new(tail, record.items)),
+            FieldMatchResult::Both => remainder.matches_rem(&RefRecord::new(tail, record.items)),
             FieldMatchResult::KeyFailed => {
-                !required && remainder.matches_ref(&RefRecord::new(tail, record.items))
+                !required && remainder.matches_rem(&RefRecord::new(tail, record.items))
             }
         },
-        _ => !required && remainder.matches_rem(record),
+        _ => !required && remainder.matches_ref(record),
     }
 }
 

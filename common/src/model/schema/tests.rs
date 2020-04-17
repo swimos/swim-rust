@@ -1302,3 +1302,19 @@ fn map_record() {
     let with_attr = Value::Record(vec![Attr::of("name")], good_items.clone());
     assert!(schema.matches(&with_attr));
 }
+
+#[test]
+fn record_unpacking() {
+    let schema1 = AttrSchema::tag(TextSchema::exact("name"))
+        .and_then(StandardSchema::OfKind(ValueKind::Int32));
+    let item_schema = ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32));
+    let schema2 = AttrSchema::tag(TextSchema::exact("name")).and_then(StandardSchema::Layout {
+        items: vec![(item_schema, true)],
+        exhaustive: true,
+    });
+
+    let record = Value::Record(vec![Attr::of("name")], vec![Item::of(3)]);
+
+    assert!(schema1.matches(&record));
+    assert!(schema2.matches(&record));
+}
