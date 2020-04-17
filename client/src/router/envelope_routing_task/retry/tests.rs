@@ -12,16 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::envelope_routing_task::retry::tests::boxed::FailingSink;
-use crate::router::envelope_routing_task::retry::{RetryErr, RetryStrategy};
 use std::time::Instant;
+
 use tokio::time::Duration;
 
+use crate::router::envelope_routing_task::retry::tests::boxed::FailingSink;
+use crate::router::envelope_routing_task::retry::{RetryErr, RetryStrategy};
+
 mod boxed {
-    use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
     use futures::future::ready;
     use futures::FutureExt;
     use futures_util::future::BoxFuture;
+
+    use crate::router::envelope_routing_task::retry::{RetryContext, RetryErr, RetrySink};
 
     pub struct FailingSink<T> {
         _payload: T,
@@ -40,8 +43,8 @@ mod boxed {
         type Error = RetryErr;
         type Future = BoxFuture<'fut, Result<(), RetryErr>>;
 
-        fn send_value(&mut self, _value: T) -> Self::Future {
-            ready(Err(RetryErr::SenderClosed)).boxed()
+        fn send_value(&mut self, _value: T, _ctx: &RetryContext) -> Self::Future {
+            ready(Err(RetryErr::HostUnavailable)).boxed()
         }
     }
 }

@@ -53,6 +53,7 @@ pub struct ConnectionPoolMessage {
 struct ConnectionRequest {
     host_url: url::Url,
     tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
+    recreate: bool,
 }
 
 /// Connection pool is responsible for managing the opening and closing of connections
@@ -106,8 +107,6 @@ impl ConnectionPool {
     /// The receiving end of a oneshot channel that can be awaited. The value from the channel is a
     /// `Result` containing either a `ConnectionSender` that can be used to send messages to the
     /// remote host or a `ConnectionError`.
-    ///
-    ///
     pub fn request_connection(
         &mut self,
         host_url: url::Url,
@@ -116,7 +115,30 @@ impl ConnectionPool {
         let (tx, rx) = oneshot::channel();
 
         self.connection_request_tx
-            .try_send(ConnectionRequest { host_url, tx })
+            .try_send(ConnectionRequest {
+                host_url,
+                tx,
+                recreate: false,
+            })
+            .map_err(|_| ConnectionError::ConnectError)?;
+
+        Ok(rx)
+    }
+
+    /// Requests a new connection for a given host address
+    pub fn recreate_connection(
+        &mut self,
+        host_url: url::Url,
+    ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>
+    {
+        let (tx, rx) = oneshot::channel();
+
+        self.connection_request_tx
+            .try_send(ConnectionRequest {
+                host_url,
+                tx,
+                recreate: true,
+            })
             .map_err(|_| ConnectionError::ConnectError)?;
 
         Ok(rx)
@@ -187,23 +209,12 @@ where
                     let ConnectionRequest {
                         host_url,
                         tx: request_tx,
+                        recreate,
                     } = req;
 
                     let host = host_url.as_str().to_owned();
 
-                    let connection_channel = if connections.contains_key(&host) {
-                        let mut inner_connection = connections
-                            .get_mut(&host)
-                            .ok_or(ConnectionError::ConnectError)?;
-                        inner_connection.last_accessed = Instant::now();
-
-                        Ok((
-                            (ConnectionSender {
-                                tx: inner_connection.conn.tx.clone(),
-                            }),
-                            None,
-                        ))
-                    } else {
+                    let connection_channel = if !connections.contains_key(&host) || recreate {
                         let connection_result =
                             SwimConnection::new(host_url, buffer_size, &mut connection_factory)
                                 .await;
@@ -222,11 +233,23 @@ where
                                     last_accessed: Instant::now(),
                                 };
 
-                                connections.insert(host.clone(), inner_conn);
+                                let _ = connections.insert(host.clone(), inner_conn);
                                 Ok((sender, Some(receiver)))
                             }
                             Err(error) => Err(error),
                         }
+                    } else {
+                        let mut inner_connection = connections
+                            .get_mut(&host)
+                            .ok_or(ConnectionError::ConnectError)?;
+                        inner_connection.last_accessed = Instant::now();
+
+                        Ok((
+                            (ConnectionSender {
+                                tx: inner_connection.conn.tx.clone(),
+                            }),
+                            None,
+                        ))
                     };
 
                     request_tx
@@ -391,7 +414,9 @@ pub enum ConnectionError {
     ReceiveMessageError,
     /// Error that occurred when closing down connections.
     ClosedError,
+
     TungsteniteError(Cow<'static, str>),
+    Transient,
 }
 
 impl From<RequestError> for ConnectionError {

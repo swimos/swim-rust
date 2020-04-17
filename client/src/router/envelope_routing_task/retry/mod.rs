@@ -42,6 +42,13 @@ where
     strategy: RetryStrategy,
     #[pin]
     state: RetryState<S::Future>,
+    #[pin]
+    ctx: RetryContext,
+}
+
+#[pin_project]
+pub struct RetryContext {
+    recreate: bool,
 }
 
 impl<'fut, S, V> RetryableRequest<'fut, S, V>
@@ -55,6 +62,7 @@ where
             value,
             strategy,
             state: RetryState::NotStarted,
+            ctx: RetryContext { recreate: false },
         }
     }
 }
@@ -64,6 +72,7 @@ pub enum RetryErr {
     RetriesExceeded,
     SenderClosed,
     ConnectionError,
+    HostUnavailable,
 }
 
 impl<'fut, S, V> Future for RetryableRequest<'fut, S, V>
@@ -76,16 +85,17 @@ where
     #[project]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            let this = self.as_mut().project();
+            let mut this = self.as_mut().project();
 
             #[project]
             match this.state.project() {
                 RetryState::NotStarted => {
                     let mut sink = this.sink;
                     let value = this.value.clone();
-                    let r = sink.send_value(value);
+                    let r = sink.send_value(value, &this.ctx);
                     let new_state = RetryState::Pending(r);
 
+                    this.ctx.recreate = false;
                     self.as_mut().project().state.set(new_state);
                 }
                 RetryState::Pending(mut fut) => {
@@ -93,12 +103,16 @@ where
                         Ok(_) => return Poll::Ready(Ok(())),
                         Err(e) => {
                             let new_state = match e {
+                                // Cancel the request
                                 RetryErr::ConnectionError => {
                                     return Poll::Ready(Err(RetryErr::ConnectionError))
                                 }
-                                RetryErr::SenderClosed => RetryState::Retrying,
+                                RetryErr::HostUnavailable | RetryErr::SenderClosed => {
+                                    this.ctx.recreate = true;
+                                    RetryState::Retrying
+                                }
                                 RetryErr::RetriesExceeded => {
-                                    return Poll::Ready(Err(RetryErr::RetriesExceeded));
+                                    return Poll::Ready(Err(RetryErr::RetriesExceeded))
                                 }
                             };
 
@@ -138,7 +152,7 @@ enum RetryState<F> {
     NotStarted,
     /// A retry has been started and the future [`F`] is currently pending.
     Pending(#[pin] F),
-    /// A retry is going to be attempted with the [`RetryStrategy`]
+    /// A retry is going to be attempted with the [`RetryStrategy`].
     Retrying,
     /// The given [`RetryStrategy`] needs to sleep between retries for [`Delay`].
     Sleeping(#[pin] time::Delay),
@@ -151,7 +165,7 @@ where
     type Error;
     type Future: Future<Output = Result<(), Self::Error>> + Send + Unpin + 'fut;
 
-    fn send_value(self: &mut Self, value: V) -> Self::Future;
+    fn send_value(self: &mut Self, value: V, ctx: &RetryContext) -> Self::Future;
 }
 
 pub mod boxed_connection_sender {
@@ -167,20 +181,20 @@ pub mod boxed_connection_sender {
     use tokio_tungstenite::tungstenite::protocol::Message;
 
     use crate::connections::ConnectionSender;
-    use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
-    use crate::router::{ConnReqSendResult, RoutingError};
+    use crate::router::envelope_routing_task::retry::{RetryContext, RetryErr, RetrySink};
+    use crate::router::{ConnReqSender, RoutingError};
 
     /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
     /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
     /// the request using the given [`oneshot::Sender`] instance. If this fails then the future will
     /// return [`ConnectionError`].
     pub struct BoxedConnSender {
-        sender: ConnReqSendResult,
+        sender: ConnReqSender,
         host: url::Url,
     }
 
     impl BoxedConnSender {
-        pub fn new(sender: ConnReqSendResult, host: url::Url) -> BoxedConnSender {
+        pub fn new(sender: ConnReqSender, host: url::Url) -> BoxedConnSender {
             BoxedConnSender { sender, host }
         }
     }
@@ -189,27 +203,34 @@ pub mod boxed_connection_sender {
         type Error = RetryErr;
         type Future = RequestFuture<'fut>;
 
-        fn send_value(&mut self, value: Message) -> Self::Future {
-            RequestFuture::new(self.sender.clone(), self.host.clone(), value)
+        fn send_value(&mut self, value: Message, ctx: &RetryContext) -> Self::Future {
+            RequestFuture::new(self.sender.clone(), self.host.clone(), value, ctx.recreate)
         }
     }
 
     impl<'a> RequestFuture<'a> {
-        fn new(sender: ConnReqSendResult, host: url::Url, value: Message) -> RequestFuture<'a> {
+        fn new(
+            sender: ConnReqSender,
+            host: url::Url,
+            value: Message,
+            recreate: bool,
+        ) -> RequestFuture<'a> {
             RequestFuture {
                 sender,
                 host,
                 value,
                 state: State::NotStarted,
+                recreate,
             }
         }
     }
 
     pub struct RequestFuture<'a> {
-        sender: ConnReqSendResult,
+        sender: ConnReqSender,
         host: url::Url,
         value: Message,
         state: State<'a>,
+        recreate: bool,
     }
 
     enum State<'a> {
@@ -222,6 +243,7 @@ pub mod boxed_connection_sender {
         // Todo: Expose this
         fn request_connection(
             &mut self,
+            recreate: bool,
             waker: Waker,
         ) -> BoxFuture<'a, Result<ConnectionSender, RoutingError>> {
             let mut sender = self.sender.clone();
@@ -230,7 +252,7 @@ pub mod boxed_connection_sender {
             let a = async move {
                 let (connection_tx, connection_rx) = oneshot::channel();
                 sender
-                    .send((host, connection_tx))
+                    .send((host, connection_tx, recreate))
                     .await
                     .map_err(|_| RoutingError::ConnectionError)?;
 
@@ -252,7 +274,9 @@ pub mod boxed_connection_sender {
         type Output = Result<(), RetryErr>;
 
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            let f = self.request_connection(cx.waker().clone());
+            let recreate = self.recreate;
+
+            let f = self.request_connection(recreate, cx.waker().clone());
             let RequestFuture { state, value, .. } = self.get_mut();
 
             if let State::NotStarted = state {
@@ -266,7 +290,15 @@ pub mod boxed_connection_sender {
                         *state = State::Sending(sender);
                         Poll::Pending
                     }
-                    Err(_) => Poll::Ready(Err(RetryErr::ConnectionError)),
+                    Err(e) => {
+                        match e {
+                            // Router has indicated that the request should be cancelled
+                            RoutingError::ConnectionError => {
+                                Poll::Ready(Err(RetryErr::ConnectionError))
+                            }
+                            _ => Poll::Ready(Err(RetryErr::HostUnavailable)),
+                        }
+                    }
                 },
                 State::Sending(ref mut sender) => match sender.poll_ready(cx) {
                     Poll::Ready(Ok(_)) => match sender.try_send(value.clone()) {
@@ -291,7 +323,7 @@ pub mod boxedmpsc {
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::error::TrySendError;
 
-    use crate::router::envelope_routing_task::retry::{RetryErr, RetrySink};
+    use crate::router::envelope_routing_task::retry::{RetryContext, RetryErr, RetrySink};
 
     pub struct BoxedMpscSender<V, P>
     where
@@ -317,7 +349,7 @@ pub mod boxedmpsc {
         type Error = RetryErr;
         type Future = MpscFuture<V>;
 
-        fn send_value(&mut self, value: V) -> Self::Future {
+        fn send_value(&mut self, value: V, _ctx: &RetryContext) -> Self::Future {
             MpscFuture::new((self.producer)(), value)
         }
     }

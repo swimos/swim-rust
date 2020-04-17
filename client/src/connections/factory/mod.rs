@@ -236,7 +236,7 @@ pub mod tungstenite {
                     e => {
                         // Transient or unreachable errors
                         tracing::error!(cause = %e, "Failed to connect to URL");
-                        Err(ConnectionError::ConnectError)
+                        Err(ConnectionError::Transient)
                     }
                 }
             }
