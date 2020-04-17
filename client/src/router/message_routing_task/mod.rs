@@ -80,7 +80,7 @@ impl RequestMessageRoutingHostTask {
         } = self;
 
         let mut host_route_tasks: HashMap<String, RequestTaskTypeSender> = HashMap::new();
-        let mut host_task_join_handlers: HashMap<String, JoinHandle<Result<(), RoutingError>>> =
+        let mut host_tasks_join_handlers: HashMap<String, JoinHandle<Result<(), RoutingError>>> =
             HashMap::new();
 
         let mut rx = combine_receive_task_requests(
@@ -99,7 +99,7 @@ impl RequestMessageRoutingHostTask {
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
-                for (_, task_handler) in host_task_join_handlers {
+                for (_, task_handler) in host_tasks_join_handlers {
                     task_handler
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?
@@ -112,7 +112,6 @@ impl RequestMessageRoutingHostTask {
                 let host = host.ok_or(RoutingError::ConnectionError)?.to_string();
 
                 if let RequestTaskType::Unreachable = task_request {
-                    println!("1");
                     if host_route_tasks.contains_key(&host) {
                         let mut task_tx = host_route_tasks
                             .remove(&host)
@@ -123,7 +122,7 @@ impl RequestMessageRoutingHostTask {
                             .await
                             .map_err(|_| RoutingError::ConnectionError)?;
 
-                        let task_join_handler = host_task_join_handlers
+                        let task_join_handler = host_tasks_join_handlers
                             .remove(&host)
                             .ok_or(RoutingError::ConnectionError)?;
 
@@ -135,10 +134,8 @@ impl RequestMessageRoutingHostTask {
                 } else {
                     if !host_route_tasks.contains_key(&host) {
                         let (task, task_tx) = RouteHostMessagesTask::new(buffer_size);
-                        //Todo move this into a single map
                         host_route_tasks.insert(host.clone(), task_tx);
-                        host_task_join_handlers.insert(host.clone(), tokio::spawn(task.run()));
-                        println!("2");
+                        host_tasks_join_handlers.insert(host.clone(), tokio::spawn(task.run()));
                     }
 
                     let task_tx = host_route_tasks
@@ -239,16 +236,23 @@ impl RouteHostMessagesTask {
 
                     RequestTaskType::Unreachable => {
                         println!("Unreachable Host");
-                        break for subscriber in subscribers.iter_mut() {
+                        for subscriber in subscribers.iter_mut() {
                             subscriber
                                 .send(RouterEvent::Unreachable)
                                 .await
                                 .map_err(|_| RoutingError::ConnectionError)?;
-                        };
+                        }
+                        break;
                     }
 
                     RequestTaskType::Close => {
                         println!("Closing Router");
+                        for subscriber in subscribers.iter_mut() {
+                            subscriber
+                                .send(RouterEvent::Stopping)
+                                .await
+                                .map_err(|_| RoutingError::ConnectionError)?;
+                        }
                         break;
                     }
 
@@ -314,6 +318,12 @@ impl RouteHostMessagesTask {
 
                     RequestTaskType::Close => {
                         println!("Closing Router");
+                        for subscriber in subscribers.iter_mut() {
+                            subscriber
+                                .send(RouterEvent::Stopping)
+                                .await
+                                .map_err(|_| RoutingError::ConnectionError)?;
+                        }
                         break;
                     }
 

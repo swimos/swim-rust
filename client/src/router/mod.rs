@@ -71,11 +71,11 @@ pub struct SwimRouter {
     configuration: RouterConfig,
     envelope_routing_host_request_tx: HostEnvelopeTaskRequestSender,
     message_routing_register_task_request_tx: HostMessageRegisterTaskRequestSender,
-    _request_connections_handler: JoinHandle<Result<(), RoutingError>>,
+    request_connections_handler: JoinHandle<Result<(), RoutingError>>,
     connections_task_close_request_tx: CloseRequestSender,
-    _request_envelope_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
-    _envelope_routing_task_close_request_tx: CloseRequestSender,
-    _request_message_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
+    request_envelope_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
+    envelope_routing_task_close_request_tx: CloseRequestSender,
+    request_message_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
     message_routing_task_close_request_tx: CloseRequestSender,
 }
 
@@ -114,44 +114,48 @@ impl SwimRouter {
             envelope_routing_task_close_request_tx,
         ) = RequestEnvelopeRoutingHostTask::new(connection_request_tx, configuration);
 
-        let _request_connections_handler = tokio::spawn(request_connections_task.run());
+        let request_connections_handler = tokio::spawn(request_connections_task.run());
 
-        let _request_envelope_routing_host_handler =
+        let request_envelope_routing_host_handler =
             tokio::spawn(request_envelope_routing_host_task.run());
 
-        let _request_message_routing_host_handler =
+        let request_message_routing_host_handler =
             tokio::spawn(request_message_routing_host_task.run());
 
         SwimRouter {
             configuration,
             envelope_routing_host_request_tx,
             message_routing_register_task_request_tx,
-            _request_connections_handler,
+            request_connections_handler,
             connections_task_close_request_tx,
-            _request_envelope_routing_host_handler,
-            _envelope_routing_task_close_request_tx: envelope_routing_task_close_request_tx,
-            _request_message_routing_host_handler,
+            request_envelope_routing_host_handler,
+            envelope_routing_task_close_request_tx,
+            request_message_routing_host_handler,
             message_routing_task_close_request_tx,
         }
     }
 
     pub async fn close(mut self) {
-        // self.envelope_routing_task_close_request_tx
-        //     .send(())
-        //     .unwrap();
-        // self._request_envelope_routing_host_handler.await.unwrap();
+        self.envelope_routing_task_close_request_tx
+            .send(())
+            .await
+            .unwrap();
+
+        let _ = self.request_envelope_routing_host_handler.await.unwrap();
 
         self.connections_task_close_request_tx
             .send(())
             .await
             .unwrap();
-        let _ = self._request_connections_handler.await.unwrap();
+
+        let _ = self.request_connections_handler.await.unwrap();
 
         self.message_routing_task_close_request_tx
             .send(())
             .await
             .unwrap();
-        let _ = self._request_message_routing_host_handler.await.unwrap();
+
+        let _ = self.request_message_routing_host_handler.await.unwrap();
     }
 }
 
@@ -264,6 +268,7 @@ impl RequestConnectionsTask {
                 }
             }
         }
+        connection_pool.close().await;
         Ok(())
     }
 }
