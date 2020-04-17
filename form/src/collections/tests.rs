@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::_common::model::Value;
+use super::*;
+use crate::_common::model::schema::Schema;
+use crate::_common::model::{Attr, Value};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
-use super::*;
 use std::collections::HashSet;
 
 #[test]
@@ -45,6 +46,21 @@ fn vector_into_value() {
 }
 
 #[test]
+fn vector_schema() {
+    let good = Value::from_vec(vec![1, 2, 3]);
+    let bad1 = Value::Int32Value(2);
+    let bad2 = Value::Record(
+        vec![Attr::of("name")],
+        vec![Item::of(1), Item::of(2), Item::of(3)],
+    );
+
+    let schema = <Vec<i32> as ValidatedForm>::schema();
+    assert!(schema.matches(&good));
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+}
+
+#[test]
 fn hashmap_to_value() {
     let mut map = HashMap::new();
     map.insert("a".to_string(), 1);
@@ -58,7 +74,7 @@ fn hashmap_to_value() {
             assert_that!(attrs.as_slice(), empty());
             assert_that!(items.len(), eq(3));
             Some(items.into_iter().collect::<HashSet<_>>())
-        },
+        }
         _ => None,
     };
     let mut expected = HashSet::new();
@@ -82,7 +98,7 @@ fn hashmap_into_value() {
             assert_that!(attrs.as_slice(), empty());
             assert_that!(items.len(), eq(3));
             Some(items.into_iter().collect::<HashSet<_>>())
-        },
+        }
         _ => None,
     };
     let mut expected = HashSet::new();
@@ -130,7 +146,7 @@ fn btreemap_to_value() {
             assert_that!(attrs.as_slice(), empty());
             assert_that!(items.len(), eq(3));
             Some(items.into_iter().collect::<HashSet<_>>())
-        },
+        }
         _ => None,
     };
     let mut expected = HashSet::new();
@@ -154,7 +170,7 @@ fn btreemap_into_value() {
             assert_that!(attrs.as_slice(), empty());
             assert_that!(items.len(), eq(3));
             Some(items.into_iter().collect::<HashSet<_>>())
-        },
+        }
         _ => None,
     };
     let mut expected = HashSet::new();
@@ -202,7 +218,7 @@ fn ordmap_to_value() {
             assert_that!(attrs.as_slice(), empty());
             assert_that!(items.len(), eq(3));
             Some(items.into_iter().collect::<HashSet<_>>())
-        },
+        }
         _ => None,
     };
     let mut expected = HashSet::new();
@@ -226,7 +242,7 @@ fn ordmap_into_value() {
             assert_that!(attrs.as_slice(), empty());
             assert_that!(items.len(), eq(3));
             Some(items.into_iter().collect::<HashSet<_>>())
-        },
+        }
         _ => None,
     };
     let mut expected = HashSet::new();
@@ -258,4 +274,31 @@ fn value_into_ordmap() {
 
     let map: Result<OrdMap<String, i32>, _> = Form::try_convert(value);
     assert_that!(map, eq(Ok(expected)));
+}
+
+#[test]
+fn map_schemas() {
+    let good = Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)]);
+    let bad1 = Value::from_vec(vec![1, 2, 3]);
+    let bad2 = Value::Int32Value(2);
+    let bad3 = Value::Record(
+        vec![Attr::of("name")],
+        vec![Item::of(1), Item::of(2), Item::of(3)],
+    );
+
+    let schema1 = <HashMap<String, i32> as ValidatedForm>::schema();
+    let schema2 = <BTreeMap<String, i32> as ValidatedForm>::schema();
+    let schema3 = <OrdMap<String, i32> as ValidatedForm>::schema();
+    assert!(schema1.matches(&good));
+    assert!(schema2.matches(&good));
+    assert!(schema3.matches(&good));
+    assert!(!schema1.matches(&bad1));
+    assert!(!schema2.matches(&bad1));
+    assert!(!schema3.matches(&bad1));
+    assert!(!schema1.matches(&bad2));
+    assert!(!schema2.matches(&bad2));
+    assert!(!schema3.matches(&bad2));
+    assert!(!schema1.matches(&bad3));
+    assert!(!schema2.matches(&bad3));
+    assert!(!schema3.matches(&bad3));
 }
