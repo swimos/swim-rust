@@ -26,6 +26,29 @@ pub trait Schema<T> {
     fn matches(&self, value: &T) -> bool;
 }
 
+/// The result of matching a field against a pair of schemas.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldMatchResult {
+    /// The key schema matched but the value schema did not.
+    KeyOnly,
+    /// Both schemas matched.
+    Both,
+    /// The key schema matched and teh value schema was not tested.
+    KeyFailed,
+}
+
+/// A schema for a field (either an attribute or a slot).
+pub trait FieldSchema<T> {
+    /// Determine whether the field matches.
+    fn matches_field(&self, field: &T) -> FieldMatchResult;
+}
+
+impl<T, S: FieldSchema<T>> Schema<T> for S {
+    fn matches(&self, value: &T) -> bool {
+        self.matches_field(value) == FieldMatchResult::Both
+    }
+}
+
 /// Schema for UTF8 strings.
 #[derive(Clone, Debug)]
 pub enum TextSchema {
@@ -38,10 +61,12 @@ pub enum TextSchema {
 }
 
 impl TextSchema {
+    /// A schema that matches a single string.
     pub fn exact(string: &str) -> TextSchema {
         TextSchema::Exact(string.to_string())
     }
 
+    /// A schema that accepts strings matching a regular expression.
     pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
         Regex::new(string).map(TextSchema::Matches)
     }
@@ -117,11 +142,64 @@ impl AttrSchema {
             value_schema: StandardSchema::OfKind(ValueKind::Extant),
         }
     }
+
+    /// Creates a schema that checks the first attribute of a record against this schema
+    /// the the remainder of the record against another.
+    pub fn and_then(self, schema: StandardSchema) -> StandardSchema {
+        StandardSchema::HeadAttribute {
+            schema: Box::new(self),
+            required: true,
+            remainder: Box::new(schema),
+        }
+    }
+
+    /// Creates a schema that optionally checks the first attribute of a record against this schema
+    /// the the remainder of the record against another.
+    pub fn optionally_and_then(self, schema: StandardSchema) -> StandardSchema {
+        StandardSchema::HeadAttribute {
+            schema: Box::new(self),
+            required: false,
+            remainder: Box::new(schema),
+        }
+    }
 }
 
-impl Schema<Attr> for AttrSchema {
-    fn matches(&self, attr: &Attr) -> bool {
-        self.name_schema.matches_str(attr.name.borrow()) && self.value_schema.matches(&attr.value)
+impl FieldSchema<Attr> for AttrSchema {
+    fn matches_field(&self, field: &Attr) -> FieldMatchResult {
+        if self.name_schema.matches_str(&field.name.borrow()) {
+            if self.value_schema.matches(&field.value) {
+                FieldMatchResult::Both
+            } else {
+                FieldMatchResult::KeyOnly
+            }
+        } else {
+            FieldMatchResult::KeyFailed
+        }
+    }
+}
+
+/// Specification for a field of a record.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FieldSpec<S> {
+    /// The schema to apply to the field.
+    schema: S,
+    /// Whether the filed is mandatory.
+    required: bool,
+    /// Whether the field must be unique.
+    unique: bool,
+}
+
+impl<S> FieldSpec<S> {
+    pub fn new(schema: S, required: bool, unique: bool) -> Self {
+        FieldSpec {
+            schema,
+            required,
+            unique,
+        }
+    }
+
+    pub fn default(schema: S) -> Self {
+        FieldSpec::new(schema, true, true)
     }
 }
 
@@ -147,12 +225,20 @@ impl SlotSchema {
     }
 }
 
-impl Schema<Item> for SlotSchema {
-    fn matches(&self, item: &Item) -> bool {
-        match item {
-            Item::ValueItem(_) => false,
+impl FieldSchema<Item> for SlotSchema {
+    fn matches_field(&self, field: &Item) -> FieldMatchResult {
+        match field {
+            Item::ValueItem(_) => FieldMatchResult::KeyFailed,
             Item::Slot(key, value) => {
-                self.key_schema.matches(key) && self.value_schema.matches(value)
+                if self.key_schema.matches(key) {
+                    if self.value_schema.matches(value) {
+                        FieldMatchResult::Both
+                    } else {
+                        FieldMatchResult::KeyOnly
+                    }
+                } else {
+                    FieldMatchResult::KeyFailed
+                }
             }
         }
     }
@@ -177,53 +263,36 @@ impl Schema<Item> for ItemSchema {
     }
 }
 
-/// Schema for the attributes of a record.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Attributes {
-    /// A set of attributes that must be present.
-    HasAttrs(Vec<AttrSchema>),
-    /// A list of attributes expected, in order an whether they are mandatory.
-    AttrsInOrder(Vec<(AttrSchema, bool)>),
-}
-
-impl Attributes {
-    pub fn matches(&self, attrs: &[Attr], exhaustive: bool) -> bool {
-        match self {
-            Attributes::HasAttrs(schemas) => check_contained(schemas, attrs, exhaustive),
-            Attributes::AttrsInOrder(schemas) => check_in_order(schemas, attrs, exhaustive),
+fn check_contained<T, S: FieldSchema<T>>(
+    schemas: &[FieldSpec<S>],
+    items: &[T],
+    exhaustive: bool,
+) -> bool {
+    let mut matched = HashSet::new();
+    for spec in schemas.iter() {
+        let FieldSpec {
+            schema,
+            required,
+            unique,
+        } = spec;
+        let mut count: usize = 0;
+        for (i, item) in items.iter().enumerate() {
+            match schema.matches_field(item) {
+                FieldMatchResult::KeyOnly => {
+                    return false;
+                }
+                FieldMatchResult::Both => {
+                    matched.insert(i);
+                    count += 1;
+                }
+                FieldMatchResult::KeyFailed => {}
+            }
+        }
+        if (*required && count == 0) || (*unique && count > 1) {
+            return false;
         }
     }
-}
-
-fn check_contained<T, S: Schema<T>>(schemas: &[S], items: &[T], exhaustive: bool) -> bool {
-    let matched = schemas
-        .iter()
-        .try_fold(HashSet::new(), |mut matched, schema| {
-            let matched_items = items
-                .iter()
-                .enumerate()
-                .filter_map(
-                    |(i, item)| {
-                        if schema.matches(item) {
-                            Some(i)
-                        } else {
-                            None
-                        }
-                    },
-                )
-                .collect::<Vec<_>>();
-            if matched_items.is_empty() {
-                None
-            } else {
-                matched_items.iter().for_each(|i| {
-                    matched.insert(*i);
-                });
-                Some(matched)
-            }
-        });
-    matched
-        .map(|set| set.len() == items.len() || !exhaustive)
-        .unwrap_or(false)
+    !exhaustive || matched.len() == items.len()
 }
 
 fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustive: bool) -> bool {
@@ -260,69 +329,6 @@ fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustiv
     matched && (pending.is_none() || !exhaustive)
 }
 
-/// Schema for the items of a record.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Items {
-    /// A set of slots that must be present.
-    HasSlots(Vec<SlotSchema>),
-    /// A list of items expected, in order an whether they are mandatory.
-    ItemsInOrder(Vec<(ItemSchema, bool)>),
-}
-
-impl Items {
-    pub fn matches(&self, items: &[Item], exhaustive: bool) -> bool {
-        match self {
-            Items::HasSlots(schemas) => check_contained(schemas, items, exhaustive),
-            Items::ItemsInOrder(schemas) => check_in_order(schemas, items, exhaustive),
-        }
-    }
-}
-
-/// Schema for a Recon record.
-#[derive(Clone, Debug, PartialEq)]
-pub struct RecordLayout {
-    attrs: Option<Attributes>,
-    items: Option<Items>,
-    exhaustive: bool,
-}
-
-impl RecordLayout {
-    /// Create a new record schema.
-    /// # Arguments
-    ///
-    /// * `attrs` - Schema for the attributes of the record.
-    /// * `items` - Schema for the attributes of the record.
-    /// * `exhaustive` - If true, not other attribute and items are permitted.
-    pub fn new(attrs: Option<Attributes>, items: Option<Items>, exhaustive: bool) -> Self {
-        RecordLayout {
-            attrs,
-            items,
-            exhaustive,
-        }
-    }
-}
-
-impl Schema<Value> for RecordLayout {
-    fn matches(&self, value: &Value) -> bool {
-        match as_record(value) {
-            Some((attrs, items)) => {
-                let attrs_match = self
-                    .attrs
-                    .as_ref()
-                    .map(|attr_schema| attr_schema.matches(attrs, self.exhaustive))
-                    .unwrap_or(attrs.is_empty() || !self.exhaustive);
-                let items_match = self
-                    .items
-                    .as_ref()
-                    .map(|item_schema| item_schema.matches(items, self.exhaustive))
-                    .unwrap_or(items.is_empty() || !self.exhaustive);
-                attrs_match && items_match
-            }
-            _ => false,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum StandardSchema {
     /// Asserts that a [`Value`] is of a particular kind.
@@ -351,18 +357,114 @@ pub enum StandardSchema {
     And(Vec<StandardSchema>),
     /// Disjunction of a number of other schemas.
     Or(Vec<StandardSchema>),
-    /// Asserts that a [`Value`] is a record with a specified layout.
-    Layout(RecordLayout),
     /// Asserts that a [`Value`] is a record and all of its items match another schema.
     AllItems(Box<ItemSchema>),
     /// Asserts that a [`Value`] has a specific number of attributes.
     NumAttrs(usize),
     /// Asserts that a [`Value`] has a specific number of items.
     NumItems(usize),
+    /// Optionally tests the first attributes of a record against a schema and then tests
+    /// the remainder of the record against another schema.
+    HeadAttribute {
+        schema: Box<AttrSchema>,
+        required: bool,
+        remainder: Box<StandardSchema>,
+    },
+    /// Asserts than a [`Value`] is a record with the specified attributes.
+    HasAttributes {
+        attributes: Vec<FieldSpec<AttrSchema>>,
+        exhaustive: bool,
+    },
+    /// Asserts than a [`Value`] is a record with the specified slots.
+    HasSlots {
+        slots: Vec<FieldSpec<SlotSchema>>,
+        exhaustive: bool,
+    },
+    /// Asserts than a [`Value`] is a record with a precise layout of items in its body.
+    Layout {
+        items: Vec<(ItemSchema, bool)>,
+        exhaustive: bool,
+    },
     /// Matches anything.
     Anything,
     /// Matches nothing.
     Nothing,
+}
+
+struct RefRecord<'a> {
+    attrs: &'a [Attr],
+    items: &'a [Item],
+}
+
+impl<'a> RefRecord<'a> {
+    fn new(attrs: &'a [Attr], items: &'a [Item]) -> Self {
+        RefRecord { attrs, items }
+    }
+}
+
+impl StandardSchema {
+    fn matches_ref(&self, record: &RefRecord) -> bool {
+        match self {
+            StandardSchema::OfKind(ValueKind::Record) => true,
+            StandardSchema::Equal(Value::Record(other_attrs, other_items)) => {
+                record.attrs == other_attrs.as_slice() && record.items == other_items.as_slice()
+            }
+            StandardSchema::Not(p) => !p.matches_ref(record),
+            StandardSchema::And(ps) => ps.iter().all(|schema| schema.matches_ref(record)),
+            StandardSchema::Or(ps) => ps.iter().any(|schema| schema.matches_ref(record)),
+            StandardSchema::AllItems(schema) => {
+                record.items.iter().all(|item| schema.matches(item))
+            }
+            StandardSchema::NumAttrs(n) => record.attrs.len() == *n,
+            StandardSchema::NumItems(n) => record.items.len() == *n,
+            StandardSchema::HeadAttribute {
+                schema,
+                required,
+                remainder,
+            } => matches_head_attr(schema, *required, remainder, record),
+            StandardSchema::HasAttributes {
+                attributes,
+                exhaustive,
+            } => check_contained(attributes.as_slice(), record.attrs, *exhaustive),
+            StandardSchema::HasSlots { slots, exhaustive } => {
+                check_contained(slots.as_slice(), record.items, *exhaustive)
+            }
+            StandardSchema::Layout { items, exhaustive } => {
+                check_in_order(items, record.items, *exhaustive)
+            }
+            StandardSchema::Anything => true,
+            _ => false,
+        }
+    }
+
+    fn matches_rem(&self, record: &RefRecord) -> bool {
+        if record.attrs.is_empty() {
+            match record.items {
+                [Item::ValueItem(single)] => self.matches(single),
+                _ => self.matches_ref(record),
+            }
+        } else {
+            self.matches_ref(record)
+        }
+    }
+}
+
+fn matches_head_attr<'a>(
+    schema: &AttrSchema,
+    required: bool,
+    remainder: &StandardSchema,
+    record: &RefRecord<'a>,
+) -> bool {
+    match record.attrs.split_first() {
+        Some((head, tail)) => match schema.matches_field(head) {
+            FieldMatchResult::KeyOnly => false,
+            FieldMatchResult::Both => remainder.matches_ref(&RefRecord::new(tail, record.items)),
+            FieldMatchResult::KeyFailed => {
+                !required && remainder.matches_ref(&RefRecord::new(tail, record.items))
+            }
+        },
+        _ => !required && remainder.matches_rem(record),
+    }
 }
 
 impl Schema<Value> for StandardSchema {
@@ -386,10 +488,33 @@ impl Schema<Value> for StandardSchema {
                 .map(|(_, items)| items.len() == *num_items)
                 .unwrap_or(false),
             StandardSchema::Text(text_schema) => text_schema.matches_value(value),
-            StandardSchema::Layout(layout) => layout.matches(value),
             StandardSchema::Anything => true,
             StandardSchema::Nothing => false,
             StandardSchema::Equal(v) => value == v,
+            StandardSchema::HeadAttribute {
+                schema,
+                required,
+                remainder,
+            } => as_record(value)
+                .map(|(attrs, items)| {
+                    matches_head_attr(schema, *required, remainder, &RefRecord::new(attrs, items))
+                })
+                .unwrap_or(false),
+            StandardSchema::HasAttributes {
+                attributes,
+                exhaustive,
+            } => as_record(value)
+                .map(|(attrs, _)| check_contained(attributes.as_slice(), attrs, *exhaustive))
+                .unwrap_or(false),
+            StandardSchema::HasSlots { slots, exhaustive } => as_record(value)
+                .map(|(_, items)| check_contained(slots.as_slice(), items, *exhaustive))
+                .unwrap_or(false),
+            StandardSchema::Layout {
+                items: item_schemas,
+                exhaustive,
+            } => as_record(value)
+                .map(|(_, items)| check_in_order(item_schemas.as_slice(), items, *exhaustive))
+                .unwrap_or(false),
         }
     }
 }
