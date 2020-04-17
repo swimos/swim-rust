@@ -193,8 +193,6 @@ impl RouteHostEnvelopesTask {
 
             match request {
                 RequestTaskType::Envelope(_envelope) => {
-                    tracing::debug!("Envelope routing task sending envelope");
-
                     RetryableRequest::send(
                         BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),
                         Message::Text(String::from("@sync(node:\"/unit/foo\", lane:\"info\")")),
@@ -205,8 +203,6 @@ impl RouteHostEnvelopesTask {
                     .map_err(|_| RoutingError::ConnectionError)?;
                 }
                 RequestTaskType::Close => {
-                    tracing::debug!("Envelope routing task closing");
-
                     break;
                 }
                 _ => {}

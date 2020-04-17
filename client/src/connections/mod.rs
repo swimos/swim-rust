@@ -336,12 +336,16 @@ where
         } = self;
 
         loop {
-            let message: Option<Message> = read_stream.try_next().await.map_err(|_| {
-                stopped.store(true, Ordering::Release);
-                ConnectionError::ReceiveMessageError
-            })?;
+            let message = read_stream
+                .try_next()
+                .await
+                .map_err(|_| {
+                    stopped.store(true, Ordering::Release);
+                    ConnectionError::ReceiveMessageError
+                })?
+                .ok_or(ConnectionError::ReceiveMessageError)?;
 
-            tx.send(message.unwrap())
+            tx.send(message)
                 .await
                 .map_err(|_| ConnectionError::ReceiveMessageError)?;
         }
@@ -405,8 +409,8 @@ impl SwimConnection {
 
         Ok(SwimConnection {
             stopped,
-            tx: sender_tx,         // sink
-            rx: Some(receiver_rx), // stream
+            tx: sender_tx,
+            rx: Some(receiver_rx),
             _send_handler: send_handler,
             _receive_handler: receive_handler,
         })

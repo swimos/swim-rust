@@ -90,8 +90,6 @@ where
             #[project]
             match this.state.project() {
                 RetryState::NotStarted => {
-                    tracing::trace!("Retryable request initialising");
-
                     let mut sink = this.sink;
                     let value = this.value.clone();
                     let r = sink.send_value(value, &this.ctx);
@@ -284,7 +282,6 @@ pub mod boxed_connection_sender {
             let RequestFuture { state, value, .. } = self.get_mut();
 
             if let State::NotStarted = state {
-                tracing::trace!("Requesting connection");
                 *state = State::AcquiringSender(f);
             }
 
