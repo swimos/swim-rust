@@ -1305,10 +1305,9 @@ fn map_record() {
 
 #[test]
 fn record_unpacking() {
-    let schema1 = AttrSchema::tag(TextSchema::exact("name"))
-        .and_then(StandardSchema::OfKind(ValueKind::Int32));
+    let schema1 = AttrSchema::tag("name").and_then(StandardSchema::OfKind(ValueKind::Int32));
     let item_schema = ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32));
-    let schema2 = AttrSchema::tag(TextSchema::exact("name")).and_then(StandardSchema::Layout {
+    let schema2 = AttrSchema::tag("name").and_then(StandardSchema::Layout {
         items: vec![(item_schema, true)],
         exhaustive: true,
     });

@@ -131,14 +131,27 @@ impl AttrSchema {
         }
     }
 
+    /// Create an attribute schema with a fixed name.
+    /// # Arguments
+    ///
+    /// * `name` - The name of the attribute.
+    /// * `value` - Schema for the value of the attribute.
+    ///
+    pub fn named(name: &str, value: StandardSchema) -> Self {
+        AttrSchema {
+            name_schema: TextSchema::exact(name),
+            value_schema: value,
+        }
+    }
+
     /// Create a schema that matches attributes without bodies.
     /// # Arguments
     ///
-    /// * `name` - Schema for the name of the attribute.
+    /// * `name` - The name of the attribute.
     ///
-    pub fn tag(name: TextSchema) -> Self {
+    pub fn tag(name: &str) -> Self {
         AttrSchema {
-            name_schema: name,
+            name_schema: TextSchema::exact(name),
             value_schema: StandardSchema::OfKind(ValueKind::Extant),
         }
     }
@@ -151,6 +164,12 @@ impl AttrSchema {
             required: true,
             remainder: Box::new(schema),
         }
+    }
+
+    /// Creates a schema that checks that the value is a record containing only an attribute
+    /// matching this schema.
+    pub fn only(self) -> StandardSchema {
+        self.and_then(StandardSchema::is_empty_record())
     }
 
     /// Creates a schema that optionally checks the first attribute of a record against this schema
@@ -633,6 +652,10 @@ impl StandardSchema {
     /// A schema for records of slots with keys and values matching specific schemas.
     pub fn map(keys: StandardSchema, values: StandardSchema) -> Self {
         StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(keys, values))))
+    }
+
+    pub fn is_empty_record() -> Self {
+        StandardSchema::eq(Value::empty_record())
     }
 }
 
