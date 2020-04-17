@@ -21,6 +21,9 @@ use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasher, Hash};
 
+#[cfg(test)]
+mod tests;
+
 impl<T: Form> Form for Vec<T> {
     fn as_value(&self) -> Value {
         Value::record(self.iter().map(|t| Item::from(t.as_value())).collect())
