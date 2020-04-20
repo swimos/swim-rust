@@ -562,7 +562,7 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
-    crate::downlink::create_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
+    crate::downlink::create_downlink(MapStateMachine::new(), update_stream, cmd_sink, buffer_size)
 }
 
 /// Create a map downlink with an queue based multiplexing topic.
@@ -580,7 +580,7 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        MapModel::new(),
+        MapStateMachine::new(),
         update_stream,
         cmd_sink,
         buffer_size,
@@ -601,7 +601,7 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
-    dropping::make_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
+    dropping::make_downlink(MapStateMachine::new(), update_stream, cmd_sink, buffer_size)
 }
 
 /// Create a value downlink with an buffered multiplexing topic.
@@ -619,7 +619,7 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        MapModel::new(),
+        MapStateMachine::new(),
         update_stream,
         cmd_sink,
         buffer_size,
@@ -639,61 +639,81 @@ impl MapModel {
     }
 }
 
-impl BasicStateMachine<MapModification<Value>, MapAction> for MapModel {
+struct MapStateMachine;
+
+impl MapStateMachine {
+    fn new() -> Self {
+        MapStateMachine
+    }
+}
+
+impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapStateMachine {
     type Ev = ViewWithEvent;
     type Cmd = MapModification<Arc<Value>>;
 
-    fn on_sync(&self) -> Self::Ev {
-        ViewWithEvent::initial(&self.state)
+    fn init(&self) -> MapModel {
+        MapModel::new()
     }
 
-    fn handle_message_unsynced(&mut self, message: MapModification<Value>) {
+    fn on_sync(&self, state: &MapModel) -> Self::Ev {
+        ViewWithEvent::initial(&state.state)
+    }
+
+    fn handle_message_unsynced(&self, state: &mut MapModel, message: MapModification<Value>) {
         match message {
             MapModification::Insert(k, v) => {
-                self.state.insert(k, Arc::new(v));
+                state.state.insert(k, Arc::new(v));
             }
             MapModification::Remove(k) => {
-                self.state.remove(&k);
+                state.state.remove(&k);
             }
             MapModification::Take(n) => {
-                self.state = self.state.take(n);
+                state.state = state.state.take(n);
             }
             MapModification::Skip(n) => {
-                self.state = self.state.skip(n);
+                state.state = state.state.skip(n);
             }
             MapModification::Clear => {
-                self.state.clear();
+                state.state.clear();
             }
         };
     }
 
-    fn handle_message(&mut self, message: MapModification<Value>) -> Option<Self::Ev> {
+    fn handle_message(
+        &self,
+        state: &mut MapModel,
+        message: MapModification<Value>,
+    ) -> Option<Self::Ev> {
         Some(match message {
             MapModification::Insert(k, v) => {
-                self.state.insert(k.clone(), Arc::new(v));
-                ViewWithEvent::insert(&self.state, k)
+                state.state.insert(k.clone(), Arc::new(v));
+                ViewWithEvent::insert(&state.state, k)
             }
             MapModification::Remove(k) => {
-                self.state.remove(&k);
-                ViewWithEvent::remove(&self.state, k)
+                state.state.remove(&k);
+                ViewWithEvent::remove(&state.state, k)
             }
             MapModification::Take(n) => {
-                self.state = self.state.take(n);
-                ViewWithEvent::take(&self.state, n)
+                state.state = state.state.take(n);
+                ViewWithEvent::take(&state.state, n)
             }
             MapModification::Skip(n) => {
-                self.state = self.state.skip(n);
-                ViewWithEvent::skip(&self.state, n)
+                state.state = state.state.skip(n);
+                ViewWithEvent::skip(&state.state, n)
             }
             MapModification::Clear => {
-                self.state.clear();
-                ViewWithEvent::clear(&self.state)
+                state.state.clear();
+                ViewWithEvent::clear(&state.state)
             }
         })
     }
 
-    fn handle_action(&mut self, action: MapAction) -> BasicResponse<Self::Ev, Self::Cmd> {
-        process_action(&mut self.state, action)
+    fn handle_action(
+        &self,
+        state: &mut MapModel,
+        action: MapAction,
+    ) -> BasicResponse<Self::Ev, Self::Cmd> {
+        process_action(&mut state.state, action)
     }
 }
 

@@ -106,7 +106,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     create_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -129,7 +129,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -152,7 +152,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -175,7 +175,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -195,41 +195,59 @@ impl ValueModel {
     }
 }
 
-impl BasicStateMachine<Value, Action> for ValueModel {
+struct ValueStateMachine {
+    init: Value,
+}
+
+impl ValueStateMachine {
+    fn new(init: Value) -> Self {
+        ValueStateMachine { init }
+    }
+}
+
+impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
     type Ev = SharedValue;
     type Cmd = SharedValue;
 
-    fn on_sync(&self) -> Self::Ev {
-        self.state.clone()
+    fn init(&self) -> ValueModel {
+        ValueModel::new(self.init.clone())
     }
 
-    fn handle_message_unsynced(&mut self, upd_value: Value) {
-        self.state = Arc::new(upd_value);
+    fn on_sync(&self, state: &ValueModel) -> Self::Ev {
+        state.state.clone()
     }
 
-    fn handle_message(&mut self, upd_value: Value) -> Option<Self::Ev> {
-        self.state = Arc::new(upd_value);
-        Some(self.state.clone())
+    fn handle_message_unsynced(&self, state: &mut ValueModel, upd_value: Value) {
+        state.state = Arc::new(upd_value);
     }
 
-    fn handle_action(&mut self, action: Action) -> BasicResponse<Self::Ev, Self::Cmd> {
+    fn handle_message(&self, state: &mut ValueModel, upd_value: Value) -> Option<Self::Ev> {
+        state.state = Arc::new(upd_value);
+        Some(state.state.clone())
+    }
+
+    fn handle_action(
+        &self,
+        state: &mut ValueModel,
+        action: Action,
+    ) -> BasicResponse<Self::Ev, Self::Cmd> {
         match action {
-            Action::Get(resp) => match resp.send(self.state.clone()) {
+            Action::Get(resp) => match resp.send(state.state.clone()) {
                 Err(_) => BasicResponse::none().with_error(TransitionError::ReceiverDropped),
                 _ => BasicResponse::none(),
             },
             Action::Set(set_value, maybe_resp) => {
-                self.state = Arc::new(set_value);
-                let resp = BasicResponse::of(self.state.clone(), self.state.clone());
+                state.state = Arc::new(set_value);
+                let resp = BasicResponse::of(state.state.clone(), state.state.clone());
                 match maybe_resp.and_then(|req| req.send(()).err()) {
                     Some(_) => resp.with_error(TransitionError::ReceiverDropped),
                     _ => resp,
                 }
             }
             Action::Update(upd_fn, maybe_resp) => {
-                self.state = Arc::new(upd_fn(self.state.as_ref()));
-                let resp = BasicResponse::of(self.state.clone(), self.state.clone());
-                match maybe_resp.and_then(|req| req.send(self.state.clone()).err()) {
+                state.state = Arc::new(upd_fn(state.state.as_ref()));
+                let resp = BasicResponse::of(state.state.clone(), state.state.clone());
+                match maybe_resp.and_then(|req| req.send(state.state.clone()).err()) {
                     None => resp,
                     Some(_) => resp.with_error(TransitionError::ReceiverDropped),
                 }

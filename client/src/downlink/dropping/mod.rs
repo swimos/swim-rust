@@ -195,23 +195,27 @@ where
     }
 }
 
-pub(in crate::downlink) fn make_downlink<M, A, State, Updates, Commands>(
-    init: State,
+pub(in crate::downlink) fn make_downlink<M, A, State, Machine, Updates, Commands>(
+    machine: Machine,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
-) -> (DroppingDownlink<A, State::Ev>, DroppingReceiver<State::Ev>)
+) -> (
+    DroppingDownlink<A, Machine::Ev>,
+    DroppingReceiver<Machine::Ev>,
+)
 where
     M: Send + 'static,
     A: Send + 'static,
-    State: StateMachine<M, A> + Send + 'static,
-    State::Ev: Clone + Send + Sync + 'static,
-    State::Cmd: Send + 'static,
+    State: Send + 'static,
+    Machine: StateMachine<State, M, A> + Send + 'static,
+    Machine::Ev: Clone + Send + Sync + 'static,
+    Machine::Cmd: Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
-    Commands: ItemSender<Command<State::Cmd>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
-    let (event_tx, event_rx) = watch::channel::<Option<Event<State::Ev>>>(None);
+    let (event_tx, event_rx) = watch::channel::<Option<Event<Machine::Ev>>>(None);
 
     let event_sink = item::for_watch_sender::<_, DroppedError>(event_tx);
 
@@ -220,9 +224,13 @@ where
     let completed = Arc::new(AtomicBool::new(false));
 
     // The task that maintains the internal state of the lane.
-    let task = DownlinkTask::new(init, cmd_sink, event_sink, completed.clone(), stopped_tx);
+    let task = DownlinkTask::new(cmd_sink, event_sink, completed.clone(), stopped_tx);
 
-    let lane_task = task.run(raw::make_operation_stream(update_stream), act_rx.fuse());
+    let lane_task = task.run(
+        raw::make_operation_stream(update_stream),
+        act_rx.fuse(),
+        machine,
+    );
 
     let join_handle = tokio::task::spawn(lane_task);
 

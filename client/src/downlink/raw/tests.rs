@@ -58,39 +58,47 @@ fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) ->
     response
 }
 
-impl StateMachine<Msg, AddTo> for State {
+struct TestStateMachine;
+
+impl StateMachine<State, Msg, AddTo> for TestStateMachine {
     type Ev = i32;
     type Cmd = i32;
 
+    fn init_state(&self) -> State {
+        State(0)
+    }
+
     fn handle_operation(
-        model: &mut Model<Self>,
+        &self,
+        dl_state: &mut DownlinkState,
+        model: &mut State,
         op: Operation<Msg, AddTo>,
     ) -> Response<Self::Ev, Self::Cmd> {
         match op {
             Operation::Start => Response::for_command(Command::Sync),
             Operation::Message(Message::Linked) => {
-                model.state = DownlinkState::Linked;
+                *dl_state = DownlinkState::Linked;
                 Response::none()
             }
             Operation::Message(Message::Synced) => {
-                let prev = model.state;
-                model.state = DownlinkState::Synced;
+                let prev = *dl_state;
+                *dl_state = DownlinkState::Synced;
                 if prev != DownlinkState::Synced {
-                    Response::for_event(Event(model.data_state.0, false))
+                    Response::for_event(Event(model.0, false))
                 } else {
                     Response::none()
                 }
             }
             Operation::Message(Message::Unlinked) => {
-                model.state = DownlinkState::Unlinked;
+                *dl_state = DownlinkState::Unlinked;
                 Response::none()
             }
             Operation::Message(Message::Action(Msg(n, maybe_cb))) => {
-                if model.state != DownlinkState::Unlinked {
-                    model.data_state.0 = n;
+                if *dl_state != DownlinkState::Unlinked {
+                    model.0 = n;
                 }
-                let resp = if model.state == DownlinkState::Synced {
-                    Response::for_event(Event(model.data_state.0, false))
+                let resp = if *dl_state == DownlinkState::Synced {
+                    Response::for_event(Event(model.0, false))
                 } else {
                     Response::none()
                 };
@@ -103,14 +111,14 @@ impl StateMachine<Msg, AddTo> for State {
                 }
             }
             Operation::Action(AddTo(n, maybe_cb)) => {
-                let next = model.data_state.0 + n;
+                let next = model.0 + n;
                 let resp = if next < 0 {
                     with_error(
                         Response::none(),
                         TransitionError::IllegalTransition("State cannot be negative.".to_owned()),
                     )
                 } else {
-                    model.data_state.0 = next;
+                    model.0 = next;
                     response_of(Event(next, true), Command::Action(next))
                 };
                 match maybe_cb {
@@ -145,7 +153,7 @@ async fn make_test_dl() -> (
     let (tx_in, rx_in) = mpsc::channel(10);
     let (tx_out, rx_out) = mpsc::channel::<Command<i32>>(10);
     let downlink = create_downlink(
-        State(0),
+        TestStateMachine,
         rx_in,
         for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
         10,

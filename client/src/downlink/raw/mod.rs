@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::downlink::{
-    Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message, Model,
+    Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
     Operation, Response, StateMachine, StoppedFuture,
 };
 use crate::router::RoutingError;
@@ -134,23 +134,24 @@ impl<S, R> RawDownlink<S, R> {
 
 /// Asynchronously create a new downlink from a stream of input events, writing to a sink of
 /// commands.
-pub(in crate::downlink) fn create_downlink<M, A, State, Updates, Commands>(
-    init: State,
+pub(in crate::downlink) fn create_downlink<M, A, State, Machine, Updates, Commands>(
+    machine: Machine,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
-) -> RawDownlink<mpsc::Sender<A>, mpsc::Receiver<Event<State::Ev>>>
+) -> RawDownlink<mpsc::Sender<A>, mpsc::Receiver<Event<Machine::Ev>>>
 where
     M: Send + 'static,
     A: Send + 'static,
-    State: StateMachine<M, A> + Send + 'static,
-    State::Ev: Send + 'static,
-    State::Cmd: Send + 'static,
+    State: Send + 'static,
+    Machine: StateMachine<State, M, A> + Send + 'static,
+    Machine::Ev: Send + 'static,
+    Machine::Cmd: Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
-    Commands: ItemSender<Command<State::Cmd>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
-    let (event_tx, event_rx) = mpsc::channel::<Event<State::Ev>>(buffer_size);
+    let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(buffer_size);
 
     let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
 
@@ -159,9 +160,9 @@ where
     let completed = Arc::new(AtomicBool::new(false));
 
     // The task that maintains the internal state of the lane.
-    let task = DownlinkTask::new(init, cmd_sink, event_sink, completed.clone(), stopped_tx);
+    let task = DownlinkTask::new(cmd_sink, event_sink, completed.clone(), stopped_tx);
 
-    let lane_task = task.run(make_operation_stream(update_stream), act_rx.fuse());
+    let lane_task = task.run(make_operation_stream(update_stream), act_rx.fuse(), machine);
 
     let join_handle = tokio::task::spawn(lane_task);
 
@@ -207,8 +208,7 @@ impl DownlinkTaskHandle {
 
 /// A task that consumes the operations applied to the downlink, updates the state and
 /// forwards events and commands to a pair of output sinks.
-pub(in crate::downlink) struct DownlinkTask<State, Commands, Events> {
-    model: Model<State>,
+pub(in crate::downlink) struct DownlinkTask<Commands, Events> {
     cmd_sink: Commands,
     ev_sink: Events,
     completed: Arc<AtomicBool>,
@@ -237,16 +237,14 @@ impl<M, A> TaskInput<M, A> {
     }
 }
 
-impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
+impl<Commands, Events> DownlinkTask<Commands, Events> {
     pub(in crate::downlink) fn new(
-        init: State,
         cmd_sink: Commands,
         ev_sink: Events,
         completed: Arc<AtomicBool>,
         stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
     ) -> Self {
         DownlinkTask {
-            model: Model::new(init),
             cmd_sink,
             ev_sink,
             completed,
@@ -254,25 +252,28 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
         }
     }
 
-    pub(in crate::downlink) async fn run<M, A, Ops, Acts>(
+    pub(in crate::downlink) async fn run<M, A, Ops, Acts, State, Machine>(
         self,
         ops: Ops,
         acts: Acts,
+        state_machine: Machine,
     ) -> Result<(), DownlinkError>
     where
-        State: StateMachine<M, A>,
+        Machine: StateMachine<State, M, A>,
         Ops: FusedStream<Item = Operation<M, A>> + Send + 'static,
         Acts: FusedStream<Item = A> + Send + 'static,
-        Commands: ItemSender<Command<State::Cmd>, RoutingError>,
-        Events: ItemSender<Event<State::Ev>, DroppedError>,
+        Commands: ItemSender<Command<Machine::Cmd>, RoutingError>,
+        Events: ItemSender<Event<Machine::Ev>, DroppedError>,
     {
         let DownlinkTask {
-            mut model,
             mut cmd_sink,
             mut ev_sink,
             completed,
             stop_event,
         } = self;
+
+        let mut dl_state = DownlinkState::Unlinked;
+        let mut model = state_machine.init_state();
 
         pin_mut!(ops);
         pin_mut!(acts);
@@ -284,26 +285,25 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
         let mut read_act = false;
 
         let result: Result<(), DownlinkError> = loop {
-            let next_op: TaskInput<M, A> =
-                if model.state == DownlinkState::Synced && !act_terminated {
-                    if read_act {
-                        read_act = false;
-                        let input = select_biased! {
-                            act_op = act_str.next() => TaskInput::from_action(act_op),
-                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
-                        };
-                        input
-                    } else {
-                        read_act = true;
-                        let input = select_biased! {
-                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
-                            act_op = act_str.next() => TaskInput::from_action(act_op),
-                        };
-                        input
-                    }
+            let next_op: TaskInput<M, A> = if dl_state == DownlinkState::Synced && !act_terminated {
+                if read_act {
+                    read_act = false;
+                    let input = select_biased! {
+                        act_op = act_str.next() => TaskInput::from_action(act_op),
+                        upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                    };
+                    input
                 } else {
-                    TaskInput::from_operation(ops_str.next().await)
-                };
+                    read_act = true;
+                    let input = select_biased! {
+                        upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                        act_op = act_str.next() => TaskInput::from_action(act_op),
+                    };
+                    input
+                }
+            } else {
+                TaskInput::from_operation(ops_str.next().await)
+            };
 
             match next_op {
                 TaskInput::Op(op) => {
@@ -312,7 +312,7 @@ impl<State, Commands, Events> DownlinkTask<State, Commands, Events> {
                         command,
                         error,
                         terminate,
-                    } = StateMachine::handle_operation(&mut model, op);
+                    } = state_machine.handle_operation(&mut dl_state, &mut model, op);
                     let result = match (event, command) {
                         (Some(event), Some(cmd)) => {
                             if !events_terminated && ev_sink.send_item(event).await.is_err() {

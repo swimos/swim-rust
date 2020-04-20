@@ -17,14 +17,7 @@ use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::{DownlinkState, Model, Operation, Response, StateMachine};
-
-fn make_model(state: DownlinkState, n: i32) -> Model<ValueModel> {
-    Model {
-        state,
-        data_state: ValueModel::new(Value::Int32Value(n)),
-    }
-}
+use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
 
 const STATES: [DownlinkState; 3] = [
     DownlinkState::Unlinked,
@@ -35,8 +28,10 @@ const STATES: [DownlinkState; 3] = [
 #[test]
 fn start_downlink() {
     for s in STATES.iter() {
-        let mut model = make_model(*s, 0);
-        let response = StateMachine::handle_operation(&mut model, Operation::Start);
+        let mut state = *s;
+        let mut model = ValueModel::new(Value::from(0));
+        let machine = ValueStateMachine::new(Value::from(0));
+        let response = machine.handle_operation(&mut state, &mut model, Operation::Start);
 
         let Response {
             event,
@@ -49,7 +44,7 @@ fn start_downlink() {
         assert_that!(error, none());
         assert_that!(event, none());
 
-        assert_that!(model.state, eq(*s));
+        assert_that!(state, eq(*s));
 
         match command {
             Some(cmd) => {
@@ -64,10 +59,13 @@ fn start_downlink() {
 }
 
 fn linked_response(start_state: DownlinkState) {
-    let mut model = make_model(start_state, 0);
-    let response = StateMachine::handle_operation(&mut model, Operation::Message(Message::Linked));
+    let mut state = start_state;
+    let mut model = ValueModel::new(Value::from(0));
+    let machine = ValueStateMachine::new(Value::from(0));
+    let response =
+        machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Linked));
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
+    assert_that!(state, eq(DownlinkState::Linked));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -91,15 +89,18 @@ fn only_event(response: &Response<Arc<Value>, Arc<Value>>) -> &Arc<Value> {
 }
 
 fn synced_response(start_state: DownlinkState) {
-    let mut model = make_model(start_state, 7);
-    let response = StateMachine::handle_operation(&mut model, Operation::Message(Message::Synced));
+    let mut state = start_state;
+    let mut model = ValueModel::new(Value::from(7));
+    let machine = ValueStateMachine::new(Value::from(0));
+    let response =
+        machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Synced));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     if start_state == DownlinkState::Synced {
         assert_that!(response, eq(Response::none()));
     } else {
         let ev = only_event(&response);
-        assert!(Arc::ptr_eq(ev, &model.data_state.state));
+        assert!(Arc::ptr_eq(ev, &model.state));
     }
 }
 
@@ -111,11 +112,16 @@ fn synced_message() {
 }
 
 fn unlinked_response(start_state: DownlinkState) {
-    let mut model = make_model(start_state, 7);
-    let response =
-        StateMachine::handle_operation(&mut model, Operation::Message(Message::Unlinked));
+    let mut state = start_state;
+    let mut model = ValueModel::new(Value::from(7));
+    let machine = ValueStateMachine::new(Value::from(0));
+    let response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Unlinked),
+    );
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
+    assert_that!(state, eq(DownlinkState::Unlinked));
     assert_that!(response, eq(Response::none().then_terminate()));
 }
 
@@ -128,43 +134,52 @@ fn unlinked_message() {
 
 #[test]
 fn update_message_unlinked() {
-    let mut model = make_model(DownlinkState::Unlinked, 1);
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Unlinked;
+    let mut model = ValueModel::new(Value::from(1));
+    let machine = ValueStateMachine::new(Value::from(0));
+    let response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state.state, eq(Arc::new(Value::Int32Value(1))));
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
     assert_that!(response, eq(Response::none()));
 }
 
 #[test]
 fn update_message_linked() {
-    let mut model = make_model(DownlinkState::Linked, 1);
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Linked;
+    let mut model = ValueModel::new(Value::from(1));
+    let machine = ValueStateMachine::new(Value::from(0));
+    let response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.state, eq(Arc::new(Value::Int32Value(3))));
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state, eq(Arc::new(Value::Int32Value(3))));
     assert_that!(response, eq(Response::none()));
 }
 
 #[test]
 fn update_message_synced() {
-    let mut model = make_model(DownlinkState::Synced, 1);
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(1));
+    let machine = ValueStateMachine::new(Value::from(0));
+    let response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(3));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     let ev = only_event(&response);
-    assert!(Arc::ptr_eq(ev, &model.data_state.state));
+    assert!(Arc::ptr_eq(ev, &model.state));
 }
 
 fn make_get() -> (Action, oneshot::Receiver<Arc<Value>>) {
@@ -174,31 +189,35 @@ fn make_get() -> (Action, oneshot::Receiver<Arc<Value>>) {
 
 #[test]
 fn get_action() {
-    let mut model = make_model(DownlinkState::Synced, 13);
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let machine = ValueStateMachine::new(Value::from(0));
     let (action, mut rx) = make_get();
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(13));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let get_val = result.unwrap();
-    assert!(Arc::ptr_eq(&get_val, &model.data_state.state));
+    assert!(Arc::ptr_eq(&get_val, &model.state));
 }
 
 #[test]
 fn dropped_get() {
-    let mut model = make_model(DownlinkState::Synced, 13);
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let machine = ValueStateMachine::new(Value::from(0));
     let (action, rx) = make_get();
     drop(rx);
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(13));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     assert_that!(
         response,
         eq(with_error(
@@ -237,16 +256,18 @@ fn event_and_cmd(
 
 #[test]
 fn set_action() {
-    let mut model = make_model(DownlinkState::Synced, 13);
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let machine = ValueStateMachine::new(Value::from(0));
     let (action, mut rx) = make_set(67);
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(67));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
+    assert!(Arc::ptr_eq(&ev, &model.state));
+    assert!(Arc::ptr_eq(&cmd, &model.state));
     assert_that!(err, none());
 
     assert_that!(rx.try_recv(), ok());
@@ -254,19 +275,21 @@ fn set_action() {
 
 #[test]
 fn dropped_set_action() {
-    let mut model = make_model(DownlinkState::Synced, 13);
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let machine = ValueStateMachine::new(Value::from(0));
     let (action, rx) = make_set(67);
 
     drop(rx);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(67));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
+    assert!(Arc::ptr_eq(&ev, &model.state));
+    assert!(Arc::ptr_eq(&cmd, &model.state));
     assert_that!(&err, some());
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }
@@ -287,41 +310,45 @@ fn make_update() -> (Action, oneshot::Receiver<Arc<Value>>) {
 
 #[test]
 fn update_action() {
-    let mut model = make_model(DownlinkState::Synced, 13);
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let machine = ValueStateMachine::new(Value::from(0));
     let (action, mut rx) = make_update();
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
 
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
+    assert!(Arc::ptr_eq(&ev, &model.state));
+    assert!(Arc::ptr_eq(&cmd, &model.state));
     assert_that!(err, none());
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let upd_val = result.unwrap();
-    assert!(Arc::ptr_eq(&upd_val, &model.data_state.state));
+    assert!(Arc::ptr_eq(&upd_val, &model.state));
 }
 
 #[test]
 fn dropped_update_action() {
-    let mut model = make_model(DownlinkState::Synced, 13);
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let machine = ValueStateMachine::new(Value::from(0));
     let (action, rx) = make_update();
 
     drop(rx);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
 
     let (ev, cmd, err) = event_and_cmd(response);
-    assert!(Arc::ptr_eq(&ev, &model.data_state.state));
-    assert!(Arc::ptr_eq(&cmd, &model.data_state.state));
+    assert!(Arc::ptr_eq(&ev, &model.state));
+    assert!(Arc::ptr_eq(&cmd, &model.state));
     assert_that!(&err, some());
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }
