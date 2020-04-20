@@ -17,7 +17,6 @@ use std::fmt::Display;
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
-use syn;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::DeriveInput;

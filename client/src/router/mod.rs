@@ -89,8 +89,9 @@ impl SwimRouter {
             .with_idle_timeout(5)
             .with_conn_reaper_frequency(10)
             .with_retry_stategy(RetryStrategy::exponential(
-                Duration::from_secs(2),
-                Duration::from_secs(32),
+                Duration::from_secs(8),
+                // Indefinately try to send requests
+                None,
             ))
             .build();
 
@@ -104,7 +105,7 @@ impl SwimRouter {
         let (request_connections_task, connection_request_tx, connections_task_close_request_tx) =
             RequestConnectionsTask::new(
                 connection_pool,
-                message_routing_new_task_request_tx,
+                message_routing_new_task_request_tx.clone(),
                 configuration,
             );
 
@@ -112,7 +113,11 @@ impl SwimRouter {
             request_envelope_routing_host_task,
             envelope_routing_host_request_tx,
             envelope_routing_task_close_request_tx,
-        ) = RequestEnvelopeRoutingHostTask::new(connection_request_tx, configuration);
+        ) = RequestEnvelopeRoutingHostTask::new(
+            connection_request_tx,
+            configuration,
+            message_routing_new_task_request_tx,
+        );
 
         let request_connections_handler = tokio::spawn(request_connections_task.run());
 
@@ -246,9 +251,9 @@ impl RequestConnectionsTask {
                 }
 
                 Err(e) => {
-                    // Need to return an error to the request so that it can cancel and not attempt
-                    // the request again. Some errors are transient and they may resolve themselves
-                    // after waiting
+                    // Need to return an error to the envelope routing task so that it can cancel
+                    // the active request and not attempt it again the request again. Some errors
+                    // are transient and they may resolve themselves after waiting
                     match e {
                         // Transient error that may be recoverable
                         ConnectionError::Transient => {
@@ -382,8 +387,8 @@ impl Future for SwimRouterConnection {
                     if let Some(tx) = event_tx.take() {
                         match message_register_task_request_tx.try_send((
                             host_url.clone(),
-                            node.to_string(),
-                            lane.to_string(),
+                            (*node).to_string(),
+                            (*lane).to_string(),
                             tx,
                         )) {
                             Ok(_) => (),

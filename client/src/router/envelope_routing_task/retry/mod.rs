@@ -67,9 +67,8 @@ where
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum RetryErr {
-    RetriesExceeded,
     SenderClosed,
     ConnectionError,
     HostUnavailable,
@@ -105,16 +104,16 @@ where
                         }
                         Err(e) => {
                             let new_state = match e {
-                                // Cancel the request
+                                // The router has signed that this request should be cancelled. Return with
+                                // an error that will be sunk by the router
                                 RetryErr::ConnectionError => {
                                     return Poll::Ready(Err(RetryErr::ConnectionError));
                                 }
+                                // If the maximum number of requests has been reached, then this error
+                                // will be returned and forwarded to the downlink for a
                                 RetryErr::HostUnavailable | RetryErr::SenderClosed => {
                                     this.ctx.recreate = true;
-                                    RetryState::Retrying
-                                }
-                                RetryErr::RetriesExceeded => {
-                                    return Poll::Ready(Err(RetryErr::RetriesExceeded));
+                                    RetryState::Retrying(RetryErr::HostUnavailable)
                                 }
                             };
 
@@ -122,7 +121,7 @@ where
                         }
                     };
                 }
-                RetryState::Retrying => match this.strategy.next() {
+                RetryState::Retrying(err) => match this.strategy.next() {
                     Some(duration) => match duration {
                         Some(duration) => {
                             self.as_mut()
@@ -135,7 +134,8 @@ where
                         }
                     },
                     None => {
-                        return Poll::Ready(Err(RetryErr::RetriesExceeded));
+                        // Return the previous error and complete
+                        return Poll::Ready(Err(err.clone()));
                     }
                 },
                 RetryState::Sleeping(timer) => {
@@ -154,8 +154,9 @@ enum RetryState<F> {
     NotStarted,
     /// A retry has been started and the future [`F`] is currently pending.
     Pending(#[pin] F),
-    /// A retry is going to be attempted with the [`RetryStrategy`].
-    Retrying,
+    /// A retry is going to be attempted with the [`RetryStrategy`]. If there are no retries left, then
+    /// the [`RetryErr`] is returned
+    Retrying(RetryErr),
     /// The given [`RetryStrategy`] needs to sleep between retries for [`Delay`].
     Sleeping(#[pin] time::Delay),
 }
@@ -188,8 +189,11 @@ pub mod boxed_connection_sender {
 
     /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
     /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
-    /// the request using the given [`oneshot::Sender`] instance. If this fails then the future will
-    /// return [`ConnectionError`].
+    /// the request using the given [`oneshot::Sender`] instance. If when requesting a new
+    /// conenction sender the router returns [`RoutingError::ConnectionError`] then the request is
+    /// cancelled as the connection pool has failed to acquire an active connection due to an
+    /// unrecoverable error. However, if the router returns [`RoutingError::Transient`] then it is
+    /// assumed that the error may resolve.
     pub struct BoxedConnSender {
         sender: ConnReqSender,
         host: url::Url,
@@ -242,7 +246,6 @@ pub mod boxed_connection_sender {
     }
 
     impl<'a> RequestFuture<'a> {
-        // Todo: Expose this
         fn request_connection(
             &mut self,
             recreate: bool,
@@ -294,7 +297,8 @@ pub mod boxed_connection_sender {
                     }
                     Err(e) => {
                         match e {
-                            // Router has indicated that the request should be cancelled
+                            // Router has indicated that the request should be cancelled or an
+                            // unrecoverable error occured
                             RoutingError::ConnectionError => {
                                 Poll::Ready(Err(RetryErr::ConnectionError))
                             }

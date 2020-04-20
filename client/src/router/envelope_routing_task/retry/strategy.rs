@@ -14,7 +14,6 @@
 
 use std::time::Duration;
 
-use rand;
 use rand::Rng;
 
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
@@ -47,8 +46,9 @@ pub struct ExponentialStrategy {
     /// The maximum interval between a retry, generated intervals will be truncated to this duration
     /// if they exceed it.
     max_interval: Duration,
-    /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds
-    max_backoff: Duration,
+    /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds. Indefinate if
+    /// [`None`]
+    max_backoff: Option<Duration>,
     /// The current retry number.
     retry_no: u64,
 }
@@ -58,7 +58,7 @@ impl Default for RetryStrategy {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
             max_interval: Duration::from_millis(500),
-            max_backoff: Duration::from_secs(32),
+            max_backoff: Some(Duration::from_secs(32)),
             retry_no: 0,
         })
     }
@@ -67,7 +67,7 @@ impl Default for RetryStrategy {
 impl RetryStrategy {
     /// Builds a truncated exponential retry strategy with a [`max_interval`] between the requests and
     /// a [`max_backoff`] duration that the requests will be attempted for.
-    pub fn exponential(max_interval: Duration, max_backoff: Duration) -> RetryStrategy {
+    pub fn exponential(max_interval: Duration, max_backoff: Option<Duration>) -> RetryStrategy {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
             max_interval,
@@ -111,15 +111,16 @@ impl Iterator for RetryStrategy {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             RetryStrategy::Exponential(ref mut strategy) => {
-                match strategy.start {
-                    Some(t) => {
-                        if t.elapsed() > strategy.max_backoff {
+                match (strategy.start, strategy.max_backoff) {
+                    (None, _) => {
+                        strategy.start = Some(std::time::Instant::now());
+                    }
+                    (Some(start), Some(max_backoff)) => {
+                        if start.elapsed() > max_backoff {
                             return None;
                         }
                     }
-                    None => {
-                        strategy.start = Some(std::time::Instant::now());
-                    }
+                    (Some(_), None) => {}
                 }
 
                 strategy.retry_no += 1;
@@ -162,7 +163,7 @@ async fn test_exponential() {
 
     let max_interval = Duration::from_secs(2);
     let max_backoff = Duration::from_secs(8);
-    let strategy = RetryStrategy::exponential(max_interval, max_backoff);
+    let strategy = RetryStrategy::exponential(max_interval, Some(max_backoff));
     let start = Instant::now();
     let mut it = strategy.into_iter();
 

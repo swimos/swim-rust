@@ -224,16 +224,14 @@ impl LaneAddressedBuilder {
 
 impl LinkAddressedBuilder {
     fn build(self) -> Result<LinkAddressed, EnvelopeParseErr> {
-        match self {
-            LinkAddressedBuilder { lane, .. } => {
-                let lane = lane.build()?;
-                Ok(LinkAddressed {
-                    lane,
-                    rate: self.rate,
-                    prio: self.prio,
-                })
-            }
-        }
+        let LinkAddressedBuilder { lane, .. } = self;
+        let lane = lane.build()?;
+
+        Ok(LinkAddressed {
+            lane,
+            rate: self.rate,
+            prio: self.prio,
+        })
     }
 }
 

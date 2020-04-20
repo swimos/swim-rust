@@ -233,17 +233,10 @@ impl RouteHostMessagesTask {
 
                     RequestTaskType::Subscriber((node, lane, event_tx)) => {
                         let destination = format!("{}/{}", node, lane);
-
-                        if subscribers.contains_key(&destination) {
-                            subscribers
-                                .get_mut(&destination)
-                                .ok_or(RoutingError::ConnectionError)?
-                                .push(event_tx);
-                        } else {
-                            let mut destination_subs = Vec::new();
-                            destination_subs.push(event_tx);
-                            subscribers.insert(destination, destination_subs);
-                        }
+                        subscribers
+                            .entry(destination)
+                            .or_insert_with(Vec::new)
+                            .push(event_tx);
                     }
 
                     RequestTaskType::Unreachable => {
@@ -299,17 +292,10 @@ impl RouteHostMessagesTask {
 
                     RequestTaskType::Subscriber((node, lane, event_tx)) => {
                         let destination = format!("{}/{}", node, lane);
-
-                        if subscribers.contains_key(&destination) {
-                            subscribers
-                                .get_mut(&destination)
-                                .ok_or(RoutingError::ConnectionError)?
-                                .push(event_tx);
-                        } else {
-                            let mut destination_subs = Vec::new();
-                            destination_subs.push(event_tx);
-                            subscribers.insert(destination, destination_subs);
-                        }
+                        subscribers
+                            .entry(destination)
+                            .or_insert_with(Vec::new)
+                            .push(event_tx);
                     }
 
                     RequestTaskType::Message(message) => {

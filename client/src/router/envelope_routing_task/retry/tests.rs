@@ -54,7 +54,7 @@ async fn immediate() {
     use super::RetryableRequest;
     let result = RetryableRequest::send(FailingSink::new(5), 5, RetryStrategy::immediate(5)).await;
 
-    assert_eq!(result.err(), Some(RetryErr::RetriesExceeded))
+    assert_eq!(result.err(), Some(RetryErr::HostUnavailable))
 }
 
 #[tokio::test]
@@ -68,12 +68,12 @@ async fn exponential() {
     let result = RetryableRequest::send(
         FailingSink::new(5),
         5,
-        RetryStrategy::exponential(max_interval, max_backoff),
+        RetryStrategy::exponential(max_interval, Some(max_backoff)),
     )
     .await;
 
     let duration = start.elapsed();
     assert!(duration >= max_backoff && duration <= max_backoff + max_interval);
 
-    assert_eq!(result.err(), Some(RetryErr::RetriesExceeded))
+    assert_eq!(result.err(), Some(RetryErr::HostUnavailable))
 }
