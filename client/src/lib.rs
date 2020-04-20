@@ -16,3 +16,6 @@ pub mod configuration;
 pub mod connections;
 pub mod downlink;
 pub mod router;
+
+#[macro_use]
+extern crate utilities;

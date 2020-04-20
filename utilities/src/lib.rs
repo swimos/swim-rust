@@ -14,3 +14,5 @@
 
 pub mod future;
 pub mod iteratee;
+#[macro_use]
+pub mod macros;

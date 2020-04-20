@@ -26,6 +26,8 @@ pub enum RetryStrategy {
     Interval(IntervalStrategy),
     /// A truncated exponential retry strategy.
     Exponential(ExponentialStrategy),
+    /// Only attempt the request once
+    None(IntervalStrategy),
 }
 
 /// Interval strategy parameters with either a defined number of retries to attempt or an indefinate number of
@@ -103,6 +105,14 @@ impl RetryStrategy {
             delay: Some(delay),
         })
     }
+
+    /// No retry strategy. Only the initial request is attempted.
+    pub fn none() -> RetryStrategy {
+        RetryStrategy::Interval(IntervalStrategy {
+            retry: Some(0),
+            delay: None,
+        })
+    }
 }
 
 impl Iterator for RetryStrategy {
@@ -152,6 +162,17 @@ impl Iterator for RetryStrategy {
                     }
                 }
                 None => Some(strategy.delay),
+            },
+            RetryStrategy::None(strategy) => match strategy.retry {
+                Some(ref mut retry) => {
+                    if *retry == 0 {
+                        None
+                    } else {
+                        *retry -= 1;
+                        Some(strategy.delay)
+                    }
+                }
+                None => unreachable!(),
             },
         }
     }

@@ -426,6 +426,13 @@ pub struct ConnectionSender {
 }
 
 impl ConnectionSender {
+    crate_only! {
+        /// Crate-only function for creating a sender. Useful for unit testing.
+        fn new(tx: mpsc::Sender<Message>) -> ConnectionSender {
+            ConnectionSender { tx }
+        }
+    }
+
     /// Sends a message asynchronously to the remote host of the connection.
     ///
     /// # Arguments
