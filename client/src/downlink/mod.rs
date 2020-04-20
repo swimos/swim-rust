@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 
 use common::sink::item::{self, BoxItemSink, ItemSender, ItemSink};
 use futures::stream::BoxStream;
+use futures::StreamExt;
 use std::fmt::{Debug, Display, Formatter};
 use tokio::sync::broadcast;
 use tokio::sync::watch;
@@ -35,6 +36,9 @@ use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::topic::{BoxTopic, Topic, TopicError};
 use futures::future::BoxFuture;
+use futures::task::{Context, Poll};
+use futures::Future;
+use std::pin::Pin;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -74,6 +78,28 @@ pub(in crate::downlink) trait DownlinkInternals: Send + Sync + Debug {
 impl DownlinkInternals for DownlinkTaskHandle {
     fn task_handle(&self) -> &DownlinkTaskHandle {
         self
+    }
+}
+
+/// A future that completes after a downlink task has terminated.
+pub struct StoppedFuture(watch::Receiver<Option<Result<(), DownlinkError>>>);
+
+impl Future for StoppedFuture {
+    type Output = Result<(), DownlinkError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut receiver = Pin::new(&mut self.get_mut().0);
+        loop {
+            match receiver.poll_next_unpin(cx) {
+                Poll::Ready(None) => break Poll::Ready(Err(DownlinkError::DroppedChannel)),
+                Poll::Ready(Some(maybe)) => {
+                    if let Some(result) = maybe {
+                        break Poll::Ready(result);
+                    }
+                }
+                Poll::Pending => break Poll::Pending,
+            };
+        }
     }
 }
 

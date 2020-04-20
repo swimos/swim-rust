@@ -27,8 +27,8 @@ use crate::downlink::dropping::{
     DroppingDownlink, DroppingReceiver, DroppingTopicReceiver, WeakDroppingDownlink,
 };
 use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver, WeakQueueDownlink};
-use crate::downlink::raw;
 use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
+use crate::downlink::{raw, StoppedFuture};
 use crate::downlink::{Downlink, DownlinkError, Event};
 use common::request::request_future::{RequestFuture, Sequenced};
 use common::request::Request;
@@ -117,6 +117,15 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
             AnyDownlink::Queue(qdl) => qdl.is_running(),
             AnyDownlink::Dropping(ddl) => ddl.is_running(),
             AnyDownlink::Buffered(bdl) => bdl.is_running(),
+        }
+    }
+
+    /// Get a future that will complete when the downlink stops running.
+    pub fn await_stopped(&self) -> StoppedFuture {
+        match self {
+            AnyDownlink::Queue(qdl) => qdl.await_stopped(),
+            AnyDownlink::Dropping(ddl) => ddl.await_stopped(),
+            AnyDownlink::Buffered(bdl) => bdl.await_stopped(),
         }
     }
 }
