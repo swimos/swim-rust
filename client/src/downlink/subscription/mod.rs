@@ -238,7 +238,7 @@ where
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
             RouterEvent::Envelope(env) => ready(envelopes::value::try_from_envelope(env).ok()),
-            _ => None,
+            _ => ready(None),
         });
 
         let sink_path = path.clone();
@@ -278,7 +278,7 @@ where
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
             RouterEvent::Envelope(env) => ready(envelopes::map::try_from_envelope(env).ok()),
-            _ => None,
+            _ => ready(None),
         });
 
         let sink_path = path.clone();
