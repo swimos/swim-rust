@@ -36,6 +36,7 @@ use common::warp::path::AbsolutePath;
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
+use crate::router::command_routing_task::{CommandRoutingTask, CommandSender};
 use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
 use crate::router::envelope_routing_task::retry::RetryStrategy;
 use crate::router::envelope_routing_task::{
@@ -77,6 +78,9 @@ pub struct SwimRouter {
     envelope_routing_task_close_request_tx: CloseRequestSender,
     request_message_routing_host_handler: JoinHandle<Result<(), RoutingError>>,
     message_routing_task_close_request_tx: CloseRequestSender,
+    command_tx: CommandSender,
+    command_routing_handler: JoinHandle<Result<(), RoutingError>>,
+    command_routing_task_close_request_tx: CloseRequestSender,
 }
 
 impl SwimRouter {
@@ -114,10 +118,13 @@ impl SwimRouter {
             envelope_routing_host_request_tx,
             envelope_routing_task_close_request_tx,
         ) = RequestEnvelopeRoutingHostTask::new(
-            connection_request_tx,
+            connection_request_tx.clone(),
             configuration,
             message_routing_new_task_request_tx,
         );
+
+        let (command_routing_task, command_tx, command_routing_task_close_request_tx) =
+            CommandRoutingTask::new(connection_request_tx, configuration);
 
         let request_connections_handler = tokio::spawn(request_connections_task.run());
 
@@ -126,6 +133,8 @@ impl SwimRouter {
 
         let request_message_routing_host_handler =
             tokio::spawn(request_message_routing_host_task.run());
+
+        let command_routing_handler = tokio::spawn(command_routing_task.run());
 
         SwimRouter {
             configuration,
@@ -137,6 +146,9 @@ impl SwimRouter {
             envelope_routing_task_close_request_tx,
             request_message_routing_host_handler,
             message_routing_task_close_request_tx,
+            command_tx,
+            command_routing_handler,
+            command_routing_task_close_request_tx,
         }
     }
 
@@ -147,6 +159,13 @@ impl SwimRouter {
             .unwrap();
 
         let _ = self.request_envelope_routing_host_handler.await.unwrap();
+
+        self.command_routing_task_close_request_tx
+            .send(())
+            .await
+            .unwrap();
+
+        let _ = self.command_routing_handler.await.unwrap();
 
         self.connections_task_close_request_tx
             .send(())
@@ -161,6 +180,21 @@ impl SwimRouter {
             .unwrap();
 
         let _ = self.request_message_routing_host_handler.await.unwrap();
+    }
+
+    pub fn send_command(
+        &mut self,
+        target: &AbsolutePath,
+        message: String,
+    ) -> Result<(), RoutingError> {
+        let AbsolutePath { host, node, lane } = target;
+        let host_url = url::Url::parse(host).unwrap();
+
+        self.command_tx
+            .try_send(((host_url, node.clone(), lane.clone()), message))
+            .map_err(|_| RoutingError::ConnectionError)?;
+
+        Ok(())
     }
 }
 

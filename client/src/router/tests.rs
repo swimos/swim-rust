@@ -82,3 +82,24 @@ async fn not_interested_receive() {
     router.close().await;
     thread::sleep(time::Duration::from_secs(5));
 }
+
+#[tokio::test(core_threads = 2)]
+async fn send_commands() {
+    let mut router = SwimRouter::new(5).await;
+
+    let path = AbsolutePath::new("ws://127.0.0.1:9001", "/unit/foo", "publishInfo");
+    let first_message = String::from("Hello, World!");
+    let second_message = String::from("Test message");
+    let third_message = String::from("Bye, World!");
+
+    router.send_command(&path, first_message).unwrap();
+    thread::sleep(time::Duration::from_secs(1));
+    router.send_command(&path, second_message).unwrap();
+    thread::sleep(time::Duration::from_secs(1));
+    router.send_command(&path, third_message).unwrap();
+    thread::sleep(time::Duration::from_secs(1));
+
+    thread::sleep(time::Duration::from_secs(1));
+    router.close().await;
+    thread::sleep(time::Duration::from_secs(5));
+}
