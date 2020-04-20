@@ -260,7 +260,7 @@ fn remove(key: Value) -> Value {
 }
 
 fn insert(key: Value, value: Value) -> Value {
-    let attr = Attr::of(("insert", Value::singleton((KEY_FIELD, key))));
+    let attr = Attr::of((INSERT_NAME, Value::singleton((KEY_FIELD, key))));
     match value {
         Value::Extant => Value::of_attr(attr),
         Value::Record(mut attrs, items) => {
