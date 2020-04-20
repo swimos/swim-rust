@@ -33,9 +33,10 @@ pub enum ConnectionResponse {
 pub type HostMessageNewTaskRequestSender = mpsc::Sender<ConnectionResponse>;
 pub type HostMessageNewTaskRequestReceiver = mpsc::Receiver<ConnectionResponse>;
 
-pub type HostMessageRegisterTaskRequestSender = mpsc::Sender<(url::Url, mpsc::Sender<RouterEvent>)>;
+pub type HostMessageRegisterTaskRequestSender =
+    mpsc::Sender<(url::Url, String, String, mpsc::Sender<RouterEvent>)>;
 pub type HostMessageRegisterTaskRequestReceiver =
-    mpsc::Receiver<(url::Url, mpsc::Sender<RouterEvent>)>;
+    mpsc::Receiver<(url::Url, String, String, mpsc::Sender<RouterEvent>)>;
 
 pub struct RequestMessageRoutingHostTask {
     new_task_request_rx: HostMessageNewTaskRequestReceiver,
@@ -170,9 +171,9 @@ fn combine_receive_task_requests(
     });
 
     let register_task_request =
-        register_task_request_rx.map(|(url, channel)| RequestHostTaskType {
-            host: Some(url),
-            task_request: RequestTaskType::Subscriber(channel),
+        register_task_request_rx.map(|(host_url, node, lane, channel)| RequestHostTaskType {
+            host: Some(host_url),
+            task_request: RequestTaskType::Subscriber((node, lane, channel)),
         });
 
     let close_request = close_request_rx.map(|_| RequestHostTaskType {
@@ -193,7 +194,7 @@ pub struct RequestHostTaskType {
 
 pub enum RequestTaskType {
     Connection(mpsc::Receiver<Message>),
-    Subscriber(mpsc::Sender<RouterEvent>),
+    Subscriber((String, String, mpsc::Sender<RouterEvent>)),
     Unreachable,
     Message(Message),
     Disconnect,
@@ -218,7 +219,7 @@ impl RouteHostMessagesTask {
     pub async fn run(self) -> Result<(), RoutingError> {
         let RouteHostMessagesTask { mut task_rx } = self;
 
-        let mut subscribers: Vec<mpsc::Sender<RouterEvent>> = Vec::new();
+        let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection = None;
 
         loop {
@@ -230,28 +231,43 @@ impl RouteHostMessagesTask {
                         connection = Some(message_rx);
                     }
 
-                    RequestTaskType::Subscriber(event_tx) => {
-                        subscribers.push(event_tx);
+                    RequestTaskType::Subscriber((node, lane, event_tx)) => {
+                        let destination = format!("{}/{}", node, lane);
+
+                        if subscribers.contains_key(&destination) {
+                            subscribers
+                                .get_mut(&destination)
+                                .ok_or(RoutingError::ConnectionError)?
+                                .push(event_tx);
+                        } else {
+                            let mut destination_subs = Vec::new();
+                            destination_subs.push(event_tx);
+                            subscribers.insert(destination, destination_subs);
+                        }
                     }
 
                     RequestTaskType::Unreachable => {
                         println!("Unreachable Host");
-                        for subscriber in subscribers.iter_mut() {
-                            subscriber
-                                .send(RouterEvent::Unreachable)
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?;
+                        for (_, destination) in subscribers.iter_mut() {
+                            for subscriber in destination {
+                                subscriber
+                                    .send(RouterEvent::Unreachable)
+                                    .await
+                                    .map_err(|_| RoutingError::ConnectionError)?;
+                            }
                         }
                         break;
                     }
 
                     RequestTaskType::Close => {
                         println!("Closing Router");
-                        for subscriber in subscribers.iter_mut() {
-                            subscriber
-                                .send(RouterEvent::Stopping)
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?;
+                        for (_, destination) in subscribers.iter_mut() {
+                            for subscriber in destination {
+                                subscriber
+                                    .send(RouterEvent::Stopping)
+                                    .await
+                                    .map_err(|_| RoutingError::ConnectionError)?;
+                            }
                         }
                         break;
                     }
@@ -281,25 +297,47 @@ impl RouteHostMessagesTask {
                         connection = Some(message_rx);
                     }
 
-                    RequestTaskType::Subscriber(event_tx) => {
-                        subscribers.push(event_tx);
+                    RequestTaskType::Subscriber((node, lane, event_tx)) => {
+                        let destination = format!("{}/{}", node, lane);
+
+                        if subscribers.contains_key(&destination) {
+                            subscribers
+                                .get_mut(&destination)
+                                .ok_or(RoutingError::ConnectionError)?
+                                .push(event_tx);
+                        } else {
+                            let mut destination_subs = Vec::new();
+                            destination_subs.push(event_tx);
+                            subscribers.insert(destination, destination_subs);
+                        }
                     }
 
                     RequestTaskType::Message(message) => {
                         //Todo parse the message to envelope
                         println!("{:?}", message);
 
-                        let synced = RouterEvent::Envelope(Envelope::synced(
-                            String::from("node_uri"),
-                            String::from("lane_uri"),
-                        ));
+                        let node = "node_uri";
+                        let lane = "lane_uri";
 
-                        //Todo this should send envelopes based on lane and node
-                        for subscriber in subscribers.iter_mut() {
-                            subscriber
-                                .send(synced.clone())
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?;
+                        let envelope = Envelope::synced(String::from(node), String::from(lane));
+                        let destination = format!("{}/{}", node, lane);
+
+                        let synced = RouterEvent::Envelope(envelope);
+
+                        if subscribers.contains_key(&destination) {
+                            let destination_subs = subscribers
+                                .get_mut(&destination)
+                                .ok_or(RoutingError::ConnectionError)?;
+
+                            for subscriber in destination_subs.iter_mut() {
+                                subscriber
+                                    .send(synced.clone())
+                                    .await
+                                    .map_err(|_| RoutingError::ConnectionError)?;
+                            }
+                        } else {
+                            //Todo log the messsage
+                            println!("No downlink interested in message: {:?}", synced);
                         }
                     }
 
@@ -307,21 +345,25 @@ impl RouteHostMessagesTask {
                         println!("Connection closed");
                         connection = None;
 
-                        for subscriber in subscribers.iter_mut() {
-                            subscriber
-                                .send(RouterEvent::ConnectionClosed)
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?;
+                        for (_, destination) in subscribers.iter_mut() {
+                            for subscriber in destination {
+                                subscriber
+                                    .send(RouterEvent::ConnectionClosed)
+                                    .await
+                                    .map_err(|_| RoutingError::ConnectionError)?;
+                            }
                         }
                     }
 
                     RequestTaskType::Close => {
                         println!("Closing Router");
-                        for subscriber in subscribers.iter_mut() {
-                            subscriber
-                                .send(RouterEvent::Stopping)
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?;
+                        for (_, destination) in subscribers.iter_mut() {
+                            for subscriber in destination {
+                                subscriber
+                                    .send(RouterEvent::Stopping)
+                                    .await
+                                    .map_err(|_| RoutingError::ConnectionError)?;
+                            }
                         }
                         break;
                     }

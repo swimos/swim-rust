@@ -303,7 +303,7 @@ pub enum RouterEvent {
 pub struct SwimRouterConnection {
     envelope_task_request_tx: HostEnvelopeTaskRequestSender,
     message_register_task_request_tx: HostMessageRegisterTaskRequestSender,
-    host_url: url::Url,
+    target: AbsolutePath,
     envelope_task_tx: Option<oneshot::Sender<mpsc::Sender<Envelope>>>,
     envelope_task_rx: oneshot::Receiver<mpsc::Sender<Envelope>>,
     event_tx: Option<mpsc::Sender<RouterEvent>>,
@@ -316,16 +316,20 @@ impl SwimRouterConnection {
     pub fn new(
         envelope_task_request_tx: HostEnvelopeTaskRequestSender,
         message_register_task_request_tx: HostMessageRegisterTaskRequestSender,
-        host_url: url::Url,
+        target: AbsolutePath,
         buffer_size: usize,
     ) -> Self {
         let (envelope_task_tx, envelope_task_rx) = oneshot::channel();
         let (event_tx, event_rx) = mpsc::channel(buffer_size);
 
+        // let host_url = url::Url::parse(&target.host).unwrap();
+        // let lane = target.host;
+        // let node = target.node;
+
         SwimRouterConnection {
             envelope_task_request_tx,
             message_register_task_request_tx,
-            host_url,
+            target,
             envelope_task_tx: Some(envelope_task_tx),
             envelope_task_rx,
             event_tx: Some(event_tx),
@@ -344,12 +348,15 @@ impl Future for SwimRouterConnection {
         let SwimRouterConnection {
             envelope_task_request_tx,
             message_register_task_request_tx,
-            host_url,
+            target,
             envelope_task_tx,
             envelope_task_rx,
             event_tx,
             event_rx,
         } = &mut self.get_mut();
+
+        let AbsolutePath { host, node, lane } = target;
+        let host_url = url::Url::parse(host).unwrap();
 
         //Todo refactor this to remove duplication
         match envelope_task_request_tx.poll_ready(cx).map(|r| match r {
@@ -373,7 +380,12 @@ impl Future for SwimRouterConnection {
             .map(|r| match r {
                 Ok(_) => {
                     if let Some(tx) = event_tx.take() {
-                        match message_register_task_request_tx.try_send((host_url.clone(), tx)) {
+                        match message_register_task_request_tx.try_send((
+                            host_url.clone(),
+                            node.to_string(),
+                            lane.to_string(),
+                            tx,
+                        )) {
                             Ok(_) => (),
                             _ => panic!("Error."),
                         }
@@ -409,12 +421,10 @@ impl Router for SwimRouter {
     type GeneralFut = Ready<Self::GeneralSink>;
 
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
-        let host_url = url::Url::parse(&target.host).unwrap();
-
         SwimRouterConnection::new(
             self.envelope_routing_host_request_tx.clone(),
             self.message_routing_register_task_request_tx.clone(),
-            host_url,
+            target.clone(),
             self.configuration.buffer_size().get(),
         )
     }
