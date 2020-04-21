@@ -89,6 +89,46 @@ pub enum ValueKind {
     Record,
 }
 
+/// Trait for types that can be converted to [`Value`]s.
+pub trait ToValue {
+    fn to_value(&self) -> Value;
+}
+
+impl ToValue for Value {
+    fn to_value(&self) -> Value {
+        self.clone()
+    }
+}
+
+/// Trait for types that can be reconstructed from [`Value`]s.
+pub trait ReconstructFromValue: Sized {
+    type Error;
+
+    fn try_reconstruct(value: &Value) -> Result<Self, Self::Error>;
+}
+
+impl ReconstructFromValue for Value {
+    type Error = ();
+
+    fn try_reconstruct(value: &Value) -> Result<Self, Self::Error> {
+        Ok(value.clone())
+    }
+}
+
+impl Display for ValueKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueKind::Extant => write!(f, "Extant"),
+            ValueKind::Int32 => write!(f, "Int32"),
+            ValueKind::Int64 => write!(f, "Int64"),
+            ValueKind::Float64 => write!(f, "Float64"),
+            ValueKind::Boolean => write!(f, "Boolean"),
+            ValueKind::Text => write!(f, "Text"),
+            ValueKind::Record => write!(f, "Record"),
+        }
+    }
+}
+
 #[allow(clippy::float_cmp, clippy::cognitive_complexity)]
 impl Value {
     /// Create a text value from anything that can be converted to a ['String'].
