@@ -30,7 +30,7 @@ fn start_downlink() {
     for s in STATES.iter() {
         let mut state = *s;
         let mut model = ValueModel::new(Value::from(0));
-        let machine = ValueStateMachine::new(Value::from(0));
+        let machine = ValueStateMachine::unvalidated(Value::from(0));
         let maybe_response = machine.handle_operation(&mut state, &mut model, Operation::Start);
 
         assert_that!(&maybe_response, ok());
@@ -64,7 +64,7 @@ fn start_downlink() {
 fn linked_response(start_state: DownlinkState) {
     let mut state = start_state;
     let mut model = ValueModel::new(Value::from(0));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Linked));
 
@@ -97,7 +97,7 @@ fn only_event(response: &Response<Arc<Value>, Arc<Value>>) -> &Arc<Value> {
 fn synced_response(start_state: DownlinkState) {
     let mut state = start_state;
     let mut model = ValueModel::new(Value::from(7));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Synced));
 
@@ -123,7 +123,7 @@ fn synced_message() {
 fn unlinked_response(start_state: DownlinkState) {
     let mut state = start_state;
     let mut model = ValueModel::new(Value::from(7));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -148,7 +148,7 @@ fn unlinked_message() {
 fn update_message_unlinked() {
     let mut state = DownlinkState::Unlinked;
     let mut model = ValueModel::new(Value::from(1));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -167,7 +167,7 @@ fn update_message_unlinked() {
 fn update_message_linked() {
     let mut state = DownlinkState::Linked;
     let mut model = ValueModel::new(Value::from(1));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -186,7 +186,7 @@ fn update_message_linked() {
 fn update_message_synced() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(1));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -212,7 +212,7 @@ fn make_get() -> (Action, oneshot::Receiver<Arc<Value>>) {
 fn get_action() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, mut rx) = make_get();
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
@@ -235,7 +235,7 @@ fn get_action() {
 fn dropped_get() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, rx) = make_get();
     drop(rx);
     let maybe_response =
@@ -287,7 +287,7 @@ fn event_and_cmd(
 fn set_action() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, mut rx) = make_set(67);
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
@@ -310,7 +310,7 @@ fn set_action() {
 fn dropped_set_action() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, rx) = make_set(67);
 
     drop(rx);
@@ -349,7 +349,7 @@ fn make_update() -> (Action, oneshot::Receiver<Arc<Value>>) {
 fn update_action() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, mut rx) = make_update();
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
@@ -376,7 +376,7 @@ fn update_action() {
 fn dropped_update_action() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
-    let machine = ValueStateMachine::new(Value::from(0));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, rx) = make_update();
 
     drop(rx);

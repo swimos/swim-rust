@@ -38,7 +38,7 @@ const STATES: [DownlinkState; 3] = [
 fn start_downlink() {
     for s in STATES.iter() {
         let mut state = *s;
-        let machine = MapStateMachine::new();
+        let machine = MapStateMachine::unvalidated();
         let mut model = machine.init_state();
         let response = machine.handle_operation(&mut state, &mut model, Operation::Start);
 
@@ -71,7 +71,7 @@ fn start_downlink() {
 
 fn linked_response(start_state: DownlinkState) {
     let mut state = start_state;
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let mut model = machine.init_state();
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Linked));
@@ -104,7 +104,7 @@ fn only_event(response: &Response<ViewWithEvent, MapModification<Arc<Value>>>) -
 
 fn synced_response(start_state: DownlinkState) {
     let mut state = start_state;
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let mut model = make_model_with(7, "hello".to_owned());
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Synced));
@@ -131,7 +131,7 @@ fn synced_message() {
 
 fn unlinked_response(start_state: DownlinkState) {
     let mut state = start_state;
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let mut model = make_model_with(7, "hello".to_owned());
     let maybe_response = machine.handle_operation(
         &mut state,
@@ -159,7 +159,7 @@ fn insert_message_unlinked() {
     let v = Value::Text("hello".to_owned());
 
     let mut state = DownlinkState::Unlinked;
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let mut model = MapModel::new();
     let maybe_response = machine.handle_operation(
         &mut state,
@@ -181,7 +181,7 @@ fn remove_message_unlinked() {
     let v = Value::Text("hello".to_owned());
 
     let mut state = DownlinkState::Unlinked;
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let mut model = make_model_with(4, "hello".to_owned());
     let maybe_response = machine.handle_operation(
         &mut state,
@@ -213,7 +213,7 @@ fn take_message_unlinked() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let maybe_response = machine.handle_operation(
         &mut state,
@@ -249,7 +249,7 @@ fn skip_message_unlinked() {
         ]),
     };
 
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let maybe_response = machine.handle_operation(
         &mut state,
@@ -284,7 +284,7 @@ fn clear_message_unlinked() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let maybe_response = machine.handle_operation(
         &mut state,
@@ -312,7 +312,7 @@ fn insert_message_linked() {
 
     let mut state = DownlinkState::Linked;
     let mut model = MapModel::new();
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -338,7 +338,7 @@ fn remove_message_linked() {
 
     let mut state = DownlinkState::Linked;
     let mut model = make_model_with(4, "hello".to_owned());
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -367,7 +367,7 @@ fn take_message_linked() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -398,7 +398,7 @@ fn skip_message_linked() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -429,7 +429,7 @@ fn clear_message_linked() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -451,7 +451,7 @@ fn insert_message_synced() {
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -481,7 +481,7 @@ fn remove_message_synced() {
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(4, "hello".to_owned());
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -514,7 +514,7 @@ fn take_message_synced() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -549,7 +549,7 @@ fn skip_message_synced() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
@@ -584,7 +584,7 @@ fn clear_message_synced() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let maybe_response = machine.handle_operation(
         &mut state,
@@ -621,7 +621,7 @@ fn get_action() {
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, "stuff".to_owned());
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_get_map();
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
@@ -647,7 +647,7 @@ fn get_by_defined_key_action() {
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, "stuff".to_owned());
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_get(13);
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
@@ -675,7 +675,7 @@ fn get_by_undefined_key_action() {
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, "stuff".to_owned());
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_get(-1);
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
@@ -727,7 +727,7 @@ fn insert_to_undefined_action() {
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_insert(13, "stuff".to_owned());
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
@@ -767,7 +767,7 @@ fn insert_action_dropped_listener() {
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, rx) = make_insert(13, "stuff".to_owned());
 
     drop(rx);
@@ -806,7 +806,7 @@ fn insert_to_defined_action() {
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, original_val.clone());
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let (action, mut rx) = make_insert(13, new_val.clone());
     let maybe_response =
@@ -854,7 +854,7 @@ fn make_remove(key: i32) -> (MapAction, oneshot::Receiver<Option<Arc<Value>>>) {
 fn remove_undefined_action() {
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_remove(43);
 
     let maybe_response =
@@ -877,7 +877,7 @@ fn remove_undefined_action() {
 fn remove_action_dropped_listener() {
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, rx) = make_remove(43);
 
     drop(rx);
@@ -911,7 +911,7 @@ fn remove_defined_action() {
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, original_val.clone());
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let (action, mut rx) = make_remove(13);
     let maybe_response =
@@ -976,7 +976,7 @@ fn take_action() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let expected_before = model.state.clone();
 
@@ -1025,7 +1025,7 @@ fn take_action_dropped_before() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, mut rx_after) = make_take(1);
 
@@ -1069,7 +1069,7 @@ fn take_action_dropped_after() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let expected_before = model.state.clone();
 
@@ -1115,7 +1115,7 @@ fn take_action_both_dropped() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, rx_after) = make_take(1);
 
@@ -1171,7 +1171,7 @@ fn skip_action() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let expected_before = model.state.clone();
 
@@ -1220,7 +1220,7 @@ fn skip_action_dropped_before() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, mut rx_after) = make_skip(1);
 
@@ -1264,7 +1264,7 @@ fn skip_action_dropped_after() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let expected_before = model.state.clone();
 
@@ -1310,7 +1310,7 @@ fn skip_action_dropped_both() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, rx_after) = make_skip(1);
 
@@ -1355,7 +1355,7 @@ fn clear_action() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let expected_before = model.state.clone();
 
@@ -1397,7 +1397,7 @@ fn clear_action_dropped_receiver() {
             (k2.clone(), Arc::new(v2.clone())),
         ]),
     };
-    let machine = MapStateMachine::new();
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before) = make_clear();
 

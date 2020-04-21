@@ -99,6 +99,7 @@ impl Action {
 /// Create a raw value downlink.
 pub fn create_raw_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
@@ -108,7 +109,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     create_downlink(
-        ValueStateMachine::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -118,6 +119,7 @@ where
 /// Create a value downlink with an queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
@@ -131,7 +133,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        ValueStateMachine::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -142,6 +144,7 @@ where
 /// Create a value downlink with a dropping multiplexing topic.
 pub fn create_dropping_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
@@ -154,7 +157,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
-        ValueStateMachine::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -164,6 +167,7 @@ where
 /// Create a value downlink with an buffering multiplexing topic.
 pub fn create_buffered_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
@@ -177,7 +181,7 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        ValueStateMachine::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
@@ -197,20 +201,17 @@ impl ValueModel {
     }
 }
 
-struct ValueStateMachine {
+pub struct ValueStateMachine {
     init: Value,
     schema: StandardSchema,
 }
 
 impl ValueStateMachine {
-    fn new(init: Value) -> Self {
-        ValueStateMachine {
-            init,
-            schema: StandardSchema::Anything,
-        }
+    pub fn unvalidated(init: Value) -> Self {
+        ValueStateMachine::new(init, StandardSchema::Anything)
     }
 
-    fn validated(init: Value, schema: StandardSchema) -> Self {
+    pub fn new(init: Value, schema: StandardSchema) -> Self {
         if !schema.matches(&init) {
             panic!("Initial value {} inconsistent with schema {}", init, schema)
         }

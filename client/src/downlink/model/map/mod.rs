@@ -556,6 +556,8 @@ impl ViewWithEvent {
 
 /// Create a map downlink.
 pub fn create_raw_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -564,11 +566,21 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
-    crate::downlink::create_downlink(MapStateMachine::new(), update_stream, cmd_sink, buffer_size)
+    crate::downlink::create_downlink(
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
+        update_stream,
+        cmd_sink,
+        buffer_size,
+    )
 }
 
 /// Create a map downlink with an queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -582,7 +594,10 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        MapStateMachine::new(),
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
         update_stream,
         cmd_sink,
         buffer_size,
@@ -592,6 +607,8 @@ where
 
 /// Create a value downlink with an dropping multiplexing topic.
 pub fn create_dropping_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -603,11 +620,21 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
-    dropping::make_downlink(MapStateMachine::new(), update_stream, cmd_sink, buffer_size)
+    dropping::make_downlink(
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
+        update_stream,
+        cmd_sink,
+        buffer_size,
+    )
 }
 
 /// Create a value downlink with an buffered multiplexing topic.
 pub fn create_buffered_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
@@ -621,7 +648,10 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        MapStateMachine::new(),
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
         update_stream,
         cmd_sink,
         buffer_size,
@@ -641,20 +671,20 @@ impl MapModel {
     }
 }
 
-struct MapStateMachine {
+pub struct MapStateMachine {
     key_schema: StandardSchema,
     value_schema: StandardSchema,
 }
 
 impl MapStateMachine {
-    fn new() -> Self {
+    pub fn unvalidated() -> Self {
         MapStateMachine {
             key_schema: StandardSchema::Anything,
             value_schema: StandardSchema::Anything,
         }
     }
 
-    fn validated(key_schema: StandardSchema, value_schema: StandardSchema) -> Self {
+    pub fn new(key_schema: StandardSchema, value_schema: StandardSchema) -> Self {
         MapStateMachine {
             key_schema,
             value_schema,
@@ -691,7 +721,6 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
                 } else {
                     Some(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
                 }
-
             }
             MapModification::Remove(k) => {
                 if self.key_schema.matches(&k) {
