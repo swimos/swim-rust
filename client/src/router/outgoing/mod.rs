@@ -214,8 +214,8 @@ impl OutgoingHostTask {
                         Message::Text(String::from("@sync(node:\"/unit/foo\", lane:\"info\")")),
                         config.retry_strategy(),
                     )
-                        .await
-                        .map_err(|_| RoutingError::ConnectionError)?;
+                    .await
+                    .map_err(|_| RoutingError::ConnectionError)?;
 
                     tracing::trace!("Completed request");
                 }
@@ -243,9 +243,9 @@ mod route_tests {
     use super::*;
 
     use crate::router::configuration::RouterConfigBuilder;
-    use crate::router::envelope_routing_task::retry::RetryStrategy;
 
     use crate::connections::ConnectionSender;
+    use crate::router::outgoing::retry::RetryStrategy;
 
     fn router_config(strategy: RetryStrategy) -> RouterConfig {
         RouterConfigBuilder::default()
@@ -261,7 +261,7 @@ mod route_tests {
     async fn permanent_error() {
         let config = router_config(RetryStrategy::none());
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-        let (host_route_task, mut envelope_tx, _close_tx) = RouteHostEnvelopesTask::new(
+        let (host_route_task, mut envelope_tx, _close_tx) = OutgoingHostTask::new(
             url::Url::parse("ws://127.0.0.1:9001").unwrap(),
             task_request_tx,
             config,
@@ -286,7 +286,7 @@ mod route_tests {
 
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
         let (host_route_task, mut envelope_tx, mut close_tx) =
-            RouteHostEnvelopesTask::new(url.clone(), task_request_tx, config);
+            OutgoingHostTask::new(url.clone(), task_request_tx, config);
 
         let handle = tokio::spawn(host_route_task.run());
         let _ = envelope_tx
