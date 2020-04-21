@@ -22,14 +22,14 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 pub type CommandSender = mpsc::Sender<((url::Url, String, String), String)>;
 pub type CommandReceiver = mpsc::Receiver<((url::Url, String, String), String)>;
 
-pub struct CommandRoutingTask {
+pub struct CommandTask {
     connection_request_tx: ConnReqSender,
     command_rx: CommandReceiver,
     close_request_rx: CloseRequestReceiver,
     config: RouterConfig,
 }
 
-impl CommandRoutingTask {
+impl CommandTask {
     pub fn new(
         connection_request_tx: ConnReqSender,
         config: RouterConfig,
@@ -38,7 +38,7 @@ impl CommandRoutingTask {
         let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
 
         (
-            CommandRoutingTask {
+            CommandTask {
                 connection_request_tx,
                 command_rx,
                 close_request_rx,
@@ -50,19 +50,19 @@ impl CommandRoutingTask {
     }
 
     pub async fn run(self) -> Result<(), RoutingError> {
-        let CommandRoutingTask {
+        let CommandTask {
             connection_request_tx,
             command_rx,
             close_request_rx,
             config,
         } = self;
 
-        let mut rx = combine_command_requests(command_rx, close_request_rx);
+        let mut rx = combine_command_streams(command_rx, close_request_rx);
 
         loop {
-            let command_request = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            let command = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
-            match command_request {
+            match command {
                 CommandType::Send(((host_url, node, lane), message)) => {
                     //Todo add proper conversion
                     let command_message = format!(
@@ -95,7 +95,7 @@ enum CommandType {
     Close,
 }
 
-fn combine_command_requests(
+fn combine_command_streams(
     command_rx: CommandReceiver,
     close_request_rx: CloseRequestReceiver,
 ) -> impl stream::Stream<Item = CommandType> + Send + 'static {

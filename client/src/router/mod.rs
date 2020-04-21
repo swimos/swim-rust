@@ -36,7 +36,7 @@ use common::warp::path::AbsolutePath;
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
-use crate::router::command::{CommandRoutingTask, CommandSender};
+use crate::router::command::{CommandTask, CommandSender};
 use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
 use crate::router::incoming::{IncomingSubscriberReqSender, IncomingTask, IncomingTaskReqSender};
 use crate::router::outgoing::retry::RetryStrategy;
@@ -122,7 +122,7 @@ impl SwimRouter {
             );
 
         let (command_task, command_tx, command_task_close_request_tx) =
-            CommandRoutingTask::new(connection_request_tx, configuration);
+            CommandTask::new(connection_request_tx, configuration);
 
         let request_connections_handler = tokio::spawn(request_connections_task.run());
         let outgoing_task_handler = tokio::spawn(outgoing_task.run());
