@@ -24,48 +24,47 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use common::warp::envelope::Envelope;
 
 use crate::router::configuration::RouterConfig;
-use crate::router::envelope_routing_task::retry::boxed_connection_sender::BoxedConnSender;
-use crate::router::envelope_routing_task::retry::RetryableRequest;
-use crate::router::message_routing_task::{ConnectionResponse, HostMessageNewTaskRequestSender};
-use crate::router::{CloseRequestReceiver, CloseRequestSender, ConnReqSender, RoutingError};
+use crate::router::incoming::IncomingTaskReqSender;
+use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
+use crate::router::outgoing::retry::RetryableRequest;
+use crate::router::{
+    CloseRequestReceiver, CloseRequestSender, ConnReqSender, ConnectionResponse, RoutingError,
+};
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
-pub type HostEnvelopeTaskRequestSender =
-    mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
-
-type HostEnvelopeTaskRequestReceiver =
-    mpsc::Receiver<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
+pub type OutgoingTaskReqSender = mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
+type OutgoingTaskReqReceiver = mpsc::Receiver<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
 
 pub(crate) mod retry;
 
 #[cfg(test)]
 mod tests;
 
-pub struct RequestEnvelopeRoutingHostTask {
+pub struct OutgoingTask {
     connection_request_tx: ConnReqSender,
-    task_request_rx: HostEnvelopeTaskRequestReceiver,
+    task_request_rx: OutgoingTaskReqReceiver,
     close_request_rx: CloseRequestReceiver,
     config: RouterConfig,
-    message_routing_new_task_request_tx: HostMessageNewTaskRequestSender,
+    incoming_task_request_tx: IncomingTaskReqSender,
 }
 
-impl RequestEnvelopeRoutingHostTask {
+impl OutgoingTask {
     pub fn new(
         connection_request_tx: ConnReqSender,
+        incoming_task_request_tx: IncomingTaskReqSender,
         config: RouterConfig,
-        message_routing_new_task_request_tx: HostMessageNewTaskRequestSender,
-    ) -> (Self, HostEnvelopeTaskRequestSender, CloseRequestSender) {
+    ) -> (Self, OutgoingTaskReqSender, CloseRequestSender) {
         let (task_request_tx, task_request_rx) = mpsc::channel(config.buffer_size().get());
         let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
 
         (
-            RequestEnvelopeRoutingHostTask {
+            OutgoingTask {
                 connection_request_tx,
                 task_request_rx,
                 close_request_rx,
                 config,
-                message_routing_new_task_request_tx,
+                incoming_task_request_tx,
             },
             task_request_tx,
             close_request_tx,
@@ -73,37 +72,37 @@ impl RequestEnvelopeRoutingHostTask {
     }
 
     pub async fn run(self) -> Result<(), RoutingError> {
-        let RequestEnvelopeRoutingHostTask {
+        let OutgoingTask {
             connection_request_tx,
             task_request_rx,
             close_request_rx,
             config,
-            message_routing_new_task_request_tx,
+            incoming_task_request_tx,
         } = self;
-        let mut host_route_tasks: HashMap<String, (mpsc::Sender<Envelope>, mpsc::Sender<()>)> =
+        let mut outgoing_host_tasks: HashMap<String, (mpsc::Sender<Envelope>, mpsc::Sender<()>)> =
             HashMap::new();
-        let mut host_tasks_join_handlers: HashMap<String, JoinHandle<()>> = HashMap::new();
+        let mut outgoing_host_tasks_handlers: HashMap<String, JoinHandle<()>> = HashMap::new();
 
-        let mut rx = combine_receive_task_requests(task_request_rx, close_request_rx);
+        let mut rx = combine_outgoing_streams(task_request_rx, close_request_rx);
 
         loop {
-            let host_task_request = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
-            match host_task_request {
-                RequestTaskType::NewTask((host_url, task_tx)) => {
+            match task {
+                TaskRequestType::NewTask((host_url, task_tx)) => {
                     let host = host_url.to_string();
 
-                    if !host_route_tasks.contains_key(&host) {
-                        let (host_route_task, envelope_tx, close_tx) = RouteHostEnvelopesTask::new(
+                    if !outgoing_host_tasks.contains_key(&host) {
+                        let (outgoing_host_task, envelope_tx, close_tx) = OutgoingHostTask::new(
                             host_url.clone(),
                             connection_request_tx.clone(),
                             config,
                         );
 
-                        host_route_tasks.insert(host.clone(), (envelope_tx, close_tx));
+                        outgoing_host_tasks.insert(host.clone(), (envelope_tx, close_tx));
 
-                        let mut complete_sender = message_routing_new_task_request_tx.clone();
-                        let task_handle = host_route_task.run().then(|r| async move {
+                        let mut complete_sender = incoming_task_request_tx.clone();
+                        let outgoing_host_task = outgoing_host_task.run().then(|r| async move {
                             // If the request failed, then notify the RouteHostMessagesTask so it can be handled
                             if r.is_err() {
                                 let _ = complete_sender
@@ -112,28 +111,29 @@ impl RequestEnvelopeRoutingHostTask {
                             }
                         });
 
-                        let task_handle = tokio::spawn(task_handle);
-                        host_tasks_join_handlers.insert(host.clone(), task_handle);
+                        let task_handle = tokio::spawn(outgoing_host_task);
+                        outgoing_host_tasks_handlers.insert(host.clone(), task_handle);
                     }
 
-                    let (envelope_tx, _) = host_route_tasks
+                    let (envelope_tx, _) = outgoing_host_tasks
                         .get(&host.to_string())
                         .ok_or(RoutingError::ConnectionError)?
                         .clone();
+
                     task_tx
                         .send(envelope_tx)
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
-                RequestTaskType::Close => {
-                    for (_, (_, mut close_tx)) in host_route_tasks {
+                TaskRequestType::Close => {
+                    for (_, (_, mut close_tx)) in outgoing_host_tasks {
                         close_tx
                             .send(())
                             .await
                             .map_err(|_| RoutingError::ConnectionError)?;
                     }
 
-                    for (_, task_handler) in host_tasks_join_handlers {
+                    for (_, task_handler) in outgoing_host_tasks_handlers {
                         task_handler
                             .await
                             .map_err(|_| RoutingError::ConnectionError)?;
@@ -148,22 +148,22 @@ impl RequestEnvelopeRoutingHostTask {
     }
 }
 
-enum RequestTaskType {
+enum TaskRequestType {
     NewTask((url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)),
-    Envelope(Envelope),
+    NewMessage(Envelope),
     Close,
 }
 
-fn combine_receive_task_requests(
-    task_request_rx: HostEnvelopeTaskRequestReceiver,
+fn combine_outgoing_streams(
+    task_request_rx: OutgoingTaskReqReceiver,
     close_requests_rx: CloseRequestReceiver,
-) -> impl stream::Stream<Item = RequestTaskType> + Send + 'static {
-    let task_request = task_request_rx.map(RequestTaskType::NewTask);
-    let close_request = close_requests_rx.map(|_| RequestTaskType::Close);
+) -> impl stream::Stream<Item = TaskRequestType> + Send + 'static {
+    let task_request = task_request_rx.map(TaskRequestType::NewTask);
+    let close_request = close_requests_rx.map(|_| TaskRequestType::Close);
     stream::select(task_request, close_request)
 }
 
-struct RouteHostEnvelopesTask {
+struct OutgoingHostTask {
     host_url: url::Url,
     envelope_rx: mpsc::Receiver<Envelope>,
     close_rx: mpsc::Receiver<()>,
@@ -171,7 +171,7 @@ struct RouteHostEnvelopesTask {
     config: RouterConfig,
 }
 
-impl RouteHostEnvelopesTask {
+impl OutgoingHostTask {
     fn new(
         host_url: url::Url,
         connection_request_tx: ConnReqSender,
@@ -180,7 +180,7 @@ impl RouteHostEnvelopesTask {
         let (envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
         let (close_tx, close_rx) = mpsc::channel(config.buffer_size().get());
         (
-            RouteHostEnvelopesTask {
+            OutgoingHostTask {
                 host_url,
                 envelope_rx,
                 close_rx,
@@ -193,7 +193,7 @@ impl RouteHostEnvelopesTask {
     }
 
     async fn run(self) -> Result<(), RoutingError> {
-        let RouteHostEnvelopesTask {
+        let OutgoingHostTask {
             host_url,
             envelope_rx,
             close_rx,
@@ -201,20 +201,20 @@ impl RouteHostEnvelopesTask {
             config,
         } = self;
 
-        let mut rx = combine_envelope_requests(envelope_rx, close_rx);
+        let mut rx = combine_outgoing_host_streams(envelope_rx, close_rx);
 
         loop {
-            let request = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
-            match request {
-                RequestTaskType::Envelope(_envelope) => RetryableRequest::send(
+            match task {
+                TaskRequestType::NewMessage(_envelope) => RetryableRequest::send(
                     BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),
                     Message::Text(String::from("@sync(node:\"/unit/foo\", lane:\"info\")")),
                     config.retry_strategy(),
                 )
                 .await
                 .map_err(|_| RoutingError::ConnectionError)?,
-                RequestTaskType::Close => {
+                TaskRequestType::Close => {
                     break;
                 }
                 _ => {}
@@ -224,11 +224,11 @@ impl RouteHostEnvelopesTask {
     }
 }
 
-fn combine_envelope_requests(
+fn combine_outgoing_host_streams(
     envelope_rx: mpsc::Receiver<Envelope>,
     close_requests_rx: CloseRequestReceiver,
-) -> impl stream::Stream<Item = RequestTaskType> + Send + 'static {
-    let envelope_request = envelope_rx.map(RequestTaskType::Envelope);
-    let close_request = close_requests_rx.map(|_| RequestTaskType::Close);
+) -> impl stream::Stream<Item = TaskRequestType> + Send + 'static {
+    let envelope_request = envelope_rx.map(TaskRequestType::NewMessage);
+    let close_request = close_requests_rx.map(|_| TaskRequestType::Close);
     stream::select(envelope_request, close_request)
 }

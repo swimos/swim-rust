@@ -14,7 +14,7 @@
 
 use std::num::NonZeroUsize;
 
-use crate::router::envelope_routing_task::retry::RetryStrategy;
+use crate::router::outgoing::retry::RetryStrategy;
 
 // TODO: This should be moved up to the `configuration` module. Or the 'configuration' module should pull the various configurations together from modules
 #[derive(Clone, Copy)]

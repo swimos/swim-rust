@@ -16,15 +16,15 @@ use std::time::Instant;
 
 use tokio::time::Duration;
 
-use crate::router::envelope_routing_task::retry::tests::boxed::FailingSink;
-use crate::router::envelope_routing_task::retry::{RetryErr, RetryStrategy};
+use crate::router::outgoing::retry::tests::boxed::FailingSink;
+use crate::router::outgoing::retry::{RetryErr, RetryStrategy};
 
 mod boxed {
     use futures::future::ready;
     use futures::FutureExt;
     use futures_util::future::BoxFuture;
 
-    use crate::router::envelope_routing_task::retry::{RetryContext, RetryErr, RetrySink};
+    use crate::router::outgoing::retry::{RetryContext, RetryErr, RetrySink};
 
     pub struct FailingSink<T> {
         _payload: T,

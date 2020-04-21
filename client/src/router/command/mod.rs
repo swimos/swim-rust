@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use crate::router::configuration::RouterConfig;
-use crate::router::envelope_routing_task::retry::boxed_connection_sender::BoxedConnSender;
-use crate::router::envelope_routing_task::retry::RetryableRequest;
+use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
+use crate::router::outgoing::retry::RetryableRequest;
 use crate::router::{CloseRequestReceiver, CloseRequestSender, ConnReqSender, RoutingError};
 use futures::{stream, StreamExt};
 use tokio::sync::mpsc;

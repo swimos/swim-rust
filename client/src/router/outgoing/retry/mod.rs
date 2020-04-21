@@ -184,7 +184,7 @@ pub mod boxed_connection_sender {
     use tokio_tungstenite::tungstenite::protocol::Message;
 
     use crate::connections::ConnectionSender;
-    use crate::router::envelope_routing_task::retry::{RetryContext, RetryErr, RetrySink};
+    use crate::router::outgoing::retry::{RetryContext, RetryErr, RetrySink};
     use crate::router::{ConnReqSender, RoutingError};
 
     /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
@@ -329,7 +329,7 @@ pub mod boxedmpsc {
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::error::TrySendError;
 
-    use crate::router::envelope_routing_task::retry::{RetryContext, RetryErr, RetrySink};
+    use crate::router::outgoing::retry::{RetryContext, RetryErr, RetrySink};
 
     pub struct BoxedMpscSender<V, P>
     where

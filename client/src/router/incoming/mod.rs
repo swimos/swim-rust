@@ -21,86 +21,83 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 use common::warp::envelope::Envelope;
 
-use crate::router::{CloseRequestReceiver, CloseRequestSender, RouterEvent, RoutingError};
+use crate::router::{
+    CloseRequestReceiver, CloseRequestSender, ConnectionResponse, RouterEvent, RoutingError,
+};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
-pub enum ConnectionResponse {
-    Success((url::Url, mpsc::Receiver<Message>)),
-    Failure(url::Url),
-}
+pub type IncomingTaskReqSender = mpsc::Sender<ConnectionResponse>;
+pub type IncomingTaskReqReceiver = mpsc::Receiver<ConnectionResponse>;
 
-pub type HostMessageNewTaskRequestSender = mpsc::Sender<ConnectionResponse>;
-pub type HostMessageNewTaskRequestReceiver = mpsc::Receiver<ConnectionResponse>;
-
-pub type HostMessageRegisterTaskRequestSender =
+pub type IncomingSubscriberReqSender =
     mpsc::Sender<(url::Url, String, String, mpsc::Sender<RouterEvent>)>;
-pub type HostMessageRegisterTaskRequestReceiver =
+
+pub type IncomingSubscriberReqReceiver =
     mpsc::Receiver<(url::Url, String, String, mpsc::Sender<RouterEvent>)>;
 
-pub struct RequestMessageRoutingHostTask {
-    new_task_request_rx: HostMessageNewTaskRequestReceiver,
-    register_task_request_rx: HostMessageRegisterTaskRequestReceiver,
+pub struct IncomingTask {
+    new_task_request_rx: IncomingTaskReqReceiver,
+    subscribe_request_rx: IncomingSubscriberReqReceiver,
     close_request_rx: CloseRequestReceiver,
     buffer_size: usize,
 }
 
-impl RequestMessageRoutingHostTask {
+impl IncomingTask {
     pub fn new(
         buffer_size: usize,
     ) -> (
-        RequestMessageRoutingHostTask,
-        HostMessageNewTaskRequestSender,
-        HostMessageRegisterTaskRequestSender,
+        IncomingTask,
+        IncomingTaskReqSender,
+        IncomingSubscriberReqSender,
         CloseRequestSender,
     ) {
         let (new_task_request_tx, new_task_request_rx) = mpsc::channel(buffer_size);
-        let (register_task_request_tx, register_task_request_rx) = mpsc::channel(buffer_size);
+        let (subscribe_request_tx, subscribe_request_rx) = mpsc::channel(buffer_size);
         let (close_request_tx, close_request_rx) = mpsc::channel(buffer_size);
 
         (
-            RequestMessageRoutingHostTask {
+            IncomingTask {
                 new_task_request_rx,
-                register_task_request_rx,
+                subscribe_request_rx,
                 close_request_rx,
                 buffer_size,
             },
             new_task_request_tx,
-            register_task_request_tx,
+            subscribe_request_tx,
             close_request_tx,
         )
     }
 
     //Todo refactor this into smaller methods
     pub async fn run(self) -> Result<(), RoutingError> {
-        let RequestMessageRoutingHostTask {
+        let IncomingTask {
             new_task_request_rx,
-            register_task_request_rx,
+            subscribe_request_rx,
             close_request_rx,
             buffer_size,
         } = self;
 
-        let mut host_route_tasks: HashMap<String, RequestTaskTypeSender> = HashMap::new();
-        let mut host_tasks_join_handlers: HashMap<String, JoinHandle<Result<(), RoutingError>>> =
-            HashMap::new();
+        let mut incoming_host_tasks: HashMap<String, HostTaskReqSender> = HashMap::new();
+        let mut incoming_host_tasks_handlers: HashMap<
+            String,
+            JoinHandle<Result<(), RoutingError>>,
+        > = HashMap::new();
 
-        let mut rx = combine_receive_task_requests(
-            new_task_request_rx,
-            register_task_request_rx,
-            close_request_rx,
-        );
+        let mut rx =
+            combine_incoming_streams(new_task_request_rx, subscribe_request_rx, close_request_rx);
 
         loop {
-            let host_task_request = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
-            if let RequestTaskType::Close = host_task_request.task_request {
-                for (_, mut task) in host_route_tasks {
-                    task.send(RequestTaskType::Close)
+            if let HostTaskRequestType::Close = task.task_type {
+                for (_, mut task) in incoming_host_tasks {
+                    task.send(HostTaskRequestType::Close)
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
-                for (_, task_handler) in host_tasks_join_handlers {
+                for (_, task_handler) in incoming_host_tasks_handlers {
                     task_handler
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?
@@ -109,21 +106,25 @@ impl RequestMessageRoutingHostTask {
 
                 break;
             } else {
-                let RequestHostTaskType { host, task_request } = host_task_request;
+                let TaskRequest {
+                    host,
+                    task_type: task,
+                } = task;
+
                 let host = host.ok_or(RoutingError::ConnectionError)?.to_string();
 
-                if let RequestTaskType::Unreachable = task_request {
-                    if host_route_tasks.contains_key(&host) {
-                        let mut task_tx = host_route_tasks
+                if let HostTaskRequestType::Unreachable = task {
+                    if incoming_host_tasks.contains_key(&host) {
+                        let mut task_tx = incoming_host_tasks
                             .remove(&host)
                             .ok_or(RoutingError::ConnectionError)?;
 
                         task_tx
-                            .send(task_request)
+                            .send(task)
                             .await
                             .map_err(|_| RoutingError::ConnectionError)?;
 
-                        let task_join_handler = host_tasks_join_handlers
+                        let task_join_handler = incoming_host_tasks_handlers
                             .remove(&host)
                             .ok_or(RoutingError::ConnectionError)?;
 
@@ -133,18 +134,18 @@ impl RequestMessageRoutingHostTask {
                             .map_err(|_| RoutingError::ConnectionError)?;
                     }
                 } else {
-                    if !host_route_tasks.contains_key(&host) {
-                        let (task, task_tx) = RouteHostMessagesTask::new(buffer_size);
-                        host_route_tasks.insert(host.clone(), task_tx);
-                        host_tasks_join_handlers.insert(host.clone(), tokio::spawn(task.run()));
+                    if !incoming_host_tasks.contains_key(&host) {
+                        let (task, task_tx) = IncomingHostTask::new(buffer_size);
+                        incoming_host_tasks.insert(host.clone(), task_tx);
+                        incoming_host_tasks_handlers.insert(host.clone(), tokio::spawn(task.run()));
                     }
 
-                    let task_tx = host_route_tasks
+                    let task_tx = incoming_host_tasks
                         .get_mut(&host)
                         .ok_or(RoutingError::ConnectionError)?;
 
                     task_tx
-                        .send(task_request)
+                        .send(task)
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
@@ -154,84 +155,84 @@ impl RequestMessageRoutingHostTask {
     }
 }
 
-fn combine_receive_task_requests(
-    new_task_request_rx: HostMessageNewTaskRequestReceiver,
-    register_task_request_rx: HostMessageRegisterTaskRequestReceiver,
+fn combine_incoming_streams(
+    new_task_request_rx: IncomingTaskReqReceiver,
+    subscribe_request_rx: IncomingSubscriberReqReceiver,
     close_request_rx: CloseRequestReceiver,
-) -> impl stream::Stream<Item = RequestHostTaskType> + Send + 'static {
+) -> impl stream::Stream<Item = TaskRequest> + Send + 'static {
     let new_task_request = new_task_request_rx.map(|status| match status {
-        ConnectionResponse::Success((url, channel)) => RequestHostTaskType {
+        ConnectionResponse::Success((url, channel)) => TaskRequest {
             host: Some(url),
-            task_request: RequestTaskType::Connection(channel),
+            task_type: HostTaskRequestType::Connect(channel),
         },
-        ConnectionResponse::Failure(url) => RequestHostTaskType {
+        ConnectionResponse::Failure(url) => TaskRequest {
             host: Some(url),
-            task_request: RequestTaskType::Unreachable,
+            task_type: HostTaskRequestType::Unreachable,
         },
     });
 
-    let register_task_request =
-        register_task_request_rx.map(|(host_url, node, lane, channel)| RequestHostTaskType {
+    let subscribe_request =
+        subscribe_request_rx.map(|(host_url, node, lane, channel)| TaskRequest {
             host: Some(host_url),
-            task_request: RequestTaskType::Subscriber((node, lane, channel)),
+            task_type: HostTaskRequestType::Subscribe((node, lane, channel)),
         });
 
-    let close_request = close_request_rx.map(|_| RequestHostTaskType {
+    let close_request = close_request_rx.map(|_| TaskRequest {
         host: None,
-        task_request: RequestTaskType::Close,
+        task_type: HostTaskRequestType::Close,
     });
 
     stream::select(
         new_task_request,
-        stream::select(register_task_request, close_request),
+        stream::select(subscribe_request, close_request),
     )
 }
 
-pub struct RequestHostTaskType {
+pub struct TaskRequest {
     host: Option<url::Url>,
-    task_request: RequestTaskType,
+    task_type: HostTaskRequestType,
 }
 
-pub enum RequestTaskType {
-    Connection(mpsc::Receiver<Message>),
-    Subscriber((String, String, mpsc::Sender<RouterEvent>)),
-    Unreachable,
+pub enum HostTaskRequestType {
+    Connect(mpsc::Receiver<Message>),
+    Subscribe((String, String, mpsc::Sender<RouterEvent>)),
     Message(Message),
+    Unreachable,
     Disconnect,
     Close,
 }
 
-type RequestTaskTypeSender = mpsc::Sender<RequestTaskType>;
-type RequestTaskTypeReceiver = mpsc::Receiver<RequestTaskType>;
+type HostTaskReqSender = mpsc::Sender<HostTaskRequestType>;
+type HostTaskReqReceiver = mpsc::Receiver<HostTaskRequestType>;
 
-pub struct RouteHostMessagesTask {
-    task_rx: RequestTaskTypeReceiver,
+pub struct IncomingHostTask {
+    task_rx: HostTaskReqReceiver,
 }
 
-impl RouteHostMessagesTask {
-    pub fn new(buffer_size: usize) -> (RouteHostMessagesTask, RequestTaskTypeSender) {
+impl IncomingHostTask {
+    pub fn new(buffer_size: usize) -> (IncomingHostTask, HostTaskReqSender) {
         let (task_tx, task_rx) = mpsc::channel(buffer_size);
 
-        (RouteHostMessagesTask { task_rx }, task_tx)
+        (IncomingHostTask { task_rx }, task_tx)
     }
 
     //Todo split into smaller methods
     pub async fn run(self) -> Result<(), RoutingError> {
-        let RouteHostMessagesTask { mut task_rx } = self;
+        let IncomingHostTask { mut task_rx } = self;
 
         let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection = None;
 
         loop {
             if connection.is_none() {
-                let task_request = task_rx.recv().await.ok_or(RoutingError::ConnectionError)?;
+                let task = task_rx.recv().await.ok_or(RoutingError::ConnectionError)?;
 
-                match task_request {
-                    RequestTaskType::Connection(message_rx) => {
+                match task {
+                    HostTaskRequestType::Connect(message_rx) => {
                         connection = Some(message_rx);
                     }
 
-                    RequestTaskType::Subscriber((node, lane, event_tx)) => {
+                    HostTaskRequestType::Subscribe((node, lane, event_tx)) => {
                         let destination = format!("{}/{}", node, lane);
                         subscribers
                             .entry(destination)
@@ -239,7 +240,7 @@ impl RouteHostMessagesTask {
                             .push(event_tx);
                     }
 
-                    RequestTaskType::Unreachable => {
+                    HostTaskRequestType::Unreachable => {
                         println!("Unreachable Host");
                         for (_, destination) in subscribers.iter_mut() {
                             for subscriber in destination {
@@ -252,7 +253,7 @@ impl RouteHostMessagesTask {
                         break;
                     }
 
-                    RequestTaskType::Close => {
+                    HostTaskRequestType::Close => {
                         println!("Closing Router");
                         for (_, destination) in subscribers.iter_mut() {
                             for subscriber in destination {
@@ -268,29 +269,29 @@ impl RouteHostMessagesTask {
                     _ => {}
                 }
             } else {
-                let result = tokio::select! {
-                    Some(task_request) = task_rx.recv() => {
-                        Some(task_request)
+                let task = tokio::select! {
+                    Some(task) = task_rx.recv() => {
+                        Some(task)
                     }
 
                     maybe_message = connection.as_mut().ok_or(RoutingError::ConnectionError)?.recv() => {
                         match maybe_message{
-                            Some(message) => Some(RequestTaskType::Message(message)),
-                            None => Some(RequestTaskType::Disconnect),
+                            Some(message) => Some(HostTaskRequestType::Message(message)),
+                            None => Some(HostTaskRequestType::Disconnect),
                         }
                     }
 
                     else => None,
                 };
 
-                let task_request = result.ok_or(RoutingError::ConnectionError)?;
+                let task = task.ok_or(RoutingError::ConnectionError)?;
 
-                match task_request {
-                    RequestTaskType::Connection(message_rx) => {
+                match task {
+                    HostTaskRequestType::Connect(message_rx) => {
                         connection = Some(message_rx);
                     }
 
-                    RequestTaskType::Subscriber((node, lane, event_tx)) => {
+                    HostTaskRequestType::Subscribe((node, lane, event_tx)) => {
                         let destination = format!("{}/{}", node, lane);
                         subscribers
                             .entry(destination)
@@ -298,7 +299,7 @@ impl RouteHostMessagesTask {
                             .push(event_tx);
                     }
 
-                    RequestTaskType::Message(message) => {
+                    HostTaskRequestType::Message(message) => {
                         //Todo parse the message to envelope
                         println!("{:?}", message);
 
@@ -327,7 +328,7 @@ impl RouteHostMessagesTask {
                         }
                     }
 
-                    RequestTaskType::Disconnect => {
+                    HostTaskRequestType::Disconnect => {
                         println!("Connection closed");
                         connection = None;
 
@@ -341,7 +342,7 @@ impl RouteHostMessagesTask {
                         }
                     }
 
-                    RequestTaskType::Close => {
+                    HostTaskRequestType::Close => {
                         println!("Closing Router");
                         for (_, destination) in subscribers.iter_mut() {
                             for subscriber in destination {
