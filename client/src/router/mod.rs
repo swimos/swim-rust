@@ -36,7 +36,7 @@ use common::warp::path::AbsolutePath;
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
-use crate::router::command::{CommandTask, CommandSender};
+use crate::router::command::{CommandSender, CommandTask};
 use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
 use crate::router::incoming::{IncomingSubscriberReqSender, IncomingTask, IncomingTaskReqSender};
 use crate::router::outgoing::retry::RetryStrategy;
@@ -72,7 +72,7 @@ pub struct SwimRouter {
     configuration: RouterConfig,
     outgoing_task_request_tx: OutgoingTaskReqSender,
     incoming_subscribe_request_tx: IncomingSubscriberReqSender,
-    request_connections_handler: JoinHandle<Result<(), RoutingError>>,
+    connection_request_handler: JoinHandle<Result<(), RoutingError>>,
     connections_task_close_request_tx: CloseRequestSender,
     outgoing_task_handler: JoinHandle<Result<(), RoutingError>>,
     outgoing_task_close_request_tx: CloseRequestSender,
@@ -107,8 +107,8 @@ impl SwimRouter {
             incoming_task_close_request_tx,
         ) = IncomingTask::new(buffer_size);
 
-        let (request_connections_task, connection_request_tx, connections_task_close_request_tx) =
-            RequestConnectionsTask::new(
+        let (connection_request_task, connection_request_tx, connections_task_close_request_tx) =
+            ConnectionRequestTask::new(
                 connection_pool,
                 incoming_task_request_tx.clone(),
                 configuration,
@@ -124,7 +124,7 @@ impl SwimRouter {
         let (command_task, command_tx, command_task_close_request_tx) =
             CommandTask::new(connection_request_tx, configuration);
 
-        let request_connections_handler = tokio::spawn(request_connections_task.run());
+        let connection_request_handler = tokio::spawn(connection_request_task.run());
         let outgoing_task_handler = tokio::spawn(outgoing_task.run());
         let incoming_task_handler = tokio::spawn(incoming_task.run());
         let command_task_handler = tokio::spawn(command_task.run());
@@ -133,7 +133,7 @@ impl SwimRouter {
             configuration,
             outgoing_task_request_tx,
             incoming_subscribe_request_tx,
-            request_connections_handler,
+            connection_request_handler,
             connections_task_close_request_tx,
             outgoing_task_handler,
             outgoing_task_close_request_tx,
@@ -156,7 +156,7 @@ impl SwimRouter {
             .send(())
             .await
             .unwrap();
-        let _ = self.request_connections_handler.await.unwrap();
+        let _ = self.connection_request_handler.await.unwrap();
 
         self.incoming_task_close_request_tx.send(()).await.unwrap();
         let _ = self.incoming_task_handler.await.unwrap();
@@ -194,14 +194,14 @@ type ConnReqReceiver = mpsc::Receiver<(
     bool, // Whether or not to recreate the connection
 )>;
 
-struct RequestConnectionsTask {
+struct ConnectionRequestTask {
     connection_pool: ConnectionPool,
     connection_request_rx: ConnReqReceiver,
     close_request_rx: CloseRequestReceiver,
     incoming_task_request_tx: IncomingTaskReqSender,
 }
 
-impl RequestConnectionsTask {
+impl ConnectionRequestTask {
     fn new(
         connection_pool: ConnectionPool,
         incoming_task_request_tx: IncomingTaskReqSender,
@@ -212,7 +212,7 @@ impl RequestConnectionsTask {
         let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
 
         (
-            RequestConnectionsTask {
+            ConnectionRequestTask {
                 connection_pool,
                 connection_request_rx,
                 close_request_rx,
@@ -224,7 +224,7 @@ impl RequestConnectionsTask {
     }
 
     async fn run(self) -> Result<(), RoutingError> {
-        let RequestConnectionsTask {
+        let ConnectionRequestTask {
             mut connection_pool,
             connection_request_rx,
             close_request_rx,
