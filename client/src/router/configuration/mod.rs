@@ -27,6 +27,17 @@ pub struct RouterConfig {
     buffer_size: NonZeroUsize,
 }
 
+impl Default for RouterConfig {
+    fn default() -> Self {
+        RouterConfig {
+            retry_strategy: Default::default(),
+            idle_timeout: NonZeroUsize::new(5).unwrap(),
+            conn_reaper_frequency: NonZeroUsize::new(5).unwrap(),
+            buffer_size: NonZeroUsize::new(5).unwrap(),
+        }
+    }
+}
+
 impl RouterConfig {
     pub fn buffer_size(&self) -> NonZeroUsize {
         self.buffer_size

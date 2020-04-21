@@ -312,6 +312,7 @@ pub mod boxed_connection_sender {
                         Err(TrySendError::Closed(_)) => Poll::Ready(Err(RetryErr::SenderClosed)),
                         Err(TrySendError::Full(_)) => unreachable!(),
                     },
+
                     Poll::Ready(Err(_)) => Poll::Ready(Err(RetryErr::SenderClosed)),
                     Poll::Pending => Poll::Pending,
                 },
@@ -347,7 +348,7 @@ pub mod boxedmpsc {
         }
     }
 
-    impl<'l, 'fut, V: 'fut, P> RetrySink<'fut, V> for BoxedMpscSender<V, P>
+    impl<'fut, V: 'fut, P> RetrySink<'fut, V> for BoxedMpscSender<V, P>
     where
         V: Send + Clone,
         P: Fn() -> mpsc::Sender<V>,

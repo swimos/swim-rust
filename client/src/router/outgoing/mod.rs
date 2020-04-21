@@ -103,7 +103,7 @@ impl OutgoingTask {
 
                         let mut complete_sender = incoming_task_request_tx.clone();
                         let outgoing_host_task = outgoing_host_task.run().then(|r| async move {
-                            // If the request failed, then notify the RouteHostMessagesTask so it can be handled
+                            // If the task failed, then notify the RouteHostMessagesTask so it can be handled
                             if r.is_err() {
                                 let _ = complete_sender
                                     .send(ConnectionResponse::Failure(host_url))
@@ -205,15 +205,20 @@ impl OutgoingHostTask {
 
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            tracing::trace!("Received request");
 
             match task {
-                TaskRequestType::NewMessage(_envelope) => RetryableRequest::send(
-                    BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),
-                    Message::Text(String::from("@sync(node:\"/unit/foo\", lane:\"info\")")),
-                    config.retry_strategy(),
-                )
-                .await
-                .map_err(|_| RoutingError::ConnectionError)?,
+                TaskRequestType::NewMessage(_envelope) => {
+                    RetryableRequest::send(
+                        BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),
+                        Message::Text(String::from("@sync(node:\"/unit/foo\", lane:\"info\")")),
+                        config.retry_strategy(),
+                    )
+                        .await
+                        .map_err(|_| RoutingError::ConnectionError)?;
+
+                    tracing::trace!("Completed request");
+                }
                 TaskRequestType::Close => {
                     break;
                 }
@@ -231,4 +236,73 @@ fn combine_outgoing_host_streams(
     let envelope_request = envelope_rx.map(TaskRequestType::NewMessage);
     let close_request = close_requests_rx.map(|_| TaskRequestType::Close);
     stream::select(envelope_request, close_request)
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+
+    use crate::router::configuration::RouterConfigBuilder;
+    use crate::router::envelope_routing_task::retry::RetryStrategy;
+
+    use crate::connections::ConnectionSender;
+
+    fn router_config(strategy: RetryStrategy) -> RouterConfig {
+        RouterConfigBuilder::default()
+            .with_buffer_size(5)
+            .with_idle_timeout(10)
+            .with_conn_reaper_frequency(10)
+            .with_retry_stategy(strategy)
+            .build()
+    }
+
+    // Test that after a permanent error, the task fails
+    #[tokio::test]
+    async fn permanent_error() {
+        let config = router_config(RetryStrategy::none());
+        let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
+        let (host_route_task, mut envelope_tx, _close_tx) = RouteHostEnvelopesTask::new(
+            url::Url::parse("ws://127.0.0.1:9001").unwrap(),
+            task_request_tx,
+            config,
+        );
+        let handle = tokio::spawn(host_route_task.run());
+
+        let _ = envelope_tx
+            .send(Envelope::sync("node".into(), "lane".into()))
+            .await;
+        let (_url, tx, _recreate) = task_request_rx.recv().await.unwrap();
+        let _ = tx.send(Err(RoutingError::ConnectionError));
+
+        let task_result = handle.await.unwrap();
+        assert_eq!(task_result, Err(RoutingError::ConnectionError))
+    }
+
+    // Test that after a transient error, the retry system attempts the request again and succeeds
+    #[tokio::test]
+    async fn transient_error() {
+        let config = router_config(RetryStrategy::immediate(1));
+        let url = url::Url::parse("ws://127.0.0.1:9001").unwrap();
+
+        let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
+        let (host_route_task, mut envelope_tx, mut close_tx) =
+            RouteHostEnvelopesTask::new(url.clone(), task_request_tx, config);
+
+        let handle = tokio::spawn(host_route_task.run());
+        let _ = envelope_tx
+            .send(Envelope::sync("node".into(), "lane".into()))
+            .await;
+
+        let (_url, tx, _recreate) = task_request_rx.recv().await.unwrap();
+        let _ = tx.send(Err(RoutingError::Transient));
+
+        let (_url, tx, _recreate) = task_request_rx.recv().await.unwrap();
+        let (dummy_tx, _dummy_rx) = mpsc::channel(config.buffer_size().get());
+
+        let _ = tx.send(Ok(ConnectionSender::new(dummy_tx)));
+        let _ = close_tx.send(()).await;
+
+        let task_result = handle.await.unwrap();
+        assert_eq!(task_result, Ok(()))
+    }
 }
