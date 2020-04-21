@@ -23,9 +23,11 @@ use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
-    create_downlink, BasicResponse, BasicStateMachine, Command, Event, Message, TransitionError,
+    create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message,
+    TransitionError,
 };
 use crate::router::RoutingError;
+use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::ItemSender;
@@ -197,11 +199,25 @@ impl ValueModel {
 
 struct ValueStateMachine {
     init: Value,
+    schema: StandardSchema,
 }
 
 impl ValueStateMachine {
     fn new(init: Value) -> Self {
-        ValueStateMachine { init }
+        ValueStateMachine {
+            init,
+            schema: StandardSchema::Anything,
+        }
+    }
+
+    fn validated(init: Value, schema: StandardSchema) -> Self {
+        if !schema.matches(&init) {
+            panic!(
+                "Initial value {} inconsistent with schema {:?}",
+                init, schema
+            )
+        }
+        ValueStateMachine { init, schema }
     }
 }
 
@@ -217,13 +233,22 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
         state.state.clone()
     }
 
-    fn handle_message_unsynced(&self, state: &mut ValueModel, upd_value: Value) {
+    fn handle_message_unsynced(
+        &self,
+        state: &mut ValueModel,
+        upd_value: Value,
+    ) -> Option<DownlinkError> {
         state.state = Arc::new(upd_value);
+        None
     }
 
-    fn handle_message(&self, state: &mut ValueModel, upd_value: Value) -> Option<Self::Ev> {
+    fn handle_message(
+        &self,
+        state: &mut ValueModel,
+        upd_value: Value,
+    ) -> Result<Option<Self::Ev>, DownlinkError> {
         state.state = Arc::new(upd_value);
-        Some(state.state.clone())
+        Ok(Some(state.state.clone()))
     }
 
     fn handle_action(

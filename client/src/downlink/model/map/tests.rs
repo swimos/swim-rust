@@ -42,12 +42,14 @@ fn start_downlink() {
         let mut model = machine.init_state();
         let response = machine.handle_operation(&mut state, &mut model, Operation::Start);
 
+        assert_that!(&response, ok());
+
         let Response {
             event,
             command,
             error,
             terminate,
-        } = response;
+        } = response.unwrap();
 
         assert!(!terminate);
         assert_that!(error, none());
@@ -71,8 +73,11 @@ fn linked_response(start_state: DownlinkState) {
     let mut state = start_state;
     let machine = MapStateMachine::new();
     let mut model = machine.init_state();
-    let response =
+    let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Linked));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Linked));
     assert_that!(response, eq(Response::none()));
@@ -101,8 +106,11 @@ fn synced_response(start_state: DownlinkState) {
     let mut state = start_state;
     let machine = MapStateMachine::new();
     let mut model = make_model_with(7, "hello".to_owned());
-    let response =
+    let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Synced));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     if start_state == DownlinkState::Synced {
@@ -125,11 +133,14 @@ fn unlinked_response(start_state: DownlinkState) {
     let mut state = start_state;
     let machine = MapStateMachine::new();
     let mut model = make_model_with(7, "hello".to_owned());
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Unlinked),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Unlinked));
     assert_that!(response, eq(Response::none().then_terminate()));
@@ -150,11 +161,14 @@ fn insert_message_unlinked() {
     let mut state = DownlinkState::Unlinked;
     let machine = MapStateMachine::new();
     let mut model = MapModel::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Insert(k, v))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Unlinked));
     assert_that!(model.state.len(), eq(0));
@@ -169,11 +183,14 @@ fn remove_message_unlinked() {
     let mut state = DownlinkState::Unlinked;
     let machine = MapStateMachine::new();
     let mut model = make_model_with(4, "hello".to_owned());
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k, Arc::new(v))]);
 
@@ -198,11 +215,14 @@ fn take_message_unlinked() {
     };
     let machine = MapStateMachine::new();
 
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Take(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![
         (k1.clone(), Arc::new(v1.clone())),
@@ -231,11 +251,14 @@ fn skip_message_unlinked() {
 
     let machine = MapStateMachine::new();
 
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Skip(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![
         (k1.clone(), Arc::new(v1.clone())),
@@ -263,11 +286,14 @@ fn clear_message_unlinked() {
     };
     let machine = MapStateMachine::new();
 
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Clear)),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![
         (k1.clone(), Arc::new(v1.clone())),
@@ -287,7 +313,7 @@ fn insert_message_linked() {
     let mut state = DownlinkState::Linked;
     let mut model = MapModel::new();
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Insert(
@@ -295,6 +321,9 @@ fn insert_message_linked() {
             v.clone(),
         ))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k, Arc::new(v))]);
 
@@ -310,11 +339,14 @@ fn remove_message_linked() {
     let mut state = DownlinkState::Linked;
     let mut model = make_model_with(4, "hello".to_owned());
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Linked));
     assert_that!(model.state.len(), eq(0));
@@ -336,11 +368,14 @@ fn take_message_linked() {
         ]),
     };
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Take(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
@@ -364,11 +399,14 @@ fn skip_message_linked() {
         ]),
     };
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Skip(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
@@ -392,11 +430,14 @@ fn clear_message_linked() {
         ]),
     };
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Clear)),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Linked));
     assert_that!(model.state.len(), eq(0));
@@ -411,7 +452,7 @@ fn insert_message_synced() {
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Insert(
@@ -419,6 +460,9 @@ fn insert_message_synced() {
             v.clone(),
         ))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k.clone(), Arc::new(v))]);
 
@@ -438,11 +482,14 @@ fn remove_message_synced() {
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(4, "hello".to_owned());
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     assert_that!(model.state.len(), eq(0));
@@ -468,11 +515,14 @@ fn take_message_synced() {
         ]),
     };
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Take(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
@@ -500,11 +550,14 @@ fn skip_message_synced() {
         ]),
     };
     let machine = MapStateMachine::new();
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Skip(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
@@ -533,11 +586,14 @@ fn clear_message_synced() {
     };
     let machine = MapStateMachine::new();
 
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Clear)),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     assert_that!(model.state.len(), eq(0));
@@ -567,7 +623,11 @@ fn get_action() {
     let mut model = make_model_with(13, "stuff".to_owned());
     let machine = MapStateMachine::new();
     let (action, mut rx) = make_get_map();
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k, v)]);
@@ -589,7 +649,11 @@ fn get_by_defined_key_action() {
     let mut model = make_model_with(13, "stuff".to_owned());
     let machine = MapStateMachine::new();
     let (action, mut rx) = make_get(13);
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v)]);
@@ -613,7 +677,11 @@ fn get_by_undefined_key_action() {
     let mut model = make_model_with(13, "stuff".to_owned());
     let machine = MapStateMachine::new();
     let (action, mut rx) = make_get(-1);
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v)]);
@@ -661,7 +729,11 @@ fn insert_to_undefined_action() {
     let mut model = MapModel::new();
     let machine = MapStateMachine::new();
     let (action, mut rx) = make_insert(13, "stuff".to_owned());
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
@@ -700,8 +772,11 @@ fn insert_action_dropped_listener() {
 
     drop(rx);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
     assert_that!(&model.state, eq(&expected));
@@ -734,7 +809,11 @@ fn insert_to_defined_action() {
     let machine = MapStateMachine::new();
 
     let (action, mut rx) = make_insert(13, new_val.clone());
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), Value::text(new_val.clone()))]);
@@ -778,7 +857,11 @@ fn remove_undefined_action() {
     let machine = MapStateMachine::new();
     let (action, mut rx) = make_remove(43);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     assert_that!(model.state.len(), eq(0));
@@ -799,7 +882,11 @@ fn remove_action_dropped_listener() {
 
     drop(rx);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     assert_that!(model.state.len(), eq(0));
@@ -827,7 +914,11 @@ fn remove_defined_action() {
     let machine = MapStateMachine::new();
 
     let (action, mut rx) = make_remove(13);
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
 
@@ -891,7 +982,11 @@ fn take_action() {
 
     let (action, mut rx_before, mut rx_after) = make_take(1);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
@@ -936,7 +1031,11 @@ fn take_action_dropped_before() {
 
     drop(rx_before);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
@@ -978,7 +1077,11 @@ fn take_action_dropped_after() {
 
     drop(rx_after);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
@@ -1019,7 +1122,11 @@ fn take_action_both_dropped() {
     drop(rx_before);
     drop(rx_after);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
@@ -1070,7 +1177,11 @@ fn skip_action() {
 
     let (action, mut rx_before, mut rx_after) = make_skip(1);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
@@ -1115,7 +1226,11 @@ fn skip_action_dropped_before() {
 
     drop(rx_before);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
@@ -1157,7 +1272,11 @@ fn skip_action_dropped_after() {
 
     drop(rx_after);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
@@ -1198,7 +1317,11 @@ fn skip_action_dropped_both() {
     drop(rx_before);
     drop(rx_after);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
@@ -1238,7 +1361,11 @@ fn clear_action() {
 
     let (action, mut rx_before) = make_clear();
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     assert_that!(model.state.len(), eq(0));
@@ -1276,7 +1403,11 @@ fn clear_action_dropped_receiver() {
 
     drop(rx_before);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     assert_that!(model.state.len(), eq(0));

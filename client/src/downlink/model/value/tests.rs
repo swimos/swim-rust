@@ -31,7 +31,10 @@ fn start_downlink() {
         let mut state = *s;
         let mut model = ValueModel::new(Value::from(0));
         let machine = ValueStateMachine::new(Value::from(0));
-        let response = machine.handle_operation(&mut state, &mut model, Operation::Start);
+        let maybe_response = machine.handle_operation(&mut state, &mut model, Operation::Start);
+
+        assert_that!(&maybe_response, ok());
+        let response = maybe_response.unwrap();
 
         let Response {
             event,
@@ -62,8 +65,11 @@ fn linked_response(start_state: DownlinkState) {
     let mut state = start_state;
     let mut model = ValueModel::new(Value::from(0));
     let machine = ValueStateMachine::new(Value::from(0));
-    let response =
+    let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Linked));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Linked));
     assert_that!(response, eq(Response::none()));
@@ -92,8 +98,11 @@ fn synced_response(start_state: DownlinkState) {
     let mut state = start_state;
     let mut model = ValueModel::new(Value::from(7));
     let machine = ValueStateMachine::new(Value::from(0));
-    let response =
+    let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Synced));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     if start_state == DownlinkState::Synced {
@@ -115,11 +124,14 @@ fn unlinked_response(start_state: DownlinkState) {
     let mut state = start_state;
     let mut model = ValueModel::new(Value::from(7));
     let machine = ValueStateMachine::new(Value::from(0));
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Unlinked),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Unlinked));
     assert_that!(response, eq(Response::none().then_terminate()));
@@ -137,11 +149,14 @@ fn update_message_unlinked() {
     let mut state = DownlinkState::Unlinked;
     let mut model = ValueModel::new(Value::from(1));
     let machine = ValueStateMachine::new(Value::from(0));
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Unlinked));
     assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
@@ -153,11 +168,14 @@ fn update_message_linked() {
     let mut state = DownlinkState::Linked;
     let mut model = ValueModel::new(Value::from(1));
     let machine = ValueStateMachine::new(Value::from(0));
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Linked));
     assert_that!(model.state, eq(Arc::new(Value::Int32Value(3))));
@@ -169,11 +187,14 @@ fn update_message_synced() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(1));
     let machine = ValueStateMachine::new(Value::from(0));
-    let response = machine.handle_operation(
+    let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(3));
@@ -193,7 +214,11 @@ fn get_action() {
     let mut model = ValueModel::new(Value::from(13));
     let machine = ValueStateMachine::new(Value::from(0));
     let (action, mut rx) = make_get();
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(13));
@@ -213,7 +238,11 @@ fn dropped_get() {
     let machine = ValueStateMachine::new(Value::from(0));
     let (action, rx) = make_get();
     drop(rx);
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(13));
@@ -260,7 +289,11 @@ fn set_action() {
     let mut model = ValueModel::new(Value::from(13));
     let machine = ValueStateMachine::new(Value::from(0));
     let (action, mut rx) = make_set(67);
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(67));
@@ -282,7 +315,11 @@ fn dropped_set_action() {
 
     drop(rx);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(67));
@@ -314,7 +351,11 @@ fn update_action() {
     let mut model = ValueModel::new(Value::from(13));
     let machine = ValueStateMachine::new(Value::from(0));
     let (action, mut rx) = make_update();
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(26));
@@ -340,7 +381,11 @@ fn dropped_update_action() {
 
     drop(rx);
 
-    let response = machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
     let expected = Arc::new(Value::Int32Value(26));

@@ -295,7 +295,7 @@ trait StateMachine<S, M, A>: Sized {
         downlink_state: &mut DownlinkState,
         state: &mut S,
         op: Operation<M, A>,
-    ) -> Response<Self::Ev, Self::Cmd>;
+    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError>;
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -358,11 +358,11 @@ trait BasicStateMachine<S, M, A> {
     fn on_sync(&self, state: &S) -> Self::Ev;
 
     /// Update the state with a message, received between [`Linked`] and [`Synced`'].
-    fn handle_message_unsynced(&self, state: &mut S, message: M);
+    fn handle_message_unsynced(&self, state: &mut S, message: M) -> Option<DownlinkError>;
 
     /// Update the state with a message when in the [`Synced`] state, potentially generating an
     /// event.
-    fn handle_message(&self, state: &mut S, message: M) -> Option<Self::Ev>;
+    fn handle_message(&self, state: &mut S, message: M) -> Result<Option<Self::Ev>, DownlinkError>;
 
     /// Handle a local action potentially generating an event and/or a command and/or an error.
     fn handle_action(&self, state: &mut S, action: A) -> BasicResponse<Self::Ev, Self::Cmd>;
@@ -385,8 +385,8 @@ where
         state: &mut DownlinkState,
         data_state: &mut State,
         op: Operation<M, A>,
-    ) -> Response<Self::Ev, Self::Cmd> {
-        match op {
+    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
+        let response = match op {
             Operation::Start => {
                 if *state == DownlinkState::Synced {
                     Response::none()
@@ -410,11 +410,11 @@ where
                 }
                 Message::Action(msg) => match *state {
                     DownlinkState::Unlinked => Response::none(),
-                    DownlinkState::Linked => {
-                        self.handle_message_unsynced(data_state, msg);
-                        Response::none()
-                    }
-                    DownlinkState::Synced => match self.handle_message(data_state, msg) {
+                    DownlinkState::Linked => match self.handle_message_unsynced(data_state, msg) {
+                        Some(err) => return Err(err),
+                        _ => Response::none(),
+                    },
+                    DownlinkState::Synced => match self.handle_message(data_state, msg)? {
                         Some(ev) => Response::for_event(Event(ev, false)),
                         _ => Response::none(),
                     },
@@ -425,7 +425,8 @@ where
                 }
             },
             Operation::Action(action) => self.handle_action(data_state, action).into(),
-        }
+        };
+        Ok(response)
     }
 }
 

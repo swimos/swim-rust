@@ -312,7 +312,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                         command,
                         error,
                         terminate,
-                    } = state_machine.handle_operation(&mut dl_state, &mut model, op);
+                    } = state_machine.handle_operation(&mut dl_state, &mut model, op)?;
                     let result = match (event, command) {
                         (Some(event), Some(cmd)) => {
                             if !events_terminated && ev_sink.send_item(event).await.is_err() {

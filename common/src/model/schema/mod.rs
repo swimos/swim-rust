@@ -723,11 +723,9 @@ impl StandardSchema {
     pub fn is_empty_record() -> Self {
         StandardSchema::eq(Value::empty_record())
     }
-
 }
 
 impl ToValue for StandardSchema {
-
     fn to_value(&self) -> Value {
         match self {
             StandardSchema::OfKind(kind) => Value::of_attr(("kind", kind_to_str(*kind))),
@@ -843,7 +841,6 @@ impl ToValue for StandardSchema {
             StandardSchema::Nothing => Value::of_attr("nothing"),
         }
     }
-
 }
 
 fn layout_item(schema: &ItemSchema, required: bool) -> Item {

@@ -73,8 +73,8 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
         dl_state: &mut DownlinkState,
         model: &mut State,
         op: Operation<Msg, AddTo>,
-    ) -> Response<Self::Ev, Self::Cmd> {
-        match op {
+    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
+        let response = match op {
             Operation::Start => Response::for_command(Command::Sync),
             Operation::Message(Message::Linked) => {
                 *dl_state = DownlinkState::Linked;
@@ -129,7 +129,8 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                     _ => resp,
                 }
             }
-        }
+        };
+        Ok(response)
     }
 }
 

@@ -24,7 +24,9 @@ use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
-use crate::downlink::{BasicResponse, BasicStateMachine, Command, Event, Message, TransitionError};
+use crate::downlink::{
+    BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message, TransitionError,
+};
 use crate::router::RoutingError;
 use common::model::schema::{AttrSchema, FieldSpec, SlotSchema, StandardSchema};
 use common::sink::item::ItemSender;
@@ -659,7 +661,11 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
         ViewWithEvent::initial(&state.state)
     }
 
-    fn handle_message_unsynced(&self, state: &mut MapModel, message: MapModification<Value>) {
+    fn handle_message_unsynced(
+        &self,
+        state: &mut MapModel,
+        message: MapModification<Value>,
+    ) -> Option<DownlinkError> {
         match message {
             MapModification::Insert(k, v) => {
                 state.state.insert(k, Arc::new(v));
@@ -677,14 +683,15 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
                 state.state.clear();
             }
         };
+        None
     }
 
     fn handle_message(
         &self,
         state: &mut MapModel,
         message: MapModification<Value>,
-    ) -> Option<Self::Ev> {
-        Some(match message {
+    ) -> Result<Option<Self::Ev>, DownlinkError> {
+        Ok(Some(match message {
             MapModification::Insert(k, v) => {
                 state.state.insert(k.clone(), Arc::new(v));
                 ViewWithEvent::insert(&state.state, k)
@@ -705,7 +712,7 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
                 state.state.clear();
                 ViewWithEvent::clear(&state.state)
             }
-        })
+        }))
     }
 
     fn handle_action(
