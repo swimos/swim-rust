@@ -212,10 +212,7 @@ impl ValueStateMachine {
 
     fn validated(init: Value, schema: StandardSchema) -> Self {
         if !schema.matches(&init) {
-            panic!(
-                "Initial value {} inconsistent with schema {:?}",
-                init, schema
-            )
+            panic!("Initial value {} inconsistent with schema {}", init, schema)
         }
         ValueStateMachine { init, schema }
     }
@@ -238,8 +235,15 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
         state: &mut ValueModel,
         upd_value: Value,
     ) -> Option<DownlinkError> {
-        state.state = Arc::new(upd_value);
-        None
+        if self.schema.matches(&upd_value) {
+            state.state = Arc::new(upd_value);
+            None
+        } else {
+            Some(DownlinkError::SchemaViolation(
+                upd_value,
+                self.schema.clone(),
+            ))
+        }
     }
 
     fn handle_message(
@@ -247,8 +251,15 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
         state: &mut ValueModel,
         upd_value: Value,
     ) -> Result<Option<Self::Ev>, DownlinkError> {
-        state.state = Arc::new(upd_value);
-        Ok(Some(state.state.clone()))
+        if self.schema.matches(&upd_value) {
+            state.state = Arc::new(upd_value);
+            Ok(Some(state.state.clone()))
+        } else {
+            Err(DownlinkError::SchemaViolation(
+                upd_value,
+                self.schema.clone(),
+            ))
+        }
     }
 
     fn handle_action(

@@ -34,6 +34,8 @@ pub mod watch_adapter;
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
+use common::model::schema::StandardSchema;
+use common::model::Value;
 use common::topic::{BoxTopic, Topic, TopicError};
 use futures::future::BoxFuture;
 use futures::task::{Context, Poll};
@@ -136,11 +138,12 @@ impl<Act, Upd: Clone + 'static> Downlink<Act, Upd> for BoxedDownlink<Act, Upd> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum DownlinkError {
     DroppedChannel,
     TaskPanic,
     TransitionError,
+    SchemaViolation(Value, StandardSchema),
 }
 
 impl From<RoutingError> for DownlinkError {
@@ -162,6 +165,11 @@ impl Display for DownlinkError {
             DownlinkError::TransitionError => {
                 write!(f, "The downlink state machine produced and error.")
             }
+            DownlinkError::SchemaViolation(value, schema) => write!(
+                f,
+                "Received {} but expected a value matching {}.",
+                value, schema
+            ),
         }
     }
 }

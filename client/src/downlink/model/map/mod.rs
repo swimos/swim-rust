@@ -28,7 +28,7 @@ use crate::downlink::{
     BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message, TransitionError,
 };
 use crate::router::RoutingError;
-use common::model::schema::{AttrSchema, FieldSpec, SlotSchema, StandardSchema};
+use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
 use common::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
 use form::{Form, ValidatedForm};
@@ -641,11 +641,24 @@ impl MapModel {
     }
 }
 
-struct MapStateMachine;
+struct MapStateMachine {
+    key_schema: StandardSchema,
+    value_schema: StandardSchema,
+}
 
 impl MapStateMachine {
     fn new() -> Self {
-        MapStateMachine
+        MapStateMachine {
+            key_schema: StandardSchema::Anything,
+            value_schema: StandardSchema::Anything,
+        }
+    }
+
+    fn validated(key_schema: StandardSchema, value_schema: StandardSchema) -> Self {
+        MapStateMachine {
+            key_schema,
+            value_schema,
+        }
     }
 }
 
@@ -668,22 +681,39 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
     ) -> Option<DownlinkError> {
         match message {
             MapModification::Insert(k, v) => {
-                state.state.insert(k, Arc::new(v));
+                if self.key_schema.matches(&k) {
+                    if self.value_schema.matches(&v) {
+                        state.state.insert(k, Arc::new(v));
+                        None
+                    } else {
+                        Some(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
+                    }
+                } else {
+                    Some(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
+
             }
             MapModification::Remove(k) => {
-                state.state.remove(&k);
+                if self.key_schema.matches(&k) {
+                    state.state.remove(&k);
+                    None
+                } else {
+                    Some(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
             }
             MapModification::Take(n) => {
                 state.state = state.state.take(n);
+                None
             }
             MapModification::Skip(n) => {
                 state.state = state.state.skip(n);
+                None
             }
             MapModification::Clear => {
                 state.state.clear();
+                None
             }
-        };
-        None
+        }
     }
 
     fn handle_message(

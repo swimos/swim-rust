@@ -350,7 +350,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
             }
         };
         completed.store(true, Ordering::Release);
-        let _ = stop_event.broadcast(Some(result));
+        let _ = stop_event.broadcast(Some(result.clone()));
         result
     }
 }
