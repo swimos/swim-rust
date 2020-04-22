@@ -281,7 +281,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
             mut ev_sink,
             completed,
             stop_event,
-            on_invalid: _on_invalid,
+            on_invalid,
         } = self;
 
         let mut dl_state = DownlinkState::Unlinked;
@@ -324,7 +324,17 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                         command,
                         error,
                         terminate,
-                    } = state_machine.handle_operation(&mut dl_state, &mut model, op)?;
+                    } = match state_machine.handle_operation(&mut dl_state, &mut model, op) {
+                        Ok(r) => r,
+                        Err(e) => match on_invalid {
+                            OnInvalidMessage::Ignore => {
+                                continue;
+                            }
+                            OnInvalidMessage::Terminate => {
+                                break Err(e);
+                            }
+                        },
+                    };
                     let result = match (event, command) {
                         (Some(event), Some(cmd)) => {
                             if !events_terminated && ev_sink.send_item(event).await.is_err() {
