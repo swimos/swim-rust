@@ -18,6 +18,7 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
+use common::model::ValueKind;
 
 const STATES: [DownlinkState; 3] = [
     DownlinkState::Unlinked,
@@ -396,4 +397,73 @@ fn dropped_update_action() {
     assert!(Arc::ptr_eq(&cmd, &model.state));
     assert_that!(&err, some());
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
+}
+
+#[test]
+fn invalid_message_unlinked() {
+    let mut state = DownlinkState::Unlinked;
+    let mut model = ValueModel::new(Value::from(1));
+
+    let schema = StandardSchema::OfKind(ValueKind::Extant).negate();
+    let machine = ValueStateMachine::new(Value::from(0), schema);
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(Value::Extant)),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
+    assert_that!(response, eq(Response::none()));
+}
+
+#[test]
+fn invalid_message_linked() {
+    let mut state = DownlinkState::Linked;
+    let mut model = ValueModel::new(Value::from(1));
+
+    let schema = StandardSchema::OfKind(ValueKind::Extant).negate();
+    let machine = ValueStateMachine::new(Value::from(0), schema.clone());
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(Value::Extant)),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(Value::Extant, schema))
+    );
+}
+
+#[test]
+fn invalid_message_synced() {
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(1));
+
+    let schema = StandardSchema::OfKind(ValueKind::Extant).negate();
+    let machine = ValueStateMachine::new(Value::from(0), schema.clone());
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(Value::Extant)),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(Value::Extant, schema))
+    );
 }

@@ -1612,3 +1612,261 @@ pub fn map_modification_schema() {
     assert!(schema.matches(&simple_insert));
     assert!(schema.matches(&complex_insert));
 }
+
+#[test]
+fn invalid_insert_key_unlinked() {
+    let k = Value::Extant;
+    let v = Value::Text("hello".to_owned());
+
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(response, eq(Response::none()));
+}
+
+#[test]
+fn invalid_insert_value_unlinked() {
+    let k = Value::Int32Value(1);
+    let v = Value::Extant;
+
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(response, eq(Response::none()));
+}
+
+#[test]
+fn invalid_remove_unlinked() {
+    let k = Value::Extant;
+
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Remove(k))),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(response, eq(Response::none()));
+}
+
+#[test]
+fn invalid_insert_key_linked() {
+    let k = Value::Extant;
+    let v = Value::Text("hello".to_owned());
+
+    let mut state = DownlinkState::Linked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
+}
+
+#[test]
+fn invalid_insert_value_linked() {
+    let k = Value::Int32Value(1);
+    let v = Value::Extant;
+
+    let mut state = DownlinkState::Linked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Text)
+        ))
+    );
+}
+
+#[test]
+fn invalid_remove_linked() {
+    let k = Value::Extant;
+
+    let mut state = DownlinkState::Linked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Remove(k))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
+}
+
+#[test]
+fn invalid_insert_key_synced() {
+    let k = Value::Extant;
+    let v = Value::Text("hello".to_owned());
+
+    let mut state = DownlinkState::Synced;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
+}
+
+#[test]
+fn invalid_insert_value_synced() {
+    let k = Value::Int32Value(1);
+    let v = Value::Extant;
+
+    let mut state = DownlinkState::Synced;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Text)
+        ))
+    );
+}
+
+#[test]
+fn invalid_remove_synced() {
+    let k = Value::Extant;
+
+    let mut state = DownlinkState::Synced;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Remove(k))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
+}

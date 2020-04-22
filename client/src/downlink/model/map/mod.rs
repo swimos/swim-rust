@@ -759,28 +759,40 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
         state: &mut MapModel,
         message: MapModification<Value>,
     ) -> Result<Option<Self::Ev>, DownlinkError> {
-        Ok(Some(match message {
+        match message {
             MapModification::Insert(k, v) => {
-                state.state.insert(k.clone(), Arc::new(v));
-                ViewWithEvent::insert(&state.state, k)
+                if self.key_schema.matches(&k) {
+                    if self.value_schema.matches(&v) {
+                        state.state.insert(k.clone(), Arc::new(v));
+                        Ok(Some(ViewWithEvent::insert(&state.state, k)))
+                    } else {
+                        Err(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
+                    }
+                } else {
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
             }
             MapModification::Remove(k) => {
-                state.state.remove(&k);
-                ViewWithEvent::remove(&state.state, k)
+                if self.key_schema.matches(&k) {
+                    state.state.remove(&k);
+                    Ok(Some(ViewWithEvent::remove(&state.state, k)))
+                } else {
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
             }
             MapModification::Take(n) => {
                 state.state = state.state.take(n);
-                ViewWithEvent::take(&state.state, n)
+                Ok(Some(ViewWithEvent::take(&state.state, n)))
             }
             MapModification::Skip(n) => {
                 state.state = state.state.skip(n);
-                ViewWithEvent::skip(&state.state, n)
+                Ok(Some(ViewWithEvent::skip(&state.state, n)))
             }
             MapModification::Clear => {
                 state.state.clear();
-                ViewWithEvent::clear(&state.state)
+                Ok(Some(ViewWithEvent::clear(&state.state)))
             }
-        }))
+        }
     }
 
     fn handle_action(
