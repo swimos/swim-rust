@@ -72,15 +72,19 @@ impl TextSchema {
     pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
         Regex::new(string).map(TextSchema::Matches)
     }
+
+    pub fn to_attr(&self) -> Attr {
+        match self {
+            TextSchema::NonEmpty => Attr::of("non_empty"),
+            TextSchema::Exact(v) => Attr::of(("equal", v.clone())),
+            TextSchema::Matches(r) => Attr::of(("matches", r.to_string())),
+        }
+    }
 }
 
 impl ToValue for TextSchema {
     fn to_value(&self) -> Value {
-        match self {
-            TextSchema::NonEmpty => Value::of_attr("non_empty"),
-            TextSchema::Exact(v) => Value::of_attr(("equal", v.clone())),
-            TextSchema::Matches(r) => Value::of_attr(("matches", r.to_string())),
-        }
+        Value::of_attr(self.to_attr())
     }
 }
 
@@ -193,17 +197,21 @@ impl AttrSchema {
             remainder: Box::new(schema),
         }
     }
-}
 
-impl ToValue for AttrSchema {
-    fn to_value(&self) -> Value {
-        Value::of_attr((
+    fn to_attr(&self) -> Attr {
+        Attr::of((
             "attr",
             Value::from_vec(vec![
                 Item::slot("name", self.name_schema.to_value()),
                 Item::slot("value", self.value_schema.to_value()),
             ]),
         ))
+    }
+}
+
+impl ToValue for AttrSchema {
+    fn to_value(&self) -> Value {
+        Value::of_attr(self.to_attr())
     }
 }
 
@@ -768,7 +776,9 @@ impl ToValue for StandardSchema {
             }
             StandardSchema::NonNan => Value::of_attr("non_nan"),
             StandardSchema::Finite => Value::of_attr("finite"),
-            StandardSchema::Text(text_schema) => Value::of_attr(("text", text_schema.to_value())),
+            StandardSchema::Text(text_schema) => {
+                Value::of_attrs(vec![Attr::of("text"), text_schema.to_attr()])
+            }
             StandardSchema::Not(s) => Value::of_attr(("not", s.to_value())),
             StandardSchema::And(terms) => {
                 let rec = Value::from_vec(

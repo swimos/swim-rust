@@ -287,6 +287,16 @@ impl Value {
             Value::Record(_, _) => ValueKind::Record,
         }
     }
+
+    pub fn prepend(self, attr: Attr) -> Value {
+        match self {
+            Value::Record(mut attrs, items) => {
+                attrs.insert(0, attr);
+                Value::Record(attrs, items)
+            }
+            ow => Value::Record(vec![attr], vec![Item::ValueItem(ow)]),
+        }
+    }
 }
 
 impl Default for Value {
