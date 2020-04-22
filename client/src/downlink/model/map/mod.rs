@@ -20,6 +20,7 @@ use tokio::sync::mpsc;
 use common::model::{Attr, Item, Value, ValueKind};
 use common::request::Request;
 
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
@@ -561,6 +562,7 @@ pub fn create_raw_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
@@ -574,6 +576,7 @@ where
         update_stream,
         cmd_sink,
         buffer_size,
+        on_invalid,
     )
 }
 
@@ -585,6 +588,7 @@ pub fn create_queue_downlink<Updates, Commands>(
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     QueueDownlink<MapAction, ViewWithEvent>,
     QueueReceiver<ViewWithEvent>,
@@ -602,6 +606,7 @@ where
         cmd_sink,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 
@@ -612,6 +617,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     DroppingDownlink<MapAction, ViewWithEvent>,
     DroppingReceiver<ViewWithEvent>,
@@ -628,6 +634,7 @@ where
         update_stream,
         cmd_sink,
         buffer_size,
+        on_invalid,
     )
 }
 
@@ -639,6 +646,7 @@ pub fn create_buffered_downlink<Updates, Commands>(
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     BufferedDownlink<MapAction, ViewWithEvent>,
     BufferedReceiver<ViewWithEvent>,
@@ -656,6 +664,7 @@ where
         cmd_sink,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 

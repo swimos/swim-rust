@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::raw;
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
@@ -209,6 +210,7 @@ pub(in crate::downlink) fn make_downlink<M, A, State, Machine, Updates, Commands
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (QueueDownlink<A, Machine::Ev>, QueueReceiver<Machine::Ev>)
 where
     M: Send + 'static,
@@ -230,7 +232,13 @@ where
     let completed = Arc::new(AtomicBool::new(false));
 
     // The task that maintains the internal state of the lane.
-    let task = DownlinkTask::new(cmd_sink, event_sink, completed.clone(), stopped_tx);
+    let task = DownlinkTask::new(
+        cmd_sink,
+        event_sink,
+        completed.clone(),
+        stopped_tx,
+        on_invalid,
+    );
 
     let lane_task = task.run(
         raw::make_operation_stream(update_stream),

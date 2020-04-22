@@ -18,6 +18,7 @@ use std::sync::Arc;
 use futures::Stream;
 use tokio::sync::mpsc;
 
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
@@ -103,6 +104,7 @@ pub fn create_raw_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
@@ -113,6 +115,7 @@ where
         update_stream,
         cmd_sender,
         buffer_size,
+        on_invalid,
     )
 }
 
@@ -124,6 +127,7 @@ pub fn create_queue_downlink<Updates, Commands>(
     cmd_sender: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     QueueDownlink<Action, SharedValue>,
     QueueReceiver<SharedValue>,
@@ -138,6 +142,7 @@ where
         cmd_sender,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 
@@ -148,6 +153,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     DroppingDownlink<Action, SharedValue>,
     DroppingReceiver<SharedValue>,
@@ -161,6 +167,7 @@ where
         update_stream,
         cmd_sender,
         buffer_size,
+        on_invalid,
     )
 }
 
@@ -172,6 +179,7 @@ pub fn create_buffered_downlink<Updates, Commands>(
     cmd_sender: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     BufferedDownlink<Action, SharedValue>,
     BufferedReceiver<SharedValue>,
@@ -186,6 +194,7 @@ where
         cmd_sender,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 

@@ -457,12 +457,19 @@ where
                 dl_cmd_sink,
                 buffer_size,
                 n.get(),
+                config.on_invalid,
             );
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
         MuxMode::Dropping => {
-            let (dl, rec) =
-                value::create_dropping_downlink(init, None, updates, dl_cmd_sink, buffer_size);
+            let (dl, rec) = value::create_dropping_downlink(
+                init,
+                None,
+                updates,
+                dl_cmd_sink,
+                buffer_size,
+                config.on_invalid,
+            );
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
         MuxMode::Buffered(n) => {
@@ -473,6 +480,7 @@ where
                 dl_cmd_sink,
                 buffer_size,
                 n.get(),
+                config.on_invalid,
             );
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
@@ -496,17 +504,38 @@ where
     let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {
         MuxMode::Queue(n) => {
-            let (dl, rec) =
-                create_queue_downlink(None, None, updates, dl_cmd_sink, buffer_size, n.get());
+            let (dl, rec) = create_queue_downlink(
+                None,
+                None,
+                updates,
+                dl_cmd_sink,
+                buffer_size,
+                n.get(),
+                config.on_invalid,
+            );
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
         MuxMode::Dropping => {
-            let (dl, rec) = create_dropping_downlink(None, None, updates, dl_cmd_sink, buffer_size);
+            let (dl, rec) = create_dropping_downlink(
+                None,
+                None,
+                updates,
+                dl_cmd_sink,
+                buffer_size,
+                config.on_invalid,
+            );
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
         MuxMode::Buffered(n) => {
-            let (dl, rec) =
-                create_buffered_downlink(None, None, updates, dl_cmd_sink, buffer_size, n.get());
+            let (dl, rec) = create_buffered_downlink(
+                None,
+                None,
+                updates,
+                dl_cmd_sink,
+                buffer_size,
+                n.get(),
+                config.on_invalid,
+            );
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }

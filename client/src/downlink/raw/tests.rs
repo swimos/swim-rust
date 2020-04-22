@@ -158,6 +158,7 @@ async fn make_test_dl() -> (
         rx_in,
         for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
         10,
+        OnInvalidMessage::Terminate,
     );
     (downlink, tx_in, rx_out)
 }
