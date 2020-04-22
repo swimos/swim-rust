@@ -17,7 +17,7 @@ use std::sync::Arc;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
-use common::model::{Attr, Item, Value};
+use common::model::{Attr, Item, Value, ValueKind};
 use common::request::Request;
 
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
@@ -26,9 +26,10 @@ use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{BasicResponse, BasicStateMachine, Command, Event, Message, TransitionError};
 use crate::router::RoutingError;
+use common::model::schema::{AttrSchema, FieldSpec, SlotSchema, StandardSchema};
 use common::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
-use form::Form;
+use form::{Form, ValidatedForm};
 use futures::Stream;
 use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
@@ -45,6 +46,13 @@ pub enum MapModification<V> {
     Skip(usize),
     Clear,
 }
+
+const INSERT_NAME: &str = "insert";
+const REMOVE_NAME: &str = "remove";
+const TAKE_NAME: &str = "take";
+const SKIP_NAME: &str = "drop";
+const CLEAR_NAME: &str = "clear";
+const KEY_FIELD: &str = "key";
 
 impl Form for MapModification<Value> {
     fn as_value(&self) -> Value {
@@ -78,21 +86,21 @@ impl Form for MapModification<Value> {
                     Attr {
                         name,
                         value: Extant,
-                    } if *name == "clear" => Ok(MapModification::Clear),
+                    } if *name == CLEAR_NAME => Ok(MapModification::Clear),
                     Attr {
                         name,
                         value: Int32Value(n),
                     } => extract_take_or_skip(&name, *n),
-                    Attr { name, value } if name == "remove" => {
+                    Attr { name, value } if name == REMOVE_NAME => {
                         extract_key(value.clone()).map(MapModification::Remove)
                     }
-                    Attr { name, value } if name == "insert" => {
+                    Attr { name, value } if name == INSERT_NAME => {
                         extract_key(value.clone()).map(|key| MapModification::Insert(key, Extant))
                     }
                     _ => Err(FormDeserializeErr::Malformatted),
                 },
-                Some(Attr { name, value }) if *name == "insert" => {
-                    extract_key(value.clone()).map(|key| {
+                Some(Attr { name, value }) if *name == INSERT_NAME => extract_key(value.clone())
+                    .map(|key| {
                         let insert_value = if !has_more && items.len() < 2 {
                             match items.first() {
                                 Some(Item::ValueItem(single)) => single.clone(),
@@ -102,8 +110,7 @@ impl Form for MapModification<Value> {
                             Record(attrs.iter().skip(1).cloned().collect(), items.clone())
                         };
                         MapModification::Insert(key, insert_value)
-                    })
-                }
+                    }),
                 _ => Err(FormDeserializeErr::Malformatted),
             }
         } else {
@@ -124,15 +131,15 @@ impl Form for MapModification<Value> {
                 Some(Attr {
                     name,
                     value: Extant,
-                }) if name == "clear" && single_attr => Ok(MapModification::Clear),
+                }) if name == CLEAR_NAME && single_attr => Ok(MapModification::Clear),
                 Some(Attr {
                     name,
                     value: Int32Value(n),
                 }) if single_attr => extract_take_or_skip(&name, n),
-                Some(Attr { name, value }) if name == "remove" && single_attr => {
+                Some(Attr { name, value }) if name == REMOVE_NAME && single_attr => {
                     extract_key(value).map(MapModification::Remove)
                 }
-                Some(Attr { name, value }) if name == "insert" => {
+                Some(Attr { name, value }) if name == INSERT_NAME => {
                     let attr_tail = attr_it.collect::<Vec<_>>();
                     let insert_value = if attr_tail.is_empty() && items.len() < 2 {
                         match items.into_iter().next() {
@@ -153,11 +160,47 @@ impl Form for MapModification<Value> {
     }
 }
 
+impl ValidatedForm for MapModification<Value> {
+    fn schema() -> StandardSchema {
+        let clear_schema = AttrSchema::tag(CLEAR_NAME).only();
+
+        let num_schema =
+            StandardSchema::OfKind(ValueKind::Int32).and(StandardSchema::after_int(0, true));
+
+        let take_schema = AttrSchema::named(TAKE_NAME, num_schema.clone()).only();
+
+        let drop_schema = AttrSchema::named(SKIP_NAME, num_schema).only();
+
+        let key_schema = FieldSpec::default(SlotSchema::new(
+            StandardSchema::text(KEY_FIELD),
+            StandardSchema::Anything,
+        ));
+
+        let key_body_schema = StandardSchema::NumAttrs(0).and(StandardSchema::HasSlots {
+            slots: vec![key_schema],
+            exhaustive: true,
+        });
+
+        let remove_schema = AttrSchema::named(REMOVE_NAME, key_body_schema.clone()).only();
+
+        let insert_schema =
+            AttrSchema::named(INSERT_NAME, key_body_schema).and_then(StandardSchema::Anything);
+
+        StandardSchema::Or(vec![
+            insert_schema,
+            remove_schema,
+            clear_schema,
+            take_schema,
+            drop_schema,
+        ])
+    }
+}
+
 fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
     match attr_body {
         Value::Record(attrs, items) if attrs.is_empty() && items.len() < 2 => {
             match items.into_iter().next() {
-                Some(Item::Slot(Value::Text(name), key)) if name == "key" => Ok(key),
+                Some(Item::Slot(Value::Text(name), key)) if name == KEY_FIELD => Ok(key),
                 _ => Err(FormDeserializeErr::Message(
                     "Invalid key specifier.".to_string(),
                 )),
@@ -171,7 +214,7 @@ fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
 
 fn extract_take_or_skip(name: &str, n: i32) -> Result<MapModification<Value>, FormDeserializeErr> {
     match name {
-        "take" => {
+        TAKE_NAME => {
             if n >= 0 {
                 Ok(MapModification::Take(n as usize))
             } else {
@@ -181,7 +224,7 @@ fn extract_take_or_skip(name: &str, n: i32) -> Result<MapModification<Value>, Fo
                 )))
             }
         }
-        "drop" => {
+        SKIP_NAME => {
             if n >= 0 {
                 Ok(MapModification::Skip(n as usize))
             } else {
@@ -199,25 +242,25 @@ fn extract_take_or_skip(name: &str, n: i32) -> Result<MapModification<Value>, Fo
 }
 
 fn clear() -> Value {
-    Value::of_attr("clear")
+    Value::of_attr(CLEAR_NAME)
 }
 
 fn skip(n: usize) -> Value {
     let num: i32 = n.try_into().unwrap_or(i32::max_value());
-    Value::of_attr(("drop", num))
+    Value::of_attr((SKIP_NAME, num))
 }
 
 fn take(n: usize) -> Value {
     let num: i32 = n.try_into().unwrap_or(i32::max_value());
-    Value::of_attr(("take", num))
+    Value::of_attr((TAKE_NAME, num))
 }
 
 fn remove(key: Value) -> Value {
-    Value::of_attr(("remove", Value::singleton(("key", key))))
+    Value::of_attr((REMOVE_NAME, Value::singleton((KEY_FIELD, key))))
 }
 
 fn insert(key: Value, value: Value) -> Value {
-    let attr = Attr::of(("insert", Value::singleton(("key", key))));
+    let attr = Attr::of((INSERT_NAME, Value::singleton((KEY_FIELD, key))));
     match value {
         Value::Extant => Value::of_attr(attr),
         Value::Record(mut attrs, items) => {

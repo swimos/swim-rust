@@ -361,11 +361,14 @@ fn slot_schema() {
 
 #[test]
 fn has_attributes_single_exhaustive() {
-    let attrs = Attributes::HasAttrs(vec![AttrSchema::new(
+    let spec = FieldSpec::default(AttrSchema::new(
         TextSchema::exact("name"),
         StandardSchema::OfKind(ValueKind::Int32),
-    )]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, true));
+    ));
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec],
+        exhaustive: true,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -377,9 +380,11 @@ fn has_attributes_single_exhaustive() {
     let bad1 = Value::of_attr(Attr::of(("other", 3)));
     let bad2 = Value::of_attr(Attr::of("name"));
     let bad3 = Value::of_attrs(vec![Attr::of("other"), Attr::of(("name", 3))]);
+    let bad4 = Value::of_attrs(vec![Attr::of(("name", 3)), Attr::of(("name", 4))]);
     assert!(!schema.matches(&bad1));
     assert!(!schema.matches(&bad2));
     assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
 
     let good = Value::of_attr(Attr::of(("name", 3)));
 
@@ -388,11 +393,14 @@ fn has_attributes_single_exhaustive() {
 
 #[test]
 fn has_attributes_single_non_exhaustive() {
-    let attrs = Attributes::HasAttrs(vec![AttrSchema::new(
+    let spec = FieldSpec::default(AttrSchema::new(
         TextSchema::exact("name"),
         StandardSchema::OfKind(ValueKind::Int32),
-    )]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, false));
+    ));
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec],
+        exhaustive: false,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -403,9 +411,11 @@ fn has_attributes_single_non_exhaustive() {
 
     let bad1 = Value::of_attr(Attr::of(("other", 3)));
     let bad2 = Value::of_attr(Attr::of("name"));
+    let bad3 = Value::of_attrs(vec![Attr::of(("name", 3)), Attr::of(("name", 4))]);
 
     assert!(!schema.matches(&bad1));
     assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
 
     let good1 = Value::of_attr(Attr::of(("name", 3)));
     let good2 = Value::of_attrs(vec![Attr::of("other"), Attr::of(("name", 3))]);
@@ -415,18 +425,167 @@ fn has_attributes_single_non_exhaustive() {
 }
 
 #[test]
-fn has_attributes_multiple_exhaustive() {
-    let attrs = Attributes::HasAttrs(vec![
+fn has_optional_attributes_single_exhaustive() {
+    let spec = FieldSpec::new(
         AttrSchema::new(
-            TextSchema::exact("name1"),
+            TextSchema::exact("name"),
             StandardSchema::OfKind(ValueKind::Int32),
         ),
+        false,
+        true,
+    );
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec],
+        exhaustive: true,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of("name"));
+    let bad2 = Value::of_attrs(vec![Attr::of("other"), Attr::of(("name", 3))]);
+    let bad3 = Value::of_attrs(vec![Attr::of(("name", 3)), Attr::of(("name", 4))]);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+
+    let good1 = Value::of_attr(Attr::of(("name", 3)));
+
+    assert!(schema.matches(&good1));
+}
+
+#[test]
+fn has_optional_attributes_single_non_exhaustive() {
+    let spec = FieldSpec::new(
         AttrSchema::new(
-            TextSchema::exact("name2"),
-            StandardSchema::OfKind(ValueKind::Text),
+            TextSchema::exact("name"),
+            StandardSchema::OfKind(ValueKind::Int32),
         ),
+        false,
+        true,
+    );
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec],
+        exhaustive: false,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of("name"));
+    let bad2 = Value::of_attrs(vec![Attr::of(("name", 3)), Attr::of(("name", 4))]);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+
+    let good1 = Value::of_attr(Attr::of(("name", 3)));
+    let good2 = Value::of_attrs(vec![Attr::of("other"), Attr::of(("name", 3))]);
+    let good3 = Value::of_attr(Attr::of("other"));
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+}
+
+#[test]
+fn has_non_unique_attributes_single_exhaustive() {
+    let spec = FieldSpec::new(
+        AttrSchema::new(
+            TextSchema::exact("name"),
+            StandardSchema::OfKind(ValueKind::Int32),
+        ),
+        true,
+        false,
+    );
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec],
+        exhaustive: true,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of("name"));
+    let bad2 = Value::of_attrs(vec![Attr::of("other"), Attr::of(("name", 3))]);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+
+    let good1 = Value::of_attr(Attr::of(("name", 3)));
+    let good2 = Value::of_attrs(vec![Attr::of(("name", 3)), Attr::of(("name", 4))]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+}
+
+#[test]
+fn has_non_unique_attributes_single_non_exhaustive() {
+    let spec = FieldSpec::new(
+        AttrSchema::new(
+            TextSchema::exact("name"),
+            StandardSchema::OfKind(ValueKind::Int32),
+        ),
+        true,
+        false,
+    );
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec],
+        exhaustive: false,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::of_attr(Attr::of("name"));
+
+    assert!(!schema.matches(&bad1));
+
+    let good1 = Value::of_attr(Attr::of(("name", 3)));
+    let good2 = Value::of_attrs(vec![Attr::of(("name", 3)), Attr::of(("name", 4))]);
+    let good3 = Value::of_attrs(vec![Attr::of("other"), Attr::of(("name", 3))]);
+    let good4 = Value::of_attrs(vec![
+        Attr::of(("name", 3)),
+        Attr::of("other"),
+        Attr::of(("name", 4)),
     ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, true));
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+    assert!(schema.matches(&good4));
+}
+
+#[test]
+fn has_attributes_multiple_exhaustive() {
+    let spec1 = FieldSpec::default(AttrSchema::new(
+        TextSchema::exact("name1"),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let spec2 = FieldSpec::default(AttrSchema::new(
+        TextSchema::exact("name2"),
+        StandardSchema::OfKind(ValueKind::Text),
+    ));
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec1, spec2],
+        exhaustive: true,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -455,17 +614,18 @@ fn has_attributes_multiple_exhaustive() {
 
 #[test]
 fn has_attributes_multiple_non_exhaustive() {
-    let attrs = Attributes::HasAttrs(vec![
-        AttrSchema::new(
-            TextSchema::exact("name1"),
-            StandardSchema::OfKind(ValueKind::Int32),
-        ),
-        AttrSchema::new(
-            TextSchema::exact("name2"),
-            StandardSchema::OfKind(ValueKind::Text),
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, false));
+    let spec1 = FieldSpec::default(AttrSchema::new(
+        TextSchema::exact("name1"),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let spec2 = FieldSpec::default(AttrSchema::new(
+        TextSchema::exact("name2"),
+        StandardSchema::OfKind(ValueKind::Text),
+    ));
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![spec1, spec2],
+        exhaustive: false,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -495,11 +655,14 @@ fn has_attributes_multiple_non_exhaustive() {
 
 #[test]
 fn has_slots_single_exhaustive() {
-    let items = Items::HasSlots(vec![SlotSchema::new(
+    let spec = FieldSpec::default(SlotSchema::new(
         StandardSchema::Text(TextSchema::exact("name")),
         StandardSchema::OfKind(ValueKind::Int32),
-    )]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), true));
+    ));
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec],
+        exhaustive: true,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -511,9 +674,11 @@ fn has_slots_single_exhaustive() {
     let bad1 = Value::singleton(Item::of(("other", 3)));
     let bad2 = Value::singleton(Item::of("name"));
     let bad3 = Value::from_vec(vec![("other", 12), ("name", 3)]);
+    let bad4 = Value::from_vec(vec![("name", 3), ("name", 4)]);
     assert!(!schema.matches(&bad1));
     assert!(!schema.matches(&bad2));
     assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
 
     let good = Value::singleton(("name", 3));
 
@@ -522,11 +687,14 @@ fn has_slots_single_exhaustive() {
 
 #[test]
 fn has_slots_single_non_exhaustive() {
-    let items = Items::HasSlots(vec![SlotSchema::new(
+    let spec = FieldSpec::default(SlotSchema::new(
         StandardSchema::Text(TextSchema::exact("name")),
         StandardSchema::OfKind(ValueKind::Int32),
-    )]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), false));
+    ));
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec],
+        exhaustive: false,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -549,18 +717,176 @@ fn has_slots_single_non_exhaustive() {
 }
 
 #[test]
-fn has_slots_multiple_exhaustive() {
-    let items = Items::HasSlots(vec![
+fn has_optional_slots_single_exhaustive() {
+    let spec = FieldSpec::new(
         SlotSchema::new(
-            StandardSchema::Text(TextSchema::exact("name1")),
+            StandardSchema::Text(TextSchema::exact("name")),
             StandardSchema::OfKind(ValueKind::Int32),
         ),
+        false,
+        true,
+    );
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec],
+        exhaustive: true,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(Item::of(("other", 3)));
+    let bad2 = Value::singleton(Item::of("name"));
+    let bad3 = Value::from_vec(vec![("other", 12), ("name", 3)]);
+    let bad4 = Value::from_vec(vec![("name", 3), ("name", 4)]);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
+
+    let good1 = Value::singleton(("name", 3));
+
+    assert!(schema.matches(&good1));
+}
+
+#[test]
+fn has_optional_slots_single_non_exhaustive() {
+    let spec = FieldSpec::new(
         SlotSchema::new(
-            StandardSchema::Text(TextSchema::exact("name2")),
-            StandardSchema::OfKind(ValueKind::Text),
+            StandardSchema::Text(TextSchema::exact("name")),
+            StandardSchema::OfKind(ValueKind::Int32),
         ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), true));
+        false,
+        true,
+    );
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec],
+        exhaustive: false,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(Item::slot("name", Value::Extant));
+    let bad2 = Value::from_vec(vec![("name", 3), ("name", 4)]);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+
+    let good1 = Value::singleton(("name", 3));
+    let good2 = Value::singleton(Item::of(("other", 3)));
+    let good3 = Value::singleton(Item::of(("other", 3)));
+    let good4 = Value::from_vec(vec![("other", 12), ("name", 3)]);
+    let good5 = Value::singleton("name");
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+    assert!(schema.matches(&good4));
+    assert!(schema.matches(&good5));
+}
+
+#[test]
+fn has_non_unique_slots_single_exhaustive() {
+    let spec = FieldSpec::new(
+        SlotSchema::new(
+            StandardSchema::Text(TextSchema::exact("name")),
+            StandardSchema::OfKind(ValueKind::Int32),
+        ),
+        true,
+        false,
+    );
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec],
+        exhaustive: true,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(Item::of(("other", 3)));
+    let bad2 = Value::singleton(Item::of("name"));
+    let bad3 = Value::from_vec(vec![("other", 12), ("name", 3)]);
+    let bad4 = Value::from_vec(vec![("name", 3), ("other", 7), ("name", 4)]);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+    assert!(!schema.matches(&bad4));
+
+    let good1 = Value::singleton(("name", 3));
+    let good2 = Value::from_vec(vec![("name", 3), ("name", 4)]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+}
+
+#[test]
+fn has_non_unique_slots_single_non_exhaustive() {
+    let spec = FieldSpec::new(
+        SlotSchema::new(
+            StandardSchema::Text(TextSchema::exact("name")),
+            StandardSchema::OfKind(ValueKind::Int32),
+        ),
+        true,
+        false,
+    );
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec],
+        exhaustive: false,
+    };
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::empty_record()));
+
+    let bad1 = Value::singleton(Item::of(("other", 3)));
+    let bad2 = Value::singleton(Item::of("name"));
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+
+    let good1 = Value::singleton(("name", 3));
+    let good2 = Value::from_vec(vec![("name", 3), ("name", 4)]);
+    let good3 = Value::from_vec(vec![("other", 12), ("name", 3)]);
+    let good4 = Value::from_vec(vec![("name", 3), ("other", 7), ("name", 4)]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+    assert!(schema.matches(&good4));
+}
+
+#[test]
+fn has_slots_multiple_exhaustive() {
+    let spec1 = FieldSpec::default(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name1")),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let spec2 = FieldSpec::default(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name2")),
+        StandardSchema::OfKind(ValueKind::Text),
+    ));
+
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec1, spec2],
+        exhaustive: true,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -589,17 +915,19 @@ fn has_slots_multiple_exhaustive() {
 
 #[test]
 fn has_slots_multiple_non_exhaustive() {
-    let items = Items::HasSlots(vec![
-        SlotSchema::new(
-            StandardSchema::Text(TextSchema::exact("name1")),
-            StandardSchema::OfKind(ValueKind::Int32),
-        ),
-        SlotSchema::new(
-            StandardSchema::Text(TextSchema::exact("name2")),
-            StandardSchema::OfKind(ValueKind::Text),
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), false));
+    let spec1 = FieldSpec::default(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name1")),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let spec2 = FieldSpec::default(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name2")),
+        StandardSchema::OfKind(ValueKind::Text),
+    ));
+
+    let schema = StandardSchema::HasSlots {
+        slots: vec![spec1, spec2],
+        exhaustive: false,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -629,23 +957,16 @@ fn has_slots_multiple_non_exhaustive() {
 
 #[test]
 fn mandatory_attributes_in_order_exhaustive() {
-    let attrs = Attributes::AttrsInOrder(vec![
-        (
-            AttrSchema::new(
-                TextSchema::exact("name1"),
-                StandardSchema::OfKind(ValueKind::Int32),
-            ),
-            true,
-        ),
-        (
-            AttrSchema::new(
-                TextSchema::exact("name2"),
-                StandardSchema::OfKind(ValueKind::Text),
-            ),
-            true,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, true));
+    let att_schema1 = AttrSchema::new(
+        TextSchema::exact("name1"),
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+    let att_schema2 = AttrSchema::new(
+        TextSchema::exact("name2"),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+
+    let schema = att_schema1.and_then(att_schema2.and_then(StandardSchema::NumAttrs(0)));
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -674,23 +995,16 @@ fn mandatory_attributes_in_order_exhaustive() {
 
 #[test]
 fn mandatory_attributes_in_order_non_exhaustive() {
-    let attrs = Attributes::AttrsInOrder(vec![
-        (
-            AttrSchema::new(
-                TextSchema::exact("name1"),
-                StandardSchema::OfKind(ValueKind::Int32),
-            ),
-            true,
-        ),
-        (
-            AttrSchema::new(
-                TextSchema::exact("name2"),
-                StandardSchema::OfKind(ValueKind::Text),
-            ),
-            true,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, false));
+    let att_schema1 = AttrSchema::new(
+        TextSchema::exact("name1"),
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+    let att_schema2 = AttrSchema::new(
+        TextSchema::exact("name2"),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+
+    let schema = att_schema1.and_then(att_schema2.and_then(StandardSchema::Anything));
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -725,23 +1039,16 @@ fn mandatory_attributes_in_order_non_exhaustive() {
 
 #[test]
 fn optional_attribute_in_order_exhaustive() {
-    let attrs = Attributes::AttrsInOrder(vec![
-        (
-            AttrSchema::new(
-                TextSchema::exact("name1"),
-                StandardSchema::OfKind(ValueKind::Int32),
-            ),
-            true,
-        ),
-        (
-            AttrSchema::new(
-                TextSchema::exact("name2"),
-                StandardSchema::OfKind(ValueKind::Text),
-            ),
-            false,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, true));
+    let att_schema1 = AttrSchema::new(
+        TextSchema::exact("name1"),
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+    let att_schema2 = AttrSchema::new(
+        TextSchema::exact("name2"),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+
+    let schema = att_schema1.and_then(att_schema2.optionally_and_then(StandardSchema::NumAttrs(0)));
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -769,23 +1076,16 @@ fn optional_attribute_in_order_exhaustive() {
 
 #[test]
 fn optional_attribute_in_order_non_exhaustive() {
-    let attrs = Attributes::AttrsInOrder(vec![
-        (
-            AttrSchema::new(
-                TextSchema::exact("name1"),
-                StandardSchema::OfKind(ValueKind::Int32),
-            ),
-            true,
-        ),
-        (
-            AttrSchema::new(
-                TextSchema::exact("name2"),
-                StandardSchema::OfKind(ValueKind::Text),
-            ),
-            false,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(Some(attrs), None, false));
+    let att_schema1 = AttrSchema::new(
+        TextSchema::exact("name1"),
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+    let att_schema2 = AttrSchema::new(
+        TextSchema::exact("name2"),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+
+    let schema = att_schema1.and_then(att_schema2.optionally_and_then(StandardSchema::Anything));
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -823,20 +1123,16 @@ fn optional_attribute_in_order_non_exhaustive() {
 
 #[test]
 fn mandatory_items_in_order_exhaustive() {
-    let items = Items::ItemsInOrder(vec![
-        (
-            ItemSchema::Field(SlotSchema::new(
-                StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32),
-            )),
-            true,
-        ),
-        (
-            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
-            true,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), true));
+    let item_schema1 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name1")),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let item_schema2 = ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32));
+
+    let schema = StandardSchema::Layout {
+        items: vec![(item_schema1, true), (item_schema2, true)],
+        exhaustive: true,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -864,20 +1160,16 @@ fn mandatory_items_in_order_exhaustive() {
 
 #[test]
 fn mandatory_items_in_order_non_exhaustive() {
-    let items = Items::ItemsInOrder(vec![
-        (
-            ItemSchema::Field(SlotSchema::new(
-                StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32),
-            )),
-            true,
-        ),
-        (
-            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
-            true,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), false));
+    let item_schema1 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name1")),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let item_schema2 = ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32));
+
+    let schema = StandardSchema::Layout {
+        items: vec![(item_schema1, true), (item_schema2, true)],
+        exhaustive: false,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -902,20 +1194,16 @@ fn mandatory_items_in_order_non_exhaustive() {
 
 #[test]
 fn optional_item_in_order_exhaustive() {
-    let items = Items::ItemsInOrder(vec![
-        (
-            ItemSchema::Field(SlotSchema::new(
-                StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32),
-            )),
-            false,
-        ),
-        (
-            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
-            true,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), true));
+    let item_schema1 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name1")),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let item_schema2 = ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32));
+
+    let schema = StandardSchema::Layout {
+        items: vec![(item_schema1, false), (item_schema2, true)],
+        exhaustive: true,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -942,20 +1230,16 @@ fn optional_item_in_order_exhaustive() {
 
 #[test]
 fn optional_item_in_order_non_exhaustive() {
-    let items = Items::ItemsInOrder(vec![
-        (
-            ItemSchema::Field(SlotSchema::new(
-                StandardSchema::Text(TextSchema::exact("name1")),
-                StandardSchema::OfKind(ValueKind::Int32),
-            )),
-            false,
-        ),
-        (
-            ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
-            true,
-        ),
-    ]);
-    let schema = StandardSchema::Layout(RecordLayout::new(None, Some(items), false));
+    let item_schema1 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name1")),
+        StandardSchema::OfKind(ValueKind::Int32),
+    ));
+    let item_schema2 = ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32));
+
+    let schema = StandardSchema::Layout {
+        items: vec![(item_schema1, false), (item_schema2, true)],
+        exhaustive: false,
+    };
 
     let bad_kinds = arbitrary_without(vec![ValueKind::Record]);
     for value in bad_kinds.values() {
@@ -1017,4 +1301,19 @@ fn map_record() {
 
     let with_attr = Value::Record(vec![Attr::of("name")], good_items.clone());
     assert!(schema.matches(&with_attr));
+}
+
+#[test]
+fn record_unpacking() {
+    let schema1 = AttrSchema::tag("name").and_then(StandardSchema::OfKind(ValueKind::Int32));
+    let item_schema = ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32));
+    let schema2 = AttrSchema::tag("name").and_then(StandardSchema::Layout {
+        items: vec![(item_schema, true)],
+        exhaustive: true,
+    });
+
+    let record = Value::Record(vec![Attr::of("name")], vec![Item::of(3)]);
+
+    assert!(schema1.matches(&record));
+    assert!(schema2.matches(&record));
 }
