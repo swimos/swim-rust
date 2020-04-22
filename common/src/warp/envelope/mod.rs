@@ -70,6 +70,26 @@ impl Envelope {
         }
     }
 
+    pub fn destination(&self) -> String {
+        match self {
+            Envelope::LinkRequest(link_addressed)
+            | Envelope::SyncRequest(link_addressed)
+            | Envelope::LinkedResponse(link_addressed) => format!(
+                "{}/{}",
+                link_addressed.lane.node_uri, link_addressed.lane.lane_uri
+            ),
+            Envelope::EventMessage(lane_addressed)
+            | Envelope::CommandMessage(lane_addressed)
+            | Envelope::SyncedResponse(lane_addressed)
+            | Envelope::UnlinkRequest(lane_addressed)
+            | Envelope::UnlinkedResponse(lane_addressed) => {
+                format!("{}/{}", lane_addressed.node_uri, lane_addressed.lane_uri)
+            }
+
+            _ => format!(""),
+        }
+    }
+
     pub fn link(node: String, lane: String) -> Self {
         Envelope::LinkRequest(LinkAddressed {
             lane: LaneAddressed {

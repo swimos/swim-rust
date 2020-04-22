@@ -208,6 +208,7 @@ impl OutgoingHostTask {
             tracing::trace!("Received request");
 
             match task {
+                //Todo parse the envelope
                 TaskRequestType::NewMessage(_envelope) => {
                     RetryableRequest::send(
                         BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),

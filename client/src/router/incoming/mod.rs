@@ -24,6 +24,8 @@ use common::warp::envelope::Envelope;
 use crate::router::{
     CloseRequestReceiver, CloseRequestSender, ConnectionResponse, RouterEvent, RoutingError,
 };
+use common::model::parser::parse_single;
+use std::convert::TryFrom;
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
@@ -300,31 +302,28 @@ impl IncomingHostTask {
                     }
 
                     HostTaskRequestType::Message(message) => {
-                        //Todo parse the message to envelope
-                        println!("{:?}", message);
+                        let message = message.to_text().unwrap();
+                        let value = parse_single(message).unwrap();
+                        let envelope = Envelope::try_from(value).unwrap();
+                        let destination = envelope.destination();
+                        let event = RouterEvent::Envelope(envelope);
 
-                        let node = "node_uri";
-                        let lane = "lane_uri";
-
-                        let envelope = Envelope::synced(String::from(node), String::from(lane));
-                        let destination = format!("{}/{}", node, lane);
-
-                        let synced = RouterEvent::Envelope(envelope);
-
-                        if subscribers.contains_key(&destination) {
+                        if !destination.is_empty() && subscribers.contains_key(&destination) {
+                            //Todo Replace with tracing
+                            println!("{:?}", event);
                             let destination_subs = subscribers
                                 .get_mut(&destination)
                                 .ok_or(RoutingError::ConnectionError)?;
 
                             for subscriber in destination_subs.iter_mut() {
                                 subscriber
-                                    .send(synced.clone())
+                                    .send(event.clone())
                                     .await
                                     .map_err(|_| RoutingError::ConnectionError)?;
                             }
                         } else {
                             //Todo log the messsage
-                            println!("No downlink interested in message: {:?}", synced);
+                            println!("No downlink interested in message: {:?}", event);
                         }
                     }
 

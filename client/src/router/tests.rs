@@ -55,7 +55,7 @@ pub async fn foo() {
 async fn normal_receive() {
     let mut router = SwimRouter::new(5).await;
 
-    let path = AbsolutePath::new("ws://127.0.0.1:9001", "node_uri", "lane_uri");
+    let path = AbsolutePath::new("ws://127.0.0.1:9001", "/unit/foo", "info");
     let (mut sink, _stream) = router.connection_for(&path).await;
 
     let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
