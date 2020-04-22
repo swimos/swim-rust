@@ -143,6 +143,7 @@ pub enum DownlinkError {
     DroppedChannel,
     TaskPanic,
     TransitionError,
+    MalformedMessage,
     SchemaViolation(Value, StandardSchema),
 }
 
@@ -170,6 +171,9 @@ impl Display for DownlinkError {
                 "Received {} but expected a value matching {}.",
                 value, schema
             ),
+            DownlinkError::MalformedMessage => {
+                write!(f, "A remove message did not have the expected shape.")
+            }
         }
     }
 }
