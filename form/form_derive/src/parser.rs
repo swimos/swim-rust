@@ -177,7 +177,7 @@ fn struct_from_ast<'a>(
 
 fn fields_from_ast<'a>(
     context: &Context,
-    fields: &'a Punctuated<syn::Field, Token![,]>,
+    fields: &'a Punctuated<syn::Field, syn::Token![,]>,
 ) -> Vec<Field<'a>> {
     fields
         .iter()

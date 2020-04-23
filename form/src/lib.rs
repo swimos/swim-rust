@@ -19,6 +19,7 @@ pub extern crate deserialize as _deserialize;
 pub extern crate form_derive;
 pub extern crate serialize as _serialize;
 
+use _common::model::schema::StandardSchema;
 use common::model::Value;
 use deserialize::FormDeserializeErr;
 pub use form_derive::*;
@@ -79,4 +80,12 @@ pub trait Form: Sized {
     fn try_convert(value: Value) -> std::result::Result<Self, FormDeserializeErr> {
         Form::try_from_value(&value)
     }
+}
+
+/// A [`Form`] with an associated schema that can validate [`Value`] instances without attempting
+/// to convert them.
+pub trait ValidatedForm: Form {
+    /// A schema for the form. If the schema returns true for a [`Value`] the form should be able
+    /// to create an instance of the type from the [`Value`] without generating an error.
+    fn schema() -> StandardSchema;
 }
