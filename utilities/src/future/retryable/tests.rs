@@ -64,7 +64,7 @@ mod simple {
         type Err = FutErr;
         type Future = OneShotSender<R>;
 
-        fn future(self: &mut Self, _ctx: &mut RetryContext<Self>) -> Self::Future {
+        fn future(self: &mut Self, _ctx: &mut RetryContext<Self::Err>) -> Self::Future {
             let resolve = self.retries == self.resolve_after;
 
             OneShotSender {
@@ -73,7 +73,7 @@ mod simple {
             }
         }
 
-        fn retry(&mut self, _ctx: &mut RetryContext<Self>) -> bool {
+        fn retry(&mut self, _ctx: &mut RetryContext<Self::Err>) -> bool {
             self.retries += 1;
             true
         }
@@ -187,14 +187,14 @@ mod tokio {
         type Err = SendErr;
         type Future = SendFuture<P>;
 
-        fn future(&mut self, _ctx: &mut RetryContext<Self>) -> Self::Future {
+        fn future(&mut self, _ctx: &mut RetryContext<Self::Err>) -> Self::Future {
             SendFuture {
                 tx: self.tx.clone(),
                 payload: self.payload.clone(),
             }
         }
 
-        fn retry(&mut self, _ctx: &mut RetryContext<Self>) -> bool {
+        fn retry(&mut self, _ctx: &mut RetryContext<Self::Err>) -> bool {
             true
         }
     }

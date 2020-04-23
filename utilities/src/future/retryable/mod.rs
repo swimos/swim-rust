@@ -1,14 +1,3 @@
-use std::pin::Pin;
-
-use futures::ready;
-use futures::task::{Context, Poll};
-use futures::Future;
-use tokio::time;
-
-use pin_project::{pin_project, project};
-
-use crate::future::retryable::strategy::RetryStrategy;
-
 // Copyright 2015-2020 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +11,18 @@ use crate::future::retryable::strategy::RetryStrategy;
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+use std::pin::Pin;
+
+use futures::ready;
+use futures::task::{Context, Poll};
+use futures::{Future, FutureExt};
+use tokio::time;
+
+use pin_project::{pin_project, project};
+
+use crate::future::retryable::strategy::RetryStrategy;
+
 #[cfg(test)]
 mod tests;
 
@@ -29,11 +30,10 @@ pub mod strategy;
 
 #[pin_project]
 pub struct Retry<F: RetryableFuture> {
-    #[pin]
     f: F,
     #[pin]
     state: RetryState<F>,
-    ctx: RetryContext<F>,
+    ctx: RetryContext<F::Err>,
     strategy: RetryStrategy,
 }
 
@@ -45,15 +45,11 @@ where
     NotStarted,
     Pending(#[pin] F::Future),
     Retrying(F::Err),
-    Sleeping(#[pin] time::Delay),
+    Sleeping(time::Delay),
 }
 
-#[pin_project]
-pub struct RetryContext<F>
-where
-    F: RetryableFuture,
-{
-    last_err: Option<F::Err>,
+pub struct RetryContext<Err> {
+    last_err: Option<Err>,
     #[allow(dead_code)]
     retries: usize,
 }
@@ -83,15 +79,13 @@ where
 
     #[project]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut this = self.as_mut().project();
         loop {
-            let mut this = self.as_mut().project();
-
             #[project]
-            match this.state.project() {
+            let next_state = match this.state.as_mut().project() {
                 RetryState::NotStarted => {
                     let fut = this.f.future(this.ctx);
-                    let new_state = RetryState::Pending(fut);
-                    self.as_mut().project().state.set(new_state);
+                    RetryState::Pending(fut)
                 }
                 RetryState::Pending(fut) => match ready!(fut.poll(cx)) {
                     Ok(r) => {
@@ -99,7 +93,7 @@ where
                     }
                     Err(e) => {
                         if this.f.retry(this.ctx) {
-                            self.as_mut().project().state.set(RetryState::Retrying(e));
+                            RetryState::Retrying(e)
                         } else {
                             return Poll::Ready(Err(e));
                         }
@@ -110,15 +104,8 @@ where
                         this.ctx.last_err = Some(*e);
 
                         match duration {
-                            Some(duration) => {
-                                self.as_mut()
-                                    .project()
-                                    .state
-                                    .set(RetryState::Sleeping(time::delay_for(duration)));
-                            }
-                            None => {
-                                self.as_mut().project().state.set(RetryState::NotStarted);
-                            }
+                            Some(duration) => RetryState::Sleeping(time::delay_for(duration)),
+                            None => RetryState::NotStarted,
                         }
                     }
                     None => {
@@ -126,10 +113,12 @@ where
                     }
                 },
                 RetryState::Sleeping(timer) => {
-                    ready!(timer.poll(cx));
-                    self.as_mut().project().state.set(RetryState::NotStarted);
+                    ready!(timer.poll_unpin(cx));
+                    RetryState::NotStarted
                 }
-            }
+            };
+
+            this.state.set(next_state);
         }
     }
 }
@@ -139,7 +128,7 @@ pub trait RetryableFuture: Unpin + Sized {
     type Err: Copy;
     type Future: Future<Output = Result<Self::Ok, Self::Err>> + Send + Unpin + 'static;
 
-    fn future(&mut self, ctx: &mut RetryContext<Self>) -> Self::Future;
+    fn future(&mut self, ctx: &mut RetryContext<Self::Err>) -> Self::Future;
 
-    fn retry(&mut self, ctx: &mut RetryContext<Self>) -> bool;
+    fn retry(&mut self, ctx: &mut RetryContext<Self::Err>) -> bool;
 }
