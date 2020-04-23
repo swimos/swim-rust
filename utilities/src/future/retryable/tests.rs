@@ -163,7 +163,7 @@ mod tokio {
     {
         type Output = Result<P, SendErr>;
 
-        fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let SendFuture { tx, payload } = self.get_mut();
 
             match tx.poll_ready(cx) {
@@ -187,14 +187,14 @@ mod tokio {
         type Err = SendErr;
         type Future = SendFuture<P>;
 
-        fn future(&mut self, ctx: &mut RetryContext<Self>) -> Self::Future {
+        fn future(&mut self, _ctx: &mut RetryContext<Self>) -> Self::Future {
             SendFuture {
                 tx: self.tx.clone(),
                 payload: self.payload.clone(),
             }
         }
 
-        fn retry(&mut self, ctx: &mut RetryContext<Self>) -> bool {
+        fn retry(&mut self, _ctx: &mut RetryContext<Self>) -> bool {
             true
         }
     }

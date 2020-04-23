@@ -1,8 +1,8 @@
 use std::pin::Pin;
 
-use futures::Future;
 use futures::ready;
 use futures::task::{Context, Poll};
+use futures::Future;
 use tokio::time;
 
 use pin_project::{pin_project, project};
@@ -39,8 +39,8 @@ pub struct Retry<F: RetryableFuture> {
 
 #[pin_project]
 enum RetryState<F>
-    where
-        F: RetryableFuture,
+where
+    F: RetryableFuture,
 {
     NotStarted,
     Pending(#[pin] F::Future),
@@ -50,8 +50,8 @@ enum RetryState<F>
 
 #[pin_project]
 pub struct RetryContext<F>
-    where
-        F: RetryableFuture,
+where
+    F: RetryableFuture,
 {
     last_err: Option<F::Err>,
     #[allow(dead_code)]
@@ -59,8 +59,8 @@ pub struct RetryContext<F>
 }
 
 impl<F> Retry<F>
-    where
-        F: RetryableFuture,
+where
+    F: RetryableFuture,
 {
     pub fn new(f: F, strategy: RetryStrategy) -> Retry<F> {
         Retry {
@@ -76,8 +76,8 @@ impl<F> Retry<F>
 }
 
 impl<F> Future for Retry<F>
-    where
-        F: RetryableFuture,
+where
+    F: RetryableFuture,
 {
     type Output = Result<F::Ok, F::Err>;
 
@@ -97,11 +97,13 @@ impl<F> Future for Retry<F>
                     Ok(r) => {
                         return Poll::Ready(Ok(r));
                     }
-                    Err(e) => if this.f.retry(this.ctx) {
-                        self.as_mut().project().state.set(RetryState::Retrying(e));
-                    } else {
-                        return Poll::Ready(Err(e));
-                    },
+                    Err(e) => {
+                        if this.f.retry(this.ctx) {
+                            self.as_mut().project().state.set(RetryState::Retrying(e));
+                        } else {
+                            return Poll::Ready(Err(e));
+                        }
+                    }
                 },
                 RetryState::Retrying(e) => match this.strategy.next() {
                     Some(duration) => {
@@ -135,7 +137,7 @@ impl<F> Future for Retry<F>
 pub trait RetryableFuture: Unpin + Sized {
     type Ok;
     type Err: Copy;
-    type Future: Future<Output=Result<Self::Ok, Self::Err>> + Send + Unpin + 'static;
+    type Future: Future<Output = Result<Self::Ok, Self::Err>> + Send + Unpin + 'static;
 
     fn future(&mut self, ctx: &mut RetryContext<Self>) -> Self::Future;
 
