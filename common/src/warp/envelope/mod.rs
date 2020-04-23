@@ -15,7 +15,7 @@
 use std::convert::TryFrom;
 use std::ops::Deref;
 
-use crate::model::{Item, Value};
+use crate::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod tests;
@@ -53,7 +53,7 @@ pub enum Envelope {
 
 impl Envelope {
     /// Returns the tag (envelope type) of the current [`Envelope`] variant.
-    pub fn tag(self) -> &'static str {
+    pub fn tag(&self) -> &'static str {
         match self {
             Envelope::LinkRequest(_) => "link",
             Envelope::SyncRequest(_) => "sync",
@@ -70,24 +70,124 @@ impl Envelope {
         }
     }
 
-    pub fn destination(&self) -> String {
+    pub fn get_node_uri(&self) -> Option<String> {
         match self {
             Envelope::LinkRequest(link_addressed)
             | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => format!(
-                "{}/{}",
-                link_addressed.lane.node_uri, link_addressed.lane.lane_uri
-            ),
+            | Envelope::LinkedResponse(link_addressed) => {
+                Some(link_addressed.lane.node_uri.clone())
+            }
             Envelope::EventMessage(lane_addressed)
             | Envelope::CommandMessage(lane_addressed)
             | Envelope::SyncedResponse(lane_addressed)
             | Envelope::UnlinkRequest(lane_addressed)
-            | Envelope::UnlinkedResponse(lane_addressed) => {
-                format!("{}/{}", lane_addressed.node_uri, lane_addressed.lane_uri)
-            }
+            | Envelope::UnlinkedResponse(lane_addressed) => Some(lane_addressed.node_uri.clone()),
 
-            _ => format!(""),
+            _ => None,
         }
+    }
+
+    pub fn get_lane_uri(&self) -> Option<String> {
+        match self {
+            Envelope::LinkRequest(link_addressed)
+            | Envelope::SyncRequest(link_addressed)
+            | Envelope::LinkedResponse(link_addressed) => {
+                Some(link_addressed.lane.lane_uri.clone())
+            }
+            Envelope::EventMessage(lane_addressed)
+            | Envelope::CommandMessage(lane_addressed)
+            | Envelope::SyncedResponse(lane_addressed)
+            | Envelope::UnlinkRequest(lane_addressed)
+            | Envelope::UnlinkedResponse(lane_addressed) => Some(lane_addressed.lane_uri.clone()),
+
+            _ => None,
+        }
+    }
+
+    pub fn get_prio(&self) -> Option<f64> {
+        match self {
+            Envelope::LinkRequest(link_addressed)
+            | Envelope::SyncRequest(link_addressed)
+            | Envelope::LinkedResponse(link_addressed) => link_addressed.prio.clone(),
+            _ => None,
+        }
+    }
+
+    pub fn get_rate(&self) -> Option<f64> {
+        match self {
+            Envelope::LinkRequest(link_addressed)
+            | Envelope::SyncRequest(link_addressed)
+            | Envelope::LinkedResponse(link_addressed) => link_addressed.rate.clone(),
+            _ => None,
+        }
+    }
+
+    pub fn get_body(&self) -> Option<Value> {
+        match self {
+            Envelope::LinkRequest(link_addressed)
+            | Envelope::SyncRequest(link_addressed)
+            | Envelope::LinkedResponse(link_addressed) => link_addressed.lane.body.clone(),
+
+            Envelope::EventMessage(lane_addressed)
+            | Envelope::CommandMessage(lane_addressed)
+            | Envelope::SyncedResponse(lane_addressed)
+            | Envelope::UnlinkRequest(lane_addressed)
+            | Envelope::UnlinkedResponse(lane_addressed) => lane_addressed.body.clone(),
+
+            Envelope::AuthRequest(host_addressed)
+            | Envelope::AuthedResponse(host_addressed)
+            | Envelope::DeauthRequest(host_addressed)
+            | Envelope::DeauthedResponse(host_addressed) => host_addressed.body.clone(),
+        }
+    }
+
+    pub fn destination(&self) -> Option<String> {
+        let node_uri = self.get_node_uri()?;
+        let lane_uri = self.get_lane_uri()?;
+
+        Some(format!("{}/{}", node_uri, lane_uri))
+    }
+
+    pub fn into_value(self) -> Value {
+        let mut headers = Vec::new();
+
+        if let Some(node_uri) = self.get_node_uri() {
+            headers.push(Item::Slot(
+                Value::Text(String::from("node")),
+                Value::Text(node_uri),
+            ));
+        }
+
+        if let Some(lane_uri) = self.get_lane_uri() {
+            headers.push(Item::Slot(
+                Value::Text(String::from("lane")),
+                Value::Text(lane_uri),
+            ));
+        }
+
+        if let Some(prio) = self.get_prio() {
+            headers.push(Item::Slot(
+                Value::Text(String::from("prio")),
+                Value::Float64Value(prio),
+            ));
+        }
+
+        if let Some(rate) = self.get_rate() {
+            headers.push(Item::Slot(
+                Value::Text(String::from("rate")),
+                Value::Float64Value(rate),
+            ));
+        }
+
+        let headers = Value::Record(Vec::new(), headers);
+        let attr = Attr::of((self.tag(), headers));
+
+        let body_vec = match self.get_body() {
+            None => vec![],
+            Some(body) => vec![Item::ValueItem(body)],
+        };
+
+        Value::Record(vec![attr], body_vec)
     }
 
     pub fn link(node: String, lane: String) -> Self {

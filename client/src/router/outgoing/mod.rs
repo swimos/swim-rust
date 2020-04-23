@@ -208,11 +208,12 @@ impl OutgoingHostTask {
             tracing::trace!("Received request");
 
             match task {
-                //Todo parse the envelope
-                TaskRequestType::NewMessage(_envelope) => {
+                TaskRequestType::NewMessage(envelope) => {
+                    let message = Message::Text(envelope.into_value().to_string());
+
                     RetryableRequest::send(
                         BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),
-                        Message::Text(String::from("@sync(node:\"/unit/foo\", lane:\"info\")")),
+                        message,
                         config.retry_strategy(),
                     )
                     .await
