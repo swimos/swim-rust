@@ -308,22 +308,26 @@ impl IncomingHostTask {
                         let destination = envelope.destination();
                         let event = RouterEvent::Envelope(envelope);
 
-                        if !destination.is_empty() && subscribers.contains_key(&destination) {
-                            //Todo Replace with tracing
-                            println!("{:?}", event);
-                            let destination_subs = subscribers
-                                .get_mut(&destination)
-                                .ok_or(RoutingError::ConnectionError)?;
+                        if let Some(destination) = destination {
+                            if subscribers.contains_key(&destination) {
+                                //Todo Replace with tracing
+                                println!("{:?}", event);
+                                let destination_subs = subscribers
+                                    .get_mut(&destination)
+                                    .ok_or(RoutingError::ConnectionError)?;
 
-                            for subscriber in destination_subs.iter_mut() {
-                                subscriber
-                                    .send(event.clone())
-                                    .await
-                                    .map_err(|_| RoutingError::ConnectionError)?;
+                                for subscriber in destination_subs.iter_mut() {
+                                    subscriber
+                                        .send(event.clone())
+                                        .await
+                                        .map_err(|_| RoutingError::ConnectionError)?;
+                                }
+                            } else {
+                                //Todo log the messsage
+                                println!("No downlink interested in message: {:?}", event);
                             }
                         } else {
-                            //Todo log the messsage
-                            println!("No downlink interested in message: {:?}", event);
+                            println!("Host messages are not supported: {:?}", event);
                         }
                     }
 

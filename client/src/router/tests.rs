@@ -58,7 +58,7 @@ async fn normal_receive() {
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "/unit/foo", "info");
     let (mut sink, _stream) = router.connection_for(&path).await;
 
-    let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
+    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
     sink.send_item(sync).await.unwrap();
 
@@ -74,7 +74,23 @@ async fn not_interested_receive() {
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
     let (mut sink, _stream) = router.connection_for(&path).await;
 
-    let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
+    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
+
+    sink.send_item(sync).await.unwrap();
+
+    thread::sleep(time::Duration::from_secs(5));
+    router.close().await;
+    thread::sleep(time::Duration::from_secs(5));
+}
+
+#[tokio::test(core_threads = 2)]
+async fn not_found_receive() {
+    let mut router = SwimRouter::new(5).await;
+
+    let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
+    let (mut sink, _stream) = router.connection_for(&path).await;
+
+    let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
 
     sink.send_item(sync).await.unwrap();
 
