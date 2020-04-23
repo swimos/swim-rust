@@ -18,6 +18,7 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::{DownlinkState, Model, Operation, Response, StateMachine};
+use common::model::schema::Schema;
 
 fn make_model(state: DownlinkState, contents: ValMap) -> Model<MapModel> {
     Model {
@@ -1382,4 +1383,31 @@ pub fn complex_insert_from_value() {
             body.clone()
         )))
     );
+}
+
+#[test]
+pub fn map_modification_schema() {
+    let clear = Value::of_attr("clear");
+    let take = Value::of_attr(("take", 3));
+    let skip = Value::of_attr(("drop", 5));
+    let remove = Value::of_attr(("remove", Value::record(vec![Item::slot("key", "hello")])));
+
+    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let body = Item::ValueItem(Value::Int32Value(2));
+    let simple_insert = Value::Record(vec![attr], vec![body]);
+
+    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let complex_insert = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+
+    let schema = <MapModification<Value> as ValidatedForm>::schema();
+
+    assert!(schema.matches(&clear));
+    assert!(schema.matches(&take));
+    assert!(schema.matches(&skip));
+    assert!(schema.matches(&remove));
+    assert!(schema.matches(&simple_insert));
+    assert!(schema.matches(&complex_insert));
 }
