@@ -14,7 +14,7 @@
 
 use crate::downlink::{
     Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message, Model,
-    Operation, Response, StateMachine,
+    Operation, Response, StateMachine, StoppedFuture,
 };
 use crate::router::RoutingError;
 use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
@@ -177,7 +177,7 @@ where
 #[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTaskHandle {
     join_handle: JoinHandle<Result<(), DownlinkError>>,
-    pub(in crate::downlink) stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
+    stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
     completed: Arc<AtomicBool>,
 }
 
@@ -194,8 +194,14 @@ impl DownlinkTaskHandle {
         }
     }
 
+    /// Read the flag indicating whether the downlink is still running.
     pub fn is_complete(&self) -> bool {
         self.completed.load(Ordering::Acquire)
+    }
+
+    /// Get a future that will complete when the downlink stops running.
+    pub fn await_stopped(&self) -> StoppedFuture {
+        StoppedFuture(self.stop_await.clone())
     }
 }
 

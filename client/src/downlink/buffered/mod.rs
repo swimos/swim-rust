@@ -17,6 +17,7 @@ use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
+    StoppedFuture,
 };
 use crate::router::RoutingError;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
@@ -104,6 +105,11 @@ impl<Act, Upd> BufferedDownlink<Act, Upd> {
     /// Determine if the downlink is still running.
     pub fn is_running(&self) -> bool {
         !self.internal.task.is_complete()
+    }
+
+    /// Get a future that will complete when the downlink stops running.
+    pub fn await_stopped(&self) -> StoppedFuture {
+        self.internal.task.await_stopped()
     }
 }
 
