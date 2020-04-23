@@ -20,6 +20,7 @@ mod traits;
 // There has been some file contention when the test cases are in their own functions (grouped) and
 // so, for now, the cases are together.
 #[test]
+#[ignore]
 fn test_derive() {
     let t = TestCases::new();
 
