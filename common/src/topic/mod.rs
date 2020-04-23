@@ -42,9 +42,7 @@ pub enum TopicError {
 
 impl Display for TopicError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            _ => write!(f, "All receivers for the topic were dropped."),
-        }
+        write!(f, "All receivers for the topic were dropped.")
     }
 }
 
