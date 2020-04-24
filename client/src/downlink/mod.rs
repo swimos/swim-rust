@@ -172,7 +172,7 @@ impl Display for DownlinkError {
                 value, schema
             ),
             DownlinkError::MalformedMessage => {
-                write!(f, "A remove message did not have the expected shape.")
+                write!(f, "A message did not have the expected shape.")
             }
         }
     }
@@ -292,21 +292,21 @@ pub enum TransitionError {
 }
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
-trait StateMachine<S, M, A>: Sized {
+trait StateMachine<State, Message, Action>: Sized {
     /// Type of events that will be issued to the owner of the downlink.
     type Ev;
     /// Type of commands that will be sent out to the Warp connection.
     type Cmd;
 
     /// The initial value for the state.
-    fn init_state(&self) -> S;
+    fn init_state(&self) -> State;
 
     /// For an operation on the downlink, generate output messages.
     fn handle_operation(
         &self,
         downlink_state: &mut DownlinkState,
-        state: &mut S,
-        op: Operation<M, A>,
+        state: &mut State,
+        op: Operation<Message, Action>,
     ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError>;
 }
 
@@ -357,27 +357,39 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
 }
 
 /// This trait is for simple, stateful downlinks that follow the standard synchronization model.
-trait BasicStateMachine<S, M, A> {
+trait BasicStateMachine<State, Message, Action> {
     /// Type of events that will be issued to the owner of the downlink.
     type Ev;
     /// Type of commands that will be sent out to the Warp connection.
     type Cmd;
 
     /// The initial value of the state.
-    fn init(&self) -> S;
+    fn init(&self) -> State;
 
     /// Generate the initial event when the downlink enters the [`Synced`] state.
-    fn on_sync(&self, state: &S) -> Self::Ev;
+    fn on_sync(&self, state: &State) -> Self::Ev;
 
     /// Update the state with a message, received between [`Linked`] and [`Synced`'].
-    fn handle_message_unsynced(&self, state: &mut S, message: M) -> Option<DownlinkError>;
+    fn handle_message_unsynced(
+        &self,
+        state: &mut State,
+        message: Message,
+    ) -> Result<(), DownlinkError>;
 
     /// Update the state with a message when in the [`Synced`] state, potentially generating an
     /// event.
-    fn handle_message(&self, state: &mut S, message: M) -> Result<Option<Self::Ev>, DownlinkError>;
+    fn handle_message(
+        &self,
+        state: &mut State,
+        message: Message,
+    ) -> Result<Option<Self::Ev>, DownlinkError>;
 
     /// Handle a local action potentially generating an event and/or a command and/or an error.
-    fn handle_action(&self, state: &mut S, action: A) -> BasicResponse<Self::Ev, Self::Cmd>;
+    fn handle_action(
+        &self,
+        state: &mut State,
+        action: Action,
+    ) -> BasicResponse<Self::Ev, Self::Cmd>;
 }
 
 //Adapter to make a BasicStateMachine into a StateMachine.
@@ -422,10 +434,10 @@ where
                 }
                 Message::Action(msg) => match *state {
                     DownlinkState::Unlinked => Response::none(),
-                    DownlinkState::Linked => match self.handle_message_unsynced(data_state, msg) {
-                        Some(err) => return Err(err),
-                        _ => Response::none(),
-                    },
+                    DownlinkState::Linked => {
+                        self.handle_message_unsynced(data_state, msg)?;
+                        Response::none()
+                    }
                     DownlinkState::Synced => match self.handle_message(data_state, msg)? {
                         Some(ev) => Response::for_event(Event(ev, false)),
                         _ => Response::none(),

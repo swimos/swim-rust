@@ -72,19 +72,16 @@ impl TextSchema {
     pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
         Regex::new(string).map(TextSchema::Matches)
     }
+}
 
-    pub fn to_attr(&self) -> Attr {
+impl ToValue for TextSchema {
+    fn to_value(&self) -> Value {
         match self {
             TextSchema::NonEmpty => Attr::of("non_empty"),
             TextSchema::Exact(v) => Attr::of(("equal", v.clone())),
             TextSchema::Matches(r) => Attr::of(("matches", r.to_string())),
         }
-    }
-}
-
-impl ToValue for TextSchema {
-    fn to_value(&self) -> Value {
-        Value::of_attr(self.to_attr())
+        .into()
     }
 }
 
@@ -254,10 +251,12 @@ impl<S> FieldSpec<S> {
     }
 }
 
-impl<S: ToValue> FieldSpec<S> {
-    pub fn to_value(&self) -> Value {
-        let header = Value::from_vec(vec![("required", self.required), ("unique", self.unique)]);
-        let head_attr = Attr::of(("field", header));
+impl<S: ToValue> ToValue for FieldSpec<S> {
+    fn to_value(&self) -> Value {
+        let head_attr = Attr::with_items(
+            "field",
+            vec![("required", self.required), ("unique", self.unique)],
+        );
         let inner = self.schema.to_value();
         match inner {
             Value::Record(mut attrs, items) => {
@@ -738,66 +737,16 @@ impl ToValue for StandardSchema {
         match self {
             StandardSchema::OfKind(kind) => Value::of_attr(("kind", kind_to_str(*kind))),
             StandardSchema::Equal(v) => Value::of_attr(("equal", v.clone())),
-            StandardSchema::InRangeInt { min, max } => {
-                let mut slots = vec![];
-                if let Some((value, inclusive)) = min {
-                    let min = Value::from_vec(vec![
-                        Item::slot("value", *value),
-                        Item::slot("inclusive", *inclusive),
-                    ]);
-                    slots.push(Item::slot("min", min))
-                }
-                if let Some((value, inclusive)) = max {
-                    let max = Value::from_vec(vec![
-                        Item::slot("value", *value),
-                        Item::slot("inclusive", *inclusive),
-                    ]);
-                    slots.push(Item::slot("max", max))
-                }
-                Value::of_attr(("in_range_int", Value::record(slots)))
-            }
+            StandardSchema::InRangeInt { min, max } => range_to_value("in_range_int", *min, *max),
             StandardSchema::InRangeFloat { min, max } => {
-                let mut slots = vec![];
-                if let Some((value, inclusive)) = min {
-                    let min = Value::from_vec(vec![
-                        Item::slot("value", *value),
-                        Item::slot("inclusive", *inclusive),
-                    ]);
-                    slots.push(Item::slot("min", min))
-                }
-                if let Some((value, inclusive)) = max {
-                    let max = Value::from_vec(vec![
-                        Item::slot("value", *value),
-                        Item::slot("inclusive", *inclusive),
-                    ]);
-                    slots.push(Item::slot("max", max))
-                }
-                Value::of_attr(("in_range_float", Value::record(slots)))
+                range_to_value("in_range_float", *min, *max)
             }
             StandardSchema::NonNan => Value::of_attr("non_nan"),
             StandardSchema::Finite => Value::of_attr("finite"),
-            StandardSchema::Text(text_schema) => {
-                Value::of_attrs(vec![Attr::of("text"), text_schema.to_attr()])
-            }
-            StandardSchema::Not(s) => Value::of_attr(("not", s.to_value())),
-            StandardSchema::And(terms) => {
-                let rec = Value::from_vec(
-                    terms
-                        .iter()
-                        .map(|s| Item::ValueItem(s.to_value()))
-                        .collect(),
-                );
-                Value::of_attr(("and", rec))
-            }
-            StandardSchema::Or(terms) => {
-                let rec = Value::from_vec(
-                    terms
-                        .iter()
-                        .map(|s| Item::ValueItem(s.to_value()))
-                        .collect(),
-                );
-                Value::of_attr(("or", rec))
-            }
+            StandardSchema::Text(text_schema) => text_schema.to_value().prepend(Attr::of("text")),
+            StandardSchema::Not(s) => Attr::with_value("not", s.to_value()).into(),
+            StandardSchema::And(terms) => operator_sequence_to_value("and", terms.as_slice()),
+            StandardSchema::Or(terms) => operator_sequence_to_value("or", terms.as_slice()),
             StandardSchema::AllItems(s) => Value::of_attr(("all_items", s.to_value())),
             StandardSchema::NumAttrs(n) => {
                 Value::of_attr(("num_attrs", i64::try_from(*n).unwrap_or(i64::max_value())))
@@ -810,42 +759,29 @@ impl ToValue for StandardSchema {
                 required,
                 remainder,
             } => {
-                let header = Value::singleton(("required", *required));
-                Value::Record(
-                    vec![Attr::of(("head", header))],
-                    vec![
-                        Item::slot("schema", schema.to_value()),
-                        Item::slot("remainder", remainder.to_value()),
-                    ],
-                )
+                let tag = Attr::with_field("head", "required", *required);
+                Value::from_vec(vec![
+                    ("schema", schema.to_value()),
+                    ("remainder", remainder.to_value()),
+                ])
+                .prepend(tag)
             }
             StandardSchema::HasAttributes {
                 attributes,
                 exhaustive,
-            } => {
-                let header = Value::singleton(("exhaustive", *exhaustive));
-                let attr_schemas = attributes
-                    .iter()
-                    .map(|s| Item::ValueItem(s.to_value()))
-                    .collect();
-                Value::Record(vec![Attr::of(("has_attributes", header))], attr_schemas)
-            }
+            } => has_fields_to_value("has_attributes", attributes.as_slice(), *exhaustive),
             StandardSchema::HasSlots { slots, exhaustive } => {
-                let header = Value::singleton(("exhaustive", *exhaustive));
-                let slot_schemas = slots
-                    .iter()
-                    .map(|s| Item::ValueItem(s.to_value()))
-                    .collect();
-                Value::Record(vec![Attr::of(("has_slots", header))], slot_schemas)
+                has_fields_to_value("has_slots", slots.as_slice(), *exhaustive)
             }
             StandardSchema::Layout { items, exhaustive } => {
-                let header = Value::singleton(("exhaustive", *exhaustive));
-
                 let item_schemas = items
                     .iter()
                     .map(|(s, required)| layout_item(s, *required))
                     .collect();
-                Value::Record(vec![Attr::of(("layout", header))], item_schemas)
+                Value::Record(
+                    vec![Attr::with_field("layout", "exhaustive", *exhaustive)],
+                    item_schemas,
+                )
             }
             StandardSchema::Anything => Value::of_attr("anything"),
             StandardSchema::Nothing => Value::of_attr("nothing"),
@@ -853,17 +789,53 @@ impl ToValue for StandardSchema {
     }
 }
 
+// Create a Value from a "has attributes" or "has slots" schema.
+fn has_fields_to_value<F: ToValue>(tag: &str, fields: &[FieldSpec<F>], exhaustive: bool) -> Value {
+    Value::Record(
+        vec![Attr::with_field(tag, "exhaustive", exhaustive)],
+        fields
+            .iter()
+            .map(|fld| Item::ValueItem(fld.to_value()))
+            .collect(),
+    )
+}
+
+// Create a Value from one end-point of a range of numbers.
+fn endpoint_to_slot<N: Into<Value>>(tag: &str, value: N, inclusive: bool) -> Item {
+    let end_point = Value::from_vec(vec![
+        Item::slot("value", value),
+        Item::slot("inclusive", inclusive),
+    ]);
+    Item::slot(tag, end_point)
+}
+
+// Create a Value from a numeric range schema.
+fn range_to_value<N: Into<Value>>(
+    tag: &str,
+    min: Option<(N, bool)>,
+    max: Option<(N, bool)>,
+) -> Value {
+    let mut slots = vec![];
+    if let Some((value, inclusive)) = min {
+        slots.push(endpoint_to_slot("min", value, inclusive))
+    }
+    if let Some((value, inclusive)) = max {
+        slots.push(endpoint_to_slot("max", value, inclusive))
+    }
+    Attr::with_items(tag, slots).into()
+}
+
+// Create a Value from an "and" or "or" schema.
+fn operator_sequence_to_value(tag: &str, terms: &[StandardSchema]) -> Value {
+    Attr::with_items(tag, terms.iter().map(ToValue::to_value).collect()).into()
+}
+
+// Create a Value from a item specification from a layout schema.
 fn layout_item(schema: &ItemSchema, required: bool) -> Item {
-    let header = Value::from_vec(vec![("required", required)]);
-    let head_attr = Attr::of(("item", header));
-    let inner = schema.to_value();
-    Item::ValueItem(match inner {
-        Value::Record(mut attrs, items) => {
-            attrs.insert(0, head_attr);
-            Value::Record(attrs, items)
-        }
-        ow => Value::Record(vec![head_attr], vec![Item::ValueItem(ow)]),
-    })
+    schema
+        .to_value()
+        .prepend(Attr::with_field("item", "required", required))
+        .into()
 }
 
 fn as_i64(value: &Value) -> Option<i64> {

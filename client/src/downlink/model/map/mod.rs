@@ -717,39 +717,39 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
         &self,
         state: &mut MapModel,
         message: MapModification<Value>,
-    ) -> Option<DownlinkError> {
+    ) -> Result<(), DownlinkError> {
         match message {
             MapModification::Insert(k, v) => {
                 if self.key_schema.matches(&k) {
                     if self.value_schema.matches(&v) {
                         state.state.insert(k, Arc::new(v));
-                        None
+                        Ok(())
                     } else {
-                        Some(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
+                        Err(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
                     }
                 } else {
-                    Some(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
                 }
             }
             MapModification::Remove(k) => {
                 if self.key_schema.matches(&k) {
                     state.state.remove(&k);
-                    None
+                    Ok(())
                 } else {
-                    Some(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
                 }
             }
             MapModification::Take(n) => {
                 state.state = state.state.take(n);
-                None
+                Ok(())
             }
             MapModification::Skip(n) => {
                 state.state = state.state.skip(n);
-                None
+                Ok(())
             }
             MapModification::Clear => {
                 state.state.clear();
-                None
+                Ok(())
             }
         }
     }

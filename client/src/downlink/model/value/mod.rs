@@ -244,12 +244,12 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
         &self,
         state: &mut ValueModel,
         upd_value: Value,
-    ) -> Option<DownlinkError> {
+    ) -> Result<(), DownlinkError> {
         if self.schema.matches(&upd_value) {
             state.state = Arc::new(upd_value);
-            None
+            Ok(())
         } else {
-            Some(DownlinkError::SchemaViolation(
+            Err(DownlinkError::SchemaViolation(
                 upd_value,
                 self.schema.clone(),
             ))
