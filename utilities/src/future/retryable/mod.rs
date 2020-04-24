@@ -29,53 +29,44 @@ mod tests;
 pub mod strategy;
 
 #[pin_project]
-pub struct Retry<F: RetryableFuture> {
-    f: F,
+pub struct Retry<Retryable, Err, Fut> {
+    f: Retryable,
     #[pin]
-    state: RetryState<F>,
-    ctx: RetryContext<F::Err>,
+    state: RetryState<Fut, Err>,
+    ctx: RetryContext<Err>,
     strategy: RetryStrategy,
 }
 
 #[pin_project]
-enum RetryState<F>
-where
-    F: RetryableFuture,
-{
+enum RetryState<Fut, Err> {
     NotStarted,
-    Pending(#[pin] F::Future),
-    Retrying(F::Err),
+    Pending(#[pin] Fut),
+    Retrying(Err),
     Sleeping(time::Delay),
 }
 
 pub struct RetryContext<Err> {
     last_err: Option<Err>,
-    #[allow(dead_code)]
-    retries: usize,
 }
 
-impl<F> Retry<F>
-where
-    F: RetryableFuture,
-{
-    pub fn new(f: F, strategy: RetryStrategy) -> Retry<F> {
+impl<Retryable, Err, Fut> Retry<Retryable, Err, Fut> {
+    pub fn new(f: Retryable, strategy: RetryStrategy) -> Retry<Retryable, Err, Fut> {
         Retry {
             f,
             state: RetryState::NotStarted,
-            ctx: RetryContext {
-                last_err: None,
-                retries: 0,
-            },
+            ctx: RetryContext { last_err: None },
             strategy,
         }
     }
 }
 
-impl<F> Future for Retry<F>
+impl<Retryable, FutOk, FutErr, Fut> Future for Retry<Retryable, FutErr, Fut>
 where
-    F: RetryableFuture,
+    Retryable: RetryableFuture<Ok = FutOk, Err = FutErr, Future = Fut>,
+    Fut: Future<Output = Result<FutOk, FutErr>> + Send + Unpin,
+    FutErr: Clone,
 {
-    type Output = Result<F::Ok, F::Err>;
+    type Output = Fut::Output;
 
     #[project]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -101,7 +92,7 @@ where
                 },
                 RetryState::Retrying(e) => match this.strategy.next() {
                     Some(duration) => {
-                        this.ctx.last_err = Some(*e);
+                        this.ctx.last_err = Some(e.clone());
 
                         match duration {
                             Some(duration) => RetryState::Sleeping(time::delay_for(duration)),
@@ -109,7 +100,7 @@ where
                         }
                     }
                     None => {
-                        return Poll::Ready(Err(*e));
+                        return Poll::Ready(Err(e.clone()));
                     }
                 },
                 RetryState::Sleeping(timer) => {
@@ -123,12 +114,28 @@ where
     }
 }
 
-pub trait RetryableFuture: Unpin + Sized {
-    type Ok;
-    type Err: Copy;
-    type Future: Future<Output = Result<Self::Ok, Self::Err>> + Send + Unpin + 'static;
+pub trait FutureFactory<'f, Ok, Err>: Unpin {
+    type Future: Future<Output = Result<Ok, Err>> + Send + Unpin + 'f;
 
-    fn future(&mut self, ctx: &mut RetryContext<Self::Err>) -> Self::Future;
+    fn future(&'f mut self, ctx: &mut RetryContext<Err>) -> Self::Future;
+}
+
+pub trait RetryableFuture:
+    for<'f> FutureFactory<'f, <Self as RetryableFuture>::Ok, <Self as RetryableFuture>::Err> + Unpin
+{
+    type Ok;
+    type Err: Clone;
 
     fn retry(&mut self, ctx: &mut RetryContext<Self::Err>) -> bool;
+}
+
+impl<'f, F, Ok, Err> FutureFactory<'f, Ok, Err> for F
+where
+    F: Future<Output = Result<Ok, Err>> + Send + Unpin + Clone + 'f,
+{
+    type Future = Self;
+
+    fn future(&'f mut self, _ctx: &mut RetryContext<Err>) -> Self::Future {
+        self.clone()
+    }
 }
