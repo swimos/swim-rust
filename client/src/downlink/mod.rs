@@ -29,6 +29,7 @@ pub mod queue;
 pub mod raw;
 pub mod subscription;
 pub mod topic;
+pub mod typed;
 pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;

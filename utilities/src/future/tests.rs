@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{SwimFutureExt, SwimTryFutureExt, Transformation};
+use super::{SwimFutureExt, SwimStreamExt, SwimTryFutureExt, TransformMut};
 use futures::executor::block_on;
 use futures::future::{ready, Ready};
+use futures::stream::iter;
+use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
@@ -41,10 +43,10 @@ fn ok_into_err_case() {
 
 struct Plus(i32);
 
-impl Transformation<i32> for Plus {
+impl TransformMut<i32> for Plus {
     type Out = i32;
 
-    fn transform(self, input: i32) -> Self::Out {
+    fn transform(&mut self, input: i32) -> Self::Out {
         input + self.0
     }
 }
@@ -55,4 +57,34 @@ fn transform_future() {
     let plus = Plus(3);
     let n = block_on(fut.transform(plus));
     assert_that!(n, eq(5));
+}
+
+#[test]
+fn transform_stream() {
+    let inputs = iter((0..5).into_iter());
+
+    let outputs: Vec<i32> = block_on(inputs.transform(Plus(3)).collect::<Vec<i32>>());
+
+    assert_that!(outputs, eq(vec![3, 4, 5, 6, 7]));
+}
+
+struct PlusIfNonNeg(i32);
+
+impl TransformMut<i32> for PlusIfNonNeg {
+    type Out = Result<i32, ()>;
+
+    fn transform(&mut self, input: i32) -> Self::Out {
+        if input >= 0 {
+            Ok(input + self.0)
+        } else {
+            Err(())
+        }
+    }
+}
+
+#[test]
+fn until_failure() {
+    let inputs = iter(vec![0, 1, 2, -3, 4].into_iter());
+    let outputs: Vec<i32> = block_on(inputs.until_failure(PlusIfNonNeg(3)).collect::<Vec<i32>>());
+    assert_eq!(outputs, vec![3, 4, 5]);
 }
