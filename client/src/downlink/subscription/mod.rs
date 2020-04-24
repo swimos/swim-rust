@@ -331,6 +331,7 @@ where
         (dl, rec)
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn run<Req>(mut self, requests: Req)
     where
         Req: Stream<Item = DownlinkRequest>,
