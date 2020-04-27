@@ -282,9 +282,12 @@ where
         Ok((dl, rec))
     }
 
-    async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
+    async fn create_new_map_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<(MapDownlink, MapReceiver)> {
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.router.connection_for(&path).await.unwrap();
+        let (sink, incoming) = self.router.connection_for(&path).await?;
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
@@ -339,7 +342,7 @@ where
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Map, path)),
         );
-        (dl, rec)
+        Ok((dl, rec))
     }
 
     #[allow(clippy::cognitive_complexity)]
@@ -405,13 +408,13 @@ where
                                         Ok(rec) => Ok((dl_clone, rec)),
                                         Err(_) => {
                                             self.map_downlinks.remove(&path);
-                                            Ok(self.create_new_map_downlink(path.clone()).await)
+                                            Ok(self.create_new_map_downlink(path.clone()).await?)
                                         }
                                     }
                                 }
                                 _ => {
                                     self.map_downlinks.remove(&path);
-                                    Ok(self.create_new_map_downlink(path.clone()).await)
+                                    Ok(self.create_new_map_downlink(path.clone()).await?)
                                 }
                             }
                         }
@@ -420,7 +423,7 @@ where
                                 DownlinkKind::Map,
                                 DownlinkKind::Value,
                             )),
-                            _ => Ok(self.create_new_map_downlink(path.clone()).await),
+                            _ => Ok(self.create_new_map_downlink(path.clone()).await?),
                         },
                     };
                     let _ = map_req.send(dl);
