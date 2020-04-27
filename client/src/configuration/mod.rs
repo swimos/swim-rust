@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod router;
+
 pub mod downlink {
+    use crate::configuration::router::RouterParams;
     use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
     use std::fmt::{Display, Formatter};
@@ -57,6 +60,9 @@ pub mod downlink {
 
         /// Get the global parameters for any downlink.
         fn client_params(&self) -> ClientParams;
+
+        /// Get the router parameters
+        fn router_params(&self) -> RouterParams;
     }
 
     /// Multiplexing strategy for the topic of events produced by a downlink.
@@ -178,16 +184,22 @@ pub mod downlink {
         default: DownlinkParams,
         by_host: HashMap<String, DownlinkParams>,
         by_lane: HashMap<AbsolutePath, DownlinkParams>,
+        router_params: RouterParams,
     }
 
     impl ConfigHierarchy {
         /// Create a new configuration store with just a default.
-        pub fn new(client_params: ClientParams, default: DownlinkParams) -> ConfigHierarchy {
+        pub fn new(
+            client_params: ClientParams,
+            default: DownlinkParams,
+            router_params: RouterParams,
+        ) -> ConfigHierarchy {
             ConfigHierarchy {
                 client_params,
                 default,
                 by_host: HashMap::new(),
                 by_lane: HashMap::new(),
+                router_params,
             }
         }
 
@@ -223,6 +235,10 @@ pub mod downlink {
         fn client_params(&self) -> ClientParams {
             self.client_params
         }
+
+        fn router_params(&self) -> RouterParams {
+            self.router_params
+        }
     }
 
     impl<'a> Config for Box<dyn Config + 'a> {
@@ -232,6 +248,10 @@ pub mod downlink {
 
         fn client_params(&self) -> ClientParams {
             (**self).client_params()
+        }
+
+        fn router_params(&self) -> RouterParams {
+            (**self).router_params()
         }
     }
 }

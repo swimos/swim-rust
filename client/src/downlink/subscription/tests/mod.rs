@@ -28,7 +28,7 @@ fn default_config() -> ConfigHierarchy {
     let timeout = Duration::from_secs(60000);
     let default_params =
         DownlinkParams::new_queue(BackpressureMode::Propagate, 5, timeout, 5).unwrap();
-    ConfigHierarchy::new(client_params, default_params)
+    ConfigHierarchy::new(client_params, default_params, Default::default())
 }
 
 // Configuration overridden for a specific host.

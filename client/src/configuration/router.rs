@@ -16,9 +16,8 @@ use std::num::NonZeroUsize;
 
 use crate::router::outgoing::retry::RetryStrategy;
 
-// TODO: This should be moved up to the `configuration` module. Or the 'configuration' module should pull the various configurations together from modules
-#[derive(Clone, Copy)]
-pub struct RouterConfig {
+#[derive(Clone, Copy, Debug)]
+pub struct RouterParams {
     retry_strategy: RetryStrategy,
     /// The maximum amount of time (in seconds) a connection can be inactive for before it will be culled.
     idle_timeout: NonZeroUsize,
@@ -27,9 +26,9 @@ pub struct RouterConfig {
     buffer_size: NonZeroUsize,
 }
 
-impl Default for RouterConfig {
+impl Default for RouterParams {
     fn default() -> Self {
-        RouterConfig {
+        RouterParams {
             retry_strategy: Default::default(),
             idle_timeout: NonZeroUsize::new(5).unwrap(),
             conn_reaper_frequency: NonZeroUsize::new(5).unwrap(),
@@ -38,7 +37,7 @@ impl Default for RouterConfig {
     }
 }
 
-impl RouterConfig {
+impl RouterParams {
     pub fn buffer_size(&self) -> NonZeroUsize {
         self.buffer_size
     }
@@ -56,16 +55,16 @@ impl RouterConfig {
     }
 }
 
-pub struct RouterConfigBuilder {
+pub struct RouterParamBuilder {
     retry_strategy: Option<RetryStrategy>,
     idle_timeout: Option<usize>,
     buffer_size: Option<usize>,
     conn_reaper_frequency: Option<usize>,
 }
 
-impl Default for RouterConfigBuilder {
+impl Default for RouterParamBuilder {
     fn default() -> Self {
-        RouterConfigBuilder {
+        RouterParamBuilder {
             retry_strategy: None,
             idle_timeout: None,
             buffer_size: None,
@@ -74,8 +73,8 @@ impl Default for RouterConfigBuilder {
     }
 }
 
-impl RouterConfigBuilder {
-    pub fn build(self) -> RouterConfig {
+impl RouterParamBuilder {
+    pub fn build(self) -> RouterParams {
         let build_usize = |u: Option<usize>, m: &str| match u {
             Some(u) => match NonZeroUsize::new(u) {
                 Some(u) => u,
@@ -84,7 +83,7 @@ impl RouterConfigBuilder {
             None => panic!("{} must be provided", m.to_owned()),
         };
 
-        RouterConfig {
+        RouterParams {
             retry_strategy: self
                 .retry_strategy
                 .unwrap_or_else(|| panic!("Router retry strategy must be provided")),
@@ -96,12 +95,12 @@ impl RouterConfigBuilder {
         }
     }
 
-    pub fn with_buffer_size(mut self, buffer_size: usize) -> RouterConfigBuilder {
+    pub fn with_buffer_size(mut self, buffer_size: usize) -> RouterParamBuilder {
         self.buffer_size = Some(buffer_size);
         self
     }
 
-    pub fn with_idle_timeout(mut self, idle_timeout: usize) -> RouterConfigBuilder {
+    pub fn with_idle_timeout(mut self, idle_timeout: usize) -> RouterParamBuilder {
         self.idle_timeout = Some(idle_timeout);
         self
     }
@@ -109,12 +108,12 @@ impl RouterConfigBuilder {
     pub fn with_conn_reaper_frequency(
         mut self,
         conn_reaper_frequency: usize,
-    ) -> RouterConfigBuilder {
+    ) -> RouterParamBuilder {
         self.conn_reaper_frequency = Some(conn_reaper_frequency);
         self
     }
 
-    pub fn with_retry_stategy(mut self, retry_strategy: RetryStrategy) -> RouterConfigBuilder {
+    pub fn with_retry_stategy(mut self, retry_strategy: RetryStrategy) -> RouterParamBuilder {
         self.retry_strategy = Some(retry_strategy);
         self
     }
