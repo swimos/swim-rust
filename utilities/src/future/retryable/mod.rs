@@ -44,7 +44,6 @@ where
 {
     NotStarted,
     Pending(#[pin] F::Future),
-    Retrying(F::Err),
     Sleeping(time::Delay),
 }
 
@@ -91,26 +90,23 @@ where
                     Ok(r) => {
                         return Poll::Ready(Ok(r));
                     }
-                    Err(e) => {
-                        if this.f.retry(this.ctx) {
-                            RetryState::Retrying(e)
-                        } else {
-                            return Poll::Ready(Err(e));
-                        }
-                    }
-                },
-                RetryState::Retrying(e) => match this.strategy.next() {
-                    Some(duration) => {
-                        this.ctx.last_err = Some(*e);
+                    Err(e) => match this.strategy.next() {
+                        Some(duration) => {
+                            this.ctx.last_err = Some(e);
 
-                        match duration {
-                            Some(duration) => RetryState::Sleeping(time::delay_for(duration)),
-                            None => RetryState::NotStarted,
+                            if this.f.retry(this.ctx) {
+                                match duration {
+                                    Some(duration) => {
+                                        RetryState::Sleeping(time::delay_for(duration))
+                                    }
+                                    None => RetryState::NotStarted,
+                                }
+                            } else {
+                                return Poll::Ready(Err(e));
+                            }
                         }
-                    }
-                    None => {
-                        return Poll::Ready(Err(*e));
-                    }
+                        None => return Poll::Ready(Err(e)),
+                    },
                 },
                 RetryState::Sleeping(timer) => {
                     ready!(timer.poll_unpin(cx));
@@ -123,12 +119,21 @@ where
     }
 }
 
-pub trait RetryableFuture: Unpin + Sized {
+/// A future that can be retried with a [`RetryStrategy`].
+pub trait RetryableFuture {
+    /// The type returned if the future completes successfully.
     type Ok;
+    /// The type returned if the future completes with an error.
     type Err: Copy;
     type Future: Future<Output = Result<Self::Ok, Self::Err>> + Send + Unpin + 'static;
 
+    /// Request a new future to be retried. The [`RetryContext`] is provided so that futures can be
+    /// created against what has previously happened. Such as trying a different request strategy
+    /// based on the last error.
     fn future(&mut self, ctx: &mut RetryContext<Self::Err>) -> Self::Future;
 
+    /// Determine whether or not to attempt another retry based on the [`RetryContext`].
+    /// Some errors may be transient and recoverable while others are permanent and not worth
+    /// attempting again. This is called while the [`RetryStrategy`] has retries remaining.
     fn retry(&mut self, ctx: &mut RetryContext<Self::Err>) -> bool;
 }
