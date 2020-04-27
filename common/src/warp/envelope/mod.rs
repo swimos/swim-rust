@@ -108,7 +108,7 @@ impl Envelope {
         match self {
             Envelope::LinkRequest(link_addressed)
             | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => link_addressed.prio.clone(),
+            | Envelope::LinkedResponse(link_addressed) => link_addressed.prio,
             _ => None,
         }
     }
@@ -117,7 +117,7 @@ impl Envelope {
         match self {
             Envelope::LinkRequest(link_addressed)
             | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => link_addressed.rate.clone(),
+            | Envelope::LinkedResponse(link_addressed) => link_addressed.rate,
             _ => None,
         }
     }
