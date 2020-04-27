@@ -5,3 +5,4 @@ error[E0277]: the trait bound `u32: form::Form` is not satisfied
    | ^^^^^^^ the trait `form::Form` is not implemented for `u32`
    |
    = help: see issue #48214
+   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)

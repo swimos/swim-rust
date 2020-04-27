@@ -37,9 +37,11 @@ use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
 use crate::router::command::{CommandSender, CommandTask};
 use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
-use crate::router::incoming::{IncomingSubscriberReqSender, IncomingTask, IncomingTaskReqSender};
+use crate::router::incoming::{
+    IncomingRequest, IncomingSubscriberReqSender, IncomingTask, IncomingTaskReqSender,
+};
 use crate::router::outgoing::retry::RetryStrategy;
-use crate::router::outgoing::{OutgoingTask, OutgoingTaskReqSender};
+use crate::router::outgoing::{OutgoingRequest, OutgoingTask, OutgoingTaskReqSender};
 
 use tokio_tungstenite::tungstenite::protocol::Message;
 
@@ -168,28 +170,36 @@ impl SwimRouter {
         message: String,
     ) -> Result<(), RoutingError> {
         let AbsolutePath { host, node, lane } = target;
-        let host_url = url::Url::parse(host).unwrap();
 
         self.command_tx
-            .try_send(((host_url, node.clone(), lane.clone()), message))
+            .try_send((
+                AbsolutePath {
+                    host: host.clone(),
+                    node: node.clone(),
+                    lane: lane.clone(),
+                },
+                message,
+            ))
             .map_err(|_| RoutingError::ConnectionError)?;
 
         Ok(())
     }
 }
 
+type Host = String;
+
 pub enum ConnectionResponse {
-    Success((url::Url, mpsc::Receiver<Message>)),
-    Failure(url::Url),
+    Success((Host, mpsc::Receiver<Message>)),
+    Failure(Host),
 }
 
 pub type ConnReqSender = mpsc::Sender<(
-    url::Url,
+    Host,
     oneshot::Sender<Result<ConnectionSender, RoutingError>>,
     bool, // Whether or not to recreate the connection
 )>;
 type ConnReqReceiver = mpsc::Receiver<(
-    url::Url,
+    Host,
     oneshot::Sender<Result<ConnectionSender, RoutingError>>,
     bool, // Whether or not to recreate the connection
 )>;
@@ -239,14 +249,16 @@ impl ConnectionRequestTask {
             recreate,
         } = rx.next().await.ok_or(RoutingError::ConnectionError)?
         {
+            let host_url = url::Url::parse(&host).map_err(|_| RoutingError::ConnectionError)?;
+
             let connection = if recreate {
                 connection_pool
-                    .recreate_connection(host.clone())
+                    .recreate_connection(host_url.clone())
                     .map_err(|_| RoutingError::ConnectionError)?
                     .await
             } else {
                 connection_pool
-                    .request_connection(host.clone())
+                    .request_connection(host_url.clone())
                     .map_err(|_| RoutingError::ConnectionError)?
                     .await
             }
@@ -293,7 +305,7 @@ impl ConnectionRequestTask {
 
 enum ConnectionRequestType {
     NewConnection {
-        host: url::Url,
+        host: Host,
         connection_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
         recreate: bool,
     },
@@ -322,13 +334,10 @@ pub enum RouterEvent {
     Stopping,
 }
 
-type SwimRouterConnection = Result<
-    (
-        SenderErrInto<mpsc::Sender<Envelope>, RoutingError>,
-        mpsc::Receiver<RouterEvent>,
-    ),
-    RoutingError,
->;
+type SwimRouterConnection = (
+    SenderErrInto<mpsc::Sender<Envelope>, RoutingError>,
+    mpsc::Receiver<RouterEvent>,
+);
 
 pub struct ConnectionFuture {
     outgoing_rx: oneshot::Receiver<mpsc::Sender<Envelope>>,
@@ -348,7 +357,7 @@ impl ConnectionFuture {
 }
 
 impl Future for ConnectionFuture {
-    type Output = SwimRouterConnection;
+    type Output = Result<SwimRouterConnection, RoutingError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let ConnectionFuture {
@@ -367,10 +376,7 @@ impl Future for ConnectionFuture {
 }
 
 type SwimRouterConnectionFut = Sequenced<
-    Sequenced<
-        RequestFuture<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>,
-        RequestFuture<(url::Url, String, String, mpsc::Sender<RouterEvent>)>,
-    >,
+    Sequenced<RequestFuture<OutgoingRequest>, RequestFuture<(Host, IncomingRequest)>>,
     ConnectionFuture,
 >;
 
@@ -384,18 +390,14 @@ pub fn connect(
     let (incoming_tx, incoming_rx) = mpsc::channel(buffer_size);
 
     let AbsolutePath { host, node, lane } = target;
-    let host_url = url::Url::parse(&host).unwrap();
 
-    let outgoing_request =
-        RequestFuture::new(outgoing_task_request_tx, (host_url.clone(), outgoing_tx));
+    let outgoing_request = RequestFuture::new(
+        outgoing_task_request_tx,
+        OutgoingRequest::new(host.clone(), outgoing_tx),
+    );
     let incoming_request = RequestFuture::new(
         incoming_subscriber_request_tx,
-        (
-            host_url,
-            (*node).to_string(),
-            (*lane).to_string(),
-            incoming_tx,
-        ),
+        (host, IncomingRequest::new(node, lane, incoming_tx)),
     );
 
     let request_futures = Sequenced::new(outgoing_request, incoming_request);
