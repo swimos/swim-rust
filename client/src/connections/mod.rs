@@ -88,7 +88,10 @@ impl ConnectionPool {
         let task = PoolTask::new(connection_request_rx, connection_factory, buffer_size);
 
         // TODO: Add configuration for connections
-        let accept_connection_requests_future = Abortable::new(task.run(5, 10), abort_registration);
+        let accept_connection_requests_future = Abortable::new(
+            task.run(Duration::from_secs(5), Duration::from_secs(10)),
+            abort_registration,
+        );
 
         let connection_requests_handler = tokio::task::spawn(accept_connection_requests_future);
 
@@ -180,7 +183,11 @@ where
         }
     }
 
-    async fn run(self, reaper_frequency: u64, conn_timeout: u64) -> Result<(), ConnectionError> {
+    async fn run(
+        self,
+        reaper_frequency: Duration,
+        conn_timeout: Duration,
+    ) -> Result<(), ConnectionError> {
         let PoolTask {
             rx,
             mut connection_factory,
@@ -188,8 +195,7 @@ where
         } = self;
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
 
-        let timeout = std::time::Duration::from_secs(conn_timeout);
-        let mut prune_timer = tokio::time::delay_for(Duration::from_secs(reaper_frequency)).fuse();
+        let mut prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
         let mut fused_requests = rx.fuse();
 
         loop {
@@ -204,9 +210,8 @@ where
 
             match either {
                 Some(Either::Left(_)) => {
-                    connections.retain(|_, v| v.last_accessed.elapsed() < timeout);
-                    prune_timer =
-                        tokio::time::delay_for(Duration::from_secs(reaper_frequency)).fuse();
+                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
+                    prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
                 }
                 Some(Either::Right(req)) => {
                     let ConnectionRequest {
