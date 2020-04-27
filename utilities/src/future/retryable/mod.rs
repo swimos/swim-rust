@@ -92,7 +92,7 @@ where
                     }
                     Err(e) => match this.strategy.next() {
                         Some(duration) => {
-                            this.ctx.last_err = Some(e);
+                            this.ctx.last_err = Some(e.clone());
 
                             if this.f.retry(this.ctx) {
                                 match duration {
@@ -102,10 +102,10 @@ where
                                     None => RetryState::NotStarted,
                                 }
                             } else {
-                                return Poll::Ready(Err(e));
+                                return Poll::Ready(Err(e.clone()));
                             }
                         }
-                        None => return Poll::Ready(Err(e)),
+                        None => return Poll::Ready(Err(e.clone())),
                     },
                 },
                 RetryState::Sleeping(timer) => {
@@ -124,7 +124,7 @@ pub trait RetryableFuture {
     /// The type returned if the future completes successfully.
     type Ok;
     /// The type returned if the future completes with an error.
-    type Err: Copy;
+    type Err: Clone;
     type Future: Future<Output = Result<Self::Ok, Self::Err>> + Send + Unpin + 'static;
 
     /// Request a new future to be retried. The [`RetryContext`] is provided so that futures can be
@@ -136,4 +136,23 @@ pub trait RetryableFuture {
     /// Some errors may be transient and recoverable while others are permanent and not worth
     /// attempting again. This is called while the [`RetryStrategy`] has retries remaining.
     fn retry(&mut self, ctx: &mut RetryContext<Self::Err>) -> bool;
+}
+
+impl<X, O, E> RetryableFuture for X
+where
+    X: Future<Output = Result<O, E>> + Send + Unpin + 'static,
+    E: Clone,
+    Self: Clone,
+{
+    type Ok = O;
+    type Err = E;
+    type Future = Self;
+
+    fn future(&mut self, _ctx: &mut RetryContext<Self::Err>) -> Self::Future {
+        self.clone()
+    }
+
+    fn retry(&mut self, _ctx: &mut RetryContext<Self::Err>) -> bool {
+        true
+    }
 }
