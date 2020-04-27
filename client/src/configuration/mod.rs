@@ -60,9 +60,6 @@ pub mod downlink {
 
         /// Get the global parameters for any downlink.
         fn client_params(&self) -> ClientParams;
-
-        /// Get the router parameters
-        fn router_params(&self) -> RouterParams;
     }
 
     /// Multiplexing strategy for the topic of events produced by a downlink.
@@ -160,16 +157,22 @@ pub mod downlink {
     pub struct ClientParams {
         /// Buffer size for servicing requests for new downlinks.
         pub dl_req_buffer_size: NonZeroUsize,
+
+        pub router_params: RouterParams,
     }
 
     const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
     const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
     impl ClientParams {
-        pub fn new(dl_req_buffer_size: usize) -> Result<ClientParams, String> {
+        pub fn new(
+            dl_req_buffer_size: usize,
+            router_params: RouterParams,
+        ) -> Result<ClientParams, String> {
             match NonZeroUsize::new(dl_req_buffer_size) {
                 Some(nz) => Ok(ClientParams {
                     dl_req_buffer_size: nz,
+                    router_params,
                 }),
                 _ => Err(BAD_BUFFER_SIZE.to_string()),
             }
@@ -184,22 +187,16 @@ pub mod downlink {
         default: DownlinkParams,
         by_host: HashMap<String, DownlinkParams>,
         by_lane: HashMap<AbsolutePath, DownlinkParams>,
-        router_params: RouterParams,
     }
 
     impl ConfigHierarchy {
         /// Create a new configuration store with just a default.
-        pub fn new(
-            client_params: ClientParams,
-            default: DownlinkParams,
-            router_params: RouterParams,
-        ) -> ConfigHierarchy {
+        pub fn new(client_params: ClientParams, default: DownlinkParams) -> ConfigHierarchy {
             ConfigHierarchy {
                 client_params,
                 default,
                 by_host: HashMap::new(),
                 by_lane: HashMap::new(),
-                router_params,
             }
         }
 
@@ -235,10 +232,6 @@ pub mod downlink {
         fn client_params(&self) -> ClientParams {
             self.client_params
         }
-
-        fn router_params(&self) -> RouterParams {
-            self.router_params
-        }
     }
 
     impl<'a> Config for Box<dyn Config + 'a> {
@@ -248,10 +241,6 @@ pub mod downlink {
 
         fn client_params(&self) -> ClientParams {
             (**self).client_params()
-        }
-
-        fn router_params(&self) -> RouterParams {
-            (**self).router_params()
         }
     }
 }

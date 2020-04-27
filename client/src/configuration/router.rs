@@ -16,7 +16,7 @@ use std::num::NonZeroUsize;
 
 use crate::router::outgoing::retry::RetryStrategy;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
     retry_strategy: RetryStrategy,
     /// The maximum amount of time (in seconds) a connection can be inactive for before it will be culled.
