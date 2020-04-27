@@ -233,7 +233,7 @@ where
         path: AbsolutePath,
     ) -> (ValueDownlink, ValueReceiver) {
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.router.connection_for(&path).await;
+        let (sink, incoming) = self.router.connection_for(&path).await.unwrap();
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
@@ -273,7 +273,7 @@ where
 
     async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.router.connection_for(&path).await;
+        let (sink, incoming) = self.router.connection_for(&path).await.unwrap();
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {

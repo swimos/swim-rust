@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::router::{Router, RouterEvent, RoutingError};
+use common::request::request_future::RequestError;
 use common::sink::item::drop_all::{drop_all, DropAll};
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
@@ -26,11 +27,12 @@ impl Router for StubRouter {
     type ConnectionStream = Pending<RouterEvent>;
     type ConnectionSink = DropAll<Envelope, RoutingError>;
     type GeneralSink = DropAll<(String, Envelope), RoutingError>;
-    type ConnectionFut = Ready<(Self::ConnectionSink, Self::ConnectionStream)>;
+    type ConnectionFut =
+        Ready<Result<(Self::ConnectionSink, Self::ConnectionStream), RequestError>>;
     type GeneralFut = Ready<Self::GeneralSink>;
 
     fn connection_for(&mut self, _target: &AbsolutePath) -> Self::ConnectionFut {
-        ready((drop_all(), pending()))
+        ready(Ok((drop_all(), pending())))
     }
 
     fn general_sink(&mut self) -> Self::GeneralFut {
