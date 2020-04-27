@@ -102,10 +102,10 @@ where
                                     None => RetryState::NotStarted,
                                 }
                             } else {
-                                return Poll::Ready(Err(e.clone()));
+                                return Poll::Ready(Err(e));
                             }
                         }
-                        None => return Poll::Ready(Err(e.clone())),
+                        None => return Poll::Ready(Err(e)),
                     },
                 },
                 RetryState::Sleeping(timer) => {
