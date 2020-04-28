@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
@@ -196,23 +197,28 @@ where
     }
 }
 
-pub(in crate::downlink) fn make_downlink<M, A, State, Updates, Commands>(
-    init: State,
+pub(in crate::downlink) fn make_downlink<M, A, State, Machine, Updates, Commands>(
+    machine: Machine,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
-) -> (BufferedDownlink<A, State::Ev>, BufferedReceiver<State::Ev>)
+    on_invalid: OnInvalidMessage,
+) -> (
+    BufferedDownlink<A, Machine::Ev>,
+    BufferedReceiver<Machine::Ev>,
+)
 where
     M: Send + 'static,
     A: Send + 'static,
-    State: StateMachine<M, A> + Send + 'static,
-    State::Ev: Clone + Send + Sync + 'static,
-    State::Cmd: Send + 'static,
+    State: Send + 'static,
+    Machine: StateMachine<State, M, A> + Send + 'static,
+    Machine::Ev: Clone + Send + Sync + 'static,
+    Machine::Cmd: Send + 'static,
     Updates: Stream<Item = Message<M>> + Send + 'static,
-    Commands: ItemSender<Command<State::Cmd>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
-    let fac = move |event_tx: BroadcastSender<Event<State::Ev>>| {
+    let fac = move |event_tx: BroadcastSender<Event<Machine::Ev>>| {
         let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
 
         let event_sink = event_tx.map_err_into();
@@ -222,9 +228,19 @@ where
         let completed = Arc::new(AtomicBool::new(false));
 
         // The task that maintains the internal state of the lane.
-        let task = DownlinkTask::new(init, cmd_sink, event_sink, completed.clone(), stopped_tx);
+        let task = DownlinkTask::new(
+            cmd_sink,
+            event_sink,
+            completed.clone(),
+            stopped_tx,
+            on_invalid,
+        );
 
-        let lane_task = task.run(raw::make_operation_stream(update_stream), act_rx.fuse());
+        let lane_task = task.run(
+            raw::make_operation_stream(update_stream),
+            act_rx.fuse(),
+            machine,
+        );
 
         let join_handle = tokio::task::spawn(lane_task);
 

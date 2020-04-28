@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use super::*;
-use crate::configuration::downlink::{ClientParams, ConfigHierarchy, DownlinkParams};
+use crate::configuration::downlink::{
+    ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+};
 use crate::downlink::any::TopicKind;
 use common::warp::path::AbsolutePath;
 use hamcrest2::assert_that;
@@ -26,16 +28,27 @@ mod harness;
 fn default_config() -> ConfigHierarchy {
     let client_params = ClientParams::new(2).unwrap();
     let timeout = Duration::from_secs(60000);
-    let default_params =
-        DownlinkParams::new_queue(BackpressureMode::Propagate, 5, timeout, 5).unwrap();
+    let default_params = DownlinkParams::new_queue(
+        BackpressureMode::Propagate,
+        5,
+        timeout,
+        5,
+        OnInvalidMessage::Terminate,
+    )
+    .unwrap();
     ConfigHierarchy::new(client_params, default_params)
 }
 
 // Configuration overridden for a specific host.
 fn per_host_config() -> ConfigHierarchy {
     let timeout = Duration::from_secs(60000);
-    let special_params =
-        DownlinkParams::new_dropping(BackpressureMode::Propagate, timeout, 5).unwrap();
+    let special_params = DownlinkParams::new_dropping(
+        BackpressureMode::Propagate,
+        timeout,
+        5,
+        OnInvalidMessage::Terminate,
+    )
+    .unwrap();
     let mut conf = default_config();
     conf.for_host("host2", special_params);
     conf
@@ -44,8 +57,14 @@ fn per_host_config() -> ConfigHierarchy {
 // Configuration overridden for a specific lane.
 fn per_lane_config() -> ConfigHierarchy {
     let timeout = Duration::from_secs(60000);
-    let special_params =
-        DownlinkParams::new_buffered(BackpressureMode::Propagate, 5, timeout, 5).unwrap();
+    let special_params = DownlinkParams::new_buffered(
+        BackpressureMode::Propagate,
+        5,
+        timeout,
+        5,
+        OnInvalidMessage::Terminate,
+    )
+    .unwrap();
     let mut conf = per_host_config();
     conf.for_lane(
         &AbsolutePath::new("host2", "my_agent", "my_lane"),

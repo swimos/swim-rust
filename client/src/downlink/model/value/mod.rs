@@ -18,14 +18,17 @@ use std::sync::Arc;
 use futures::Stream;
 use tokio::sync::mpsc;
 
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
-    create_downlink, BasicResponse, BasicStateMachine, Command, Event, Message, TransitionError,
+    create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message,
+    TransitionError,
 };
 use crate::router::RoutingError;
+use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::ItemSender;
@@ -97,29 +100,34 @@ impl Action {
 /// Create a raw value downlink.
 pub fn create_raw_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
     Updates: Stream<Item = Message<Value>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     create_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
+        on_invalid,
     )
 }
 
 /// Create a value downlink with an queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     QueueDownlink<Action, SharedValue>,
     QueueReceiver<SharedValue>,
@@ -129,20 +137,23 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 
 /// Create a value downlink with a dropping multiplexing topic.
 pub fn create_dropping_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     DroppingDownlink<Action, SharedValue>,
     DroppingReceiver<SharedValue>,
@@ -152,20 +163,23 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
+        on_invalid,
     )
 }
 
 /// Create a value downlink with an buffering multiplexing topic.
 pub fn create_buffered_downlink<Updates, Commands>(
     init: Value,
+    schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     BufferedDownlink<Action, SharedValue>,
     BufferedReceiver<SharedValue>,
@@ -175,11 +189,12 @@ where
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        ValueModel::new(init),
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 
@@ -195,41 +210,90 @@ impl ValueModel {
     }
 }
 
-impl BasicStateMachine<Value, Action> for ValueModel {
+pub struct ValueStateMachine {
+    init: Value,
+    schema: StandardSchema,
+}
+
+impl ValueStateMachine {
+    pub fn unvalidated(init: Value) -> Self {
+        ValueStateMachine::new(init, StandardSchema::Anything)
+    }
+
+    pub fn new(init: Value, schema: StandardSchema) -> Self {
+        if !schema.matches(&init) {
+            panic!("Initial value {} inconsistent with schema {}", init, schema)
+        }
+        ValueStateMachine { init, schema }
+    }
+}
+
+impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
     type Ev = SharedValue;
     type Cmd = SharedValue;
 
-    fn on_sync(&self) -> Self::Ev {
-        self.state.clone()
+    fn init(&self) -> ValueModel {
+        ValueModel::new(self.init.clone())
     }
 
-    fn handle_message_unsynced(&mut self, upd_value: Value) {
-        self.state = Arc::new(upd_value);
+    fn on_sync(&self, state: &ValueModel) -> Self::Ev {
+        state.state.clone()
     }
 
-    fn handle_message(&mut self, upd_value: Value) -> Option<Self::Ev> {
-        self.state = Arc::new(upd_value);
-        Some(self.state.clone())
+    fn handle_message_unsynced(
+        &self,
+        state: &mut ValueModel,
+        upd_value: Value,
+    ) -> Result<(), DownlinkError> {
+        if self.schema.matches(&upd_value) {
+            state.state = Arc::new(upd_value);
+            Ok(())
+        } else {
+            Err(DownlinkError::SchemaViolation(
+                upd_value,
+                self.schema.clone(),
+            ))
+        }
     }
 
-    fn handle_action(&mut self, action: Action) -> BasicResponse<Self::Ev, Self::Cmd> {
+    fn handle_message(
+        &self,
+        state: &mut ValueModel,
+        upd_value: Value,
+    ) -> Result<Option<Self::Ev>, DownlinkError> {
+        if self.schema.matches(&upd_value) {
+            state.state = Arc::new(upd_value);
+            Ok(Some(state.state.clone()))
+        } else {
+            Err(DownlinkError::SchemaViolation(
+                upd_value,
+                self.schema.clone(),
+            ))
+        }
+    }
+
+    fn handle_action(
+        &self,
+        state: &mut ValueModel,
+        action: Action,
+    ) -> BasicResponse<Self::Ev, Self::Cmd> {
         match action {
-            Action::Get(resp) => match resp.send(self.state.clone()) {
+            Action::Get(resp) => match resp.send(state.state.clone()) {
                 Err(_) => BasicResponse::none().with_error(TransitionError::ReceiverDropped),
                 _ => BasicResponse::none(),
             },
             Action::Set(set_value, maybe_resp) => {
-                self.state = Arc::new(set_value);
-                let resp = BasicResponse::of(self.state.clone(), self.state.clone());
+                state.state = Arc::new(set_value);
+                let resp = BasicResponse::of(state.state.clone(), state.state.clone());
                 match maybe_resp.and_then(|req| req.send(()).err()) {
                     Some(_) => resp.with_error(TransitionError::ReceiverDropped),
                     _ => resp,
                 }
             }
             Action::Update(upd_fn, maybe_resp) => {
-                self.state = Arc::new(upd_fn(self.state.as_ref()));
-                let resp = BasicResponse::of(self.state.clone(), self.state.clone());
-                match maybe_resp.and_then(|req| req.send(self.state.clone()).err()) {
+                state.state = Arc::new(upd_fn(state.state.as_ref()));
+                let resp = BasicResponse::of(state.state.clone(), state.state.clone());
+                match maybe_resp.and_then(|req| req.send(state.state.clone()).err()) {
                     None => resp,
                     Some(_) => resp.with_error(TransitionError::ReceiverDropped),
                 }
