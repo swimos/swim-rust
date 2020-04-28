@@ -77,7 +77,7 @@ impl<'a, T: Unpin> ResettableFuture for MpscSender<'a, T> {
                     unreachable!()
                 }
             }
-            _ => false,
+            None => false,
         }
     }
 }

@@ -19,7 +19,7 @@ use futures::{ready, TryFuture};
 use futures::{Future, FutureExt};
 
 use crate::future::retryable::strategy::RetryStrategy;
-use tokio::time::{delay_for, Delay};
+use tokio::time::{delay_for, Delay, Duration};
 
 #[cfg(test)]
 mod tests;
@@ -72,7 +72,7 @@ where
                                 Some(None) => {
                                     this.state = RetryState::Polling;
                                 }
-                                _ => return Poll::Ready(Err(e)),
+                                None => return Poll::Ready(Err(e)),
                             }
                         } else {
                             return Poll::Ready(Err(e));
