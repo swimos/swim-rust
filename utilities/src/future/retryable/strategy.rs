@@ -178,59 +178,65 @@ impl Iterator for RetryStrategy {
     }
 }
 
-#[tokio::test]
-async fn test_exponential() {
-    use std::time::Instant;
+#[cfg(test)]
+mod tests {
+    use crate::future::retryable::strategy::RetryStrategy;
+    use std::time::Duration;
 
-    let max_interval = Duration::from_secs(2);
-    let max_backoff = Duration::from_secs(8);
-    let strategy = RetryStrategy::exponential(max_interval, Some(max_backoff));
-    let start = Instant::now();
-    let mut it = strategy.into_iter();
+    #[tokio::test]
+    async fn test_exponential() {
+        use std::time::Instant;
 
-    while let Some(duration) = it.next() {
-        assert!(duration.is_some());
-        let duration = duration.unwrap();
+        let max_interval = Duration::from_secs(2);
+        let max_backoff = Duration::from_secs(8);
+        let strategy = RetryStrategy::exponential(max_interval, Some(max_backoff));
+        let start = Instant::now();
+        let mut it = strategy.into_iter();
 
-        assert!(duration <= max_interval);
-        std::thread::sleep(duration);
+        while let Some(duration) = it.next() {
+            assert!(duration.is_some());
+            let duration = duration.unwrap();
+
+            assert!(duration <= max_interval);
+            std::thread::sleep(duration);
+        }
+
+        let duration = start.elapsed();
+        assert!(duration >= max_backoff && duration <= max_backoff + max_interval);
     }
 
-    let duration = start.elapsed();
-    assert!(duration >= max_backoff && duration <= max_backoff + max_interval);
-}
+    #[tokio::test]
+    async fn test_immediate() {
+        let retries = 5;
+        let strategy = RetryStrategy::immediate(retries);
+        let mut it = strategy.into_iter();
+        let count = it.count();
 
-#[tokio::test]
-async fn test_immediate() {
-    let retries = 5;
-    let strategy = RetryStrategy::immediate(retries);
-    let mut it = strategy.into_iter();
-    let count = it.count();
+        assert_eq!(count, retries);
 
-    assert_eq!(count, retries);
+        while let Some(duration) = it.next() {
+            assert!(duration.is_none());
+        }
 
-    while let Some(duration) = it.next() {
-        assert!(duration.is_none());
+        assert!(it.next().is_none());
     }
 
-    assert!(it.next().is_none());
-}
+    #[tokio::test]
+    async fn test_interval() {
+        let retries = 5;
+        let expected_duration = Duration::from_secs(1);
+        let strategy = RetryStrategy::interval(expected_duration, Some(retries));
+        let mut it = strategy.into_iter();
+        let count = it.count();
 
-#[tokio::test]
-async fn test_interval() {
-    let retries = 5;
-    let expected_duration = Duration::from_secs(1);
-    let strategy = RetryStrategy::interval(expected_duration, Some(retries));
-    let mut it = strategy.into_iter();
-    let count = it.count();
+        assert_eq!(count, retries);
 
-    assert_eq!(count, retries);
+        while let Some(duration) = it.next() {
+            assert!(duration.is_some());
+            let duration = duration.unwrap();
+            assert_eq!(expected_duration, duration);
+        }
 
-    while let Some(duration) = it.next() {
-        assert!(duration.is_some());
-        let duration = duration.unwrap();
-        assert_eq!(expected_duration, duration);
+        assert!(it.next().is_none());
     }
-
-    assert!(it.next().is_none());
 }
