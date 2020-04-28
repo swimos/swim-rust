@@ -65,13 +65,12 @@ impl<'a, T: Unpin> Future for MpscSender<'a, T> {
 }
 
 impl<'a, T: Unpin> ResettableFuture for MpscSender<'a, T> {
-    fn reset(self: Pin<&mut Self>) -> bool {
-        let this = self.get_mut();
-        match this.error.take() {
+    fn reset(mut self: Pin<&mut Self>) -> bool {
+        match self.error.take() {
             Some(e) => {
-                if let Some(current) = this.current.take() {
+                if let Some(current) = self.current.take() {
                     let sender = current.dissolve();
-                    this.current = Some(MpscSend::new(sender, e.0));
+                    self.current = Some(MpscSend::new(sender, e.0));
                     true
                 } else {
                     unreachable!()

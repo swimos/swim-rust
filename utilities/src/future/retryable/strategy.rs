@@ -79,7 +79,7 @@ impl RetryStrategy {
     }
 
     /// Builds an immediate retry strategy that will attempt ([`retries`]) requests with no delay
-    /// in between the requests. Panics is [`retries`] is less than 1.
+    /// in between the requests. Panics if [`retries`] is less than 1.
     pub fn immediate(retries: usize) -> RetryStrategy {
         if retries < 1 {
             panic!("Retry count must be positive")
@@ -92,7 +92,7 @@ impl RetryStrategy {
     }
 
     /// Builds an interval retry strategy that will attempt ([`retries`]) requests with [`delay`]
-    /// sleep in between the requests. Panics is [`retries`] is some and less than 1.
+    /// sleep in between the requests. Panics if [`retries`] is some and less than 1.
     pub fn interval(delay: Duration, retries: Option<usize>) -> RetryStrategy {
         if let Some(retries) = retries {
             if retries < 1 {
