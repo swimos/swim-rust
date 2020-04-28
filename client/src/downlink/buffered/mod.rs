@@ -177,7 +177,7 @@ where
     }
 }
 
-impl<Act, Upd> Downlink<Act, Event<Upd>> for BufferedDownlink<Act, Upd>
+impl<Act, Upd> Downlink<Event<Upd>> for BufferedDownlink<Act, Upd>
 where
     Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
