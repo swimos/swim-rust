@@ -18,7 +18,7 @@ use rand::Rng;
 
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
 /// request.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RetryStrategy {
     /// An immediate retry with no sleep time in between the requests.
     Immediate(IntervalStrategy),
@@ -33,7 +33,7 @@ pub enum RetryStrategy {
 /// Interval strategy parameters with either a defined number of retries to attempt or an indefinate number of
 /// retries. Sleeping for the given [`delay`] in between each request. Immediate retry strategies are
 /// backed by this.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IntervalStrategy {
     /// Indefinate if [`None`]
     retry: Option<usize>,
@@ -41,7 +41,7 @@ pub struct IntervalStrategy {
 }
 
 /// Truncated exponential retry strategy parameters.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExponentialStrategy {
     /// The time that the first request was attempted.
     start: Option<std::time::Instant>,

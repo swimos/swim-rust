@@ -29,7 +29,7 @@ pub async fn foo() {
         .with_max_level(Level::TRACE)
         .init();
 
-    let mut router = SwimRouter::new(5).await;
+    let mut router = SwimRouter::new(Default::default()).await;
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
     let (mut sink, _stream) = router.connection_for(&path).await;
     let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
@@ -53,7 +53,7 @@ pub async fn foo() {
 
 #[tokio::test(core_threads = 2)]
 async fn normal_receive() {
-    let mut router = SwimRouter::new(5).await;
+    let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "/unit/foo", "info");
     let (mut sink, _stream) = router.connection_for(&path).await;
@@ -69,7 +69,7 @@ async fn normal_receive() {
 
 #[tokio::test(core_threads = 2)]
 async fn not_interested_receive() {
-    let mut router = SwimRouter::new(5).await;
+    let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
     let (mut sink, _stream) = router.connection_for(&path).await;
@@ -85,7 +85,7 @@ async fn not_interested_receive() {
 
 #[tokio::test(core_threads = 2)]
 async fn not_found_receive() {
-    let mut router = SwimRouter::new(5).await;
+    let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
     let (mut sink, _stream) = router.connection_for(&path).await;
@@ -101,7 +101,7 @@ async fn not_found_receive() {
 
 #[tokio::test(core_threads = 2)]
 async fn send_commands() {
-    let mut router = SwimRouter::new(5).await;
+    let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001", "/unit/foo", "publishInfo");
     let first_message = String::from("Hello, World!");

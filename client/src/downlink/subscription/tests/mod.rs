@@ -24,7 +24,7 @@ mod harness;
 
 // Uses the same configuration for everything.
 fn default_config() -> ConfigHierarchy {
-    let client_params = ClientParams::new(2).unwrap();
+    let client_params = ClientParams::new(2, Default::default()).unwrap();
     let timeout = Duration::from_secs(60000);
     let default_params =
         DownlinkParams::new_queue(BackpressureMode::Propagate, 5, timeout, 5).unwrap();

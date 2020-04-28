@@ -9,7 +9,7 @@ matrix:
       if: branch = master
 
 rust:
-  - 1.42.0
+  - 1.43.0
 
 cache: cargo
 

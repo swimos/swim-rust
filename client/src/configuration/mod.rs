@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod router;
+
 pub mod downlink {
+    use crate::configuration::router::RouterParams;
     use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
     use std::fmt::{Display, Formatter};
@@ -154,16 +157,22 @@ pub mod downlink {
     pub struct ClientParams {
         /// Buffer size for servicing requests for new downlinks.
         pub dl_req_buffer_size: NonZeroUsize,
+
+        pub router_params: RouterParams,
     }
 
     const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
     const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
     impl ClientParams {
-        pub fn new(dl_req_buffer_size: usize) -> Result<ClientParams, String> {
+        pub fn new(
+            dl_req_buffer_size: usize,
+            router_params: RouterParams,
+        ) -> Result<ClientParams, String> {
             match NonZeroUsize::new(dl_req_buffer_size) {
                 Some(nz) => Ok(ClientParams {
                     dl_req_buffer_size: nz,
+                    router_params,
                 }),
                 _ => Err(BAD_BUFFER_SIZE.to_string()),
             }
