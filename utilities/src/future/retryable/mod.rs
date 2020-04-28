@@ -15,18 +15,11 @@
 use std::pin::Pin;
 
 use futures::task::{Context, Poll};
-use futures::{ready, Stream, TryFuture, TryStream};
+use futures::{ready, TryFuture};
 use futures::{Future, FutureExt};
-use tokio::time;
-
-use pin_project::{pin_project, project};
 
 use crate::future::retryable::strategy::RetryStrategy;
-use futures_util::stream::unfold;
-use std::cell::{Ref, RefCell, RefMut};
-use std::time::Duration;
 use tokio::time::{delay_for, Delay};
-use std::fs::read;
 
 #[cfg(test)]
 mod tests;
@@ -34,9 +27,7 @@ mod tests;
 pub mod strategy;
 
 pub trait ResettableFuture {
-
     fn reset(self: Pin<&mut Self>) -> bool;
-
 }
 
 pub enum RetryState {
@@ -51,57 +42,48 @@ pub struct RetryableFuture<Fut> {
 }
 
 impl<Fut> RetryableFuture<Fut> {
-
-    fn new(future: Fut,
-           strategy: RetryStrategy) -> Self {
+    pub fn new(future: Fut, strategy: RetryStrategy) -> Self {
         RetryableFuture {
             future,
             strategy,
             state: RetryState::Polling,
         }
     }
-
 }
 
 impl<Fut> Future for RetryableFuture<Fut>
 where
-    Fut: ResettableFuture + TryFuture + Unpin {
+    Fut: ResettableFuture + TryFuture + Unpin,
+{
     type Output = Result<Fut::Ok, Fut::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         loop {
             match &mut this.state {
-                RetryState::Polling => {
-                    match ready!(Pin::new(&mut this.future).try_poll(cx)) {
-                        Ok(out) => {
-                            return Poll::Ready(Ok(out))
-                        },
-                        Err(e) => {
-                            if Pin::new(&mut this.future).reset() {
-                                match this.strategy.next() {
-                                    Some(Some(dur)) => {
-                                        this.state = RetryState::Sleeping(delay_for(dur));
-                                    },
-                                    Some(None) => {
-                                        this.state = RetryState::Polling;
-                                    },
-                                    _ => {
-                                        return Poll::Ready(Err(e))
-                                    }
+                RetryState::Polling => match ready!(Pin::new(&mut this.future).try_poll(cx)) {
+                    Ok(out) => return Poll::Ready(Ok(out)),
+                    Err(e) => {
+                        if Pin::new(&mut this.future).reset() {
+                            match this.strategy.next() {
+                                Some(Some(dur)) => {
+                                    this.state = RetryState::Sleeping(delay_for(dur));
                                 }
-                            } else {
-                                return Poll::Ready(Err(e))
+                                Some(None) => {
+                                    this.state = RetryState::Polling;
+                                }
+                                _ => return Poll::Ready(Err(e)),
                             }
+                        } else {
+                            return Poll::Ready(Err(e));
                         }
                     }
                 },
                 RetryState::Sleeping(delay) => {
                     ready!(delay.poll_unpin(cx));
                     this.state = RetryState::Polling;
-                },
+                }
             }
         }
     }
 }
-

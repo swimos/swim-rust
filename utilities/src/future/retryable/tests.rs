@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use futures::task::{Context, Poll};
-use futures::{Future, ready};
+use futures::{ready, Future};
 use futures_util::future::FutureExt;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::{TrySendError, SendError};
+use tokio::sync::mpsc::error::TrySendError;
 
 use crate::future::retryable::strategy::RetryStrategy;
-use crate::future::retryable::{self, RetryState, ResettableFuture, RetryableFuture};
+use crate::future::retryable::{ResettableFuture, RetryableFuture};
 
 #[derive(Clone)]
 struct TestSender<P> {
@@ -30,11 +30,10 @@ struct TestSender<P> {
 
 pub struct MpscSender<'a, T> {
     current: Option<MpscSend<'a, T>>,
-    error: Option<mpsc::error::SendError<T>>
+    error: Option<mpsc::error::SendError<T>>,
 }
 
-impl <'a, T> MpscSender<'a, T> {
-
+impl<'a, T> MpscSender<'a, T> {
     fn new(sender: &'a mut mpsc::Sender<T>, payload: T) -> Self {
         let current = MpscSend::new(sender, payload);
         MpscSender {
@@ -42,7 +41,6 @@ impl <'a, T> MpscSender<'a, T> {
             error: None,
         }
     }
-
 }
 
 impl<'a, T: Unpin> Unpin for MpscSender<'a, T> {}
@@ -54,7 +52,7 @@ impl<'a, T: Unpin> Future for MpscSender<'a, T> {
         let this = self.get_mut();
         if let Some(current) = &mut this.current {
             match ready!(current.poll_unpin(cx)) {
-                Ok(out) => Poll::Ready(Ok(())),
+                Ok(_) => Poll::Ready(Ok(())),
                 Err(e) => {
                     this.error = Some(e);
                     Poll::Ready(Err(String::from("Send failed.")))
@@ -63,7 +61,6 @@ impl<'a, T: Unpin> Future for MpscSender<'a, T> {
         } else {
             unreachable!()
         }
-
     }
 }
 
@@ -79,14 +76,11 @@ impl<'a, T: Unpin> ResettableFuture for MpscSender<'a, T> {
                 } else {
                     unreachable!()
                 }
-            },
-            _ => {
-                false
             }
+            _ => false,
         }
     }
 }
-
 
 pub struct MpscSend<'a, T> {
     sender: Pin<&'a mut mpsc::Sender<T>>,
@@ -102,7 +96,7 @@ impl<'a, T> MpscSend<'a, T> {
     }
 
     pub fn dissolve(self) -> &'a mut mpsc::Sender<T> {
-        let MpscSend { sender, ..} = self;
+        let MpscSend { sender, .. } = self;
         sender.get_mut()
     }
 }
@@ -165,12 +159,13 @@ where
 
 #[tokio::test]
 async fn testy() {
-    let (mut tx, rx) = mpsc::channel::<i32>(2);
+    let (mut tx, mut rx) = mpsc::channel::<i32>(2);
     let payload = 7;
 
-    let sender = MpscSender::new(&mut tx, 7);
+    let sender = MpscSender::new(&mut tx, payload);
     let retry = RetryableFuture::new(sender, RetryStrategy::immediate(2));
     let result = retry.await;
-    assert_eq!(result, Ok(()));
 
+    assert_eq!(result, Ok(()));
+    assert_eq!(rx.recv().await.unwrap(), payload);
 }
