@@ -37,6 +37,7 @@ use tungstenite::error::Error as TError;
 use common::request::request_future::RequestError;
 
 use crate::connections::factory::WebsocketFactory;
+use url::Host;
 
 pub mod factory;
 
@@ -47,7 +48,7 @@ mod tests;
 #[derive(Debug)]
 pub struct ConnectionPoolMessage {
     /// The URL of the remote host.
-    pub host: String,
+    pub host: Host,
     /// The message from the remote host.
     pub message: String,
 }

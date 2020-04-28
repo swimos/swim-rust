@@ -23,6 +23,7 @@ use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RouterEvent, RoutingError};
 use common::model::Value;
+use common::request::request_future::RequestError;
 use common::request::Request;
 use common::sink::item::either::EitherSink;
 use common::sink::item::ItemSender;
@@ -59,7 +60,7 @@ pub type MapReceiver = AnyReceiver<ViewWithEvent>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
-    _task: JoinHandle<()>,
+    _task: JoinHandle<Result<()>>,
 }
 
 /// Contains all running Warp downlinks and allows requests for downlink subscriptions.
@@ -120,6 +121,7 @@ pub enum SubscriptionError {
         actual: DownlinkKind,
     },
     DownlinkTaskStopped,
+    ConnectionError,
 }
 
 impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
@@ -134,6 +136,12 @@ impl From<oneshot::error::RecvError> for SubscriptionError {
     }
 }
 
+impl From<RequestError> for SubscriptionError {
+    fn from(_: RequestError) -> Self {
+        SubscriptionError::ConnectionError
+    }
+}
+
 impl Display for SubscriptionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -144,6 +152,9 @@ impl Display for SubscriptionError {
             ),
             SubscriptionError::DownlinkTaskStopped => {
                 write!(f, "The downlink task has already stopped.")
+            }
+            SubscriptionError::ConnectionError => {
+                write!(f, "The downlink could not establish a connection.")
             }
         }
     }
@@ -231,9 +242,9 @@ where
         &mut self,
         init: Value,
         path: AbsolutePath,
-    ) -> (ValueDownlink, ValueReceiver) {
+    ) -> Result<(ValueDownlink, ValueReceiver)> {
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.router.connection_for(&path).await;
+        let (sink, incoming) = self.router.connection_for(&path).await?;
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
@@ -268,12 +279,15 @@ where
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Value, path)),
         );
-        (dl, rec)
+        Ok((dl, rec))
     }
 
-    async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
+    async fn create_new_map_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<(MapDownlink, MapReceiver)> {
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.router.connection_for(&path).await;
+        let (sink, incoming) = self.router.connection_for(&path).await?;
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
@@ -328,11 +342,11 @@ where
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Map, path)),
         );
-        (dl, rec)
+        Ok((dl, rec))
     }
 
     #[allow(clippy::cognitive_complexity)]
-    async fn run<Req>(mut self, requests: Req)
+    async fn run<Req>(mut self, requests: Req) -> Result<()>
     where
         Req: Stream<Item = DownlinkRequest>,
     {
@@ -364,13 +378,13 @@ where
                                             self.value_downlinks.remove(&path);
                                             Ok(self
                                                 .create_new_value_downlink(init, path.clone())
-                                                .await)
+                                                .await?)
                                         }
                                     }
                                 }
                                 _ => {
                                     self.value_downlinks.remove(&path);
-                                    Ok(self.create_new_value_downlink(init, path.clone()).await)
+                                    Ok(self.create_new_value_downlink(init, path.clone()).await?)
                                 }
                             }
                         }
@@ -379,7 +393,7 @@ where
                                 DownlinkKind::Value,
                                 DownlinkKind::Map,
                             )),
-                            _ => Ok(self.create_new_value_downlink(init, path.clone()).await),
+                            _ => Ok(self.create_new_value_downlink(init, path.clone()).await?),
                         },
                     };
                     let _ = value_req.send(dl);
@@ -394,13 +408,13 @@ where
                                         Ok(rec) => Ok((dl_clone, rec)),
                                         Err(_) => {
                                             self.map_downlinks.remove(&path);
-                                            Ok(self.create_new_map_downlink(path.clone()).await)
+                                            Ok(self.create_new_map_downlink(path.clone()).await?)
                                         }
                                     }
                                 }
                                 _ => {
                                     self.map_downlinks.remove(&path);
-                                    Ok(self.create_new_map_downlink(path.clone()).await)
+                                    Ok(self.create_new_map_downlink(path.clone()).await?)
                                 }
                             }
                         }
@@ -409,7 +423,7 @@ where
                                 DownlinkKind::Map,
                                 DownlinkKind::Value,
                             )),
-                            _ => Ok(self.create_new_map_downlink(path.clone()).await),
+                            _ => Ok(self.create_new_map_downlink(path.clone()).await?),
                         },
                     };
                     let _ = map_req.send(dl);
@@ -435,7 +449,7 @@ where
                     }
                 },
                 None => {
-                    break;
+                    break Ok(());
                 }
             }
         }

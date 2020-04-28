@@ -185,7 +185,7 @@ pub mod boxed_connection_sender {
 
     use crate::connections::ConnectionSender;
     use crate::router::outgoing::retry::{RetryContext, RetryErr, RetrySink};
-    use crate::router::{ConnReqSender, RoutingError};
+    use crate::router::{ConnReqSender, Host, RoutingError};
 
     /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
     /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
@@ -196,11 +196,11 @@ pub mod boxed_connection_sender {
     /// assumed that the error may resolve.
     pub struct BoxedConnSender {
         sender: ConnReqSender,
-        host: url::Url,
+        host: Host,
     }
 
     impl BoxedConnSender {
-        pub fn new(sender: ConnReqSender, host: url::Url) -> BoxedConnSender {
+        pub fn new(sender: ConnReqSender, host: Host) -> BoxedConnSender {
             BoxedConnSender { sender, host }
         }
     }
@@ -217,7 +217,7 @@ pub mod boxed_connection_sender {
     impl<'a> RequestFuture<'a> {
         fn new(
             sender: ConnReqSender,
-            host: url::Url,
+            host: Host,
             value: Message,
             recreate: bool,
         ) -> RequestFuture<'a> {
@@ -233,7 +233,7 @@ pub mod boxed_connection_sender {
 
     pub struct RequestFuture<'a> {
         sender: ConnReqSender,
-        host: url::Url,
+        host: Host,
         value: Message,
         state: State<'a>,
         recreate: bool,
