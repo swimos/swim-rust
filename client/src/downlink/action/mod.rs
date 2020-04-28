@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::model::map::MapAction;
+use crate::downlink::model::map::{MapAction, TypedMapView, ValMap};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::DownlinkError;
 use common::model::Value;
 use common::request::Request;
-use common::sink::item::ItemSender;
+use common::sink::item::{ItemSender, ItemSink};
 use form::{Form, ValidatedForm};
 use std::marker::PhantomData;
 use tokio::sync::oneshot;
@@ -80,6 +80,18 @@ where
     {
         let wrapped = wrap_update_fn::<T, F>(update_fn);
         self.sender.send_item(Action::update(wrapped)).await
+    }
+}
+
+impl<'a, Sender, T> ItemSink<'a, Action> for ValueActions<Sender, T>
+where
+    Sender: ItemSink<'a, Action>,
+{
+    type Error = Sender::Error;
+    type SendFuture = Sender::SendFuture;
+
+    fn send_item(&'a mut self, value: Action) -> Self::SendFuture {
+        self.sender.send_item(value)
     }
 }
 
@@ -166,7 +178,8 @@ where
             .await
     }
 
-    pub async fn clear(&mut self) -> Result<(), DownlinkError> {
+
+    async fn clear_internal(&mut self) -> Result<ValMap, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
         self.sender
@@ -174,14 +187,21 @@ where
             .await?;
         rx.await
             .map_err(|_| DownlinkError::DroppedChannel)
-            .map(|_| ())
+    }
+
+    pub async fn clear(&mut self) -> Result<(), DownlinkError> {
+       self.clear_internal().await.map(|_| ())
+    }
+
+    pub async fn clear_and_get(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
+        self.clear_internal().await.map(TypedMapView::new)
     }
 
     pub async fn clear_and_forget(&mut self) -> Result<(), DownlinkError> {
         self.sender.send_item(MapAction::clear()).await
     }
 
-    pub async fn take(&mut self, n: usize) -> Result<(), DownlinkError> {
+    async fn take_internal(&mut self, n: usize) -> Result<(ValMap, ValMap), DownlinkError> {
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
         let req1 = Request::new(tx1);
@@ -189,17 +209,26 @@ where
         self.sender
             .send_item(MapAction::take_and_await(n, req1, req2))
             .await?;
-        rx1.await.map_err(|_| DownlinkError::DroppedChannel)?;
-        rx2.await
-            .map_err(|_| DownlinkError::DroppedChannel)
-            .map(|_| ())
+        let before = rx1.await.map_err(|_| DownlinkError::DroppedChannel)?;
+        let after = rx2.await.map_err(|_| DownlinkError::DroppedChannel)?;
+        Ok((before, after))
+    }
+
+    pub async fn take(&mut self, n: usize) -> Result<(), DownlinkError> {
+        self.take_internal(n).await.map(|_| ())
+    }
+
+    pub async fn take_and_get(&mut self, n: usize) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
+        self.take_internal(n).await.map(|(before, after)| {
+            (TypedMapView::new(before), TypedMapView::new(after))
+        })
     }
 
     pub async fn take_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
         self.sender.send_item(MapAction::take(n)).await
     }
 
-    pub async fn skip(&mut self, n: usize) -> Result<(), DownlinkError> {
+    async fn skip_internal(&mut self, n: usize) -> Result<(ValMap, ValMap), DownlinkError> {
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
         let req1 = Request::new(tx1);
@@ -207,14 +236,44 @@ where
         self.sender
             .send_item(MapAction::skip_and_await(n, req1, req2))
             .await?;
-        rx1.await.map_err(|_| DownlinkError::DroppedChannel)?;
-        rx2.await
-            .map_err(|_| DownlinkError::DroppedChannel)
-            .map(|_| ())
+        let before = rx1.await.map_err(|_| DownlinkError::DroppedChannel)?;
+        let after = rx2.await.map_err(|_| DownlinkError::DroppedChannel)?;
+        Ok((before, after))
+    }
+
+    pub async fn skip(&mut self, n: usize) -> Result<(), DownlinkError> {
+        self.skip_internal(n).await.map(|_| ())
+    }
+
+    pub async fn skip_and_get(&mut self, n: usize) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
+        self.skip_internal(n).await.map(|(before, after)| {
+            (TypedMapView::new(before), TypedMapView::new(after))
+        })
     }
 
     pub async fn skip_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
         self.sender.send_item(MapAction::skip(n)).await
+    }
+
+    pub async fn view(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
+        let (tx, rx) = oneshot::channel();
+        let req = Request::new(tx);
+        self.sender
+            .send_item(MapAction::get_map(req))
+            .await?;
+        rx.await.map_err(|_| DownlinkError::DroppedChannel).map(TypedMapView::new)
+    }
+}
+
+impl<'a, Sender, K, V> ItemSink<'a, MapAction> for MapActions<Sender, K, V>
+    where
+        Sender: ItemSink<'a, MapAction>,
+{
+    type Error = Sender::Error;
+    type SendFuture = Sender::SendFuture;
+
+    fn send_item(&'a mut self, value: MapAction) -> Self::SendFuture {
+        self.sender.send_item(value)
     }
 }
 
