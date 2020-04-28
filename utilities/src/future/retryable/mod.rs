@@ -17,24 +17,30 @@ use std::pin::Pin;
 use futures::task::{Context, Poll};
 use futures::{ready, TryFuture};
 use futures::{Future, FutureExt};
+use tokio::time::{delay_for, Delay};
 
 use crate::future::retryable::strategy::RetryStrategy;
-use tokio::time::{delay_for, Delay, Duration};
 
 #[cfg(test)]
 mod tests;
 
 pub mod strategy;
 
+/// A future that can be reset back to its initial state and retried once again.
 pub trait ResettableFuture {
+    /// Reset the future back to its initial state. Returns true if the future successfully reset or
+    /// false otherwise.
+    /// Implementations should track errors that occur and use them to determine
+    /// whether or not the future can be reset and retried once again.
     fn reset(self: Pin<&mut Self>) -> bool;
 }
 
-pub enum RetryState {
+enum RetryState {
     Polling,
     Sleeping(Delay),
 }
 
+/// A future that can be retried with a [`RetryStrategy`].
 pub struct RetryableFuture<Fut> {
     future: Fut,
     strategy: RetryStrategy,
