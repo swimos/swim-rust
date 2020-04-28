@@ -69,21 +69,23 @@ where
             match &mut this.state {
                 RetryState::Polling => match ready!(Pin::new(&mut this.future).try_poll(cx)) {
                     Ok(out) => return Poll::Ready(Ok(out)),
-                    Err(e) => {
-                        if Pin::new(&mut this.future).reset() {
-                            match this.strategy.next() {
-                                Some(Some(dur)) => {
-                                    this.state = RetryState::Sleeping(delay_for(dur));
+                    Err(e) => match this.strategy.next() {
+                        Some(s) => {
+                            if Pin::new(&mut this.future).reset() {
+                                match s {
+                                    Some(dur) => {
+                                        this.state = RetryState::Sleeping(delay_for(dur));
+                                    }
+                                    None => {
+                                        this.state = RetryState::Polling;
+                                    }
                                 }
-                                Some(None) => {
-                                    this.state = RetryState::Polling;
-                                }
-                                None => return Poll::Ready(Err(e)),
+                            } else {
+                                return Poll::Ready(Err(e));
                             }
-                        } else {
-                            return Poll::Ready(Err(e));
                         }
-                    }
+                        None => return Poll::Ready(Err(e)),
+                    },
                 },
                 RetryState::Sleeping(delay) => {
                     ready!(delay.poll_unpin(cx));
