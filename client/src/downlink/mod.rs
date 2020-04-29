@@ -44,7 +44,7 @@ use std::pin::Pin;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Upd: Clone>: Topic<Upd> {
+pub trait Downlink<Upd>: Topic<Upd> {
     /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
 

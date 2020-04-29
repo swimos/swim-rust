@@ -529,6 +529,7 @@ pub struct ViewWithEvent {
     pub event: MapEvent<Value>,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TypedViewWithEvent<K, V> {
     pub view: TypedMapView<K, V>,
     pub event: MapEvent<K>,
@@ -1032,6 +1033,7 @@ fn process_action(
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TypedMapView<K, V> {
     inner: ValMap,
     _entry_type: PhantomData<(K, V)>,
