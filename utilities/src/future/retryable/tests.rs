@@ -13,127 +13,68 @@
 // limitations under the License.
 
 use futures::task::{Context, Poll};
-use futures::{ready, Future};
-use futures_util::future::FutureExt;
+use futures::Future;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
 
 use crate::future::retryable::strategy::RetryStrategy;
 use crate::future::retryable::{ResettableFuture, RetryableFuture};
+use tokio::sync::mpsc::error::TrySendError;
 
-pub struct MpscSender<'a, T> {
-    current: Option<MpscSend<'a, T>>,
-    error: Option<mpsc::error::SendError<T>>,
-}
-
-impl<'a, T> MpscSender<'a, T> {
-    fn new(sender: &'a mut mpsc::Sender<T>, payload: T) -> Self {
-        let current = MpscSend::new(sender, payload);
-        MpscSender {
-            current: Some(current),
-            error: None,
-        }
-    }
-}
-
-impl<'a, T: Unpin> Unpin for MpscSender<'a, T> {}
-
-impl<'a, T: Unpin> Future for MpscSender<'a, T> {
-    type Output = Result<(), String>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        if let Some(current) = &mut this.current {
-            match ready!(current.poll_unpin(cx)) {
-                Ok(_) => Poll::Ready(Ok(())),
-                Err(e) => {
-                    this.error = Some(e);
-                    Poll::Ready(Err(String::from("Send failed.")))
-                }
-            }
-        } else {
-            unreachable!()
-        }
-    }
-}
-
-impl<'a, T: Unpin> ResettableFuture for MpscSender<'a, T> {
-    fn reset(mut self: Pin<&mut Self>) -> bool {
-        match self.error.take() {
-            Some(e) => {
-                if let Some(current) = self.current.take() {
-                    let sender = current.dissolve();
-                    self.current = Some(MpscSend::new(sender, e.0));
-                    true
-                } else {
-                    unreachable!()
-                }
-            }
-            None => false,
-        }
-    }
-}
-
-pub struct MpscSend<'a, T> {
-    sender: Pin<&'a mut mpsc::Sender<T>>,
-    value: Option<T>,
-}
-
-impl<'a, T> MpscSend<'a, T> {
-    pub fn new(sender: &'a mut mpsc::Sender<T>, value: T) -> MpscSend<'a, T> {
-        MpscSend {
-            sender: Pin::new(sender),
-            value: Some(value),
-        }
-    }
-
-    pub fn dissolve(self) -> &'a mut mpsc::Sender<T> {
-        let MpscSend { sender, .. } = self;
-        sender.get_mut()
-    }
-}
-
-impl<'a, T> Future for MpscSend<'a, T>
+struct MpscSender<P>
 where
-    T: Unpin,
+    P: Clone,
 {
-    type Output = Result<(), mpsc::error::SendError<T>>;
+    tx: mpsc::Sender<P>,
+    p: P,
+}
+
+#[derive(Eq, PartialEq, Debug)]
+enum SendErr {
+    Err,
+}
+
+impl<P> Future for MpscSender<P>
+where
+    P: Clone + Unpin,
+{
+    type Output = Result<P, SendErr>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let MpscSend { sender, value, .. } = self.get_mut();
+        let MpscSender { tx, p } = self.get_mut();
 
-        match sender.poll_ready(cx) {
-            Poll::Ready(Ok(_)) => match value.take() {
-                Some(t) => match sender.try_send(t) {
-                    Ok(_) => Poll::Ready(Ok(())),
-                    Err(mpsc::error::TrySendError::Closed(t)) => {
-                        Poll::Ready(Err(mpsc::error::SendError(t)))
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
-                },
-                _ => panic!("Send future evaluated twice."),
+        match tx.poll_ready(cx) {
+            Poll::Ready(Ok(_)) => match tx.try_send(p.clone()) {
+                Ok(_) => Poll::Ready(Ok(p.clone())),
+                Err(TrySendError::Closed(_)) => Poll::Ready(Err(SendErr::Err)),
+                Err(TrySendError::Full(_)) => unreachable!(),
             },
-            Poll::Ready(Err(_)) => match value.take() {
-                Some(t) => Poll::Ready(Err(mpsc::error::SendError(t))),
-                _ => panic!("Send future evaluated twice."),
-            },
+
+            Poll::Ready(Err(_)) => Poll::Ready(Err(SendErr::Err)),
             Poll::Pending => Poll::Pending,
         }
     }
 }
 
-#[derive(Clone)]
-enum FutErr {}
+impl<P> ResettableFuture for MpscSender<P>
+where
+    P: Clone,
+{
+    fn reset(self: Pin<&mut Self>) -> bool {
+        true
+    }
+}
 
 #[tokio::test]
-async fn mpsc() {
-    let (mut tx, mut rx) = mpsc::channel::<i32>(2);
-    let payload = 7;
+async fn test() {
+    let p = 5;
+    let (tx, mut rx) = mpsc::channel(1);
+    let sender = MpscSender { tx, p };
 
-    let sender = MpscSender::new(&mut tx, payload);
-    let retry = RetryableFuture::new(sender, RetryStrategy::immediate(2));
-    let result = retry.await;
+    let retry: Result<i32, SendErr> =
+        RetryableFuture::new(sender, RetryStrategy::immediate(2)).await;
+    assert_eq!(retry.unwrap(), p);
 
-    assert_eq!(result, Ok(()));
-    assert_eq!(rx.recv().await.unwrap(), payload);
+    let result = rx.recv().await;
+    assert_eq!(p, result.unwrap())
 }
