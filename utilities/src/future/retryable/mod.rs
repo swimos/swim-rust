@@ -72,8 +72,8 @@ where
     type Output = Result<Fut::Ok, Fut::Error>;
 
     #[project]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut this = self.as_mut().project();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut this = self.project();
 
         loop {
             let future = this.future.as_mut();
