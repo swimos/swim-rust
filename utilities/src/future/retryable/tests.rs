@@ -17,16 +17,9 @@ use futures::{ready, Future};
 use futures_util::future::FutureExt;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TrySendError;
 
 use crate::future::retryable::strategy::RetryStrategy;
 use crate::future::retryable::{ResettableFuture, RetryableFuture};
-
-#[derive(Clone)]
-struct TestSender<P> {
-    tx: mpsc::Sender<P>,
-    payload: P,
-}
 
 pub struct MpscSender<'a, T> {
     current: Option<MpscSend<'a, T>>,
@@ -130,34 +123,10 @@ where
 }
 
 #[derive(Clone)]
-enum FutErr {
-    Err,
-}
-
-impl<P> Future for TestSender<P>
-where
-    P: Send + Unpin + Clone,
-{
-    type Output = Result<(), FutErr>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let TestSender { tx, payload } = self.get_mut();
-
-        match tx.poll_ready(cx) {
-            Poll::Ready(Ok(_)) => match tx.try_send(payload.clone()) {
-                Ok(_) => Poll::Ready(Ok(())),
-                Err(TrySendError::Closed(_)) => Poll::Ready(Err(FutErr::Err)),
-                Err(TrySendError::Full(_)) => unreachable!(),
-            },
-
-            Poll::Ready(Err(_)) => Poll::Ready(Err(FutErr::Err)),
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
+enum FutErr {}
 
 #[tokio::test]
-async fn testy() {
+async fn mpsc() {
     let (mut tx, mut rx) = mpsc::channel::<i32>(2);
     let payload = 7;
 

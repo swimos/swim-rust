@@ -26,12 +26,15 @@ use crate::future::retryable::strategy::RetryStrategy;
 #[cfg(test)]
 mod tests;
 
+pub mod factory;
+
 pub mod strategy;
 
 /// A future that can be reset back to its initial state and retried once again.
 pub trait ResettableFuture {
     /// Reset the future back to its initial state. Returns true if the future successfully reset or
     /// false otherwise.
+    ///
     /// Implementations should track errors that occur and use them to determine
     /// whether or not the future can be reset and retried once again.
     fn reset(self: Pin<&mut Self>) -> bool;
