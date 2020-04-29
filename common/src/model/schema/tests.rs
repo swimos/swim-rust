@@ -13,6 +13,8 @@
 // limitations under the License.
 
 use super::*;
+use hamcrest2::assert_that;
+use hamcrest2::prelude::*;
 use std::collections::HashMap;
 
 #[test]
@@ -1316,4 +1318,513 @@ fn record_unpacking() {
 
     assert!(schema1.matches(&record));
     assert!(schema2.matches(&record));
+}
+
+#[test]
+fn of_kind_to_value() {
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::Extant).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "extant"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::Int32).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "int32"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::Int64).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "int64"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::Float64).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "float64"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::Boolean).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "boolean"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::Text).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "text"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::Record).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "record"))))
+    );
+}
+
+#[test]
+fn equal_to_value() {
+    let value = StandardSchema::Equal(Value::from(0)).to_value();
+    assert_that!(value, eq(Value::of_attr(("equal", 0))))
+}
+
+#[test]
+fn in_int_range_to_value_min() {
+    let schema = StandardSchema::InRangeInt {
+        min: Some((12, true)),
+        max: None,
+    };
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "in_range_int",
+        Value::singleton((
+            "min",
+            Value::from_vec(vec![
+                Item::slot("value", 12i64),
+                Item::slot("inclusive", true),
+            ]),
+        )),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn in_int_range_to_value_max() {
+    let schema = StandardSchema::InRangeInt {
+        min: None,
+        max: Some((12, true)),
+    };
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "in_range_int",
+        Value::singleton((
+            "max",
+            Value::from_vec(vec![
+                Item::slot("value", 12i64),
+                Item::slot("inclusive", true),
+            ]),
+        )),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn in_int_range_to_value_both() {
+    let schema = StandardSchema::InRangeInt {
+        min: Some((-3, false)),
+        max: Some((12, true)),
+    };
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "in_range_int",
+        Value::from_vec(vec![
+            (
+                "min",
+                Value::from_vec(vec![
+                    Item::slot("value", -3i64),
+                    Item::slot("inclusive", false),
+                ]),
+            ),
+            (
+                "max",
+                Value::from_vec(vec![
+                    Item::slot("value", 12i64),
+                    Item::slot("inclusive", true),
+                ]),
+            ),
+        ]),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn in_float_range_to_value_min() {
+    let schema = StandardSchema::InRangeFloat {
+        min: Some((0.5, false)),
+        max: None,
+    };
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "in_range_float",
+        Value::singleton((
+            "min",
+            Value::from_vec(vec![
+                Item::slot("value", 0.5),
+                Item::slot("inclusive", false),
+            ]),
+        )),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn in_float_range_to_value_max() {
+    let schema = StandardSchema::InRangeFloat {
+        min: None,
+        max: Some((0.5, false)),
+    };
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "in_range_float",
+        Value::singleton((
+            "max",
+            Value::from_vec(vec![
+                Item::slot("value", 0.5),
+                Item::slot("inclusive", false),
+            ]),
+        )),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn in_float_range_to_value_both() {
+    let schema = StandardSchema::InRangeFloat {
+        min: Some((-0.5, true)),
+        max: Some((0.5, false)),
+    };
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "in_range_float",
+        Value::from_vec(vec![
+            (
+                "min",
+                Value::from_vec(vec![
+                    Item::slot("value", -0.5),
+                    Item::slot("inclusive", true),
+                ]),
+            ),
+            (
+                "max",
+                Value::from_vec(vec![
+                    Item::slot("value", 0.5),
+                    Item::slot("inclusive", false),
+                ]),
+            ),
+        ]),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn non_name_to_value() {
+    assert_that!(
+        StandardSchema::NonNan.to_value(),
+        eq(Value::of_attr("non_nan"))
+    )
+}
+
+#[test]
+fn finite_to_value() {
+    assert_that!(
+        StandardSchema::Finite.to_value(),
+        eq(Value::of_attr("finite"))
+    )
+}
+
+#[test]
+fn non_empty_text_to_value() {
+    let schema = StandardSchema::Text(TextSchema::NonEmpty);
+    let value = schema.to_value();
+    let expected = Value::of_attrs(vec![Attr::of("text"), Attr::of("non_empty")]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn specific_text_to_value() {
+    let schema = StandardSchema::Text(TextSchema::Exact("hello".to_string()));
+    let value = schema.to_value();
+    let expected = Value::of_attrs(vec![Attr::of("text"), Attr::of(("equal", "hello"))]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn regex_to_value() {
+    let schema = StandardSchema::Text(TextSchema::regex("^ab*a$").unwrap());
+    let value = schema.to_value();
+    let expected = Value::of_attrs(vec![Attr::of("text"), Attr::of(("matches", "^ab*a$"))]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn not_to_value() {
+    let schema = StandardSchema::Equal(Value::from(1)).negate();
+    let value = schema.to_value();
+    let expected = Value::of_attr(("not", Value::of_attr(("equal", 1))));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn and_to_value() {
+    let schema1 = StandardSchema::Equal(Value::from(1));
+    let schema2 = StandardSchema::Equal(Value::from(2));
+    let schema = schema1.and(schema2);
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "and",
+        Value::from_vec(vec![
+            Value::of_attr(("equal", 1)),
+            Value::of_attr(("equal", 2)),
+        ]),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn or_to_value() {
+    let schema1 = StandardSchema::Equal(Value::from(1));
+    let schema2 = StandardSchema::Equal(Value::from(2));
+    let schema = schema1.or(schema2);
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "or",
+        Value::from_vec(vec![
+            Value::of_attr(("equal", 1)),
+            Value::of_attr(("equal", 2)),
+        ]),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn all_items_to_value() {
+    let schema = StandardSchema::array(StandardSchema::Equal(Value::from(2)));
+    let value = schema.to_value();
+    let expected = Value::of_attr(("all_items", Value::of_attr(("equal", 2))));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn num_attrs_to_value() {
+    let schema = StandardSchema::NumAttrs(4);
+    let value = schema.to_value();
+    let expected = Value::of_attr(("num_attrs", 4i64));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn num_items_to_value() {
+    let schema = StandardSchema::NumItems(4);
+    let value = schema.to_value();
+    let expected = Value::of_attr(("num_items", 4i64));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn attr_schema_to_value() {
+    let schema = AttrSchema::new(
+        TextSchema::exact("name"),
+        StandardSchema::Equal(Value::Int32Value(1)),
+    );
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "attr",
+        Value::from_vec(vec![
+            Item::slot("name", Value::of_attr(("equal", "name"))),
+            Item::slot("value", Value::of_attr(("equal", 1))),
+        ]),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn head_schema_to_value() {
+    let attr_schema = AttrSchema::new(
+        TextSchema::exact("name"),
+        StandardSchema::Equal(Value::Int32Value(1)),
+    );
+    let schema = StandardSchema::HeadAttribute {
+        schema: Box::new(attr_schema.clone()),
+        required: true,
+        remainder: Box::new(StandardSchema::Anything),
+    };
+    let value = schema.to_value();
+
+    let expected = Value::Record(
+        vec![Attr::of(("head", Value::singleton(("required", true))))],
+        vec![
+            Item::slot("schema", attr_schema.to_value()),
+            Item::slot("remainder", StandardSchema::Anything.to_value()),
+        ],
+    );
+
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn field_spec_to_value() {
+    let attr_schema = AttrSchema::new(
+        TextSchema::exact("name1"),
+        StandardSchema::Equal(Value::Int32Value(1)),
+    );
+    let field_schema = FieldSpec::new(attr_schema.clone(), true, false);
+    let value = field_schema.to_value();
+
+    let expected = Value::of_attrs(vec![
+        Attr::of((
+            "field",
+            Value::from_vec(vec![
+                Item::slot("required", true),
+                Item::slot("unique", false),
+            ]),
+        )),
+        attr_schema.to_attr(),
+    ]);
+
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn has_attributes_to_value() {
+    let attr_schema1 = FieldSpec::new(
+        AttrSchema::new(
+            TextSchema::exact("name1"),
+            StandardSchema::Equal(Value::Int32Value(1)),
+        ),
+        true,
+        true,
+    );
+    let attr_schema2 = FieldSpec::new(
+        AttrSchema::new(
+            TextSchema::exact("name2"),
+            StandardSchema::Equal(Value::Int32Value(2)),
+        ),
+        false,
+        false,
+    );
+
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![attr_schema1.clone(), attr_schema2.clone()],
+        exhaustive: false,
+    };
+    let value = schema.to_value();
+
+    let expected = Value::Record(
+        vec![Attr::of((
+            "has_attributes",
+            Value::singleton(("exhaustive", false)),
+        ))],
+        vec![
+            Item::ValueItem(attr_schema1.to_value()),
+            Item::ValueItem(attr_schema2.to_value()),
+        ],
+    );
+
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn slot_schema_to_value() {
+    let schema = SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name")),
+        StandardSchema::Equal(Value::Int32Value(1)),
+    );
+    let value = schema.to_value();
+    let expected = Value::of_attr((
+        "slot",
+        Value::from_vec(vec![
+            Item::slot(
+                "key",
+                Value::of_attrs(vec![Attr::of("text"), Attr::of(("equal", "name"))]),
+            ),
+            Item::slot("value", Value::of_attr(("equal", 1))),
+        ]),
+    ));
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn has_slots_to_value() {
+    let slot_schema1 = FieldSpec::new(
+        SlotSchema::new(
+            StandardSchema::Text(TextSchema::exact("name1")),
+            StandardSchema::Equal(Value::Int32Value(1)),
+        ),
+        true,
+        true,
+    );
+    let slot_schema2 = FieldSpec::new(
+        SlotSchema::new(
+            StandardSchema::Text(TextSchema::exact("name2")),
+            StandardSchema::Equal(Value::Int32Value(2)),
+        ),
+        false,
+        false,
+    );
+
+    let schema = StandardSchema::HasSlots {
+        slots: vec![slot_schema1.clone(), slot_schema2.clone()],
+        exhaustive: false,
+    };
+    let value = schema.to_value();
+
+    let expected = Value::Record(
+        vec![Attr::of((
+            "has_slots",
+            Value::singleton(("exhaustive", false)),
+        ))],
+        vec![
+            Item::ValueItem(slot_schema1.to_value()),
+            Item::ValueItem(slot_schema2.to_value()),
+        ],
+    );
+
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn item_schema_to_value() {
+    let slot_schema = SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name")),
+        StandardSchema::Equal(Value::Int32Value(1)),
+    );
+    let slot_item_schema = ItemSchema::Field(slot_schema.clone());
+    let value_item_schema = ItemSchema::ValueItem(StandardSchema::Anything);
+
+    assert_that!(slot_item_schema.to_value(), eq(slot_schema.to_value()));
+    assert_that!(
+        value_item_schema.to_value(),
+        eq(StandardSchema::Anything.to_value())
+    );
+}
+
+#[test]
+fn layout_to_value() {
+    let slot_schema = SlotSchema::new(
+        StandardSchema::Text(TextSchema::exact("name")),
+        StandardSchema::Equal(Value::Int32Value(1)),
+    );
+    let item_schema1 = ItemSchema::Field(slot_schema.clone());
+    let item_schema2 = ItemSchema::ValueItem(StandardSchema::Anything);
+    let schema = StandardSchema::Layout {
+        items: vec![(item_schema1.clone(), true), (item_schema2.clone(), false)],
+        exhaustive: false,
+    };
+
+    let value = schema.to_value();
+
+    let expected = Value::Record(
+        vec![Attr::of((
+            "layout",
+            Value::from_vec(vec![("exhaustive", false)]),
+        ))],
+        vec![
+            Item::ValueItem(item_schema1.to_value().prepend(Attr::of((
+                "item",
+                Value::from_vec(vec![("required", true)]),
+            )))),
+            Item::ValueItem(item_schema2.to_value().prepend(Attr::of((
+                "item",
+                Value::from_vec(vec![("required", false)]),
+            )))),
+        ],
+    );
+
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn anything_to_value() {
+    assert_that!(
+        StandardSchema::Anything.to_value(),
+        eq(Value::of_attr("anything"))
+    );
+}
+
+#[test]
+fn nothing_to_value() {
+    assert_that!(
+        StandardSchema::Nothing.to_value(),
+        eq(Value::of_attr("nothing"))
+    );
 }
