@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::{Attr, Item, Value, ValueKind};
+use crate::model::{Attr, Item, ToValue, Value, ValueKind};
 use regex::{Error as RegexError, Regex};
 use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
 
 #[cfg(test)]
 mod tests;
@@ -69,6 +71,17 @@ impl TextSchema {
     /// A schema that accepts strings matching a regular expression.
     pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
         Regex::new(string).map(TextSchema::Matches)
+    }
+}
+
+impl ToValue for TextSchema {
+    fn to_value(&self) -> Value {
+        match self {
+            TextSchema::NonEmpty => Attr::of("non_empty"),
+            TextSchema::Exact(v) => Attr::of(("equal", v.clone())),
+            TextSchema::Matches(r) => Attr::of(("matches", r.to_string())),
+        }
+        .into()
     }
 }
 
@@ -181,6 +194,22 @@ impl AttrSchema {
             remainder: Box::new(schema),
         }
     }
+
+    fn to_attr(&self) -> Attr {
+        Attr::of((
+            "attr",
+            Value::from_vec(vec![
+                Item::slot("name", self.name_schema.to_value()),
+                Item::slot("value", self.value_schema.to_value()),
+            ]),
+        ))
+    }
+}
+
+impl ToValue for AttrSchema {
+    fn to_value(&self) -> Value {
+        Value::of_attr(self.to_attr())
+    }
 }
 
 impl FieldSchema<Attr> for AttrSchema {
@@ -222,6 +251,23 @@ impl<S> FieldSpec<S> {
     }
 }
 
+impl<S: ToValue> ToValue for FieldSpec<S> {
+    fn to_value(&self) -> Value {
+        let head_attr = Attr::with_items(
+            "field",
+            vec![("required", self.required), ("unique", self.unique)],
+        );
+        let inner = self.schema.to_value();
+        match inner {
+            Value::Record(mut attrs, items) => {
+                attrs.insert(0, head_attr);
+                Value::Record(attrs, items)
+            }
+            ow => Value::Record(vec![head_attr], vec![Item::ValueItem(ow)]),
+        }
+    }
+}
+
 /// Schema for Recon slots.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SlotSchema {
@@ -241,6 +287,18 @@ impl SlotSchema {
             key_schema: key,
             value_schema: value,
         }
+    }
+}
+
+impl ToValue for SlotSchema {
+    fn to_value(&self) -> Value {
+        Value::of_attr((
+            "slot",
+            Value::from_vec(vec![
+                Item::slot("key", self.key_schema.to_value()),
+                Item::slot("value", self.value_schema.to_value()),
+            ]),
+        ))
     }
 }
 
@@ -268,6 +326,15 @@ impl FieldSchema<Item> for SlotSchema {
 pub enum ItemSchema {
     Field(SlotSchema),
     ValueItem(StandardSchema),
+}
+
+impl ToValue for ItemSchema {
+    fn to_value(&self) -> Value {
+        match self {
+            ItemSchema::Field(slot) => slot.to_value(),
+            ItemSchema::ValueItem(s) => s.to_value(),
+        }
+    }
 }
 
 impl Schema<Item> for ItemSchema {
@@ -408,6 +475,12 @@ pub enum StandardSchema {
     Anything,
     /// Matches nothing.
     Nothing,
+}
+
+impl Display for StandardSchema {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.to_value().fmt(f)
+    }
 }
 
 struct RefRecord<'a> {
@@ -659,6 +732,112 @@ impl StandardSchema {
     }
 }
 
+impl ToValue for StandardSchema {
+    fn to_value(&self) -> Value {
+        match self {
+            StandardSchema::OfKind(kind) => Value::of_attr(("kind", kind_to_str(*kind))),
+            StandardSchema::Equal(v) => Value::of_attr(("equal", v.clone())),
+            StandardSchema::InRangeInt { min, max } => range_to_value("in_range_int", *min, *max),
+            StandardSchema::InRangeFloat { min, max } => {
+                range_to_value("in_range_float", *min, *max)
+            }
+            StandardSchema::NonNan => Value::of_attr("non_nan"),
+            StandardSchema::Finite => Value::of_attr("finite"),
+            StandardSchema::Text(text_schema) => text_schema.to_value().prepend(Attr::of("text")),
+            StandardSchema::Not(s) => Attr::with_value("not", s.to_value()).into(),
+            StandardSchema::And(terms) => operator_sequence_to_value("and", terms.as_slice()),
+            StandardSchema::Or(terms) => operator_sequence_to_value("or", terms.as_slice()),
+            StandardSchema::AllItems(s) => Value::of_attr(("all_items", s.to_value())),
+            StandardSchema::NumAttrs(n) => {
+                Value::of_attr(("num_attrs", i64::try_from(*n).unwrap_or(i64::max_value())))
+            }
+            StandardSchema::NumItems(n) => {
+                Value::of_attr(("num_items", i64::try_from(*n).unwrap_or(i64::max_value())))
+            }
+            StandardSchema::HeadAttribute {
+                schema,
+                required,
+                remainder,
+            } => {
+                let tag = Attr::with_field("head", "required", *required);
+                Value::from_vec(vec![
+                    ("schema", schema.to_value()),
+                    ("remainder", remainder.to_value()),
+                ])
+                .prepend(tag)
+            }
+            StandardSchema::HasAttributes {
+                attributes,
+                exhaustive,
+            } => has_fields_to_value("has_attributes", attributes.as_slice(), *exhaustive),
+            StandardSchema::HasSlots { slots, exhaustive } => {
+                has_fields_to_value("has_slots", slots.as_slice(), *exhaustive)
+            }
+            StandardSchema::Layout { items, exhaustive } => {
+                let item_schemas = items
+                    .iter()
+                    .map(|(s, required)| layout_item(s, *required))
+                    .collect();
+                Value::Record(
+                    vec![Attr::with_field("layout", "exhaustive", *exhaustive)],
+                    item_schemas,
+                )
+            }
+            StandardSchema::Anything => Value::of_attr("anything"),
+            StandardSchema::Nothing => Value::of_attr("nothing"),
+        }
+    }
+}
+
+// Create a Value from a "has attributes" or "has slots" schema.
+fn has_fields_to_value<F: ToValue>(tag: &str, fields: &[FieldSpec<F>], exhaustive: bool) -> Value {
+    Value::Record(
+        vec![Attr::with_field(tag, "exhaustive", exhaustive)],
+        fields
+            .iter()
+            .map(|fld| Item::ValueItem(fld.to_value()))
+            .collect(),
+    )
+}
+
+// Create a Value from one end-point of a range of numbers.
+fn endpoint_to_slot<N: Into<Value>>(tag: &str, value: N, inclusive: bool) -> Item {
+    let end_point = Value::from_vec(vec![
+        Item::slot("value", value),
+        Item::slot("inclusive", inclusive),
+    ]);
+    Item::slot(tag, end_point)
+}
+
+// Create a Value from a numeric range schema.
+fn range_to_value<N: Into<Value>>(
+    tag: &str,
+    min: Option<(N, bool)>,
+    max: Option<(N, bool)>,
+) -> Value {
+    let mut slots = vec![];
+    if let Some((value, inclusive)) = min {
+        slots.push(endpoint_to_slot("min", value, inclusive))
+    }
+    if let Some((value, inclusive)) = max {
+        slots.push(endpoint_to_slot("max", value, inclusive))
+    }
+    Attr::with_items(tag, slots).into()
+}
+
+// Create a Value from an "and" or "or" schema.
+fn operator_sequence_to_value(tag: &str, terms: &[StandardSchema]) -> Value {
+    Attr::with_items(tag, terms.iter().map(ToValue::to_value).collect()).into()
+}
+
+// Create a Value from a item specification from a layout schema.
+fn layout_item(schema: &ItemSchema, required: bool) -> Item {
+    schema
+        .to_value()
+        .prepend(Attr::with_field("item", "required", required))
+        .into()
+}
+
 fn as_i64(value: &Value) -> Option<i64> {
     match value {
         Value::Int32Value(n) => Some((*n).into()),
@@ -707,4 +886,16 @@ fn in_range<T: Copy + PartialOrd>(
         .map(|(ub, incl)| if incl { ub >= value } else { ub > value })
         .unwrap_or(true);
     lower && upper
+}
+
+fn kind_to_str(kind: ValueKind) -> &'static str {
+    match kind {
+        ValueKind::Extant => "extant",
+        ValueKind::Int32 => "int32",
+        ValueKind::Int64 => "int64",
+        ValueKind::Float64 => "float64",
+        ValueKind::Boolean => "boolean",
+        ValueKind::Text => "text",
+        ValueKind::Record => "record",
+    }
 }

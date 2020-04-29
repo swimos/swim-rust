@@ -76,6 +76,16 @@ pub mod downlink {
         Buffered(NonZeroUsize),
     }
 
+    /// Instruction on how to repsond when an invalid message is received for a downlink.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    pub enum OnInvalidMessage {
+        /// Disregard the message and continue.
+        Ignore,
+
+        /// Terminate the downlink.
+        Terminate,
+    }
+
     /// Configuration parameters for a single downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub struct DownlinkParams {
@@ -90,6 +100,9 @@ pub mod downlink {
 
         /// Buffer size for local actions performed on the downlink.
         pub buffer_size: NonZeroUsize,
+
+        /// What do do on receipt of an invalid message.
+        pub on_invalid: OnInvalidMessage,
     }
 
     impl DownlinkParams {
@@ -98,6 +111,7 @@ pub mod downlink {
             mux_mode: MuxMode,
             idle_timeout: Duration,
             buffer_size: usize,
+            on_invalid: OnInvalidMessage,
         ) -> Result<DownlinkParams, String> {
             if idle_timeout == Duration::from_millis(0) {
                 Err(BAD_TIMEOUT.to_string())
@@ -108,6 +122,7 @@ pub mod downlink {
                         mux_mode,
                         idle_timeout,
                         buffer_size: nz,
+                        on_invalid,
                     }),
                     _ => Err(BAD_BUFFER_SIZE.to_string()),
                 }
@@ -119,9 +134,16 @@ pub mod downlink {
             queue_size: usize,
             idle_timeout: Duration,
             buffer_size: usize,
+            on_invalid: OnInvalidMessage,
         ) -> Result<DownlinkParams, String> {
             match NonZeroUsize::new(queue_size) {
-                Some(nz) => Self::new(back_pressure, MuxMode::Queue(nz), idle_timeout, buffer_size),
+                Some(nz) => Self::new(
+                    back_pressure,
+                    MuxMode::Queue(nz),
+                    idle_timeout,
+                    buffer_size,
+                    on_invalid,
+                ),
                 _ => Err(BAD_BUFFER_SIZE.to_string()),
             }
         }
@@ -130,8 +152,15 @@ pub mod downlink {
             back_pressure: BackpressureMode,
             idle_timeout: Duration,
             buffer_size: usize,
+            on_invalid: OnInvalidMessage,
         ) -> Result<DownlinkParams, String> {
-            Self::new(back_pressure, MuxMode::Dropping, idle_timeout, buffer_size)
+            Self::new(
+                back_pressure,
+                MuxMode::Dropping,
+                idle_timeout,
+                buffer_size,
+                on_invalid,
+            )
         }
 
         pub fn new_buffered(
@@ -139,6 +168,7 @@ pub mod downlink {
             queue_size: usize,
             idle_timeout: Duration,
             buffer_size: usize,
+            on_invalid: OnInvalidMessage,
         ) -> Result<DownlinkParams, String> {
             match NonZeroUsize::new(queue_size) {
                 Some(nz) => Self::new(
@@ -146,6 +176,7 @@ pub mod downlink {
                     MuxMode::Buffered(nz),
                     idle_timeout,
                     buffer_size,
+                    on_invalid,
                 ),
                 _ => Err(BAD_BUFFER_SIZE.to_string()),
             }
