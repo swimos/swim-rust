@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod action;
+pub mod event;
 
 use crate::downlink::model::value::{SharedValue, Action};
 use crate::downlink::{Downlink, Event};
@@ -21,10 +22,12 @@ use std::marker::PhantomData;
 use futures::Stream;
 use deserialize::FormDeserializeErr;
 use utilities::future::{Transform, UntilFailure, TransformedFuture, SwimFutureExt};
-use crate::downlink::model::map::{ViewWithEvent, TypedViewWithEvent, MapAction};
+use crate::downlink::model::map::{ViewWithEvent, MapAction};
 use common::topic::{Topic, TopicError};
 use common::sink::item::ItemSink;
 use crate::downlink::typed::action::{ValueActions, MapActions};
+use std::convert::TryInto;
+use crate::downlink::typed::event::TypedViewWithEvent;
 
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
@@ -197,7 +200,7 @@ impl<K: Form, V: Form> Transform<Event<ViewWithEvent>> for ApplyFormMap<K, V> {
 
     fn transform(&self, input: Event<ViewWithEvent>) -> Self::Out {
         let Event(value, local) = input;
-        value.typed().map(|v| Event(v, local))
+        value.try_into().map(|v| Event(v, local))
     }
 }
 

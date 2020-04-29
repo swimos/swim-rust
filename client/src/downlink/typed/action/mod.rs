@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::model::map::{MapAction, TypedMapView, ValMap};
+use crate::downlink::model::map::{MapAction, ValMap};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::DownlinkError;
 use common::model::Value;
@@ -21,6 +21,7 @@ use common::sink::item::{ItemSender, ItemSink};
 use form::{Form, ValidatedForm};
 use std::marker::PhantomData;
 use tokio::sync::oneshot;
+use crate::downlink::typed::event::TypedMapView;
 
 pub struct ValueActions<Sender, T> {
     sender: Sender,
