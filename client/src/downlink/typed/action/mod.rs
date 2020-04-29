@@ -37,9 +37,9 @@ impl<Sender, T> ValueActions<Sender, T> {
 }
 
 impl<Sender, T> ValueActions<Sender, T>
-where
-    T: ValidatedForm + 'static,
-    Sender: ItemSender<Action, DownlinkError>,
+    where
+        T: ValidatedForm + 'static,
+        Sender: ItemSender<Action, DownlinkError>,
 {
     pub async fn get(&mut self) -> Result<T, DownlinkError> {
         let (tx, rx) = oneshot::channel();
@@ -62,8 +62,8 @@ where
     }
 
     pub async fn update<F>(&mut self, update_fn: F) -> Result<T, DownlinkError>
-    where
-        F: FnOnce(T) -> T + Send + 'static,
+        where
+            F: FnOnce(T) -> T + Send + 'static,
     {
         let wrapped = wrap_update_fn(update_fn);
         let (tx, rx) = oneshot::channel();
@@ -75,8 +75,8 @@ where
     }
 
     pub async fn update_and_forget<F>(&mut self, update_fn: F) -> Result<(), DownlinkError>
-    where
-        F: FnOnce(T) -> T + Send + 'static,
+        where
+            F: FnOnce(T) -> T + Send + 'static,
     {
         let wrapped = wrap_update_fn::<T, F>(update_fn);
         self.sender.send_item(Action::update(wrapped)).await
@@ -84,8 +84,8 @@ where
 }
 
 impl<'a, Sender, T> ItemSink<'a, Action> for ValueActions<Sender, T>
-where
-    Sender: ItemSink<'a, Action>,
+    where
+        Sender: ItemSink<'a, Action>,
 {
     type Error = Sender::Error;
     type SendFuture = Sender::SendFuture;
@@ -110,10 +110,10 @@ impl<Sender, K, V> MapActions<Sender, K, V> {
 }
 
 impl<Sender, K, V> MapActions<Sender, K, V>
-where
-    K: ValidatedForm + 'static,
-    V: ValidatedForm + 'static,
-    Sender: ItemSender<MapAction, DownlinkError>,
+    where
+        K: ValidatedForm + 'static,
+        V: ValidatedForm + 'static,
+        Sender: ItemSender<MapAction, DownlinkError>,
 {
     pub async fn get(&mut self, key: K) -> Result<Option<V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
@@ -138,8 +138,8 @@ where
     }
 
     pub async fn update<F>(&mut self, key: K, update_fn: F) -> Result<(Option<V>, Option<V>), DownlinkError>
-    where
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+        where
+            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
@@ -190,7 +190,7 @@ where
     }
 
     pub async fn clear(&mut self) -> Result<(), DownlinkError> {
-       self.clear_internal().await.map(|_| ())
+        self.clear_internal().await.map(|_| ())
     }
 
     pub async fn clear_and_get(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
@@ -278,9 +278,9 @@ impl<'a, Sender, K, V> ItemSink<'a, MapAction> for MapActions<Sender, K, V>
 }
 
 fn wrap_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Value) -> Value
-where
-    T: Form,
-    F: FnOnce(T) -> T,
+    where
+        T: Form,
+        F: FnOnce(T) -> T,
 {
     move |value: &Value| {
         match Form::try_from_value(value) {

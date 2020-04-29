@@ -20,7 +20,6 @@ use std::fmt::{Debug, Display, Formatter};
 use tokio::sync::broadcast;
 use tokio::sync::watch;
 
-pub mod action;
 pub mod any;
 pub mod buffered;
 pub mod dropping;

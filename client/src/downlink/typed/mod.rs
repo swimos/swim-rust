@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod action;
+
 use crate::downlink::model::value::{SharedValue, Action};
 use crate::downlink::{Downlink, Event};
 use form::Form;
@@ -21,8 +23,8 @@ use deserialize::FormDeserializeErr;
 use utilities::future::{Transform, UntilFailure, TransformedFuture, SwimFutureExt};
 use crate::downlink::model::map::{ViewWithEvent, TypedViewWithEvent, MapAction};
 use common::topic::{Topic, TopicError};
-use crate::downlink::action::{ValueActions, MapActions};
 use common::sink::item::ItemSink;
+use crate::downlink::typed::action::{ValueActions, MapActions};
 
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
