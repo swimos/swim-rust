@@ -40,7 +40,6 @@ pub struct DownlinkReceiver<Inner> {
 impl<Inner> DownlinkTopic<Inner> {
     pub(in crate::downlink) fn new<T>(inner_topic: Inner, task: Arc<dyn DownlinkInternals>) -> Self
     where
-        T: Clone,
         Inner: Topic<T>,
     {
         DownlinkTopic {
@@ -93,7 +92,6 @@ impl<Inner: Stream> TransformOnce<Result<Inner, TopicError>> for MakeReceiver {
 
 impl<T, Inner> Topic<T> for DownlinkTopic<Inner>
 where
-    T: Clone,
     Inner: Topic<T>,
 {
     type Receiver = DownlinkReceiver<Inner::Receiver>;

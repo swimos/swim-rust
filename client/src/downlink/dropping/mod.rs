@@ -176,7 +176,7 @@ where
     }
 }
 
-impl<Act, Upd> Downlink<Event<Upd>> for DroppingDownlink<Act, Upd>
+impl<Act, Upd> Downlink<Act, Event<Upd>> for DroppingDownlink<Act, Upd>
 where
     Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,

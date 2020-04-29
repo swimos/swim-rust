@@ -41,15 +41,16 @@ use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
+use common::sink::item::ItemSender;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Upd>: Topic<Upd> {
+pub trait Downlink<Act, Upd>: Topic<Upd> + ItemSender<Act, DownlinkError> {
     /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
 
     /// Type of the sink that can be used to apply actions to the downlink.
-    type DlSink;
+    type DlSink: ItemSender<Act, DownlinkError>;
 
     /// Split the downlink into a topic and sink.
     fn split(self) -> (Self::DlTopic, Self::DlSink);

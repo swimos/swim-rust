@@ -12,16 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::model::value::SharedValue;
+use crate::downlink::model::value::{SharedValue, Action};
 use crate::downlink::{Downlink, Event};
 use form::Form;
 use std::marker::PhantomData;
 use futures::Stream;
 use deserialize::FormDeserializeErr;
 use utilities::future::{Transform, UntilFailure, TransformedFuture, SwimFutureExt};
-use crate::downlink::model::map::{ViewWithEvent, TypedViewWithEvent};
+use crate::downlink::model::map::{ViewWithEvent, TypedViewWithEvent, MapAction};
 use common::topic::{Topic, TopicError};
 use crate::downlink::action::{ValueActions, MapActions};
+use common::sink::item::ItemSink;
 
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
@@ -30,7 +31,7 @@ pub struct ValueDownlink<Inner, T> {
 
 impl<Inner, T> ValueDownlink<Inner, T>
 where
-    Inner: Downlink<Event<SharedValue>>,
+    Inner: Downlink<Action, Event<SharedValue>>,
     T: Form,
 {
     pub fn new(inner: Inner) -> Self {
@@ -48,7 +49,7 @@ pub struct MapDownlink<Inner, K, V> {
 
 impl<Inner, K, V> MapDownlink<Inner, K, V>
     where
-        Inner: Downlink<Event<ViewWithEvent>>,
+        Inner: Downlink<MapAction, Event<ViewWithEvent>>,
         K: Form,
         V: Form,
 {
@@ -87,9 +88,36 @@ impl<Inner, K, V> Topic<Event<TypedViewWithEvent<K, V>>> for MapDownlink<Inner, 
     }
 }
 
-impl<Inner, T> Downlink<Event<T>> for ValueDownlink<Inner, T>
+impl<'a, Inner, T> ItemSink<'a, Action> for ValueDownlink<Inner, T>
+    where
+        Inner: ItemSink<'a, Action>,
+        T: Form + Send + 'static,
+{
+    type Error = Inner::Error;
+    type SendFuture = Inner::SendFuture;
+
+    fn send_item(&'a mut self, value: Action) -> Self::SendFuture {
+        self.inner.send_item(value)
+    }
+}
+
+impl<'a, Inner, K, V> ItemSink<'a, MapAction> for MapDownlink<Inner, K, V>
+    where
+        Inner: ItemSink<'a, MapAction>,
+        K: Form + Send + 'static,
+        V: Form + Send + 'static,
+{
+    type Error = Inner::Error;
+    type SendFuture = Inner::SendFuture;
+
+    fn send_item(&'a mut self, value: MapAction) -> Self::SendFuture {
+        self.inner.send_item(value)
+    }
+}
+
+impl<Inner, T> Downlink<Action, Event<T>> for ValueDownlink<Inner, T>
 where
-    Inner: Downlink<Event<SharedValue>>,
+    Inner: Downlink<Action, Event<SharedValue>>,
     T: Form + Send + 'static,
 {
     type DlTopic = TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<T>>;
@@ -103,9 +131,9 @@ where
     }
 }
 
-impl<Inner, K, V> Downlink<Event<TypedViewWithEvent<K, V>>> for MapDownlink<Inner, K, V>
+impl<Inner, K, V> Downlink<MapAction, Event<TypedViewWithEvent<K, V>>> for MapDownlink<Inner, K, V>
     where
-        Inner: Downlink<Event<ViewWithEvent>>,
+        Inner: Downlink<MapAction, Event<ViewWithEvent>>,
         K: Form + Send + 'static,
         V: Form + Send + 'static,
 {
