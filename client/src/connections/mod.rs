@@ -61,10 +61,12 @@ struct ConnectionRequest {
 
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
+#[derive(Clone)]
 pub struct ConnectionPool {
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
     _connection_requests_handler: Arc<JoinHandle<Result<(), ConnectionError>>>,
-    stop_request_tx: oneshot::Sender<oneshot::Sender<Result<(), ConnectionError>>>,
+    //Todo fix this to be cloneable
+    // stop_request_tx: oneshot::Sender<oneshot::Sender<Result<(), ConnectionError>>>,
 }
 
 impl ConnectionPool {
@@ -97,7 +99,7 @@ impl ConnectionPool {
         ConnectionPool {
             connection_request_tx,
             _connection_requests_handler: Arc::new(connection_requests_handler),
-            stop_request_tx,
+            // stop_request_tx,
         }
     }
 
@@ -152,9 +154,10 @@ impl ConnectionPool {
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
     pub async fn close(self) {
-        let (response_tx, response_rx) = oneshot::channel();
-        let _ = self.stop_request_tx.send(response_tx);
-        let _ = response_rx.await;
+        //Todo
+        // let (response_tx, response_rx) = oneshot::channel();
+        // let _ = self.stop_request_tx.send(response_tx);
+        // let _ = response_rx.await;
     }
 }
 
