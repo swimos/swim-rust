@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::future::retryable::strategy::RetryStrategy;
 use crate::future::retryable::{ResettableFuture, RetryableFuture};
+use std::num::NonZeroUsize;
 use tokio::sync::mpsc::error::TrySendError;
 
 struct MpscSender<P>
@@ -71,8 +72,11 @@ async fn test() {
     let (tx, mut rx) = mpsc::channel(1);
     let sender = MpscSender { tx, p };
 
-    let retry: Result<i32, SendErr> =
-        RetryableFuture::new(sender, RetryStrategy::immediate(2)).await;
+    let retry: Result<i32, SendErr> = RetryableFuture::new(
+        sender,
+        RetryStrategy::immediate(NonZeroUsize::new(2).unwrap()),
+    )
+    .await;
     assert_eq!(retry.unwrap(), p);
 
     let result = rx.recv().await;

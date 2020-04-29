@@ -15,6 +15,7 @@
 use std::time::Duration;
 
 use rand::Rng;
+use std::num::NonZeroUsize;
 
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
 /// request.
@@ -79,24 +80,22 @@ impl RetryStrategy {
     }
 
     /// Builds an immediate retry strategy that will attempt ([`retries`]) requests with no delay
-    /// in between the requests. Panics if [`retries`] is less than 1.
-    pub fn immediate(retries: usize) -> RetryStrategy {
-        if retries < 1 {
-            panic!("Retry count must be positive")
-        }
-
+    /// in between the requests.
+    pub fn immediate(retries: NonZeroUsize) -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
-            retry: Some(retries),
+            retry: Some(retries.get()),
             delay: None,
         })
     }
 
     /// Builds an interval retry strategy that will attempt ([`retries`]) requests with [`delay`]
-    /// sleep in between the requests. Panics if [`retries`] is some and less than 1.
-    pub fn interval(delay: Duration, retries: Option<usize>) -> RetryStrategy {
-        if let Some(retries) = retries {
-            if retries < 1 {
-                panic!("Retry count must be positive")
+    /// sleep in between the requests.
+    pub fn interval(delay: Duration, retries: Option<NonZeroUsize>) -> RetryStrategy {
+        let retries = {
+            if let Some(retries) = retries {
+                Some(retries.get())
+            } else {
+                None
             }
         };
 
@@ -119,6 +118,15 @@ impl Iterator for RetryStrategy {
     type Item = Option<Duration>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let decrement_retries = |retry: &mut usize, delay| {
+            if *retry == 0 {
+                None
+            } else {
+                *retry -= 1;
+                delay
+            }
+        };
+
         match self {
             RetryStrategy::Exponential(ref mut strategy) => {
                 match (strategy.start, strategy.max_backoff) {
@@ -134,6 +142,7 @@ impl Iterator for RetryStrategy {
                 }
 
                 strategy.retry_no += 1;
+
                 // Thread local RNG is used as it will live for the duration of the retry strategy
                 let wait = rand::thread_rng().gen_range(0, 1000);
                 let duration = Duration::from_millis((2 ^ strategy.retry_no) + wait);
@@ -142,36 +151,15 @@ impl Iterator for RetryStrategy {
                 Some(Some(sleep_time))
             }
             RetryStrategy::Immediate(strategy) => match strategy.retry {
-                Some(ref mut retry) => {
-                    if *retry == 0 {
-                        None
-                    } else {
-                        *retry -= 1;
-                        Some(None)
-                    }
-                }
+                Some(ref mut retry) => decrement_retries(retry, Some(None)),
                 None => Some(None),
             },
             RetryStrategy::Interval(strategy) => match strategy.retry {
-                Some(ref mut retry) => {
-                    if *retry == 0 {
-                        None
-                    } else {
-                        *retry -= 1;
-                        Some(strategy.delay)
-                    }
-                }
+                Some(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
                 None => Some(strategy.delay),
             },
             RetryStrategy::None(strategy) => match strategy.retry {
-                Some(ref mut retry) => {
-                    if *retry == 0 {
-                        None
-                    } else {
-                        *retry -= 1;
-                        Some(strategy.delay)
-                    }
-                }
+                Some(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
                 None => unreachable!(),
             },
         }
@@ -181,6 +169,7 @@ impl Iterator for RetryStrategy {
 #[cfg(test)]
 mod tests {
     use crate::future::retryable::strategy::RetryStrategy;
+    use std::num::NonZeroUsize;
     use std::time::Duration;
 
     #[tokio::test]
@@ -208,7 +197,7 @@ mod tests {
     #[tokio::test]
     async fn test_immediate() {
         let retries = 5;
-        let strategy = RetryStrategy::immediate(retries);
+        let strategy = RetryStrategy::immediate(NonZeroUsize::new(retries).unwrap());
         let mut it = strategy.into_iter();
         let count = it.count();
 
@@ -225,7 +214,8 @@ mod tests {
     async fn test_interval() {
         let retries = 5;
         let expected_duration = Duration::from_secs(1);
-        let strategy = RetryStrategy::interval(expected_duration, Some(retries));
+        let strategy =
+            RetryStrategy::interval(expected_duration, Some(NonZeroUsize::new(retries).unwrap()));
         let mut it = strategy.into_iter();
         let count = it.count();
 
