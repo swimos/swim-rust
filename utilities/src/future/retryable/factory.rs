@@ -90,7 +90,7 @@ mod tests {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Eq, PartialEq)]
     enum FutErr {}
 
     struct TestFuture {}
@@ -118,8 +118,7 @@ mod tests {
 
         let retryable = RetryableFuture::new(wrapper, Default::default());
         let r = retryable.await;
-        let r = r.unwrap();
-        println!("{:?}", r);
+        assert_eq!(r, Ok(()))
     }
 }
 
