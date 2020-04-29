@@ -46,6 +46,17 @@ pub trait FutureFactory<Ok, Err> {
     fn future(&mut self) -> Self::Future;
 }
 
+impl<F, Ok, Err> FutureFactory<Ok, Err> for F
+where
+    F: Future<Output = Result<Ok, Err>> + 'static + Clone,
+{
+    type Future = Self;
+
+    fn future(&mut self) -> Self::Future {
+        self.clone()
+    }
+}
+
 impl<F, O, E> ResettableFuture for ResetabbleFutureFactory<F, O, E>
 where
     F: FutureFactory<O, E>,
@@ -124,7 +135,7 @@ mod tests {
 
 #[cfg(test)]
 mod tokio {
-    use crate::future::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
+    use crate::future::retryable::factory::ResetabbleFutureFactory;
 
     use crate::future::retryable::RetryableFuture;
     use futures::task::{Context, Poll};
@@ -138,6 +149,7 @@ mod tokio {
         Err,
     }
 
+    #[derive(Clone)]
     struct TestSender<P>
     where
         P: Clone,
@@ -146,22 +158,14 @@ mod tokio {
         payload: P,
     }
 
-    struct SendFuture<P>
-    where
-        P: Clone,
-    {
-        tx: mpsc::Sender<P>,
-        payload: P,
-    }
-
-    impl<P> Future for SendFuture<P>
+    impl<P> Future for TestSender<P>
     where
         P: Clone + Unpin,
     {
         type Output = Result<P, SendErr>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            let SendFuture { tx, payload } = self.get_mut();
+            let TestSender { tx, payload } = self.get_mut();
 
             match tx.poll_ready(cx) {
                 Poll::Ready(Ok(_)) => match tx.try_send(payload.clone()) {
@@ -172,20 +176,6 @@ mod tokio {
 
                 Poll::Ready(Err(_)) => Poll::Ready(Err(SendErr::Err)),
                 Poll::Pending => Poll::Pending,
-            }
-        }
-    }
-
-    impl<P> FutureFactory<P, SendErr> for TestSender<P>
-    where
-        P: Clone + Send + Unpin + 'static,
-    {
-        type Future = SendFuture<P>;
-
-        fn future(&mut self) -> Self::Future {
-            SendFuture {
-                tx: self.tx.clone(),
-                payload: self.payload.clone(),
             }
         }
     }
