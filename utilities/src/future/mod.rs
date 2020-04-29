@@ -21,6 +21,7 @@ use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::pin::Pin;
 
+/// A future that transforms another future using [`Into`].
 #[pin_project]
 #[derive(Debug)]
 pub struct FutureInto<F, T> {
@@ -29,6 +30,7 @@ pub struct FutureInto<F, T> {
     _target: PhantomData<T>,
 }
 
+/// A future that transforms another future, that produces a [`Result`], using [`Into`].
 #[pin_project]
 #[derive(Debug)]
 pub struct OkInto<F, T> {
@@ -37,6 +39,7 @@ pub struct OkInto<F, T> {
     _target: PhantomData<T>,
 }
 
+/// A future that transforms another future using a [`Transform`].
 #[pin_project]
 #[derive(Debug)]
 pub struct TransformedFuture<Fut, Trans> {
@@ -266,6 +269,7 @@ pub trait SwimTryFutureExt: TryFuture {
 
 impl<F: TryFuture> SwimTryFutureExt for F {}
 
+/// A stream that transforms another stream using a [`Transform`].
 #[pin_project]
 #[derive(Debug)]
 pub struct TransformedStream<Str, Trans> {
@@ -301,6 +305,8 @@ where
     }
 }
 
+/// A stream that runs another stream of [`Result`]s until an error is produces, yielding the
+/// OK values.
 #[pin_project]
 #[derive(Debug)]
 pub struct UntilFailure<Str, Trans> {
