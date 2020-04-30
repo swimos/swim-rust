@@ -15,12 +15,13 @@ use crate::configuration::router::RouterParams;
 use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
 use crate::router::outgoing::retry::RetryableRequest;
 use crate::router::{CloseRequestReceiver, CloseRequestSender, ConnReqSender, RoutingError};
+use common::warp::path::AbsolutePath;
 use futures::{stream, StreamExt};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-pub type CommandSender = mpsc::Sender<((url::Url, String, String), String)>;
-pub type CommandReceiver = mpsc::Receiver<((url::Url, String, String), String)>;
+pub type CommandSender = mpsc::Sender<(AbsolutePath, String)>;
+pub type CommandReceiver = mpsc::Receiver<(AbsolutePath, String)>;
 
 pub struct CommandTask {
     connection_request_tx: ConnReqSender,
@@ -63,7 +64,7 @@ impl CommandTask {
             let command = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
             match command {
-                CommandType::Send(((host_url, node, lane), message)) => {
+                CommandType::Send((AbsolutePath { host, node, lane }, message)) => {
                     //Todo add proper conversion
                     let command_message = format!(
                         "@command(node:\"{}\", lane:\"{}\")\"{}\"",
@@ -72,7 +73,7 @@ impl CommandTask {
 
                     //Todo log errors
                     let _ = RetryableRequest::send(
-                        BoxedConnSender::new(connection_request_tx.clone(), host_url),
+                        BoxedConnSender::new(connection_request_tx.clone(), host),
                         Message::Text(command_message),
                         config.retry_strategy(),
                     )
@@ -91,7 +92,7 @@ impl CommandTask {
 }
 
 enum CommandType {
-    Send(((url::Url, String, String), String)),
+    Send((AbsolutePath, String)),
     Close,
 }
 

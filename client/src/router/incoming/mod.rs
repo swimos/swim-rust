@@ -32,11 +32,25 @@ use std::convert::TryFrom;
 pub type IncomingTaskReqSender = mpsc::Sender<ConnectionResponse>;
 pub type IncomingTaskReqReceiver = mpsc::Receiver<ConnectionResponse>;
 
-pub type IncomingSubscriberReqSender =
-    mpsc::Sender<(url::Url, String, String, mpsc::Sender<RouterEvent>)>;
+pub struct IncomingRequest {
+    node: String,
+    lane: String,
+    incoming_tx: mpsc::Sender<RouterEvent>,
+}
 
-pub type IncomingSubscriberReqReceiver =
-    mpsc::Receiver<(url::Url, String, String, mpsc::Sender<RouterEvent>)>;
+impl IncomingRequest {
+    pub fn new(node: String, lane: String, incoming_tx: mpsc::Sender<RouterEvent>) -> Self {
+        IncomingRequest {
+            node,
+            lane,
+            incoming_tx,
+        }
+    }
+}
+
+pub type IncomingSubscriberReqSender = mpsc::Sender<(String, IncomingRequest)>;
+
+pub type IncomingSubscriberReqReceiver = mpsc::Receiver<(String, IncomingRequest)>;
 
 pub struct IncomingTask {
     new_task_request_rx: IncomingTaskReqReceiver,
@@ -173,11 +187,10 @@ fn combine_incoming_streams(
         },
     });
 
-    let subscribe_request =
-        subscribe_request_rx.map(|(host_url, node, lane, channel)| TaskRequest {
-            host: Some(host_url),
-            task_type: HostTaskRequestType::Subscribe((node, lane, channel)),
-        });
+    let subscribe_request = subscribe_request_rx.map(|(host, incoming_request)| TaskRequest {
+        host: Some(host),
+        task_type: HostTaskRequestType::Subscribe(incoming_request),
+    });
 
     let close_request = close_request_rx.map(|_| TaskRequest {
         host: None,
@@ -191,13 +204,13 @@ fn combine_incoming_streams(
 }
 
 pub struct TaskRequest {
-    host: Option<url::Url>,
+    host: Option<String>,
     task_type: HostTaskRequestType,
 }
 
 pub enum HostTaskRequestType {
     Connect(mpsc::Receiver<Message>),
-    Subscribe((String, String, mpsc::Sender<RouterEvent>)),
+    Subscribe(IncomingRequest),
     Message(Message),
     Unreachable,
     Disconnect,
@@ -234,7 +247,11 @@ impl IncomingHostTask {
                         connection = Some(message_rx);
                     }
 
-                    HostTaskRequestType::Subscribe((node, lane, event_tx)) => {
+                    HostTaskRequestType::Subscribe(IncomingRequest {
+                        node,
+                        lane,
+                        incoming_tx: event_tx,
+                    }) => {
                         let destination = format!("{}/{}", node, lane);
                         subscribers
                             .entry(destination)
@@ -293,7 +310,11 @@ impl IncomingHostTask {
                         connection = Some(message_rx);
                     }
 
-                    HostTaskRequestType::Subscribe((node, lane, event_tx)) => {
+                    HostTaskRequestType::Subscribe(IncomingRequest {
+                        node,
+                        lane,
+                        incoming_tx: event_tx,
+                    }) => {
                         let destination = format!("{}/{}", node, lane);
                         subscribers
                             .entry(destination)

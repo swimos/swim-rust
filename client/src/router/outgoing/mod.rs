@@ -28,13 +28,24 @@ use crate::router::incoming::IncomingTaskReqSender;
 use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
 use crate::router::outgoing::retry::RetryableRequest;
 use crate::router::{
-    CloseRequestReceiver, CloseRequestSender, ConnReqSender, ConnectionResponse, RoutingError,
+    CloseRequestReceiver, CloseRequestSender, ConnReqSender, ConnectionResponse, Host, RoutingError,
 };
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
-pub type OutgoingTaskReqSender = mpsc::Sender<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
-type OutgoingTaskReqReceiver = mpsc::Receiver<(url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)>;
+pub struct OutgoingRequest {
+    host: Host,
+    outgoing_tx: oneshot::Sender<mpsc::Sender<Envelope>>,
+}
+
+impl OutgoingRequest {
+    pub fn new(host: Host, outgoing_tx: oneshot::Sender<mpsc::Sender<Envelope>>) -> Self {
+        OutgoingRequest { host, outgoing_tx }
+    }
+}
+
+pub type OutgoingTaskReqSender = mpsc::Sender<OutgoingRequest>;
+type OutgoingTaskReqReceiver = mpsc::Receiver<OutgoingRequest>;
 
 pub(crate) mod retry;
 
@@ -89,12 +100,13 @@ impl OutgoingTask {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
             match task {
-                TaskRequestType::NewTask((host_url, task_tx)) => {
-                    let host = host_url.to_string();
-
+                TaskRequestType::NewTask(OutgoingRequest {
+                    host,
+                    outgoing_tx: task_tx,
+                }) => {
                     if !outgoing_host_tasks.contains_key(&host) {
                         let (outgoing_host_task, envelope_tx, close_tx) = OutgoingHostTask::new(
-                            host_url.clone(),
+                            host.clone(),
                             connection_request_tx.clone(),
                             config,
                         );
@@ -102,11 +114,13 @@ impl OutgoingTask {
                         outgoing_host_tasks.insert(host.clone(), (envelope_tx, close_tx));
 
                         let mut complete_sender = incoming_task_request_tx.clone();
+
+                        let host_temp = host.clone();
                         let outgoing_host_task = outgoing_host_task.run().then(|r| async move {
                             // If the task failed, then notify the RouteHostMessagesTask so it can be handled
                             if r.is_err() {
                                 let _ = complete_sender
-                                    .send(ConnectionResponse::Failure(host_url))
+                                    .send(ConnectionResponse::Failure(host_temp))
                                     .await;
                             }
                         });
@@ -149,7 +163,7 @@ impl OutgoingTask {
 }
 
 enum TaskRequestType {
-    NewTask((url::Url, oneshot::Sender<mpsc::Sender<Envelope>>)),
+    NewTask(OutgoingRequest),
     NewMessage(Envelope),
     Close,
 }
@@ -164,7 +178,7 @@ fn combine_outgoing_streams(
 }
 
 struct OutgoingHostTask {
-    host_url: url::Url,
+    host: Host,
     envelope_rx: mpsc::Receiver<Envelope>,
     close_rx: mpsc::Receiver<()>,
     connection_request_tx: ConnReqSender,
@@ -173,7 +187,7 @@ struct OutgoingHostTask {
 
 impl OutgoingHostTask {
     fn new(
-        host_url: url::Url,
+        host: Host,
         connection_request_tx: ConnReqSender,
         config: RouterParams,
     ) -> (Self, mpsc::Sender<Envelope>, mpsc::Sender<()>) {
@@ -181,7 +195,7 @@ impl OutgoingHostTask {
         let (close_tx, close_rx) = mpsc::channel(config.buffer_size().get());
         (
             OutgoingHostTask {
-                host_url,
+                host,
                 envelope_rx,
                 close_rx,
                 connection_request_tx,
@@ -194,7 +208,7 @@ impl OutgoingHostTask {
 
     async fn run(self) -> Result<(), RoutingError> {
         let OutgoingHostTask {
-            host_url,
+            host,
             envelope_rx,
             close_rx,
             connection_request_tx,
@@ -212,7 +226,7 @@ impl OutgoingHostTask {
                     let message = Message::Text(envelope.into_value().to_string());
 
                     RetryableRequest::send(
-                        BoxedConnSender::new(connection_request_tx.clone(), host_url.clone()),
+                        BoxedConnSender::new(connection_request_tx.clone(), host.clone()),
                         message,
                         config.retry_strategy(),
                     )
@@ -262,11 +276,8 @@ mod route_tests {
     async fn permanent_error() {
         let config = router_config(RetryStrategy::none());
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-        let (host_route_task, mut envelope_tx, _close_tx) = OutgoingHostTask::new(
-            url::Url::parse("ws://127.0.0.1:9001").unwrap(),
-            task_request_tx,
-            config,
-        );
+        let (host_route_task, mut envelope_tx, _close_tx) =
+            OutgoingHostTask::new(String::from("ws://127.0.0.1:9001"), task_request_tx, config);
         let handle = tokio::spawn(host_route_task.run());
 
         let _ = envelope_tx
@@ -283,11 +294,10 @@ mod route_tests {
     #[tokio::test]
     async fn transient_error() {
         let config = router_config(RetryStrategy::immediate(1));
-        let url = url::Url::parse("ws://127.0.0.1:9001").unwrap();
 
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
         let (host_route_task, mut envelope_tx, mut close_tx) =
-            OutgoingHostTask::new(url.clone(), task_request_tx, config);
+            OutgoingHostTask::new(String::from("ws://127.0.0.1:9001"), task_request_tx, config);
 
         let handle = tokio::spawn(host_route_task.run());
         let _ = envelope_tx

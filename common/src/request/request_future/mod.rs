@@ -85,6 +85,7 @@ pub fn send_and_await<T: Unpin + Send + 'static>(
     Sequenced::new(RequestFuture::new(sender.clone(), Request::new(tx)), rx)
 }
 
+#[derive(Debug, Clone)]
 pub struct RequestError {}
 
 impl From<RecvError> for RequestError {
