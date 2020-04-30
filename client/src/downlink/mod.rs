@@ -93,6 +93,7 @@ pub enum DownlinkError {
     TaskPanic,
     TransitionError,
     MalformedMessage,
+    InvalidAction,
     SchemaViolation(Value, StandardSchema),
 }
 
@@ -122,6 +123,9 @@ impl Display for DownlinkError {
             ),
             DownlinkError::MalformedMessage => {
                 write!(f, "A message did not have the expected shape.")
+            },
+            DownlinkError::InvalidAction => {
+                write!(f, "An action could not be applied to the internal state.")
             }
         }
     }
