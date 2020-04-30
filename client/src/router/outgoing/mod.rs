@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::connections::ConnectionSender;
-use crate::router::configuration::RouterConfig;
+use crate::configuration::router::RouterParams;
 use crate::router::RoutingError;
 use common::warp::envelope::Envelope;
 use futures::StreamExt;
@@ -35,14 +35,14 @@ enum OutgoingRequest {
 pub struct OutgoingHostTask {
     envelope_rx: mpsc::Receiver<Envelope>,
     connection_request_tx: mpsc::Sender<(oneshot::Sender<ConnectionSender>, bool)>,
-    config: RouterConfig,
+    config: RouterParams,
 }
 
 impl OutgoingHostTask {
     pub fn new(
         envelope_rx: mpsc::Receiver<Envelope>,
         connection_request_tx: mpsc::Sender<(oneshot::Sender<ConnectionSender>, bool)>,
-        config: RouterConfig,
+        config: RouterParams,
     ) -> Self {
         OutgoingHostTask {
             envelope_rx,
@@ -113,17 +113,17 @@ impl OutgoingHostTask {
     }
 }
 
+
 // #[cfg(test)]
 // mod route_tests {
 //     use super::*;
 //
-//     use crate::router::configuration::RouterConfigBuilder;
-//
+//     use crate::configuration::router::RouterParamBuilder;
 //     use crate::connections::ConnectionSender;
 //     use crate::router::outgoing::retry::RetryStrategy;
 //
-//     fn router_config(strategy: RetryStrategy) -> RouterConfig {
-//         RouterConfigBuilder::default()
+//     fn router_config(strategy: RetryStrategy) -> RouterParams {
+//         RouterParamBuilder::default()
 //             .with_buffer_size(5)
 //             .with_idle_timeout(10)
 //             .with_conn_reaper_frequency(10)
@@ -136,8 +136,11 @@ impl OutgoingHostTask {
 //     async fn permanent_error() {
 //         let config = router_config(RetryStrategy::none());
 //         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-//         let (host_route_task, mut envelope_tx, _close_tx) =
-//             OutgoingHostTask::new(String::from("ws://127.0.0.1:9001"), task_request_tx, config);
+//         let (host_route_task, mut envelope_tx, _close_tx) = OutgoingHostTask::new(
+//             url::Url::parse("ws://127.0.0.1:9001").unwrap(),
+//             task_request_tx,
+//             config,
+//         );
 //         let handle = tokio::spawn(host_route_task.run());
 //
 //         let _ = envelope_tx
@@ -154,10 +157,11 @@ impl OutgoingHostTask {
 //     #[tokio::test]
 //     async fn transient_error() {
 //         let config = router_config(RetryStrategy::immediate(1));
+//         let url = url::Url::parse("ws://127.0.0.1:9001").unwrap();
 //
 //         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
 //         let (host_route_task, mut envelope_tx, mut close_tx) =
-//             OutgoingHostTask::new(String::from("ws://127.0.0.1:9001"), task_request_tx, config);
+//             OutgoingHostTask::new(url.clone(), task_request_tx, config);
 //
 //         let handle = tokio::spawn(host_route_task.run());
 //         let _ = envelope_tx

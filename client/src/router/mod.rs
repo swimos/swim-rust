@@ -23,7 +23,6 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::Duration;
 
 use common::request::request_future::{RequestError, RequestFuture, Sequenced};
 use common::sink::item::map_err::SenderErrInto;
@@ -33,7 +32,7 @@ use common::warp::path::AbsolutePath;
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
-use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
+use crate::configuration::router::RouterParams;
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 
@@ -41,7 +40,6 @@ use crate::router::outgoing::retry::RetryStrategy;
 use std::collections::HashMap;
 
 pub mod command;
-pub mod configuration;
 pub mod incoming;
 pub mod outgoing;
 
@@ -75,11 +73,13 @@ pub type ConnectionRequest = (
 pub struct SwimRouter {
     router_connection_request_tx: mpsc::Sender<ConnectionRequest>,
     _task_manager_handler: JoinHandle<Result<(), RoutingError>>,
-    _configuration: RouterConfig,
+    _configuration: RouterParams,
 }
 
 impl SwimRouter {
-    pub async fn new(buffer_size: usize) -> SwimRouter {
+    pub async fn new(configuration: RouterParams) -> SwimRouter {
+        let buffer_size = configuration.buffer_size().get();
+
         let connection_pool =
             ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
 
@@ -151,7 +151,7 @@ struct TaskManager {
 impl TaskManager {
     fn new(
         connection_pool: ConnectionPool,
-        config: RouterConfig,
+        config: RouterParams,
     ) -> (Self, mpsc::Sender<ConnectionRequest>) {
         let (request_tx, request_rx) = mpsc::channel(config.buffer_size().get());
         (

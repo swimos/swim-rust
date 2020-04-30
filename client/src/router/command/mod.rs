@@ -11,26 +11,28 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-// use crate::router::configuration::RouterConfig;
+// use crate::configuration::router::RouterParams;
+// use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
+// use crate::router::outgoing::retry::RetryableRequest;
 // use crate::router::{CloseRequestReceiver, CloseRequestSender, ConnReqSender, RoutingError};
-// use common::warp::path::AbsolutePath;
 // use futures::{stream, StreamExt};
+// use tokio::sync::mpsc;
 // use tokio_tungstenite::tungstenite::protocol::Message;
-
-// pub type CommandSender = mpsc::Sender<(AbsolutePath, String)>;
-// pub type CommandReceiver = mpsc::Receiver<(AbsolutePath, String)>;
+//
+// pub type CommandSender = mpsc::Sender<((url::Url, String, String), String)>;
+// pub type CommandReceiver = mpsc::Receiver<((url::Url, String, String), String)>;
 //
 // pub struct CommandTask {
 //     connection_request_tx: ConnReqSender,
 //     command_rx: CommandReceiver,
 //     close_request_rx: CloseRequestReceiver,
-//     config: RouterConfig,
+//     config: RouterParams,
 // }
 //
 // impl CommandTask {
 //     pub fn new(
 //         connection_request_tx: ConnReqSender,
-//         config: RouterConfig,
+//         config: RouterParams,
 //     ) -> (Self, CommandSender, CloseRequestSender) {
 //         let (command_tx, command_rx) = mpsc::channel(config.buffer_size().get());
 //         let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
@@ -61,7 +63,7 @@
 //             let command = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 //
 //             match command {
-//                 CommandType::Send((AbsolutePath { host, node, lane }, message)) => {
+//                 CommandType::Send(((host_url, node, lane), message)) => {
 //                     //Todo add proper conversion
 //                     let command_message = format!(
 //                         "@command(node:\"{}\", lane:\"{}\")\"{}\"",
@@ -70,7 +72,7 @@
 //
 //                     //Todo log errors
 //                     let _ = RetryableRequest::send(
-//                         BoxedConnSender::new(connection_request_tx.clone(), host),
+//                         BoxedConnSender::new(connection_request_tx.clone(), host_url),
 //                         Message::Text(command_message),
 //                         config.retry_strategy(),
 //                     )
@@ -89,7 +91,7 @@
 // }
 //
 // enum CommandType {
-//     Send((AbsolutePath, String)),
+//     Send(((url::Url, String, String), String)),
 //     Close,
 // }
 //

@@ -58,68 +58,83 @@ fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) ->
     response
 }
 
-impl StateMachine<Msg, AddTo> for State {
+struct TestStateMachine;
+
+impl StateMachine<State, Msg, AddTo> for TestStateMachine {
     type Ev = i32;
     type Cmd = i32;
 
+    fn init_state(&self) -> State {
+        State(0)
+    }
+
     fn handle_operation(
-        model: &mut Model<Self>,
+        &self,
+        dl_state: &mut DownlinkState,
+        model: &mut State,
         op: Operation<Msg, AddTo>,
-    ) -> Response<Self::Ev, Self::Cmd> {
+    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
         match op {
-            Operation::Start => Response::for_command(Command::Sync),
+            Operation::Start => Ok(Response::for_command(Command::Sync)),
             Operation::Message(Message::Linked) => {
-                model.state = DownlinkState::Linked;
-                Response::none()
+                *dl_state = DownlinkState::Linked;
+                Ok(Response::none())
             }
             Operation::Message(Message::Synced) => {
-                let prev = model.state;
-                model.state = DownlinkState::Synced;
-                if prev != DownlinkState::Synced {
-                    Response::for_event(Event(model.data_state.0, false))
+                let prev = *dl_state;
+                *dl_state = DownlinkState::Synced;
+                Ok(if prev != DownlinkState::Synced {
+                    Response::for_event(Event(model.0, false))
                 } else {
                     Response::none()
-                }
+                })
             }
             Operation::Message(Message::Unlinked) => {
-                model.state = DownlinkState::Unlinked;
-                Response::none()
+                *dl_state = DownlinkState::Unlinked;
+                Ok(Response::none())
             }
             Operation::Message(Message::Action(Msg(n, maybe_cb))) => {
-                if model.state != DownlinkState::Unlinked {
-                    model.data_state.0 = n;
-                }
-                let resp = if model.state == DownlinkState::Synced {
-                    Response::for_event(Event(model.data_state.0, false))
+                let result = if n < 0 {
+                    Err(DownlinkError::MalformedMessage)
                 } else {
-                    Response::none()
+                    if *dl_state != DownlinkState::Unlinked {
+                        model.0 = n;
+                    }
+                    Ok(if *dl_state == DownlinkState::Synced {
+                        Response::for_event(Event(model.0, false))
+                    } else {
+                        Response::none()
+                    })
                 };
+
                 match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
-                        Ok(_) => resp,
-                        Err(_) => with_error(resp, TransitionError::ReceiverDropped),
+                        Ok(_) => result,
+                        Err(_) => {
+                            result.map(|resp| with_error(resp, TransitionError::ReceiverDropped))
+                        }
                     },
-                    _ => resp,
+                    _ => result,
                 }
             }
             Operation::Action(AddTo(n, maybe_cb)) => {
-                let next = model.data_state.0 + n;
+                let next = model.0 + n;
                 let resp = if next < 0 {
                     with_error(
                         Response::none(),
                         TransitionError::IllegalTransition("State cannot be negative.".to_owned()),
                     )
                 } else {
-                    model.data_state.0 = next;
+                    model.0 = next;
                     response_of(Event(next, true), Command::Action(next))
                 };
-                match maybe_cb {
+                Ok(match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
                         Ok(_) => resp,
                         Err(_) => with_error(resp, TransitionError::ReceiverDropped),
                     },
                     _ => resp,
-                }
+                })
             }
         }
     }
@@ -137,7 +152,9 @@ fn response_of<Ev, Cmd>(event: Event<Ev>, command: Command<Cmd>) -> Response<Ev,
 type Str<T> = mpsc::Receiver<T>;
 type Snk<T> = mpsc::Sender<T>;
 
-async fn make_test_dl() -> (
+async fn make_test_dl_custom_on_invalid(
+    on_invalid: OnInvalidMessage,
+) -> (
     RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
     Snk<Message<Msg>>,
     Str<Command<i32>>,
@@ -145,12 +162,21 @@ async fn make_test_dl() -> (
     let (tx_in, rx_in) = mpsc::channel(10);
     let (tx_out, rx_out) = mpsc::channel::<Command<i32>>(10);
     let downlink = create_downlink(
-        State(0),
+        TestStateMachine,
         rx_in,
         for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
         10,
+        on_invalid,
     );
     (downlink, tx_in, rx_out)
+}
+
+async fn make_test_dl() -> (
+    RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
+    Snk<Message<Msg>>,
+    Str<Command<i32>>,
+) {
+    make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate).await
 }
 
 #[tokio::test]
@@ -340,6 +366,47 @@ async fn errors_propagate() {
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
 
-    assert_that!(stop_res, err());
+    assert_that!(&stop_res, err());
     assert_that!(stop_res.err().unwrap(), eq(DownlinkError::TransitionError));
+}
+
+#[tokio::test]
+async fn terminates_on_invalid() {
+    let (dl, mut messages, _commands) =
+        make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate).await;
+    let (dl_tx, dl_rx) = dl.split();
+
+    let _events = dl_rx.event_stream;
+
+    let (msg_tx, msg_rx) = oneshot::channel();
+
+    let msg = Msg(-1, Some(msg_tx));
+
+    assert_that!(messages.send(Message::Action(msg)).await, ok());
+    //Wait for the message to be processed.
+    assert_that!(msg_rx.await, ok());
+
+    let stop_res = dl_tx.task.task_handle().await_stopped().await;
+
+    assert_that!(&stop_res, err());
+    assert_that!(stop_res.err().unwrap(), eq(DownlinkError::MalformedMessage));
+}
+
+#[tokio::test]
+async fn continues_on_invalid() {
+    let (dl, mut messages, mut commands) =
+        make_test_dl_custom_on_invalid(OnInvalidMessage::Ignore).await;
+    let (_dl_tx, dl_rx) = dl.split();
+
+    let mut events = dl_rx.event_stream;
+
+    let (msg_tx, msg_rx) = oneshot::channel();
+
+    let msg = Msg(-1, Some(msg_tx));
+
+    assert_that!(messages.send(Message::Action(msg)).await, ok());
+    //Wait for the message to be processed.
+    assert_that!(msg_rx.await, ok());
+
+    sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 }

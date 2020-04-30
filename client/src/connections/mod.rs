@@ -94,7 +94,7 @@ impl ConnectionPool {
         );
 
         // TODO: Add configuration for connections
-        let connection_requests_handler = tokio::task::spawn(task.run(5, 10));
+        let connection_requests_handler = tokio::task::spawn(task.run(Duration::from_secs(5), Duration::from_secs(10)));
 
         ConnectionPool {
             connection_request_tx,
@@ -176,7 +176,11 @@ where
         }
     }
 
-    async fn run(self, reaper_frequency: u64, conn_timeout: u64) -> Result<(), ConnectionError> {
+    async fn run(
+        self,
+        reaper_frequency: Duration,
+        conn_timeout: Duration,
+    ) -> Result<(), ConnectionError> {
         let PoolTask {
             connection_request_rx,
             mut connection_factory,
@@ -206,9 +210,8 @@ where
 
             match either {
                 Some(Either::Left(_)) => {
-                    connections.retain(|_, v| v.last_accessed.elapsed() < timeout);
-                    prune_timer =
-                        tokio::time::delay_for(Duration::from_secs(reaper_frequency)).fuse();
+                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
+                    prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
                 }
                 Some(Either::Right(RequestType::NewConnection(req))) => {
                     let ConnectionRequest {

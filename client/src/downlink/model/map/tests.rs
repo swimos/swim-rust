@@ -17,24 +17,15 @@ use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::{DownlinkState, Model, Operation, Response, StateMachine};
+use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
 use common::model::schema::Schema;
 
-fn make_model(state: DownlinkState, contents: ValMap) -> Model<MapModel> {
-    Model {
-        state,
-        data_state: MapModel { state: contents },
-    }
-}
-
-fn make_empty_model(state: DownlinkState) -> Model<MapModel> {
-    make_model(state, ValMap::new())
-}
-
-fn make_model_with(state: DownlinkState, key: i32, value: String) -> Model<MapModel> {
+fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);
     let v = Arc::new(Value::Text(value));
-    make_model(state, OrdMap::from(vec![(k, v)]))
+    MapModel {
+        state: OrdMap::from(vec![(k, v)]),
+    }
 }
 
 const STATES: [DownlinkState; 3] = [
@@ -46,21 +37,25 @@ const STATES: [DownlinkState; 3] = [
 #[test]
 fn start_downlink() {
     for s in STATES.iter() {
-        let mut model = make_empty_model(*s);
-        let response = StateMachine::handle_operation(&mut model, Operation::Start);
+        let mut state = *s;
+        let machine = MapStateMachine::unvalidated();
+        let mut model = machine.init_state();
+        let response = machine.handle_operation(&mut state, &mut model, Operation::Start);
+
+        assert_that!(&response, ok());
 
         let Response {
             event,
             command,
             error,
             terminate,
-        } = response;
+        } = response.unwrap();
 
         assert!(!terminate);
         assert_that!(error, none());
         assert_that!(event, none());
 
-        assert_that!(model.state, eq(*s));
+        assert_that!(state, eq(*s));
 
         match command {
             Some(cmd) => {
@@ -75,10 +70,16 @@ fn start_downlink() {
 }
 
 fn linked_response(start_state: DownlinkState) {
-    let mut model = make_empty_model(start_state);
-    let response = StateMachine::handle_operation(&mut model, Operation::Message(Message::Linked));
+    let mut state = start_state;
+    let machine = MapStateMachine::unvalidated();
+    let mut model = machine.init_state();
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Linked));
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -102,16 +103,22 @@ fn only_event(response: &Response<ViewWithEvent, MapModification<Arc<Value>>>) -
 }
 
 fn synced_response(start_state: DownlinkState) {
-    let mut model = make_model_with(start_state, 7, "hello".to_owned());
-    let response = StateMachine::handle_operation(&mut model, Operation::Message(Message::Synced));
+    let mut state = start_state;
+    let machine = MapStateMachine::unvalidated();
+    let mut model = make_model_with(7, "hello".to_owned());
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Synced));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
     if start_state == DownlinkState::Synced {
         assert_that!(response, eq(Response::none()));
     } else {
         let ViewWithEvent { view, event } = only_event(&response);
         assert_that!(event, eq(&MapEvent::Initial));
-        assert!(view.ptr_eq(&model.data_state.state));
+        assert!(view.ptr_eq(&model.state));
     }
 }
 
@@ -123,11 +130,19 @@ fn synced_message() {
 }
 
 fn unlinked_response(start_state: DownlinkState) {
-    let mut model = make_model_with(start_state, 7, "hello".to_owned());
-    let response =
-        StateMachine::handle_operation(&mut model, Operation::Message(Message::Unlinked));
+    let mut state = start_state;
+    let machine = MapStateMachine::unvalidated();
+    let mut model = make_model_with(7, "hello".to_owned());
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Unlinked),
+    );
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
     assert_that!(response, eq(Response::none().then_terminate()));
 }
 
@@ -143,14 +158,20 @@ fn insert_message_unlinked() {
     let k = Value::Int32Value(4);
     let v = Value::Text("hello".to_owned());
 
-    let mut model = make_empty_model(DownlinkState::Unlinked);
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::unvalidated();
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Insert(k, v))),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -159,16 +180,22 @@ fn remove_message_unlinked() {
     let k = Value::Int32Value(4);
     let v = Value::Text("hello".to_owned());
 
-    let mut model = make_model_with(DownlinkState::Unlinked, 4, "hello".to_owned());
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::unvalidated();
+    let mut model = make_model_with(4, "hello".to_owned());
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
     );
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
     let expected = ValMap::from(vec![(k, Arc::new(v))]);
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state.state, eq(expected));
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -179,25 +206,31 @@ fn take_message_unlinked() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Unlinked,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Unlinked;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Take(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![
         (k1.clone(), Arc::new(v1.clone())),
         (k2.clone(), Arc::new(v2.clone())),
     ]);
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state.state, eq(expected));
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -208,25 +241,32 @@ fn skip_message_unlinked() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Unlinked,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Unlinked;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+
+    let machine = MapStateMachine::unvalidated();
+
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Skip(1))),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![
         (k1.clone(), Arc::new(v1.clone())),
         (k2.clone(), Arc::new(v2.clone())),
     ]);
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state.state, eq(expected));
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -237,25 +277,31 @@ fn clear_message_unlinked() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Unlinked,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Unlinked;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Clear)),
     );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![
         (k1.clone(), Arc::new(v1.clone())),
         (k2.clone(), Arc::new(v2.clone())),
     ]);
 
-    assert_that!(model.state, eq(DownlinkState::Unlinked));
-    assert_that!(model.data_state.state, eq(expected));
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -264,8 +310,11 @@ fn insert_message_linked() {
     let k = Value::Int32Value(4);
     let v = Value::Text("hello".to_owned());
 
-    let mut model = make_empty_model(DownlinkState::Linked);
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Linked;
+    let mut model = MapModel::new();
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Insert(
             k.clone(),
@@ -273,10 +322,13 @@ fn insert_message_linked() {
         ))),
     );
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
     let expected = ValMap::from(vec![(k, Arc::new(v))]);
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.state, eq(expected));
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -284,14 +336,20 @@ fn insert_message_linked() {
 fn remove_message_linked() {
     let k = Value::Int32Value(4);
 
-    let mut model = make_model_with(DownlinkState::Linked, 4, "hello".to_owned());
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Linked;
+    let mut model = make_model_with(4, "hello".to_owned());
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -302,22 +360,27 @@ fn take_message_linked() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Linked,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Linked;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Take(1))),
     );
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.state, eq(expected));
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -328,22 +391,27 @@ fn skip_message_linked() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Linked,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Linked;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Skip(1))),
     );
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.state, eq(expected));
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state, eq(expected));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -354,20 +422,25 @@ fn clear_message_linked() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Linked,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Linked;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Clear)),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Linked));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 }
 
@@ -376,8 +449,11 @@ fn insert_message_synced() {
     let k = Value::Int32Value(4);
     let v = Value::Text("hello".to_owned());
 
-    let mut model = make_empty_model(DownlinkState::Synced);
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel::new();
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Insert(
             k.clone(),
@@ -385,13 +461,16 @@ fn insert_message_synced() {
         ))),
     );
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
     let expected = ValMap::from(vec![(k.clone(), Arc::new(v))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     let expected_event = MapEvent::Insert(k);
     assert_that!(event, eq(&expected_event));
 }
@@ -400,17 +479,23 @@ fn insert_message_synced() {
 fn remove_message_synced() {
     let k = Value::Int32Value(4);
 
-    let mut model = make_model_with(DownlinkState::Synced, 4, "hello".to_owned());
-    let response = StateMachine::handle_operation(
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(4, "hello".to_owned());
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     let expected_event = MapEvent::Remove(k);
     assert_that!(event, eq(&expected_event));
 }
@@ -422,25 +507,30 @@ fn take_message_synced() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Take(1))),
     );
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     let expected_event = MapEvent::Take(1);
     assert_that!(event, eq(&expected_event));
 }
@@ -452,25 +542,30 @@ fn skip_message_synced() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Skip(1))),
     );
 
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     let expected_event = MapEvent::Skip(1);
     assert_that!(event, eq(&expected_event));
 }
@@ -482,23 +577,29 @@ fn clear_message_synced() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
-    let response = StateMachine::handle_operation(
+    };
+    let machine = MapStateMachine::unvalidated();
+
+    let maybe_response = machine.handle_operation(
+        &mut state,
         &mut model,
         Operation::Message(Message::Action(MapModification::Clear)),
     );
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
 
     let ViewWithEvent { view, event } = only_event(&response);
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     let expected_event = MapEvent::Clear;
     assert_that!(event, eq(&expected_event));
 }
@@ -518,19 +619,25 @@ fn get_action() {
     let k = Value::Int32Value(13);
     let v = Value::Text("stuff".to_owned());
 
-    let mut model = make_model_with(DownlinkState::Synced, 13, "stuff".to_owned());
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, "stuff".to_owned());
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_get_map();
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k, v)]);
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let get_val = result.unwrap();
-    assert!(get_val.ptr_eq(&model.data_state.state));
+    assert!(get_val.ptr_eq(&model.state));
 }
 
 #[test]
@@ -538,13 +645,19 @@ fn get_by_defined_key_action() {
     let k = Value::Int32Value(13);
     let v = Value::Text("stuff".to_owned());
 
-    let mut model = make_model_with(DownlinkState::Synced, 13, "stuff".to_owned());
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, "stuff".to_owned());
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_get(13);
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v)]);
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
@@ -552,10 +665,7 @@ fn get_by_defined_key_action() {
     let maybe_get_val = result.unwrap();
     assert_that!(&maybe_get_val, some());
     let get_val = maybe_get_val.unwrap();
-    assert!(Arc::ptr_eq(
-        &get_val,
-        model.data_state.state.get(&k).unwrap()
-    ));
+    assert!(Arc::ptr_eq(&get_val, model.state.get(&k).unwrap()));
 }
 
 #[test]
@@ -563,13 +673,19 @@ fn get_by_undefined_key_action() {
     let k = Value::Int32Value(13);
     let v = Value::Text("stuff".to_owned());
 
-    let mut model = make_model_with(DownlinkState::Synced, 13, "stuff".to_owned());
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, "stuff".to_owned());
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_get(-1);
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v)]);
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
@@ -609,22 +725,28 @@ fn insert_to_undefined_action() {
     let k = Value::Int32Value(13);
     let v = Value::Text("stuff".to_owned());
 
-    let mut model = make_empty_model(DownlinkState::Synced);
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_insert(13, "stuff".to_owned());
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
         MapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
-            assert!(Arc::ptr_eq(&cmd_v, model.data_state.state.get(&k).unwrap()));
+            assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
         ow => {
             panic!("{:?} is not an insertion.", ow);
@@ -643,25 +765,30 @@ fn insert_action_dropped_listener() {
     let k = Value::Int32Value(13);
     let v = Value::Text("stuff".to_owned());
 
-    let mut model = make_empty_model(DownlinkState::Synced);
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, rx) = make_insert(13, "stuff".to_owned());
 
     drop(rx);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
         MapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
-            assert!(Arc::ptr_eq(&cmd_v, model.data_state.state.get(&k).unwrap()));
+            assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
         ow => {
             panic!("{:?} is not an insertion.", ow);
@@ -677,23 +804,29 @@ fn insert_to_defined_action() {
 
     let k = Value::Int32Value(13);
 
-    let mut model = make_model_with(DownlinkState::Synced, 13, original_val.clone());
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
 
     let (action, mut rx) = make_insert(13, new_val.clone());
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
     let expected = ValMap::from(vec![(k.clone(), Value::text(new_val.clone()))]);
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
         MapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
-            assert!(Arc::ptr_eq(&cmd_v, model.data_state.state.get(&k).unwrap()));
+            assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
         ow => {
             panic!("{:?} is not an insertion.", ow);
@@ -719,13 +852,19 @@ fn make_remove(key: i32) -> (MapAction, oneshot::Receiver<Option<Arc<Value>>>) {
 
 #[test]
 fn remove_undefined_action() {
-    let mut model = make_empty_model(DownlinkState::Synced);
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, mut rx) = make_remove(43);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
     assert_that!(response, eq(Response::none()));
 
     let result = rx.try_recv();
@@ -736,15 +875,21 @@ fn remove_undefined_action() {
 
 #[test]
 fn remove_action_dropped_listener() {
-    let mut model = make_empty_model(DownlinkState::Synced);
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel::new();
+    let machine = MapStateMachine::unvalidated();
     let (action, rx) = make_remove(43);
 
     drop(rx);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
     assert_that!(
         response,
         eq(with_error(
@@ -764,18 +909,24 @@ fn remove_defined_action() {
     let k = Value::Int32Value(13);
     let original_val = "original".to_owned();
 
-    let mut model = make_model_with(DownlinkState::Synced, 13, original_val.clone());
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
 
     let (action, mut rx) = make_remove(13);
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(state, eq(DownlinkState::Synced));
+
+    assert_that!(model.state.len(), eq(0));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Remove(k.clone())));
     match cmd {
         MapModification::Remove(cmd_k) => {
@@ -818,28 +969,33 @@ fn take_action() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
-    let expected_before = model.data_state.state.clone();
+    let expected_before = model.state.clone();
 
     let (action, mut rx_before, mut rx_after) = make_take(1);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, none());
@@ -852,7 +1008,7 @@ fn take_action() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state.state));
+    assert!(after_val.ptr_eq(&model.state));
 }
 
 #[test]
@@ -862,28 +1018,33 @@ fn take_action_dropped_before() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, mut rx_after) = make_take(1);
 
     drop(rx_before);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -891,7 +1052,7 @@ fn take_action_dropped_before() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state.state));
+    assert!(after_val.ptr_eq(&model.state));
 }
 
 #[test]
@@ -901,30 +1062,35 @@ fn take_action_dropped_after() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
-    let expected_before = model.data_state.state.clone();
+    let expected_before = model.state.clone();
 
     let (action, mut rx_before, rx_after) = make_take(1);
 
     drop(rx_after);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -942,29 +1108,34 @@ fn take_action_both_dropped() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, rx_after) = make_take(1);
 
     drop(rx_before);
     drop(rx_after);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k1.clone(), Arc::new(v1.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
     assert_that!(cmd, eq(MapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -993,28 +1164,33 @@ fn skip_action() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
-    let expected_before = model.data_state.state.clone();
+    let expected_before = model.state.clone();
 
     let (action, mut rx_before, mut rx_after) = make_skip(1);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, none());
@@ -1027,7 +1203,7 @@ fn skip_action() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state.state));
+    assert!(after_val.ptr_eq(&model.state));
 }
 
 #[test]
@@ -1037,28 +1213,33 @@ fn skip_action_dropped_before() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, mut rx_after) = make_skip(1);
 
     drop(rx_before);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -1066,7 +1247,7 @@ fn skip_action_dropped_before() {
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
     let after_val = result_after.unwrap();
-    assert!(after_val.ptr_eq(&model.data_state.state));
+    assert!(after_val.ptr_eq(&model.state));
 }
 
 #[test]
@@ -1076,30 +1257,35 @@ fn skip_action_dropped_after() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
-    let expected_before = model.data_state.state.clone();
+    let expected_before = model.state.clone();
 
     let (action, mut rx_before, rx_after) = make_skip(1);
 
     drop(rx_after);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -1117,29 +1303,34 @@ fn skip_action_dropped_both() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before, rx_after) = make_skip(1);
 
     drop(rx_before);
     drop(rx_after);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
 
     let expected = ValMap::from(vec![(k2.clone(), Arc::new(v2.clone()))]);
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(&model.data_state.state, eq(&expected));
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
     assert_that!(cmd, eq(MapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -1157,26 +1348,31 @@ fn clear_action() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
-    let expected_before = model.data_state.state.clone();
+    let expected_before = model.state.clone();
 
     let (action, mut rx_before) = make_clear();
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Clear));
     assert_that!(cmd, eq(MapModification::Clear));
     assert_that!(err, none());
@@ -1194,26 +1390,31 @@ fn clear_action_dropped_receiver() {
     let v1 = Value::Text("hello".to_owned());
     let v2 = Value::Text("world".to_owned());
 
-    let mut model = make_model(
-        DownlinkState::Synced,
-        ValMap::from(vec![
+    let mut state = DownlinkState::Synced;
+    let mut model = MapModel {
+        state: ValMap::from(vec![
             (k1.clone(), Arc::new(v1.clone())),
             (k2.clone(), Arc::new(v2.clone())),
         ]),
-    );
+    };
+    let machine = MapStateMachine::unvalidated();
 
     let (action, rx_before) = make_clear();
 
     drop(rx_before);
 
-    let response = StateMachine::handle_operation(&mut model, Operation::Action(action));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(model.state, eq(DownlinkState::Synced));
-    assert_that!(model.data_state.state.len(), eq(0));
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
-    assert!(view.ptr_eq(&model.data_state.state));
+    assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Clear));
     assert_that!(cmd, eq(MapModification::Clear));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
@@ -1410,4 +1611,262 @@ pub fn map_modification_schema() {
     assert!(schema.matches(&remove));
     assert!(schema.matches(&simple_insert));
     assert!(schema.matches(&complex_insert));
+}
+
+#[test]
+fn invalid_insert_key_unlinked() {
+    let k = Value::Extant;
+    let v = Value::Text("hello".to_owned());
+
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(response, eq(Response::none()));
+}
+
+#[test]
+fn invalid_insert_value_unlinked() {
+    let k = Value::Int32Value(1);
+    let v = Value::Extant;
+
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(response, eq(Response::none()));
+}
+
+#[test]
+fn invalid_remove_unlinked() {
+    let k = Value::Extant;
+
+    let mut state = DownlinkState::Unlinked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Remove(k))),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Unlinked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(response, eq(Response::none()));
+}
+
+#[test]
+fn invalid_insert_key_linked() {
+    let k = Value::Extant;
+    let v = Value::Text("hello".to_owned());
+
+    let mut state = DownlinkState::Linked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
+}
+
+#[test]
+fn invalid_insert_value_linked() {
+    let k = Value::Int32Value(1);
+    let v = Value::Extant;
+
+    let mut state = DownlinkState::Linked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Text)
+        ))
+    );
+}
+
+#[test]
+fn invalid_remove_linked() {
+    let k = Value::Extant;
+
+    let mut state = DownlinkState::Linked;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Remove(k))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
+}
+
+#[test]
+fn invalid_insert_key_synced() {
+    let k = Value::Extant;
+    let v = Value::Text("hello".to_owned());
+
+    let mut state = DownlinkState::Synced;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
+}
+
+#[test]
+fn invalid_insert_value_synced() {
+    let k = Value::Int32Value(1);
+    let v = Value::Extant;
+
+    let mut state = DownlinkState::Synced;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Text)
+        ))
+    );
+}
+
+#[test]
+fn invalid_remove_synced() {
+    let k = Value::Extant;
+
+    let mut state = DownlinkState::Synced;
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Text),
+    );
+    let mut model = MapModel::new();
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(MapModification::Remove(k))),
+    );
+
+    assert_that!(&maybe_response, err());
+    let error = maybe_response.err().unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    assert_that!(model.state.len(), eq(0));
+    assert_that!(
+        error,
+        eq(DownlinkError::SchemaViolation(
+            Value::Extant,
+            StandardSchema::OfKind(ValueKind::Int32)
+        ))
+    );
 }
