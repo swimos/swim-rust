@@ -30,9 +30,9 @@ use common::sink::item::ItemSender;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 
+use crate::configuration::router::RouterParams;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
-use crate::configuration::router::RouterParams;
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 
@@ -82,18 +82,6 @@ impl SwimRouter {
 
         let connection_pool =
             ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
-
-        // TODO: Accept as an argument
-        let configuration = RouterConfigBuilder::default()
-            .with_buffer_size(buffer_size)
-            .with_idle_timeout(5)
-            .with_conn_reaper_frequency(10)
-            .with_retry_stategy(RetryStrategy::exponential(
-                Duration::from_secs(8),
-                // Indefinately try to send requests
-                None,
-            ))
-            .build();
 
         let (task_manager, router_connection_tx) = TaskManager::new(connection_pool, configuration);
         let task_manager_handler = tokio::spawn(task_manager.run());
@@ -145,7 +133,7 @@ struct TaskManager {
     //Todo maybe change this with combinators?
     request_rx: mpsc::Receiver<ConnectionRequest>,
     connection_pool: ConnectionPool,
-    config: RouterConfig,
+    config: RouterParams,
 }
 
 impl TaskManager {
@@ -225,14 +213,14 @@ struct HostManager {
     connection_pool: ConnectionPool,
     sink_rx: mpsc::Receiver<Envelope>,
     stream_registrator_rx: mpsc::Receiver<mpsc::Sender<RouterEvent>>,
-    config: RouterConfig,
+    config: RouterParams,
 }
 
 impl HostManager {
     fn new(
         target: AbsolutePath,
         connection_pool: ConnectionPool,
-        config: RouterConfig,
+        config: RouterParams,
     ) -> (
         HostManager,
         mpsc::Sender<Envelope>,

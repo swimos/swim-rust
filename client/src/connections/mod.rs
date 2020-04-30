@@ -94,7 +94,8 @@ impl ConnectionPool {
         );
 
         // TODO: Add configuration for connections
-        let connection_requests_handler = tokio::task::spawn(task.run(Duration::from_secs(5), Duration::from_secs(10)));
+        let connection_requests_handler =
+            tokio::task::spawn(task.run(Duration::from_secs(5), Duration::from_secs(10)));
 
         ConnectionPool {
             connection_request_tx,
@@ -190,8 +191,7 @@ where
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
 
         //Todo merge that into the stream combine
-        let timeout = std::time::Duration::from_secs(conn_timeout);
-        let mut prune_timer = tokio::time::delay_for(Duration::from_secs(reaper_frequency)).fuse();
+        let mut prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
 
         // let requests_rx = combine_connection_streams(connection_request_rx, stop_request_rx);
         let requests_rx = connection_request_rx.map(RequestType::NewConnection);
