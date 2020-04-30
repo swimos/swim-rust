@@ -23,7 +23,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 use common::warp::envelope::Envelope;
 
-use crate::router::configuration::RouterConfig;
+use crate::configuration::router::RouterParams;
 use crate::router::incoming::IncomingTaskReqSender;
 use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
 use crate::router::outgoing::retry::RetryableRequest;
@@ -56,7 +56,7 @@ pub struct OutgoingTask {
     connection_request_tx: ConnReqSender,
     task_request_rx: OutgoingTaskReqReceiver,
     close_request_rx: CloseRequestReceiver,
-    config: RouterConfig,
+    config: RouterParams,
     incoming_task_request_tx: IncomingTaskReqSender,
 }
 
@@ -64,7 +64,7 @@ impl OutgoingTask {
     pub fn new(
         connection_request_tx: ConnReqSender,
         incoming_task_request_tx: IncomingTaskReqSender,
-        config: RouterConfig,
+        config: RouterParams,
     ) -> (Self, OutgoingTaskReqSender, CloseRequestSender) {
         let (task_request_tx, task_request_rx) = mpsc::channel(config.buffer_size().get());
         let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
@@ -182,14 +182,14 @@ struct OutgoingHostTask {
     envelope_rx: mpsc::Receiver<Envelope>,
     close_rx: mpsc::Receiver<()>,
     connection_request_tx: ConnReqSender,
-    config: RouterConfig,
+    config: RouterParams,
 }
 
 impl OutgoingHostTask {
     fn new(
         host: Host,
         connection_request_tx: ConnReqSender,
-        config: RouterConfig,
+        config: RouterParams,
     ) -> (Self, mpsc::Sender<Envelope>, mpsc::Sender<()>) {
         let (envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
         let (close_tx, close_rx) = mpsc::channel(config.buffer_size().get());
@@ -258,13 +258,12 @@ fn combine_outgoing_host_streams(
 mod route_tests {
     use super::*;
 
-    use crate::router::configuration::RouterConfigBuilder;
-
+    use crate::configuration::router::RouterParamBuilder;
     use crate::connections::ConnectionSender;
     use crate::router::outgoing::retry::RetryStrategy;
 
-    fn router_config(strategy: RetryStrategy) -> RouterConfig {
-        RouterConfigBuilder::default()
+    fn router_config(strategy: RetryStrategy) -> RouterParams {
+        RouterParamBuilder::default()
             .with_buffer_size(5)
             .with_idle_timeout(10)
             .with_conn_reaper_frequency(10)

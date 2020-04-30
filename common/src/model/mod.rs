@@ -89,6 +89,46 @@ pub enum ValueKind {
     Record,
 }
 
+/// Trait for types that can be converted to [`Value`]s.
+pub trait ToValue {
+    fn to_value(&self) -> Value;
+}
+
+impl ToValue for Value {
+    fn to_value(&self) -> Value {
+        self.clone()
+    }
+}
+
+/// Trait for types that can be reconstructed from [`Value`]s.
+pub trait ReconstructFromValue: Sized {
+    type Error;
+
+    fn try_reconstruct(value: &Value) -> Result<Self, Self::Error>;
+}
+
+impl ReconstructFromValue for Value {
+    type Error = ();
+
+    fn try_reconstruct(value: &Value) -> Result<Self, Self::Error> {
+        Ok(value.clone())
+    }
+}
+
+impl Display for ValueKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueKind::Extant => write!(f, "Extant"),
+            ValueKind::Int32 => write!(f, "Int32"),
+            ValueKind::Int64 => write!(f, "Int64"),
+            ValueKind::Float64 => write!(f, "Float64"),
+            ValueKind::Boolean => write!(f, "Boolean"),
+            ValueKind::Text => write!(f, "Text"),
+            ValueKind::Record => write!(f, "Record"),
+        }
+    }
+}
+
 #[allow(clippy::float_cmp, clippy::cognitive_complexity)]
 impl Value {
     /// Create a text value from anything that can be converted to a ['String'].
@@ -247,6 +287,16 @@ impl Value {
             Value::Record(_, _) => ValueKind::Record,
         }
     }
+
+    pub fn prepend(self, attr: Attr) -> Value {
+        match self {
+            Value::Record(mut attrs, items) => {
+                attrs.insert(0, attr);
+                Value::Record(attrs, items)
+            }
+            ow => Value::Record(vec![attr], vec![Item::ValueItem(ow)]),
+        }
+    }
 }
 
 impl Default for Value {
@@ -399,14 +449,87 @@ impl Attr {
     /// #Examples
     ///
     /// ```
-    ///
     /// use common::model::{Attr, Value};
     ///
-    /// assert_eq!(Attr::of("name"), Attr { name: String::from("name"), value: Value::Extant });
-    /// assert_eq!(Attr::of(("key", 1)), Attr { name: String::from("key"), value: Value::Int32Value(1) });
+    /// assert_eq!(Attr::of("name"), Attr { name: String::from("name"), value: Value::Extant, });
+    /// assert_eq!(Attr::of(("key", 1)), Attr { name: String::from("key"), value: Value::Int32Value(1), });
     /// ```
     pub fn of<T: Into<Attr>>(rep: T) -> Attr {
         rep.into()
+    }
+
+    /// Create an [`Attr`] with a specified named and value.
+    ///
+    /// #Examples
+    ///
+    /// ```
+    /// use common::model::{Attr, Value};
+    ///
+    /// assert_eq!(Attr::with_value("name", 1), Attr { name: String::from("name"), value: Value::Int32Value(1), });
+    ///
+    /// ```
+    pub fn with_value<V: Into<Value>>(name: &str, value: V) -> Attr {
+        Attr::of((name, value))
+    }
+
+    /// Create an [`Attr`] containing a record with a single slot.
+    ///
+    /// #Examples
+    ///
+    /// ```
+    /// use common::model::{Attr, Value, Item};
+    ///
+    /// assert_eq!(
+    ///     Attr::with_field("name", "inner", 1),
+    ///     Attr {
+    ///         name: String::from("name"),
+    ///         value: Value::Record(vec![], vec![Item::Slot(Value::Text(String::from("inner")), Value::Int32Value(1))]),
+    ///     }
+    /// );
+    ///
+    /// ```
+    pub fn with_field<V: Into<Value>>(name: &str, field_name: &str, value: V) -> Attr {
+        Attr::of((name, Value::from_vec(vec![(field_name, value)])))
+    }
+
+    /// Create an [`Attr`] containing a record with a single item.
+    ///
+    /// #Examples
+    ///
+    /// ```
+    /// use common::model::{Attr, Value, Item};
+    ///
+    /// assert_eq!(
+    ///     Attr::with_item("name", 1),
+    ///     Attr {
+    ///         name: String::from("name"),
+    ///         value: Value::Record(vec![], vec![Item::ValueItem(Value::Int32Value(1))]),
+    ///     }
+    /// );
+    ///
+    /// ```
+    pub fn with_item<I: Into<Item>>(name: &str, item: I) -> Attr {
+        Attr::of((name, Value::from_vec(vec![item])))
+    }
+
+    /// Create an [`Attr`] containing a record with a multiple items.
+    ///
+    /// #Examples
+    ///
+    /// ```
+    /// use common::model::{Attr, Value, Item};
+    ///
+    /// assert_eq!(
+    ///     Attr::with_items("name", vec![0, 1]),
+    ///     Attr {
+    ///         name: String::from("name"),
+    ///         value: Value::Record(vec![], vec![Item::ValueItem(Value::Int32Value(0)), Item::ValueItem(Value::Int32Value(1))]),
+    ///     }
+    /// );
+    ///
+    /// ```
+    pub fn with_items<I: Into<Item>>(name: &str, items: Vec<I>) -> Attr {
+        Attr::of((name, Value::from_vec(items)))
     }
 
     fn compare(&self, other: &Attr) -> Ordering {
@@ -414,6 +537,12 @@ impl Attr {
             Ordering::Equal => self.value.cmp(&other.value),
             ow => ow,
         }
+    }
+}
+
+impl Into<Value> for Attr {
+    fn into(self) -> Value {
+        Value::Record(vec![self], vec![])
     }
 }
 

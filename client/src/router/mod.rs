@@ -25,7 +25,6 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::Duration;
 
 use common::request::request_future::{RequestError, RequestFuture, Sequenced};
 use common::sink::item::map_err::SenderErrInto;
@@ -36,17 +35,13 @@ use common::warp::path::AbsolutePath;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
 use crate::router::command::{CommandSender, CommandTask};
-use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
-use crate::router::incoming::{
-    IncomingRequest, IncomingSubscriberReqSender, IncomingTask, IncomingTaskReqSender,
-};
-use crate::router::outgoing::retry::RetryStrategy;
-use crate::router::outgoing::{OutgoingRequest, OutgoingTask, OutgoingTaskReqSender};
+use crate::router::incoming::{IncomingSubscriberReqSender, IncomingTask, IncomingTaskReqSender};
+use crate::router::outgoing::{OutgoingTask, OutgoingTaskReqSender};
 
+use crate::configuration::router::RouterParams;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub mod command;
-pub mod configuration;
 pub mod incoming;
 pub mod outgoing;
 
@@ -71,7 +66,7 @@ pub type CloseRequestSender = mpsc::Sender<()>;
 pub type CloseRequestReceiver = mpsc::Receiver<()>;
 
 pub struct SwimRouter {
-    configuration: RouterConfig,
+    configuration: RouterParams,
     outgoing_task_request_tx: OutgoingTaskReqSender,
     incoming_subscribe_request_tx: IncomingSubscriberReqSender,
     connection_request_handler: JoinHandle<Result<(), RoutingError>>,
@@ -86,21 +81,11 @@ pub struct SwimRouter {
 }
 
 impl SwimRouter {
-    pub async fn new(buffer_size: usize) -> SwimRouter {
+    pub async fn new(configuration: RouterParams) -> SwimRouter {
+        let buffer_size = configuration.buffer_size().get();
+
         let connection_pool =
             ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
-
-        // TODO: Accept as an argument
-        let configuration = RouterConfigBuilder::default()
-            .with_buffer_size(buffer_size)
-            .with_idle_timeout(5)
-            .with_conn_reaper_frequency(10)
-            .with_retry_stategy(RetryStrategy::exponential(
-                Duration::from_secs(8),
-                // Indefinately try to send requests
-                None,
-            ))
-            .build();
 
         let (
             incoming_task,
@@ -215,7 +200,7 @@ impl ConnectionRequestTask {
     fn new(
         connection_pool: ConnectionPool,
         incoming_task_request_tx: IncomingTaskReqSender,
-        config: RouterConfig,
+        config: RouterParams,
     ) -> (Self, ConnReqSender, CloseRequestSender) {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());

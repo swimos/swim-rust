@@ -15,10 +15,11 @@
 use std::time::Duration;
 
 use rand::Rng;
+use std::num::NonZeroUsize;
 
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
 /// request.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy)]
 pub enum RetryStrategy {
     /// An immediate retry with no sleep time in between the requests.
     Immediate(IntervalStrategy),
@@ -33,7 +34,7 @@ pub enum RetryStrategy {
 /// Interval strategy parameters with either a defined number of retries to attempt or an indefinate number of
 /// retries. Sleeping for the given [`delay`] in between each request. Immediate retry strategies are
 /// backed by this.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy)]
 pub struct IntervalStrategy {
     /// Indefinate if [`None`]
     retry: Option<usize>,
@@ -41,7 +42,7 @@ pub struct IntervalStrategy {
 }
 
 /// Truncated exponential retry strategy parameters.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy)]
 pub struct ExponentialStrategy {
     /// The time that the first request was attempted.
     start: Option<std::time::Instant>,
@@ -79,24 +80,22 @@ impl RetryStrategy {
     }
 
     /// Builds an immediate retry strategy that will attempt ([`retries`]) requests with no delay
-    /// in between the requests. Panics is [`retries`] is less than 1.
-    pub fn immediate(retries: usize) -> RetryStrategy {
-        if retries < 1 {
-            panic!("Retry count must be positive")
-        }
-
+    /// in between the requests.
+    pub fn immediate(retries: NonZeroUsize) -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
-            retry: Some(retries),
+            retry: Some(retries.get()),
             delay: None,
         })
     }
 
     /// Builds an interval retry strategy that will attempt ([`retries`]) requests with [`delay`]
-    /// sleep in between the requests. Panics is [`retries`] is some and less than 1.
-    pub fn interval(delay: Duration, retries: Option<usize>) -> RetryStrategy {
-        if let Some(retries) = retries {
-            if retries < 1 {
-                panic!("Retry count must be positive")
+    /// sleep in between the requests.
+    pub fn interval(delay: Duration, retries: Option<NonZeroUsize>) -> RetryStrategy {
+        let retries = {
+            if let Some(retries) = retries {
+                Some(retries.get())
+            } else {
+                None
             }
         };
 
@@ -119,6 +118,15 @@ impl Iterator for RetryStrategy {
     type Item = Option<Duration>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let decrement_retries = |retry: &mut usize, delay| {
+            if *retry == 0 {
+                None
+            } else {
+                *retry -= 1;
+                delay
+            }
+        };
+
         match self {
             RetryStrategy::Exponential(ref mut strategy) => {
                 match (strategy.start, strategy.max_backoff) {
@@ -134,6 +142,7 @@ impl Iterator for RetryStrategy {
                 }
 
                 strategy.retry_no += 1;
+
                 // Thread local RNG is used as it will live for the duration of the retry strategy
                 let wait = rand::thread_rng().gen_range(0, 1000);
                 let duration = Duration::from_millis((2 ^ strategy.retry_no) + wait);
@@ -142,95 +151,82 @@ impl Iterator for RetryStrategy {
                 Some(Some(sleep_time))
             }
             RetryStrategy::Immediate(strategy) => match strategy.retry {
-                Some(ref mut retry) => {
-                    if *retry == 0 {
-                        None
-                    } else {
-                        *retry -= 1;
-                        Some(None)
-                    }
-                }
+                Some(ref mut retry) => decrement_retries(retry, Some(None)),
                 None => Some(None),
             },
             RetryStrategy::Interval(strategy) => match strategy.retry {
-                Some(ref mut retry) => {
-                    if *retry == 0 {
-                        None
-                    } else {
-                        *retry -= 1;
-                        Some(strategy.delay)
-                    }
-                }
+                Some(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
                 None => Some(strategy.delay),
             },
             RetryStrategy::None(strategy) => match strategy.retry {
-                Some(ref mut retry) => {
-                    if *retry == 0 {
-                        None
-                    } else {
-                        *retry -= 1;
-                        Some(strategy.delay)
-                    }
-                }
+                Some(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
                 None => unreachable!(),
             },
         }
     }
 }
 
-#[tokio::test]
-async fn test_exponential() {
-    use std::time::Instant;
+#[cfg(test)]
+mod tests {
+    use crate::future::retryable::strategy::RetryStrategy;
+    use std::num::NonZeroUsize;
+    use std::time::Duration;
 
-    let max_interval = Duration::from_secs(2);
-    let max_backoff = Duration::from_secs(8);
-    let strategy = RetryStrategy::exponential(max_interval, Some(max_backoff));
-    let start = Instant::now();
-    let mut it = strategy.into_iter();
+    #[tokio::test]
+    async fn test_exponential() {
+        use std::time::Instant;
 
-    while let Some(duration) = it.next() {
-        assert!(duration.is_some());
-        let duration = duration.unwrap();
+        let max_interval = Duration::from_secs(2);
+        let max_backoff = Duration::from_secs(8);
+        let strategy = RetryStrategy::exponential(max_interval, Some(max_backoff));
+        let start = Instant::now();
+        let mut it = strategy.into_iter();
 
-        assert!(duration <= max_interval);
-        std::thread::sleep(duration);
+        while let Some(duration) = it.next() {
+            assert!(duration.is_some());
+            let duration = duration.unwrap();
+
+            assert!(duration <= max_interval);
+            std::thread::sleep(duration);
+        }
+
+        let duration = start.elapsed();
+        assert!(duration >= max_backoff && duration <= max_backoff + max_interval);
     }
 
-    let duration = start.elapsed();
-    assert!(duration >= max_backoff && duration <= max_backoff + max_interval);
-}
+    #[tokio::test]
+    async fn test_immediate() {
+        let retries = 5;
+        let strategy = RetryStrategy::immediate(NonZeroUsize::new(retries).unwrap());
+        let mut it = strategy.into_iter();
+        let count = it.count();
 
-#[tokio::test]
-async fn test_immediate() {
-    let retries = 5;
-    let strategy = RetryStrategy::immediate(retries);
-    let mut it = strategy.into_iter();
-    let count = it.count();
+        assert_eq!(count, retries);
 
-    assert_eq!(count, retries);
+        while let Some(duration) = it.next() {
+            assert!(duration.is_none());
+        }
 
-    while let Some(duration) = it.next() {
-        assert!(duration.is_none());
+        assert!(it.next().is_none());
     }
 
-    assert!(it.next().is_none());
-}
+    #[tokio::test]
+    async fn test_interval() {
+        let retries = 5;
+        let expected_duration = Duration::from_secs(1);
+        let strategy =
+            RetryStrategy::interval(expected_duration, Some(NonZeroUsize::new(retries).unwrap()));
+        let mut it = strategy.into_iter();
+        let count = it.count();
 
-#[tokio::test]
-async fn test_interval() {
-    let retries = 5;
-    let expected_duration = Duration::from_secs(1);
-    let strategy = RetryStrategy::interval(expected_duration, Some(retries));
-    let mut it = strategy.into_iter();
-    let count = it.count();
+        assert_eq!(count, retries);
 
-    assert_eq!(count, retries);
+        while let Some(duration) = it.next() {
+            assert!(duration.is_some());
+            let duration = duration.unwrap();
+            assert_eq!(expected_duration, duration);
+        }
 
-    while let Some(duration) = it.next() {
-        assert!(duration.is_some());
-        let duration = duration.unwrap();
-        assert_eq!(expected_duration, duration);
+        assert!(it.next().is_none());
     }
-
-    assert!(it.next().is_none());
 }

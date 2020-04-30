@@ -20,13 +20,16 @@ use tokio::sync::mpsc;
 use common::model::{Attr, Item, Value, ValueKind};
 use common::request::Request;
 
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
-use crate::downlink::{BasicResponse, BasicStateMachine, Command, Event, Message, TransitionError};
+use crate::downlink::{
+    BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message, TransitionError,
+};
 use crate::router::RoutingError;
-use common::model::schema::{AttrSchema, FieldSpec, SlotSchema, StandardSchema};
+use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
 use common::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
 use form::{Form, ValidatedForm};
@@ -554,23 +557,38 @@ impl ViewWithEvent {
 
 /// Create a map downlink.
 pub fn create_raw_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
-    crate::downlink::create_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
+    crate::downlink::create_downlink(
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
+        update_stream,
+        cmd_sink,
+        buffer_size,
+        on_invalid,
+    )
 }
 
 /// Create a map downlink with an queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     QueueDownlink<MapAction, ViewWithEvent>,
     QueueReceiver<ViewWithEvent>,
@@ -580,19 +598,26 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        MapModel::new(),
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
         update_stream,
         cmd_sink,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 
 /// Create a value downlink with an dropping multiplexing topic.
 pub fn create_dropping_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     DroppingDownlink<MapAction, ViewWithEvent>,
     DroppingReceiver<ViewWithEvent>,
@@ -601,15 +626,27 @@ where
     Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
-    dropping::make_downlink(MapModel::new(), update_stream, cmd_sink, buffer_size)
+    dropping::make_downlink(
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
+        update_stream,
+        cmd_sink,
+        buffer_size,
+        on_invalid,
+    )
 }
 
 /// Create a value downlink with an buffered multiplexing topic.
 pub fn create_buffered_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
     buffer_size: usize,
     queue_size: usize,
+    on_invalid: OnInvalidMessage,
 ) -> (
     BufferedDownlink<MapAction, ViewWithEvent>,
     BufferedReceiver<ViewWithEvent>,
@@ -619,11 +656,15 @@ where
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        MapModel::new(),
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
         update_stream,
         cmd_sink,
         buffer_size,
         queue_size,
+        on_invalid,
     )
 }
 
@@ -639,61 +680,127 @@ impl MapModel {
     }
 }
 
-impl BasicStateMachine<MapModification<Value>, MapAction> for MapModel {
+pub struct MapStateMachine {
+    key_schema: StandardSchema,
+    value_schema: StandardSchema,
+}
+
+impl MapStateMachine {
+    pub fn unvalidated() -> Self {
+        MapStateMachine {
+            key_schema: StandardSchema::Anything,
+            value_schema: StandardSchema::Anything,
+        }
+    }
+
+    pub fn new(key_schema: StandardSchema, value_schema: StandardSchema) -> Self {
+        MapStateMachine {
+            key_schema,
+            value_schema,
+        }
+    }
+}
+
+impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapStateMachine {
     type Ev = ViewWithEvent;
     type Cmd = MapModification<Arc<Value>>;
 
-    fn on_sync(&self) -> Self::Ev {
-        ViewWithEvent::initial(&self.state)
+    fn init(&self) -> MapModel {
+        MapModel::new()
     }
 
-    fn handle_message_unsynced(&mut self, message: MapModification<Value>) {
+    fn on_sync(&self, state: &MapModel) -> Self::Ev {
+        ViewWithEvent::initial(&state.state)
+    }
+
+    fn handle_message_unsynced(
+        &self,
+        state: &mut MapModel,
+        message: MapModification<Value>,
+    ) -> Result<(), DownlinkError> {
         match message {
             MapModification::Insert(k, v) => {
-                self.state.insert(k, Arc::new(v));
+                if self.key_schema.matches(&k) {
+                    if self.value_schema.matches(&v) {
+                        state.state.insert(k, Arc::new(v));
+                        Ok(())
+                    } else {
+                        Err(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
+                    }
+                } else {
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
             }
             MapModification::Remove(k) => {
-                self.state.remove(&k);
+                if self.key_schema.matches(&k) {
+                    state.state.remove(&k);
+                    Ok(())
+                } else {
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
             }
             MapModification::Take(n) => {
-                self.state = self.state.take(n);
+                state.state = state.state.take(n);
+                Ok(())
             }
             MapModification::Skip(n) => {
-                self.state = self.state.skip(n);
+                state.state = state.state.skip(n);
+                Ok(())
             }
             MapModification::Clear => {
-                self.state.clear();
+                state.state.clear();
+                Ok(())
             }
-        };
+        }
     }
 
-    fn handle_message(&mut self, message: MapModification<Value>) -> Option<Self::Ev> {
-        Some(match message {
+    fn handle_message(
+        &self,
+        state: &mut MapModel,
+        message: MapModification<Value>,
+    ) -> Result<Option<Self::Ev>, DownlinkError> {
+        match message {
             MapModification::Insert(k, v) => {
-                self.state.insert(k.clone(), Arc::new(v));
-                ViewWithEvent::insert(&self.state, k)
+                if self.key_schema.matches(&k) {
+                    if self.value_schema.matches(&v) {
+                        state.state.insert(k.clone(), Arc::new(v));
+                        Ok(Some(ViewWithEvent::insert(&state.state, k)))
+                    } else {
+                        Err(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
+                    }
+                } else {
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
             }
             MapModification::Remove(k) => {
-                self.state.remove(&k);
-                ViewWithEvent::remove(&self.state, k)
+                if self.key_schema.matches(&k) {
+                    state.state.remove(&k);
+                    Ok(Some(ViewWithEvent::remove(&state.state, k)))
+                } else {
+                    Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
+                }
             }
             MapModification::Take(n) => {
-                self.state = self.state.take(n);
-                ViewWithEvent::take(&self.state, n)
+                state.state = state.state.take(n);
+                Ok(Some(ViewWithEvent::take(&state.state, n)))
             }
             MapModification::Skip(n) => {
-                self.state = self.state.skip(n);
-                ViewWithEvent::skip(&self.state, n)
+                state.state = state.state.skip(n);
+                Ok(Some(ViewWithEvent::skip(&state.state, n)))
             }
             MapModification::Clear => {
-                self.state.clear();
-                ViewWithEvent::clear(&self.state)
+                state.state.clear();
+                Ok(Some(ViewWithEvent::clear(&state.state)))
             }
-        })
+        }
     }
 
-    fn handle_action(&mut self, action: MapAction) -> BasicResponse<Self::Ev, Self::Cmd> {
-        process_action(&mut self.state, action)
+    fn handle_action(
+        &self,
+        state: &mut MapModel,
+        action: MapAction,
+    ) -> BasicResponse<Self::Ev, Self::Cmd> {
+        process_action(&mut state.state, action)
     }
 }
 
