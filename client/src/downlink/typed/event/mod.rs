@@ -22,6 +22,9 @@ use std::convert::TryFrom;
 use deserialize::FormDeserializeErr;
 use common::model::Value;
 
+#[cfg(test)]
+mod tests;
+
 /// Event representing a change of the state of a map downlink with type information applied using
 /// a [`Form`] for the keys and values.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -82,7 +85,7 @@ impl<K: Form, V: Form> TypedMapView<K, V> {
 impl<K: Form + Hash + Eq, V: Form> TypedMapView<K, V> {
 
     /// Create a [`HashMap`] containing the typed values.
-    pub fn as_hash_map<S>(&self) -> HashMap<K, V> {
+    pub fn as_hash_map(&self) -> HashMap<K, V> {
         let mut map = HashMap::new();
         for (key, value) in self.iter() {
             map.insert(key, value);
@@ -95,7 +98,7 @@ impl<K: Form + Hash + Eq, V: Form> TypedMapView<K, V> {
 impl<K: Form + Ord, V: Form> TypedMapView<K, V> {
 
     /// Create a [`BTreeMap`] containing the typed values.
-    pub fn as_btree_map<S>(&self) -> BTreeMap<K, V> {
+    pub fn as_btree_map(&self) -> BTreeMap<K, V> {
         let mut map = BTreeMap::new();
         for (key, value) in self.iter() {
             map.insert(key, value);
@@ -108,7 +111,7 @@ impl<K: Form + Ord, V: Form> TypedMapView<K, V> {
 impl<K: Form + Ord + Clone, V: Form + Clone> TypedMapView<K, V> {
 
     /// Create an [`OrdMap`] containing the typed values.
-    pub fn as_ord_map<S>(&self) -> OrdMap<K, V> {
+    pub fn as_ord_map(&self) -> OrdMap<K, V> {
         let mut map = OrdMap::new();
         for (key, value) in self.iter() {
             map.insert(key, value);
