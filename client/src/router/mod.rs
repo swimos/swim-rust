@@ -130,7 +130,6 @@ pub enum RouterEvent {
 }
 
 struct TaskManager {
-    //Todo maybe change this with combinators?
     request_rx: mpsc::Receiver<ConnectionRequest>,
     connection_pool: ConnectionPool,
     config: RouterParams,

@@ -59,7 +59,6 @@ impl OutgoingHostTask {
         } = self;
 
         let mut connection = None;
-        // let mut rx = combine_outgoing_host_streams(envelope_rx, close_rx);
         let mut rx = envelope_rx.map(OutgoingRequest::Message);
 
         loop {
