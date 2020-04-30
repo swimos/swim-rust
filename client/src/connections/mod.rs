@@ -117,6 +117,7 @@ impl ConnectionPool {
     pub fn request_connection(
         &mut self,
         host_url: url::Url,
+        recreate: bool,
     ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>
     {
         let (tx, rx) = oneshot::channel();
@@ -125,26 +126,7 @@ impl ConnectionPool {
             .try_send(ConnectionRequest {
                 host_url,
                 tx,
-                recreate: false,
-            })
-            .map_err(|_| ConnectionError::ConnectError(None))?;
-
-        Ok(rx)
-    }
-
-    /// Requests a new connection for a given host address
-    pub fn recreate_connection(
-        &mut self,
-        host_url: url::Url,
-    ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>
-    {
-        let (tx, rx) = oneshot::channel();
-
-        self.connection_request_tx
-            .try_send(ConnectionRequest {
-                host_url,
-                tx,
-                recreate: true,
+                recreate,
             })
             .map_err(|_| ConnectionError::ConnectError(None))?;
 
@@ -207,7 +189,8 @@ where
         let timeout = std::time::Duration::from_secs(conn_timeout);
         let mut prune_timer = tokio::time::delay_for(Duration::from_secs(reaper_frequency)).fuse();
 
-        let requests_rx = combine_connection_streams(connection_request_rx, stop_request_rx);
+        // let requests_rx = combine_connection_streams(connection_request_rx, stop_request_rx);
+        let requests_rx = connection_request_rx.map(RequestType::NewConnection);
 
         let mut fused_requests = requests_rx.fuse();
 

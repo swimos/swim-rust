@@ -14,11 +14,9 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::pin::Pin;
 
 use futures::future::Ready;
 use futures::stream;
-use futures::task::{Context, Poll};
 use futures::{Future, Stream};
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
@@ -36,14 +34,11 @@ use common::warp::path::AbsolutePath;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
 use crate::router::configuration::{RouterConfig, RouterConfigBuilder};
-use crate::router::incoming::IncomingHostTask;
+use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 
-use std::collections::HashMap;
-use tokio::sync::mpsc::Receiver;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use url::quirks::host;
 use crate::router::outgoing::retry::RetryStrategy;
+use std::collections::HashMap;
 
 pub mod command;
 pub mod configuration;
@@ -68,8 +63,6 @@ pub trait Router: Send {
 }
 
 type Host = String;
-pub type CloseRequestSender = mpsc::Sender<()>;
-pub type CloseRequestReceiver = mpsc::Receiver<()>;
 
 pub type ConnectionRequest = (
     AbsolutePath,
@@ -81,8 +74,8 @@ pub type ConnectionRequest = (
 
 pub struct SwimRouter {
     router_connection_request_tx: mpsc::Sender<ConnectionRequest>,
-    task_manager_handler: JoinHandle<Result<(), RoutingError>>,
-    configuration: RouterConfig,
+    _task_manager_handler: JoinHandle<Result<(), RoutingError>>,
+    _configuration: RouterConfig,
 }
 
 impl SwimRouter {
@@ -107,33 +100,22 @@ impl SwimRouter {
 
         SwimRouter {
             router_connection_request_tx: router_connection_tx,
-            task_manager_handler,
-            configuration,
+            _task_manager_handler: task_manager_handler,
+            _configuration: configuration,
         }
     }
 
-    pub async fn close(mut self) {
-        // self.outgoing_task_close_request_tx.send(()).await.unwrap();
-        // let _ = self.outgoing_task_handler.await.unwrap();
-        //
-        // self.command_task_close_request_tx.send(()).await.unwrap();
-        // let _ = self.command_task_handler.await.unwrap();
-        //
-        // self.connections_task_close_request_tx
-        //     .send(())
-        //     .await
-        //     .unwrap();
-        // let _ = self.connection_request_handler.await.unwrap();
-        //
-        // self.incoming_task_close_request_tx.send(()).await.unwrap();
-        // let _ = self.incoming_task_handler.await.unwrap();
+    pub async fn close(self) {
+        //Todo impl
     }
 
     pub fn send_command(
         &mut self,
-        target: &AbsolutePath,
-        message: String,
+        _target: &AbsolutePath,
+        _message: String,
     ) -> Result<(), RoutingError> {
+        //Todo impl
+
         // let AbsolutePath { host, node, lane } = target;
         //
         // self.command_tx
@@ -222,13 +204,20 @@ impl TaskManager {
                 .await
                 .map_err(|_| RoutingError::ConnectionError)?;
 
-            response_tx.send((sink.map_err_into::<RoutingError>(), stream));
+            response_tx
+                .send((sink.map_err_into::<RoutingError>(), stream))
+                .map_err(|_| RoutingError::ConnectionError)?;
         }
     }
 
     fn close() {
         //Todo impl
     }
+}
+
+enum HostTask {
+    Connect((oneshot::Sender<ConnectionSender>, bool)),
+    Subscribe(mpsc::Sender<RouterEvent>),
 }
 
 struct HostManager {
@@ -278,44 +267,59 @@ impl HostManager {
         //Todo report to the downlink if this fails
         let host_url = url::Url::parse(&target.host).map_err(|_| RoutingError::ConnectionError)?;
 
-        //Todo this should be outgoing_task_request_tx
-        let (connection_request_tx, mut connection_request_rx) =
+        let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
 
-        let (incoming_task, foo) = IncomingHostTask::new(config.buffer_size().get());
-        let (outgoing_task, bar) = OutgoingHostTask::new(sink_rx, connection_request_tx, config);
+        let (incoming_task, mut incoming_task_tx) =
+            IncomingHostTask::new(config.buffer_size().get());
+        let outgoing_task = OutgoingHostTask::new(sink_rx, connection_request_tx, config);
 
         tokio::spawn(incoming_task.run());
         tokio::spawn(outgoing_task.run());
 
+        let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx);
         loop {
-            //Todo merge with stream_registrator_rx
-            let (connection_response_tx, recreate) = connection_request_rx
-                .recv()
-                .await
-                .ok_or(RoutingError::ConnectionError)?;
+            let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
-            let maybe_connection_channel = if recreate {
-                connection_pool.recreate_connection(host_url.clone())
-            } else {
-                connection_pool.request_connection(host_url.clone())
-            }
-            .map_err(|_| RoutingError::ConnectionError)?
-            .await
-            .map_err(|_| RoutingError::ConnectionError)?;
-
-            match maybe_connection_channel {
-                Ok((connection_sender, maybe_connection_receiver)) => {
-                    connection_response_tx
-                        .send(connection_sender)
+            match task {
+                HostTask::Connect((connection_response_tx, recreate)) => {
+                    let maybe_connection_channel = connection_pool
+                        .request_connection(host_url.clone(), recreate)
+                        .map_err(|_| RoutingError::ConnectionError)?
+                        .await
                         .map_err(|_| RoutingError::ConnectionError)?;
 
-                    if let Some(connection_receiver) = maybe_connection_receiver {
-                        //Todo push the connection_receiver to the incoming task
+                    match maybe_connection_channel {
+                        Ok((connection_tx, maybe_connection_rx)) => {
+                            connection_response_tx
+                                .send(connection_tx)
+                                .map_err(|_| RoutingError::ConnectionError)?;
+
+                            if let Some(connection_rx) = maybe_connection_rx {
+                                incoming_task_tx
+                                    .send(IncomingRequest::Connection(connection_rx))
+                                    .await
+                                    .map_err(|_| RoutingError::ConnectionError)?;
+                            }
+                        }
+                        Err(connection_error) => match connection_error {
+                            ConnectionError::Transient => {
+                                // let _ = connection_response_tx.send(Err(RoutingError::Transient));
+                            }
+                            _ => {
+                                // let _ =
+                                //     connection_response_tx.send(Err(RoutingError::ConnectionError));
+
+                                let _ = incoming_task_tx.send(IncomingRequest::Unreachable).await;
+                            }
+                        },
                     }
                 }
-                Err(connection_error) => {
-                    //Todo handle errors
+                HostTask::Subscribe(event_tx) => {
+                    incoming_task_tx
+                        .send(IncomingRequest::Subscribe((target.clone(), event_tx)))
+                        .await
+                        .map_err(|_| RoutingError::ConnectionError)?;
                 }
             }
         }
@@ -326,184 +330,14 @@ impl HostManager {
     }
 }
 
-pub enum ConnectionResponse {
-    Success((Host, mpsc::Receiver<Message>)),
-    Failure(Host),
+fn combine_host_streams(
+    connection_requests_rx: mpsc::Receiver<(oneshot::Sender<ConnectionSender>, bool)>,
+    stream_registrator_rx: mpsc::Receiver<mpsc::Sender<RouterEvent>>,
+) -> impl stream::Stream<Item = HostTask> + Send + 'static {
+    let connection_requests = connection_requests_rx.map(HostTask::Connect);
+    let stream_reg_requests = stream_registrator_rx.map(HostTask::Subscribe);
+    stream::select(connection_requests, stream_reg_requests)
 }
-
-pub type ConnReqSender = mpsc::Sender<(
-    Host,
-    oneshot::Sender<Result<ConnectionSender, RoutingError>>,
-    bool, // Whether or not to recreate the connection
-)>;
-type ConnReqReceiver = mpsc::Receiver<(
-    Host,
-    oneshot::Sender<Result<ConnectionSender, RoutingError>>,
-    bool, // Whether or not to recreate the connection
-)>;
-
-// struct ConnectionRequestTask {
-//     connection_pool: ConnectionPool,
-//     connection_request_rx: ConnReqReceiver,
-//     close_request_rx: CloseRequestReceiver,
-//     incoming_task_request_tx: IncomingTaskReqSender,
-// }
-//
-// impl ConnectionRequestTask {
-//     fn new(
-//         connection_pool: ConnectionPool,
-//         incoming_task_request_tx: IncomingTaskReqSender,
-//         config: RouterConfig,
-//     ) -> (Self, ConnReqSender, CloseRequestSender) {
-//         let (connection_request_tx, connection_request_rx) =
-//             mpsc::channel(config.buffer_size().get());
-//         let (close_request_tx, close_request_rx) = mpsc::channel(config.buffer_size().get());
-//
-//         (
-//             ConnectionRequestTask {
-//                 connection_pool,
-//                 connection_request_rx,
-//                 close_request_rx,
-//                 incoming_task_request_tx,
-//             },
-//             connection_request_tx,
-//             close_request_tx,
-//         )
-//     }
-//
-//     async fn run(self) -> Result<(), RoutingError> {
-//         let ConnectionRequestTask {
-//             mut connection_pool,
-//             connection_request_rx,
-//             close_request_rx,
-//             mut incoming_task_request_tx,
-//         } = self;
-//
-//         let mut rx = combine_router_streams(connection_request_rx, close_request_rx);
-//
-//         while let ConnectionRequestType::NewConnection {
-//             host,
-//             connection_tx,
-//             recreate,
-//         } = rx.next().await.ok_or(RoutingError::ConnectionError)?
-//         {
-//             let host_url = url::Url::parse(&host).map_err(|_| RoutingError::ConnectionError)?;
-//
-//             let connection = if recreate {
-//                 connection_pool
-//                     .recreate_connection(host_url.clone())
-//                     .map_err(|_| RoutingError::ConnectionError)?
-//                     .await
-//             } else {
-//                 connection_pool
-//                     .request_connection(host_url.clone())
-//                     .map_err(|_| RoutingError::ConnectionError)?
-//                     .await
-//             }
-//             .map_err(|_| RoutingError::ConnectionError)?;
-//
-//             match connection {
-//                 Ok((connection_sender, connection_receiver)) => {
-//                     connection_tx
-//                         .send(Ok(connection_sender))
-//                         .map_err(|_| RoutingError::ConnectionError)?;
-//
-//                     if let Some(receiver) = connection_receiver {
-//                         incoming_task_request_tx
-//                             .send(ConnectionResponse::Success((host, receiver)))
-//                             .await
-//                             .map_err(|_| RoutingError::ConnectionError)?
-//                     }
-//                 }
-//
-//                 Err(e) => {
-//                     // Need to return an error to the envelope routing task so that it can cancel
-//                     // the active request and not attempt it again the request again. Some errors
-//                     // are transient and they may resolve themselves after waiting
-//                     match e {
-//                         // Transient error that may be recoverable
-//                         ConnectionError::Transient => {
-//                             let _ = connection_tx.send(Err(RoutingError::Transient));
-//                         }
-//                         // Permanent, unrecoverable error
-//                         _ => {
-//                             let _ = connection_tx.send(Err(RoutingError::ConnectionError));
-//                             let _ = incoming_task_request_tx
-//                                 .send(ConnectionResponse::Failure(host))
-//                                 .await;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//         connection_pool.close().await;
-//         Ok(())
-//     }
-// }
-//
-// enum ConnectionRequestType {
-//     NewConnection {
-//         host: Host,
-//         connection_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
-//         recreate: bool,
-//     },
-//     Close,
-// }
-
-// fn combine_router_streams(
-//     connection_requests_rx: ConnReqReceiver,
-//     close_requests_rx: CloseRequestReceiver,
-// ) -> impl stream::Stream<Item = ConnectionRequestType> + Send + 'static {
-//     let connection_requests =
-//         connection_requests_rx.map(|r| ConnectionRequestType::NewConnection {
-//             host: r.0,
-//             connection_tx: r.1,
-//             recreate: r.2,
-//         });
-//     let close_request = close_requests_rx.map(|_| ConnectionRequestType::Close);
-//     stream::select(connection_requests, close_request)
-// }
-
-// type SwimRouterConnection = (
-//     SenderErrInto<mpsc::Sender<Envelope>, RoutingError>,
-//     mpsc::Receiver<RouterEvent>,
-// );
-
-// pub struct ConnectionFuture {
-//     outgoing_rx: oneshot::Receiver<mpsc::Sender<Envelope>>,
-//     incoming_rx: Option<mpsc::Receiver<RouterEvent>>,
-// }
-
-// impl ConnectionFuture {
-//     fn new(
-//         outgoing_rx: oneshot::Receiver<mpsc::Sender<Envelope>>,
-//         incoming_rx: mpsc::Receiver<RouterEvent>,
-//     ) -> ConnectionFuture {
-//         ConnectionFuture {
-//             outgoing_rx,
-//             incoming_rx: Some(incoming_rx),
-//         }
-//     }
-// }
-//
-// impl Future for ConnectionFuture {
-//     type Output = Result<SwimRouterConnection, RoutingError>;
-//
-//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         let ConnectionFuture {
-//             outgoing_rx,
-//             incoming_rx,
-//         } = &mut self.get_mut();
-//
-//         oneshot::Receiver::poll(Pin::new(outgoing_rx), cx).map(|r| match r {
-//             Ok(outgoing_rx) => Ok((
-//                 outgoing_rx.map_err_into::<RoutingError>(),
-//                 incoming_rx.take().ok_or(RoutingError::ConnectionError)?,
-//             )),
-//             _ => Err(RoutingError::ConnectionError),
-//         })
-//     }
-// }
 
 type SwimRouterConnectionFut = Sequenced<
     RequestFuture<ConnectionRequest>,

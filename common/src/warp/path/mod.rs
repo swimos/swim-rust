@@ -45,6 +45,10 @@ impl AbsolutePath {
         let AbsolutePath { host, node, lane } = self;
         (host, RelativePath { node, lane })
     }
+
+    pub fn destination(&self) -> String {
+        format!("{}/{}", self.node, self.lane)
+    }
 }
 
 impl Display for AbsolutePath {

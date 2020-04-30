@@ -180,12 +180,18 @@ pub mod boxed_connection_sender {
     use futures_util::future::BoxFuture;
     use futures_util::task::Waker;
     use tokio::sync::mpsc::error::TrySendError;
-    use tokio::sync::oneshot;
+    use tokio::sync::{mpsc, oneshot};
     use tokio_tungstenite::tungstenite::protocol::Message;
 
     use crate::connections::ConnectionSender;
     use crate::router::outgoing::retry::{RetryContext, RetryErr, RetrySink};
-    use crate::router::{ConnReqSender, Host, RoutingError};
+    use crate::router::{Host, RoutingError};
+
+    pub type ConnReqSender = mpsc::Sender<(
+        Host,
+        oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+        bool, // Whether or not to recreate the connection
+    )>;
 
     /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
     /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
