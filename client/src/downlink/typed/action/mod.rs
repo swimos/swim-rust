@@ -23,18 +23,22 @@ use std::marker::PhantomData;
 use tokio::sync::oneshot;
 use crate::downlink::typed::event::TypedMapView;
 
+/// Wraps a sender up updates to a value downlink providing typed, asynchronous operations
+/// that can be performed on in.
 pub struct ValueActions<Sender, T> {
     sender: Sender,
     _value_type: PhantomData<T>,
 }
 
 impl<Sender, T> ValueActions<Sender, T> {
+
     pub fn new(sender: Sender) -> Self {
         ValueActions {
             sender,
             _value_type: PhantomData,
         }
     }
+
 }
 
 impl<Sender, T> ValueActions<Sender, T>
@@ -42,6 +46,8 @@ impl<Sender, T> ValueActions<Sender, T>
         T: ValidatedForm + 'static,
         Sender: ItemSender<Action, DownlinkError>,
 {
+
+    /// Get the current value of the downlink.
     pub async fn get(&mut self) -> Result<T, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
@@ -49,6 +55,7 @@ impl<Sender, T> ValueActions<Sender, T>
         await_value(rx).await
     }
 
+    /// Set the value of the downlink to a new value, waiting for the operation to complete.
     pub async fn set(&mut self, value: T) -> Result<(), DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
@@ -58,10 +65,12 @@ impl<Sender, T> ValueActions<Sender, T>
         rx.await.map_err(|_| DownlinkError::DroppedChannel)
     }
 
+    /// Set the value of the downlink without waiting for the operation to complete.
     pub async fn set_and_forget(&mut self, value: T) -> Result<(), DownlinkError> {
         self.sender.send_item(Action::set(value.into_value())).await
     }
 
+    /// Update the value of the downlink, returning the previous value.
     pub async fn update<F>(&mut self, update_fn: F) -> Result<T, DownlinkError>
         where
             F: FnOnce(T) -> T + Send + 'static,
@@ -75,6 +84,7 @@ impl<Sender, T> ValueActions<Sender, T>
         await_value(rx).await
     }
 
+    /// Update the value of the downlink without waiting for the operation to complete.
     pub async fn update_and_forget<F>(&mut self, update_fn: F) -> Result<(), DownlinkError>
         where
             F: FnOnce(T) -> T + Send + 'static,
@@ -96,12 +106,15 @@ impl<'a, Sender, T> ItemSink<'a, Action> for ValueActions<Sender, T>
     }
 }
 
+/// Wraps a sender up updates to a map downlink providing typed, asynchronous operations
+/// that can be performed on in.
 pub struct MapActions<Sender, K, V> {
     sender: Sender,
     _entry_type: PhantomData<(K, V)>,
 }
 
 impl<Sender, K, V> MapActions<Sender, K, V> {
+
     pub fn new(sender: Sender) -> Self {
         MapActions {
             sender,
@@ -116,6 +129,8 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         V: ValidatedForm + 'static,
         Sender: ItemSender<MapAction, DownlinkError>,
 {
+
+    /// Get the value associated with a specific key.
     pub async fn get(&mut self, key: K) -> Result<Option<V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
@@ -125,6 +140,7 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         await_optional(rx).await
     }
 
+    /// Insert an entry into the map returning any existing value associated with the key.
     pub async fn insert(&mut self, key: K, value: V) -> Result<Option<V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
@@ -138,6 +154,15 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         await_optional(rx).await
     }
 
+    /// Insert an entry into the map without waiting for the operation to complete.
+    pub async fn insert_and_forget(&mut self, key: K, value: V) -> Result<(), DownlinkError> {
+        self.sender
+            .send_item(MapAction::insert(key.into_value(), value.into_value()))
+            .await
+    }
+
+    /// Update the value associated with a key, returning the values associated withe the key before
+    /// and after the operation.
     pub async fn update<F>(&mut self, key: K, update_fn: F) -> Result<(Option<V>, Option<V>), DownlinkError>
         where
             F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
@@ -158,12 +183,22 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         Ok((before, after))
     }
 
-    pub async fn insert_and_forget(&mut self, key: K, value: V) -> Result<(), DownlinkError> {
+    /// Update the value associated with a key without waiting for the operation to complete.
+    pub async fn update_and_forget<F>(&mut self, key: K, update_fn: F) -> Result<(), DownlinkError>
+        where
+            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    {
+
         self.sender
-            .send_item(MapAction::insert(key.into_value(), value.into_value()))
-            .await
+            .send_item(MapAction::update(
+                key.into_value(),
+                wrap_option_update_fn(update_fn)
+            ))
+            .await?;
+        Ok(())
     }
 
+    /// Remove any value associated with a key, returning it.
     pub async fn remove(&mut self, key: K) -> Result<Option<V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
@@ -173,12 +208,12 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         await_optional(rx).await
     }
 
+    /// Remove any value associated with a key without waiting for the operation to complete.
     pub async fn remove_and_forget(&mut self, key: K) -> Result<(), DownlinkError> {
         self.sender
             .send_item(MapAction::remove(key.into_value()))
             .await
     }
-
 
     async fn clear_internal(&mut self) -> Result<ValMap, DownlinkError> {
         let (tx, rx) = oneshot::channel();
@@ -190,14 +225,17 @@ impl<Sender, K, V> MapActions<Sender, K, V>
             .map_err(|_| DownlinkError::DroppedChannel)
     }
 
+    /// Clear the contents of the map.
     pub async fn clear(&mut self) -> Result<(), DownlinkError> {
         self.clear_internal().await.map(|_| ())
     }
 
+    /// Clear the contents of the map and return it.
     pub async fn clear_and_get(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
         self.clear_internal().await.map(TypedMapView::new)
     }
 
+    /// Clear the contents of the map without waiting for the operation to complete.
     pub async fn clear_and_forget(&mut self) -> Result<(), DownlinkError> {
         self.sender.send_item(MapAction::clear()).await
     }
@@ -215,16 +253,20 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         Ok((before, after))
     }
 
+    /// Retain only the first `n` elements of the map.
     pub async fn take(&mut self, n: usize) -> Result<(), DownlinkError> {
         self.take_internal(n).await.map(|_| ())
     }
 
+    /// Retain only the first `n` elements of the map, returning the state of the map before and
+    /// after the operation.
     pub async fn take_and_get(&mut self, n: usize) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
         self.take_internal(n).await.map(|(before, after)| {
             (TypedMapView::new(before), TypedMapView::new(after))
         })
     }
 
+    /// Retain only the first `n` elements of the map without waiting for the operation to complete.
     pub async fn take_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
         self.sender.send_item(MapAction::take(n)).await
     }
@@ -242,20 +284,25 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         Ok((before, after))
     }
 
+    /// Skip the first `n` elements of the map.
     pub async fn skip(&mut self, n: usize) -> Result<(), DownlinkError> {
         self.skip_internal(n).await.map(|_| ())
     }
 
+    /// Skip the first `n` elements of the map returning the state of the map before and after the
+    /// operation.
     pub async fn skip_and_get(&mut self, n: usize) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
         self.skip_internal(n).await.map(|(before, after)| {
             (TypedMapView::new(before), TypedMapView::new(after))
         })
     }
 
+    /// Skip the first `n` elements of the map without waiting for the operation to complete.
     pub async fn skip_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
         self.sender.send_item(MapAction::skip(n)).await
     }
 
+    /// Get the current state of the map.
     pub async fn view(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);

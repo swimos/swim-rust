@@ -29,6 +29,7 @@ use crate::downlink::typed::action::{ValueActions, MapActions};
 use std::convert::TryInto;
 use crate::downlink::typed::event::TypedViewWithEvent;
 
+/// A wrapper around a value downlink, applying a [`Form`] to the values.
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
     _value_type: PhantomData<T>,
@@ -47,6 +48,7 @@ where
     }
 }
 
+/// A wrapper around a map downlink, applying [`Form`]s to the keys and values.
 pub struct MapDownlink<Inner, K, V> {
     inner: Inner,
     _value_type: PhantomData<(K, V)>,
@@ -153,6 +155,7 @@ impl<Inner, K, V> Downlink<MapAction, Event<TypedViewWithEvent<K, V>>> for MapDo
     }
 }
 
+/// A transformation that attempts to apply a form to an [`Event<Value>`].
 pub struct ApplyForm<T>(PhantomData<T>);
 
 impl<T> Clone for ApplyForm<T> {
@@ -163,6 +166,7 @@ impl<T> Clone for ApplyForm<T> {
 
 impl<T> Copy for ApplyForm<T> {}
 
+/// A transformation that attempts to apply forms to a [`Event<ViewWithEvent>`].
 pub struct ApplyFormMap<K, V>(PhantomData<(K, V)>);
 
 impl<K, V> Clone for ApplyFormMap<K, V> {
@@ -204,6 +208,8 @@ impl<K: Form, V: Form> Transform<Event<ViewWithEvent>> for ApplyFormMap<K, V> {
     }
 }
 
+/// A wrapper around a topic of events on a downlink that will attempt to apply [`Form`]s to each
+/// event until the transformation fails at which point the topic streams will terminate.
 pub struct TryTransformTopic<In, Top, Trans> {
     topic: Top,
     transform: Trans,

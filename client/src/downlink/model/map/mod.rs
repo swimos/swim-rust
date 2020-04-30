@@ -503,21 +503,6 @@ pub enum MapEvent<K> {
     Clear,
 }
 
-impl MapEvent<Value> {
-
-    pub fn typed<K: Form>(self) -> Result<MapEvent<K>, FormDeserializeErr> {
-        match self {
-            MapEvent::Initial => Ok(MapEvent::Initial),
-            MapEvent::Insert(k) => <K as Form>::try_convert(k).map(MapEvent::Insert),
-            MapEvent::Remove(k) => <K as Form>::try_convert(k).map(MapEvent::Remove),
-            MapEvent::Take(n) => Ok(MapEvent::Take(n)),
-            MapEvent::Skip(n) => Ok(MapEvent::Skip(n)),
-            MapEvent::Clear => Ok(MapEvent::Clear),
-        }
-    }
-
-}
-
 pub type ValMap = OrdMap<Value, Arc<Value>>;
 
 #[derive(Clone, PartialEq, Eq, Debug)]

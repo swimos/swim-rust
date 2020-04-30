@@ -20,13 +20,18 @@ use std::collections::{HashMap, BTreeMap};
 use im::OrdMap;
 use std::convert::TryFrom;
 use deserialize::FormDeserializeErr;
+use common::model::Value;
 
+/// Event representing a change of the state of a map downlink with type information applied using
+/// a [`Form`] for the keys and values.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TypedViewWithEvent<K, V> {
     pub view: TypedMapView<K, V>,
     pub event: MapEvent<K>,
 }
 
+/// Typed view of a [`ValMap`] with type information applied using a [`Form`] for the keys and
+/// values.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TypedMapView<K, V> {
     inner: ValMap,
@@ -45,16 +50,19 @@ impl<K, V> TypedMapView<K, V> {
 
 impl<K: Form, V: Form> TypedMapView<K, V> {
 
+    /// Get the value associated with a key.
     pub fn get(&self, key: &K) -> Option<V> {
         self.inner.get(&key.as_value()).and_then(|value| {
             <V as Form>::try_from_value(value.as_ref()).ok()
         })
     }
 
+    /// The size of the underlying map.
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    /// An iterator over the entries of the map.
     pub fn iter(&self) -> impl Iterator<Item = (K, V)> + '_ {
         self.inner.iter().filter_map(|(key, value)| {
             match (<K as Form>::try_from_value(key), <V as Form>::try_from_value(value.as_ref())) {
@@ -64,6 +72,7 @@ impl<K: Form, V: Form> TypedMapView<K, V> {
         })
     }
 
+    /// An iterator over the keys of the map.
     pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
         self.inner.keys().filter_map(|key| <K as Form>::try_from_value(key).ok())
     }
@@ -72,6 +81,7 @@ impl<K: Form, V: Form> TypedMapView<K, V> {
 
 impl<K: Form + Hash + Eq, V: Form> TypedMapView<K, V> {
 
+    /// Create a [`HashMap`] containing the typed values.
     pub fn as_hash_map<S>(&self) -> HashMap<K, V> {
         let mut map = HashMap::new();
         for (key, value) in self.iter() {
@@ -84,6 +94,7 @@ impl<K: Form + Hash + Eq, V: Form> TypedMapView<K, V> {
 
 impl<K: Form + Ord, V: Form> TypedMapView<K, V> {
 
+    /// Create a [`BTreeMap`] containing the typed values.
     pub fn as_btree_map<S>(&self) -> BTreeMap<K, V> {
         let mut map = BTreeMap::new();
         for (key, value) in self.iter() {
@@ -96,6 +107,7 @@ impl<K: Form + Ord, V: Form> TypedMapView<K, V> {
 
 impl<K: Form + Ord + Clone, V: Form + Clone> TypedMapView<K, V> {
 
+    /// Create an [`OrdMap`] containing the typed values.
     pub fn as_ord_map<S>(&self) -> OrdMap<K, V> {
         let mut map = OrdMap::new();
         for (key, value) in self.iter() {
@@ -114,10 +126,21 @@ impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
             view, event
         } = view;
         let typed_view = TypedMapView::new(view);
-        let typed_event = event.typed();
+        let typed_event = type_event(event);
         typed_event.map(|ev| TypedViewWithEvent {
             view: typed_view,
             event: ev
         })
+    }
+}
+
+fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormDeserializeErr> {
+    match event {
+        MapEvent::Initial => Ok(MapEvent::Initial),
+        MapEvent::Insert(k) => <K as Form>::try_convert(k).map(MapEvent::Insert),
+        MapEvent::Remove(k) => <K as Form>::try_convert(k).map(MapEvent::Remove),
+        MapEvent::Take(n) => Ok(MapEvent::Take(n)),
+        MapEvent::Skip(n) => Ok(MapEvent::Skip(n)),
+        MapEvent::Clear => Ok(MapEvent::Clear),
     }
 }
