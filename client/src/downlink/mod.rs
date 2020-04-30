@@ -36,11 +36,11 @@ use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
+use common::sink::item::ItemSender;
 use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
-use common::sink::item::ItemSender;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -123,7 +123,7 @@ impl Display for DownlinkError {
             ),
             DownlinkError::MalformedMessage => {
                 write!(f, "A message did not have the expected shape.")
-            },
+            }
             DownlinkError::InvalidAction => {
                 write!(f, "An action could not be applied to the internal state.")
             }

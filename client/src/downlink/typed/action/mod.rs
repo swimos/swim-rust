@@ -17,6 +17,7 @@ mod tests;
 
 use crate::downlink::model::map::{MapAction, ValMap};
 use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::typed::event::TypedMapView;
 use crate::downlink::DownlinkError;
 use common::model::Value;
 use common::request::Request;
@@ -24,7 +25,6 @@ use common::sink::item::{ItemSender, ItemSink};
 use form::{Form, ValidatedForm};
 use std::marker::PhantomData;
 use tokio::sync::oneshot;
-use crate::downlink::typed::event::TypedMapView;
 
 /// Wraps a sender up updates to a value downlink providing typed, asynchronous operations
 /// that can be performed on in.
@@ -34,22 +34,19 @@ pub struct ValueActions<Sender, T> {
 }
 
 impl<Sender, T> ValueActions<Sender, T> {
-
     pub fn new(sender: Sender) -> Self {
         ValueActions {
             sender,
             _value_type: PhantomData,
         }
     }
-
 }
 
 impl<Sender, T> ValueActions<Sender, T>
-    where
-        T: ValidatedForm + 'static,
-        Sender: ItemSender<Action, DownlinkError>,
+where
+    T: ValidatedForm + 'static,
+    Sender: ItemSender<Action, DownlinkError>,
 {
-
     /// Get the current value of the downlink.
     pub async fn get(&mut self) -> Result<T, DownlinkError> {
         let (tx, rx) = oneshot::channel();
@@ -75,8 +72,8 @@ impl<Sender, T> ValueActions<Sender, T>
 
     /// Update the value of the downlink, returning the previous value.
     pub async fn update<F>(&mut self, update_fn: F) -> Result<T, DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static,
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
         let wrapped = wrap_update_fn(update_fn);
         let (tx, rx) = oneshot::channel();
@@ -89,8 +86,8 @@ impl<Sender, T> ValueActions<Sender, T>
 
     /// Update the value of the downlink without waiting for the operation to complete.
     pub async fn update_and_forget<F>(&mut self, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static,
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
         let wrapped = wrap_update_fn::<T, F>(update_fn);
         self.sender.send_item(Action::update(wrapped)).await
@@ -98,8 +95,8 @@ impl<Sender, T> ValueActions<Sender, T>
 }
 
 impl<'a, Sender, T> ItemSink<'a, Action> for ValueActions<Sender, T>
-    where
-        Sender: ItemSink<'a, Action>,
+where
+    Sender: ItemSink<'a, Action>,
 {
     type Error = Sender::Error;
     type SendFuture = Sender::SendFuture;
@@ -117,7 +114,6 @@ pub struct MapActions<Sender, K, V> {
 }
 
 impl<Sender, K, V> MapActions<Sender, K, V> {
-
     pub fn new(sender: Sender) -> Self {
         MapActions {
             sender,
@@ -127,12 +123,11 @@ impl<Sender, K, V> MapActions<Sender, K, V> {
 }
 
 impl<Sender, K, V> MapActions<Sender, K, V>
-    where
-        K: ValidatedForm + 'static,
-        V: ValidatedForm + 'static,
-        Sender: ItemSender<MapAction, DownlinkError>,
+where
+    K: ValidatedForm + 'static,
+    V: ValidatedForm + 'static,
+    Sender: ItemSender<MapAction, DownlinkError>,
 {
-
     /// Get the value associated with a specific key.
     pub async fn get(&mut self, key: K) -> Result<Option<V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
@@ -166,9 +161,13 @@ impl<Sender, K, V> MapActions<Sender, K, V>
 
     /// Update the value associated with a key, returning the values associated withe the key before
     /// and after the operation.
-    pub async fn update<F>(&mut self, key: K, update_fn: F) -> Result<(Option<V>, Option<V>), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    pub async fn update<F>(
+        &mut self,
+        key: K,
+        update_fn: F,
+    ) -> Result<(Option<V>, Option<V>), DownlinkError>
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
@@ -178,7 +177,8 @@ impl<Sender, K, V> MapActions<Sender, K, V>
             .send_item(MapAction::update_and_await(
                 key.into_value(),
                 wrap_option_update_fn(update_fn),
-                req1, req2
+                req1,
+                req2,
             ))
             .await?;
         let before = await_optional(rx1).await?;
@@ -188,14 +188,13 @@ impl<Sender, K, V> MapActions<Sender, K, V>
 
     /// Update the value associated with a key without waiting for the operation to complete.
     pub async fn update_and_forget<F>(&mut self, key: K, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
-
         self.sender
             .send_item(MapAction::update(
                 key.into_value(),
-                wrap_option_update_fn(update_fn)
+                wrap_option_update_fn(update_fn),
             ))
             .await?;
         Ok(())
@@ -224,8 +223,7 @@ impl<Sender, K, V> MapActions<Sender, K, V>
         self.sender
             .send_item(MapAction::clear_and_await(req))
             .await?;
-        rx.await
-            .map_err(|_| DownlinkError::DroppedChannel)
+        rx.await.map_err(|_| DownlinkError::DroppedChannel)
     }
 
     /// Clear the contents of the map.
@@ -263,10 +261,13 @@ impl<Sender, K, V> MapActions<Sender, K, V>
 
     /// Retain only the first `n` elements of the map, returning the state of the map before and
     /// after the operation.
-    pub async fn take_and_get(&mut self, n: usize) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
-        self.take_internal(n).await.map(|(before, after)| {
-            (TypedMapView::new(before), TypedMapView::new(after))
-        })
+    pub async fn take_and_get(
+        &mut self,
+        n: usize,
+    ) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
+        self.take_internal(n)
+            .await
+            .map(|(before, after)| (TypedMapView::new(before), TypedMapView::new(after)))
     }
 
     /// Retain only the first `n` elements of the map without waiting for the operation to complete.
@@ -294,10 +295,13 @@ impl<Sender, K, V> MapActions<Sender, K, V>
 
     /// Skip the first `n` elements of the map returning the state of the map before and after the
     /// operation.
-    pub async fn skip_and_get(&mut self, n: usize) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
-        self.skip_internal(n).await.map(|(before, after)| {
-            (TypedMapView::new(before), TypedMapView::new(after))
-        })
+    pub async fn skip_and_get(
+        &mut self,
+        n: usize,
+    ) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
+        self.skip_internal(n)
+            .await
+            .map(|(before, after)| (TypedMapView::new(before), TypedMapView::new(after)))
     }
 
     /// Skip the first `n` elements of the map without waiting for the operation to complete.
@@ -309,16 +313,16 @@ impl<Sender, K, V> MapActions<Sender, K, V>
     pub async fn view(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
-        self.sender
-            .send_item(MapAction::get_map(req))
-            .await?;
-        rx.await.map_err(|_| DownlinkError::DroppedChannel).map(TypedMapView::new)
+        self.sender.send_item(MapAction::get_map(req)).await?;
+        rx.await
+            .map_err(|_| DownlinkError::DroppedChannel)
+            .map(TypedMapView::new)
     }
 }
 
 impl<'a, Sender, K, V> ItemSink<'a, MapAction> for MapActions<Sender, K, V>
-    where
-        Sender: ItemSink<'a, MapAction>,
+where
+    Sender: ItemSink<'a, MapAction>,
 {
     type Error = Sender::Error;
     type SendFuture = Sender::SendFuture;
@@ -329,9 +333,9 @@ impl<'a, Sender, K, V> ItemSink<'a, MapAction> for MapActions<Sender, K, V>
 }
 
 fn wrap_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Value) -> Value
-    where
-        T: Form,
-        F: FnOnce(T) -> T,
+where
+    T: Form,
+    F: FnOnce(T) -> T,
 {
     move |value: &Value| {
         match Form::try_from_value(value) {
@@ -342,9 +346,9 @@ fn wrap_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Value) -> Value
 }
 
 fn wrap_option_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Option<&Value>) -> Option<Value>
-    where
-        T: Form,
-        F: FnOnce(Option<T>) -> Option<T>,
+where
+    T: Form,
+    F: FnOnce(Option<T>) -> Option<T>,
 {
     move |maybe_value| {
         match maybe_value.as_ref() {
@@ -354,8 +358,9 @@ fn wrap_option_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Option<&Value>) -> 
                     Err(_) => None, //TODO Make the update function fallible so this can be avoided.
                 }
             }
-            _ => update_fn(None)
-        }.map(Form::into_value)
+            _ => update_fn(None),
+        }
+        .map(Form::into_value)
     }
 }
 

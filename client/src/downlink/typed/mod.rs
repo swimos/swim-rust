@@ -15,19 +15,19 @@
 pub mod action;
 pub mod event;
 
-use crate::downlink::model::value::{SharedValue, Action};
-use crate::downlink::{Downlink, Event};
-use form::Form;
-use std::marker::PhantomData;
-use futures::Stream;
-use deserialize::FormDeserializeErr;
-use utilities::future::{Transform, UntilFailure, TransformedFuture, SwimFutureExt};
-use crate::downlink::model::map::{ViewWithEvent, MapAction};
-use common::topic::{Topic, TopicError};
-use common::sink::item::ItemSink;
-use crate::downlink::typed::action::{ValueActions, MapActions};
-use std::convert::TryInto;
+use crate::downlink::model::map::{MapAction, ViewWithEvent};
+use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::typed::action::{MapActions, ValueActions};
 use crate::downlink::typed::event::TypedViewWithEvent;
+use crate::downlink::{Downlink, Event};
+use common::sink::item::ItemSink;
+use common::topic::{Topic, TopicError};
+use deserialize::FormDeserializeErr;
+use form::Form;
+use futures::Stream;
+use std::convert::TryInto;
+use std::marker::PhantomData;
+use utilities::future::{SwimFutureExt, Transform, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
 pub struct ValueDownlink<Inner, T> {
@@ -55,10 +55,10 @@ pub struct MapDownlink<Inner, K, V> {
 }
 
 impl<Inner, K, V> MapDownlink<Inner, K, V>
-    where
-        Inner: Downlink<MapAction, Event<ViewWithEvent>>,
-        K: Form,
-        V: Form,
+where
+    Inner: Downlink<MapAction, Event<ViewWithEvent>>,
+    K: Form,
+    V: Form,
 {
     pub fn new(inner: Inner) -> Self {
         MapDownlink {
@@ -69,36 +69,40 @@ impl<Inner, K, V> MapDownlink<Inner, K, V>
 }
 
 impl<Inner, T> Topic<Event<T>> for ValueDownlink<Inner, T>
-    where
-        Inner: Topic<Event<SharedValue>>,
-        T: Form + Send + 'static,
+where
+    Inner: Topic<Event<SharedValue>>,
+    T: Form + Send + 'static,
 {
     type Receiver = UntilFailure<Inner::Receiver, ApplyForm<T>>;
     type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyForm<T>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        self.inner.subscribe().transform(WrapUntilFailure(ApplyForm::new()))
+        self.inner
+            .subscribe()
+            .transform(WrapUntilFailure(ApplyForm::new()))
     }
 }
 
 impl<Inner, K, V> Topic<Event<TypedViewWithEvent<K, V>>> for MapDownlink<Inner, K, V>
-    where
-        Inner: Topic<Event<ViewWithEvent>>,
-        K: Form + Send + 'static,
-        V: Form + Send + 'static,
+where
+    Inner: Topic<Event<ViewWithEvent>>,
+    K: Form + Send + 'static,
+    V: Form + Send + 'static,
 {
     type Receiver = UntilFailure<Inner::Receiver, ApplyFormMap<K, V>>;
     type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyFormMap<K, V>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        self.inner.subscribe().transform(WrapUntilFailure(ApplyFormMap::new()))
+        self.inner
+            .subscribe()
+            .transform(WrapUntilFailure(ApplyFormMap::new()))
     }
 }
 
 impl<'a, Inner, T> ItemSink<'a, Action> for ValueDownlink<Inner, T>
-    where
-        Inner: ItemSink<'a, Action>,
-        T: Form + Send + 'static,
+where
+    Inner: ItemSink<'a, Action>,
+    T: Form + Send + 'static,
 {
     type Error = Inner::Error;
     type SendFuture = Inner::SendFuture;
@@ -109,10 +113,10 @@ impl<'a, Inner, T> ItemSink<'a, Action> for ValueDownlink<Inner, T>
 }
 
 impl<'a, Inner, K, V> ItemSink<'a, MapAction> for MapDownlink<Inner, K, V>
-    where
-        Inner: ItemSink<'a, MapAction>,
-        K: Form + Send + 'static,
-        V: Form + Send + 'static,
+where
+    Inner: ItemSink<'a, MapAction>,
+    K: Form + Send + 'static,
+    V: Form + Send + 'static,
 {
     type Error = Inner::Error;
     type SendFuture = Inner::SendFuture;
@@ -139,10 +143,10 @@ where
 }
 
 impl<Inner, K, V> Downlink<MapAction, Event<TypedViewWithEvent<K, V>>> for MapDownlink<Inner, K, V>
-    where
-        Inner: Downlink<MapAction, Event<ViewWithEvent>>,
-        K: Form + Send + 'static,
-        V: Form + Send + 'static,
+where
+    Inner: Downlink<MapAction, Event<ViewWithEvent>>,
+    K: Form + Send + 'static,
+    V: Form + Send + 'static,
 {
     type DlTopic = TryTransformTopic<ViewWithEvent, Inner::DlTopic, ApplyFormMap<K, V>>;
     type DlSink = MapActions<Inner::DlSink, K, V>;
@@ -156,6 +160,7 @@ impl<Inner, K, V> Downlink<MapAction, Event<TypedViewWithEvent<K, V>>> for MapDo
 }
 
 /// A transformation that attempts to apply a form to an [`Event<Value>`].
+#[derive(Default)]
 pub struct ApplyForm<T>(PhantomData<T>);
 
 impl<T> Clone for ApplyForm<T> {
@@ -167,6 +172,7 @@ impl<T> Clone for ApplyForm<T> {
 impl<T> Copy for ApplyForm<T> {}
 
 /// A transformation that attempts to apply forms to a [`Event<ViewWithEvent>`].
+#[derive(Default)]
 pub struct ApplyFormMap<K, V>(PhantomData<(K, V)>);
 
 impl<K, V> Clone for ApplyFormMap<K, V> {
@@ -194,8 +200,7 @@ impl<T: Form> Transform<Event<SharedValue>> for ApplyForm<T> {
 
     fn transform(&self, value: Event<SharedValue>) -> Self::Out {
         let Event(value, local) = value;
-        <T as Form>::try_from_value(value.as_ref())
-            .map(|t| Event(t, local))
+        <T as Form>::try_from_value(value.as_ref()).map(|t| Event(t, local))
     }
 }
 
@@ -217,18 +222,14 @@ pub struct TryTransformTopic<In, Top, Trans> {
 }
 
 impl<In, Top, Trans> TryTransformTopic<In, Top, Trans> {
-
-    fn new(topic: Top,
-           transform: Trans) -> Self {
+    fn new(topic: Top, transform: Trans) -> Self {
         TryTransformTopic {
             topic,
             transform,
-            _input_type: PhantomData
+            _input_type: PhantomData,
         }
     }
-
 }
-
 
 pub struct WrapUntilFailure<Trans>(Trans);
 
@@ -254,6 +255,8 @@ where
     type Fut = TransformedFuture<Top::Fut, WrapUntilFailure<Trans>>;
 
     fn subscribe(&mut self) -> Self::Fut {
-        self.topic.subscribe().transform(WrapUntilFailure(self.transform.clone()))
+        self.topic
+            .subscribe()
+            .transform(WrapUntilFailure(self.transform.clone()))
     }
 }

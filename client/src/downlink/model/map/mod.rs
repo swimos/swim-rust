@@ -553,7 +553,6 @@ impl ViewWithEvent {
             event: MapEvent::Clear,
         }
     }
-
 }
 
 /// Create a map downlink.

@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
 use crate::downlink::model::value::{Action, SharedValue};
-use common::sink::item::ItemSink;
-use crate::downlink::DownlinkError;
-use futures::future::{ready, Ready};
 use crate::downlink::typed::action::ValueActions;
+use crate::downlink::DownlinkError;
+use common::model::Value;
+use common::sink::item::ItemSink;
+use futures::future::{ready, Ready};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
 struct TestValueDl(SharedValue);
 
 impl TestValueDl {
-
     fn new(n: i32) -> TestValueDl {
         TestValueDl(SharedValue::new(Value::Int32Value(n)))
     }
@@ -32,7 +31,6 @@ impl TestValueDl {
     fn actions(n: i32) -> ValueActions<TestValueDl, i32> {
         ValueActions::new(TestValueDl::new(n))
     }
-
 }
 
 impl<'a> ItemSink<'a, Action> for TestValueDl {
@@ -52,11 +50,11 @@ impl<'a> ItemSink<'a, Action> for TestValueDl {
                 } else {
                     Err(DownlinkError::InvalidAction)
                 }
-            },
+            }
             Action::Get(cb) => {
                 let _ = cb.send(state.clone());
                 Ok(())
-            },
+            }
             Action::Update(f, maybe_cb) => {
                 let old = state.clone();
                 let new = f(state.as_ref());
@@ -69,7 +67,7 @@ impl<'a> ItemSink<'a, Action> for TestValueDl {
                 } else {
                     Err(DownlinkError::InvalidAction)
                 }
-            },
+            }
         };
         ready(result)
     }
