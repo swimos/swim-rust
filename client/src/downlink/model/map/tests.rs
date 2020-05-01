@@ -859,6 +859,78 @@ fn insert_to_defined_action() {
     assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))))
 }
 
+#[test]
+fn invalid_key_insert_action() {
+    let original_val = "original".to_owned();
+    let key_schema = StandardSchema::OfKind(ValueKind::Int32);
+    let val_schema = StandardSchema::OfKind(ValueKind::Text);
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::new(key_schema.clone(), val_schema);
+
+    let (tx, mut rx) = oneshot::channel();
+    let action = MapAction::Insert {
+        key: Value::BooleanValue(false),
+        value: Value::text("updated"),
+        old: Some(Request::new(tx)),
+    };
+
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::BooleanValue(false), key_schema);
+    let result = rx.try_recv();
+    assert_that!(result, eq(Ok(Err(expected_err))))
+}
+
+#[test]
+fn invalid_value_insert_action() {
+    let original_val = "original".to_owned();
+    let key_schema = StandardSchema::OfKind(ValueKind::Int32);
+    let val_schema = StandardSchema::OfKind(ValueKind::Text);
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::new(key_schema, val_schema.clone());
+
+    let (tx, mut rx) = oneshot::channel();
+    let action = MapAction::Insert {
+        key: k.clone(),
+        value: Value::BooleanValue(false),
+        old: Some(Request::new(tx)),
+    };
+
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::BooleanValue(false), val_schema);
+    let result = rx.try_recv();
+    assert_that!(result, eq(Ok(Err(expected_err))))
+}
+
 fn make_remove(
     key: i32,
 ) -> (
@@ -970,6 +1042,41 @@ fn remove_defined_action() {
     assert_that!(&maybe_old_val, some());
     let old_val = maybe_old_val.unwrap();
     assert_that!(old_val, eq(Arc::new(Value::Text(original_val))))
+}
+
+#[test]
+fn invalid_remove_action() {
+    let original_val = "original".to_owned();
+    let key_schema = StandardSchema::OfKind(ValueKind::Int32);
+    let val_schema = StandardSchema::OfKind(ValueKind::Text);
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::new(key_schema.clone(), val_schema);
+
+    let (tx, mut rx) = oneshot::channel();
+    let action = MapAction::Remove {
+        key: Value::BooleanValue(false),
+        old: Some(Request::new(tx)),
+    };
+
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::BooleanValue(false), key_schema);
+    let result = rx.try_recv();
+    assert_that!(result, eq(Ok(Err(expected_err))))
 }
 
 fn make_take(

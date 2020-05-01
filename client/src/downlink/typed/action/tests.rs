@@ -329,6 +329,24 @@ mod map {
     }
 
     #[tokio::test]
+    async fn map_invalid_key_insert() {
+        let dl = TestMapDl::new(make_map());
+        let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
+
+        let result = actions.insert("bad".to_string(), 8).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+    }
+
+    #[tokio::test]
+    async fn map_invalid_value_insert() {
+        let dl = TestMapDl::new(make_map());
+        let mut actions: MapActions<TestMapDl, i32, String> = MapActions::new(dl);
+
+        let result = actions.insert(4, "bad".to_string()).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+    }
+
+    #[tokio::test]
     async fn map_insert_and_forget() {
         let mut actions = TestMapDl::actions(make_map());
 
@@ -352,6 +370,15 @@ mod map {
 
         let result = actions.get(2).await;
         assert_that!(result, eq(Ok(None)));
+    }
+
+    #[tokio::test]
+    async fn map_invalid_remove() {
+        let dl = TestMapDl::new(make_map());
+        let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
+
+        let result = actions.remove("bad".to_string()).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
     }
 
     #[tokio::test]
