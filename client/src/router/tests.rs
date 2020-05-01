@@ -47,7 +47,7 @@ pub async fn foo() {
     sink.send_item(sync).await.unwrap();
     println!("Sent second item");
     thread::sleep(time::Duration::from_secs(10));
-    router.close().await;
+    router.close().await.unwrap();
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -63,7 +63,7 @@ async fn normal_receive() {
     sink.send_item(sync).await.unwrap();
 
     thread::sleep(time::Duration::from_secs(5));
-    router.close().await;
+    router.close().await.unwrap();
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -79,7 +79,7 @@ async fn not_interested_receive() {
     sink.send_item(sync).await.unwrap();
 
     thread::sleep(time::Duration::from_secs(5));
-    router.close().await;
+    router.close().await.unwrap();
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -95,7 +95,7 @@ async fn not_found_receive() {
     sink.send_item(sync).await.unwrap();
 
     thread::sleep(time::Duration::from_secs(5));
-    router.close().await;
+    router.close().await.unwrap();
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -116,6 +116,6 @@ async fn send_commands() {
     thread::sleep(time::Duration::from_secs(1));
 
     thread::sleep(time::Duration::from_secs(1));
-    router.close().await;
+    router.close().await.unwrap();
     thread::sleep(time::Duration::from_secs(5));
 }

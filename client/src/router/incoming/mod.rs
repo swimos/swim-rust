@@ -14,11 +14,13 @@
 
 use std::collections::HashMap;
 
-use crate::router::{RouterEvent, RoutingError};
+use crate::router::{CloseReceiver, RouterEvent, RoutingError};
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
+use futures::stream;
 use std::convert::TryFrom;
+use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
@@ -30,30 +32,36 @@ pub enum IncomingRequest {
     Message(Message),
     Unreachable,
     Disconnect,
-    Close,
+    Close(Option<mpsc::Sender<Result<(), RoutingError>>>),
 }
 
 pub struct IncomingHostTask {
     task_rx: mpsc::Receiver<IncomingRequest>,
+    close_rx: CloseReceiver,
 }
 
 impl IncomingHostTask {
-    pub fn new(buffer_size: usize) -> (IncomingHostTask, mpsc::Sender<IncomingRequest>) {
+    pub fn new(
+        close_rx: CloseReceiver,
+        buffer_size: usize,
+    ) -> (IncomingHostTask, mpsc::Sender<IncomingRequest>) {
         let (task_tx, task_rx) = mpsc::channel(buffer_size);
 
-        (IncomingHostTask { task_rx }, task_tx)
+        (IncomingHostTask { task_rx, close_rx }, task_tx)
     }
 
     //Todo split into smaller methods
     pub async fn run(self) -> Result<(), RoutingError> {
-        let IncomingHostTask { mut task_rx } = self;
+        let IncomingHostTask { task_rx, close_rx } = self;
 
         let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection = None;
 
+        let mut rx = combine_incoming_streams(task_rx, close_rx);
+
         loop {
             if connection.is_none() {
-                let task = task_rx.recv().await.ok_or(RoutingError::ConnectionError)?;
+                let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
                 match task {
                     IncomingRequest::Connection(message_rx) => {
@@ -69,6 +77,7 @@ impl IncomingHostTask {
 
                     IncomingRequest::Unreachable => {
                         println!("Unreachable Host");
+
                         for (_, destination) in subscribers.iter_mut() {
                             for subscriber in destination {
                                 subscriber
@@ -77,11 +86,12 @@ impl IncomingHostTask {
                                     .map_err(|_| RoutingError::ConnectionError)?;
                             }
                         }
-                        break;
+                        break Ok(());
                     }
 
-                    IncomingRequest::Close => {
+                    IncomingRequest::Close(Some(_)) => {
                         println!("Closing Router");
+
                         for (_, destination) in subscribers.iter_mut() {
                             for subscriber in destination {
                                 subscriber
@@ -90,14 +100,14 @@ impl IncomingHostTask {
                                     .map_err(|_| RoutingError::ConnectionError)?;
                             }
                         }
-                        break;
+                        break Ok(());
                     }
 
                     _ => {}
                 }
             } else {
                 let task = tokio::select! {
-                    Some(task) = task_rx.recv() => {
+                    Some(task) = rx.next() => {
                         Some(task)
                     }
 
@@ -147,7 +157,7 @@ impl IncomingHostTask {
                                         .map_err(|_| RoutingError::ConnectionError)?;
                                 }
                             } else {
-                                //Todo log the messsage
+                                //Todo Replace with tracing
                                 println!("No downlink interested in message: {:?}", event);
                             }
                         } else {
@@ -169,8 +179,9 @@ impl IncomingHostTask {
                         }
                     }
 
-                    IncomingRequest::Close => {
+                    IncomingRequest::Close(Some(_)) => {
                         println!("Closing Router");
+
                         for (_, destination) in subscribers.iter_mut() {
                             for subscriber in destination {
                                 subscriber
@@ -179,13 +190,21 @@ impl IncomingHostTask {
                                     .map_err(|_| RoutingError::ConnectionError)?;
                             }
                         }
-                        break;
+
+                        break Ok(());
                     }
 
                     _ => {}
                 }
             }
         }
-        Ok(())
     }
+}
+
+fn combine_incoming_streams(
+    task_rx: mpsc::Receiver<IncomingRequest>,
+    close_rx: CloseReceiver,
+) -> impl stream::Stream<Item = IncomingRequest> + Send + 'static {
+    let close_requests = close_rx.map(IncomingRequest::Close);
+    stream::select(task_rx, close_requests)
 }

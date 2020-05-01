@@ -65,7 +65,7 @@ struct ConnectionRequest {
 pub struct ConnectionPool {
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
     _connection_requests_handler: Arc<JoinHandle<Result<(), ConnectionError>>>,
-    stop_request_tx: mpsc::Sender<oneshot::Sender<Result<(), ConnectionError>>>,
+    stop_request_tx: mpsc::Sender<()>,
 }
 
 impl ConnectionPool {
@@ -135,10 +135,11 @@ impl ConnectionPool {
 
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
-    pub async fn close(mut self) {
-        let (response_tx, response_rx) = oneshot::channel();
-        let _ = self.stop_request_tx.send(response_tx);
-        let _ = response_rx.await;
+    pub async fn close(mut self) -> Result<(), ConnectionError> {
+        self.stop_request_tx
+            .send(())
+            .await
+            .map_err(|_| ConnectionError::ClosedError)
     }
 }
 
@@ -154,7 +155,7 @@ where
     connection_request_rx: mpsc::Receiver<ConnectionRequest>,
     connection_factory: WsFac,
     buffer_size: usize,
-    stop_request_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
+    stop_request_rx: mpsc::Receiver<()>,
 }
 
 impl<WsFac> PoolTask<WsFac>
@@ -165,7 +166,7 @@ where
         connection_request_rx: mpsc::Receiver<ConnectionRequest>,
         connection_factory: WsFac,
         buffer_size: usize,
-        stop_request_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
+        stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
         PoolTask {
             connection_request_rx,
@@ -264,17 +265,16 @@ where
                     unimplemented!()
                 }
                 Some(Either::Right(RequestType::Close)) => {
-                    break;
+                    break Ok(());
                 }
             }
         }
-        Ok(())
     }
 }
 
 fn combine_connection_streams(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
-    close_requests_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
+    close_requests_rx: mpsc::Receiver<()>,
 ) -> impl stream::Stream<Item = RequestType> + Send + 'static {
     let connection_requests = connection_requests_rx.map(RequestType::NewConnection);
     let close_request = close_requests_rx.map(|_| RequestType::Close);
