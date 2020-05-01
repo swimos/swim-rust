@@ -41,6 +41,7 @@ use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
+use common::request::TryRequest;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -96,6 +97,8 @@ pub enum DownlinkError {
     InvalidAction,
     SchemaViolation(Value, StandardSchema),
 }
+
+pub type DownlinkRequest<T> = TryRequest<T, DownlinkError>;
 
 impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {

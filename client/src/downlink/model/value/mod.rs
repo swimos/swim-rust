@@ -23,14 +23,10 @@ use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
-use crate::downlink::{
-    create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message,
-    TransitionError,
-};
+use crate::downlink::{create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message, TransitionError, DownlinkRequest};
 use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
-use common::request::Request;
 use common::sink::item::ItemSender;
 use std::fmt;
 
@@ -40,11 +36,11 @@ mod tests;
 pub type SharedValue = Arc<Value>;
 
 pub enum Action {
-    Set(Value, Option<Request<()>>),
-    Get(Request<SharedValue>),
+    Set(Value, Option<DownlinkRequest<()>>),
+    Get(DownlinkRequest<SharedValue>),
     Update(
         Box<dyn FnOnce(&Value) -> Value + Send>,
-        Option<Request<SharedValue>>,
+        Option<DownlinkRequest<SharedValue>>,
     ),
 }
 
@@ -63,11 +59,11 @@ impl Action {
         Action::Set(val, None)
     }
 
-    pub fn set_and_await(val: Value, request: Request<()>) -> Action {
+    pub fn set_and_await(val: Value, request: DownlinkRequest<()>) -> Action {
         Action::Set(val, Some(request))
     }
 
-    pub fn get(request: Request<SharedValue>) -> Action {
+    pub fn get(request: DownlinkRequest<SharedValue>) -> Action {
         Action::Get(request)
     }
 
@@ -82,7 +78,7 @@ impl Action {
         Action::Update(f, None)
     }
 
-    pub fn update_and_await<F>(f: F, request: Request<SharedValue>) -> Action
+    pub fn update_and_await<F>(f: F, request: DownlinkRequest<SharedValue>) -> Action
     where
         F: FnOnce(&Value) -> Value + Send + 'static,
     {
@@ -91,7 +87,7 @@ impl Action {
 
     pub fn update_box_and_await(
         f: Box<dyn FnOnce(&Value) -> Value + Send>,
-        request: Request<SharedValue>,
+        request: DownlinkRequest<SharedValue>,
     ) -> Action {
         Action::Update(f, Some(request))
     }
@@ -278,26 +274,46 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
         action: Action,
     ) -> BasicResponse<Self::Ev, Self::Cmd> {
         match action {
-            Action::Get(resp) => match resp.send(state.state.clone()) {
+            Action::Get(resp) => match resp.send_ok(state.state.clone()) {
                 Err(_) => BasicResponse::none().with_error(TransitionError::ReceiverDropped),
                 _ => BasicResponse::none(),
             },
             Action::Set(set_value, maybe_resp) => {
-                state.state = Arc::new(set_value);
-                let resp = BasicResponse::of(state.state.clone(), state.state.clone());
-                match maybe_resp.and_then(|req| req.send(()).err()) {
-                    Some(_) => resp.with_error(TransitionError::ReceiverDropped),
-                    _ => resp,
+                if self.schema.matches(&set_value) {
+                    state.state = Arc::new(set_value);
+                    let resp = BasicResponse::of(state.state.clone(), state.state.clone());
+                    match maybe_resp.and_then(|req| req.send_ok(()).err()) {
+                        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+                        _ => resp,
+                    }
+                } else {
+                    send_error(maybe_resp, set_value, self.schema.clone())
                 }
             }
             Action::Update(upd_fn, maybe_resp) => {
-                state.state = Arc::new(upd_fn(state.state.as_ref()));
-                let resp = BasicResponse::of(state.state.clone(), state.state.clone());
-                match maybe_resp.and_then(|req| req.send(state.state.clone()).err()) {
-                    None => resp,
-                    Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+                let new_value = upd_fn(state.state.as_ref());
+                if self.schema.matches(&new_value) {
+                    state.state = Arc::new(new_value);
+                    let resp = BasicResponse::of(state.state.clone(), state.state.clone());
+                    match maybe_resp.and_then(|req| req.send_ok(state.state.clone()).err()) {
+                        None => resp,
+                        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+                    }
+                } else {
+                    send_error(maybe_resp, new_value, self.schema.clone())
                 }
             }
         }
+    }
+}
+
+fn send_error<T, Ev, Cmd>(maybe_resp: Option<DownlinkRequest<T>>,
+                          set_value: Value,
+                          schema: StandardSchema) -> BasicResponse<Ev, Cmd> {
+    let resp = BasicResponse::none();
+    let err = DownlinkError::SchemaViolation(set_value, schema);
+    match maybe_resp.and_then(|req| req.send_err(err).err()) {
+        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+        _ => resp,
     }
 }

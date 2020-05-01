@@ -46,7 +46,7 @@ mod value {
                     if matches!(v, Value::Int32Value(_)) {
                         *state = SharedValue::new(v);
                         if let Some(cb) = maybe_cb {
-                            let _ = cb.send(());
+                            let _ = cb.send_ok(());
                         }
                         Ok(())
                     } else {
@@ -54,7 +54,7 @@ mod value {
                     }
                 }
                 Action::Get(cb) => {
-                    let _ = cb.send(state.clone());
+                    let _ = cb.send_ok(state.clone());
                     Ok(())
                 }
                 Action::Update(f, maybe_cb) => {
@@ -63,7 +63,7 @@ mod value {
                     if matches!(new, Value::Int32Value(_)) {
                         *state = SharedValue::new(new);
                         if let Some(cb) = maybe_cb {
-                            let _ = cb.send(old);
+                            let _ = cb.send_ok(old);
                         }
                         Ok(())
                     } else {

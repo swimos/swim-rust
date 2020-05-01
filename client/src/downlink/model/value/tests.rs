@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
 use common::model::ValueKind;
+use common::request::Request;
 
 const STATES: [DownlinkState; 3] = [
     DownlinkState::Unlinked,
@@ -204,7 +205,7 @@ fn update_message_synced() {
     assert!(Arc::ptr_eq(ev, &model.state));
 }
 
-fn make_get() -> (Action, oneshot::Receiver<Arc<Value>>) {
+fn make_get() -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkError>>) {
     let (tx, rx) = oneshot::channel();
     (Action::get(Request::new(tx)), rx)
 }
@@ -228,7 +229,9 @@ fn get_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let get_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let get_val = response.unwrap();
     assert!(Arc::ptr_eq(&get_val, &model.state));
 }
 
@@ -262,7 +265,7 @@ fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) ->
     response
 }
 
-fn make_set(n: i32) -> (Action, oneshot::Receiver<()>) {
+fn make_set(n: i32) -> (Action, oneshot::Receiver<Result<(), DownlinkError>>) {
     let (tx, rx) = oneshot::channel();
     (
         Action::set_and_await(Value::Int32Value(n), Request::new(tx)),
@@ -332,7 +335,7 @@ fn dropped_set_action() {
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }
 
-fn make_update() -> (Action, oneshot::Receiver<Arc<Value>>) {
+fn make_update() -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkError>>) {
     let (tx, rx) = oneshot::channel();
     (
         Action::update_and_await(
@@ -369,7 +372,9 @@ fn update_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let upd_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let upd_val = response.unwrap();
     assert!(Arc::ptr_eq(&upd_val, &model.state));
 }
 

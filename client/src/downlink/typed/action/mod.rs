@@ -62,7 +62,7 @@ where
         self.sender
             .send_item(Action::set_and_await(value.into_value(), req))
             .await?;
-        rx.await.map_err(|_| DownlinkError::DroppedChannel)
+        rx.await.map_err(|_| DownlinkError::DroppedChannel)?
     }
 
     /// Set the value of the downlink without waiting for the operation to complete.
@@ -365,9 +365,9 @@ where
 }
 
 async fn await_value<T: ValidatedForm>(
-    rx: oneshot::Receiver<SharedValue>,
+    rx: oneshot::Receiver<Result<SharedValue, DownlinkError>>,
 ) -> Result<T, DownlinkError> {
-    let value = rx.await.map_err(|_| DownlinkError::DroppedChannel)?;
+    let value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
     Form::try_from_value(value.as_ref()).map_err(|_| {
         let schema = <T as ValidatedForm>::schema();
         DownlinkError::SchemaViolation((*value).clone(), schema)

@@ -58,7 +58,7 @@ pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
 
 pub struct Downlinks {
-    sender: mpsc::Sender<DownlinkRequest>,
+    sender: mpsc::Sender<DownlinkSpecifier>,
     _task: JoinHandle<()>,
 }
 
@@ -91,7 +91,7 @@ impl Downlinks {
     ) -> Result<(ValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkRequest::Value(init, path, Request::new(tx)))
+            .send(DownlinkSpecifier::Value(init, path, Request::new(tx)))
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -106,7 +106,7 @@ impl Downlinks {
     ) -> Result<(MapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkRequest::Map(path, Request::new(tx)))
+            .send(DownlinkSpecifier::Map(path, Request::new(tx)))
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -122,8 +122,8 @@ pub enum SubscriptionError {
     DownlinkTaskStopped,
 }
 
-impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
-    fn from(_: SendError<DownlinkRequest>) -> Self {
+impl From<mpsc::error::SendError<DownlinkSpecifier>> for SubscriptionError {
+    fn from(_: SendError<DownlinkSpecifier>) -> Self {
         SubscriptionError::DownlinkTaskStopped
     }
 }
@@ -159,7 +159,7 @@ impl SubscriptionError {
 
 pub type Result<T> = std::result::Result<T, SubscriptionError>;
 
-pub enum DownlinkRequest {
+pub enum DownlinkSpecifier {
     Value(
         Value,
         AbsolutePath,
@@ -329,14 +329,14 @@ where
     #[allow(clippy::cognitive_complexity)]
     async fn run<Req>(mut self, requests: Req)
     where
-        Req: Stream<Item = DownlinkRequest>,
+        Req: Stream<Item =DownlinkSpecifier>,
     {
         pin_mut!(requests);
 
         let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
 
         loop {
-            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
+            let item: Option<Either<DownlinkSpecifier, DownlinkStoppedEvent>> =
                 if self.stopped_watch.is_empty() {
                     pinned_requests.next().await.map(Either::Left)
                 } else {
@@ -347,7 +347,7 @@ where
                 };
 
             match item {
-                Some(Either::Left(DownlinkRequest::Value(init, path, value_req))) => {
+                Some(Either::Left(DownlinkSpecifier::Value(init, path, value_req))) => {
                     let dl = match self.value_downlinks.get(&path) {
                         Some(dl) => {
                             let maybe_dl = dl.upgrade();
@@ -379,7 +379,7 @@ where
                     };
                     let _ = value_req.send(dl);
                 }
-                Some(Either::Left(DownlinkRequest::Map(path, map_req))) => {
+                Some(Either::Left(DownlinkSpecifier::Map(path, map_req))) => {
                     let dl = match self.map_downlinks.get(&path) {
                         Some(dl) => {
                             let maybe_dl = dl.upgrade();
