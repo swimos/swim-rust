@@ -16,11 +16,13 @@ use tokio::sync::oneshot;
 
 pub mod request_future;
 
+/// An asynchronous request for an agent to provide a value.
 #[derive(Debug)]
 pub struct Request<T> {
     satisfy: oneshot::Sender<T>,
 }
 
+/// An asycnhronous request for an agent to provide a value or fail.
 pub type TryRequest<T, E> = Request<Result<T, E>>;
 
 impl<T> Request<T> {

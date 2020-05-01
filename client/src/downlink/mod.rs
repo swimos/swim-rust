@@ -98,6 +98,7 @@ pub enum DownlinkError {
     SchemaViolation(Value, StandardSchema),
 }
 
+/// A request to a downlink for a value.
 pub type DownlinkRequest<T> = TryRequest<T, DownlinkError>;
 
 impl From<RoutingError> for DownlinkError {
