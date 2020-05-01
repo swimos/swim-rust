@@ -37,7 +37,6 @@ impl<T> Request<T> {
 }
 
 impl<T, E> Request<Result<T, E>> {
-
     pub fn send_ok(self, data: T) -> Result<(), ()> {
         self.send(Ok(data))
     }
@@ -45,5 +44,4 @@ impl<T, E> Request<Result<T, E>> {
     pub fn send_err(self, err: E) -> Result<(), ()> {
         self.send(Err(err))
     }
-
 }

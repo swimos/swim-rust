@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
 use common::model::schema::Schema;
+use common::request::Request;
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);
@@ -604,12 +605,17 @@ fn clear_message_synced() {
     assert_that!(event, eq(&expected_event));
 }
 
-fn make_get_map() -> (MapAction, oneshot::Receiver<ValMap>) {
+fn make_get_map() -> (MapAction, oneshot::Receiver<Result<ValMap, DownlinkError>>) {
     let (tx, rx) = oneshot::channel();
     (MapAction::get_map(Request::new(tx)), rx)
 }
 
-fn make_get(key: i32) -> (MapAction, oneshot::Receiver<Option<Arc<Value>>>) {
+fn make_get(
+    key: i32,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+) {
     let (tx, rx) = oneshot::channel();
     (MapAction::get(Value::Int32Value(key), Request::new(tx)), rx)
 }
@@ -636,7 +642,9 @@ fn get_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let get_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let get_val = response.unwrap();
     assert!(get_val.ptr_eq(&model.state));
 }
 
@@ -663,8 +671,9 @@ fn get_by_defined_key_action() {
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let maybe_get_val = result.unwrap();
-    assert_that!(&maybe_get_val, some());
-    let get_val = maybe_get_val.unwrap();
+    let response = maybe_get_val.unwrap();
+    assert_that!(&response, some());
+    let get_val = response.unwrap();
     assert!(Arc::ptr_eq(&get_val, model.state.get(&k).unwrap()));
 }
 
@@ -691,10 +700,16 @@ fn get_by_undefined_key_action() {
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let maybe_get_val = result.unwrap();
-    assert_that!(&maybe_get_val, none());
+    assert_that!(maybe_get_val, eq(Ok(None)));
 }
 
-fn make_insert(key: i32, value: String) -> (MapAction, oneshot::Receiver<Option<Arc<Value>>>) {
+fn make_insert(
+    key: i32,
+    value: String,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+) {
     let (tx, rx) = oneshot::channel();
     (
         MapAction::insert_and_await(Value::Int32Value(key), Value::Text(value), Request::new(tx)),
@@ -757,7 +772,7 @@ fn insert_to_undefined_action() {
     let result = rx.try_recv();
     assert_that!(&result, ok());
     let maybe_old_val = result.unwrap();
-    assert_that!(&maybe_old_val, none());
+    assert_that!(maybe_old_val, eq(Ok(None)));
 }
 
 #[test]
@@ -836,13 +851,20 @@ fn insert_to_defined_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let maybe_old_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
     assert_that!(&maybe_old_val, some());
     let old_val = maybe_old_val.unwrap();
     assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))))
 }
 
-fn make_remove(key: i32) -> (MapAction, oneshot::Receiver<Option<Arc<Value>>>) {
+fn make_remove(
+    key: i32,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+) {
     let (tx, rx) = oneshot::channel();
     (
         MapAction::remove_and_await(Value::Int32Value(key), Request::new(tx)),
@@ -869,7 +891,9 @@ fn remove_undefined_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let maybe_old_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
     assert_that!(&maybe_old_val, none());
 }
 
@@ -940,7 +964,9 @@ fn remove_defined_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let maybe_old_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
     assert_that!(&maybe_old_val, some());
     let old_val = maybe_old_val.unwrap();
     assert_that!(old_val, eq(Arc::new(Value::Text(original_val))))
@@ -950,8 +976,8 @@ fn make_take(
     n: usize,
 ) -> (
     MapAction,
-    oneshot::Receiver<ValMap>,
-    oneshot::Receiver<ValMap>,
+    oneshot::Receiver<Result<ValMap, DownlinkError>>,
+    oneshot::Receiver<Result<ValMap, DownlinkError>>,
 ) {
     let (tx_bef, rx_bef) = oneshot::channel();
     let (tx_aft, rx_aft) = oneshot::channel();
@@ -1002,12 +1028,16 @@ fn take_action() {
 
     let result_before = rx_before.try_recv();
     assert_that!(&result_before, ok());
-    let before_val = result_before.unwrap();
+    let response_before = result_before.unwrap();
+    assert_that!(&response_before, ok());
+    let before_val = response_before.unwrap();
     assert!(before_val.ptr_eq(&expected_before));
 
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
-    let after_val = result_after.unwrap();
+    let response_after = result_after.unwrap();
+    assert_that!(&response_after, ok());
+    let after_val = response_after.unwrap();
     assert!(after_val.ptr_eq(&model.state));
 }
 
@@ -1051,7 +1081,9 @@ fn take_action_dropped_before() {
 
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
-    let after_val = result_after.unwrap();
+    let response_after = result_after.unwrap();
+    assert_that!(&response_after, ok());
+    let after_val = response_after.unwrap();
     assert!(after_val.ptr_eq(&model.state));
 }
 
@@ -1097,7 +1129,9 @@ fn take_action_dropped_after() {
 
     let result_before = rx_before.try_recv();
     assert_that!(&result_before, ok());
-    let before_val = result_before.unwrap();
+    let response_before = result_before.unwrap();
+    assert_that!(&response_before, ok());
+    let before_val = response_before.unwrap();
     assert!(before_val.ptr_eq(&expected_before));
 }
 
@@ -1145,8 +1179,8 @@ fn make_skip(
     n: usize,
 ) -> (
     MapAction,
-    oneshot::Receiver<ValMap>,
-    oneshot::Receiver<ValMap>,
+    oneshot::Receiver<Result<ValMap, DownlinkError>>,
+    oneshot::Receiver<Result<ValMap, DownlinkError>>,
 ) {
     let (tx_bef, rx_bef) = oneshot::channel();
     let (tx_aft, rx_aft) = oneshot::channel();
@@ -1197,12 +1231,16 @@ fn skip_action() {
 
     let result_before = rx_before.try_recv();
     assert_that!(&result_before, ok());
-    let before_val = result_before.unwrap();
+    let response_before = result_before.unwrap();
+    assert_that!(&response_before, ok());
+    let before_val = response_before.unwrap();
     assert!(before_val.ptr_eq(&expected_before));
 
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
-    let after_val = result_after.unwrap();
+    let response_after = result_after.unwrap();
+    assert_that!(&response_after, ok());
+    let after_val = response_after.unwrap();
     assert!(after_val.ptr_eq(&model.state));
 }
 
@@ -1246,7 +1284,9 @@ fn skip_action_dropped_before() {
 
     let result_after = rx_after.try_recv();
     assert_that!(&result_after, ok());
-    let after_val = result_after.unwrap();
+    let response_after = result_after.unwrap();
+    assert_that!(&response_after, ok());
+    let after_val = response_after.unwrap();
     assert!(after_val.ptr_eq(&model.state));
 }
 
@@ -1292,7 +1332,9 @@ fn skip_action_dropped_after() {
 
     let result_before = rx_before.try_recv();
     assert_that!(&result_before, ok());
-    let before_val = result_before.unwrap();
+    let response_before = result_before.unwrap();
+    assert_that!(&response_before, ok());
+    let before_val = response_before.unwrap();
     assert!(before_val.ptr_eq(&expected_before));
 }
 
@@ -1336,7 +1378,7 @@ fn skip_action_dropped_both() {
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 }
 
-fn make_clear() -> (MapAction, oneshot::Receiver<ValMap>) {
+fn make_clear() -> (MapAction, oneshot::Receiver<Result<ValMap, DownlinkError>>) {
     let (tx_bef, rx_bef) = oneshot::channel();
     (MapAction::clear_and_await(Request::new(tx_bef)), rx_bef)
 }
@@ -1379,7 +1421,9 @@ fn clear_action() {
 
     let result_before = rx_before.try_recv();
     assert_that!(&result_before, ok());
-    let before_val = result_before.unwrap();
+    let response_before = result_before.unwrap();
+    assert_that!(&response_before, ok());
+    let before_val = response_before.unwrap();
     assert!(before_val.ptr_eq(&expected_before));
 }
 

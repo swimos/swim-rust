@@ -329,7 +329,7 @@ where
     #[allow(clippy::cognitive_complexity)]
     async fn run<Req>(mut self, requests: Req)
     where
-        Req: Stream<Item =DownlinkSpecifier>,
+        Req: Stream<Item = DownlinkSpecifier>,
     {
         pin_mut!(requests);
 

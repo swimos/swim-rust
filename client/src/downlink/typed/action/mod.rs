@@ -223,7 +223,7 @@ where
         self.sender
             .send_item(MapAction::clear_and_await(req))
             .await?;
-        rx.await.map_err(|_| DownlinkError::DroppedChannel)
+        rx.await.map_err(|_| DownlinkError::DroppedChannel)?
     }
 
     /// Clear the contents of the map.
@@ -249,8 +249,8 @@ where
         self.sender
             .send_item(MapAction::take_and_await(n, req1, req2))
             .await?;
-        let before = rx1.await.map_err(|_| DownlinkError::DroppedChannel)?;
-        let after = rx2.await.map_err(|_| DownlinkError::DroppedChannel)?;
+        let before = rx1.await.map_err(|_| DownlinkError::DroppedChannel)??;
+        let after = rx2.await.map_err(|_| DownlinkError::DroppedChannel)??;
         Ok((before, after))
     }
 
@@ -283,8 +283,8 @@ where
         self.sender
             .send_item(MapAction::skip_and_await(n, req1, req2))
             .await?;
-        let before = rx1.await.map_err(|_| DownlinkError::DroppedChannel)?;
-        let after = rx2.await.map_err(|_| DownlinkError::DroppedChannel)?;
+        let before = rx1.await.map_err(|_| DownlinkError::DroppedChannel)??;
+        let after = rx2.await.map_err(|_| DownlinkError::DroppedChannel)??;
         Ok((before, after))
     }
 
@@ -316,6 +316,7 @@ where
         self.sender.send_item(MapAction::get_map(req)).await?;
         rx.await
             .map_err(|_| DownlinkError::DroppedChannel)
+            .and_then(|r| r)
             .map(TypedMapView::new)
     }
 }
@@ -375,9 +376,9 @@ async fn await_value<T: ValidatedForm>(
 }
 
 async fn await_optional<T: ValidatedForm>(
-    rx: oneshot::Receiver<Option<SharedValue>>,
+    rx: oneshot::Receiver<Result<Option<SharedValue>, DownlinkError>>,
 ) -> Result<Option<T>, DownlinkError> {
-    let maybe_value = rx.await.map_err(|_| DownlinkError::DroppedChannel)?;
+    let maybe_value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
     match maybe_value {
         Some(value) => Form::try_from_value(value.as_ref())
             .map_err(|_| {

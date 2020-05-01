@@ -23,7 +23,10 @@ use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
-use crate::downlink::{create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message, TransitionError, DownlinkRequest};
+use crate::downlink::{
+    create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest,
+    Event, Message, TransitionError,
+};
 use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
@@ -307,9 +310,11 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
     }
 }
 
-fn send_error<T, Ev, Cmd>(maybe_resp: Option<DownlinkRequest<T>>,
-                          set_value: Value,
-                          schema: StandardSchema) -> BasicResponse<Ev, Cmd> {
+fn send_error<T, Ev, Cmd>(
+    maybe_resp: Option<DownlinkRequest<T>>,
+    set_value: Value,
+    schema: StandardSchema,
+) -> BasicResponse<Ev, Cmd> {
     let resp = BasicResponse::none();
     let err = DownlinkError::SchemaViolation(set_value, schema);
     match maybe_resp.and_then(|req| req.send_err(err).err()) {

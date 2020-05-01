@@ -36,12 +36,12 @@ use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
+use common::request::TryRequest;
 use common::sink::item::ItemSender;
 use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
-use common::request::TryRequest;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.

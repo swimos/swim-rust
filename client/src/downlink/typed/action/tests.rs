@@ -169,7 +169,7 @@ mod map {
                         let old_val = state.get(&key).map(Clone::clone);
                         state.insert(key, Arc::new(value));
                         if let Some(cb) = old {
-                            let _ = cb.send(old_val);
+                            let _ = cb.send_ok(old_val);
                         }
                         Ok(())
                     } else {
@@ -181,7 +181,7 @@ mod map {
                         let old_val = state.get(&key).map(Clone::clone);
                         state.remove(&key);
                         if let Some(cb) = old {
-                            let _ = cb.send(old_val);
+                            let _ = cb.send_ok(old_val);
                         }
                         Ok(())
                     } else {
@@ -192,10 +192,10 @@ mod map {
                     let map_before = state.clone();
                     *state = state.take(n);
                     if let Some(cb) = before {
-                        let _ = cb.send(map_before);
+                        let _ = cb.send_ok(map_before);
                     }
                     if let Some(cb) = after {
-                        let _ = cb.send(state.clone());
+                        let _ = cb.send_ok(state.clone());
                     }
                     Ok(())
                 }
@@ -203,10 +203,10 @@ mod map {
                     let map_before = state.clone();
                     *state = state.skip(n);
                     if let Some(cb) = before {
-                        let _ = cb.send(map_before);
+                        let _ = cb.send_ok(map_before);
                     }
                     if let Some(cb) = after {
-                        let _ = cb.send(state.clone());
+                        let _ = cb.send_ok(state.clone());
                     }
                     Ok(())
                 }
@@ -214,17 +214,17 @@ mod map {
                     let map_before = state.clone();
                     state.clear();
                     if let Some(cb) = before {
-                        let _ = cb.send(map_before);
+                        let _ = cb.send_ok(map_before);
                     }
                     Ok(())
                 }
                 MapAction::Get { request } => {
-                    let _ = request.send(state.clone());
+                    let _ = request.send_ok(state.clone());
                     Ok(())
                 }
                 MapAction::GetByKey { key, request } => {
                     if matches!(&key, Value::Int32Value(_)) {
-                        let _ = request.send(state.get(&key).map(Clone::clone));
+                        let _ = request.send_ok(state.get(&key).map(Clone::clone));
                         Ok(())
                     } else {
                         Err(DownlinkError::InvalidAction)
@@ -248,10 +248,10 @@ mod map {
                             _ => state.remove(&key),
                         };
                         if let Some(cb) = before {
-                            let _ = cb.send(old_val);
+                            let _ = cb.send_ok(old_val);
                         }
                         if let Some(cb) = after {
-                            let _ = cb.send(replacement);
+                            let _ = cb.send_ok(replacement);
                         }
                         Ok(())
                     } else {
