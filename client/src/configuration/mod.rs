@@ -253,7 +253,7 @@ pub mod downlink {
             } = self;
             match by_lane.get(path) {
                 Some(params) => *params,
-                _ => match by_host.get(&path.host) {
+                _ => match by_host.get(&path.host.to_string()) {
                     Some(params) => *params,
                     _ => *default,
                 },

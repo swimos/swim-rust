@@ -50,7 +50,7 @@ fn per_host_config() -> ConfigHierarchy {
     )
     .unwrap();
     let mut conf = default_config();
-    conf.for_host("host2", special_params);
+    conf.for_host("ws://127.0.0.2/", special_params);
     conf
 }
 
@@ -67,7 +67,7 @@ fn per_lane_config() -> ConfigHierarchy {
     .unwrap();
     let mut conf = per_host_config();
     conf.for_lane(
-        &AbsolutePath::new("host2", "my_agent", "my_lane"),
+        &AbsolutePath::new("ws://127.0.0.2/", "my_agent", "my_lane").unwrap(),
         special_params,
     );
     conf
@@ -80,7 +80,7 @@ async fn dl_manager(conf: ConfigHierarchy) -> Downlinks {
 
 #[tokio::test]
 async fn subscribe_value_lane_default_config() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.1/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(default_config()).await;
     let result = downlinks.subscribe_value(Value::Extant, path).await;
     assert_that!(&result, ok());
@@ -91,7 +91,7 @@ async fn subscribe_value_lane_default_config() {
 
 #[tokio::test]
 async fn subscribe_value_lane_per_host_config() {
-    let path = AbsolutePath::new("host2", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.2/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_value(Value::Extant, path).await;
     assert_that!(&result, ok());
@@ -102,7 +102,7 @@ async fn subscribe_value_lane_per_host_config() {
 
 #[tokio::test]
 async fn subscribe_value_lane_per_lane_config() {
-    let path = AbsolutePath::new("host2", "my_agent", "my_lane");
+    let path = AbsolutePath::new("ws://127.0.0.2/", "my_agent", "my_lane").unwrap();
     let mut downlinks = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_value(Value::Extant, path).await;
     assert_that!(&result, ok());
@@ -113,7 +113,7 @@ async fn subscribe_value_lane_per_lane_config() {
 
 #[tokio::test]
 async fn subscribe_map_lane_default_config() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.1/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(default_config()).await;
     let result = downlinks.subscribe_map(path).await;
     assert_that!(&result, ok());
@@ -124,7 +124,7 @@ async fn subscribe_map_lane_default_config() {
 
 #[tokio::test]
 async fn subscribe_map_lane_per_host_config() {
-    let path = AbsolutePath::new("host2", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.2/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_map(path).await;
     assert_that!(&result, ok());
@@ -135,7 +135,7 @@ async fn subscribe_map_lane_per_host_config() {
 
 #[tokio::test]
 async fn subscribe_map_lane_per_lane_config() {
-    let path = AbsolutePath::new("host2", "my_agent", "my_lane");
+    let path = AbsolutePath::new("ws://127.0.0.2/", "my_agent", "my_lane").unwrap();
     let mut downlinks = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_map(path).await;
     assert_that!(&result, ok());
@@ -146,7 +146,7 @@ async fn subscribe_map_lane_per_lane_config() {
 
 #[tokio::test]
 async fn request_map_dl_for_running_value_dl() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.1/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(default_config()).await;
     let result = downlinks.subscribe_value(Value::Extant, path.clone()).await;
     assert_that!(&result, ok());
@@ -166,7 +166,7 @@ async fn request_map_dl_for_running_value_dl() {
 
 #[tokio::test]
 async fn request_value_dl_for_running_map_dl() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.1/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(default_config()).await;
     let result = downlinks.subscribe_map(path.clone()).await;
     assert_that!(&result, ok());
@@ -186,7 +186,7 @@ async fn request_value_dl_for_running_map_dl() {
 
 #[tokio::test]
 async fn subscribe_value_twice() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.1/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(default_config()).await;
     let result1 = downlinks.subscribe_value(Value::Extant, path.clone()).await;
     assert_that!(&result1, ok());
@@ -201,7 +201,7 @@ async fn subscribe_value_twice() {
 
 #[tokio::test]
 async fn subscribe_map_twice() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new("ws://127.0.0.1/", "node", "lane").unwrap();
     let mut downlinks = dl_manager(default_config()).await;
     let result1 = downlinks.subscribe_map(path.clone()).await;
     assert_that!(&result1, ok());

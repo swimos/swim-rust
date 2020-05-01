@@ -65,8 +65,7 @@ struct ConnectionRequest {
 pub struct ConnectionPool {
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
     _connection_requests_handler: Arc<JoinHandle<Result<(), ConnectionError>>>,
-    //Todo fix this to be cloneable
-    // stop_request_tx: oneshot::Sender<oneshot::Sender<Result<(), ConnectionError>>>,
+    stop_request_tx: mpsc::Sender<oneshot::Sender<Result<(), ConnectionError>>>,
 }
 
 impl ConnectionPool {
@@ -84,7 +83,7 @@ impl ConnectionPool {
         WsFac: WebsocketFactory + 'static,
     {
         let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
-        let (stop_request_tx, stop_request_rx) = oneshot::channel();
+        let (stop_request_tx, stop_request_rx) = mpsc::channel(buffer_size);
 
         let task = PoolTask::new(
             connection_request_rx,
@@ -100,7 +99,7 @@ impl ConnectionPool {
         ConnectionPool {
             connection_request_tx,
             _connection_requests_handler: Arc::new(connection_requests_handler),
-            // stop_request_tx,
+            stop_request_tx,
         }
     }
 
@@ -136,11 +135,10 @@ impl ConnectionPool {
 
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
-    pub async fn close(self) {
-        //Todo
-        // let (response_tx, response_rx) = oneshot::channel();
-        // let _ = self.stop_request_tx.send(response_tx);
-        // let _ = response_rx.await;
+    pub async fn close(mut self) {
+        let (response_tx, response_rx) = oneshot::channel();
+        let _ = self.stop_request_tx.send(response_tx);
+        let _ = response_rx.await;
     }
 }
 
@@ -156,7 +154,7 @@ where
     connection_request_rx: mpsc::Receiver<ConnectionRequest>,
     connection_factory: WsFac,
     buffer_size: usize,
-    stop_request_rx: oneshot::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
+    stop_request_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
 }
 
 impl<WsFac> PoolTask<WsFac>
@@ -167,7 +165,7 @@ where
         connection_request_rx: mpsc::Receiver<ConnectionRequest>,
         connection_factory: WsFac,
         buffer_size: usize,
-        stop_request_rx: oneshot::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
+        stop_request_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
     ) -> Self {
         PoolTask {
             connection_request_rx,
@@ -192,10 +190,7 @@ where
 
         //Todo merge that into the stream combine
         let mut prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
-
-        // let requests_rx = combine_connection_streams(connection_request_rx, stop_request_rx);
-        let requests_rx = connection_request_rx.map(RequestType::NewConnection);
-
+        let requests_rx = combine_connection_streams(connection_request_rx, stop_request_rx);
         let mut fused_requests = requests_rx.fuse();
 
         loop {
@@ -279,10 +274,10 @@ where
 
 fn combine_connection_streams(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
-    close_requests_rx: oneshot::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
+    close_requests_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
 ) -> impl stream::Stream<Item = RequestType> + Send + 'static {
     let connection_requests = connection_requests_rx.map(RequestType::NewConnection);
-    let close_request = close_requests_rx.map(|_| RequestType::Close).into_stream();
+    let close_request = close_requests_rx.map(|_| RequestType::Close);
 
     stream::select(connection_requests, close_request)
 }
