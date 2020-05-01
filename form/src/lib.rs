@@ -89,3 +89,27 @@ pub trait ValidatedForm: Form {
     /// to create an instance of the type from the [`Value`] without generating an error.
     fn schema() -> StandardSchema;
 }
+
+impl Form for Value {
+    fn as_value(&self) -> Value {
+        self.clone()
+    }
+
+    fn into_value(self) -> Value {
+        self
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        Ok(value.clone())
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
+        Ok(value)
+    }
+}
+
+impl ValidatedForm for Value {
+    fn schema() -> StandardSchema {
+        StandardSchema::Anything
+    }
+}

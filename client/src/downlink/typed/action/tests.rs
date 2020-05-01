@@ -95,6 +95,15 @@ mod value {
     }
 
     #[tokio::test]
+    async fn invalid_value_set() {
+        let dl = TestValueDl::new(2);
+        let mut actions: ValueActions<TestValueDl, String> = ValueActions::new(dl);
+
+        let result = actions.set("hello".to_string()).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+    }
+
+    #[tokio::test]
     async fn value_set_and_forget() {
         let mut actions = TestValueDl::actions(2);
 
@@ -114,6 +123,15 @@ mod value {
 
         let n = actions.get().await;
         assert_that!(n, eq(Ok(4)));
+    }
+
+    #[tokio::test]
+    async fn invalid_value_update() {
+        let dl = TestValueDl::new(2);
+        let mut actions: ValueActions<TestValueDl, Value> = ValueActions::new(dl);
+
+        let result = actions.update(|_| Value::Extant).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
     }
 
     #[tokio::test]
