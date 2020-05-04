@@ -50,155 +50,127 @@ impl IncomingHostTask {
         (IncomingHostTask { task_rx, close_rx }, task_tx)
     }
 
-    //Todo split into smaller methods
     pub async fn run(self) -> Result<(), RoutingError> {
         let IncomingHostTask { task_rx, close_rx } = self;
 
         let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
-        let mut connection = None;
+        let mut connection: Option<mpsc::Receiver<Message>> = None;
 
         let mut rx = combine_incoming_streams(task_rx, close_rx);
 
         loop {
-            if connection.is_none() {
-                let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            let task = if let Some(message_rx) = connection.as_mut() {
+                let result = tokio::select! {
 
-                match task {
-                    IncomingRequest::Connection(message_rx) => {
-                        connection = Some(message_rx);
+                    task = rx.next() => {
+                        task
                     }
 
-                    IncomingRequest::Subscribe((target, event_tx)) => {
-                        subscribers
-                            .entry(target.destination())
-                            .or_insert_with(Vec::new)
-                            .push(event_tx);
-                    }
-
-                    IncomingRequest::Unreachable => {
-                        println!("Unreachable Host");
-
-                        for (_, destination) in subscribers.iter_mut() {
-                            for subscriber in destination {
-                                subscriber
-                                    .send(RouterEvent::Unreachable)
-                                    .await
-                                    .map_err(|_| RoutingError::ConnectionError)?;
-                            }
-                        }
-                        break Ok(());
-                    }
-
-                    IncomingRequest::Close(Some(_)) => {
-                        println!("Closing Router");
-
-                        for (_, destination) in subscribers.iter_mut() {
-                            for subscriber in destination {
-                                subscriber
-                                    .send(RouterEvent::Stopping)
-                                    .await
-                                    .map_err(|_| RoutingError::ConnectionError)?;
-                            }
-                        }
-                        break Ok(());
-                    }
-
-                    _ => {}
-                }
-            } else {
-                let task = tokio::select! {
-                    Some(task) = rx.next() => {
-                        Some(task)
-                    }
-
-                    maybe_message = connection.as_mut().ok_or(RoutingError::ConnectionError)?.recv() => {
+                    maybe_message = message_rx.recv() => {
                         match maybe_message{
                             Some(message) => Some(IncomingRequest::Message(message)),
                             None => Some(IncomingRequest::Disconnect),
                         }
                     }
 
-                    else => None,
                 };
 
-                let task = task.ok_or(RoutingError::ConnectionError)?;
+                result.ok_or(RoutingError::ConnectionError)?
+            } else {
+                rx.next().await.ok_or(RoutingError::ConnectionError)?
+            };
 
-                match task {
-                    IncomingRequest::Connection(message_rx) => {
-                        connection = Some(message_rx);
-                    }
-
-                    IncomingRequest::Subscribe((target, event_tx)) => {
-                        subscribers
-                            .entry(target.destination())
-                            .or_insert_with(Vec::new)
-                            .push(event_tx);
-                    }
-
-                    IncomingRequest::Message(message) => {
-                        let message = message.to_text().unwrap();
-                        let value = parse_single(message).unwrap();
-                        let envelope = Envelope::try_from(value).unwrap();
-                        let destination = envelope.destination();
-                        let event = RouterEvent::Envelope(envelope);
-
-                        if let Some(destination) = destination {
-                            if subscribers.contains_key(&destination) {
-                                //Todo Replace with tracing
-                                println!("{:?}", event);
-                                let destination_subs = subscribers
-                                    .get_mut(&destination)
-                                    .ok_or(RoutingError::ConnectionError)?;
-
-                                for subscriber in destination_subs.iter_mut() {
-                                    subscriber
-                                        .send(event.clone())
-                                        .await
-                                        .map_err(|_| RoutingError::ConnectionError)?;
-                                }
-                            } else {
-                                //Todo Replace with tracing
-                                println!("No downlink interested in message: {:?}", event);
-                            }
-                        } else {
-                            println!("Host messages are not supported: {:?}", event);
-                        }
-                    }
-
-                    IncomingRequest::Disconnect => {
-                        println!("Connection closed");
-                        connection = None;
-
-                        for (_, destination) in subscribers.iter_mut() {
-                            for subscriber in destination {
-                                subscriber
-                                    .send(RouterEvent::ConnectionClosed)
-                                    .await
-                                    .map_err(|_| RoutingError::ConnectionError)?;
-                            }
-                        }
-                    }
-
-                    IncomingRequest::Close(Some(_)) => {
-                        println!("Closing Router");
-
-                        for (_, destination) in subscribers.iter_mut() {
-                            for subscriber in destination {
-                                subscriber
-                                    .send(RouterEvent::Stopping)
-                                    .await
-                                    .map_err(|_| RoutingError::ConnectionError)?;
-                            }
-                        }
-
-                        break Ok(());
-                    }
-
-                    _ => {}
+            match task {
+                IncomingRequest::Connection(message_rx) => {
+                    connection = Some(message_rx);
                 }
+
+                IncomingRequest::Subscribe((target, event_tx)) => {
+                    subscribers
+                        .entry(target.destination())
+                        .or_insert_with(Vec::new)
+                        .push(event_tx);
+                }
+
+                IncomingRequest::Message(message) => {
+                    let message = message.to_text().unwrap();
+                    let value = parse_single(message).unwrap();
+                    let envelope = Envelope::try_from(value).unwrap();
+                    let destination = envelope.destination();
+                    let event = RouterEvent::Envelope(envelope);
+
+                    tracing::trace!("{:?}", event);
+
+                    if let Some(destination) = destination {
+                        broadcast_destination(&mut subscribers, destination, event).await?;
+                    } else {
+                        tracing::trace!("Host messages are not supported: {:?}", event);
+                    }
+                }
+
+                IncomingRequest::Unreachable => {
+                    tracing::trace!("Unreachable Host");
+                    broadcast_all(&mut subscribers, RouterEvent::Unreachable).await?;
+
+                    break Ok(());
+                }
+
+                IncomingRequest::Disconnect => {
+                    tracing::trace!("Connection closed");
+                    connection = None;
+
+                    broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
+                }
+
+                IncomingRequest::Close(Some(_)) => {
+                    tracing::trace!("Closing Router");
+                    broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
+
+                    break Ok(());
+                }
+
+                _ => {}
             }
         }
     }
+}
+
+async fn broadcast_all(
+    subscribers: &mut HashMap<String, Vec<mpsc::Sender<RouterEvent>>>,
+    event: RouterEvent,
+) -> Result<(), RoutingError> {
+    for (_, destination) in subscribers.iter_mut() {
+        for subscriber in destination {
+            subscriber
+                .send(event.clone())
+                .await
+                .map_err(|_| RoutingError::ConnectionError)?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn broadcast_destination(
+    subscribers: &mut HashMap<String, Vec<mpsc::Sender<RouterEvent>>>,
+    destination: String,
+    event: RouterEvent,
+) -> Result<(), RoutingError> {
+    if subscribers.contains_key(&destination) {
+        let destination_subs = subscribers
+            .get_mut(&destination)
+            .ok_or(RoutingError::ConnectionError)?;
+
+        for subscriber in destination_subs.iter_mut() {
+            subscriber
+                .send(event.clone())
+                .await
+                .map_err(|_| RoutingError::ConnectionError)?;
+        }
+    } else {
+        tracing::trace!("No downlink interested in event: {:?}", event);
+    };
+    Ok(())
 }
 
 fn combine_incoming_streams(

@@ -87,7 +87,6 @@ impl SwimRouter {
         let buffer_size = configuration.buffer_size().get();
         let (close_tx, close_rx) = watch::channel(None);
 
-        //Todo add the close rx to the pool too
         let connection_pool =
             ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
 
@@ -113,14 +112,12 @@ impl SwimRouter {
 
         while let Some(result) = result_rx.recv().await {
             if let Err(e) = result {
-                //Todo replace with trace
-                println!("{:?}", e)
+                tracing::trace!("{:?}", e);
             }
         }
 
         if let Err(e) = self.task_manager_handler.await {
-            //Todo replace with trace
-            println!("{:?}", e)
+            tracing::trace!("{:?}", e);
         };
 
         Ok(())

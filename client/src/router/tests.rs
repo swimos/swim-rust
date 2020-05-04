@@ -20,39 +20,24 @@ use common::warp::path::AbsolutePath;
 
 use crate::router::{Router, SwimRouter};
 use tracing::Level;
+use tracing_subscriber::EnvFilter;
 
-#[tokio::test]
-pub async fn foo() {
+fn init_trace() {
     extern crate tracing;
+
+    let filter =
+        EnvFilter::from_default_env().add_directive("client::router=trace".parse().unwrap());
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(Level::TRACE)
+        .with_env_filter(filter)
         .init();
-
-    let mut router = SwimRouter::new(Default::default()).await;
-    let path = AbsolutePath::new("ws://127.0.0.1:9001/", "foo", "bar").unwrap();
-    let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
-    let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
-
-    println!("Sending item");
-    sink.send_item(sync).await.unwrap();
-    println!("Sent item");
-
-    //Terminate the remote server while waiting here
-    thread::sleep(time::Duration::from_secs(10));
-
-    let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
-
-    println!("Sending second item");
-    sink.send_item(sync).await.unwrap();
-    println!("Sent second item");
-    thread::sleep(time::Duration::from_secs(10));
-    router.close().await.unwrap();
-    thread::sleep(time::Duration::from_secs(5));
 }
 
 #[tokio::test(core_threads = 2)]
 async fn normal_receive() {
+    init_trace();
+
     let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001/", "/unit/foo", "info").unwrap();
@@ -69,6 +54,8 @@ async fn normal_receive() {
 
 #[tokio::test(core_threads = 2)]
 async fn not_interested_receive() {
+    init_trace();
+
     let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001/", "foo", "bar").unwrap();
@@ -85,6 +72,8 @@ async fn not_interested_receive() {
 
 #[tokio::test(core_threads = 2)]
 async fn not_found_receive() {
+    init_trace();
+
     let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001/", "foo", "bar").unwrap();
@@ -101,6 +90,8 @@ async fn not_found_receive() {
 
 #[tokio::test(core_threads = 2)]
 async fn send_commands() {
+    init_trace();
+
     let mut router = SwimRouter::new(Default::default()).await;
 
     let path = AbsolutePath::new("ws://127.0.0.1:9001/", "/unit/foo", "publishInfo").unwrap();
@@ -116,6 +107,32 @@ async fn send_commands() {
     thread::sleep(time::Duration::from_secs(1));
 
     thread::sleep(time::Duration::from_secs(1));
+    router.close().await.unwrap();
+    thread::sleep(time::Duration::from_secs(5));
+}
+
+#[tokio::test(core_threads = 2)]
+pub async fn server_stops_between_requests() {
+    init_trace();
+
+    let mut router = SwimRouter::new(Default::default()).await;
+    let path = AbsolutePath::new("ws://127.0.0.1:9001/", "/unit/foo", "info").unwrap();
+    let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
+    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
+
+    println!("Sending item");
+    sink.send_item(sync).await.unwrap();
+    println!("Sent item");
+
+    //Terminate the remote server while waiting here
+    thread::sleep(time::Duration::from_secs(10));
+
+    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
+
+    println!("Sending second item");
+    sink.send_item(sync).await.unwrap();
+    println!("Sent second item");
+    thread::sleep(time::Duration::from_secs(10));
     router.close().await.unwrap();
     thread::sleep(time::Duration::from_secs(5));
 }
