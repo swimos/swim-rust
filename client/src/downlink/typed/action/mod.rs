@@ -26,7 +26,7 @@ use form::{Form, ValidatedForm};
 use std::marker::PhantomData;
 use tokio::sync::oneshot;
 
-/// Wraps a sender up updates to a value downlink providing typed, asynchronous operations
+/// Wraps a sender of updates to a value downlink, providing typed, asynchronous operations
 /// that can be performed on in.
 pub struct ValueActions<Sender, T> {
     sender: Sender,
@@ -354,7 +354,7 @@ where
     move |maybe_value| {
         match maybe_value.as_ref() {
             Some(value) => {
-                match <T as Form>::try_from_value(value) {
+                match T::try_from_value(value) {
                     Ok(t) => update_fn(Some(t)),
                     Err(_) => None, //TODO Make the update function fallible so this can be avoided.
                 }
@@ -370,7 +370,7 @@ async fn await_value<T: ValidatedForm>(
 ) -> Result<T, DownlinkError> {
     let value = rx.await.map_err(|_| DownlinkError::DroppedChannel)?;
     Form::try_from_value(value.as_ref()).map_err(|_| {
-        let schema = <T as ValidatedForm>::schema();
+        let schema = T::schema();
         DownlinkError::SchemaViolation((*value).clone(), schema)
     })
 }

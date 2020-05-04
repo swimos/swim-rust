@@ -20,7 +20,9 @@ use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::action::{MapActions, ValueActions};
 use crate::downlink::typed::event::TypedViewWithEvent;
-use crate::downlink::typed::topic::{ApplyForm, ApplyFormMap, TryTransformTopic, WrapUntilFailure};
+use crate::downlink::typed::topic::{
+    ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
+};
 use crate::downlink::{Downlink, Event};
 use common::sink::item::ItemSink;
 use common::topic::Topic;
@@ -88,13 +90,13 @@ where
     K: Form + Send + 'static,
     V: Form + Send + 'static,
 {
-    type Receiver = UntilFailure<Inner::Receiver, ApplyFormMap<K, V>>;
-    type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyFormMap<K, V>>>;
+    type Receiver = UntilFailure<Inner::Receiver, ApplyFormsMap<K, V>>;
+    type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyFormsMap<K, V>>>;
 
     fn subscribe(&mut self) -> Self::Fut {
         self.inner
             .subscribe()
-            .transform(WrapUntilFailure::new(ApplyFormMap::new()))
+            .transform(WrapUntilFailure::new(ApplyFormsMap::new()))
     }
 }
 
@@ -147,12 +149,12 @@ where
     K: Form + Send + 'static,
     V: Form + Send + 'static,
 {
-    type DlTopic = TryTransformTopic<ViewWithEvent, Inner::DlTopic, ApplyFormMap<K, V>>;
+    type DlTopic = TryTransformTopic<ViewWithEvent, Inner::DlTopic, ApplyFormsMap<K, V>>;
     type DlSink = MapActions<Inner::DlSink, K, V>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         let (inner_topic, inner_sink) = self.inner.split();
-        let topic = TryTransformTopic::new(inner_topic, ApplyFormMap::new());
+        let topic = TryTransformTopic::new(inner_topic, ApplyFormsMap::new());
         let sink = MapActions::new(inner_sink);
         (topic, sink)
     }

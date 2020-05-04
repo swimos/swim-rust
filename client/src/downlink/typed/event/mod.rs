@@ -55,7 +55,7 @@ impl<K: Form, V: Form> TypedMapView<K, V> {
     pub fn get(&self, key: &K) -> Option<V> {
         self.inner
             .get(&key.as_value())
-            .and_then(|value| <V as Form>::try_from_value(value.as_ref()).ok())
+            .and_then(|value| V::try_from_value(value.as_ref()).ok())
     }
 
     /// The size of the underlying map.
@@ -71,10 +71,7 @@ impl<K: Form, V: Form> TypedMapView<K, V> {
     /// An iterator over the entries of the map.
     pub fn iter(&self) -> impl Iterator<Item = (K, V)> + '_ {
         self.inner.iter().filter_map(|(key, value)| {
-            match (
-                <K as Form>::try_from_value(key),
-                <V as Form>::try_from_value(value.as_ref()),
-            ) {
+            match (K::try_from_value(key), V::try_from_value(value.as_ref())) {
                 (Ok(k), Ok(v)) => Some((k, v)),
                 _ => None,
             }
@@ -85,7 +82,7 @@ impl<K: Form, V: Form> TypedMapView<K, V> {
     pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
         self.inner
             .keys()
-            .filter_map(|key| <K as Form>::try_from_value(key).ok())
+            .filter_map(|key| K::try_from_value(key).ok())
     }
 }
 
@@ -139,8 +136,8 @@ impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
 fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormDeserializeErr> {
     match event {
         MapEvent::Initial => Ok(MapEvent::Initial),
-        MapEvent::Insert(k) => <K as Form>::try_convert(k).map(MapEvent::Insert),
-        MapEvent::Remove(k) => <K as Form>::try_convert(k).map(MapEvent::Remove),
+        MapEvent::Insert(k) => K::try_convert(k).map(MapEvent::Insert),
+        MapEvent::Remove(k) => K::try_convert(k).map(MapEvent::Remove),
         MapEvent::Take(n) => Ok(MapEvent::Take(n)),
         MapEvent::Skip(n) => Ok(MapEvent::Skip(n)),
         MapEvent::Clear => Ok(MapEvent::Clear),
