@@ -19,19 +19,24 @@ use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 
 use crate::router::{Router, SwimRouter};
+use std::sync::Once;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
+static INIT: Once = Once::new();
+
 fn init_trace() {
-    extern crate tracing;
+    INIT.call_once(|| {
+        extern crate tracing;
 
-    let filter =
-        EnvFilter::from_default_env().add_directive("client::router=trace".parse().unwrap());
+        let filter =
+            EnvFilter::from_default_env().add_directive("client::router=trace".parse().unwrap());
 
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(Level::TRACE)
-        .with_env_filter(filter)
-        .init();
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .with_env_filter(filter)
+            .init();
+    });
 }
 
 #[tokio::test(core_threads = 2)]
@@ -48,7 +53,7 @@ async fn normal_receive() {
     sink.send_item(sync).await.unwrap();
 
     thread::sleep(time::Duration::from_secs(5));
-    router.close().await.unwrap();
+    let _ = router.close().await;
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -66,7 +71,7 @@ async fn not_interested_receive() {
     sink.send_item(sync).await.unwrap();
 
     thread::sleep(time::Duration::from_secs(5));
-    router.close().await.unwrap();
+    let _ = router.close().await;
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -84,7 +89,7 @@ async fn not_found_receive() {
     sink.send_item(sync).await.unwrap();
 
     thread::sleep(time::Duration::from_secs(5));
-    router.close().await.unwrap();
+    let _ = router.close().await;
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -107,7 +112,7 @@ async fn send_commands() {
     thread::sleep(time::Duration::from_secs(1));
 
     thread::sleep(time::Duration::from_secs(1));
-    router.close().await.unwrap();
+    let _ = router.close().await;
     thread::sleep(time::Duration::from_secs(5));
 }
 
@@ -130,9 +135,9 @@ pub async fn server_stops_between_requests() {
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
     println!("Sending second item");
-    sink.send_item(sync).await.unwrap();
+    let _ = sink.send_item(sync).await;
     println!("Sent second item");
     thread::sleep(time::Duration::from_secs(10));
-    router.close().await.unwrap();
+    let _ = router.close().await;
     thread::sleep(time::Duration::from_secs(5));
 }
