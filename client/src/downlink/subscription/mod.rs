@@ -22,6 +22,7 @@ use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RoutingError};
+use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::either::EitherSink;
@@ -49,10 +50,10 @@ pub mod envelopes;
 #[cfg(test)]
 pub mod tests;
 
-pub type ValueDownlink = AnyDownlink<value::Action, SharedValue>;
-type WeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
-pub type MapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
-type WeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
+pub type AnyValueDownlink = AnyDownlink<value::Action, SharedValue>;
+type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
+pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
+type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
@@ -88,10 +89,24 @@ impl Downlinks {
         &mut self,
         init: Value,
         path: AbsolutePath,
-    ) -> Result<(ValueDownlink, ValueReceiver)> {
+    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+        self.subscribe_value_inner(init, StandardSchema::Anything, path).await
+    }
+
+    async fn subscribe_value_inner(
+        &mut self,
+        init: Value,
+        schema: StandardSchema,
+        path: AbsolutePath,
+    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkSpecifier::Value(init, path, Request::new(tx)))
+            .send(DownlinkSpecifier::Value {
+                init,
+                path,
+                schema,
+                request: Request::new(tx),
+            })
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -103,10 +118,26 @@ impl Downlinks {
     pub async fn subscribe_map(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(MapDownlink, MapReceiver)> {
+    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+        self.subscribe_map_inner(StandardSchema::Anything,
+                                 StandardSchema::Anything,
+                                 path).await
+    }
+
+    async fn subscribe_map_inner(
+        &mut self,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+        path: AbsolutePath,
+    ) -> Result<(AnyMapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkSpecifier::Map(path, Request::new(tx)))
+            .send(DownlinkSpecifier::Map {
+                path,
+                key_schema,
+                value_schema,
+                request: Request::new(tx),
+            })
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -160,20 +191,26 @@ impl SubscriptionError {
 pub type Result<T> = std::result::Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
-    Value(
-        Value,
-        AbsolutePath,
-        Request<Result<(ValueDownlink, ValueReceiver)>>,
-    ),
-    Map(AbsolutePath, Request<Result<(MapDownlink, MapReceiver)>>),
+    Value {
+        init: Value,
+        path: AbsolutePath,
+        schema: StandardSchema,
+        request: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+    },
+    Map {
+        path: AbsolutePath,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+        request: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+    },
 }
 
 type StopEvents = FuturesUnordered<TransformedFuture<StoppedFuture, MakeStopEvent>>;
 
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
-    value_downlinks: HashMap<AbsolutePath, WeakValueDownlink>,
-    map_downlinks: HashMap<AbsolutePath, WeakMapDownlink>,
+    value_downlinks: HashMap<AbsolutePath, AnyWeakValueDownlink>,
+    map_downlinks: HashMap<AbsolutePath, AnyWeakMapDownlink>,
     stopped_watch: StopEvents,
     router: R,
 }
@@ -230,8 +267,9 @@ where
     async fn create_new_value_downlink(
         &mut self,
         init: Value,
+        schema: StandardSchema,
         path: AbsolutePath,
-    ) -> (ValueDownlink, ValueReceiver) {
+    ) -> (AnyValueDownlink, ValueReceiver) {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
 
@@ -245,7 +283,7 @@ where
 
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                value_downlink_for_sink(cmd_sink, init, updates, &config)
+                value_downlink_for_sink(cmd_sink, init, schema, updates, &config)
             }
             BackpressureMode::Release { .. } => {
                 let pressure_release = ValuePump::new(cmd_sink.clone()).await;
@@ -257,7 +295,7 @@ where
                     },
                 );
 
-                value_downlink_for_sink(either_sink, init, updates, &config)
+                value_downlink_for_sink(either_sink, init, schema, updates, &config)
             }
         };
 
@@ -269,7 +307,12 @@ where
         (dl, rec)
     }
 
-    async fn create_new_map_downlink(&mut self, path: AbsolutePath) -> (MapDownlink, MapReceiver) {
+    async fn create_new_map_downlink(
+        &mut self,
+        path: AbsolutePath,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+    ) -> (AnyMapDownlink, MapReceiver) {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
 
@@ -283,7 +326,7 @@ where
                 let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
                     envelopes::map_envelope(&sink_path, cmd).1
                 });
-                map_downlink_for_sink(cmd_sink, updates, &config)
+                map_downlink_for_sink(key_schema, value_schema, cmd_sink, updates, &config)
             }
             BackpressureMode::Release {
                 input_buffer_size,
@@ -314,7 +357,7 @@ where
                         ow => Either::Left(ow),
                     },
                 );
-                map_downlink_for_sink(either_sink, updates, &config)
+                map_downlink_for_sink(key_schema, value_schema, either_sink, updates, &config)
             }
         };
 
@@ -347,7 +390,12 @@ where
                 };
 
             match item {
-                Some(Either::Left(DownlinkSpecifier::Value(init, path, value_req))) => {
+                Some(Either::Left(DownlinkSpecifier::Value {
+                    init,
+                    path,
+                    schema,
+                    request: value_req,
+                })) => {
                     let dl = match self.value_downlinks.get(&path) {
                         Some(dl) => {
                             let maybe_dl = dl.upgrade();
@@ -358,14 +406,20 @@ where
                                         Err(_) => {
                                             self.value_downlinks.remove(&path);
                                             Ok(self
-                                                .create_new_value_downlink(init, path.clone())
+                                                .create_new_value_downlink(
+                                                    init,
+                                                    schema,
+                                                    path.clone(),
+                                                )
                                                 .await)
                                         }
                                     }
                                 }
                                 _ => {
                                     self.value_downlinks.remove(&path);
-                                    Ok(self.create_new_value_downlink(init, path.clone()).await)
+                                    Ok(self
+                                        .create_new_value_downlink(init, schema, path.clone())
+                                        .await)
                                 }
                             }
                         }
@@ -374,12 +428,19 @@ where
                                 DownlinkKind::Value,
                                 DownlinkKind::Map,
                             )),
-                            _ => Ok(self.create_new_value_downlink(init, path.clone()).await),
+                            _ => Ok(self
+                                .create_new_value_downlink(init, schema, path.clone())
+                                .await),
                         },
                     };
                     let _ = value_req.send(dl);
                 }
-                Some(Either::Left(DownlinkSpecifier::Map(path, map_req))) => {
+                Some(Either::Left(DownlinkSpecifier::Map {
+                    path,
+                    key_schema,
+                    value_schema,
+                    request: map_req,
+                })) => {
                     let dl = match self.map_downlinks.get(&path) {
                         Some(dl) => {
                             let maybe_dl = dl.upgrade();
@@ -389,13 +450,25 @@ where
                                         Ok(rec) => Ok((dl_clone, rec)),
                                         Err(_) => {
                                             self.map_downlinks.remove(&path);
-                                            Ok(self.create_new_map_downlink(path.clone()).await)
+                                            Ok(self
+                                                .create_new_map_downlink(
+                                                    path.clone(),
+                                                    key_schema,
+                                                    value_schema,
+                                                )
+                                                .await)
                                         }
                                     }
                                 }
                                 _ => {
                                     self.map_downlinks.remove(&path);
-                                    Ok(self.create_new_map_downlink(path.clone()).await)
+                                    Ok(self
+                                        .create_new_map_downlink(
+                                            path.clone(),
+                                            key_schema,
+                                            value_schema,
+                                        )
+                                        .await)
                                 }
                             }
                         }
@@ -404,7 +477,9 @@ where
                                 DownlinkKind::Map,
                                 DownlinkKind::Value,
                             )),
-                            _ => Ok(self.create_new_map_downlink(path.clone()).await),
+                            _ => Ok(self
+                                .create_new_map_downlink(path.clone(), key_schema, value_schema)
+                                .await),
                         },
                     };
                     let _ = map_req.send(dl);
@@ -440,6 +515,7 @@ where
 fn value_downlink_for_sink<Updates, Snk>(
     cmd_sink: Snk,
     init: Value,
+    schema: StandardSchema,
     updates: Updates,
     config: &DownlinkParams,
 ) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
@@ -453,7 +529,7 @@ where
         MuxMode::Queue(n) => {
             let (dl, rec) = value::create_queue_downlink(
                 init,
-                None,
+                Some(schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -465,7 +541,7 @@ where
         MuxMode::Dropping => {
             let (dl, rec) = value::create_dropping_downlink(
                 init,
-                None,
+                Some(schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -476,7 +552,7 @@ where
         MuxMode::Buffered(n) => {
             let (dl, rec) = value::create_buffered_downlink(
                 init,
-                None,
+                Some(schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -489,6 +565,8 @@ where
 }
 
 fn map_downlink_for_sink<Updates, Snk>(
+    key_schema: StandardSchema,
+    value_schema: StandardSchema,
     cmd_sink: Snk,
     updates: Updates,
     config: &DownlinkParams,
@@ -506,8 +584,8 @@ where
     match config.mux_mode {
         MuxMode::Queue(n) => {
             let (dl, rec) = create_queue_downlink(
-                None,
-                None,
+                Some(key_schema),
+                Some(value_schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -518,8 +596,8 @@ where
         }
         MuxMode::Dropping => {
             let (dl, rec) = create_dropping_downlink(
-                None,
-                None,
+                Some(key_schema),
+                Some(value_schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -529,8 +607,8 @@ where
         }
         MuxMode::Buffered(n) => {
             let (dl, rec) = create_buffered_downlink(
-                None,
-                None,
+                Some(key_schema),
+                Some(value_schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
