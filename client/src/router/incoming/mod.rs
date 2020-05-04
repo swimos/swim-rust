@@ -87,7 +87,7 @@ impl IncomingHostTask {
 
                 IncomingRequest::Subscribe((target, event_tx)) => {
                     subscribers
-                        .entry(target.destination())
+                        .entry(target.relative_path().to_string())
                         .or_insert_with(Vec::new)
                         .push(event_tx);
                 }

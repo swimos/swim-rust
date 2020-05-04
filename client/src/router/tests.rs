@@ -40,6 +40,7 @@ fn init_trace() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn normal_receive() {
     init_trace();
 
@@ -58,6 +59,7 @@ async fn normal_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn not_interested_receive() {
     init_trace();
 
@@ -76,6 +78,7 @@ async fn not_interested_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn not_found_receive() {
     init_trace();
 
@@ -94,6 +97,7 @@ async fn not_found_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn send_commands() {
     init_trace();
 
@@ -117,6 +121,7 @@ async fn send_commands() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 pub async fn server_stops_between_requests() {
     init_trace();
 

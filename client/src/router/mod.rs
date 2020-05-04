@@ -200,7 +200,7 @@ impl TaskManager {
 
             match task {
                 RouterTask::Request((target, response_tx)) => {
-                    host_managers
+                    let (sink, stream_registrator) = host_managers
                         .entry(target.host.to_string())
                         .or_insert_with(|| {
                             let (host_manager, sink, stream_registrator) = HostManager::new(
@@ -212,13 +212,6 @@ impl TaskManager {
                             (sink, stream_registrator, tokio::spawn(host_manager.run()))
                         });
 
-                    let (sink, stream_registrator, _) = host_managers
-                        .get(&target.host.to_string())
-                        .ok_or(RoutingError::ConnectionError)?;
-
-                    let sink = sink.clone();
-                    let mut stream_registrator = stream_registrator.clone();
-
                     let (subscriber_tx, stream) = mpsc::channel(config.buffer_size().get());
 
                     stream_registrator
@@ -227,7 +220,7 @@ impl TaskManager {
                         .map_err(|_| RoutingError::ConnectionError)?;
 
                     response_tx
-                        .send((sink.map_err_into::<RoutingError>(), stream))
+                        .send((sink.clone().map_err_into::<RoutingError>(), stream))
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
 

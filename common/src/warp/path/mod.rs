@@ -47,8 +47,11 @@ impl AbsolutePath {
         (host, RelativePath { node, lane })
     }
 
-    pub fn destination(&self) -> String {
-        format!("{}/{}", self.node, self.lane)
+    pub fn relative_path(&self) -> RelativePath {
+        RelativePath {
+            node: self.node.clone(),
+            lane: self.lane.clone(),
+        }
     }
 }
 
@@ -94,6 +97,10 @@ impl RelativePath {
             node,
             lane,
         })
+    }
+
+    pub fn to_string(&self) -> String {
+        format!("{}/{}", self.node, self.lane)
     }
 }
 
