@@ -207,10 +207,44 @@ pub enum DownlinkSpecifier {
 
 type StopEvents = FuturesUnordered<TransformedFuture<StoppedFuture, MakeStopEvent>>;
 
+struct ValueHandle {
+    ptr: AnyWeakValueDownlink,
+    schema: StandardSchema,
+}
+
+impl ValueHandle {
+
+    fn new(ptr: AnyWeakValueDownlink,
+           schema: StandardSchema) -> Self {
+        ValueHandle {
+            ptr, schema,
+        }
+    }
+
+}
+
+struct MapHandle {
+    ptr: AnyWeakMapDownlink,
+    key_schema: StandardSchema,
+    value_schema: StandardSchema,
+}
+
+impl MapHandle {
+
+    fn new(ptr: AnyWeakMapDownlink,
+           key_schema: StandardSchema,
+           value_schema: StandardSchema) -> Self {
+        MapHandle {
+            ptr, key_schema, value_schema,
+        }
+    }
+
+}
+
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
-    value_downlinks: HashMap<AbsolutePath, AnyWeakValueDownlink>,
-    map_downlinks: HashMap<AbsolutePath, AnyWeakMapDownlink>,
+    value_downlinks: HashMap<AbsolutePath, ValueHandle>,
+    map_downlinks: HashMap<AbsolutePath, MapHandle>,
     stopped_watch: StopEvents,
     router: R,
 }
@@ -272,6 +306,7 @@ where
     ) -> (AnyValueDownlink, ValueReceiver) {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
+        let schema_cpy = schema.clone();
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates =
@@ -299,7 +334,7 @@ where
             }
         };
 
-        self.value_downlinks.insert(path.clone(), dl.downgrade());
+        self.value_downlinks.insert(path.clone(), ValueHandle::new(dl.downgrade(), schema_cpy));
         self.stopped_watch.push(
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Value, path)),
@@ -315,6 +350,8 @@ where
     ) -> (AnyMapDownlink, MapReceiver) {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await;
+        let key_schema_cpy = key_schema.clone();
+        let value_schema_cpy = value_schema.clone();
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|env| ready(envelopes::map::try_from_envelope(env).ok()));
@@ -361,7 +398,7 @@ where
             }
         };
 
-        self.map_downlinks.insert(path.clone(), dl.downgrade());
+        self.map_downlinks.insert(path.clone(), MapHandle::new(dl.downgrade(), key_schema_cpy, value_schema_cpy));
         self.stopped_watch.push(
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Map, path)),
@@ -397,7 +434,7 @@ where
                     request: value_req,
                 })) => {
                     let dl = match self.value_downlinks.get(&path) {
-                        Some(dl) => {
+                        Some(ValueHandle { ptr: dl, ..}) => {
                             let maybe_dl = dl.upgrade();
                             match maybe_dl {
                                 Some(mut dl_clone) if dl_clone.is_running() => {
@@ -442,7 +479,7 @@ where
                     request: map_req,
                 })) => {
                     let dl = match self.map_downlinks.get(&path) {
-                        Some(dl) => {
+                        Some(MapHandle{ ptr: dl, .. }) => {
                             let maybe_dl = dl.upgrade();
                             match maybe_dl {
                                 Some(mut dl_clone) if dl_clone.is_running() => {
@@ -486,7 +523,7 @@ where
                 }
                 Some(Either::Right(stop_event)) => match stop_event.kind {
                     DownlinkKind::Value => {
-                        if let Some(weak_dl) = self.value_downlinks.get(&stop_event.path) {
+                        if let Some(ValueHandle { ptr: weak_dl, ..}) = self.value_downlinks.get(&stop_event.path) {
                             let is_running =
                                 weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
                             if !is_running {
@@ -495,7 +532,7 @@ where
                         }
                     }
                     DownlinkKind::Map => {
-                        if let Some(weak_dl) = self.map_downlinks.get(&stop_event.path) {
+                        if let Some(MapHandle { ptr: weak_dl, .. }) = self.map_downlinks.get(&stop_event.path) {
                             let is_running =
                                 weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
                             if !is_running {
