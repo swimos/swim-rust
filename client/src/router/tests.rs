@@ -22,6 +22,7 @@ use crate::router::{Router, SwimRouter};
 use tracing::Level;
 
 #[tokio::test]
+#[ignore]
 pub async fn foo() {
     extern crate tracing;
 
@@ -52,6 +53,7 @@ pub async fn foo() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn normal_receive() {
     let mut router = SwimRouter::new(Default::default()).await;
 
@@ -68,6 +70,7 @@ async fn normal_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn not_interested_receive() {
     let mut router = SwimRouter::new(Default::default()).await;
 
@@ -84,6 +87,7 @@ async fn not_interested_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn not_found_receive() {
     let mut router = SwimRouter::new(Default::default()).await;
 
@@ -100,6 +104,7 @@ async fn not_found_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn send_commands() {
     let mut router = SwimRouter::new(Default::default()).await;
 
