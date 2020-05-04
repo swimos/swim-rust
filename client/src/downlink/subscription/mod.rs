@@ -90,7 +90,8 @@ impl Downlinks {
         init: Value,
         path: AbsolutePath,
     ) -> Result<(AnyValueDownlink, ValueReceiver)> {
-        self.subscribe_value_inner(init, StandardSchema::Anything, path).await
+        self.subscribe_value_inner(init, StandardSchema::Anything, path)
+            .await
     }
 
     async fn subscribe_value_inner(
@@ -119,9 +120,8 @@ impl Downlinks {
         &mut self,
         path: AbsolutePath,
     ) -> Result<(AnyMapDownlink, MapReceiver)> {
-        self.subscribe_map_inner(StandardSchema::Anything,
-                                 StandardSchema::Anything,
-                                 path).await
+        self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
+            .await
     }
 
     async fn subscribe_map_inner(
@@ -144,13 +144,24 @@ impl Downlinks {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SubscriptionError {
     BadKind {
         expected: DownlinkKind,
         actual: DownlinkKind,
     },
     DownlinkTaskStopped,
+    IncompatibleValueSchema {
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    },
+    IncompatibleMapSchema {
+        is_key: bool,
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    },
 }
 
 impl From<mpsc::error::SendError<DownlinkSpecifier>> for SubscriptionError {
@@ -175,6 +186,24 @@ impl Display for SubscriptionError {
             ),
             SubscriptionError::DownlinkTaskStopped => {
                 write!(f, "The downlink task has already stopped.")
+            }
+            SubscriptionError::IncompatibleValueSchema {
+                path,
+                existing,
+                requested
+            } => {
+                write!(f, "A downlink was requested to {} with schema {} but one is already running with schema {}.",
+                       path, existing, requested)
+            }
+            SubscriptionError::IncompatibleMapSchema {
+                is_key,
+                path,
+                existing,
+                requested
+            } => {
+                let key_or_val = if *is_key { "key" } else { "value" };
+                write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
+                       path, key_or_val, existing, requested)
             }
         }
     }
@@ -213,14 +242,9 @@ struct ValueHandle {
 }
 
 impl ValueHandle {
-
-    fn new(ptr: AnyWeakValueDownlink,
-           schema: StandardSchema) -> Self {
-        ValueHandle {
-            ptr, schema,
-        }
+    fn new(ptr: AnyWeakValueDownlink, schema: StandardSchema) -> Self {
+        ValueHandle { ptr, schema }
     }
-
 }
 
 struct MapHandle {
@@ -230,15 +254,17 @@ struct MapHandle {
 }
 
 impl MapHandle {
-
-    fn new(ptr: AnyWeakMapDownlink,
-           key_schema: StandardSchema,
-           value_schema: StandardSchema) -> Self {
+    fn new(
+        ptr: AnyWeakMapDownlink,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+    ) -> Self {
         MapHandle {
-            ptr, key_schema, value_schema,
+            ptr,
+            key_schema,
+            value_schema,
         }
     }
-
 }
 
 struct DownlinkTask<R> {
@@ -334,7 +360,8 @@ where
             }
         };
 
-        self.value_downlinks.insert(path.clone(), ValueHandle::new(dl.downgrade(), schema_cpy));
+        self.value_downlinks
+            .insert(path.clone(), ValueHandle::new(dl.downgrade(), schema_cpy));
         self.stopped_watch.push(
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Value, path)),
@@ -398,7 +425,10 @@ where
             }
         };
 
-        self.map_downlinks.insert(path.clone(), MapHandle::new(dl.downgrade(), key_schema_cpy, value_schema_cpy));
+        self.map_downlinks.insert(
+            path.clone(),
+            MapHandle::new(dl.downgrade(), key_schema_cpy, value_schema_cpy),
+        );
         self.stopped_watch.push(
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Map, path)),
@@ -434,22 +464,33 @@ where
                     request: value_req,
                 })) => {
                     let dl = match self.value_downlinks.get(&path) {
-                        Some(ValueHandle { ptr: dl, ..}) => {
+                        Some(ValueHandle {
+                            ptr: dl,
+                            schema: existing_schema,
+                        }) => {
                             let maybe_dl = dl.upgrade();
                             match maybe_dl {
                                 Some(mut dl_clone) if dl_clone.is_running() => {
-                                    match dl_clone.subscribe().await {
-                                        Ok(rec) => Ok((dl_clone, rec)),
-                                        Err(_) => {
-                                            self.value_downlinks.remove(&path);
-                                            Ok(self
-                                                .create_new_value_downlink(
-                                                    init,
-                                                    schema,
-                                                    path.clone(),
-                                                )
-                                                .await)
+                                    if schema.eq(existing_schema) {
+                                        match dl_clone.subscribe().await {
+                                            Ok(rec) => Ok((dl_clone, rec)),
+                                            Err(_) => {
+                                                self.value_downlinks.remove(&path);
+                                                Ok(self
+                                                    .create_new_value_downlink(
+                                                        init,
+                                                        schema,
+                                                        path.clone(),
+                                                    )
+                                                    .await)
+                                            }
                                         }
+                                    } else {
+                                        Err(SubscriptionError::IncompatibleValueSchema {
+                                            path,
+                                            existing: existing_schema.clone(),
+                                            requested: schema,
+                                        })
                                     }
                                 }
                                 _ => {
@@ -479,33 +520,53 @@ where
                     request: map_req,
                 })) => {
                     let dl = match self.map_downlinks.get(&path) {
-                        Some(MapHandle{ ptr: dl, .. }) => {
-                            let maybe_dl = dl.upgrade();
-                            match maybe_dl {
-                                Some(mut dl_clone) if dl_clone.is_running() => {
-                                    match dl_clone.subscribe().await {
-                                        Ok(rec) => Ok((dl_clone, rec)),
-                                        Err(_) => {
-                                            self.map_downlinks.remove(&path);
-                                            Ok(self
-                                                .create_new_map_downlink(
-                                                    path.clone(),
-                                                    key_schema,
-                                                    value_schema,
-                                                )
-                                                .await)
+                        Some(MapHandle {
+                            ptr: dl,
+                            key_schema: existing_key_schema,
+                            value_schema: existing_value_schema,
+                        }) => {
+                            if !key_schema.eq(existing_key_schema) {
+                                Err(SubscriptionError::IncompatibleMapSchema {
+                                    is_key: true,
+                                    path,
+                                    existing: existing_key_schema.clone(),
+                                    requested: key_schema,
+                                })
+                            } else if !value_schema.eq(existing_value_schema) {
+                                Err(SubscriptionError::IncompatibleMapSchema {
+                                    is_key: false,
+                                    path,
+                                    existing: existing_value_schema.clone(),
+                                    requested: value_schema,
+                                })
+                            } else {
+                                let maybe_dl = dl.upgrade();
+                                match maybe_dl {
+                                    Some(mut dl_clone) if dl_clone.is_running() => {
+                                        match dl_clone.subscribe().await {
+                                            Ok(rec) => Ok((dl_clone, rec)),
+                                            Err(_) => {
+                                                self.map_downlinks.remove(&path);
+                                                Ok(self
+                                                    .create_new_map_downlink(
+                                                        path.clone(),
+                                                        key_schema,
+                                                        value_schema,
+                                                    )
+                                                    .await)
+                                            }
                                         }
                                     }
-                                }
-                                _ => {
-                                    self.map_downlinks.remove(&path);
-                                    Ok(self
-                                        .create_new_map_downlink(
-                                            path.clone(),
-                                            key_schema,
-                                            value_schema,
-                                        )
-                                        .await)
+                                    _ => {
+                                        self.map_downlinks.remove(&path);
+                                        Ok(self
+                                            .create_new_map_downlink(
+                                                path.clone(),
+                                                key_schema,
+                                                value_schema,
+                                            )
+                                            .await)
+                                    }
                                 }
                             }
                         }
@@ -523,7 +584,9 @@ where
                 }
                 Some(Either::Right(stop_event)) => match stop_event.kind {
                     DownlinkKind::Value => {
-                        if let Some(ValueHandle { ptr: weak_dl, ..}) = self.value_downlinks.get(&stop_event.path) {
+                        if let Some(ValueHandle { ptr: weak_dl, .. }) =
+                            self.value_downlinks.get(&stop_event.path)
+                        {
                             let is_running =
                                 weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
                             if !is_running {
@@ -532,7 +595,9 @@ where
                         }
                     }
                     DownlinkKind::Map => {
-                        if let Some(MapHandle { ptr: weak_dl, .. }) = self.map_downlinks.get(&stop_event.path) {
+                        if let Some(MapHandle { ptr: weak_dl, .. }) =
+                            self.map_downlinks.get(&stop_event.path)
+                        {
                             let is_running =
                                 weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
                             if !is_running {

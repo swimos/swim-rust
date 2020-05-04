@@ -15,10 +15,10 @@
 use crate::model::{Attr, Item, ToValue, Value, ValueKind};
 use regex::{Error as RegexError, Regex};
 use std::borrow::Borrow;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::cmp::Ordering;
 
 #[cfg(test)]
 mod tests;
@@ -489,7 +489,7 @@ impl PartialOrd for StandardSchema {
                 (_, StandardSchema::Nothing) => Some(Ordering::Greater),
                 (StandardSchema::Anything, _) => Some(Ordering::Greater),
                 (StandardSchema::Nothing, _) => Some(Ordering::Less),
-                _ => None
+                _ => None,
             }
         }
     }
