@@ -419,10 +419,10 @@ mod map {
     }
 
     #[tokio::test]
-    async fn map_clear_and_get() {
+    async fn map_remove_all() {
         let mut actions = TestMapDl::actions(make_map());
 
-        let result = actions.clear_and_get().await;
+        let result = actions.remove_all().await;
         assert_that!(&result, ok());
 
         let map = result.unwrap().as_ord_map();

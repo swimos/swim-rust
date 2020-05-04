@@ -15,7 +15,7 @@
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::typed::event::TypedViewWithEvent;
-use crate::downlink::typed::topic::{ApplyForm, ApplyFormMap, TryTransformTopic};
+use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap, TryTransformTopic};
 use crate::downlink::Event;
 use common::model::Value;
 use common::topic::{Topic, TopicError};
@@ -59,7 +59,7 @@ fn apply_form_map() {
         event: MapEvent::Insert(Value::Int32Value(7)),
     };
 
-    let apply: ApplyFormMap<String, i32> = ApplyFormMap::new();
+    let apply: ApplyFormsMap<String, i32> = ApplyFormsMap::new();
 
     let result = apply.transform(Event(good, false));
     assert_that!(&result, ok());
