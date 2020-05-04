@@ -494,10 +494,10 @@ impl Debug for MapAction {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum MapEvent {
+pub enum MapEvent<K> {
     Initial,
-    Insert(Value),
-    Remove(Value),
+    Insert(K),
+    Remove(K),
     Take(usize),
     Skip(usize),
     Clear,
@@ -508,7 +508,7 @@ pub type ValMap = OrdMap<Value, Arc<Value>>;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ViewWithEvent {
     pub view: ValMap,
-    pub event: MapEvent,
+    pub event: MapEvent<Value>,
 }
 
 impl ViewWithEvent {

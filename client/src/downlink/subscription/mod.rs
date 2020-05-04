@@ -43,7 +43,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use utilities::future::{SwimFutureExt, Transformation, TransformedFuture};
+use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -197,7 +197,7 @@ impl MakeStopEvent {
     }
 }
 
-impl Transformation<std::result::Result<(), DownlinkError>> for MakeStopEvent {
+impl TransformOnce<std::result::Result<(), DownlinkError>> for MakeStopEvent {
     type Out = DownlinkStoppedEvent;
 
     fn transform(self, input: std::result::Result<(), DownlinkError>) -> Self::Out {
