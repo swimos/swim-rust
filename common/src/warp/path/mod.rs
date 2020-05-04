@@ -99,7 +99,7 @@ impl RelativePath {
         })
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         format!("{}/{}", self.node, self.lane)
     }
 }
