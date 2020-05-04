@@ -200,7 +200,7 @@ impl TaskManager {
 
             match task {
                 RouterTask::Request((target, response_tx)) => {
-                    let (sink, stream_registrator) = host_managers
+                    let (sink, stream_registrator, _) = host_managers
                         .entry(target.host.to_string())
                         .or_insert_with(|| {
                             let (host_manager, sink, stream_registrator) = HostManager::new(
