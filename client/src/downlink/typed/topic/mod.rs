@@ -28,7 +28,7 @@ use std::marker::PhantomData;
 use utilities::future::{SwimFutureExt, Transform, TransformedFuture, UntilFailure};
 
 /// A transformation that attempts to apply a form to an [`Event<Value>`].
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ApplyForm<T>(PhantomData<T>);
 
 impl<T> Clone for ApplyForm<T> {

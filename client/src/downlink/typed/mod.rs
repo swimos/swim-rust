@@ -13,12 +13,16 @@
 // limitations under the License.
 
 pub mod action;
+pub mod any;
 pub mod event;
 pub mod topic;
 
+use crate::downlink::any::AnyDownlink;
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::action::{MapActions, ValueActions};
+use crate::downlink::typed::any::map::AnyMapDownlink;
+use crate::downlink::typed::any::value::AnyValueDownlink;
 use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormMap, TryTransformTopic, WrapUntilFailure};
 use crate::downlink::{Downlink, Event};
@@ -29,9 +33,33 @@ use std::marker::PhantomData;
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
+#[derive(Debug)]
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
     _value_type: PhantomData<T>,
+}
+
+impl<Inner: Clone, T> Clone for ValueDownlink<Inner, T> {
+    fn clone(&self) -> Self {
+        ValueDownlink {
+            inner: self.inner.clone(),
+            _value_type: PhantomData,
+        }
+    }
+}
+
+impl<T> ValueDownlink<AnyDownlink<Action, SharedValue>, T>
+where
+    T: Form + Send + 'static,
+{
+    /// Unwrap an [`AnyDownlink`] and then reapply the type transformation to it.
+    pub fn into_specific(self) -> AnyValueDownlink<T> {
+        match self.inner {
+            AnyDownlink::Queue(qdl) => AnyValueDownlink::Queue(ValueDownlink::new(qdl)),
+            AnyDownlink::Dropping(ddl) => AnyValueDownlink::Dropping(ValueDownlink::new(ddl)),
+            AnyDownlink::Buffered(bdl) => AnyValueDownlink::Buffered(ValueDownlink::new(bdl)),
+        }
+    }
 }
 
 impl<Inner, T> ValueDownlink<Inner, T>
@@ -48,9 +76,34 @@ where
 }
 
 /// A wrapper around a map downlink, applying [`Form`]s to the keys and values.
+#[derive(Debug)]
 pub struct MapDownlink<Inner, K, V> {
     inner: Inner,
     _value_type: PhantomData<(K, V)>,
+}
+
+impl<Inner: Clone, K, V> Clone for MapDownlink<Inner, K, V> {
+    fn clone(&self) -> Self {
+        MapDownlink {
+            inner: self.inner.clone(),
+            _value_type: PhantomData,
+        }
+    }
+}
+
+impl<K, V> MapDownlink<AnyDownlink<MapAction, ViewWithEvent>, K, V>
+where
+    K: Form + Send + 'static,
+    V: Form + Send + 'static,
+{
+    /// Unwrap an [`AnyDownlink`] and then reapply the type transformation to it.
+    pub fn into_specific(self) -> AnyMapDownlink<K, V> {
+        match self.inner {
+            AnyDownlink::Queue(qdl) => AnyMapDownlink::Queue(MapDownlink::new(qdl)),
+            AnyDownlink::Dropping(ddl) => AnyMapDownlink::Dropping(MapDownlink::new(ddl)),
+            AnyDownlink::Buffered(bdl) => AnyMapDownlink::Buffered(MapDownlink::new(bdl)),
+        }
+    }
 }
 
 impl<Inner, K, V> MapDownlink<Inner, K, V>
