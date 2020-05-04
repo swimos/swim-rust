@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use std::num::NonZeroUsize;
-
-use crate::router::outgoing::retry::RetryStrategy;
+use utilities::future::retryable::strategy::RetryStrategy;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {

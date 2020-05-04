@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use futures::{stream, StreamExt};
+use futures::{stream, StreamExt, TryFutureExt};
 use futures_util::FutureExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -25,11 +25,11 @@ use common::warp::envelope::Envelope;
 
 use crate::configuration::router::RouterParams;
 use crate::router::incoming::IncomingTaskReqSender;
-use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
-use crate::router::outgoing::retry::RetryableRequest;
+use crate::router::retry::RetryableRequest;
 use crate::router::{
     CloseRequestReceiver, CloseRequestSender, ConnReqSender, ConnectionResponse, Host, RoutingError,
 };
+use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -46,8 +46,6 @@ impl OutgoingRequest {
 
 pub type OutgoingTaskReqSender = mpsc::Sender<OutgoingRequest>;
 type OutgoingTaskReqReceiver = mpsc::Receiver<OutgoingRequest>;
-
-pub(crate) mod retry;
 
 #[cfg(test)]
 mod tests;
@@ -223,17 +221,33 @@ impl OutgoingHostTask {
 
             match task {
                 TaskRequestType::NewMessage(envelope) => {
-                    let message = Message::Text(envelope.into_value().to_string());
+                    let message = Message::Text(envelope.into_value().to_string()).to_string();
+                    let message = message.as_str();
+                    let retryable = RetryableRequest::new(|is_retry| {
+                        let mut sender = connection_request_tx.clone();
+                        let host = host.clone();
 
-                    RetryableRequest::send(
-                        BoxedConnSender::new(connection_request_tx.clone(), host.clone()),
-                        message,
-                        config.retry_strategy(),
-                    )
-                    .await
-                    .map_err(|_| RoutingError::ConnectionError)?;
+                        async move {
+                            let (connection_tx, connection_rx) = oneshot::channel();
 
-                    tracing::trace!("Completed request");
+                            sender
+                                .send((host, connection_tx, is_retry))
+                                .await
+                                .map_err(|_| RoutingError::ConnectionError)?;
+
+                            connection_rx
+                                .await
+                                .map_err(|_| RoutingError::ConnectionError)?
+                        }
+                        .and_then(|mut s| async move {
+                            s.send_message(&message)
+                                .map_err(|_| RoutingError::ConnectionError)
+                                .await
+                        })
+                    });
+
+                    let retry = RetryableFuture::new(retryable, config.retry_strategy());
+                    retry.await.map_err(|_| RoutingError::ConnectionError)?;
                 }
                 TaskRequestType::Close => {
                     break;
@@ -260,7 +274,8 @@ mod route_tests {
 
     use crate::configuration::router::RouterParamBuilder;
     use crate::connections::ConnectionSender;
-    use crate::router::outgoing::retry::RetryStrategy;
+    use std::num::NonZeroUsize;
+    use utilities::future::retryable::strategy::RetryStrategy;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
         RouterParamBuilder::default()
@@ -293,7 +308,7 @@ mod route_tests {
     // Test that after a transient error, the retry system attempts the request again and succeeds
     #[tokio::test]
     async fn transient_error() {
-        let config = router_config(RetryStrategy::immediate(1));
+        let config = router_config(RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()));
 
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
         let (host_route_task, mut envelope_tx, mut close_tx) =

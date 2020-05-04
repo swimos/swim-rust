@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use crate::configuration::router::RouterParams;
-use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
-use crate::router::outgoing::retry::RetryableRequest;
+use crate::router::retry::RetryableRequest;
 use crate::router::{CloseRequestReceiver, CloseRequestSender, ConnReqSender, RoutingError};
 use common::warp::path::AbsolutePath;
-use futures::{stream, StreamExt};
-use tokio::sync::mpsc;
+use futures::{stream, StreamExt, TryFutureExt};
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::protocol::Message;
+use utilities::future::retryable::RetryableFuture;
 
 pub type CommandSender = mpsc::Sender<(AbsolutePath, String)>;
 pub type CommandReceiver = mpsc::Receiver<(AbsolutePath, String)>;
@@ -71,14 +71,33 @@ impl CommandTask {
                         node, lane, message
                     );
 
-                    //Todo log errors
-                    let _ = RetryableRequest::send(
-                        BoxedConnSender::new(connection_request_tx.clone(), host),
-                        Message::Text(command_message),
-                        config.retry_strategy(),
-                    )
-                    .await
-                    .map_err(|_| println!("Unreachable Host"));
+                    let message = Message::Text(command_message).to_string();
+                    let message = message.as_str();
+                    let retryable = RetryableRequest::new(|is_retry| {
+                        let mut sender = connection_request_tx.clone();
+                        let host = host.clone();
+
+                        async move {
+                            let (connection_tx, connection_rx) = oneshot::channel();
+
+                            sender
+                                .send((host, connection_tx, is_retry))
+                                .await
+                                .map_err(|_| RoutingError::ConnectionError)?;
+
+                            connection_rx
+                                .await
+                                .map_err(|_| RoutingError::ConnectionError)?
+                        }
+                        .and_then(|mut s| async move {
+                            s.send_message(&message)
+                                .map_err(|_| RoutingError::ConnectionError)
+                                .await
+                        })
+                    });
+
+                    let retry = RetryableFuture::new(retryable, config.retry_strategy());
+                    retry.await.map_err(|_| RoutingError::ConnectionError)?;
                 }
 
                 CommandType::Close => {

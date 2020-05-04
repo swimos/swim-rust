@@ -46,6 +46,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 pub mod command;
 pub mod incoming;
 pub mod outgoing;
+mod retry;
 
 #[cfg(test)]
 mod tests;
