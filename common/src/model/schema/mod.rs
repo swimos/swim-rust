@@ -18,6 +18,7 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
+use std::cmp::Ordering;
 
 #[cfg(test)]
 mod tests;
@@ -475,6 +476,23 @@ pub enum StandardSchema {
     Anything,
     /// Matches nothing.
     Nothing,
+}
+
+// Very basic partial ordering for schemas. This could be significantly extended if desirable.
+impl PartialOrd for StandardSchema {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.eq(other) {
+            Some(Ordering::Equal)
+        } else {
+            match (self, other) {
+                (_, StandardSchema::Anything) => Some(Ordering::Less),
+                (_, StandardSchema::Nothing) => Some(Ordering::Greater),
+                (StandardSchema::Anything, _) => Some(Ordering::Greater),
+                (StandardSchema::Nothing, _) => Some(Ordering::Less),
+                _ => None
+            }
+        }
+    }
 }
 
 impl Display for StandardSchema {
