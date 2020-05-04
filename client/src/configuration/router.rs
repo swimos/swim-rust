@@ -73,6 +73,15 @@ impl Default for RouterParamBuilder {
 }
 
 impl RouterParamBuilder {
+    pub fn new() -> RouterParamBuilder {
+        RouterParamBuilder {
+            retry_strategy: None,
+            idle_timeout: None,
+            buffer_size: None,
+            conn_reaper_frequency: None,
+        }
+    }
+
     pub fn build(self) -> RouterParams {
         let build_usize = |u: Option<usize>, m: &str| match u {
             Some(u) => match NonZeroUsize::new(u) {
