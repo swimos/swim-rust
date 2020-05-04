@@ -22,6 +22,10 @@ use utilities::future::retryable::ResettableFuture;
 
 use crate::router::RoutingError;
 
+/// A retryable request used by the router. The [`RetryableRequest`] is provided with a future factory
+/// which is used for creating new requests after a failure. The factory is a function provided with
+/// a [`bool`] which determines if the instance that is being created is the first [`true`] or a
+/// retry [`false`].
 #[pin_project]
 pub struct RetryableRequest<F, Fac> {
     factory: Fac,
