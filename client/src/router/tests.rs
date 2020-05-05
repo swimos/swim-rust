@@ -147,7 +147,11 @@ pub async fn server_stops_between_requests() {
 
     let mut router = SwimRouter::new(Default::default()).await;
     let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap());
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "/unit/foo",
+        "info",
+    )
+    .unwrap();
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 

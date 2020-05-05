@@ -93,9 +93,12 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Message(message) => {
-                    let message = message.to_text().map_err(|_| RoutingError::ConnectionError)?;
+                    let message = message
+                        .to_text()
+                        .map_err(|_| RoutingError::ConnectionError)?;
                     let value = parse_single(message).map_err(|_| RoutingError::ConnectionError)?;
-                    let envelope = Envelope::try_from(value).map_err(|_| RoutingError::ConnectionError)?;
+                    let envelope =
+                        Envelope::try_from(value).map_err(|_| RoutingError::ConnectionError)?;
                     let destination = envelope.relative_path();
                     let event = RouterEvent::Envelope(envelope);
 
