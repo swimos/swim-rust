@@ -217,3 +217,25 @@ async fn subscribe_map_twice() {
 
     assert!(dl1.same_downlink(&dl2));
 }
+
+#[tokio::test]
+async fn subscribe_value_lane_typed() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_value::<i32>(0, path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Queue));
+}
+
+#[tokio::test]
+async fn subscribe_map_lane_typed() {
+    let path = AbsolutePath::new("host", "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_map::<String, i32>(path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Queue));
+}
