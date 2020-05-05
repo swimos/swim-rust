@@ -54,7 +54,7 @@ fn envelope_for<T, F>(to_body: F, path: &AbsolutePath, command: Command<T>) -> (
 where
     F: Fn(T) -> Option<Value>,
 {
-    let host = path.host.clone();
+    let host = path.host.to_string();
     let node = path.node.clone();
     let lane = path.lane.clone();
     (

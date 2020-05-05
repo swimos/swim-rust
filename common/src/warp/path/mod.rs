@@ -13,22 +13,23 @@
 // limitations under the License.
 
 use std::fmt::{Display, Formatter};
+use url::ParseError;
 
 /// Absolute path to an agent lane, on a specific host.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct AbsolutePath {
-    pub host: String,
+    pub host: url::Url,
     pub node: String,
     pub lane: String,
 }
 
 impl AbsolutePath {
-    pub fn new(host: &str, node: &str, lane: &str) -> AbsolutePath {
-        AbsolutePath {
-            host: host.to_string(),
+    pub fn new(host: url::Url, node: &str, lane: &str) -> Result<AbsolutePath, ParseError> {
+        Ok(AbsolutePath {
+            host,
             node: node.to_string(),
             lane: lane.to_string(),
-        }
+        })
     }
 
     /// Split an absolute path into the host and relative components.
@@ -37,13 +38,20 @@ impl AbsolutePath {
     /// ```
     /// use common::warp::path::*;
     ///
-    /// let abs = AbsolutePath::new("host", "node", "lane");
+    /// let abs = AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane").unwrap();
     ///
-    /// assert_eq!(abs.split(), ("host".to_string(), RelativePath::new("node", "lane")));
+    /// assert_eq!(abs.split(), (url::Url::parse("ws://127.0.0.1").unwrap(), RelativePath::new("node", "lane")));
     /// ```
-    pub fn split(self) -> (String, RelativePath) {
+    pub fn split(self) -> (url::Url, RelativePath) {
         let AbsolutePath { host, node, lane } = self;
         (host, RelativePath { node, lane })
+    }
+
+    pub fn relative_path(&self) -> RelativePath {
+        RelativePath {
+            node: self.node.clone(),
+            lane: self.lane.clone(),
+        }
     }
 }
 
@@ -80,15 +88,11 @@ impl RelativePath {
     ///
     /// let rel = RelativePath::new("node", "lane");
     ///
-    /// assert_eq!(rel.for_host("host"), AbsolutePath::new("host", "node", "lane"))
+    /// assert_eq!(rel.for_host(url::Url::parse("ws://127.0.0.1").unwrap()), AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane"))
     /// ```
-    pub fn for_host(self, host: &str) -> AbsolutePath {
+    pub fn for_host(self, host: url::Url) -> Result<AbsolutePath, ParseError> {
         let RelativePath { node, lane } = self;
-        AbsolutePath {
-            host: host.to_string(),
-            node,
-            lane,
-        }
+        Ok(AbsolutePath { host, node, lane })
     }
 }
 

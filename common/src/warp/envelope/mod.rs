@@ -16,6 +16,7 @@ use std::convert::TryFrom;
 use std::ops::Deref;
 
 use crate::model::{Attr, Item, Value};
+use crate::warp::path::RelativePath;
 
 #[cfg(test)]
 mod tests;
@@ -141,11 +142,11 @@ impl Envelope {
         }
     }
 
-    pub fn destination(&self) -> Option<String> {
-        let node_uri = self.get_node_uri()?;
-        let lane_uri = self.get_lane_uri()?;
-
-        Some(format!("{}/{}", node_uri, lane_uri))
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        Some(RelativePath::new(
+            &self.get_node_uri()?,
+            &self.get_lane_uri()?,
+        ))
     }
 
     pub fn into_value(self) -> Value {

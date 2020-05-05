@@ -180,12 +180,12 @@ pub mod boxed_connection_sender {
     use futures_util::future::BoxFuture;
     use futures_util::task::Waker;
     use tokio::sync::mpsc::error::TrySendError;
-    use tokio::sync::oneshot;
+    use tokio::sync::{mpsc, oneshot};
     use tokio_tungstenite::tungstenite::protocol::Message;
 
     use crate::connections::ConnectionSender;
     use crate::router::outgoing::retry::{RetryContext, RetryErr, RetrySink};
-    use crate::router::{ConnReqSender, Host, RoutingError};
+    use crate::router::{ConnectionRequest, RoutingError};
 
     /// A boxed [`connections::ConnectionSender`] [`RetrySink`] that is backed by an [`mpsc::Sender`]
     /// Between retry attempts, the sender will attempt to acquire a [`ConnectionSender`] to fulfil
@@ -195,13 +195,12 @@ pub mod boxed_connection_sender {
     /// unrecoverable error. However, if the router returns [`RoutingError::Transient`] then it is
     /// assumed that the error may resolve.
     pub struct BoxedConnSender {
-        sender: ConnReqSender,
-        host: Host,
+        sender: mpsc::Sender<ConnectionRequest>,
     }
 
     impl BoxedConnSender {
-        pub fn new(sender: ConnReqSender, host: Host) -> BoxedConnSender {
-            BoxedConnSender { sender, host }
+        pub fn new(sender: mpsc::Sender<ConnectionRequest>) -> BoxedConnSender {
+            BoxedConnSender { sender }
         }
     }
 
@@ -210,20 +209,18 @@ pub mod boxed_connection_sender {
         type Future = RequestFuture<'fut>;
 
         fn send_value(&mut self, value: Message, ctx: &RetryContext) -> Self::Future {
-            RequestFuture::new(self.sender.clone(), self.host.clone(), value, ctx.recreate)
+            RequestFuture::new(self.sender.clone(), value, ctx.recreate)
         }
     }
 
     impl<'a> RequestFuture<'a> {
         fn new(
-            sender: ConnReqSender,
-            host: Host,
+            sender: mpsc::Sender<ConnectionRequest>,
             value: Message,
             recreate: bool,
         ) -> RequestFuture<'a> {
             RequestFuture {
                 sender,
-                host,
                 value,
                 state: State::NotStarted,
                 recreate,
@@ -232,8 +229,7 @@ pub mod boxed_connection_sender {
     }
 
     pub struct RequestFuture<'a> {
-        sender: ConnReqSender,
-        host: Host,
+        sender: mpsc::Sender<ConnectionRequest>,
         value: Message,
         state: State<'a>,
         recreate: bool,
@@ -252,12 +248,11 @@ pub mod boxed_connection_sender {
             waker: Waker,
         ) -> BoxFuture<'a, Result<ConnectionSender, RoutingError>> {
             let mut sender = self.sender.clone();
-            let host = self.host.clone();
 
             let a = async move {
                 let (connection_tx, connection_rx) = oneshot::channel();
                 sender
-                    .send((host, connection_tx, recreate))
+                    .send((connection_tx, recreate))
                     .await
                     .map_err(|_| RoutingError::ConnectionError)?;
 
