@@ -21,7 +21,7 @@ use futures_util::TryStreamExt;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -58,12 +58,14 @@ struct ConnectionRequest {
     recreate: bool,
 }
 
+type ConnectionPoolSharedHandler = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
+
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
 #[derive(Clone)]
 pub struct ConnectionPool {
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
-    _connection_requests_handler: Arc<JoinHandle<Result<(), ConnectionError>>>,
+    connection_requests_handler: ConnectionPoolSharedHandler,
     stop_request_tx: mpsc::Sender<()>,
 }
 
@@ -97,7 +99,7 @@ impl ConnectionPool {
 
         ConnectionPool {
             connection_request_tx,
-            _connection_requests_handler: Arc::new(connection_requests_handler),
+            connection_requests_handler: Arc::new(Mutex::new(Some(connection_requests_handler))),
             stop_request_tx,
         }
     }
@@ -138,7 +140,16 @@ impl ConnectionPool {
         self.stop_request_tx
             .send(())
             .await
-            .map_err(|_| ConnectionError::ClosedError)
+            .map_err(|_| ConnectionError::ClosedError)?;
+
+        let handle = self
+            .connection_requests_handler
+            .lock()
+            .map_err(|_| ConnectionError::ClosedError)?
+            .take()
+            .ok_or(ConnectionError::ClosedError)?;
+
+        handle.await.map_err(|_| ConnectionError::ClosedError)?
     }
 }
 
