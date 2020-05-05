@@ -282,31 +282,35 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
                 _ => BasicResponse::none(),
             },
             Action::Set(set_value, maybe_resp) => {
-                if self.schema.matches(&set_value) {
-                    state.state = Arc::new(set_value);
-                    let resp = BasicResponse::of(state.state.clone(), state.state.clone());
-                    match maybe_resp.and_then(|req| req.send_ok(()).err()) {
-                        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
-                        _ => resp,
-                    }
-                } else {
-                    send_error(maybe_resp, set_value, self.schema.clone())
-                }
+                apply_set(state, &self.schema, set_value, maybe_resp, |_| ())
             }
             Action::Update(upd_fn, maybe_resp) => {
                 let new_value = upd_fn(state.state.as_ref());
-                if self.schema.matches(&new_value) {
-                    state.state = Arc::new(new_value);
-                    let resp = BasicResponse::of(state.state.clone(), state.state.clone());
-                    match maybe_resp.and_then(|req| req.send_ok(state.state.clone()).err()) {
-                        None => resp,
-                        Some(_) => resp.with_error(TransitionError::ReceiverDropped),
-                    }
-                } else {
-                    send_error(maybe_resp, new_value, self.schema.clone())
-                }
+                apply_set(state, &self.schema, new_value, maybe_resp, |s| s.clone())
             }
         }
+    }
+}
+
+fn apply_set<F, T>(
+    state: &mut ValueModel,
+    schema: &StandardSchema,
+    set_value: Value,
+    maybe_resp: Option<DownlinkRequest<T>>,
+    to_output: F,
+) -> BasicResponse<SharedValue, SharedValue>
+where
+    F: FnOnce(&SharedValue) -> T,
+{
+    if schema.matches(&set_value) {
+        state.state = Arc::new(set_value);
+        let resp = BasicResponse::of(state.state.clone(), state.state.clone());
+        match maybe_resp.and_then(|req| req.send_ok(to_output(&state.state)).err()) {
+            Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+            _ => resp,
+        }
+    } else {
+        send_error(maybe_resp, set_value, schema.clone())
     }
 }
 

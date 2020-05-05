@@ -315,10 +315,8 @@ where
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
         self.sender.send_item(MapAction::get_map(req)).await?;
-        rx.await
-            .map_err(|_| DownlinkError::DroppedChannel)
-            .and_then(|r| r)
-            .map(TypedMapView::new)
+        let view = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
+        Ok(TypedMapView::new(view))
     }
 }
 

@@ -896,16 +896,13 @@ fn process_action(
                     send_error(old, key, key_schema.clone()),
                 )
             } else {
-                let (err, did_rem) = match old {
-                    Some(req) => {
-                        let prev = data_state.remove(&key);
-                        let did_remove = prev.is_some();
-                        (req.send_ok(prev), did_remove)
-                    }
-                    _ => {
-                        let old = data_state.remove(&key);
-                        (Ok(()), old.is_some())
-                    }
+                let (err, did_rem) = if let Some(req) = old {
+                    let prev = data_state.remove(&key);
+                    let did_remove = prev.is_some();
+                    (req.send_ok(prev), did_remove)
+                } else {
+                    let old = data_state.remove(&key);
+                    (Ok(()), old.is_some())
                 };
                 if did_rem {
                     (
@@ -955,15 +952,12 @@ fn process_action(
             )
         }
         MapAction::Clear { before } => {
-            let err = match before {
-                Some(req) => {
-                    let prev = std::mem::take(data_state);
-                    req.send_ok(prev)
-                }
-                _ => {
-                    data_state.clear();
-                    Ok(())
-                }
+            let err = if let Some(req) = before {
+                let prev = std::mem::take(data_state);
+                req.send_ok(prev)
+            } else {
+                data_state.clear();
+                Ok(())
             };
             (
                 BasicResponse::of(ViewWithEvent::clear(data_state), MapModification::Clear),
@@ -1028,8 +1022,8 @@ fn send_error<T>(
     value: Value,
     schema: StandardSchema,
 ) -> bool {
-    let err = DownlinkError::SchemaViolation(value, schema);
     if let Some(req) = maybe_resp {
+        let err = DownlinkError::SchemaViolation(value, schema);
         req.send_err(err).is_err()
     } else {
         false
