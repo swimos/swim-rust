@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::ready;
 use futures::task::{Context, Poll};
 use futures::Future;
+use futures::{ready, TryFutureExt};
 use tokio::macros::support::Pin;
 
 use pin_project::pin_project;
-use utilities::future::retryable::ResettableFuture;
+use utilities::future::retryable::{ResettableFuture, RetryableFuture};
 
-use crate::router::RoutingError;
+use crate::router::{acquire_sender, ConnReqSender, RoutingError};
+use utilities::future::retryable::strategy::RetryStrategy;
 
 /// A retryable request used by the router. The [`RetryableRequest`] is provided with a future factory
 /// which is used for creating new requests after a failure. The factory is a function provided with
@@ -34,11 +35,12 @@ pub struct RetryableRequest<F, Fac> {
     err: Option<RetryErr>,
 }
 
-impl<F, Fac> RetryableRequest<F, Fac>
-where
-    Fac: Fn(bool) -> F,
-{
-    pub fn new(factory: Fac) -> Self {
+impl RetryableRequest<(), ()> {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new<F, Fac>(factory: Fac) -> RetryableRequest<F, Fac>
+    where
+        Fac: Fn(bool) -> F,
+    {
         let f = (factory)(false);
 
         RetryableRequest {
@@ -46,6 +48,27 @@ where
             f,
             err: None,
         }
+    }
+
+    pub fn new_future(
+        message: String,
+        sender: ConnReqSender,
+        host: String,
+        strategy: RetryStrategy,
+    ) -> impl Future<Output = Result<(), RoutingError>> {
+        let retryable = RetryableRequest::new(move |is_retry| {
+            let host = host.clone();
+            let sender = sender.clone();
+            let message = message.clone();
+
+            acquire_sender(sender, host, is_retry).and_then(|mut s| async move {
+                s.send_message(&message)
+                    .map_err(|_| RoutingError::ConnectionError)
+                    .await
+            })
+        });
+
+        RetryableFuture::new(retryable, strategy)
     }
 }
 
@@ -75,7 +98,6 @@ where
         }
     }
 }
-
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum RetryErr {
     Transient,

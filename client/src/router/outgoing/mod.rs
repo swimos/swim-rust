@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use futures::{stream, StreamExt, TryFutureExt};
+use futures::{stream, StreamExt};
 use futures_util::FutureExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -29,7 +29,6 @@ use crate::router::retry::RetryableRequest;
 use crate::router::{
     CloseRequestReceiver, CloseRequestSender, ConnReqSender, ConnectionResponse, Host, RoutingError,
 };
-use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -222,31 +221,13 @@ impl OutgoingHostTask {
             match task {
                 TaskRequestType::NewMessage(envelope) => {
                     let message = Message::Text(envelope.into_value().to_string()).to_string();
-                    let message = message.as_str();
-                    let retryable = RetryableRequest::new(|is_retry| {
-                        let mut sender = connection_request_tx.clone();
-                        let host = host.clone();
+                    let retry = RetryableRequest::new_future(
+                        message.clone(),
+                        connection_request_tx.clone(),
+                        host.clone(),
+                        config.retry_strategy(),
+                    );
 
-                        async move {
-                            let (connection_tx, connection_rx) = oneshot::channel();
-
-                            sender
-                                .send((host, connection_tx, is_retry))
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?;
-
-                            connection_rx
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError)?
-                        }
-                        .and_then(|mut s| async move {
-                            s.send_message(&message)
-                                .map_err(|_| RoutingError::ConnectionError)
-                                .await
-                        })
-                    });
-
-                    let retry = RetryableFuture::new(retryable, config.retry_strategy());
                     retry.await.map_err(|_| RoutingError::ConnectionError)?;
                 }
                 TaskRequestType::Close => {

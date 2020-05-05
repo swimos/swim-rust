@@ -368,6 +368,23 @@ type SwimRouterConnectionFut = Sequenced<
     ConnectionFuture,
 >;
 
+pub(crate) async fn acquire_sender(
+    mut sender: ConnReqSender,
+    host: String,
+    is_retry: bool,
+) -> Result<ConnectionSender, RoutingError> {
+    let (connection_tx, connection_rx) = oneshot::channel();
+
+    sender
+        .send((host, connection_tx, is_retry))
+        .await
+        .map_err(|_| RoutingError::ConnectionError)?;
+
+    connection_rx
+        .await
+        .map_err(|_| RoutingError::ConnectionError)?
+}
+
 pub fn connect(
     outgoing_task_request_tx: OutgoingTaskReqSender,
     incoming_subscriber_request_tx: IncomingSubscriberReqSender,
