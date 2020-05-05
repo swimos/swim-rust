@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::fmt::{Display, Formatter};
-use url::ParseError;
 
 /// Absolute path to an agent lane, on a specific host.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -24,12 +23,12 @@ pub struct AbsolutePath {
 }
 
 impl AbsolutePath {
-    pub fn new(host: url::Url, node: &str, lane: &str) -> Result<AbsolutePath, ParseError> {
-        Ok(AbsolutePath {
+    pub fn new(host: url::Url, node: &str, lane: &str) -> AbsolutePath {
+        AbsolutePath {
             host,
             node: node.to_string(),
             lane: lane.to_string(),
-        })
+        }
     }
 
     /// Split an absolute path into the host and relative components.
@@ -38,7 +37,7 @@ impl AbsolutePath {
     /// ```
     /// use common::warp::path::*;
     ///
-    /// let abs = AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane").unwrap();
+    /// let abs = AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane");
     ///
     /// assert_eq!(abs.split(), (url::Url::parse("ws://127.0.0.1").unwrap(), RelativePath::new("node", "lane")));
     /// ```
@@ -90,9 +89,9 @@ impl RelativePath {
     ///
     /// assert_eq!(rel.for_host(url::Url::parse("ws://127.0.0.1").unwrap()), AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane"))
     /// ```
-    pub fn for_host(self, host: url::Url) -> Result<AbsolutePath, ParseError> {
+    pub fn for_host(self, host: url::Url) -> AbsolutePath {
         let RelativePath { node, lane } = self;
-        Ok(AbsolutePath { host, node, lane })
+        AbsolutePath { host, node, lane }
     }
 }
 

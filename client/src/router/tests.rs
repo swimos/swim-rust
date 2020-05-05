@@ -19,6 +19,7 @@ use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 
 use crate::router::{Router, SwimRouter};
+use common::model::Value;
 use std::sync::Once;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
@@ -50,8 +51,7 @@ async fn normal_receive() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",
         "info",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -74,8 +74,7 @@ async fn not_interested_receive() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "foo",
         "bar",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -98,8 +97,7 @@ async fn not_found_receive() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "foo",
         "bar",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
@@ -118,21 +116,44 @@ async fn send_commands() {
 
     let mut router = SwimRouter::new(Default::default()).await;
 
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "/unit/foo",
-        "publishInfo",
-    )
-    .unwrap();
-    let first_message = String::from("Hello, World!");
-    let second_message = String::from("Test message");
-    let third_message = String::from("Bye, World!");
+    let url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
 
-    router.send_command(&path, first_message).unwrap();
+    let first_message = Envelope::command(
+        String::from("/unit/foo"),
+        String::from("publishInfo"),
+        Some(Value::text("Hello, World!")),
+    );
+
+    let second_message = Envelope::command(
+        String::from("/unit/foo"),
+        String::from("publishInfo"),
+        Some(Value::text("Test message")),
+    );
+
+    let third_message = Envelope::command(
+        String::from("/unit/foo"),
+        String::from("publishInfo"),
+        Some(Value::text("Bye, World!")),
+    );
+
+    let mut router_sink = router.general_sink();
+
+    router_sink
+        .send_item((url.clone(), first_message))
+        .await
+        .unwrap();
+
     thread::sleep(time::Duration::from_secs(1));
-    router.send_command(&path, second_message).unwrap();
+
+    router_sink
+        .send_item((url.clone(), second_message))
+        .await
+        .unwrap();
+
     thread::sleep(time::Duration::from_secs(1));
-    router.send_command(&path, third_message).unwrap();
+
+    router_sink.send_item((url, third_message)).await.unwrap();
+
     thread::sleep(time::Duration::from_secs(1));
 
     thread::sleep(time::Duration::from_secs(1));
@@ -150,8 +171,7 @@ pub async fn server_stops_between_requests() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",
         "info",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 

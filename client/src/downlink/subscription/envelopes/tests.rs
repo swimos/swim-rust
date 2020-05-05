@@ -21,7 +21,7 @@ use crate::downlink::Message;
 use common::model::Value::Int32Value;
 
 fn path() -> AbsolutePath {
-    AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane").unwrap()
+    AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane")
 }
 
 #[test]

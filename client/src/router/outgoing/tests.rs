@@ -28,8 +28,7 @@ async fn envelope_routing_task() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "foo",
         "bar",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
