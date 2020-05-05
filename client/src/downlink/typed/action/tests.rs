@@ -46,7 +46,7 @@ mod value {
                     if matches!(v, Value::Int32Value(_)) {
                         *state = SharedValue::new(v);
                         if let Some(cb) = maybe_cb {
-                            let _ = cb.send(());
+                            let _ = cb.send_ok(());
                         }
                         Ok(())
                     } else {
@@ -54,7 +54,7 @@ mod value {
                     }
                 }
                 Action::Get(cb) => {
-                    let _ = cb.send(state.clone());
+                    let _ = cb.send_ok(state.clone());
                     Ok(())
                 }
                 Action::Update(f, maybe_cb) => {
@@ -63,7 +63,7 @@ mod value {
                     if matches!(new, Value::Int32Value(_)) {
                         *state = SharedValue::new(new);
                         if let Some(cb) = maybe_cb {
-                            let _ = cb.send(old);
+                            let _ = cb.send_ok(old);
                         }
                         Ok(())
                     } else {
@@ -95,6 +95,15 @@ mod value {
     }
 
     #[tokio::test]
+    async fn invalid_value_set() {
+        let dl = TestValueDl::new(2);
+        let mut actions: ValueActions<TestValueDl, String> = ValueActions::new(dl);
+
+        let result = actions.set("hello".to_string()).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+    }
+
+    #[tokio::test]
     async fn value_set_and_forget() {
         let mut actions = TestValueDl::actions(2);
 
@@ -114,6 +123,15 @@ mod value {
 
         let n = actions.get().await;
         assert_that!(n, eq(Ok(4)));
+    }
+
+    #[tokio::test]
+    async fn invalid_value_update() {
+        let dl = TestValueDl::new(2);
+        let mut actions: ValueActions<TestValueDl, Value> = ValueActions::new(dl);
+
+        let result = actions.update(|_| Value::Extant).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
     }
 
     #[tokio::test]
@@ -169,7 +187,7 @@ mod map {
                         let old_val = state.get(&key).map(Clone::clone);
                         state.insert(key, Arc::new(value));
                         if let Some(cb) = old {
-                            let _ = cb.send(old_val);
+                            let _ = cb.send_ok(old_val);
                         }
                         Ok(())
                     } else {
@@ -181,7 +199,7 @@ mod map {
                         let old_val = state.get(&key).map(Clone::clone);
                         state.remove(&key);
                         if let Some(cb) = old {
-                            let _ = cb.send(old_val);
+                            let _ = cb.send_ok(old_val);
                         }
                         Ok(())
                     } else {
@@ -192,10 +210,10 @@ mod map {
                     let map_before = state.clone();
                     *state = state.take(n);
                     if let Some(cb) = before {
-                        let _ = cb.send(map_before);
+                        let _ = cb.send_ok(map_before);
                     }
                     if let Some(cb) = after {
-                        let _ = cb.send(state.clone());
+                        let _ = cb.send_ok(state.clone());
                     }
                     Ok(())
                 }
@@ -203,10 +221,10 @@ mod map {
                     let map_before = state.clone();
                     *state = state.skip(n);
                     if let Some(cb) = before {
-                        let _ = cb.send(map_before);
+                        let _ = cb.send_ok(map_before);
                     }
                     if let Some(cb) = after {
-                        let _ = cb.send(state.clone());
+                        let _ = cb.send_ok(state.clone());
                     }
                     Ok(())
                 }
@@ -214,17 +232,17 @@ mod map {
                     let map_before = state.clone();
                     state.clear();
                     if let Some(cb) = before {
-                        let _ = cb.send(map_before);
+                        let _ = cb.send_ok(map_before);
                     }
                     Ok(())
                 }
                 MapAction::Get { request } => {
-                    let _ = request.send(state.clone());
+                    let _ = request.send_ok(state.clone());
                     Ok(())
                 }
                 MapAction::GetByKey { key, request } => {
                     if matches!(&key, Value::Int32Value(_)) {
-                        let _ = request.send(state.get(&key).map(Clone::clone));
+                        let _ = request.send_ok(state.get(&key).map(Clone::clone));
                         Ok(())
                     } else {
                         Err(DownlinkError::InvalidAction)
@@ -248,10 +266,10 @@ mod map {
                             _ => state.remove(&key),
                         };
                         if let Some(cb) = before {
-                            let _ = cb.send(old_val);
+                            let _ = cb.send_ok(old_val);
                         }
                         if let Some(cb) = after {
-                            let _ = cb.send(replacement);
+                            let _ = cb.send_ok(replacement);
                         }
                         Ok(())
                     } else {
@@ -311,6 +329,24 @@ mod map {
     }
 
     #[tokio::test]
+    async fn map_invalid_key_insert() {
+        let dl = TestMapDl::new(make_map());
+        let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
+
+        let result = actions.insert("bad".to_string(), 8).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+    }
+
+    #[tokio::test]
+    async fn map_invalid_value_insert() {
+        let dl = TestMapDl::new(make_map());
+        let mut actions: MapActions<TestMapDl, i32, String> = MapActions::new(dl);
+
+        let result = actions.insert(4, "bad".to_string()).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+    }
+
+    #[tokio::test]
     async fn map_insert_and_forget() {
         let mut actions = TestMapDl::actions(make_map());
 
@@ -334,6 +370,15 @@ mod map {
 
         let result = actions.get(2).await;
         assert_that!(result, eq(Ok(None)));
+    }
+
+    #[tokio::test]
+    async fn map_invalid_remove() {
+        let dl = TestMapDl::new(make_map());
+        let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
+
+        let result = actions.remove("bad".to_string()).await;
+        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
     }
 
     #[tokio::test]

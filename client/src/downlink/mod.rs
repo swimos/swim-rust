@@ -36,6 +36,7 @@ use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
+use common::request::TryRequest;
 use common::sink::item::ItemSender;
 use common::topic::Topic;
 use futures::task::{Context, Poll};
@@ -96,6 +97,9 @@ pub enum DownlinkError {
     InvalidAction,
     SchemaViolation(Value, StandardSchema),
 }
+
+/// A request to a downlink for a value.
+pub type DownlinkRequest<T> = TryRequest<T, DownlinkError>;
 
 impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {

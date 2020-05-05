@@ -16,10 +16,14 @@ use tokio::sync::oneshot;
 
 pub mod request_future;
 
+/// An asynchronous request for an agent to provide a value.
 #[derive(Debug)]
 pub struct Request<T> {
     satisfy: oneshot::Sender<T>,
 }
+
+/// An asycnhronous request for an agent to provide a value or fail.
+pub type TryRequest<T, E> = Request<Result<T, E>>;
 
 impl<T> Request<T> {
     pub fn new(sender: oneshot::Sender<T>) -> Request<T> {
@@ -31,5 +35,15 @@ impl<T> Request<T> {
             Ok(_) => Ok(()),
             Err(_) => Err(()),
         }
+    }
+}
+
+impl<T, E> Request<Result<T, E>> {
+    pub fn send_ok(self, data: T) -> Result<(), ()> {
+        self.send(Ok(data))
+    }
+
+    pub fn send_err(self, err: E) -> Result<(), ()> {
+        self.send(Err(err))
     }
 }

@@ -18,7 +18,6 @@ use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
 use common::model::{Attr, Item, Value, ValueKind};
-use common::request::Request;
 
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
@@ -26,7 +25,8 @@ use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
-    BasicResponse, BasicStateMachine, Command, DownlinkError, Event, Message, TransitionError,
+    BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest, Event, Message,
+    TransitionError,
 };
 use crate::router::RoutingError;
 use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
@@ -290,37 +290,37 @@ pub enum MapAction {
     Insert {
         key: Value,
         value: Value,
-        old: Option<Request<Option<Arc<Value>>>>,
+        old: Option<DownlinkRequest<Option<Arc<Value>>>>,
     },
     Remove {
         key: Value,
-        old: Option<Request<Option<Arc<Value>>>>,
+        old: Option<DownlinkRequest<Option<Arc<Value>>>>,
     },
     Take {
         n: usize,
-        before: Option<Request<ValMap>>,
-        after: Option<Request<ValMap>>,
+        before: Option<DownlinkRequest<ValMap>>,
+        after: Option<DownlinkRequest<ValMap>>,
     },
     Skip {
         n: usize,
-        before: Option<Request<ValMap>>,
-        after: Option<Request<ValMap>>,
+        before: Option<DownlinkRequest<ValMap>>,
+        after: Option<DownlinkRequest<ValMap>>,
     },
     Clear {
-        before: Option<Request<ValMap>>,
+        before: Option<DownlinkRequest<ValMap>>,
     },
     Get {
-        request: Request<ValMap>,
+        request: DownlinkRequest<ValMap>,
     },
     GetByKey {
         key: Value,
-        request: Request<Option<Arc<Value>>>,
+        request: DownlinkRequest<Option<Arc<Value>>>,
     },
     Update {
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
-        before: Option<Request<Option<Arc<Value>>>>,
-        after: Option<Request<Option<Arc<Value>>>>,
+        before: Option<DownlinkRequest<Option<Arc<Value>>>>,
+        after: Option<DownlinkRequest<Option<Arc<Value>>>>,
     },
 }
 
@@ -336,7 +336,7 @@ impl MapAction {
     pub fn insert_and_await(
         key: Value,
         value: Value,
-        request: Request<Option<Arc<Value>>>,
+        request: DownlinkRequest<Option<Arc<Value>>>,
     ) -> MapAction {
         MapAction::Insert {
             key,
@@ -349,7 +349,7 @@ impl MapAction {
         MapAction::Remove { key, old: None }
     }
 
-    pub fn remove_and_await(key: Value, request: Request<Option<Arc<Value>>>) -> MapAction {
+    pub fn remove_and_await(key: Value, request: DownlinkRequest<Option<Arc<Value>>>) -> MapAction {
         MapAction::Remove {
             key,
             old: Some(request),
@@ -366,8 +366,8 @@ impl MapAction {
 
     pub fn take_and_await(
         n: usize,
-        map_before: Request<ValMap>,
-        map_after: Request<ValMap>,
+        map_before: DownlinkRequest<ValMap>,
+        map_after: DownlinkRequest<ValMap>,
     ) -> MapAction {
         MapAction::Take {
             n,
@@ -386,8 +386,8 @@ impl MapAction {
 
     pub fn skip_and_await(
         n: usize,
-        map_before: Request<ValMap>,
-        map_after: Request<ValMap>,
+        map_before: DownlinkRequest<ValMap>,
+        map_after: DownlinkRequest<ValMap>,
     ) -> MapAction {
         MapAction::Skip {
             n,
@@ -400,17 +400,17 @@ impl MapAction {
         MapAction::Clear { before: None }
     }
 
-    pub fn clear_and_await(map_before: Request<ValMap>) -> MapAction {
+    pub fn clear_and_await(map_before: DownlinkRequest<ValMap>) -> MapAction {
         MapAction::Clear {
             before: Some(map_before),
         }
     }
 
-    pub fn get_map(request: Request<ValMap>) -> MapAction {
+    pub fn get_map(request: DownlinkRequest<ValMap>) -> MapAction {
         MapAction::Get { request }
     }
 
-    pub fn get(key: Value, request: Request<Option<Arc<Value>>>) -> MapAction {
+    pub fn get(key: Value, request: DownlinkRequest<Option<Arc<Value>>>) -> MapAction {
         MapAction::GetByKey { key, request }
     }
 
@@ -441,8 +441,8 @@ impl MapAction {
     pub fn update_and_await<F>(
         key: Value,
         f: F,
-        val_before: Request<Option<Arc<Value>>>,
-        val_after: Request<Option<Arc<Value>>>,
+        val_before: DownlinkRequest<Option<Arc<Value>>>,
+        val_after: DownlinkRequest<Option<Arc<Value>>>,
     ) -> MapAction
     where
         F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
@@ -458,8 +458,8 @@ impl MapAction {
     pub fn update_box_and_await(
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
-        val_before: Request<Option<Arc<Value>>>,
-        val_after: Request<Option<Arc<Value>>>,
+        val_before: DownlinkRequest<Option<Arc<Value>>>,
+        val_after: DownlinkRequest<Option<Arc<Value>>>,
     ) -> MapAction {
         MapAction::Update {
             key,
@@ -800,14 +800,19 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
         state: &mut MapModel,
         action: MapAction,
     ) -> BasicResponse<Self::Ev, Self::Cmd> {
-        process_action(&mut state.state, action)
+        process_action(
+            &self.key_schema,
+            &self.value_schema,
+            &mut state.state,
+            action,
+        )
     }
 }
 
 fn update_and_notify<Upd>(
     data_state: &mut ValMap,
     update: Upd,
-    request: Option<Request<ValMap>>,
+    request: Option<DownlinkRequest<ValMap>>,
 ) -> Result<(), ()>
 where
     Upd: FnOnce(&mut ValMap) -> (),
@@ -816,7 +821,7 @@ where
         Some(req) => {
             let prev = data_state.clone();
             update(data_state);
-            req.send(prev)
+            req.send_ok(prev)
         }
         _ => {
             update(data_state);
@@ -829,7 +834,7 @@ fn update_and_notify_prev<Upd>(
     data_state: &mut ValMap,
     key: &Value,
     update: Upd,
-    request: Option<Request<Option<Arc<Value>>>>,
+    request: Option<DownlinkRequest<Option<Arc<Value>>>>,
 ) -> Result<(), ()>
 where
     Upd: FnOnce(&mut ValMap) -> (),
@@ -838,7 +843,7 @@ where
         Some(req) => {
             let prev = data_state.get(key).cloned();
             update(data_state);
-            req.send(prev)
+            req.send_ok(prev)
         }
         _ => {
             update(data_state);
@@ -848,50 +853,68 @@ where
 }
 
 fn process_action(
+    key_schema: &StandardSchema,
+    val_schema: &StandardSchema,
     data_state: &mut ValMap,
     action: MapAction,
 ) -> BasicResponse<ViewWithEvent, MapModification<Arc<Value>>> {
     let (resp, err) = match action {
         MapAction::Insert { key, value, old } => {
-            let v_arc = Arc::new(value);
-            let err = update_and_notify_prev(
-                data_state,
-                &key,
-                |map| {
-                    map.insert(key.clone(), v_arc.clone());
-                },
-                old,
-            );
-            (
-                BasicResponse::of(
-                    ViewWithEvent::insert(data_state, key.clone()),
-                    MapModification::Insert(key, v_arc),
-                ),
-                err.is_err(),
-            )
-        }
-        MapAction::Remove { key, old } => {
-            let (err, did_rem) = match old {
-                Some(req) => {
-                    let prev = data_state.remove(&key);
-                    let did_remove = prev.is_some();
-                    (req.send(prev), did_remove)
-                }
-                _ => {
-                    let old = data_state.remove(&key);
-                    (Ok(()), old.is_some())
-                }
-            };
-            if did_rem {
+            if !key_schema.matches(&key) {
+                (
+                    BasicResponse::none(),
+                    send_error(old, key, key_schema.clone()),
+                )
+            } else if !val_schema.matches(&value) {
+                (
+                    BasicResponse::none(),
+                    send_error(old, value, val_schema.clone()),
+                )
+            } else {
+                let v_arc = Arc::new(value);
+                let err = update_and_notify_prev(
+                    data_state,
+                    &key,
+                    |map| {
+                        map.insert(key.clone(), v_arc.clone());
+                    },
+                    old,
+                );
                 (
                     BasicResponse::of(
-                        ViewWithEvent::remove(data_state, key.clone()),
-                        MapModification::Remove(key),
+                        ViewWithEvent::insert(data_state, key.clone()),
+                        MapModification::Insert(key, v_arc),
                     ),
                     err.is_err(),
                 )
+            }
+        }
+        MapAction::Remove { key, old } => {
+            if !key_schema.matches(&key) {
+                (
+                    BasicResponse::none(),
+                    send_error(old, key, key_schema.clone()),
+                )
             } else {
-                (BasicResponse::none(), err.is_err())
+                let (err, did_rem) = if let Some(req) = old {
+                    let prev = data_state.remove(&key);
+                    let did_remove = prev.is_some();
+                    (req.send_ok(prev), did_remove)
+                } else {
+                    let old = data_state.remove(&key);
+                    (Ok(()), old.is_some())
+                };
+                if did_rem {
+                    (
+                        BasicResponse::of(
+                            ViewWithEvent::remove(data_state, key.clone()),
+                            MapModification::Remove(key),
+                        ),
+                        err.is_err(),
+                    )
+                } else {
+                    (BasicResponse::none(), err.is_err())
+                }
             }
         }
         MapAction::Take { n, before, after } => {
@@ -904,7 +927,7 @@ fn process_action(
             );
             let err2 = match after {
                 None => Ok(()),
-                Some(req) => req.send(data_state.clone()),
+                Some(req) => req.send_ok(data_state.clone()),
             };
             (
                 BasicResponse::of(ViewWithEvent::take(data_state, n), MapModification::Take(n)),
@@ -921,7 +944,7 @@ fn process_action(
             );
             let err2 = match after {
                 None => Ok(()),
-                Some(req) => req.send(data_state.clone()),
+                Some(req) => req.send_ok(data_state.clone()),
             };
             (
                 BasicResponse::of(ViewWithEvent::skip(data_state, n), MapModification::Skip(n)),
@@ -929,15 +952,12 @@ fn process_action(
             )
         }
         MapAction::Clear { before } => {
-            let err = match before {
-                Some(req) => {
-                    let prev = std::mem::take(data_state);
-                    req.send(prev)
-                }
-                _ => {
-                    data_state.clear();
-                    Ok(())
-                }
+            let err = if let Some(req) = before {
+                let prev = std::mem::take(data_state);
+                req.send_ok(prev)
+            } else {
+                data_state.clear();
+                Ok(())
             };
             (
                 BasicResponse::of(ViewWithEvent::clear(data_state), MapModification::Clear),
@@ -945,11 +965,11 @@ fn process_action(
             )
         }
         MapAction::Get { request } => {
-            let err = request.send(data_state.clone());
+            let err = request.send_ok(data_state.clone());
             (BasicResponse::none(), err.is_err())
         }
         MapAction::GetByKey { key, request } => {
-            let err = request.send(data_state.get(&key).cloned());
+            let err = request.send_ok(data_state.get(&key).cloned());
             (BasicResponse::none(), err.is_err())
         }
         MapAction::Update {
@@ -964,8 +984,8 @@ fn process_action(
                 Some(new_val) => {
                     let v_arc = Arc::new(new_val);
                     let replaced = data_state.insert(key.clone(), v_arc.clone());
-                    let err1 = old.and_then(|req| req.send(replaced).err());
-                    let err2 = replacement.and_then(|req| req.send(Some(v_arc.clone())).err());
+                    let err1 = old.and_then(|req| req.send_ok(replaced).err());
+                    let err2 = replacement.and_then(|req| req.send_ok(Some(v_arc.clone())).err());
                     (
                         BasicResponse::of(
                             ViewWithEvent::insert(data_state, key.clone()),
@@ -976,8 +996,8 @@ fn process_action(
                 }
                 _ if prev.is_some() => {
                     let removed = data_state.remove(&key);
-                    let err1 = old.and_then(|req| req.send(removed).err());
-                    let err2 = replacement.and_then(|req| req.send(None).err());
+                    let err1 = old.and_then(|req| req.send_ok(removed).err());
+                    let err2 = replacement.and_then(|req| req.send_ok(None).err());
                     (
                         BasicResponse::of(
                             ViewWithEvent::remove(data_state, key.clone()),
@@ -994,5 +1014,18 @@ fn process_action(
         resp.with_error(TransitionError::ReceiverDropped)
     } else {
         resp
+    }
+}
+
+fn send_error<T>(
+    maybe_resp: Option<DownlinkRequest<T>>,
+    value: Value,
+    schema: StandardSchema,
+) -> bool {
+    if let Some(req) = maybe_resp {
+        let err = DownlinkError::SchemaViolation(value, schema);
+        req.send_err(err).is_err()
+    } else {
+        false
     }
 }
