@@ -107,7 +107,7 @@ impl IncomingHostTask {
                     if let Some(relative_path) = destination {
                         broadcast_destination(&mut subscribers, relative_path, event).await?;
                     } else {
-                        tracing::trace!("Host messages are not supported: {:?}", event);
+                        tracing::warn!("Host messages are not supported: {:?}", event);
                     }
                 }
 

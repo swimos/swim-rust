@@ -78,7 +78,7 @@ pub enum RouterEvent {
 pub struct SwimRouter {
     router_connection_request_tx: mpsc::Sender<RouterConnRequest>,
     router_sink_tx: mpsc::Sender<RouterMessageRequest>,
-    task_manager_handler: JoinHandle<Result<(), RoutingError>>,
+    task_manager_handle: JoinHandle<Result<(), RoutingError>>,
     close_tx: CloseSender,
     configuration: RouterParams,
 }
@@ -94,12 +94,12 @@ impl SwimRouter {
         let (task_manager, router_connection_request_tx, router_sink_tx) =
             TaskManager::new(connection_pool, close_rx.clone(), configuration);
 
-        let task_manager_handler = tokio::spawn(task_manager.run());
+        let task_manager_handle = tokio::spawn(task_manager.run());
 
         SwimRouter {
             router_connection_request_tx,
             router_sink_tx,
-            task_manager_handler,
+            task_manager_handle,
             close_tx,
             configuration,
         }
@@ -118,7 +118,7 @@ impl SwimRouter {
             }
         }
 
-        if let Err(e) = self.task_manager_handler.await {
+        if let Err(e) = self.task_manager_handle.await {
             tracing::trace!("{:?}", e);
         };
 
@@ -345,8 +345,8 @@ impl HostManager {
         let outgoing_task =
             OutgoingHostTask::new(sink_rx, connection_request_tx, close_rx.clone(), config);
 
-        let incoming_handler = tokio::spawn(incoming_task.run());
-        let outgoing_handler = tokio::spawn(outgoing_task.run());
+        let incoming_handle = tokio::spawn(incoming_task.run());
+        let outgoing_handle = tokio::spawn(outgoing_task.run());
 
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);
         loop {
@@ -394,7 +394,7 @@ impl HostManager {
                 HostTask::Close(Some(mut close_tx)) => {
                     close_tx
                         .send(
-                            incoming_handler
+                            incoming_handle
                                 .await
                                 .map_err(|_| RoutingError::CloseError)?,
                         )
@@ -403,7 +403,7 @@ impl HostManager {
 
                     close_tx
                         .send(
-                            outgoing_handler
+                            outgoing_handle
                                 .await
                                 .map_err(|_| RoutingError::CloseError)?,
                         )
