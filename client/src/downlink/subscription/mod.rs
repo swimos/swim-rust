@@ -46,7 +46,8 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
+use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
+use crate::downlink::typed::topic::{ApplyForm, ApplyFormMap};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -59,7 +60,9 @@ pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
 pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
+pub type TypedValueReceiver<T> = UntilFailure<ValueReceiver, ApplyForm<T>>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
+pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormMap<K, V>>;
 
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
@@ -89,8 +92,7 @@ impl Downlinks {
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
-    /// subscription to its events (if there are ever no subscribers the downlink will stop
-    /// running.
+    /// subscription to its events.
     pub async fn subscribe_value_untyped(
         &mut self,
         init: Value,
@@ -101,20 +103,23 @@ impl Downlinks {
     }
 
     /// Attempt to subscribe to a remote value lane where the type of the values is described by a
-    /// [`ValidatedForm`].
+    /// [`ValidatedForm`]. The downlink is returned with a single active
+    /// subscription to its events.
     pub async fn subscribe_value<T>(
         &mut self,
         init: T,
         path: AbsolutePath,
-    ) -> Result<TypedValueDownlink<T>>
+    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
     where
         T: ValidatedForm + Send + 'static,
     {
         let init_value = init.into_value();
-        let (dl, _) = self
+        let (dl, rec) = self
             .subscribe_value_inner(init_value, T::schema(), path)
             .await?;
-        Ok(ValueDownlink::new(dl))
+        let typed_rec =
+            UntilFailure::new(rec, Default::default());
+        Ok((ValueDownlink::new(dl), typed_rec))
     }
 
     async fn subscribe_value_inner(
@@ -137,8 +142,7 @@ impl Downlinks {
     }
 
     /// Attempt to subscribe to a map lane. The downlink is returned with a single active
-    /// subscription to its events (if there are ever no subscribers the downlink will stop
-    /// running.
+    /// subscription to its events.
     pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
@@ -148,19 +152,21 @@ impl Downlinks {
     }
 
     /// Attempt to subscribe to a remote map lane where the types of the keys and values are
-    /// described by  [`ValidatedForm`]s.
+    /// described by  [`ValidatedForm`]s. The downlink is returned with a single active
+    /// subscription to its events.
     pub async fn subscribe_map<K, V>(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<TypedMapDownlink<K, V>>
+    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
     where
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
     {
-        let (dl, _) = self
+        let (dl, rec) = self
             .subscribe_map_inner(K::schema(), V::schema(), path)
             .await?;
-        Ok(MapDownlink::new(dl))
+        let typed_rec = UntilFailure::new(rec, Default::default());
+        Ok((MapDownlink::new(dl), typed_rec))
     }
 
     async fn subscribe_map_inner(
