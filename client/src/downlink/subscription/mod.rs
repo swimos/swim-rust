@@ -153,15 +153,55 @@ pub enum SubscriptionError {
     DownlinkTaskStopped,
     IncompatibleValueSchema {
         path: AbsolutePath,
-        existing: StandardSchema,
-        requested: StandardSchema,
+        existing: Box<StandardSchema>,
+        requested: Box<StandardSchema>,
     },
     IncompatibleMapSchema {
         is_key: bool,
         path: AbsolutePath,
+        existing: Box<StandardSchema>,
+        requested: Box<StandardSchema>,
+    },
+}
+
+impl SubscriptionError {
+    pub fn incompatibile_value(
+        path: AbsolutePath,
         existing: StandardSchema,
         requested: StandardSchema,
-    },
+    ) -> Self {
+        SubscriptionError::IncompatibleValueSchema {
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+
+    pub fn incompatibile_map_key(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleMapSchema {
+            is_key: true,
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+
+    pub fn incompatibile_map_value(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleMapSchema {
+            is_key: false,
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
 }
 
 impl From<mpsc::error::SendError<DownlinkSpecifier>> for SubscriptionError {
@@ -436,7 +476,6 @@ where
         (dl, rec)
     }
 
-    #[allow(clippy::cognitive_complexity)]
     async fn run<Req>(mut self, requests: Req)
     where
         Req: Stream<Item = DownlinkSpecifier>,
@@ -486,11 +525,11 @@ where
                                             }
                                         }
                                     } else {
-                                        Err(SubscriptionError::IncompatibleValueSchema {
+                                        Err(SubscriptionError::incompatibile_value(
                                             path,
-                                            existing: existing_schema.clone(),
-                                            requested: schema,
-                                        })
+                                            existing_schema.clone(),
+                                            schema,
+                                        ))
                                     }
                                 }
                                 _ => {
@@ -526,19 +565,17 @@ where
                             value_schema: existing_value_schema,
                         }) => {
                             if !key_schema.eq(existing_key_schema) {
-                                Err(SubscriptionError::IncompatibleMapSchema {
-                                    is_key: true,
+                                Err(SubscriptionError::incompatibile_map_key(
                                     path,
-                                    existing: existing_key_schema.clone(),
-                                    requested: key_schema,
-                                })
+                                    existing_key_schema.clone(),
+                                    key_schema,
+                                ))
                             } else if !value_schema.eq(existing_value_schema) {
-                                Err(SubscriptionError::IncompatibleMapSchema {
-                                    is_key: false,
+                                Err(SubscriptionError::incompatibile_map_value(
                                     path,
-                                    existing: existing_value_schema.clone(),
-                                    requested: value_schema,
-                                })
+                                    existing_value_schema.clone(),
+                                    value_schema,
+                                ))
                             } else {
                                 let maybe_dl = dl.upgrade();
                                 match maybe_dl {
