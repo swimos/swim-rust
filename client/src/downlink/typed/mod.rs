@@ -17,7 +17,7 @@ pub mod any;
 pub mod event;
 pub mod topic;
 
-use crate::downlink::any::AnyDownlink;
+use crate::downlink::any::{AnyDownlink, TopicKind};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::action::{MapActions, ValueActions};
@@ -27,7 +27,7 @@ use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
-use crate::downlink::{Downlink, Event};
+use crate::downlink::{Downlink, Event, StoppedFuture};
 use common::sink::item::ItemSink;
 use common::topic::Topic;
 use form::Form;
@@ -61,6 +61,24 @@ where
             AnyDownlink::Dropping(ddl) => AnyValueDownlink::Dropping(ValueDownlink::new(ddl)),
             AnyDownlink::Buffered(bdl) => AnyValueDownlink::Buffered(ValueDownlink::new(bdl)),
         }
+    }
+
+    pub fn kind(&self) -> TopicKind {
+        self.inner.kind()
+    }
+
+    /// Determine if the downlink is still running.
+    pub fn is_running(&self) -> bool {
+        self.inner.is_running()
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.inner.same_downlink(&other.inner)
+    }
+
+    /// Get a future that will complete when the downlink stops running.
+    pub fn await_stopped(&self) -> StoppedFuture {
+        self.inner.await_stopped()
     }
 }
 
@@ -105,6 +123,24 @@ where
             AnyDownlink::Dropping(ddl) => AnyMapDownlink::Dropping(MapDownlink::new(ddl)),
             AnyDownlink::Buffered(bdl) => AnyMapDownlink::Buffered(MapDownlink::new(bdl)),
         }
+    }
+
+    pub fn kind(&self) -> TopicKind {
+        self.inner.kind()
+    }
+
+    /// Determine if the downlink is still running.
+    pub fn is_running(&self) -> bool {
+        self.inner.is_running()
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.inner.same_downlink(&other.inner)
+    }
+
+    /// Get a future that will complete when the downlink stops running.
+    pub fn await_stopped(&self) -> StoppedFuture {
+        self.inner.await_stopped()
     }
 }
 
