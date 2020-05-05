@@ -18,6 +18,7 @@ use crate::configuration::downlink::{
 use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
+use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
 use crate::downlink::typed::{MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
@@ -47,7 +48,6 @@ use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
-use crate::downlink::typed::topic::{ApplyForm, ApplyFormMap};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -62,7 +62,7 @@ pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type TypedValueReceiver<T> = UntilFailure<ValueReceiver, ApplyForm<T>>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
-pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormMap<K, V>>;
+pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>;
 
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
@@ -117,8 +117,7 @@ impl Downlinks {
         let (dl, rec) = self
             .subscribe_value_inner(init_value, T::schema(), path)
             .await?;
-        let typed_rec =
-            UntilFailure::new(rec, Default::default());
+        let typed_rec = UntilFailure::new(rec, Default::default());
         Ok((ValueDownlink::new(dl), typed_rec))
     }
 

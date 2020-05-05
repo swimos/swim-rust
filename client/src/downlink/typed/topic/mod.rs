@@ -47,21 +47,21 @@ impl<T> Copy for ApplyForm<T> {}
 
 /// A transformation that attempts to apply forms to a [`Event<ViewWithEvent>`].
 #[derive(Debug)]
-pub struct ApplyFormMap<K, V>(PhantomData<(K, V)>);
+pub struct ApplyFormsMap<K, V>(PhantomData<(K, V)>);
 
-impl<K: Form, V: Form> Default for ApplyFormMap<K, V> {
+impl<K: Form, V: Form> Default for ApplyFormsMap<K, V> {
     fn default() -> Self {
-        ApplyFormMap::new()
+        ApplyFormsMap::new()
     }
 }
 
-impl<K, V> Clone for ApplyFormMap<K, V> {
+impl<K, V> Clone for ApplyFormsMap<K, V> {
     fn clone(&self) -> Self {
-        ApplyFormMap(self.0)
+        ApplyFormsMap(self.0)
     }
 }
 
-impl<K, V> Copy for ApplyFormMap<K, V> {}
+impl<K, V> Copy for ApplyFormsMap<K, V> {}
 
 impl<T: Form> ApplyForm<T> {
     pub(super) fn new() -> Self {
@@ -69,9 +69,9 @@ impl<T: Form> ApplyForm<T> {
     }
 }
 
-impl<K: Form, V: Form> ApplyFormMap<K, V> {
+impl<K: Form, V: Form> ApplyFormsMap<K, V> {
     pub(super) fn new() -> Self {
-        ApplyFormMap(PhantomData)
+        ApplyFormsMap(PhantomData)
     }
 }
 
@@ -80,11 +80,11 @@ impl<T: Form> Transform<Event<SharedValue>> for ApplyForm<T> {
 
     fn transform(&self, value: Event<SharedValue>) -> Self::Out {
         let Event(value, local) = value;
-        <T as Form>::try_from_value(value.as_ref()).map(|t| Event(t, local))
+        T::try_from_value(value.as_ref()).map(|t| Event(t, local))
     }
 }
 
-impl<K: Form, V: Form> Transform<Event<ViewWithEvent>> for ApplyFormMap<K, V> {
+impl<K: Form, V: Form> Transform<Event<ViewWithEvent>> for ApplyFormsMap<K, V> {
     type Out = Result<Event<TypedViewWithEvent<K, V>>, FormDeserializeErr>;
 
     fn transform(&self, input: Event<ViewWithEvent>) -> Self::Out {

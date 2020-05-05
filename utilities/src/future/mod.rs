@@ -155,7 +155,7 @@ pub trait TransformOnce<In> {
 pub trait Transform<In> {
     type Out;
 
-    /// Trans from the input, potentially using the contents of this transformer.
+    /// Transform the input.
     fn transform(&self, input: In) -> Self::Out;
 }
 
@@ -164,7 +164,7 @@ pub trait Transform<In> {
 pub trait TransformMut<In> {
     type Out;
 
-    /// Trans from the input, potentially using the contents of this transformer.
+    /// Transform the input.
     fn transform(&mut self, input: In) -> Self::Out;
 }
 
