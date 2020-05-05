@@ -50,8 +50,7 @@ async fn normal_receive() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",
         "info",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -74,8 +73,7 @@ async fn not_interested_receive() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "foo",
         "bar",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -98,8 +96,7 @@ async fn not_found_receive() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "foo",
         "bar",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
@@ -122,8 +119,8 @@ async fn send_commands() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",
         "publishInfo",
-    )
-    .unwrap();
+    );
+
     let first_message = String::from("Hello, World!");
     let second_message = String::from("Test message");
     let third_message = String::from("Bye, World!");
@@ -150,8 +147,7 @@ pub async fn server_stops_between_requests() {
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",
         "info",
-    )
-    .unwrap();
+    );
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
