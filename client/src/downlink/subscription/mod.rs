@@ -476,6 +476,150 @@ where
         (dl, rec)
     }
 
+    async fn handle_value_request(
+        &mut self,
+        init: Value,
+        path: AbsolutePath,
+        schema: StandardSchema,
+        value_req: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+    ) {
+        let dl = match self.value_downlinks.get(&path) {
+            Some(ValueHandle {
+                ptr: dl,
+                schema: existing_schema,
+            }) => {
+                let maybe_dl = dl.upgrade();
+                match maybe_dl {
+                    Some(mut dl_clone) if dl_clone.is_running() => {
+                        if schema.eq(existing_schema) {
+                            match dl_clone.subscribe().await {
+                                Ok(rec) => Ok((dl_clone, rec)),
+                                Err(_) => {
+                                    self.value_downlinks.remove(&path);
+                                    Ok(self
+                                        .create_new_value_downlink(init, schema, path.clone())
+                                        .await)
+                                }
+                            }
+                        } else {
+                            Err(SubscriptionError::incompatibile_value(
+                                path,
+                                existing_schema.clone(),
+                                schema,
+                            ))
+                        }
+                    }
+                    _ => {
+                        self.value_downlinks.remove(&path);
+                        Ok(self
+                            .create_new_value_downlink(init, schema, path.clone())
+                            .await)
+                    }
+                }
+            }
+            _ => match self.map_downlinks.get(&path) {
+                Some(_) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Value,
+                    DownlinkKind::Map,
+                )),
+                _ => Ok(self
+                    .create_new_value_downlink(init, schema, path.clone())
+                    .await),
+            },
+        };
+        let _ = value_req.send(dl);
+    }
+
+    async fn handle_map_request(
+        &mut self,
+        path: AbsolutePath,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+        map_req: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+    ) {
+        let dl = match self.map_downlinks.get(&path) {
+            Some(MapHandle {
+                ptr: dl,
+                key_schema: existing_key_schema,
+                value_schema: existing_value_schema,
+            }) => {
+                if !key_schema.eq(existing_key_schema) {
+                    Err(SubscriptionError::incompatibile_map_key(
+                        path,
+                        existing_key_schema.clone(),
+                        key_schema,
+                    ))
+                } else if !value_schema.eq(existing_value_schema) {
+                    Err(SubscriptionError::incompatibile_map_value(
+                        path,
+                        existing_value_schema.clone(),
+                        value_schema,
+                    ))
+                } else {
+                    let maybe_dl = dl.upgrade();
+                    match maybe_dl {
+                        Some(mut dl_clone) if dl_clone.is_running() => {
+                            match dl_clone.subscribe().await {
+                                Ok(rec) => Ok((dl_clone, rec)),
+                                Err(_) => {
+                                    self.map_downlinks.remove(&path);
+                                    Ok(self
+                                        .create_new_map_downlink(
+                                            path.clone(),
+                                            key_schema,
+                                            value_schema,
+                                        )
+                                        .await)
+                                }
+                            }
+                        }
+                        _ => {
+                            self.map_downlinks.remove(&path);
+                            Ok(self
+                                .create_new_map_downlink(path.clone(), key_schema, value_schema)
+                                .await)
+                        }
+                    }
+                }
+            }
+            _ => match self.value_downlinks.get(&path) {
+                Some(_) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Map,
+                    DownlinkKind::Value,
+                )),
+                _ => Ok(self
+                    .create_new_map_downlink(path.clone(), key_schema, value_schema)
+                    .await),
+            },
+        };
+        let _ = map_req.send(dl);
+    }
+
+    async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
+        match stop_event.kind {
+            DownlinkKind::Value => {
+                if let Some(ValueHandle { ptr: weak_dl, .. }) =
+                    self.value_downlinks.get(&stop_event.path)
+                {
+                    let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
+                    if !is_running {
+                        self.value_downlinks.remove(&stop_event.path);
+                    }
+                }
+            }
+            DownlinkKind::Map => {
+                if let Some(MapHandle { ptr: weak_dl, .. }) =
+                    self.map_downlinks.get(&stop_event.path)
+                {
+                    let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
+                    if !is_running {
+                        self.map_downlinks.remove(&stop_event.path);
+                    }
+                }
+            }
+        }
+    }
+
     async fn run<Req>(mut self, requests: Req)
     where
         Req: Stream<Item = DownlinkSpecifier>,
@@ -500,149 +644,22 @@ where
                     init,
                     path,
                     schema,
-                    request: value_req,
+                    request,
                 })) => {
-                    let dl = match self.value_downlinks.get(&path) {
-                        Some(ValueHandle {
-                            ptr: dl,
-                            schema: existing_schema,
-                        }) => {
-                            let maybe_dl = dl.upgrade();
-                            match maybe_dl {
-                                Some(mut dl_clone) if dl_clone.is_running() => {
-                                    if schema.eq(existing_schema) {
-                                        match dl_clone.subscribe().await {
-                                            Ok(rec) => Ok((dl_clone, rec)),
-                                            Err(_) => {
-                                                self.value_downlinks.remove(&path);
-                                                Ok(self
-                                                    .create_new_value_downlink(
-                                                        init,
-                                                        schema,
-                                                        path.clone(),
-                                                    )
-                                                    .await)
-                                            }
-                                        }
-                                    } else {
-                                        Err(SubscriptionError::incompatibile_value(
-                                            path,
-                                            existing_schema.clone(),
-                                            schema,
-                                        ))
-                                    }
-                                }
-                                _ => {
-                                    self.value_downlinks.remove(&path);
-                                    Ok(self
-                                        .create_new_value_downlink(init, schema, path.clone())
-                                        .await)
-                                }
-                            }
-                        }
-                        _ => match self.map_downlinks.get(&path) {
-                            Some(_) => Err(SubscriptionError::bad_kind(
-                                DownlinkKind::Value,
-                                DownlinkKind::Map,
-                            )),
-                            _ => Ok(self
-                                .create_new_value_downlink(init, schema, path.clone())
-                                .await),
-                        },
-                    };
-                    let _ = value_req.send(dl);
+                    self.handle_value_request(init, path, schema, request).await;
                 }
                 Some(Either::Left(DownlinkSpecifier::Map {
                     path,
                     key_schema,
                     value_schema,
-                    request: map_req,
+                    request,
                 })) => {
-                    let dl = match self.map_downlinks.get(&path) {
-                        Some(MapHandle {
-                            ptr: dl,
-                            key_schema: existing_key_schema,
-                            value_schema: existing_value_schema,
-                        }) => {
-                            if !key_schema.eq(existing_key_schema) {
-                                Err(SubscriptionError::incompatibile_map_key(
-                                    path,
-                                    existing_key_schema.clone(),
-                                    key_schema,
-                                ))
-                            } else if !value_schema.eq(existing_value_schema) {
-                                Err(SubscriptionError::incompatibile_map_value(
-                                    path,
-                                    existing_value_schema.clone(),
-                                    value_schema,
-                                ))
-                            } else {
-                                let maybe_dl = dl.upgrade();
-                                match maybe_dl {
-                                    Some(mut dl_clone) if dl_clone.is_running() => {
-                                        match dl_clone.subscribe().await {
-                                            Ok(rec) => Ok((dl_clone, rec)),
-                                            Err(_) => {
-                                                self.map_downlinks.remove(&path);
-                                                Ok(self
-                                                    .create_new_map_downlink(
-                                                        path.clone(),
-                                                        key_schema,
-                                                        value_schema,
-                                                    )
-                                                    .await)
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        self.map_downlinks.remove(&path);
-                                        Ok(self
-                                            .create_new_map_downlink(
-                                                path.clone(),
-                                                key_schema,
-                                                value_schema,
-                                            )
-                                            .await)
-                                    }
-                                }
-                            }
-                        }
-                        _ => match self.value_downlinks.get(&path) {
-                            Some(_) => Err(SubscriptionError::bad_kind(
-                                DownlinkKind::Map,
-                                DownlinkKind::Value,
-                            )),
-                            _ => Ok(self
-                                .create_new_map_downlink(path.clone(), key_schema, value_schema)
-                                .await),
-                        },
-                    };
-                    let _ = map_req.send(dl);
+                    self.handle_map_request(path, key_schema, value_schema, request)
+                        .await;
                 }
-                Some(Either::Right(stop_event)) => match stop_event.kind {
-                    DownlinkKind::Value => {
-                        if let Some(ValueHandle { ptr: weak_dl, .. }) =
-                            self.value_downlinks.get(&stop_event.path)
-                        {
-                            let is_running =
-                                weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
-                            if !is_running {
-                                self.value_downlinks.remove(&stop_event.path);
-                            }
-                        }
-                    }
-                    DownlinkKind::Map => {
-                        if let Some(MapHandle { ptr: weak_dl, .. }) =
-                            self.map_downlinks.get(&stop_event.path)
-                        {
-                            let is_running =
-                                weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
-                            if !is_running {
-                                self.map_downlinks.remove(&stop_event.path);
-                            }
-                        }
-                    }
-                },
+                Some(Either::Right(stop_event)) => {
+                    self.handle_stop(stop_event).await;
+                }
                 None => {
                     break;
                 }
