@@ -153,7 +153,7 @@ impl TaskManager {
         } = self;
 
         let mut host_managers: HashMap<
-            String,
+            url::Url,
             (
                 mpsc::Sender<Envelope>,
                 mpsc::Sender<mpsc::Sender<RouterEvent>>,
@@ -166,9 +166,8 @@ impl TaskManager {
                 .await
                 .ok_or(RoutingError::ConnectionError)?;
 
-            let (sink, stream_registrator) = host_managers
-                .entry(target.host.to_string())
-                .or_insert_with(|| {
+            let (sink, stream_registrator) =
+                host_managers.entry(target.host.clone()).or_insert_with(|| {
                     let (host_manager, sink, stream_registrator) =
                         HostManager::new(target.clone(), connection_pool.clone(), config);
                     tokio::spawn(host_manager.run());

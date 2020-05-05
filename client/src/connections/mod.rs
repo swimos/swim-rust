@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use either::Either;
 use futures::select;
 use futures::stream;
 use futures::{Sink, Stream, StreamExt};
@@ -144,6 +143,7 @@ impl ConnectionPool {
 
 enum RequestType {
     NewConnection(ConnectionRequest),
+    Prune,
     Close,
 }
 
@@ -188,32 +188,24 @@ where
         } = self;
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
 
-        //Todo merge that into the stream combine
         let mut prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
         let requests_rx = combine_connection_streams(connection_request_rx, stop_request_rx);
         let mut fused_requests = requests_rx.fuse();
 
         loop {
-            let either: Option<Either<(), RequestType>> = select! {
-                _ = prune_timer => Some(Either::Left(())),
-                req = fused_requests.next() => req.map(Either::Right),
-                complete => {
-                    // todo: define final state
-                    unimplemented!();
-                }
-            };
+            let request: RequestType = select! {
+            timer = prune_timer => Some(RequestType::Prune),
+            req = fused_requests.next() => req,
+            }
+            .ok_or(ConnectionError::ConnectError(None))?;
 
-            match either {
-                Some(Either::Left(_)) => {
-                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
-                    prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
-                }
-                Some(Either::Right(RequestType::NewConnection(req))) => {
+            match request {
+                RequestType::NewConnection(conn_req) => {
                     let ConnectionRequest {
                         host_url,
                         tx: request_tx,
                         recreate,
-                    } = req;
+                    } = conn_req;
 
                     let host = host_url.as_str().to_owned();
 
@@ -259,11 +251,13 @@ where
                         .send(connection_channel)
                         .map_err(|_| ConnectionError::ConnectError(None))?;
                 }
-                None => {
-                    // todo: define final state
-                    unimplemented!()
+
+                RequestType::Prune => {
+                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
+                    prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
                 }
-                Some(Either::Right(RequestType::Close)) => {
+
+                RequestType::Close => {
                     break;
                 }
             }

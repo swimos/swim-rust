@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use crate::router::{RouterEvent, RoutingError};
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
-use common::warp::path::AbsolutePath;
+use common::warp::path::{AbsolutePath, RelativePath};
 use std::convert::TryFrom;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -48,7 +48,7 @@ impl IncomingHostTask {
     pub async fn run(self) -> Result<(), RoutingError> {
         let IncomingHostTask { mut task_rx } = self;
 
-        let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
+        let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection = None;
 
         loop {
@@ -62,7 +62,7 @@ impl IncomingHostTask {
 
                     IncomingRequest::Subscribe((target, event_tx)) => {
                         subscribers
-                            .entry(target.relative_path().to_string())
+                            .entry(target.relative_path())
                             .or_insert_with(Vec::new)
                             .push(event_tx);
                     }
@@ -120,24 +120,28 @@ impl IncomingHostTask {
 
                     IncomingRequest::Subscribe((target, event_tx)) => {
                         subscribers
-                            .entry(target.relative_path().to_string())
+                            .entry(target.relative_path())
                             .or_insert_with(Vec::new)
                             .push(event_tx);
                     }
 
                     IncomingRequest::Message(message) => {
-                        let message = message.to_text().unwrap();
-                        let value = parse_single(message).unwrap();
-                        let envelope = Envelope::try_from(value).unwrap();
-                        let destination = envelope.destination();
+                        let message = message
+                            .to_text()
+                            .map_err(|_| RoutingError::ConnectionError)?;
+                        let value =
+                            parse_single(message).map_err(|_| RoutingError::ConnectionError)?;
+                        let envelope =
+                            Envelope::try_from(value).map_err(|_| RoutingError::ConnectionError)?;
+                        let destination = envelope.relative_path();
                         let event = RouterEvent::Envelope(envelope);
 
-                        if let Some(destination) = destination {
-                            if subscribers.contains_key(&destination) {
+                        if let Some(relative_path) = destination {
+                            if subscribers.contains_key(&relative_path) {
                                 //Todo Replace with tracing
                                 println!("{:?}", event);
                                 let destination_subs = subscribers
-                                    .get_mut(&destination)
+                                    .get_mut(&relative_path)
                                     .ok_or(RoutingError::ConnectionError)?;
 
                                 for subscriber in destination_subs.iter_mut() {
