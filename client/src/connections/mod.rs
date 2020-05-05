@@ -12,20 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::select;
+use futures::stream;
+use futures::{Sink, Stream, StreamExt};
+use futures_util::future::TryFutureExt;
+use futures_util::FutureExt;
+use futures_util::TryStreamExt;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
-
-use either::Either;
-use futures::future::{AbortHandle, Abortable, Aborted};
-use futures::select;
-use futures::{Sink, Stream, StreamExt};
-use futures_util::future::TryFutureExt;
-use futures_util::FutureExt;
-use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, TrySendError};
 use tokio::sync::oneshot;
@@ -62,10 +60,11 @@ struct ConnectionRequest {
 
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
+#[derive(Clone)]
 pub struct ConnectionPool {
-    connection_requests_abort_handle: AbortHandle,
-    connection_requests_handler: JoinHandle<Result<Result<(), ConnectionError>, Aborted>>,
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
+    _connection_requests_handler: Arc<JoinHandle<Result<(), ConnectionError>>>,
+    stop_request_tx: mpsc::Sender<oneshot::Sender<Result<(), ConnectionError>>>,
 }
 
 impl ConnectionPool {
@@ -83,23 +82,23 @@ impl ConnectionPool {
         WsFac: WebsocketFactory + 'static,
     {
         let (connection_request_tx, connection_request_rx) = mpsc::channel(buffer_size);
+        let (stop_request_tx, stop_request_rx) = mpsc::channel(buffer_size);
 
-        let (connection_requests_abort_handle, abort_registration) = AbortHandle::new_pair();
-
-        let task = PoolTask::new(connection_request_rx, connection_factory, buffer_size);
-
-        // TODO: Add configuration for connections
-        let accept_connection_requests_future = Abortable::new(
-            task.run(Duration::from_secs(5), Duration::from_secs(10)),
-            abort_registration,
+        let task = PoolTask::new(
+            connection_request_rx,
+            connection_factory,
+            buffer_size,
+            stop_request_rx,
         );
 
-        let connection_requests_handler = tokio::task::spawn(accept_connection_requests_future);
+        // TODO: Add configuration for connections
+        let connection_requests_handler =
+            tokio::task::spawn(task.run(Duration::from_secs(5), Duration::from_secs(10)));
 
         ConnectionPool {
-            connection_requests_abort_handle,
-            connection_requests_handler,
             connection_request_tx,
+            _connection_requests_handler: Arc::new(connection_requests_handler),
+            stop_request_tx,
         }
     }
 
@@ -117,6 +116,7 @@ impl ConnectionPool {
     pub fn request_connection(
         &mut self,
         host_url: url::Url,
+        recreate: bool,
     ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>
     {
         let (tx, rx) = oneshot::channel();
@@ -125,26 +125,7 @@ impl ConnectionPool {
             .try_send(ConnectionRequest {
                 host_url,
                 tx,
-                recreate: false,
-            })
-            .map_err(|_| ConnectionError::ConnectError(None))?;
-
-        Ok(rx)
-    }
-
-    /// Requests a new connection for a given host address
-    pub fn recreate_connection(
-        &mut self,
-        host_url: url::Url,
-    ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>
-    {
-        let (tx, rx) = oneshot::channel();
-
-        self.connection_request_tx
-            .try_send(ConnectionRequest {
-                host_url,
-                tx,
-                recreate: true,
+                recreate,
             })
             .map_err(|_| ConnectionError::ConnectError(None))?;
 
@@ -153,19 +134,27 @@ impl ConnectionPool {
 
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
-    pub async fn close(self) {
-        self.connection_requests_abort_handle.abort();
-        let _ = self.connection_requests_handler.await;
+    pub async fn close(mut self) {
+        let (response_tx, response_rx) = oneshot::channel();
+        let _ = self.stop_request_tx.send(response_tx);
+        let _ = response_rx.await;
     }
+}
+
+enum RequestType {
+    NewConnection(ConnectionRequest),
+    Prune,
+    Close,
 }
 
 struct PoolTask<WsFac>
 where
     WsFac: WebsocketFactory + 'static,
 {
-    rx: mpsc::Receiver<ConnectionRequest>,
+    connection_request_rx: mpsc::Receiver<ConnectionRequest>,
     connection_factory: WsFac,
     buffer_size: usize,
+    stop_request_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
 }
 
 impl<WsFac> PoolTask<WsFac>
@@ -173,14 +162,16 @@ where
     WsFac: WebsocketFactory + 'static,
 {
     fn new(
-        rx: mpsc::Receiver<ConnectionRequest>,
+        connection_request_rx: mpsc::Receiver<ConnectionRequest>,
         connection_factory: WsFac,
         buffer_size: usize,
+        stop_request_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
     ) -> Self {
         PoolTask {
-            rx,
+            connection_request_rx,
             connection_factory,
             buffer_size,
+            stop_request_rx,
         }
     }
 
@@ -190,36 +181,31 @@ where
         conn_timeout: Duration,
     ) -> Result<(), ConnectionError> {
         let PoolTask {
-            rx,
+            connection_request_rx,
             mut connection_factory,
             buffer_size,
+            stop_request_rx,
         } = self;
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
 
         let mut prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
-        let mut fused_requests = rx.fuse();
+        let requests_rx = combine_connection_streams(connection_request_rx, stop_request_rx);
+        let mut fused_requests = requests_rx.fuse();
 
         loop {
-            let either: Option<Either<(), ConnectionRequest>> = select! {
-                _ = prune_timer => Some(Either::Left(())),
-                req = fused_requests.next() => req.map(Either::Right),
-                complete => {
-                    // todo: define final state
-                    unimplemented!();
-                }
-            };
+            let request: RequestType = select! {
+            timer = prune_timer => Some(RequestType::Prune),
+            req = fused_requests.next() => req,
+            }
+            .ok_or(ConnectionError::ConnectError(None))?;
 
-            match either {
-                Some(Either::Left(_)) => {
-                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
-                    prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
-                }
-                Some(Either::Right(req)) => {
+            match request {
+                RequestType::NewConnection(conn_req) => {
                     let ConnectionRequest {
                         host_url,
                         tx: request_tx,
                         recreate,
-                    } = req;
+                    } = conn_req;
 
                     let host = host_url.as_str().to_owned();
 
@@ -265,13 +251,29 @@ where
                         .send(connection_channel)
                         .map_err(|_| ConnectionError::ConnectError(None))?;
                 }
-                None => {
-                    // todo: define final state
-                    unimplemented!()
+
+                RequestType::Prune => {
+                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
+                    prune_timer = tokio::time::delay_for(reaper_frequency).fuse();
+                }
+
+                RequestType::Close => {
+                    break;
                 }
             }
         }
+        Ok(())
     }
+}
+
+fn combine_connection_streams(
+    connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
+    close_requests_rx: mpsc::Receiver<oneshot::Sender<Result<(), ConnectionError>>>,
+) -> impl stream::Stream<Item = RequestType> + Send + 'static {
+    let connection_requests = connection_requests_rx.map(RequestType::NewConnection);
+    let close_request = close_requests_rx.map(|_| RequestType::Close);
+
+    stream::select(connection_requests, close_request)
 }
 
 struct SendTask<S>
@@ -468,7 +470,7 @@ impl ConnectionSender {
 type ConnectionReceiver = mpsc::Receiver<Message>;
 
 /// Connection error types returned by the connection pool and the connections.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ConnectionError {
     /// Error that occurred when connecting to a remote host. With an optional error message.
     ConnectError(Option<Cow<'static, str>>),
@@ -492,12 +494,6 @@ impl From<RequestError> for ConnectionError {
 impl From<tokio::task::JoinError> for ConnectionError {
     fn from(_: tokio::task::JoinError) -> Self {
         ConnectionError::ConnectError(None)
-    }
-}
-
-impl From<Aborted> for ConnectionError {
-    fn from(_: Aborted) -> Self {
-        ConnectionError::ClosedError
     }
 }
 

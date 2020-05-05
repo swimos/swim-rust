@@ -35,6 +35,7 @@ fn router_config() -> RouterParams {
 }
 
 #[tokio::test]
+#[ignore]
 pub async fn foo() {
     extern crate tracing;
 
@@ -43,7 +44,12 @@ pub async fn foo() {
         .init();
 
     let mut router = SwimRouter::new(router_config()).await;
-    let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "foo",
+        "bar",
+    )
+    .unwrap();
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
     let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
 
@@ -65,10 +71,16 @@ pub async fn foo() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn normal_receive() {
     let mut router = SwimRouter::new(router_config()).await;
 
-    let path = AbsolutePath::new("ws://127.0.0.1:9001", "/unit/foo", "info");
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "/unit/foo",
+        "info",
+    )
+    .unwrap();
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -81,10 +93,16 @@ async fn normal_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn not_interested_receive() {
     let mut router = SwimRouter::new(router_config()).await;
 
-    let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "foo",
+        "bar",
+    )
+    .unwrap();
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -97,10 +115,16 @@ async fn not_interested_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[ignore]
 async fn not_found_receive() {
     let mut router = SwimRouter::new(router_config()).await;
 
-    let path = AbsolutePath::new("ws://127.0.0.1:9001", "foo", "bar");
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "foo",
+        "bar",
+    )
+    .unwrap();
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
@@ -117,7 +141,12 @@ async fn not_found_receive() {
 async fn send_commands() {
     let mut router = SwimRouter::new(router_config()).await;
 
-    let path = AbsolutePath::new("ws://127.0.0.1:9001", "/unit/foo", "publishInfo");
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "/unit/foo",
+        "publishInfo",
+    )
+    .unwrap();
     let first_message = String::from("Hello, World!");
     let second_message = String::from("Test message");
     let third_message = String::from("Bye, World!");
