@@ -20,7 +20,8 @@ use tokio::macros::support::Pin;
 use pin_project::pin_project;
 use utilities::future::retryable::{ResettableFuture, RetryableFuture};
 
-use crate::router::{acquire_sender, ConnReqSender, RoutingError};
+use crate::router::{acquire_sender, ConnectionRequest, RoutingError};
+use tokio::sync::mpsc;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 /// A retryable request used by the router. The [`RetryableRequest`] is provided with a future factory
@@ -52,16 +53,14 @@ impl RetryableRequest<(), ()> {
 
     pub fn new_future(
         message: String,
-        sender: ConnReqSender,
-        host: String,
+        sender: mpsc::Sender<ConnectionRequest>,
         strategy: RetryStrategy,
     ) -> impl Future<Output = Result<(), RoutingError>> {
         let retryable = RetryableRequest::new(move |is_retry| {
-            let host = host.clone();
             let sender = sender.clone();
             let message = message.clone();
 
-            acquire_sender(sender, host, is_retry).and_then(|mut s| async move {
+            acquire_sender(sender, is_retry).and_then(|mut s| async move {
                 s.send_message(&message)
                     .map_err(|_| RoutingError::ConnectionError)
                     .await
