@@ -18,6 +18,7 @@ use crate::configuration::downlink::{
 use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
+use crate::downlink::typed::{MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
@@ -30,6 +31,7 @@ use common::sink::item::ItemSender;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 use either::Either;
+use form::ValidatedForm;
 use futures::stream::Fuse;
 use futures::Stream;
 use futures_util::future::{ready, TryFutureExt};
@@ -51,12 +53,16 @@ pub mod envelopes;
 pub mod tests;
 
 pub type AnyValueDownlink = AnyDownlink<value::Action, SharedValue>;
-type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
+pub type TypedValueDownlink<T> = ValueDownlink<AnyValueDownlink, T>;
+
 pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
-type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
+pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
+
+type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
+type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkSpecifier>,
@@ -85,13 +91,30 @@ impl Downlinks {
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
     /// subscription to its events (if there are ever no subscribers the downlink will stop
     /// running.
-    pub async fn subscribe_value(
+    pub async fn subscribe_value_untyped(
         &mut self,
         init: Value,
         path: AbsolutePath,
     ) -> Result<(AnyValueDownlink, ValueReceiver)> {
         self.subscribe_value_inner(init, StandardSchema::Anything, path)
             .await
+    }
+
+    /// Attempt to subscribe to a remote value lane where the type of the values is described by a
+    /// [`ValidatedForm`].
+    pub async fn subscribe_value<T>(
+        &mut self,
+        init: T,
+        path: AbsolutePath,
+    ) -> Result<TypedValueDownlink<T>>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        let init_value = init.into_value();
+        let (dl, _) = self
+            .subscribe_value_inner(init_value, T::schema(), path)
+            .await?;
+        Ok(ValueDownlink::new(dl))
     }
 
     async fn subscribe_value_inner(
@@ -116,12 +139,28 @@ impl Downlinks {
     /// Attempt to subscribe to a map lane. The downlink is returned with a single active
     /// subscription to its events (if there are ever no subscribers the downlink will stop
     /// running.
-    pub async fn subscribe_map(
+    pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
     ) -> Result<(AnyMapDownlink, MapReceiver)> {
         self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
             .await
+    }
+
+    /// Attempt to subscribe to a remote map lane where the types of the keys and values are
+    /// described by  [`ValidatedForm`]s.
+    pub async fn subscribe_map<K, V>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<TypedMapDownlink<K, V>>
+    where
+        K: ValidatedForm + Send + 'static,
+        V: ValidatedForm + Send + 'static,
+    {
+        let (dl, _) = self
+            .subscribe_map_inner(K::schema(), V::schema(), path)
+            .await?;
+        Ok(MapDownlink::new(dl))
     }
 
     async fn subscribe_map_inner(
