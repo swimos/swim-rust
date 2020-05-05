@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use crate::router::{CloseReceiver, RouterEvent, RoutingError};
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
-use common::warp::path::AbsolutePath;
+use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
 use std::convert::TryFrom;
 use tokio::stream::StreamExt;
@@ -53,7 +53,7 @@ impl IncomingHostTask {
     pub async fn run(self) -> Result<(), RoutingError> {
         let IncomingHostTask { task_rx, close_rx } = self;
 
-        let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
+        let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection: Option<mpsc::Receiver<Message>> = None;
 
         let mut rx = combine_incoming_streams(task_rx, close_rx);
@@ -87,22 +87,22 @@ impl IncomingHostTask {
 
                 IncomingRequest::Subscribe((target, event_tx)) => {
                     subscribers
-                        .entry(target.relative_path().to_string())
+                        .entry(target.relative_path())
                         .or_insert_with(Vec::new)
                         .push(event_tx);
                 }
 
                 IncomingRequest::Message(message) => {
-                    let message = message.to_text().unwrap();
-                    let value = parse_single(message).unwrap();
-                    let envelope = Envelope::try_from(value).unwrap();
-                    let destination = envelope.destination();
+                    let message = message.to_text().map_err(|_| RoutingError::ConnectionError)?;
+                    let value = parse_single(message).map_err(|_| RoutingError::ConnectionError)?;
+                    let envelope = Envelope::try_from(value).map_err(|_| RoutingError::ConnectionError)?;
+                    let destination = envelope.relative_path();
                     let event = RouterEvent::Envelope(envelope);
 
                     tracing::trace!("{:?}", event);
 
-                    if let Some(destination) = destination {
-                        broadcast_destination(&mut subscribers, destination, event).await?;
+                    if let Some(relative_path) = destination {
+                        broadcast_destination(&mut subscribers, relative_path, event).await?;
                     } else {
                         tracing::trace!("Host messages are not supported: {:?}", event);
                     }
@@ -136,7 +136,7 @@ impl IncomingHostTask {
 }
 
 async fn broadcast_all(
-    subscribers: &mut HashMap<String, Vec<mpsc::Sender<RouterEvent>>>,
+    subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     event: RouterEvent,
 ) -> Result<(), RoutingError> {
     for (_, destination) in subscribers.iter_mut() {
@@ -152,8 +152,8 @@ async fn broadcast_all(
 }
 
 async fn broadcast_destination(
-    subscribers: &mut HashMap<String, Vec<mpsc::Sender<RouterEvent>>>,
-    destination: String,
+    subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
+    destination: RelativePath,
     event: RouterEvent,
 ) -> Result<(), RoutingError> {
     if subscribers.contains_key(&destination) {

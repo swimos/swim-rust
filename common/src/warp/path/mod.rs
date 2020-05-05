@@ -24,9 +24,9 @@ pub struct AbsolutePath {
 }
 
 impl AbsolutePath {
-    pub fn new(host: &str, node: &str, lane: &str) -> Result<AbsolutePath, ParseError> {
+    pub fn new(host: url::Url, node: &str, lane: &str) -> Result<AbsolutePath, ParseError> {
         Ok(AbsolutePath {
-            host: url::Url::parse(host)?,
+            host,
             node: node.to_string(),
             lane: lane.to_string(),
         })
@@ -38,7 +38,7 @@ impl AbsolutePath {
     /// ```
     /// use common::warp::path::*;
     ///
-    /// let abs = AbsolutePath::new("ws://127.0.0.1/", "node", "lane").unwrap();
+    /// let abs = AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane").unwrap();
     ///
     /// assert_eq!(abs.split(), (url::Url::parse("ws://127.0.0.1").unwrap(), RelativePath::new("node", "lane")));
     /// ```
@@ -88,19 +88,11 @@ impl RelativePath {
     ///
     /// let rel = RelativePath::new("node", "lane");
     ///
-    /// assert_eq!(rel.for_host("host"), AbsolutePath::new("host", "node", "lane"))
+    /// assert_eq!(rel.for_host(url::Url::parse("ws://127.0.0.1").unwrap()), AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane"))
     /// ```
-    pub fn for_host(self, host: &str) -> Result<AbsolutePath, ParseError> {
+    pub fn for_host(self, host: url::Url) -> Result<AbsolutePath, ParseError> {
         let RelativePath { node, lane } = self;
-        Ok(AbsolutePath {
-            host: url::Url::parse(host)?,
-            node,
-            lane,
-        })
-    }
-
-    pub fn as_string(&self) -> String {
-        format!("{}/{}", self.node, self.lane)
+        Ok(AbsolutePath { host, node, lane })
     }
 }
 

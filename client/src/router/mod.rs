@@ -191,7 +191,7 @@ impl TaskManager {
             config,
         } = self;
 
-        let mut host_managers: HashMap<String, HostManagerHandle> = HashMap::new();
+        let mut host_managers: HashMap<url::Url, HostManagerHandle> = HashMap::new();
 
         let mut rx = combine_router_task(request_rx, close_rx.clone());
 
@@ -201,7 +201,7 @@ impl TaskManager {
             match task {
                 RouterTask::Request((target, response_tx)) => {
                     let (sink, stream_registrator, _) = host_managers
-                        .entry(target.host.to_string())
+                        .entry(target.host.clone())
                         .or_insert_with(|| {
                             let (host_manager, sink, stream_registrator) = HostManager::new(
                                 target.clone(),
