@@ -16,6 +16,7 @@
 mod tests;
 
 use crate::downlink::model::map::MapModification;
+use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
 use crate::router::RoutingError;
 use common::model::Value;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
@@ -27,7 +28,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe

@@ -12,15 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::watch;
-use futures::{Stream, ready};
 use futures::task::{Context, Poll};
+use futures::{ready, Stream};
 use pin_project::pin_project;
 use std::pin::Pin;
+use tokio::sync::watch;
 
 pub mod map;
 pub mod value;
 
+#[cfg(test)]
+mod tests;
+
+/// Creates a wrapper around a [`tokio::sync::watch`] channel that removes any duplicate
+/// observations by attaching an epoch to values passing through the channel.
 fn channel<T: Clone>(init: T) -> (EpochSender<T>, EpochReceiver<T>) {
     let (tx, rx) = watch::channel::<(u64, T)>((1, init));
     (EpochSender::new(tx), EpochReceiver::new(rx))
@@ -33,7 +38,6 @@ struct EpochSender<T> {
 }
 
 impl<T: Clone> EpochSender<T> {
-
     fn new(sender: watch::Sender<(u64, T)>) -> Self {
         EpochSender {
             inner: sender,
@@ -41,13 +45,12 @@ impl<T: Clone> EpochSender<T> {
         }
     }
 
-    fn broadcast(&mut self, value: T) -> Result<(), watch::error::SendError<(u64, T)>>{
+    fn broadcast(&mut self, value: T) -> Result<(), watch::error::SendError<(u64, T)>> {
         let current_epoch = self.epoch;
         self.inner.broadcast((current_epoch, value))?;
         self.epoch += 1;
         Ok(())
     }
-
 }
 
 #[pin_project]
@@ -59,7 +62,6 @@ struct EpochReceiver<T> {
 }
 
 impl<T: Clone> EpochReceiver<T> {
-
     fn new(receiver: watch::Receiver<(u64, T)>) -> Self {
         EpochReceiver {
             inner: receiver,
@@ -72,15 +74,13 @@ impl<T: Clone> EpochReceiver<T> {
             let (epoch, value) = self.inner.recv().await?;
             if epoch != self.prev_epoch {
                 self.prev_epoch = epoch;
-                return Some(value)
+                return Some(value);
             }
         }
     }
-
 }
 
 impl<T: Clone> EpochReceiver<Option<T>> {
-
     async fn recv_defined(&mut self) -> Option<T> {
         loop {
             let next = self.recv().await?;
@@ -89,7 +89,6 @@ impl<T: Clone> EpochReceiver<Option<T>> {
             }
         }
     }
-
 }
 
 impl<T: Clone> Stream for EpochReceiver<T> {
@@ -106,7 +105,7 @@ impl<T: Clone> Stream for EpochReceiver<T> {
                         *prev_epoch = epoch;
                         break Poll::Ready(Some(value));
                     }
-                },
+                }
                 _ => {
                     break Poll::Ready(None);
                 }
