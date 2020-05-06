@@ -12,51 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::ready;
-use futures::task::{Context, Poll};
-use futures::Future;
 use futures_util::FutureExt;
-use tokio::macros::support::Pin;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use pin_project::pin_project;
 use utilities::future::retryable::ResettableFuture;
 
 use crate::connections::ConnectionSender;
 use crate::router::ConnectionRequest;
 use utilities::err::MaybeTransientErr;
-
-pub type SendResult<Sender, T, Err> = Result<(T, Option<Sender>), (Err, Option<Sender>)>;
-
-#[pin_project]
-pub struct RetryableRequest<Sender, Fut, Fac, Unwrapper, Err> {
-    sender: Option<Sender>,
-    fac: Fac,
-    #[pin]
-    f: Fut,
-    last_error: Option<Err>,
-    unwrapper: Unwrapper,
-}
-
-impl<Sender, Fac, Fut, In, T, Unwrapper, Err> RetryableRequest<Sender, Fut, Fac, Unwrapper, Err>
-where
-    Fac: FnMut(Sender, In, bool) -> Fut,
-    Fut: Future<Output = SendResult<Sender, T, Err>>,
-    Unwrapper: FnMut(Err) -> In,
-{
-    fn new(sender: Sender, data: In, mut fac: Fac, unwrapper: Unwrapper) -> Self {
-        let f = fac(sender, data, false);
-
-        RetryableRequest {
-            sender: None,
-            fac,
-            f,
-            last_error: None,
-            unwrapper,
-        }
-    }
-}
+use utilities::future::retryable::request::{RetryableRequest, SendResult};
 
 pub fn new_request(
     sender: mpsc::Sender<ConnectionRequest>,
@@ -157,65 +122,6 @@ impl<T> MaybeTransientErr for MpscRetryErr<T> {
     }
 }
 
-impl<Sender, Fac, Fut, In, T, Unwrapper, Err> ResettableFuture
-    for RetryableRequest<Sender, Fut, Fac, Unwrapper, Err>
-where
-    Fac: FnMut(Sender, In, bool) -> Fut,
-    Fut: Future<Output = SendResult<Sender, T, Err>>,
-    Unwrapper: FnMut(Err) -> In,
-    Err: MaybeTransientErr,
-{
-    fn reset(self: Pin<&mut Self>) -> bool {
-        let mut projected = self.project();
-        let fac = projected.fac;
-
-        if let Some(sender) = projected.sender.take() {
-            if let Some(e) = projected.last_error.take() {
-                if e.is_transient() {
-                    let unwrapper = projected.unwrapper;
-                    let data = unwrapper(e);
-                    let f = fac(sender, data, true);
-                    projected.f.set(f);
-
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-}
-
-impl<Sender, Fac, Fut, In, T, Unwrapper, Err> Future
-    for RetryableRequest<Sender, Fut, Fac, Unwrapper, Err>
-where
-    Fac: FnMut(Sender, In, bool) -> Fut,
-    Fut: Future<Output = SendResult<Sender, T, Err>>,
-    Unwrapper: FnMut(Err) -> In,
-    Err: MaybeTransientErr,
-{
-    type Output = Result<T, Err>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let projected = self.project();
-        let result = ready!(projected.f.poll(cx));
-        match result {
-            Ok((result, _sender)) => Poll::Ready(Ok(result)),
-            Err((err, sender)) => {
-                let failed = err.permanent();
-                *projected.last_error = Some(err);
-                *projected.sender = sender;
-
-                Poll::Ready(Err(failed))
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroUsize;
@@ -223,10 +129,11 @@ mod tests {
     use utilities::future::retryable::strategy::RetryStrategy;
     use utilities::future::retryable::RetryableFuture;
 
-    use crate::router::retry::{MpscRetryErr, RetryableRequest, SendResult};
+    use crate::router::retry::MpscRetryErr;
     use futures::Future;
     use tokio::sync::mpsc;
     use tokio_tungstenite::tungstenite::protocol::Message;
+    use utilities::future::retryable::request::{RetryableRequest, SendResult};
 
     #[tokio::test]
     async fn simple_send() {

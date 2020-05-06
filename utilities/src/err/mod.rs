@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/// A trait to determine whether or not an error is transient or permanent. This is useful for
+/// determining if a HTTP request is transient (such as the host being temporarily unavailable) or
+/// permanent (such as a host not being found)
 pub trait MaybeTransientErr {
+    // Whether or not the current error is transient.
     fn is_transient(&self) -> bool;
+    /// Return a new instance indicating a failed or final state. Useful for changing between a failed
+    /// internal state to a more general state for the caller.
     fn permanent(&self) -> Self;
 }
