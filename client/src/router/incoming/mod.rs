@@ -19,8 +19,9 @@ use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
 use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
 use std::convert::TryFrom;
-use tokio::stream::StreamExt;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
@@ -142,13 +143,16 @@ async fn broadcast_all(
     subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     event: RouterEvent,
 ) -> Result<(), RoutingError> {
+    let futures = FuturesUnordered::new();
+
     for (_, destination) in subscribers.iter_mut() {
         for subscriber in destination {
-            subscriber
-                .send(event.clone())
-                .await
-                .map_err(|_| RoutingError::ConnectionError)?;
+            futures.push(subscriber.send(event.clone()));
         }
+    }
+
+    for result in futures.collect::<Vec<_>>().await {
+        result?
     }
 
     Ok(())
@@ -159,20 +163,24 @@ async fn broadcast_destination(
     destination: RelativePath,
     event: RouterEvent,
 ) -> Result<(), RoutingError> {
+    let futures = FuturesUnordered::new();
+
     if subscribers.contains_key(&destination) {
         let destination_subs = subscribers
             .get_mut(&destination)
             .ok_or(RoutingError::ConnectionError)?;
 
         for subscriber in destination_subs.iter_mut() {
-            subscriber
-                .send(event.clone())
-                .await
-                .map_err(|_| RoutingError::ConnectionError)?;
+            futures.push(subscriber.send(event.clone()));
         }
     } else {
         tracing::trace!("No downlink interested in event: {:?}", event);
     };
+
+    for result in futures.collect::<Vec<_>>().await {
+        result?
+    }
+
     Ok(())
 }
 
