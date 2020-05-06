@@ -25,8 +25,9 @@ use futures::{select_biased, Stream};
 use futures::{FutureExt, StreamExt};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe
@@ -103,7 +104,7 @@ enum SpecialAction {
 
 #[derive(Debug)]
 enum BridgeMessage {
-    Register(watch::Receiver<Mod>),
+    Register(EpochReceiver<Mod>),
     Special(SpecialAction, oneshot::Sender<()>),
     Flush(oneshot::Sender<()>),
 }
@@ -114,7 +115,7 @@ pub struct ConsumerTask {
     bridge: mpsc::Sender<BridgeMessage>,
     max_active_keys: usize,
     epoch: u64,
-    senders: HashMap<Value, watch::Sender<Mod>>,
+    senders: HashMap<Value, EpochSender<Mod>>,
     ages: BTreeMap<u64, Value>,
 }
 
@@ -165,7 +166,7 @@ impl ConsumerTask {
             ..
         } = self;
         let KeyedAction(key, action) = keyed;
-        match senders.get(&key) {
+        match senders.get_mut(&key) {
             Some(sender) => sender.broadcast(action).is_ok(),
             _ => {
                 if senders.len() > *max_active_keys {
@@ -187,7 +188,7 @@ impl ConsumerTask {
                         ages.remove(&age);
                     }
                 }
-                let (tx, rx) = watch::channel(action);
+                let (tx, rx) = super::channel(action);
                 let msg = BridgeMessage::Register(rx);
                 let entry = senders.entry(key);
                 let k = entry.key().clone();
