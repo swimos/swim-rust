@@ -263,11 +263,7 @@ fn get_host_manager(
     connection_pool: ConnectionPool,
     close_rx: CloseReceiver,
     config: RouterParams,
-) -> &mut (
-    mpsc::Sender<Envelope>,
-    mpsc::Sender<mpsc::Sender<RouterEvent>>,
-    JoinHandle<Result<(), RoutingError>>,
-) {
+) -> &mut HostManagerHandle {
     host_managers.entry(target.host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
             HostManager::new(target, connection_pool, close_rx, config);
