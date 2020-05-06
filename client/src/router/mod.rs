@@ -187,19 +187,15 @@ impl TaskManager {
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
-            //Todo refactor the repeated code to a method.
             match task {
                 RouterTask::Connect((target, response_tx)) => {
-                    let (sink, stream_registrator, _) =
-                        host_managers.entry(target.host.clone()).or_insert_with(|| {
-                            let (host_manager, sink, stream_registrator) = HostManager::new(
-                                target.clone(),
-                                connection_pool.clone(),
-                                close_rx.clone(),
-                                config,
-                            );
-                            (sink, stream_registrator, tokio::spawn(host_manager.run()))
-                        });
+                    let (sink, stream_registrator, _) = get_host_manager(
+                        &mut host_managers,
+                        target,
+                        connection_pool.clone(),
+                        close_rx.clone(),
+                        config,
+                    );
 
                     let (subscriber_tx, stream) = mpsc::channel(config.buffer_size().get());
 
@@ -221,15 +217,13 @@ impl TaskManager {
                         .ok_or(RoutingError::ConnectionError)?
                         .for_host(host.clone());
 
-                    let (sink, _, _) = host_managers.entry(host.clone()).or_insert_with(|| {
-                        let (host_manager, sink, stream_registrator) = HostManager::new(
-                            target.clone(),
-                            connection_pool.clone(),
-                            close_rx.clone(),
-                            config,
-                        );
-                        (sink, stream_registrator, tokio::spawn(host_manager.run()))
-                    });
+                    let (sink, _, _) = get_host_manager(
+                        &mut host_managers,
+                        target,
+                        connection_pool.clone(),
+                        close_rx.clone(),
+                        config,
+                    );
 
                     sink.send(message.clone())
                         .await
@@ -261,6 +255,24 @@ impl TaskManager {
             }
         }
     }
+}
+
+fn get_host_manager(
+    host_managers: &mut HashMap<url::Url, HostManagerHandle>,
+    target: AbsolutePath,
+    connection_pool: ConnectionPool,
+    close_rx: CloseReceiver,
+    config: RouterParams,
+) -> &mut (
+    mpsc::Sender<Envelope>,
+    mpsc::Sender<mpsc::Sender<RouterEvent>>,
+    JoinHandle<Result<(), RoutingError>>,
+) {
+    host_managers.entry(target.host.clone()).or_insert_with(|| {
+        let (host_manager, sink, stream_registrator) =
+            HostManager::new(target, connection_pool, close_rx, config);
+        (sink, stream_registrator, tokio::spawn(host_manager.run()))
+    })
 }
 
 fn combine_router_task(
