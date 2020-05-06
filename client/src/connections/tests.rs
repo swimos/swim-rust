@@ -49,7 +49,10 @@ async fn test_connection_pool_send_single_message_single_connection() {
     let rx = connection_pool.request_connection(host_url, false).unwrap();
     let (mut connection_sender, _connection_receiver) = rx.await.unwrap().unwrap();
     // When
-    connection_sender.send_message(text).await.unwrap();
+    connection_sender
+        .send_message(Message::Text(text.to_string()))
+        .await
+        .unwrap();
 
     // Then
     assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "Hello");
@@ -79,11 +82,11 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
     // When
     first_connection_sender
-        .send_message(first_text)
+        .send_message(Message::Text(first_text.to_string()))
         .await
         .unwrap();
     second_connection_sender
-        .send_message(second_text)
+        .send_message(Message::Text(second_text.to_string()))
         .await
         .unwrap();
 
@@ -143,15 +146,15 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
 
     // When
     first_connection_sender
-        .send_message(first_text)
+        .send_message(Message::Text(first_text.to_string()))
         .await
         .unwrap();
     second_connection_sender
-        .send_message(second_text)
+        .send_message(Message::Text(second_text.to_string()))
         .await
         .unwrap();
     third_connection_sender
-        .send_message(third_text)
+        .send_message(Message::Text(third_text.to_string()))
         .await
         .unwrap();
 
@@ -300,7 +303,10 @@ async fn test_connection_pool_send_and_receive_messages() {
     let rx = connection_pool.request_connection(host_url, false).unwrap();
     let (mut connection_sender, connection_receiver) = rx.await.unwrap().unwrap();
     // When
-    connection_sender.send_message("send_bar").await.unwrap();
+    connection_sender
+        .send_message(Message::Text("send_bar".to_string()))
+        .await
+        .unwrap();
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
 
@@ -356,7 +362,10 @@ async fn test_connection_pool_connection_error_send_message() {
 
     let rx = connection_pool.request_connection(host_url, false).unwrap();
     let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
-    second_connection_sender.send_message(text).await.unwrap();
+    second_connection_sender
+        .send_message(Message::Text(text.to_string()))
+        .await
+        .unwrap();
 
     // Then
     assert!(first_connection_sender.is_err());

@@ -31,7 +31,7 @@ pub mod factory;
 pub mod strategy;
 
 /// A future that can be reset back to its initial state and retried once again.
-pub trait ResettableFuture {
+pub trait ResettableFuture: Future {
     /// Reset the future back to its initial state. Returns true if the future successfully reset or
     /// false otherwise.
     ///

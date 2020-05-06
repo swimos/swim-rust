@@ -34,6 +34,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use utilities::err::MaybeTransientErr;
 
 pub mod command;
 pub mod incoming;
@@ -326,22 +327,6 @@ type SwimRouterConnectionFut = Sequenced<
     )>,
 >;
 
-pub(crate) async fn acquire_sender(
-    mut sender: mpsc::Sender<ConnectionRequest>,
-    is_retry: bool,
-) -> Result<ConnectionSender, RoutingError> {
-    let (connection_tx, connection_rx) = oneshot::channel();
-
-    sender
-        .send((connection_tx, is_retry))
-        .await
-        .map_err(|_| RoutingError::ConnectionError)?;
-
-    connection_rx
-        .await
-        .map_err(|_| RoutingError::ConnectionError)?
-}
-
 pub fn connect(
     target: AbsolutePath,
     router_connection_request_tx: mpsc::Sender<RouterRequest>,
@@ -373,6 +358,19 @@ pub enum RoutingError {
     Transient,
     RouterDropped,
     ConnectionError,
+}
+
+impl MaybeTransientErr for RoutingError {
+    fn is_transient(&self) -> bool {
+        match *self {
+            RoutingError::Transient | RoutingError::ConnectionError => true,
+            _ => false,
+        }
+    }
+
+    fn permanent(&self) -> Self {
+        RoutingError::ConnectionError
+    }
 }
 
 impl Display for RoutingError {

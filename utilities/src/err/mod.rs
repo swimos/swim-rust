@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod err;
-pub mod future;
-pub mod iteratee;
-#[macro_use]
-pub mod macros;
+pub trait MaybeTransientErr {
+    fn is_transient(&self) -> bool;
+    fn permanent(&self) -> Self;
+}

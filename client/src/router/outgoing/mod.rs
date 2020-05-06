@@ -14,13 +14,14 @@
 
 use futures::StreamExt;
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::protocol::Message;
 
 use common::warp::envelope::Envelope;
 
 use crate::configuration::router::RouterParams;
-use crate::router::retry::RetryableRequest;
+use crate::router::retry::new_request;
 use crate::router::{ConnectionRequest, RoutingError};
+use tokio_tungstenite::tungstenite::protocol::Message;
+use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -66,15 +67,11 @@ impl OutgoingHostTask {
 
             match task {
                 OutgoingRequest::Message(envelope) => {
-                    let message = Message::Text(envelope.into_value().to_string()).to_string();
-                    let retry = RetryableRequest::new_future(
-                        message.clone(),
-                        connection_request_tx.clone(),
-                        config.retry_strategy(),
-                    );
+                    let message = Message::Text(envelope.into_value().to_string());
+                    let request = new_request(connection_request_tx.clone(), message);
+                    let retry = RetryableFuture::new(request, config.retry_strategy());
 
                     retry.await.map_err(|_| RoutingError::ConnectionError)?;
-
                     tracing::trace!("Completed request");
                 }
                 OutgoingRequest::_Close => {
