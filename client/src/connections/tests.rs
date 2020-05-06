@@ -379,7 +379,7 @@ async fn test_connection_pool_close() {
         ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
-    connection_pool.close().await.unwrap();
+    assert!(connection_pool.close().await.is_ok());
 
     // Then
     assert!(writer_rx.recv().await.is_none());
