@@ -93,26 +93,19 @@ where
     Err: RetrySendError,
 {
     fn reset(self: Pin<&mut Self>) -> bool {
-        let mut projected = self.project();
-        let fac = projected.fac;
+        let mut this = self.project();
+        let fac = this.fac;
 
-        if let Some(sender) = projected.sender.take() {
-            if let Some(e) = projected.last_error.take() {
-                if e.is_transient() {
-                    let unwrapper = projected.unwrapper;
-                    let data = unwrapper(e);
-                    let f = fac(sender, data, true);
-                    projected.f.set(f);
+        match (this.sender.take(), this.last_error.take()) {
+            (Some(sender), Some(e)) if e.is_transient() => {
+                let unwrapper = this.unwrapper;
+                let data = unwrapper(e);
+                let f = fac(sender, data, true);
+                this.f.set(f);
 
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
+                true
             }
-        } else {
-            false
+            _ => false,
         }
     }
 }
