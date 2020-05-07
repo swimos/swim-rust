@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::num::NonZeroUsize;
+use tokio::time::Duration;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -63,12 +64,7 @@ pub struct RouterParamBuilder {
 
 impl Default for RouterParamBuilder {
     fn default() -> Self {
-        RouterParamBuilder {
-            retry_strategy: None,
-            idle_timeout: None,
-            buffer_size: None,
-            conn_reaper_frequency: None,
-        }
+        RouterParamBuilder::with_defaults()
     }
 }
 
@@ -79,6 +75,18 @@ impl RouterParamBuilder {
             idle_timeout: None,
             buffer_size: None,
             conn_reaper_frequency: None,
+        }
+    }
+
+    pub fn with_defaults() -> RouterParamBuilder {
+        RouterParamBuilder {
+            retry_strategy: Some(RetryStrategy::exponential(
+                Duration::from_secs(2),
+                Some(Duration::from_secs(32)),
+            )),
+            idle_timeout: Some(60),
+            buffer_size: Some(1000),
+            conn_reaper_frequency: Some(60),
         }
     }
 
@@ -96,7 +104,7 @@ impl RouterParamBuilder {
                 .retry_strategy
                 .unwrap_or_else(|| panic!("Router retry strategy must be provided")),
             idle_timeout: { build_usize(self.idle_timeout, "Idle timeout") },
-            buffer_size: { build_usize(self.idle_timeout, "Buffer size") },
+            buffer_size: { build_usize(self.buffer_size, "Buffer size") },
             conn_reaper_frequency: {
                 build_usize(self.conn_reaper_frequency, "Connection reaper frequency")
             },
