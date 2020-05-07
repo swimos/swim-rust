@@ -25,13 +25,14 @@ pub type SendResult<Sender, T, Err> = Result<(T, Option<Sender>), (Err, Option<S
 
 /// A trait to determine whether or not an error is transient or permanent. This is useful for
 /// determining if a HTTP request is transient (such as the host being temporarily unavailable) or
-/// permanent (such as a host not being found)
+/// permanent (such as a host not being found).
 pub trait RetrySendError: Clone {
     type ErrKind;
 
-    // Whether or not the current error is transient.
+    /// Whether or not the current error is transient.
     fn is_transient(&self) -> bool;
 
+    /// Return the specific type of the underlying error.
     fn kind(&self) -> Self::ErrKind;
 }
 
