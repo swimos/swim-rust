@@ -20,7 +20,7 @@ use utilities::future::retryable::strategy::RetryStrategy;
 
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
-const BUFFER_SIZE: usize = 1000;
+const BUFFER_SIZE: usize = 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
@@ -35,7 +35,7 @@ pub struct RouterParams {
 impl Default for RouterParams {
     fn default() -> Self {
         RouterParams {
-            retry_strategy: Default::default(),
+            retry_strategy: RetryStrategy::default(),
             idle_timeout: IDLE_TIMEOUT,
             conn_reaper_frequency: CONN_REAPER_FREQUENCY,
             buffer_size: NonZeroUsize::new(BUFFER_SIZE).unwrap(),
@@ -85,7 +85,12 @@ impl RouterParamBuilder {
     }
 
     pub fn with_defaults() -> RouterParamBuilder {
-        Default::default()
+        RouterParamBuilder {
+            retry_strategy: Some(RetryStrategy::default()),
+            idle_timeout: Some(IDLE_TIMEOUT),
+            conn_reaper_frequency: Some(CONN_REAPER_FREQUENCY),
+            buffer_size: Some(NonZeroUsize::new(BUFFER_SIZE).unwrap()),
+        }
     }
 
     pub fn build(self) -> RouterParams {

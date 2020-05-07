@@ -46,7 +46,10 @@ pub(crate) fn new_request(
                             )),
                         }
                     }
-                    Err((e, s)) => Err((e, s)),
+                    Err((mut e, s)) => {
+                        e.payload = Some(payload);
+                        Err((e, s))
+                    }
                 }
             })
         },
