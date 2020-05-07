@@ -27,9 +27,15 @@ use std::convert::TryInto;
 use std::marker::PhantomData;
 use utilities::future::{SwimFutureExt, Transform, TransformedFuture, UntilFailure};
 
-/// A transformation that applies a form to an [`Event<Value>`].
-#[derive(Default)]
+/// A transformation that attempts to apply a form to an [`Event<Value>`].
+#[derive(Debug)]
 pub struct ApplyForm<T>(PhantomData<T>);
+
+impl<T: Form> Default for ApplyForm<T> {
+    fn default() -> Self {
+        ApplyForm::new()
+    }
+}
 
 impl<T> Clone for ApplyForm<T> {
     fn clone(&self) -> Self {
@@ -39,9 +45,15 @@ impl<T> Clone for ApplyForm<T> {
 
 impl<T> Copy for ApplyForm<T> {}
 
-/// A transformation that applies key and value forms to a [`Event<ViewWithEvent>`].
-#[derive(Default)]
+/// A transformation that attempts to apply forms to a [`Event<ViewWithEvent>`].
+#[derive(Debug)]
 pub struct ApplyFormsMap<K, V>(PhantomData<(K, V)>);
+
+impl<K: Form, V: Form> Default for ApplyFormsMap<K, V> {
+    fn default() -> Self {
+        ApplyFormsMap::new()
+    }
+}
 
 impl<K, V> Clone for ApplyFormsMap<K, V> {
     fn clone(&self) -> Self {
