@@ -15,8 +15,9 @@
 use crate::configuration::router::RouterParams;
 use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
 use crate::router::outgoing::retry::RetryableRequest;
-use crate::router::{ConnectionRequest, RoutingError};
+use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
 use common::warp::envelope::Envelope;
+use futures::stream;
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -30,12 +31,13 @@ mod tests;
 
 enum OutgoingRequest {
     Message(Envelope),
-    _Close,
+    Close(Option<CloseResponseSender>),
 }
 
 pub struct OutgoingHostTask {
     envelope_rx: mpsc::Receiver<Envelope>,
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
+    close_rx: CloseReceiver,
     config: RouterParams,
 }
 
@@ -43,11 +45,13 @@ impl OutgoingHostTask {
     pub fn new(
         envelope_rx: mpsc::Receiver<Envelope>,
         connection_request_tx: mpsc::Sender<ConnectionRequest>,
+        close_rx: CloseReceiver,
         config: RouterParams,
     ) -> Self {
         OutgoingHostTask {
             envelope_rx,
             connection_request_tx,
+            close_rx,
             config,
         }
     }
@@ -56,10 +60,11 @@ impl OutgoingHostTask {
         let OutgoingHostTask {
             envelope_rx,
             connection_request_tx,
+            close_rx,
             config,
         } = self;
 
-        let mut rx = envelope_rx.map(OutgoingRequest::Message);
+        let mut rx = combine_outgoing_streams(envelope_rx, close_rx);
 
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
@@ -79,13 +84,23 @@ impl OutgoingHostTask {
 
                     tracing::trace!("Completed request");
                 }
-                OutgoingRequest::_Close => {
+                OutgoingRequest::Close(Some(_)) => {
                     break;
                 }
+                OutgoingRequest::Close(None) => {}
             }
         }
         Ok(())
     }
+}
+
+fn combine_outgoing_streams(
+    envelope_rx: mpsc::Receiver<Envelope>,
+    close_rx: CloseReceiver,
+) -> impl stream::Stream<Item = OutgoingRequest> + Send + 'static {
+    let envelope_requests = envelope_rx.map(OutgoingRequest::Message);
+    let close_requests = close_rx.map(OutgoingRequest::Close);
+    stream::select(envelope_requests, close_requests)
 }
 
 #[cfg(test)]
@@ -93,7 +108,9 @@ mod route_tests {
     use super::*;
 
     use crate::configuration::router::RouterParamBuilder;
+    use crate::connections::ConnectionSender;
     use crate::router::outgoing::retry::RetryStrategy;
+    use tokio::sync::watch;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
         RouterParamBuilder::default()
@@ -110,8 +127,9 @@ mod route_tests {
         let config = router_config(RetryStrategy::none());
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
         let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
+        let (_close_tx, close_rx) = watch::channel(None);
 
-        let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, config);
+        let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
         let handle = tokio::spawn(outgoing_task.run());
 
         let _ = envelope_tx
@@ -124,33 +142,34 @@ mod route_tests {
         assert_eq!(task_result, Err(RoutingError::ConnectionError))
     }
 
-    //Todo broken until close method is fixed.
     // Test that after a transient error, the retry system attempts the request again and succeeds
-    // #[tokio::test]
-    // async fn transient_error() {
-    //     let config = router_config(RetryStrategy::immediate(1));
-    //     let url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-    //
-    //     let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-    //     let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
-    //
-    //     let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, config);
-    //
-    //     let handle = tokio::spawn(outgoing_task.run());
-    //     let _ = envelope_tx
-    //         .send(Envelope::sync("node".into(), "lane".into()))
-    //         .await;
-    //
-    //     let (tx, _recreate) = task_request_rx.recv().await.unwrap();
-    //     let _ = tx.send(Err(RoutingError::Transient));
-    //
-    //     let (tx, _recreate) = task_request_rx.recv().await.unwrap();
-    //     let (dummy_tx, _dummy_rx) = mpsc::channel(config.buffer_size().get());
-    //
-    //     let _ = tx.send(Ok(ConnectionSender::new(dummy_tx)));
-    //     // let _ = close_tx.send(()).await;
-    //
-    //     let task_result = handle.await.unwrap();
-    //     assert_eq!(task_result, Ok(()))
-    // }
+    #[tokio::test]
+    async fn transient_error() {
+        let config = router_config(RetryStrategy::immediate(1));
+        let (close_tx, close_rx) = watch::channel(None);
+
+        let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
+        let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
+
+        let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
+
+        let handle = tokio::spawn(outgoing_task.run());
+        let _ = envelope_tx
+            .send(Envelope::sync("node".into(), "lane".into()))
+            .await;
+
+        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
+        let _ = tx.send(Err(RoutingError::Transient));
+
+        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
+        let (dummy_tx, _dummy_rx) = mpsc::channel(config.buffer_size().get());
+
+        let _ = tx.send(Ok(ConnectionSender::new(dummy_tx)));
+
+        let (response_tx, mut _response_rx) = mpsc::channel(config.buffer_size().get());
+        close_tx.broadcast(Some(response_tx)).unwrap();
+
+        let task_result = handle.await.unwrap();
+        assert_eq!(task_result, Ok(()));
+    }
 }
