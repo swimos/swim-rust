@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Instant;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::{ClosedError, TrySendError};
+use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
@@ -461,12 +461,9 @@ impl ConnectionSender {
     /// # Returns
     ///
     /// `Ok` if the message has been sent.
-    /// `ConnectionError` if it failed.
-    pub async fn send_message(&mut self, message: &str) -> Result<(), ConnectionError> {
-        self.tx
-            .send(Message::text(message))
-            .await
-            .map_err(|_| ConnectionError::SendMessageError)
+    /// `SendError` if it failed.
+    pub async fn send_message(&mut self, message: Message) -> Result<(), SendError<Message>> {
+        self.tx.send(message).await
     }
 
     pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ClosedError>> {
