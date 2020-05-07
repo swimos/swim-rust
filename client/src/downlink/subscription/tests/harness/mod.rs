@@ -26,17 +26,16 @@ pub struct StubRouter {}
 impl Router for StubRouter {
     type ConnectionStream = Pending<RouterEvent>;
     type ConnectionSink = DropAll<Envelope, RoutingError>;
-    type GeneralSink = DropAll<(String, Envelope), RoutingError>;
+    type GeneralSink = DropAll<(url::Url, Envelope), RoutingError>;
     type ConnectionFut =
         Ready<Result<(Self::ConnectionSink, Self::ConnectionStream), RequestError>>;
-    type GeneralFut = Ready<Self::GeneralSink>;
 
     fn connection_for(&mut self, _target: &AbsolutePath) -> Self::ConnectionFut {
         ready(Ok((drop_all(), pending())))
     }
 
-    fn general_sink(&mut self) -> Self::GeneralFut {
-        ready(drop_all())
+    fn general_sink(&mut self) -> Self::GeneralSink {
+        drop_all()
     }
 }
 

@@ -153,6 +153,7 @@ impl From<RoutingError> for DownlinkError {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
             RoutingError::ConnectionError => DownlinkError::DroppedChannel,
             RoutingError::Transient => DownlinkError::DroppedChannel,
+            RoutingError::CloseError => DownlinkError::DroppedChannel,
         }
     }
 }
