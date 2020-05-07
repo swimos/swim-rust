@@ -88,10 +88,7 @@ impl MpscRetryErr {
         sender: Option<mpsc::Sender<ConnectionRequest>>,
         payload: Option<Message>,
     ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
-        let transient = match &kind {
-            RoutingError::Transient | RoutingError::ConnectionError => true,
-            _ => false,
-        };
+        let transient = kind.is_transient();
 
         Err((
             MpscRetryErr {

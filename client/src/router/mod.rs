@@ -385,7 +385,8 @@ impl HostManager {
                         }
                         Err(connection_error) => match connection_error {
                             ConnectionError::Transient => {
-                                let _ = connection_response_tx.send(Err(RoutingError::Transient));
+                                let _ =
+                                    connection_response_tx.send(Err(RoutingError::ConnectionError));
                             }
                             _ => {
                                 let _ =
@@ -476,10 +477,18 @@ impl Router for SwimRouter {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RoutingError {
-    Transient,
     RouterDropped,
     ConnectionError,
     CloseError,
+}
+
+impl RoutingError {
+    fn is_transient(self) -> bool {
+        match self {
+            RoutingError::ConnectionError => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for RoutingError {
@@ -487,7 +496,6 @@ impl Display for RoutingError {
         match self {
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::ConnectionError => write!(f, "Connection error."),
-            RoutingError::Transient => write!(f, "Transient error."),
             RoutingError::CloseError => write!(f, "Closing error."),
         }
     }

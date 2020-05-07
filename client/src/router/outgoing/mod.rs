@@ -152,7 +152,7 @@ mod route_tests {
             .await;
 
         let (tx, _recreate) = task_request_rx.recv().await.unwrap();
-        let _ = tx.send(Err(RoutingError::Transient));
+        let _ = tx.send(Err(RoutingError::ConnectionError));
 
         let (tx, _recreate) = task_request_rx.recv().await.unwrap();
         let (dummy_tx, _dummy_rx) = mpsc::channel(config.buffer_size().get());

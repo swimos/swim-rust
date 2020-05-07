@@ -152,7 +152,6 @@ impl From<RoutingError> for DownlinkError {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
             RoutingError::ConnectionError => DownlinkError::DroppedChannel,
-            RoutingError::Transient => DownlinkError::DroppedChannel,
             RoutingError::CloseError => DownlinkError::DroppedChannel,
         }
     }
