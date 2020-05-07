@@ -16,6 +16,10 @@ use std::num::NonZeroUsize;
 use tokio::time::Duration;
 use utilities::future::retryable::strategy::RetryStrategy;
 
+const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+const CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
+const BUFFER_SIZE: usize = 1000;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
     retry_strategy: RetryStrategy,
@@ -30,9 +34,9 @@ impl Default for RouterParams {
     fn default() -> Self {
         RouterParams {
             retry_strategy: Default::default(),
-            idle_timeout: Duration::from_secs(60),
-            conn_reaper_frequency: Duration::from_secs(60),
-            buffer_size: NonZeroUsize::new(5).unwrap(),
+            idle_timeout: IDLE_TIMEOUT,
+            conn_reaper_frequency: CONN_REAPER_FREQUENCY,
+            buffer_size: NonZeroUsize::new(BUFFER_SIZE).unwrap(),
         }
     }
 }
@@ -79,15 +83,7 @@ impl RouterParamBuilder {
     }
 
     pub fn with_defaults() -> RouterParamBuilder {
-        RouterParamBuilder {
-            retry_strategy: Some(RetryStrategy::exponential(
-                Duration::from_secs(2),
-                Some(Duration::from_secs(32)),
-            )),
-            idle_timeout: Some(Duration::from_secs(60)),
-            buffer_size: Some(NonZeroUsize::new(100).unwrap()),
-            conn_reaper_frequency: Some(Duration::from_secs(60)),
-        }
+        Default::default()
     }
 
     pub fn build(self) -> RouterParams {
