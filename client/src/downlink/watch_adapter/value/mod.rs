@@ -15,7 +15,6 @@
 use crate::router::RoutingError;
 use common::sink::item::{ItemSender, ItemSink};
 use futures::future::{ready, Ready};
-use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 #[cfg(test)]
@@ -24,11 +23,11 @@ mod tests;
 /// Joins a watch receiver to an MPSC sender to prevent back-pressure propagating between
 /// two queues.
 pub struct ValuePump<T> {
-    sender: watch::Sender<Option<T>>,
+    sender: super::EpochSender<Option<T>>,
     _task: JoinHandle<()>,
 }
 
-impl<'a, T> ItemSink<'a, T> for ValuePump<T> {
+impl<'a, T: Clone> ItemSink<'a, T> for ValuePump<T> {
     type Error = RoutingError;
     type SendFuture = Ready<Result<(), Self::Error>>;
 
@@ -49,7 +48,7 @@ where
     where
         Snk: ItemSender<T, RoutingError> + Send + 'static,
     {
-        let (tx, rx) = watch::channel(None);
+        let (tx, rx) = super::channel(None);
         let task = ValuePumpTask::new(rx, sink);
         ValuePump {
             sender: tx,
@@ -59,7 +58,7 @@ where
 }
 
 struct ValuePumpTask<T, Snk> {
-    receiver: watch::Receiver<Option<T>>,
+    receiver: super::EpochReceiver<Option<T>>,
     sender: Snk,
 }
 
@@ -68,7 +67,7 @@ where
     T: Clone,
     Snk: ItemSender<T, RoutingError>,
 {
-    fn new(rx: watch::Receiver<Option<T>>, sink: Snk) -> Self {
+    fn new(rx: super::EpochReceiver<Option<T>>, sink: Snk) -> Self {
         ValuePumpTask {
             receiver: rx,
             sender: sink,
@@ -80,11 +79,9 @@ where
             mut receiver,
             mut sender,
         } = self;
-        while let Some(maybe) = receiver.recv().await {
-            if let Some(value) = maybe {
-                if sender.send_item(value).await.is_err() {
-                    break;
-                }
+        while let Some(value) = receiver.recv_defined().await {
+            if sender.send_item(value).await.is_err() {
+                break;
             }
         }
     }
