@@ -73,7 +73,7 @@ impl OutgoingHostTask {
                 OutgoingRequest::Message(envelope) => {
                     let message = Message::Text(envelope.into_value().to_string());
                     let request = new_request(connection_request_tx.clone(), message);
-                    let _ = RetryableFuture::new(request, config.retry_strategy()).await?;
+                    RetryableFuture::new(request, config.retry_strategy()).await?;
 
                     tracing::trace!("Completed request");
                 }
