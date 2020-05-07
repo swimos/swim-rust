@@ -46,7 +46,7 @@ pub fn new_request(
                         e = MpscRetryErr::Transient(payload);
                         return Err((e, s));
                     }
-                    _ => unreachable!(),
+                    Err((e, s)) => Err((e, s)),
                 }
             })
         },
