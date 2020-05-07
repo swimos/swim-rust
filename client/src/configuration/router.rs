@@ -18,9 +18,9 @@ use tokio::time::Duration;
 
 use utilities::future::retryable::strategy::RetryStrategy;
 
-const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
-const CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
-const BUFFER_SIZE: usize = 100;
+const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
+const DEFAULT_BUFFER_SIZE: usize = 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
@@ -36,9 +36,9 @@ impl Default for RouterParams {
     fn default() -> Self {
         RouterParams {
             retry_strategy: RetryStrategy::default(),
-            idle_timeout: IDLE_TIMEOUT,
-            conn_reaper_frequency: CONN_REAPER_FREQUENCY,
-            buffer_size: NonZeroUsize::new(BUFFER_SIZE).unwrap(),
+            idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            conn_reaper_frequency: DEFAULT_CONN_REAPER_FREQUENCY,
+            buffer_size: NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap(),
         }
     }
 }
@@ -87,9 +87,9 @@ impl RouterParamBuilder {
     pub fn new() -> RouterParamBuilder {
         RouterParamBuilder {
             retry_strategy: Some(RetryStrategy::default()),
-            idle_timeout: Some(IDLE_TIMEOUT),
-            conn_reaper_frequency: Some(CONN_REAPER_FREQUENCY),
-            buffer_size: Some(NonZeroUsize::new(BUFFER_SIZE).unwrap()),
+            idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
+            conn_reaper_frequency: Some(DEFAULT_CONN_REAPER_FREQUENCY),
+            buffer_size: Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
         }
     }
 
