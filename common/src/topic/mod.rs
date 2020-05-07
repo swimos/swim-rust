@@ -56,7 +56,7 @@ impl From<RequestError> for TopicError {
 
 /// A trait for one-to many channels. A topic may have any number of subscribers which are added
 /// asynchronously using the `subscribe` method. Each subscription can be consumed as a stream.
-pub trait Topic<T: Clone> {
+pub trait Topic<T> {
     type Receiver: Stream<Item = T> + Send + 'static;
     type Fut: Future<Output = Result<Self::Receiver, TopicError>> + Send + 'static;
 
@@ -442,7 +442,7 @@ where
 /// A topic that boxes the subscription method return type for a wrapped topic.
 struct BoxingTopic<Top>(Top);
 
-impl<T: Clone + Send + 'static, Top: Topic<T>> Topic<T> for BoxingTopic<Top> {
+impl<T: Send + 'static, Top: Topic<T>> Topic<T> for BoxingTopic<Top> {
     type Receiver = BoxStream<'static, T>;
     type Fut = BoxFuture<'static, Result<Self::Receiver, TopicError>>;
 
