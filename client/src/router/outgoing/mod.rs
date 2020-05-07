@@ -13,25 +13,17 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
-use crate::router::outgoing::retry::RetryableRequest;
 use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
 use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
 use tokio::sync::mpsc;
 
-use common::warp::envelope::Envelope;
-
-use crate::configuration::router::RouterParams;
 use crate::router::retry::new_request;
-use crate::router::{ConnectionRequest, RoutingError};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
-
-pub(crate) mod retry;
 
 #[cfg(test)]
 mod tests;
@@ -115,7 +107,6 @@ mod route_tests {
 
     use crate::configuration::router::RouterParamBuilder;
     use crate::connections::ConnectionSender;
-    use crate::router::outgoing::retry::RetryStrategy;
     use tokio::sync::watch;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
@@ -148,7 +139,7 @@ mod route_tests {
     // Test that after a transient error, the retry system attempts the request again and succeeds
     #[tokio::test]
     async fn transient_error() {
-        let config = router_config(RetryStrategy::immediate(1));
+        let config = router_config(RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()));
         let (close_tx, close_rx) = watch::channel(None);
 
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
