@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::router::{CloseReceiver, RouterEvent, RoutingError};
+use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, RoutingError};
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
 use common::warp::path::{AbsolutePath, RelativePath};
@@ -33,7 +33,7 @@ pub enum IncomingRequest {
     Message(Message),
     Unreachable,
     Disconnect,
-    Close(Option<mpsc::Sender<Result<(), RoutingError>>>),
+    Close(Option<CloseResponseSender>),
 }
 
 pub struct IncomingHostTask {
@@ -145,11 +145,10 @@ async fn broadcast_all(
 ) -> Result<(), RoutingError> {
     let futures = FuturesUnordered::new();
 
-    for (_, destination) in subscribers.iter_mut() {
-        for subscriber in destination {
-            futures.push(subscriber.send(event.clone()));
-        }
-    }
+    subscribers
+        .iter_mut()
+        .flat_map(|(_, dest)| dest)
+        .for_each(|subscriber| futures.push(subscriber.send(event.clone())));
 
     for result in futures.collect::<Vec<_>>().await {
         result?

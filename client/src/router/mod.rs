@@ -64,8 +64,9 @@ pub type RouterConnRequest = (
 
 pub type RouterMessageRequest = (url::Url, Envelope);
 
-pub type CloseSender = watch::Sender<Option<mpsc::Sender<Result<(), RoutingError>>>>;
-pub type CloseReceiver = watch::Receiver<Option<mpsc::Sender<Result<(), RoutingError>>>>;
+pub type CloseSender = watch::Sender<Option<CloseResponseSender>>;
+pub type CloseReceiver = watch::Receiver<Option<CloseResponseSender>>;
+pub type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
@@ -114,12 +115,12 @@ impl SwimRouter {
 
         while let Some(result) = result_rx.recv().await {
             if let Err(e) = result {
-                tracing::trace!("{:?}", e);
+                tracing::error!("{:?}", e);
             }
         }
 
         if let Err(e) = self.task_manager_handle.await {
-            tracing::trace!("{:?}", e);
+            tracing::error!("{:?}", e);
         };
 
         Ok(())
@@ -129,7 +130,7 @@ impl SwimRouter {
 enum RouterTask {
     Connect(RouterConnRequest),
     SendMessage(Box<RouterMessageRequest>),
-    Close(Option<mpsc::Sender<Result<(), RoutingError>>>),
+    Close(Option<CloseResponseSender>),
 }
 
 type HostManagerHandle = (
@@ -294,7 +295,7 @@ pub type ConnectionRequest = (
 enum HostTask {
     Connect(ConnectionRequest),
     Subscribe(mpsc::Sender<RouterEvent>),
-    Close(Option<mpsc::Sender<Result<(), RoutingError>>>),
+    Close(Option<CloseResponseSender>),
 }
 
 struct HostManager {

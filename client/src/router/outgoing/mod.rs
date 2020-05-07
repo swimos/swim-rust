@@ -15,7 +15,7 @@
 use crate::configuration::router::RouterParams;
 use crate::router::outgoing::retry::boxed_connection_sender::BoxedConnSender;
 use crate::router::outgoing::retry::RetryableRequest;
-use crate::router::{CloseReceiver, ConnectionRequest, RoutingError};
+use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
 use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
@@ -31,7 +31,7 @@ mod tests;
 
 enum OutgoingRequest {
     Message(Envelope),
-    Close(Option<mpsc::Sender<Result<(), RoutingError>>>),
+    Close(Option<CloseResponseSender>),
 }
 
 pub struct OutgoingHostTask {
