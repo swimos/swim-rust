@@ -19,14 +19,13 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use utilities::future::retryable::ResettableFuture;
 
 use crate::connections::ConnectionSender;
-use crate::router::ConnectionRequest;
-use utilities::err::MaybeTransientErr;
-use utilities::future::retryable::request::{RetryableRequest, SendResult};
+use crate::router::{ConnectionRequest, RoutingError};
+use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
-pub fn new_request(
+pub(crate) fn new_request(
     sender: mpsc::Sender<ConnectionRequest>,
     payload: Message,
-) -> impl ResettableFuture<Output = Result<(), MpscRetryErr<Message>>> {
+) -> impl ResettableFuture<Output = Result<(), RoutingError>> {
     RetryableRequest::new(
         sender,
         payload,
@@ -36,86 +35,81 @@ pub fn new_request(
                     Ok(r) => {
                         let mut sender = r.0;
                         match sender.send_message(payload).await {
-                            Ok(_) => Ok(((), r.1)),
-                            Err(e) => {
-                                return Err((MpscRetryErr::Transient(e.0), r.1));
-                            }
+                            Ok(res) => Ok((res, r.1)),
+                            Err(e) => Err((
+                                MpscRetryErr {
+                                    kind: RoutingError::ConnectionError,
+                                    transient: true,
+                                    payload: Some(e.0),
+                                },
+                                r.1,
+                            )),
                         }
-                    }
-                    Err((mut e @ MpscRetryErr::SenderAcqFailure, s)) => {
-                        e = MpscRetryErr::Transient(payload);
-                        return Err((e, s));
                     }
                     Err((e, s)) => Err((e, s)),
                 }
             })
         },
-        |e| match e {
-            MpscRetryErr::Transient(m) => m,
-            _ => unreachable!("Incorrect routing error returned"),
-        },
+        |e| e.payload.expect("Missing payload"),
     )
 }
 
-pub(crate) async fn acquire_sender<P>(
+async fn acquire_sender(
     mut sender: mpsc::Sender<ConnectionRequest>,
     is_retry: bool,
-) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<P>> {
+) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
     let (connection_tx, connection_rx) = oneshot::channel();
 
     if sender.send((connection_tx, is_retry)).await.is_err() {
-        return MpscRetryErr::sender_acq_failure(sender);
+        return MpscRetryErr::from(RoutingError::ConnectionError, Some(sender), None);
     }
 
     match connection_rx.await {
         Ok(r) => match r {
             Ok(r) => Ok((r, Some(sender))),
-            Err(e) => {
-                if e.is_transient() {
-                    MpscRetryErr::sender_acq_failure(sender)
-                } else {
-                    MpscRetryErr::permanent(sender)
-                }
-            }
+            Err(e) => MpscRetryErr::from(e, Some(sender), None),
         },
-        Err(_) => MpscRetryErr::sender_acq_failure(sender),
+        Err(_) => MpscRetryErr::from(RoutingError::ConnectionError, Some(sender), None),
+    }
+}
+#[derive(Clone)]
+struct MpscRetryErr {
+    kind: RoutingError,
+    transient: bool,
+    payload: Option<Message>,
+}
+
+impl MpscRetryErr {
+    fn from(
+        kind: RoutingError,
+        sender: Option<mpsc::Sender<ConnectionRequest>>,
+        payload: Option<Message>,
+    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
+        let transient = match &kind {
+            RoutingError::Transient | RoutingError::ConnectionError => true,
+            _ => false,
+        };
+
+        Err((
+            MpscRetryErr {
+                kind,
+                transient,
+                payload,
+            },
+            sender,
+        ))
     }
 }
 
-#[derive(Eq, PartialEq, Debug)]
-pub enum MpscRetryErr<P> {
-    SenderAcqFailure,
-    Transient(P),
-    Permanent,
-    Failed,
-}
+impl RetrySendError for MpscRetryErr {
+    type ErrKind = RoutingError;
 
-impl<P> MpscRetryErr<P> {
-    fn sender_acq_failure(
-        sender: mpsc::Sender<ConnectionRequest>,
-    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<P>> {
-        Err((MpscRetryErr::SenderAcqFailure, Some(sender)))
-    }
-
-    fn permanent(
-        sender: mpsc::Sender<ConnectionRequest>,
-    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<P>> {
-        Err((MpscRetryErr::Permanent, Some(sender)))
-    }
-}
-
-impl<P> MaybeTransientErr for MpscRetryErr<P> {
     fn is_transient(&self) -> bool {
-        match *self {
-            MpscRetryErr::SenderAcqFailure => true,
-            MpscRetryErr::Transient(..) => true,
-            MpscRetryErr::Permanent => false,
-            MpscRetryErr::Failed => false,
-        }
+        self.transient
     }
 
-    fn permanent(&self) -> Self {
-        MpscRetryErr::Failed
+    fn kind(&self) -> Self::ErrKind {
+        self.kind
     }
 }
 
@@ -127,13 +121,14 @@ mod tests {
     use utilities::future::retryable::RetryableFuture;
 
     use crate::router::retry::MpscRetryErr;
+    use crate::router::RoutingError;
     use futures::Future;
     use tokio::sync::mpsc;
     use tokio_tungstenite::tungstenite::protocol::Message;
     use utilities::future::retryable::request::{RetryableRequest, SendResult};
 
     #[tokio::test]
-    async fn simple_send() {
+    async fn send_ok() {
         let (tx, mut rx) = mpsc::channel(5);
         let payload = Message::Text(String::from("Text"));
         let retryable = new_retryable(
@@ -161,7 +156,14 @@ mod tests {
                     let _ = sender.send(payload.clone()).await;
                     Ok(((), Some(sender)))
                 } else {
-                    Err((MpscRetryErr::Transient(payload), Some(sender)))
+                    Err((
+                        MpscRetryErr {
+                            kind: RoutingError::ConnectionError,
+                            transient: true,
+                            payload: Some(payload),
+                        },
+                        Some(sender),
+                    ))
                 }
             },
         );
@@ -171,33 +173,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn permanent_error() {
+    async fn errors() {
         let (tx, _rx) = mpsc::channel(5);
         let message = Message::Text(String::from("Text"));
         let retryable = new_retryable(
             message.clone(),
             tx,
             |sender: mpsc::Sender<Message>, payload, _is_retry| async {
-                Err((MpscRetryErr::Transient(payload), Some(sender)))
+                Err((
+                    MpscRetryErr {
+                        kind: RoutingError::ConnectionError,
+                        transient: true,
+                        payload: Some(payload),
+                    },
+                    Some(sender),
+                ))
             },
         );
 
-        assert_eq!(retryable.await, Err(MpscRetryErr::Failed))
+        assert_eq!(retryable.await, Err(RoutingError::ConnectionError))
     }
 
-    async fn new_retryable<Fac, F, P>(
-        payload: P,
-        tx: mpsc::Sender<P>,
+    async fn new_retryable<Fac, F>(
+        payload: Message,
+        tx: mpsc::Sender<Message>,
         fac: Fac,
-    ) -> Result<(), MpscRetryErr<P>>
+    ) -> Result<(), RoutingError>
     where
-        Fac: FnMut(mpsc::Sender<P>, P, bool) -> F,
-        F: Future<Output = SendResult<mpsc::Sender<P>, (), MpscRetryErr<P>>>,
+        Fac: FnMut(mpsc::Sender<Message>, Message, bool) -> F,
+        F: Future<Output = SendResult<mpsc::Sender<Message>, (), MpscRetryErr>>,
     {
-        let retryable = RetryableRequest::new(tx, payload, fac, |e| match e {
-            MpscRetryErr::Transient(p) => p,
-            _ => unreachable!("Incorrect routing error returned"),
-        });
+        let retryable =
+            RetryableRequest::new(tx, payload, fac, |e| e.payload.expect("Missing payload"));
 
         RetryableFuture::new(
             retryable,

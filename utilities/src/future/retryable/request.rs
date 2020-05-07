@@ -18,19 +18,32 @@ use std::task::{Context, Poll};
 use futures::ready;
 use futures::Future;
 
+use crate::future::retryable::ResettableFuture;
 use pin_project::pin_project;
 
-use crate::err::MaybeTransientErr;
-use crate::future::retryable::ResettableFuture;
-
 pub type SendResult<Sender, T, Err> = Result<(T, Option<Sender>), (Err, Option<Sender>)>;
+
+/// A trait to determine whether or not an error is transient or permanent. This is useful for
+/// determining if a HTTP request is transient (such as the host being temporarily unavailable) or
+/// permanent (such as a host not being found)
+pub trait RetrySendError: Clone {
+    type ErrKind;
+
+    // Whether or not the current error is transient.
+    fn is_transient(&self) -> bool;
+
+    fn kind(&self) -> Self::ErrKind;
+}
 
 /// A retryable request using something such as an [`tokio::sync::mpsc::Sender`] to execute the
 /// requests. Between failed retries, both the [`Sender`] and payload must be returned to successfuly
 /// execute another request. The payload can either be cloned manually or retrieved by the [`SendError`]
 /// returned by Tokio.
 #[pin_project]
-pub struct RetryableRequest<Sender, Fut, Fac, Unwrapper, Err> {
+pub struct RetryableRequest<Sender, Fut, Fac, Unwrapper, Err>
+where
+    Err: RetrySendError,
+{
     /// The sender used to execute the requests.
     sender: Option<Sender>,
     /// A factory that accepts a sender, a payload, and a boolean indicating whether or not the current
@@ -41,11 +54,11 @@ pub struct RetryableRequest<Sender, Fut, Fac, Unwrapper, Err> {
     /// A future returned by the factory.
     #[pin]
     f: Fut,
-    /// An error returned by the last request. This error must implement the [`MaybeTransientErr`]
+    /// An error returned by the last request. This error must implement the [`MaybeTransientErr`] trait.
     /// which is used to determine whether or not to retry the request again. If the error is transient,
     /// then the request is attempted again.
     last_error: Option<Err>,
-    /// A function that will unwrap the payload from the last error.
+    /// A function that may possibly unwrap the payload from the last error.
     unwrapper: Unwrapper,
 }
 
@@ -54,6 +67,7 @@ where
     Fac: FnMut(Sender, In, bool) -> Fut,
     Fut: Future<Output = SendResult<Sender, T, Err>>,
     Unwrapper: FnMut(Err) -> In,
+    Err: RetrySendError,
 {
     pub fn new(sender: Sender, data: In, mut fac: Fac, unwrapper: Unwrapper) -> Self {
         let f = fac(sender, data, false);
@@ -74,7 +88,7 @@ where
     Fac: FnMut(Sender, In, bool) -> Fut,
     Fut: Future<Output = SendResult<Sender, T, Err>>,
     Unwrapper: FnMut(Err) -> In,
-    Err: MaybeTransientErr,
+    Err: RetrySendError,
 {
     fn reset(self: Pin<&mut Self>) -> bool {
         let mut projected = self.project();
@@ -107,9 +121,9 @@ where
     Fac: FnMut(Sender, In, bool) -> Fut,
     Fut: Future<Output = SendResult<Sender, T, Err>>,
     Unwrapper: FnMut(Err) -> In,
-    Err: MaybeTransientErr,
+    Err: RetrySendError,
 {
-    type Output = Result<T, Err>;
+    type Output = Result<T, Err::ErrKind>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let projected = self.project();
@@ -117,11 +131,11 @@ where
         match result {
             Ok((result, _sender)) => Poll::Ready(Ok(result)),
             Err((err, sender)) => {
-                let failed = err.permanent();
+                let kind = err.kind();
                 *projected.last_error = Some(err);
                 *projected.sender = sender;
 
-                Poll::Ready(Err(failed))
+                Poll::Ready(Err(kind))
             }
         }
     }

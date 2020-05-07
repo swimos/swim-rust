@@ -95,10 +95,7 @@ mod route_tests {
     use super::*;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
-        RouterParamBuilder::default()
-            .with_buffer_size(5)
-            .with_idle_timeout(10)
-            .with_conn_reaper_frequency(10)
+        RouterParamBuilder::with_defaults()
             .with_retry_stategy(strategy)
             .build()
     }

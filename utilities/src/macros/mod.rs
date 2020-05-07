@@ -42,3 +42,40 @@ macro_rules! crate_only {
         }
     };
 }
+
+// #[macro_export]
+// macro_rules! unpack_enum {
+//     ($variant:path, $value:expr) => {
+//         match $value {
+//             $variant(x) => x,
+//             v => panic!("Mismatched enum. Expected: {:?} found {:?}", $variant, v),
+//         }
+//     };
+// }
+//
+// #[cfg(test)]
+// mod test_enum_unpack {
+//
+//     #[derive(Debug)]
+//     enum MyEnum {
+//         A,
+//         B(i32),
+//     }
+//
+//     #[test]
+//     fn unpack_enum_ok() {
+//         let e = MyEnum::B(1);
+//         let r = unpack_enum!(MyEnum::B, e);
+//
+//         assert_eq!(r, 1);
+//     }
+//
+//     #[test]
+//     #[should_panic] //(expected = "Mismatched enum. Expected: {:?} found {:?}")]
+//     fn unpack_enum_fail() {
+//         let e = MyEnum::B(1);
+//         let r = unpack_enum!(MyEnum::B, e);
+//
+//         assert_eq!(r, 1);
+//     }
+// }

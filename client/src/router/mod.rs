@@ -34,7 +34,6 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use utilities::err::MaybeTransientErr;
 
 pub mod command;
 pub mod incoming;
@@ -358,19 +357,6 @@ pub enum RoutingError {
     Transient,
     RouterDropped,
     ConnectionError,
-}
-
-impl MaybeTransientErr for RoutingError {
-    fn is_transient(&self) -> bool {
-        match *self {
-            RoutingError::Transient | RoutingError::ConnectionError => true,
-            _ => false,
-        }
-    }
-
-    fn permanent(&self) -> Self {
-        RoutingError::ConnectionError
-    }
 }
 
 impl Display for RoutingError {

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::num::NonZeroUsize;
 use std::{thread, time};
 
 use tracing::Level;
@@ -20,18 +19,12 @@ use tracing::Level;
 use common::sink::item::ItemSink;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
-use utilities::future::retryable::strategy::RetryStrategy;
 
 use crate::configuration::router::{RouterParamBuilder, RouterParams};
 use crate::router::{Router, SwimRouter};
 
 fn router_config() -> RouterParams {
-    RouterParamBuilder::new()
-        .with_buffer_size(5)
-        .with_conn_reaper_frequency(100)
-        .with_idle_timeout(100)
-        .with_retry_stategy(RetryStrategy::immediate(NonZeroUsize::new(5).unwrap()))
-        .build()
+    RouterParamBuilder::with_defaults().build()
 }
 
 #[tokio::test]
