@@ -109,7 +109,7 @@ mod route_tests {
     use tokio::sync::watch;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
-        RouterParamBuilder::with_defaults()
+        RouterParamBuilder::new()
             .with_retry_stategy(strategy)
             .build()
     }

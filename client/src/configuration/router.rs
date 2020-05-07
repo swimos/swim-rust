@@ -70,12 +70,12 @@ pub struct RouterParamBuilder {
 
 impl Default for RouterParamBuilder {
     fn default() -> Self {
-        RouterParamBuilder::with_defaults()
+        RouterParamBuilder::new()
     }
 }
 
 impl RouterParamBuilder {
-    pub fn new() -> RouterParamBuilder {
+    pub fn empty() -> RouterParamBuilder {
         RouterParamBuilder {
             retry_strategy: None,
             idle_timeout: None,
@@ -84,7 +84,7 @@ impl RouterParamBuilder {
         }
     }
 
-    pub fn with_defaults() -> RouterParamBuilder {
+    pub fn new() -> RouterParamBuilder {
         RouterParamBuilder {
             retry_strategy: Some(RetryStrategy::default()),
             idle_timeout: Some(IDLE_TIMEOUT),

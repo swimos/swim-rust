@@ -461,7 +461,7 @@ impl ConnectionSender {
     /// # Returns
     ///
     /// `Ok` if the message has been sent.
-    /// `ConnectionError` if it failed.
+    /// `SendError` if it failed.
     pub async fn send_message(&mut self, message: Message) -> Result<(), SendError<Message>> {
         self.tx.send(message).await
     }
