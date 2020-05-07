@@ -38,38 +38,33 @@ pub fn new_request(
                         match sender.send_message(payload).await {
                             Ok(_) => Ok(((), r.1)),
                             Err(e) => {
-                                return Err((MpscRetryErr::Transient(Some(e.0)), r.1));
+                                return Err((MpscRetryErr::Transient(e.0), r.1));
                             }
                         }
                     }
-                    Err(mut e) => {
-                        if let MpscRetryErr::Transient(ref mut o) = e.0 {
-                            o.replace(payload);
-                        }
-
-                        Err(e)
+                    Err((mut e @ MpscRetryErr::SenderAcqFailure, s)) => {
+                        e = MpscRetryErr::Transient(payload);
+                        return Err((e, s));
                     }
+                    _ => unreachable!(),
                 }
             })
         },
         |e| match e {
-            MpscRetryErr::Transient(s) => match s {
-                Some(m) => m,
-                None => unreachable!("Missing payload"),
-            },
+            MpscRetryErr::Transient(m) => m,
             _ => unreachable!("Incorrect routing error returned"),
         },
     )
 }
 
-pub(crate) async fn acquire_sender<T>(
+pub(crate) async fn acquire_sender<P>(
     mut sender: mpsc::Sender<ConnectionRequest>,
     is_retry: bool,
-) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<T>> {
+) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<P>> {
     let (connection_tx, connection_rx) = oneshot::channel();
 
     if sender.send((connection_tx, is_retry)).await.is_err() {
-        return MpscRetryErr::transient(sender);
+        return MpscRetryErr::sender_acq_failure(sender);
     }
 
     match connection_rx.await {
@@ -77,40 +72,42 @@ pub(crate) async fn acquire_sender<T>(
             Ok(r) => Ok((r, Some(sender))),
             Err(e) => {
                 if e.is_transient() {
-                    MpscRetryErr::transient(sender)
+                    MpscRetryErr::sender_acq_failure(sender)
                 } else {
                     MpscRetryErr::permanent(sender)
                 }
             }
         },
-        Err(_) => MpscRetryErr::transient(sender),
+        Err(_) => MpscRetryErr::sender_acq_failure(sender),
     }
 }
 
 #[derive(Eq, PartialEq, Debug)]
-pub enum MpscRetryErr<T> {
-    Transient(Option<T>),
+pub enum MpscRetryErr<P> {
+    SenderAcqFailure,
+    Transient(P),
     Permanent,
     Failed,
 }
 
-impl<T> MpscRetryErr<T> {
-    fn transient(
+impl<P> MpscRetryErr<P> {
+    fn sender_acq_failure(
         sender: mpsc::Sender<ConnectionRequest>,
-    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<T>> {
-        Err((MpscRetryErr::Transient(None), Some(sender)))
+    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<P>> {
+        Err((MpscRetryErr::SenderAcqFailure, Some(sender)))
     }
 
     fn permanent(
         sender: mpsc::Sender<ConnectionRequest>,
-    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<T>> {
+    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr<P>> {
         Err((MpscRetryErr::Permanent, Some(sender)))
     }
 }
 
-impl<T> MaybeTransientErr for MpscRetryErr<T> {
+impl<P> MaybeTransientErr for MpscRetryErr<P> {
     fn is_transient(&self) -> bool {
         match *self {
+            MpscRetryErr::SenderAcqFailure => true,
             MpscRetryErr::Transient(..) => true,
             MpscRetryErr::Permanent => false,
             MpscRetryErr::Failed => false,
@@ -164,7 +161,7 @@ mod tests {
                     let _ = sender.send(payload.clone()).await;
                     Ok(((), Some(sender)))
                 } else {
-                    Err((MpscRetryErr::Transient(Some(payload)), Some(sender)))
+                    Err((MpscRetryErr::Transient(payload), Some(sender)))
                 }
             },
         );
@@ -181,27 +178,24 @@ mod tests {
             message.clone(),
             tx,
             |sender: mpsc::Sender<Message>, payload, _is_retry| async {
-                Err((MpscRetryErr::Transient(Some(payload)), Some(sender)))
+                Err((MpscRetryErr::Transient(payload), Some(sender)))
             },
         );
 
         assert_eq!(retryable.await, Err(MpscRetryErr::Failed))
     }
 
-    async fn new_retryable<Fac, F, T>(
-        payload: T,
-        tx: mpsc::Sender<T>,
+    async fn new_retryable<Fac, F, P>(
+        payload: P,
+        tx: mpsc::Sender<P>,
         fac: Fac,
-    ) -> Result<(), MpscRetryErr<T>>
+    ) -> Result<(), MpscRetryErr<P>>
     where
-        Fac: FnMut(mpsc::Sender<T>, T, bool) -> F,
-        F: Future<Output = SendResult<mpsc::Sender<T>, (), MpscRetryErr<T>>>,
+        Fac: FnMut(mpsc::Sender<P>, P, bool) -> F,
+        F: Future<Output = SendResult<mpsc::Sender<P>, (), MpscRetryErr<P>>>,
     {
         let retryable = RetryableRequest::new(tx, payload, fac, |e| match e {
-            MpscRetryErr::Transient(s) => match s {
-                Some(m) => m,
-                None => unreachable!("Missing payload"),
-            },
+            MpscRetryErr::Transient(p) => p,
             _ => unreachable!("Incorrect routing error returned"),
         });
 
