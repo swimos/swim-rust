@@ -73,9 +73,8 @@ impl OutgoingHostTask {
                 OutgoingRequest::Message(envelope) => {
                     let message = Message::Text(envelope.into_value().to_string());
                     let request = new_request(connection_request_tx.clone(), message);
-                    let retry = RetryableFuture::new(request, config.retry_strategy());
+                    let _ = RetryableFuture::new(request, config.retry_strategy()).await?;
 
-                    retry.await.map_err(|_| RoutingError::ConnectionError)?;
                     tracing::trace!("Completed request");
                 }
                 OutgoingRequest::Close(Some(_)) => {

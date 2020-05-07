@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use std::num::NonZeroUsize;
+
 use tokio::time::Duration;
+
 use utilities::future::retryable::strategy::RetryStrategy;
 
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -23,9 +25,9 @@ const BUFFER_SIZE: usize = 1000;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
     retry_strategy: RetryStrategy,
-    /// The maximum amount of time (in seconds) a connection can be inactive for before it will be culled.
+    /// The maximum amount of time a connection can be inactive for before it will be culled.
     idle_timeout: Duration,
-    /// How frequently (in seconds) inactive connections will be culled
+    /// How frequently inactive connections will be culled
     conn_reaper_frequency: Duration,
     buffer_size: NonZeroUsize,
 }
@@ -90,7 +92,7 @@ impl RouterParamBuilder {
         RouterParams {
             retry_strategy: self
                 .retry_strategy
-                .unwrap_or_else(|| panic!("Router retry strategy must be provided")),
+                .expect("Retry strategy must be provided"),
             idle_timeout: self.idle_timeout.expect("Idle timeout must be provided"),
             buffer_size: self.buffer_size.expect("Buffer size must be provided"),
             conn_reaper_frequency: self
