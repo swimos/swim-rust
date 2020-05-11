@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::select;
+use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use futures::future::ErrInto as FutErrInto;
 use futures::stream;
+use futures::{select, Future};
 use futures::{Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::FutureExt;
@@ -33,15 +35,13 @@ use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tungstenite::error::Error as TError;
 
-use common::request::request_future::RequestError;
-
 use crate::connections::factory::WebsocketFactory;
 use url::Host;
 
 pub mod factory;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
@@ -58,6 +58,22 @@ struct ConnectionRequest {
     recreate: bool,
 }
 
+pub trait Pool {
+    type CloseFut: Future<Output = Result<Result<(), ConnectionError>, ConnectionError>> + Send;
+
+    fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> Self
+    where
+        WsFac: WebsocketFactory + 'static;
+
+    fn request_connection(
+        &mut self,
+        host_url: url::Url,
+        recreate: bool,
+    ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>;
+
+    fn close(self) -> Result<Self::CloseFut, ConnectionError>;
+}
+
 type ConnectionPoolSharedHandler = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
 
 /// Connection pool is responsible for managing the opening and closing of connections
@@ -69,7 +85,12 @@ pub struct ConnectionPool {
     stop_request_tx: mpsc::Sender<()>,
 }
 
-impl ConnectionPool {
+impl Pool for ConnectionPool {
+    type CloseFut = Sequenced<
+        FutErrInto<RequestFuture<()>, ConnectionError>,
+        JoinHandle<Result<(), ConnectionError>>,
+    >;
+
     /// Creates a new connection pool for managing connections to remote hosts.
     ///
     /// # Arguments
@@ -79,7 +100,7 @@ impl ConnectionPool {
     /// * `router_tx`               - Transmitting end of a channel for receiving messages
     ///                               from the connections in the pool.
     /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
-    pub fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> ConnectionPool
+    fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> ConnectionPool
     where
         WsFac: WebsocketFactory + 'static,
     {
@@ -115,7 +136,7 @@ impl ConnectionPool {
     /// The receiving end of a oneshot channel that can be awaited. The value from the channel is a
     /// `Result` containing either a `ConnectionSender` that can be used to send messages to the
     /// remote host or a `ConnectionError`.
-    pub fn request_connection(
+    fn request_connection(
         &mut self,
         host_url: url::Url,
         recreate: bool,
@@ -136,11 +157,9 @@ impl ConnectionPool {
 
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
-    pub async fn close(mut self) -> Result<(), ConnectionError> {
-        self.stop_request_tx
-            .send(())
-            .await
-            .map_err(|_| ConnectionError::ClosedError)?;
+    fn close(self) -> Result<Self::CloseFut, ConnectionError> {
+        let close_request =
+            TryFutureExt::err_into::<ConnectionError>(RequestFuture::new(self.stop_request_tx, ()));
 
         let handle = self
             .connection_requests_handler
@@ -149,7 +168,7 @@ impl ConnectionPool {
             .take()
             .ok_or(ConnectionError::ClosedError)?;
 
-        handle.await.map_err(|_| ConnectionError::ClosedError)?
+        Ok(Sequenced::new(close_request, handle))
     }
 }
 

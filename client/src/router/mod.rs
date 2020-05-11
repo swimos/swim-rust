@@ -16,8 +16,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::configuration::router::RouterParams;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
+use crate::connections::{ConnectionError, ConnectionSender, Pool};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use common::request::request_future::{RequestError, RequestFuture, Sequenced};
@@ -85,12 +84,11 @@ pub struct SwimRouter {
 }
 
 impl SwimRouter {
-    pub async fn new(configuration: RouterParams) -> SwimRouter {
-        let buffer_size = configuration.buffer_size().get();
+    pub async fn new<ConnPool>(configuration: RouterParams, connection_pool: ConnPool) -> SwimRouter
+    where
+        ConnPool: Pool + Clone + Send + 'static,
+    {
         let (close_tx, close_rx) = watch::channel(None);
-
-        let connection_pool =
-            ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
 
         let (task_manager, router_connection_request_tx, router_sink_tx) =
             TaskManager::new(connection_pool, close_rx.clone(), configuration);
@@ -139,17 +137,17 @@ type HostManagerHandle = (
     JoinHandle<Result<(), RoutingError>>,
 );
 
-struct TaskManager {
+struct TaskManager<ConnPool: Pool + Clone + Send + 'static> {
     conn_request_rx: mpsc::Receiver<RouterConnRequest>,
     message_request_rx: mpsc::Receiver<RouterMessageRequest>,
-    connection_pool: ConnectionPool,
+    connection_pool: ConnPool,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
-impl TaskManager {
+impl<ConnPool: Pool + Clone + Send + 'static> TaskManager<ConnPool> {
     fn new(
-        connection_pool: ConnectionPool,
+        connection_pool: ConnPool,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
@@ -239,13 +237,14 @@ impl TaskManager {
                             .map_err(|_| RoutingError::CloseError)?;
                     }
 
+                    let close_result: Result<(), ConnectionError> = connection_pool
+                        .close()
+                        .map_err(|_| RoutingError::ConnectionError)?
+                        .await
+                        .map_err(|_| RoutingError::ConnectionError)?;
+
                     close_tx
-                        .send(
-                            connection_pool
-                                .close()
-                                .await
-                                .map_err(|_| RoutingError::ConnectionError),
-                        )
+                        .send(close_result.map_err(|_| RoutingError::ConnectionError))
                         .await
                         .map_err(|_| RoutingError::CloseError)?;
 
@@ -258,13 +257,16 @@ impl TaskManager {
     }
 }
 
-fn get_host_manager(
+fn get_host_manager<ConnPool>(
     host_managers: &mut HashMap<url::Url, HostManagerHandle>,
     target: AbsolutePath,
-    connection_pool: ConnectionPool,
+    connection_pool: ConnPool,
     close_rx: CloseReceiver,
     config: RouterParams,
-) -> &mut HostManagerHandle {
+) -> &mut HostManagerHandle
+where
+    ConnPool: Pool + Clone + Send + 'static,
+{
     host_managers.entry(target.host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
             HostManager::new(target, connection_pool, close_rx, config);
@@ -298,23 +300,23 @@ enum HostTask {
     Close(Option<CloseResponseSender>),
 }
 
-struct HostManager {
+struct HostManager<ConnPool: Pool + Clone + Send + 'static> {
     target: AbsolutePath,
-    connection_pool: ConnectionPool,
+    connection_pool: ConnPool,
     sink_rx: mpsc::Receiver<Envelope>,
     stream_registrator_rx: mpsc::Receiver<mpsc::Sender<RouterEvent>>,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
-impl HostManager {
+impl<ConnPool: Pool + Clone + Send + 'static> HostManager<ConnPool> {
     fn new(
         target: AbsolutePath,
-        connection_pool: ConnectionPool,
+        connection_pool: ConnPool,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
-        HostManager,
+        HostManager<ConnPool>,
         mpsc::Sender<Envelope>,
         mpsc::Sender<mpsc::Sender<RouterEvent>>,
     ) {
