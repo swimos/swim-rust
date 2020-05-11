@@ -63,7 +63,8 @@ fn synced_value_message_from_envelope() {
 
 #[test]
 fn data_value_command_to_envelope() {
-    let expected = Envelope::command("node".to_string(), "lane".to_string(), Some(Int32Value(5)));
+    let expected =
+        Envelope::make_command("node".to_string(), "lane".to_string(), Some(Int32Value(5)));
     let (host, envelope) = value_envelope(
         &path(),
         Command::Action(SharedValue::new(Value::Int32Value(5))),
@@ -74,7 +75,7 @@ fn data_value_command_to_envelope() {
 
 #[test]
 fn data_value_message_from_envelope() {
-    let env = Envelope::event("node".to_string(), "lane".to_string(), Some(Int32Value(7)));
+    let env = Envelope::make_event("node".to_string(), "lane".to_string(), Some(Int32Value(7)));
     let result = value::try_from_envelope(env);
     assert_that!(result, eq(Ok(Message::Action(Int32Value(7)))))
 }
@@ -99,7 +100,7 @@ fn sync_map_command_to_envelope() {
 fn clear_map_command_to_envelope() {
     let rep = Form::into_value(MapModification::Clear);
 
-    let expected = Envelope::command("node".to_string(), "lane".to_string(), Some(rep));
+    let expected = Envelope::make_command("node".to_string(), "lane".to_string(), Some(rep));
     let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Clear));
     assert_that!(host, eq("host"));
     assert_that!(envelope, eq(expected));
@@ -109,7 +110,7 @@ fn clear_map_command_to_envelope() {
 fn take_map_command_to_envelope() {
     let rep = Form::into_value(MapModification::Take(7));
 
-    let expected = Envelope::command("node".to_string(), "lane".to_string(), Some(rep));
+    let expected = Envelope::make_command("node".to_string(), "lane".to_string(), Some(rep));
     let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Take(7)));
     assert_that!(host, eq("host"));
     assert_that!(envelope, eq(expected));
@@ -119,7 +120,7 @@ fn take_map_command_to_envelope() {
 fn skip_map_command_to_envelope() {
     let rep = Form::into_value(MapModification::Skip(7));
 
-    let expected = Envelope::command("node".to_string(), "lane".to_string(), Some(rep));
+    let expected = Envelope::make_command("node".to_string(), "lane".to_string(), Some(rep));
     let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Skip(7)));
     assert_that!(host, eq("host"));
     assert_that!(envelope, eq(expected));
@@ -131,7 +132,7 @@ fn remove_map_command_to_envelope() {
 
     let rep = Form::as_value(&action);
 
-    let expected = Envelope::command("node".to_string(), "lane".to_string(), Some(rep));
+    let expected = Envelope::make_command("node".to_string(), "lane".to_string(), Some(rep));
     let (host, envelope) = map_envelope(
         &path(),
         Command::Action(MapModification::Remove(Value::text("key"))),
@@ -146,7 +147,7 @@ fn insert_map_command_to_envelope() {
 
     let rep = Form::as_value(&action);
 
-    let expected = Envelope::command("node".to_string(), "lane".to_string(), Some(rep));
+    let expected = Envelope::make_command("node".to_string(), "lane".to_string(), Some(rep));
 
     let arc_action = MapModification::Insert(Value::text("key"), Arc::new(Value::text("value")));
 
@@ -179,7 +180,7 @@ fn synced_map_message_from_envelope() {
 #[test]
 fn clear_map_message_from_envelope() {
     let rep = Form::into_value(MapModification::Clear);
-    let env = Envelope::event("node".to_string(), "lane".to_string(), Some(rep));
+    let env = Envelope::make_event("node".to_string(), "lane".to_string(), Some(rep));
     let result = map::try_from_envelope(env);
     assert_that!(result, eq(Ok(Message::Action(MapModification::Clear))))
 }
@@ -187,7 +188,7 @@ fn clear_map_message_from_envelope() {
 #[test]
 fn take_map_message_from_envelope() {
     let rep = Form::into_value(MapModification::Take(14));
-    let env = Envelope::event("node".to_string(), "lane".to_string(), Some(rep));
+    let env = Envelope::make_event("node".to_string(), "lane".to_string(), Some(rep));
     let result = map::try_from_envelope(env);
     assert_that!(result, eq(Ok(Message::Action(MapModification::Take(14)))))
 }
@@ -195,7 +196,7 @@ fn take_map_message_from_envelope() {
 #[test]
 fn skip_map_message_from_envelope() {
     let rep = Form::into_value(MapModification::Skip(1));
-    let env = Envelope::event("node".to_string(), "lane".to_string(), Some(rep));
+    let env = Envelope::make_event("node".to_string(), "lane".to_string(), Some(rep));
     let result = map::try_from_envelope(env);
     assert_that!(result, eq(Ok(Message::Action(MapModification::Skip(1)))))
 }
@@ -205,7 +206,7 @@ fn remove_map_message_from_envelope() {
     let action = MapModification::Remove(Value::text("key"));
 
     let rep = Form::as_value(&action);
-    let env = Envelope::event("node".to_string(), "lane".to_string(), Some(rep));
+    let env = Envelope::make_event("node".to_string(), "lane".to_string(), Some(rep));
     let result = map::try_from_envelope(env);
     assert_that!(result, eq(Ok(Message::Action(action))))
 }
@@ -215,7 +216,7 @@ fn insert_map_message_from_envelope() {
     let action = MapModification::Insert(Value::text("key"), Value::text("value"));
 
     let rep = Form::as_value(&action);
-    let env = Envelope::event("node".to_string(), "lane".to_string(), Some(rep));
+    let env = Envelope::make_event("node".to_string(), "lane".to_string(), Some(rep));
     let result = map::try_from_envelope(env);
     assert_that!(result, eq(Ok(Message::Action(action))))
 }

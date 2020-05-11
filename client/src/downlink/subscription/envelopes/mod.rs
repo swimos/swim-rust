@@ -61,7 +61,7 @@ where
         host,
         match command {
             Command::Sync => Envelope::sync(node, lane),
-            Command::Action(v) => Envelope::command(node, lane, to_body(v)),
+            Command::Action(v) => Envelope::make_command(node, lane, to_body(v)),
             Command::Unlink => Envelope::unlink(node, lane),
         },
     )
@@ -85,7 +85,7 @@ pub(in crate::downlink) mod value {
     use crate::downlink::subscription::envelopes::EnvInterpError;
     use crate::downlink::Message;
     use common::model::Value;
-    use common::warp::envelope::{Envelope, LaneAddressed};
+    use common::warp::envelope::{Envelope, IncomingHeader, IncomingLinkMessage};
 
     pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Option<Value> {
         Some((*v).clone())
@@ -94,14 +94,27 @@ pub(in crate::downlink) mod value {
     pub(in crate::downlink) fn try_from_envelope(
         env: Envelope,
     ) -> Result<Message<Value>, EnvInterpError> {
-        match env {
-            Envelope::LinkedResponse(_) => Ok(Message::Linked),
-            Envelope::SyncedResponse(_) => Ok(Message::Synced),
-            Envelope::UnlinkedResponse(_) => Ok(Message::Unlinked),
-            Envelope::EventMessage(LaneAddressed {
-                body: Some(body), ..
-            }) => Ok(Message::Action(body)),
-            Envelope::EventMessage(_) => Err(EnvInterpError::MissingBody),
+        match env.into_incoming() {
+            Ok(incoming) => match incoming {
+                IncomingLinkMessage {
+                    header: IncomingHeader::Linked(_),
+                    ..
+                } => Ok(Message::Linked),
+                IncomingLinkMessage {
+                    header: IncomingHeader::Synced,
+                    ..
+                } => Ok(Message::Synced),
+                IncomingLinkMessage {
+                    header: IncomingHeader::Unlinked,
+                    ..
+                } => Ok(Message::Unlinked),
+                IncomingLinkMessage {
+                    header: IncomingHeader::Event,
+                    body: Some(body),
+                    ..
+                } => Ok(Message::Action(body)),
+                _ => Err(EnvInterpError::MissingBody),
+            },
             _ => Err(EnvInterpError::BadMessageKind),
         }
     }
@@ -112,7 +125,7 @@ pub(in crate::downlink) mod map {
     use crate::downlink::subscription::envelopes::EnvInterpError;
     use crate::downlink::Message;
     use common::model::Value;
-    use common::warp::envelope::{Envelope, LaneAddressed};
+    use common::warp::envelope::{Envelope, IncomingHeader, IncomingLinkMessage};
     use form::Form;
     use std::sync::Arc;
 
@@ -123,17 +136,30 @@ pub(in crate::downlink) mod map {
     pub(in crate::downlink) fn try_from_envelope(
         env: Envelope,
     ) -> Result<Message<MapModification<Value>>, EnvInterpError> {
-        match env {
-            Envelope::LinkedResponse(_) => Ok(Message::Linked),
-            Envelope::SyncedResponse(_) => Ok(Message::Synced),
-            Envelope::UnlinkedResponse(_) => Ok(Message::Unlinked),
-            Envelope::EventMessage(LaneAddressed {
-                body: Some(body), ..
-            }) => match Form::try_convert(body) {
-                Ok(modification) => Ok(Message::Action(modification)),
-                Err(e) => Err(EnvInterpError::InvalidBody(e)),
+        match env.into_incoming() {
+            Ok(incoming) => match incoming {
+                IncomingLinkMessage {
+                    header: IncomingHeader::Linked(_),
+                    ..
+                } => Ok(Message::Linked),
+                IncomingLinkMessage {
+                    header: IncomingHeader::Synced,
+                    ..
+                } => Ok(Message::Synced),
+                IncomingLinkMessage {
+                    header: IncomingHeader::Unlinked,
+                    ..
+                } => Ok(Message::Unlinked),
+                IncomingLinkMessage {
+                    header: IncomingHeader::Event,
+                    body: Some(body),
+                    ..
+                } => match Form::try_convert(body) {
+                    Ok(modification) => Ok(Message::Action(modification)),
+                    Err(e) => Err(EnvInterpError::InvalidBody(e)),
+                },
+                _ => Err(EnvInterpError::MissingBody),
             },
-            Envelope::EventMessage(_) => Err(EnvInterpError::MissingBody),
             _ => Err(EnvInterpError::BadMessageKind),
         }
     }
