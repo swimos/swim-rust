@@ -1,12 +1,15 @@
 language: rust
 
+branches:
+  only:
+    - master
+    - router
+
 matrix:
   include:
     - os: linux
     - os: osx
-      if: branch = master
     - os: windows
-      if: branch = master
 
 rust:
   - 1.43.0

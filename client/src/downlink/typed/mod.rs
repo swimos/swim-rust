@@ -13,17 +13,21 @@
 // limitations under the License.
 
 pub mod action;
+pub mod any;
 pub mod event;
 pub mod topic;
 
+use crate::downlink::any::{AnyDownlink, TopicKind};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::action::{MapActions, ValueActions};
+use crate::downlink::typed::any::map::AnyMapDownlink;
+use crate::downlink::typed::any::value::AnyValueDownlink;
 use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
-use crate::downlink::{Downlink, Event};
+use crate::downlink::{Downlink, Event, StoppedFuture};
 use common::sink::item::ItemSink;
 use common::topic::Topic;
 use form::Form;
@@ -31,9 +35,51 @@ use std::marker::PhantomData;
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
+#[derive(Debug)]
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
     _value_type: PhantomData<T>,
+}
+
+impl<Inner: Clone, T> Clone for ValueDownlink<Inner, T> {
+    fn clone(&self) -> Self {
+        ValueDownlink {
+            inner: self.inner.clone(),
+            _value_type: PhantomData,
+        }
+    }
+}
+
+impl<T> ValueDownlink<AnyDownlink<Action, SharedValue>, T>
+where
+    T: Form + Send + 'static,
+{
+    /// Unwrap an [`AnyDownlink`] and then reapply the type transformation to it.
+    pub fn into_specific(self) -> AnyValueDownlink<T> {
+        match self.inner {
+            AnyDownlink::Queue(qdl) => AnyValueDownlink::Queue(ValueDownlink::new(qdl)),
+            AnyDownlink::Dropping(ddl) => AnyValueDownlink::Dropping(ValueDownlink::new(ddl)),
+            AnyDownlink::Buffered(bdl) => AnyValueDownlink::Buffered(ValueDownlink::new(bdl)),
+        }
+    }
+
+    pub fn kind(&self) -> TopicKind {
+        self.inner.kind()
+    }
+
+    /// Determine if the downlink is still running.
+    pub fn is_running(&self) -> bool {
+        self.inner.is_running()
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.inner.same_downlink(&other.inner)
+    }
+
+    /// Get a future that will complete when the downlink stops running.
+    pub fn await_stopped(&self) -> StoppedFuture {
+        self.inner.await_stopped()
+    }
 }
 
 impl<Inner, T> ValueDownlink<Inner, T>
@@ -50,9 +96,52 @@ where
 }
 
 /// A wrapper around a map downlink, applying [`Form`]s to the keys and values.
+#[derive(Debug)]
 pub struct MapDownlink<Inner, K, V> {
     inner: Inner,
     _value_type: PhantomData<(K, V)>,
+}
+
+impl<Inner: Clone, K, V> Clone for MapDownlink<Inner, K, V> {
+    fn clone(&self) -> Self {
+        MapDownlink {
+            inner: self.inner.clone(),
+            _value_type: PhantomData,
+        }
+    }
+}
+
+impl<K, V> MapDownlink<AnyDownlink<MapAction, ViewWithEvent>, K, V>
+where
+    K: Form + Send + 'static,
+    V: Form + Send + 'static,
+{
+    /// Unwrap an [`AnyDownlink`] and then reapply the type transformation to it.
+    pub fn into_specific(self) -> AnyMapDownlink<K, V> {
+        match self.inner {
+            AnyDownlink::Queue(qdl) => AnyMapDownlink::Queue(MapDownlink::new(qdl)),
+            AnyDownlink::Dropping(ddl) => AnyMapDownlink::Dropping(MapDownlink::new(ddl)),
+            AnyDownlink::Buffered(bdl) => AnyMapDownlink::Buffered(MapDownlink::new(bdl)),
+        }
+    }
+
+    pub fn kind(&self) -> TopicKind {
+        self.inner.kind()
+    }
+
+    /// Determine if the downlink is still running.
+    pub fn is_running(&self) -> bool {
+        self.inner.is_running()
+    }
+
+    pub fn same_downlink(&self, other: &Self) -> bool {
+        self.inner.same_downlink(&other.inner)
+    }
+
+    /// Get a future that will complete when the downlink stops running.
+    pub fn await_stopped(&self) -> StoppedFuture {
+        self.inner.await_stopped()
+    }
 }
 
 impl<Inner, K, V> MapDownlink<Inner, K, V>
