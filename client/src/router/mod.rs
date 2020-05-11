@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use common::sink::item::ItemSender;
-use common::warp::envelope::Envelope;
+use common::warp::envelope::{Envelope, IncomingLinkMessage, OutgoingLinkMessage};
 use common::warp::path::AbsolutePath;
 use futures::{Future, Stream};
 use std::error::Error;
@@ -21,8 +21,12 @@ use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc::error::SendError;
 
 pub trait Router: Send {
-    type ConnectionStream: Stream<Item = Envelope> + Send + 'static;
-    type ConnectionSink: ItemSender<Envelope, RoutingError> + Clone + Sync + Send + 'static;
+    type ConnectionStream: Stream<Item = IncomingLinkMessage> + Send + 'static;
+    type ConnectionSink: ItemSender<OutgoingLinkMessage, RoutingError>
+        + Clone
+        + Sync
+        + Send
+        + 'static;
     type GeneralSink: ItemSender<(String, Envelope), RoutingError> + Clone + Sync + Send + 'static;
 
     type ConnectionFut: Future<Output = (Self::ConnectionSink, Self::ConnectionStream)> + Send;

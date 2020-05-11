@@ -35,7 +35,7 @@ use either::Either;
 use form::ValidatedForm;
 use futures::stream::Fuse;
 use futures::Stream;
-use futures_util::future::{ready, TryFutureExt};
+use futures_util::future::TryFutureExt;
 use futures_util::select_biased;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
@@ -418,9 +418,7 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await;
         let schema_cpy = schema.clone();
 
-        //TODO Do something with invalid envelopes rather than discarding them.
-        let updates =
-            incoming.filter_map(|env| ready(envelopes::value::try_from_envelope(env).ok()));
+        let updates = incoming.map(envelopes::value::from_envelope);
 
         let sink_path = path.clone();
         let cmd_sink = sink
@@ -464,8 +462,7 @@ where
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        //TODO Do something with invalid envelopes rather than discarding them.
-        let updates = incoming.filter_map(|env| ready(envelopes::map::try_from_envelope(env).ok()));
+        let updates = incoming.map(envelopes::map::from_envelope);
 
         let sink_path = path.clone();
 

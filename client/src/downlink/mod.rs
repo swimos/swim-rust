@@ -180,6 +180,7 @@ pub enum Message<M> {
     Synced,
     Action(M),
     Unlinked,
+    BadEnvelope(String),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -411,6 +412,7 @@ where
                     *state = DownlinkState::Unlinked;
                     Response::none().then_terminate()
                 }
+                Message::BadEnvelope(_) => return Err(DownlinkError::MalformedMessage),
             },
             Operation::Action(action) => self.handle_action(data_state, action).into(),
         };
