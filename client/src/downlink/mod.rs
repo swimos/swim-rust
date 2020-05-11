@@ -248,6 +248,13 @@ pub enum TransitionError {
     IllegalTransition(String),
 }
 
+impl TransitionError {
+    /// On encountering a fatal transition error, a downlink will terminate.
+    pub fn is_fatal(&self) -> bool {
+        matches!(self, TransitionError::IllegalTransition(_))
+    }
+}
+
 /// This trait defines the interface that must be implemented for the state type of a downlink.
 trait StateMachine<State, Message, Action>: Sized {
     /// Type of events that will be issued to the owner of the downlink.
