@@ -122,13 +122,7 @@ fn parse_sync_with_named_headers() {
     let record = create_record("sync", link_named_headers());
     run_test(
         record,
-        Envelope::make_sync(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(TEST_RATE),
-            Some(TEST_PRIO),
-            None,
-        ),
+        Envelope::make_sync(TEST_NODE, TEST_LANE, Some(TEST_RATE), Some(TEST_PRIO), None),
     );
 }
 
@@ -138,13 +132,7 @@ fn parse_sync_with_positional_headers() {
     let record = create_record("sync", link_positional_headers());
     run_test(
         record,
-        Envelope::make_sync(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(TEST_RATE),
-            Some(TEST_PRIO),
-            None,
-        ),
+        Envelope::make_sync(TEST_NODE, TEST_LANE, Some(TEST_RATE), Some(TEST_PRIO), None),
     );
 }
 
@@ -155,8 +143,8 @@ fn parse_sync_with_body() {
     run_test(
         record,
         Envelope::make_sync(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
+            TEST_NODE,
+            TEST_LANE,
             Some(TEST_RATE),
             Some(TEST_PRIO),
             Some(test_body()),
@@ -170,13 +158,7 @@ fn parse_link_with_named_headers() {
     let record = create_record("link", link_named_headers());
     run_test(
         record,
-        Envelope::make_link(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(TEST_RATE),
-            Some(TEST_PRIO),
-            None,
-        ),
+        Envelope::make_link(TEST_NODE, TEST_LANE, Some(TEST_RATE), Some(TEST_PRIO), None),
     );
 }
 
@@ -186,13 +168,7 @@ fn parse_link_with_positional_headers() {
     let record = create_record("link", link_positional_headers());
     run_test(
         record,
-        Envelope::make_link(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(TEST_RATE),
-            Some(TEST_PRIO),
-            None,
-        ),
+        Envelope::make_link(TEST_NODE, TEST_LANE, Some(TEST_RATE), Some(TEST_PRIO), None),
     );
 }
 
@@ -203,8 +179,8 @@ fn parse_link_with_body() {
     run_test(
         record,
         Envelope::make_link(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
+            TEST_NODE,
+            TEST_LANE,
             Some(TEST_RATE),
             Some(TEST_PRIO),
             Some(test_body()),
@@ -218,13 +194,7 @@ fn parse_linked_with_named_headers() {
     let record = create_record("linked", link_named_headers());
     run_test(
         record,
-        Envelope::make_linked(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(TEST_RATE),
-            Some(TEST_PRIO),
-            None,
-        ),
+        Envelope::make_linked(TEST_NODE, TEST_LANE, Some(TEST_RATE), Some(TEST_PRIO), None),
     );
 }
 
@@ -234,13 +204,7 @@ fn parse_linked_with_positional_headers() {
     let record = create_record("linked", link_positional_headers());
     run_test(
         record,
-        Envelope::make_linked(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(TEST_RATE),
-            Some(TEST_PRIO),
-            None,
-        ),
+        Envelope::make_linked(TEST_NODE, TEST_LANE, Some(TEST_RATE), Some(TEST_PRIO), None),
     );
 }
 
@@ -251,8 +215,8 @@ fn parse_linked_with_body() {
     run_test(
         record,
         Envelope::make_linked(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
+            TEST_NODE,
+            TEST_LANE,
             Some(TEST_RATE),
             Some(TEST_PRIO),
             Some(test_body()),
@@ -308,20 +272,14 @@ fn parse_authed_with_body() {
 #[test]
 fn parse_command_with_named_headers() {
     let record = create_record("command", lane_named_headers());
-    run_test(
-        record,
-        Envelope::make_command(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_command(TEST_NODE, TEST_LANE, None));
 }
 
 // @command(node_uri, lane_uri)
 #[test]
 fn parse_command_with_positional_headers() {
     let record = create_record("command", lane_positional_headers());
-    run_test(
-        record,
-        Envelope::make_command(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_command(TEST_NODE, TEST_LANE, None));
 }
 
 // @command(node_uri, lane_uri)@test
@@ -330,11 +288,7 @@ fn parse_command_with_body() {
     let record = create_record_with_test("command", lane_positional_headers());
     run_test(
         record,
-        Envelope::make_command(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(test_body()),
-        ),
+        Envelope::make_command(TEST_NODE, TEST_LANE, Some(test_body())),
     );
 }
 
@@ -386,20 +340,14 @@ fn parse_deauth_with_body() {
 #[test]
 fn parse_event_with_named_headers() {
     let record = create_record("event", lane_named_headers());
-    run_test(
-        record,
-        Envelope::make_event(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_event(TEST_NODE, TEST_LANE, None));
 }
 
 // @event(node_uri, lane_uri)
 #[test]
 fn parse_event_with_positional_headers() {
     let record = create_record("event", lane_positional_headers());
-    run_test(
-        record,
-        Envelope::make_event(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_event(TEST_NODE, TEST_LANE, None));
 }
 
 // @event(node_uri, lane_uri)@test
@@ -408,11 +356,7 @@ fn parse_event_with_body() {
     let record = create_record_with_test("event", lane_named_headers());
     run_test(
         record,
-        Envelope::make_event(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(test_body()),
-        ),
+        Envelope::make_event(TEST_NODE, TEST_LANE, Some(test_body())),
     );
 }
 
@@ -420,20 +364,14 @@ fn parse_event_with_body() {
 #[test]
 fn parse_synced_with_named_headers() {
     let record = create_record("synced", lane_named_headers());
-    run_test(
-        record,
-        Envelope::make_synced(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_synced(TEST_NODE, TEST_LANE, None));
 }
 
 // @synced(node_uri, lane_uri)
 #[test]
 fn parse_synced_with_positional_headers() {
     let record = create_record("synced", lane_positional_headers());
-    run_test(
-        record,
-        Envelope::make_synced(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_synced(TEST_NODE, TEST_LANE, None));
 }
 
 // @synced(node_uri, lane_uri)@test
@@ -442,11 +380,7 @@ fn parse_synced_with_body() {
     let record = create_record_with_test("synced", lane_named_headers());
     run_test(
         record,
-        Envelope::make_synced(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(test_body()),
-        ),
+        Envelope::make_synced(TEST_NODE, TEST_LANE, Some(test_body())),
     );
 }
 
@@ -454,20 +388,14 @@ fn parse_synced_with_body() {
 #[test]
 fn parse_unlink_with_named_headers() {
     let record = create_record("unlink", lane_named_headers());
-    run_test(
-        record,
-        Envelope::make_unlink(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_unlink(TEST_NODE, TEST_LANE, None));
 }
 
 // @unlink(node_uri, lane_uri)
 #[test]
 fn parse_unlink_with_positional_headers() {
     let record = create_record("unlink", lane_positional_headers());
-    run_test(
-        record,
-        Envelope::make_unlink(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_unlink(TEST_NODE, TEST_LANE, None));
 }
 
 // @unlink(node_uri, lane_uri)@test
@@ -476,11 +404,7 @@ fn parse_unlink_with_body() {
     let record = create_record_with_test("unlink", lane_named_headers());
     run_test(
         record,
-        Envelope::make_unlink(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(test_body()),
-        ),
+        Envelope::make_unlink(TEST_NODE, TEST_LANE, Some(test_body())),
     );
 }
 
@@ -488,20 +412,14 @@ fn parse_unlink_with_body() {
 #[test]
 fn parse_unlinked_with_named_headers() {
     let record = create_record("unlinked", lane_named_headers());
-    run_test(
-        record,
-        Envelope::make_unlinked(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_unlinked(TEST_NODE, TEST_LANE, None));
 }
 
 // @unlinked(node_uri, lane_uri)
 #[test]
 fn parse_unlinked_with_positional_headers() {
     let record = create_record("unlinked", lane_positional_headers());
-    run_test(
-        record,
-        Envelope::make_unlinked(TEST_NODE.to_string(), TEST_LANE.to_string(), None),
-    );
+    run_test(record, Envelope::make_unlinked(TEST_NODE, TEST_LANE, None));
 }
 
 // @unlinked(node_uri, lane_uri)@test
@@ -510,11 +428,7 @@ fn parse_unlinked_with_body() {
     let record = create_record_with_test("unlinked", lane_named_headers());
     run_test(
         record,
-        Envelope::make_unlinked(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(test_body()),
-        ),
+        Envelope::make_unlinked(TEST_NODE, TEST_LANE, Some(test_body())),
     );
 }
 
@@ -547,11 +461,11 @@ fn unexpected_key() {
                 vec![
                     Item::Slot(
                         Value::Text(String::from("not_a_node")),
-                        Value::Text(String::from(TEST_NODE.to_string())),
+                        Value::Text(String::from(TEST_NODE)),
                     ),
                     Item::Slot(
                         Value::Text(String::from("node_a_lane")),
-                        Value::Text(String::from(TEST_LANE.to_string())),
+                        Value::Text(String::from(TEST_LANE)),
                     ),
                 ],
             ),
@@ -586,11 +500,11 @@ fn too_many_named_headers() {
         vec![
             Item::Slot(
                 Value::Text(String::from("node")),
-                Value::Text(String::from(TEST_NODE.to_string())),
+                Value::Text(String::from(TEST_NODE)),
             ),
             Item::Slot(
                 Value::Text(String::from("lane")),
-                Value::Text(String::from(TEST_LANE.to_string())),
+                Value::Text(String::from(TEST_LANE)),
             ),
             Item::Slot(
                 Value::Text(String::from("prio")),
@@ -618,8 +532,8 @@ fn too_many_positional_headers() {
     let record = create_record(
         "sync",
         vec![
-            Item::ValueItem(Value::Text(String::from(TEST_NODE.to_string()))),
-            Item::ValueItem(Value::Text(String::from(TEST_LANE.to_string()))),
+            Item::ValueItem(Value::Text(String::from(TEST_NODE))),
+            Item::ValueItem(Value::Text(String::from(TEST_LANE))),
             Item::Slot(
                 Value::Text(String::from("prio")),
                 Value::Float64Value(TEST_PRIO),
@@ -645,9 +559,9 @@ fn mixed_headers() {
         vec![
             Item::Slot(
                 Value::Text(String::from("node")),
-                Value::Text(String::from(TEST_NODE.to_string())),
+                Value::Text(String::from(TEST_NODE)),
             ),
-            Item::ValueItem(Value::Text(String::from(TEST_LANE.to_string()))),
+            Item::ValueItem(Value::Text(String::from(TEST_LANE))),
             Item::Slot(
                 Value::Text(String::from("prio")),
                 Value::Float64Value(TEST_PRIO),
@@ -661,13 +575,7 @@ fn mixed_headers() {
 
     run_test(
         record,
-        Envelope::make_sync(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
-            Some(TEST_RATE),
-            Some(TEST_PRIO),
-            None,
-        ),
+        Envelope::make_sync(TEST_NODE, TEST_LANE, Some(TEST_RATE), Some(TEST_PRIO), None),
     );
 }
 
@@ -715,11 +623,11 @@ fn duplicate_headers() {
                 vec![
                     Item::Slot(
                         Value::Text(String::from("node")),
-                        Value::Text(String::from(TEST_NODE.to_string())),
+                        Value::Text(String::from(TEST_NODE)),
                     ),
                     Item::Slot(
                         Value::Text(String::from("node")),
-                        Value::Text(String::from(TEST_NODE.to_string())),
+                        Value::Text(String::from(TEST_NODE)),
                     ),
                 ],
             ),
@@ -742,7 +650,7 @@ fn missing_header() {
                 Vec::new(),
                 vec![Item::Slot(
                     Value::Text(String::from("node")),
-                    Value::Text(String::from(TEST_NODE.to_string())),
+                    Value::Text(String::from(TEST_NODE)),
                 )],
             ),
         ))],
@@ -763,8 +671,8 @@ fn multiple_attributes() {
             Value::Record(
                 Vec::new(),
                 vec![
-                    Item::ValueItem(Value::Text(String::from(TEST_NODE.to_string()))),
-                    Item::ValueItem(Value::Text(String::from(TEST_LANE.to_string()))),
+                    Item::ValueItem(Value::Text(String::from(TEST_NODE))),
+                    Item::ValueItem(Value::Text(String::from(TEST_LANE))),
                     Item::Slot(
                         Value::Text(String::from("prio")),
                         Value::Float64Value(TEST_PRIO),
@@ -782,8 +690,8 @@ fn multiple_attributes() {
     run_test(
         record,
         Envelope::make_sync(
-            TEST_NODE.to_string(),
-            TEST_LANE.to_string(),
+            TEST_NODE,
+            TEST_LANE,
             Some(TEST_RATE),
             Some(TEST_PRIO),
             Some(Value::Float64Value(1.0)),
@@ -833,13 +741,7 @@ fn deauthed_to_value() {
 
 #[test]
 fn link_no_params_to_value() {
-    let env = Envelope::make_link(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        None,
-        None,
-        Some(test_body()),
-    );
+    let env = Envelope::make_link(TEST_NODE, TEST_LANE, None, None, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("link", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -849,8 +751,8 @@ fn link_no_params_to_value() {
 #[test]
 fn link_with_params_to_value() {
     let env = Envelope::make_link(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
+        TEST_NODE,
+        TEST_LANE,
         Some(TEST_RATE),
         Some(TEST_PRIO),
         Some(test_body()),
@@ -871,13 +773,7 @@ fn link_with_params_to_value() {
 
 #[test]
 fn sync_no_params_to_value() {
-    let env = Envelope::make_sync(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        None,
-        None,
-        Some(test_body()),
-    );
+    let env = Envelope::make_sync(TEST_NODE, TEST_LANE, None, None, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("sync", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -887,8 +783,8 @@ fn sync_no_params_to_value() {
 #[test]
 fn sync_with_params_to_value() {
     let env = Envelope::make_sync(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
+        TEST_NODE,
+        TEST_LANE,
         Some(TEST_RATE),
         Some(TEST_PRIO),
         Some(test_body()),
@@ -909,11 +805,7 @@ fn sync_with_params_to_value() {
 
 #[test]
 fn unlink_to_value() {
-    let env = Envelope::make_unlink(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        Some(test_body()),
-    );
+    let env = Envelope::make_unlink(TEST_NODE, TEST_LANE, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("unlink", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -922,11 +814,7 @@ fn unlink_to_value() {
 
 #[test]
 fn command_to_value() {
-    let env = Envelope::make_command(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        Some(test_body()),
-    );
+    let env = Envelope::make_command(TEST_NODE, TEST_LANE, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("command", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -935,13 +823,7 @@ fn command_to_value() {
 
 #[test]
 fn linked_no_params_to_value() {
-    let env = Envelope::make_linked(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        None,
-        None,
-        Some(test_body()),
-    );
+    let env = Envelope::make_linked(TEST_NODE, TEST_LANE, None, None, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("linked", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -951,8 +833,8 @@ fn linked_no_params_to_value() {
 #[test]
 fn linked_with_params_to_value() {
     let env = Envelope::make_linked(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
+        TEST_NODE,
+        TEST_LANE,
         Some(TEST_RATE),
         Some(TEST_PRIO),
         Some(test_body()),
@@ -973,11 +855,7 @@ fn linked_with_params_to_value() {
 
 #[test]
 fn synced_to_value() {
-    let env = Envelope::make_synced(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        Some(test_body()),
-    );
+    let env = Envelope::make_synced(TEST_NODE, TEST_LANE, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("synced", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -986,11 +864,7 @@ fn synced_to_value() {
 
 #[test]
 fn unlinked_to_value() {
-    let env = Envelope::make_unlinked(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        Some(test_body()),
-    );
+    let env = Envelope::make_unlinked(TEST_NODE, TEST_LANE, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("unlinked", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -999,11 +873,7 @@ fn unlinked_to_value() {
 
 #[test]
 fn event_to_value() {
-    let env = Envelope::make_event(
-        TEST_NODE.to_string(),
-        TEST_LANE.to_string(),
-        Some(test_body()),
-    );
+    let env = Envelope::make_event(TEST_NODE, TEST_LANE, Some(test_body()));
     let value: Value = env.into();
     let link_attr = Attr::with_items("event", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);

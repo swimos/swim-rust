@@ -191,35 +191,41 @@ impl Envelope {
         }
     }
 
-    fn make_incoming(
+    fn make_incoming<S: Into<String>>(
         header: IncomingHeader,
-        node: String,
-        lane: String,
+        node: S,
+        lane: S,
         body: Option<Value>,
     ) -> Self {
-        let path = RelativePath { node, lane };
+        let path = RelativePath {
+            node: node.into(),
+            lane: lane.into(),
+        };
         Envelope {
             header: EnvelopeHeader::IncomingLink(header, path),
             body,
         }
     }
 
-    fn make_outgoing(
+    fn make_outgoing<S: Into<String>>(
         header: OutgoingHeader,
-        node: String,
-        lane: String,
+        node: S,
+        lane: S,
         body: Option<Value>,
     ) -> Self {
-        let path = RelativePath { node, lane };
+        let path = RelativePath {
+            node: node.into(),
+            lane: lane.into(),
+        };
         Envelope {
             header: EnvelopeHeader::OutgoingLink(header, path),
             body,
         }
     }
 
-    pub fn make_sync(
-        node: String,
-        lane: String,
+    pub fn make_sync<S: Into<String>>(
+        node: S,
+        lane: S,
         rate: Option<f64>,
         prio: Option<f64>,
         body: Option<Value>,
@@ -232,9 +238,9 @@ impl Envelope {
         )
     }
 
-    pub fn make_link(
-        node: String,
-        lane: String,
+    pub fn make_link<S: Into<String>>(
+        node: S,
+        lane: S,
         rate: Option<f64>,
         prio: Option<f64>,
         body: Option<Value>,
@@ -247,9 +253,9 @@ impl Envelope {
         )
     }
 
-    pub fn make_linked(
-        node: String,
-        lane: String,
+    pub fn make_linked<S: Into<String>>(
+        node: S,
+        lane: S,
         rate: Option<f64>,
         prio: Option<f64>,
         body: Option<Value>,
@@ -290,23 +296,23 @@ impl Envelope {
         }
     }
 
-    pub fn make_unlink(node: String, lane: String, body: Option<Value>) -> Self {
+    pub fn make_unlink<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_outgoing(OutgoingHeader::Unlink, node, lane, body)
     }
 
-    pub fn make_unlinked(node: String, lane: String, body: Option<Value>) -> Self {
+    pub fn make_unlinked<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_incoming(IncomingHeader::Unlinked, node, lane, body)
     }
 
-    pub fn make_command(node: String, lane: String, body: Option<Value>) -> Self {
+    pub fn make_command<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_outgoing(OutgoingHeader::Command, node, lane, body)
     }
 
-    pub fn make_event(node: String, lane: String, body: Option<Value>) -> Self {
+    pub fn make_event<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_incoming(IncomingHeader::Event, node, lane, body)
     }
 
-    pub fn make_synced(node: String, lane: String, body: Option<Value>) -> Self {
+    pub fn make_synced<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_incoming(IncomingHeader::Synced, node, lane, body)
     }
 }
@@ -342,27 +348,27 @@ impl Envelope {
         }
     }
 
-    pub fn link(node: String, lane: String) -> Self {
+    pub fn link<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_link(node, lane, None, None, None)
     }
 
-    pub fn sync(node: String, lane: String) -> Self {
+    pub fn sync<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_sync(node, lane, None, None, None)
     }
 
-    pub fn unlink(node: String, lane: String) -> Self {
+    pub fn unlink<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_unlink(node, lane, None)
     }
 
-    pub fn unlinked(node: String, lane: String) -> Self {
+    pub fn unlinked<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_unlinked(node, lane, None)
     }
 
-    pub fn linked(node: String, lane: String) -> Self {
+    pub fn linked<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_linked(node, lane, None, None, None)
     }
 
-    pub fn synced(node: String, lane: String) -> Self {
+    pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_synced(node, lane, None)
     }
 }
