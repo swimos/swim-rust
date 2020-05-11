@@ -798,3 +798,214 @@ fn tag() {
     let e = Envelope::try_from(record).unwrap();
     assert_eq!(e.tag(), "auth");
 }
+
+#[test]
+fn auth_to_value() {
+    let env = Envelope::make_auth(Some(test_body()));
+    let value: Value = env.into();
+    let expected = Value::of_attrs(vec![Attr::of("auth"), Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn deauth_to_value() {
+    let env = Envelope::make_deauth(Some(test_body()));
+    let value: Value = env.into();
+    let expected = Value::of_attrs(vec![Attr::of("deauth"), Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn authed_to_value() {
+    let env = Envelope::make_authed(Some(test_body()));
+    let value: Value = env.into();
+    let expected = Value::of_attrs(vec![Attr::of("authed"), Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn deauthed_to_value() {
+    let env = Envelope::make_deauthed(Some(test_body()));
+    let value: Value = env.into();
+    let expected = Value::of_attrs(vec![Attr::of("deauthed"), Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn link_no_params_to_value() {
+    let env = Envelope::make_link(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        None,
+        None,
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("link", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn link_with_params_to_value() {
+    let env = Envelope::make_link(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(TEST_RATE),
+        Some(TEST_PRIO),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items(
+        "link",
+        vec![
+            ("node", Value::text(TEST_NODE)),
+            ("lane", Value::text(TEST_LANE)),
+            ("rate", TEST_RATE.into()),
+            ("prio", TEST_PRIO.into()),
+        ],
+    );
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn sync_no_params_to_value() {
+    let env = Envelope::make_sync(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        None,
+        None,
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("sync", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn sync_with_params_to_value() {
+    let env = Envelope::make_sync(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(TEST_RATE),
+        Some(TEST_PRIO),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items(
+        "sync",
+        vec![
+            ("node", Value::text(TEST_NODE)),
+            ("lane", Value::text(TEST_LANE)),
+            ("rate", TEST_RATE.into()),
+            ("prio", TEST_PRIO.into()),
+        ],
+    );
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn unlink_to_value() {
+    let env = Envelope::make_unlink(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("unlink", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn command_to_value() {
+    let env = Envelope::make_command(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("command", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn linked_no_params_to_value() {
+    let env = Envelope::make_linked(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        None,
+        None,
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("linked", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn linked_with_params_to_value() {
+    let env = Envelope::make_linked(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(TEST_RATE),
+        Some(TEST_PRIO),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items(
+        "linked",
+        vec![
+            ("node", Value::text(TEST_NODE)),
+            ("lane", Value::text(TEST_LANE)),
+            ("rate", TEST_RATE.into()),
+            ("prio", TEST_PRIO.into()),
+        ],
+    );
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn synced_to_value() {
+    let env = Envelope::make_synced(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("synced", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn unlinked_to_value() {
+    let env = Envelope::make_unlinked(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("unlinked", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
+
+#[test]
+fn event_to_value() {
+    let env = Envelope::make_event(
+        TEST_NODE.to_string(),
+        TEST_LANE.to_string(),
+        Some(test_body()),
+    );
+    let value: Value = env.into();
+    let link_attr = Attr::with_items("event", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
+    let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
+    assert_that!(value, eq(expected));
+}
