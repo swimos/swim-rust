@@ -105,20 +105,19 @@ mod route_tests {
     use super::*;
 
     use crate::configuration::router::RouterParamBuilder;
-    use crate::connections::{ConnectionSender, SwimConnPool};
+    use crate::connections::ConnectionSender;
     use tokio::sync::watch;
 
-    async fn router_config(strategy: RetryStrategy) -> (RouterParams, SwimConnPool) {
+    fn router_config(strategy: RetryStrategy) -> RouterParams {
         RouterParamBuilder::new()
             .with_retry_stategy(strategy)
             .build()
-            .await
     }
 
     // Test that after a permanent error, the task fails
     #[tokio::test]
     async fn permanent_error() {
-        let (config, _) = router_config(RetryStrategy::none()).await;
+        let config = router_config(RetryStrategy::none());
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
         let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
         let (_close_tx, close_rx) = watch::channel(None);
@@ -139,8 +138,7 @@ mod route_tests {
     // Test that after a transient error, the retry system attempts the request again and succeeds
     #[tokio::test]
     async fn transient_error() {
-        let (config, _) =
-            router_config(RetryStrategy::immediate(NonZeroUsize::new(1).unwrap())).await;
+        let config = router_config(RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()));
         let (close_tx, close_rx) = watch::channel(None);
 
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());

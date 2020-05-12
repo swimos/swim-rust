@@ -14,7 +14,7 @@
 
 use tokio::time::Duration;
 
-use crate::configuration::router::RouterParamBuilder;
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::router::{Router, SwimRouter};
 use common::sink::item::ItemSink;
@@ -23,8 +23,9 @@ use common::warp::path::AbsolutePath;
 
 #[tokio::test]
 async fn envelope_routing_task() {
-    let (config, pool) = RouterParamBuilder::default().build::<SwimConnPool>().await;
-    let mut router = SwimRouter::new(config, pool);
+    let connection_pool = SwimConnPool::new(5, TungsteniteWsFactory::new(5).await);
+
+    let mut router = SwimRouter::new(Default::default(), connection_pool);
 
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),

@@ -16,8 +16,6 @@ use std::num::NonZeroUsize;
 
 use tokio::time::Duration;
 
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::connections::ConnectionPool;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -95,28 +93,17 @@ impl RouterParamBuilder {
         }
     }
 
-    pub async fn build<Pool>(self) -> (RouterParams, Pool)
-    where
-        Pool: ConnectionPool,
-    {
-        let buffer_size = self.buffer_size.expect("Buffer size must be provided");
-
-        (
-            RouterParams {
-                retry_strategy: self
-                    .retry_strategy
-                    .expect("Retry strategy must be provided"),
-                idle_timeout: self.idle_timeout.expect("Idle timeout must be provided"),
-                buffer_size,
-                conn_reaper_frequency: self
-                    .idle_timeout
-                    .expect("Idle connection reaper frequency must be provided"),
-            },
-            Pool::new(
-                buffer_size.get(),
-                TungsteniteWsFactory::new(buffer_size.get()).await,
-            ),
-        )
+    pub fn build(self) -> RouterParams {
+        RouterParams {
+            retry_strategy: self
+                .retry_strategy
+                .expect("Retry strategy must be provided"),
+            idle_timeout: self.idle_timeout.expect("Idle timeout must be provided"),
+            buffer_size: self.buffer_size.expect("Buffer size must be provided"),
+            conn_reaper_frequency: self
+                .idle_timeout
+                .expect("Idle connection reaper frequency must be provided"),
+        }
     }
 
     pub fn with_buffer_size(mut self, buffer_size: NonZeroUsize) -> RouterParamBuilder {

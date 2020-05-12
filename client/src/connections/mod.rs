@@ -69,10 +69,6 @@ pub trait ConnectionPool: Clone + Send + 'static {
         > + Send;
     type CloseFut: Future<Output = Result<Result<(), ConnectionError>, ConnectionError>> + Send;
 
-    fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> Self
-    where
-        WsFac: WebsocketFactory + 'static;
-
     fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut;
 
     fn close(self) -> Result<Self::CloseFut, ConnectionError>;
@@ -87,32 +83,15 @@ pub struct SwimConnPool {
     stop_request_tx: mpsc::Sender<()>,
 }
 
-type Connection = (ConnectionSender, Option<ConnectionReceiver>);
-
-type ConnectionFut = Sequenced<
-    RequestFuture<ConnectionRequest>,
-    oneshot::Receiver<Result<Connection, ConnectionError>>,
->;
-
-type CloseFut = Sequenced<
-    FutErrInto<RequestFuture<()>, ConnectionError>,
-    JoinHandle<Result<(), ConnectionError>>,
->;
-
-impl ConnectionPool for SwimConnPool {
-    type ConnFut = ConnectionFut;
-    type CloseFut = CloseFut;
-
+impl SwimConnPool {
     /// Creates a new connection pool for managing connections to remote hosts.
     ///
     /// # Arguments
     ///
     /// * `buffer_size`             - The buffer size of the internal channels in the connection
     ///                               pool as an integer.
-    /// * `router_tx`               - Transmitting end of a channel for receiving messages
-    ///                               from the connections in the pool.
     /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
-    fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> SwimConnPool
+    pub fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> SwimConnPool
     where
         WsFac: WebsocketFactory + 'static,
     {
@@ -136,6 +115,23 @@ impl ConnectionPool for SwimConnPool {
             stop_request_tx,
         }
     }
+}
+
+type Connection = (ConnectionSender, Option<ConnectionReceiver>);
+
+type ConnectionFut = Sequenced<
+    RequestFuture<ConnectionRequest>,
+    oneshot::Receiver<Result<Connection, ConnectionError>>,
+>;
+
+type CloseFut = Sequenced<
+    FutErrInto<RequestFuture<()>, ConnectionError>,
+    JoinHandle<Result<(), ConnectionError>>,
+>;
+
+impl ConnectionPool for SwimConnPool {
+    type ConnFut = ConnectionFut;
+    type CloseFut = CloseFut;
 
     /// Sends and asynchronous request for a connection to a specific host.
     ///
