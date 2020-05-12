@@ -433,6 +433,18 @@ impl MapAction {
         }
     }
 
+    pub fn try_update<F>(key: Value, f: F) -> MapAction
+    where
+        F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
+    {
+        MapAction::TryUpdate {
+            key,
+            f: Box::new(f),
+            before: None,
+            after: None,
+        }
+    }
+
     pub fn update_box(
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
@@ -455,6 +467,23 @@ impl MapAction {
         F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
     {
         MapAction::Update {
+            key,
+            f: Box::new(f),
+            before: Some(val_before),
+            after: Some(val_after),
+        }
+    }
+
+    pub fn try_update_and_await<F>(
+        key: Value,
+        f: F,
+        val_before: DownlinkRequest<UpdateResult<Option<Arc<Value>>>>,
+        val_after: DownlinkRequest<UpdateResult<Option<Arc<Value>>>>,
+    ) -> MapAction
+    where
+        F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
+    {
+        MapAction::TryUpdate {
             key,
             f: Box::new(f),
             before: Some(val_before),
@@ -1091,26 +1120,34 @@ where
         Some(new_val) => {
             let v_arc = Arc::new(new_val);
             let replaced = data_state.insert(key.clone(), v_arc.clone());
-            let err1 = old.and_then(|req| req.send_ok(to_event(replaced)).err());
-            let err2 = replacement.and_then(|req| req.send_ok(to_event(Some(v_arc.clone()))).err());
+            let err1 = old
+                .map(|req| req.send_ok(to_event(replaced)).is_err())
+                .unwrap_or(false);
+            let err2 = replacement
+                .map(|req| req.send_ok(to_event(Some(v_arc.clone()))).is_err())
+                .unwrap_or(false);
             (
                 BasicResponse::of(
                     ViewWithEvent::insert(data_state, key.clone()),
                     MapModification::Insert(key, v_arc),
                 ),
-                err1.is_some() || err2.is_some(),
+                err1 || err2,
             )
         }
         _ if had_existing => {
             let removed = data_state.remove(&key);
-            let err1 = old.and_then(|req| req.send_ok(to_event(removed)).err());
-            let err2 = replacement.and_then(|req| req.send_ok(to_event(None)).err());
+            let err1 = old
+                .map(|req| req.send_ok(to_event(removed)).is_err())
+                .unwrap_or(false);
+            let err2 = replacement
+                .map(|req| req.send_ok(to_event(None)).is_err())
+                .unwrap_or(false);
             (
                 BasicResponse::of(
                     ViewWithEvent::remove(data_state, key.clone()),
                     MapModification::Remove(key),
                 ),
-                err1.is_some() || err2.is_some(),
+                err1 || err2,
             )
         }
         _ => (BasicResponse::none(), false),
