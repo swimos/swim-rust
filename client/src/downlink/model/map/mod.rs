@@ -12,16 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::convert::TryInto;
+use std::fmt::{Debug, Formatter};
+use std::ops::Deref;
 use std::sync::Arc;
 
+use futures::Stream;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
+use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
 use common::model::{Attr, Item, Value, ValueKind};
+use common::sink::item::ItemSender;
+use deserialize::FormDeserializeErr;
+use form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
+use crate::downlink::model::value::UpdateResult;
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
@@ -29,14 +38,6 @@ use crate::downlink::{
     TransitionError,
 };
 use crate::router::RoutingError;
-use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
-use common::sink::item::ItemSender;
-use deserialize::FormDeserializeErr;
-use form::{Form, ValidatedForm};
-use futures::Stream;
-use std::convert::TryInto;
-use std::fmt::{Debug, Formatter};
-use std::ops::Deref;
 
 #[cfg(test)]
 mod tests;
@@ -322,6 +323,12 @@ pub enum MapAction {
         before: Option<DownlinkRequest<Option<Arc<Value>>>>,
         after: Option<DownlinkRequest<Option<Arc<Value>>>>,
     },
+    TryUpdate {
+        key: Value,
+        f: Box<dyn FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send>,
+        before: Option<DownlinkRequest<UpdateResult<Option<Arc<Value>>>>>,
+        after: Option<DownlinkRequest<UpdateResult<Option<Arc<Value>>>>>,
+    },
 }
 
 impl MapAction {
@@ -489,6 +496,13 @@ impl Debug for MapAction {
             MapAction::Update {
                 key, before, after, ..
             } => write!(f, "Update({:?}, <closure>, {:?}, {:?})", key, before, after),
+            MapAction::TryUpdate {
+                key, before, after, ..
+            } => write!(
+                f,
+                "TryUpdate({:?}, <closure>, {:?}, {:?})",
+                key, before, after
+            ),
         }
     }
 }
@@ -975,38 +989,79 @@ fn process_action(
         MapAction::Update {
             key,
             f,
-            before: old,
-            after: replacement,
+            before,
+            after,
         } => {
-            let prev = data_state.get(&key).map(|arc| arc.as_ref());
-            let maybe_new_val = f(&prev);
-            match maybe_new_val {
-                Some(new_val) => {
-                    let v_arc = Arc::new(new_val);
-                    let replaced = data_state.insert(key.clone(), v_arc.clone());
-                    let err1 = old.and_then(|req| req.send_ok(replaced).err());
-                    let err2 = replacement.and_then(|req| req.send_ok(Some(v_arc.clone())).err());
-                    (
-                        BasicResponse::of(
-                            ViewWithEvent::insert(data_state, key.clone()),
-                            MapModification::Insert(key, v_arc),
-                        ),
-                        err1.is_some() || err2.is_some(),
-                    )
+            if !key_schema.matches(&key) {
+                let result_before = send_error(before, key.clone(), key_schema.clone());
+                let result_after = send_error(after, key, key_schema.clone());
+                (BasicResponse::none(), result_before || result_after)
+            } else {
+                let prev = data_state.get(&key).map(|arc| arc.as_ref());
+                let maybe_new_val = f(&prev);
+                match maybe_new_val {
+                    Some(v) if !val_schema.matches(&v) => {
+                        let result_before = send_error(before, v.clone(), val_schema.clone());
+                        let result_after = send_error(after, v, val_schema.clone());
+                        (BasicResponse::none(), result_before || result_after)
+                    }
+                    validated => {
+                        let had_existing = prev.is_some();
+                        handle_update(
+                            data_state,
+                            key,
+                            had_existing,
+                            validated,
+                            before,
+                            after,
+                            |v| v,
+                        )
+                    }
                 }
-                _ if prev.is_some() => {
-                    let removed = data_state.remove(&key);
-                    let err1 = old.and_then(|req| req.send_ok(removed).err());
-                    let err2 = replacement.and_then(|req| req.send_ok(None).err());
-                    (
-                        BasicResponse::of(
-                            ViewWithEvent::remove(data_state, key.clone()),
-                            MapModification::Remove(key),
-                        ),
-                        err1.is_some() || err2.is_some(),
-                    )
+            }
+        }
+        MapAction::TryUpdate {
+            key,
+            f,
+            before,
+            after,
+        } => {
+            if !key_schema.matches(&key) {
+                let result_before = send_error(before, key.clone(), key_schema.clone());
+                let result_after = send_error(after, key, key_schema.clone());
+                (BasicResponse::none(), result_before || result_after)
+            } else {
+                let prev = data_state.get(&key).map(|arc| arc.as_ref());
+                match f(&prev) {
+                    Ok(maybe_new_val) => match maybe_new_val {
+                        Some(v) if !val_schema.matches(&v) => {
+                            let result_before = send_error(before, v.clone(), val_schema.clone());
+                            let result_after = send_error(after, v, val_schema.clone());
+                            (BasicResponse::none(), result_before || result_after)
+                        }
+                        validated => {
+                            let had_existing = prev.is_some();
+                            handle_update(
+                                data_state,
+                                key,
+                                had_existing,
+                                validated,
+                                before,
+                                after,
+                                Ok,
+                            )
+                        }
+                    },
+                    Err(e) => {
+                        let result_before = before
+                            .map(|req| req.send_ok(Err(e.clone())).is_err())
+                            .unwrap_or(false);
+                        let result_after = after
+                            .map(|req| req.send_ok(Err(e)).is_err())
+                            .unwrap_or(false);
+                        (BasicResponse::none(), result_before || result_after)
+                    }
                 }
-                _ => (BasicResponse::none(), false),
             }
         }
     };
@@ -1014,6 +1069,51 @@ fn process_action(
         resp.with_error(TransitionError::ReceiverDropped)
     } else {
         resp
+    }
+}
+
+fn handle_update<F, T>(
+    data_state: &mut ValMap,
+    key: Value,
+    had_existing: bool,
+    maybe_new_val: Option<Value>,
+    old: Option<DownlinkRequest<T>>,
+    replacement: Option<DownlinkRequest<T>>,
+    to_event: F,
+) -> (
+    BasicResponse<ViewWithEvent, MapModification<Arc<Value>>>,
+    bool,
+)
+where
+    F: Fn(Option<Arc<Value>>) -> T + Send + 'static,
+{
+    match maybe_new_val {
+        Some(new_val) => {
+            let v_arc = Arc::new(new_val);
+            let replaced = data_state.insert(key.clone(), v_arc.clone());
+            let err1 = old.and_then(|req| req.send_ok(to_event(replaced)).err());
+            let err2 = replacement.and_then(|req| req.send_ok(to_event(Some(v_arc.clone()))).err());
+            (
+                BasicResponse::of(
+                    ViewWithEvent::insert(data_state, key.clone()),
+                    MapModification::Insert(key, v_arc),
+                ),
+                err1.is_some() || err2.is_some(),
+            )
+        }
+        _ if had_existing => {
+            let removed = data_state.remove(&key);
+            let err1 = old.and_then(|req| req.send_ok(to_event(removed)).err());
+            let err2 = replacement.and_then(|req| req.send_ok(to_event(None)).err());
+            (
+                BasicResponse::of(
+                    ViewWithEvent::remove(data_state, key.clone()),
+                    MapModification::Remove(key),
+                ),
+                err1.is_some() || err2.is_some(),
+            )
+        }
+        _ => (BasicResponse::none(), false),
     }
 }
 
