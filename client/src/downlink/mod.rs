@@ -14,8 +14,7 @@
 
 use tokio::sync::mpsc;
 
-use common::sink::item::{self, BoxItemSink, ItemSender, ItemSink};
-use futures::stream::BoxStream;
+use common::sink::item;
 use futures::StreamExt;
 use std::fmt::{Debug, Display, Formatter};
 use tokio::sync::broadcast;
@@ -29,6 +28,7 @@ pub mod queue;
 pub mod raw;
 pub mod subscription;
 pub mod topic;
+pub mod typed;
 pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
@@ -36,41 +36,24 @@ use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
-use common::topic::{BoxTopic, Topic, TopicError};
-use futures::future::BoxFuture;
+use common::request::TryRequest;
+use common::sink::item::ItemSender;
+use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Act, Upd: Clone>: Topic<Upd> + ItemSender<Act, DownlinkError> {
+pub trait Downlink<Act, Upd>: Topic<Upd> + ItemSender<Act, DownlinkError> {
     /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
 
     /// Type of the sink that can be used to apply actions to the downlink.
-    type DlSink: for<'a> ItemSink<'a, Act, Error = DownlinkError>;
+    type DlSink: ItemSender<Act, DownlinkError>;
 
     /// Split the downlink into a topic and sink.
     fn split(self) -> (Self::DlTopic, Self::DlSink);
-
-    /// Box the downlink so that it can be used dynamically.
-    fn boxed(self) -> BoxedDownlink<Act, Upd>
-    where
-        Self: Sized,
-        Self::DlTopic: Sized + 'static,
-        Self::DlSink: Sized + 'static,
-        Upd: Send + 'static,
-        Act: 'static,
-    {
-        let (topic, sink) = self.split();
-        let boxed_topic = topic.boxed_topic();
-        let boxed_sink = item::boxed(sink);
-        BoxedDownlink {
-            topic: boxed_topic,
-            sink: boxed_sink,
-        }
-    }
 }
 
 pub(in crate::downlink) trait DownlinkInternals: Send + Sync + Debug {
@@ -105,47 +88,18 @@ impl Future for StoppedFuture {
     }
 }
 
-pub struct BoxedDownlink<Act, Upd: Clone> {
-    topic: BoxTopic<Upd>,
-    sink: BoxItemSink<Act, DownlinkError>,
-}
-
-impl<Act, Upd: Clone + 'static> Topic<Upd> for BoxedDownlink<Act, Upd> {
-    type Receiver = BoxStream<'static, Upd>;
-    type Fut = BoxFuture<'static, Result<BoxStream<'static, Upd>, TopicError>>;
-
-    fn subscribe(&mut self) -> Self::Fut {
-        self.topic.subscribe()
-    }
-}
-
-impl<'a, Act, Upd: Clone> ItemSink<'a, Act> for BoxedDownlink<Act, Upd> {
-    type Error = DownlinkError;
-    type SendFuture = BoxFuture<'a, Result<(), DownlinkError>>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        self.sink.send_item(value)
-    }
-}
-
-impl<Act, Upd: Clone + 'static> Downlink<Act, Upd> for BoxedDownlink<Act, Upd> {
-    type DlTopic = BoxTopic<Upd>;
-    type DlSink = BoxItemSink<Act, DownlinkError>;
-
-    fn split(self) -> (Self::DlTopic, Self::DlSink) {
-        let BoxedDownlink { topic, sink } = self;
-        (topic, sink)
-    }
-}
-
 #[derive(Clone, PartialEq, Debug)]
 pub enum DownlinkError {
     DroppedChannel,
     TaskPanic,
     TransitionError,
     MalformedMessage,
+    InvalidAction,
     SchemaViolation(Value, StandardSchema),
 }
+
+/// A request to a downlink for a value.
+pub type DownlinkRequest<T> = TryRequest<T, DownlinkError>;
 
 impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
@@ -176,6 +130,9 @@ impl Display for DownlinkError {
             ),
             DownlinkError::MalformedMessage => {
                 write!(f, "A message did not have the expected shape.")
+            }
+            DownlinkError::InvalidAction => {
+                write!(f, "An action could not be applied to the internal state.")
             }
         }
     }

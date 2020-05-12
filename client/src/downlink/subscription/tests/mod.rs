@@ -86,7 +86,7 @@ async fn dl_manager(conf: ConfigHierarchy) -> Downlinks {
 async fn subscribe_value_lane_default_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
-    let result = downlinks.subscribe_value(Value::Extant, path).await;
+    let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert_that!(&result, ok());
     let (dl, _rec) = result.unwrap();
 
@@ -97,7 +97,7 @@ async fn subscribe_value_lane_default_config() {
 async fn subscribe_value_lane_per_host_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(per_host_config()).await;
-    let result = downlinks.subscribe_value(Value::Extant, path).await;
+    let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert_that!(&result, ok());
     let (dl, _rec) = result.unwrap();
 
@@ -112,7 +112,7 @@ async fn subscribe_value_lane_per_lane_config() {
         "my_lane",
     );
     let mut downlinks = dl_manager(per_lane_config()).await;
-    let result = downlinks.subscribe_value(Value::Extant, path).await;
+    let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert_that!(&result, ok());
     let (dl, _rec) = result.unwrap();
 
@@ -123,7 +123,7 @@ async fn subscribe_value_lane_per_lane_config() {
 async fn subscribe_map_lane_default_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
-    let result = downlinks.subscribe_map(path).await;
+    let result = downlinks.subscribe_map_untyped(path).await;
     assert_that!(&result, ok());
     let (dl, _rec) = result.unwrap();
 
@@ -134,7 +134,7 @@ async fn subscribe_map_lane_default_config() {
 async fn subscribe_map_lane_per_host_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(per_host_config()).await;
-    let result = downlinks.subscribe_map(path).await;
+    let result = downlinks.subscribe_map_untyped(path).await;
     assert_that!(&result, ok());
     let (dl, _rec) = result.unwrap();
 
@@ -149,7 +149,7 @@ async fn subscribe_map_lane_per_lane_config() {
         "my_lane",
     );
     let mut downlinks = dl_manager(per_lane_config()).await;
-    let result = downlinks.subscribe_map(path).await;
+    let result = downlinks.subscribe_map_untyped(path).await;
     assert_that!(&result, ok());
     let (dl, _rec) = result.unwrap();
 
@@ -160,11 +160,13 @@ async fn subscribe_map_lane_per_lane_config() {
 async fn request_map_dl_for_running_value_dl() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
-    let result = downlinks.subscribe_value(Value::Extant, path.clone()).await;
+    let result = downlinks
+        .subscribe_value_untyped(Value::Extant, path.clone())
+        .await;
     assert_that!(&result, ok());
     let _dl = result.unwrap();
 
-    let next_result = downlinks.subscribe_map(path).await;
+    let next_result = downlinks.subscribe_map_untyped(path).await;
     assert_that!(&next_result, err());
     let err = next_result.err().unwrap();
     assert_that!(
@@ -180,11 +182,11 @@ async fn request_map_dl_for_running_value_dl() {
 async fn request_value_dl_for_running_map_dl() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
-    let result = downlinks.subscribe_map(path.clone()).await;
+    let result = downlinks.subscribe_map_untyped(path.clone()).await;
     assert_that!(&result, ok());
     let _dl = result.unwrap();
 
-    let next_result = downlinks.subscribe_value(Value::Extant, path).await;
+    let next_result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert_that!(&next_result, err());
     let err = next_result.err().unwrap();
     assert_that!(
@@ -200,11 +202,13 @@ async fn request_value_dl_for_running_map_dl() {
 async fn subscribe_value_twice() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
-    let result1 = downlinks.subscribe_value(Value::Extant, path.clone()).await;
+    let result1 = downlinks
+        .subscribe_value_untyped(Value::Extant, path.clone())
+        .await;
     assert_that!(&result1, ok());
     let (dl1, _rec1) = result1.unwrap();
 
-    let result2 = downlinks.subscribe_value(Value::Extant, path).await;
+    let result2 = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert_that!(&result2, ok());
     let (dl2, _rec2) = result2.unwrap();
 
@@ -215,13 +219,35 @@ async fn subscribe_value_twice() {
 async fn subscribe_map_twice() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
-    let result1 = downlinks.subscribe_map(path.clone()).await;
+    let result1 = downlinks.subscribe_map_untyped(path.clone()).await;
     assert_that!(&result1, ok());
     let (dl1, _rec1) = result1.unwrap();
 
-    let result2 = downlinks.subscribe_map(path).await;
+    let result2 = downlinks.subscribe_map_untyped(path).await;
     assert_that!(&result2, ok());
     let (dl2, _rec2) = result2.unwrap();
 
     assert!(dl1.same_downlink(&dl2));
+}
+
+#[tokio::test]
+async fn subscribe_value_lane_typed() {
+    let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_value::<i32>(0, path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Queue));
+}
+
+#[tokio::test]
+async fn subscribe_map_lane_typed() {
+    let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
+    let mut downlinks = dl_manager(default_config()).await;
+    let result = downlinks.subscribe_map::<String, i32>(path).await;
+    assert_that!(&result, ok());
+    let (dl, _rec) = result.unwrap();
+
+    assert_that!(dl.kind(), eq(TopicKind::Queue));
 }
