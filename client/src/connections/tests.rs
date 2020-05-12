@@ -44,7 +44,7 @@ async fn test_connection_pool_send_single_message_single_connection() {
     let test_data = TestData::new(vec![], writer_tx);
 
     let mut connection_pool =
-        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     let (mut connection_sender, _connection_receiver) = connection_pool
         .request_connection(host_url, false)
@@ -75,7 +75,7 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     let test_data = TestData::new(vec![], writer_tx);
 
     let mut connection_pool =
-        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     let (mut first_connection_sender, _first_connection_receiver) = connection_pool
         .request_connection(host_url.clone(), false)
@@ -133,7 +133,7 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
         TestData::new(vec![], third_writer_tx),
     ];
 
-    let mut connection_pool = ConnectionPool::new(
+    let mut connection_pool = SwimConnPool::new(
         buffer_size,
         TestConnectionFactory::new_multiple(test_data).await,
     );
@@ -196,7 +196,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
 
     let test_data = TestData::new(items, writer_tx);
     let mut connection_pool =
-        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
     let (_connection_sender, connection_receiver) = connection_pool
@@ -223,7 +223,7 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
 
     let test_data = TestData::new(items, writer_tx);
     let mut connection_pool =
-        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
     let (_connection_sender, connection_receiver) = connection_pool
@@ -271,7 +271,7 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
         TestData::new(third_items, third_writer_tx),
     ];
 
-    let mut connection_pool = ConnectionPool::new(
+    let mut connection_pool = SwimConnPool::new(
         buffer_size,
         TestConnectionFactory::new_multiple(test_data).await,
     );
@@ -317,7 +317,7 @@ async fn test_connection_pool_send_and_receive_messages() {
     let test_data = TestData::new(items, writer_tx);
 
     let mut connection_pool =
-        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     let (mut connection_sender, connection_receiver) = connection_pool
         .request_connection(host_url, false)
@@ -347,7 +347,7 @@ async fn test_connection_pool_connection_error() {
     let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
 
-    let mut connection_pool = ConnectionPool::new(
+    let mut connection_pool = SwimConnPool::new(
         buffer_size,
         TestConnectionFactory::new_multiple(vec![]).await,
     );
@@ -373,7 +373,7 @@ async fn test_connection_pool_connection_error_send_message() {
 
     let test_data = vec![None, Some(TestData::new(vec![], writer_tx))];
 
-    let mut connection_pool = ConnectionPool::new(
+    let mut connection_pool = SwimConnPool::new(
         buffer_size,
         TestConnectionFactory::new_multiple_with_errs(test_data).await,
     );
@@ -413,7 +413,7 @@ async fn test_connection_pool_close() {
     let test_data = TestData::new(vec![], writer_tx);
 
     let connection_pool =
-        ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
     assert!(connection_pool.close().unwrap().await.is_ok());

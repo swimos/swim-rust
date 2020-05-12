@@ -15,7 +15,7 @@
 use std::{thread, time};
 
 use crate::configuration::router::RouterParamBuilder;
-use crate::connections::ConnectionPool;
+use crate::connections::SwimConnPool;
 use crate::router::{Router, SwimRouter};
 use common::model::Value;
 use common::sink::item::ItemSink;
@@ -46,9 +46,7 @@ fn init_trace() {
 async fn normal_receive() {
     init_trace();
 
-    let (config, pool) = RouterParamBuilder::default()
-        .build::<ConnectionPool>()
-        .await;
+    let (config, pool) = RouterParamBuilder::default().build::<SwimConnPool>().await;
     let mut router = SwimRouter::new(config, pool);
 
     let path = AbsolutePath::new(
@@ -72,9 +70,7 @@ async fn normal_receive() {
 async fn not_interested_receive() {
     init_trace();
 
-    let (config, pool) = RouterParamBuilder::default()
-        .build::<ConnectionPool>()
-        .await;
+    let (config, pool) = RouterParamBuilder::default().build::<SwimConnPool>().await;
     let mut router = SwimRouter::new(config, pool);
 
     let path = AbsolutePath::new(
@@ -98,9 +94,7 @@ async fn not_interested_receive() {
 async fn not_found_receive() {
     init_trace();
 
-    let (config, pool) = RouterParamBuilder::default()
-        .build::<ConnectionPool>()
-        .await;
+    let (config, pool) = RouterParamBuilder::default().build::<SwimConnPool>().await;
     let mut router = SwimRouter::new(config, pool);
 
     let path = AbsolutePath::new(
@@ -124,9 +118,7 @@ async fn not_found_receive() {
 async fn send_commands() {
     init_trace();
 
-    let (config, pool) = RouterParamBuilder::default()
-        .build::<ConnectionPool>()
-        .await;
+    let (config, pool) = RouterParamBuilder::default().build::<SwimConnPool>().await;
     let mut router = SwimRouter::new(config, pool);
 
     let url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
@@ -179,9 +171,7 @@ async fn send_commands() {
 pub async fn server_stops_between_requests() {
     init_trace();
 
-    let (config, pool) = RouterParamBuilder::default()
-        .build::<ConnectionPool>()
-        .await;
+    let (config, pool) = RouterParamBuilder::default().build::<SwimConnPool>().await;
     let mut router = SwimRouter::new(config, pool);
 
     let path = AbsolutePath::new(

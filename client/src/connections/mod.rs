@@ -58,7 +58,9 @@ pub struct ConnectionRequest {
     recreate: bool,
 }
 
-pub trait Pool {
+/// Connection pool is responsible for managing the opening and closing of connections
+/// to remote hosts.
+pub trait ConnectionPool: Clone + Send + 'static {
     type ConnFut: Future<
             Output = Result<
                 Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>,
@@ -73,17 +75,13 @@ pub trait Pool {
 
     fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut;
 
-    // Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>;
-
     fn close(self) -> Result<Self::CloseFut, ConnectionError>;
 }
 
 type ConnectionPoolSharedHandler = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
 
-/// Connection pool is responsible for managing the opening and closing of connections
-/// to remote hosts.
 #[derive(Clone)]
-pub struct ConnectionPool {
+pub struct SwimConnPool {
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
     connection_requests_handler: ConnectionPoolSharedHandler,
     stop_request_tx: mpsc::Sender<()>,
@@ -101,7 +99,7 @@ type CloseFut = Sequenced<
     JoinHandle<Result<(), ConnectionError>>,
 >;
 
-impl Pool for ConnectionPool {
+impl ConnectionPool for SwimConnPool {
     type ConnFut = ConnectionFut;
     type CloseFut = CloseFut;
 
@@ -114,7 +112,7 @@ impl Pool for ConnectionPool {
     /// * `router_tx`               - Transmitting end of a channel for receiving messages
     ///                               from the connections in the pool.
     /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
-    fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> ConnectionPool
+    fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> SwimConnPool
     where
         WsFac: WebsocketFactory + 'static,
     {
@@ -132,7 +130,7 @@ impl Pool for ConnectionPool {
         let connection_requests_handler =
             tokio::task::spawn(task.run(Duration::from_secs(5), Duration::from_secs(10)));
 
-        ConnectionPool {
+        SwimConnPool {
             connection_request_tx,
             connection_requests_handler: Arc::new(Mutex::new(Some(connection_requests_handler))),
             stop_request_tx,

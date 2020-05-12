@@ -15,7 +15,7 @@
 use tokio::time::Duration;
 
 use crate::configuration::router::RouterParamBuilder;
-use crate::connections::ConnectionPool;
+use crate::connections::SwimConnPool;
 use crate::router::{Router, SwimRouter};
 use common::sink::item::ItemSink;
 use common::warp::envelope::Envelope;
@@ -23,9 +23,7 @@ use common::warp::path::AbsolutePath;
 
 #[tokio::test]
 async fn envelope_routing_task() {
-    let (config, pool) = RouterParamBuilder::default()
-        .build::<ConnectionPool>()
-        .await;
+    let (config, pool) = RouterParamBuilder::default().build::<SwimConnPool>().await;
     let mut router = SwimRouter::new(config, pool);
 
     let path = AbsolutePath::new(

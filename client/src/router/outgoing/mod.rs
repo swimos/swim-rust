@@ -105,10 +105,10 @@ mod route_tests {
     use super::*;
 
     use crate::configuration::router::RouterParamBuilder;
-    use crate::connections::{ConnectionPool, ConnectionSender};
+    use crate::connections::{ConnectionSender, SwimConnPool};
     use tokio::sync::watch;
 
-    async fn router_config(strategy: RetryStrategy) -> (RouterParams, ConnectionPool) {
+    async fn router_config(strategy: RetryStrategy) -> (RouterParams, SwimConnPool) {
         RouterParamBuilder::new()
             .with_retry_stategy(strategy)
             .build()

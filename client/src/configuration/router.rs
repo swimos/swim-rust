@@ -17,7 +17,7 @@ use std::num::NonZeroUsize;
 use tokio::time::Duration;
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::connections::Pool;
+use crate::connections::ConnectionPool;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -95,9 +95,9 @@ impl RouterParamBuilder {
         }
     }
 
-    pub async fn build<P>(self) -> (RouterParams, P)
+    pub async fn build<Pool>(self) -> (RouterParams, Pool)
     where
-        P: Pool + Clone + Send + 'static,
+        Pool: ConnectionPool,
     {
         let buffer_size = self.buffer_size.expect("Buffer size must be provided");
 
@@ -112,7 +112,7 @@ impl RouterParamBuilder {
                     .idle_timeout
                     .expect("Idle connection reaper frequency must be provided"),
             },
-            P::new(
+            Pool::new(
                 buffer_size.get(),
                 TungsteniteWsFactory::new(buffer_size.get()).await,
             ),

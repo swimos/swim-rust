@@ -16,7 +16,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionError, ConnectionSender, Pool};
+use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use common::request::request_future::{RequestError, RequestFuture, Sequenced};
@@ -85,9 +85,9 @@ pub struct SwimRouter {
 }
 
 impl SwimRouter {
-    pub fn new<P>(configuration: RouterParams, connection_pool: P) -> SwimRouter
+    pub fn new<Pool>(configuration: RouterParams, connection_pool: Pool) -> SwimRouter
     where
-        P: Pool + Clone + Send + 'static,
+        Pool: ConnectionPool,
     {
         let (close_tx, close_rx) = watch::channel(None);
 
@@ -138,17 +138,17 @@ type HostManagerHandle = (
     JoinHandle<Result<(), RoutingError>>,
 );
 
-struct TaskManager<P: Pool + Clone + Send + 'static> {
+struct TaskManager<Pool: ConnectionPool> {
     conn_request_rx: mpsc::Receiver<RouterConnRequest>,
     message_request_rx: mpsc::Receiver<RouterMessageRequest>,
-    connection_pool: P,
+    connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
-impl<P: Pool + Clone + Send + 'static> TaskManager<P> {
+impl<Pool: ConnectionPool> TaskManager<Pool> {
     fn new(
-        connection_pool: P,
+        connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
@@ -258,15 +258,15 @@ impl<P: Pool + Clone + Send + 'static> TaskManager<P> {
     }
 }
 
-fn get_host_manager<P>(
+fn get_host_manager<Pool>(
     host_managers: &mut HashMap<url::Url, HostManagerHandle>,
     target: AbsolutePath,
-    connection_pool: P,
+    connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
 ) -> &mut HostManagerHandle
 where
-    P: Pool + Clone + Send + 'static,
+    Pool: ConnectionPool,
 {
     host_managers.entry(target.host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
@@ -301,23 +301,23 @@ enum HostTask {
     Close(Option<CloseResponseSender>),
 }
 
-struct HostManager<P: Pool + Clone + Send + 'static> {
+struct HostManager<Pool: ConnectionPool> {
     target: AbsolutePath,
-    connection_pool: P,
+    connection_pool: Pool,
     sink_rx: mpsc::Receiver<Envelope>,
     stream_registrator_rx: mpsc::Receiver<mpsc::Sender<RouterEvent>>,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
-impl<P: Pool + Clone + Send + 'static> HostManager<P> {
+impl<Pool: ConnectionPool> HostManager<Pool> {
     fn new(
         target: AbsolutePath,
-        connection_pool: P,
+        connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
-        HostManager<P>,
+        HostManager<Pool>,
         mpsc::Sender<Envelope>,
         mpsc::Sender<mpsc::Sender<RouterEvent>>,
     ) {
