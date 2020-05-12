@@ -75,6 +75,7 @@ async fn acquire_sender(
         Err(_) => MpscRetryErr::from(RoutingError::ConnectionError, Some(sender), None),
     }
 }
+
 #[derive(Clone)]
 struct MpscRetryErr {
     kind: RoutingError,
@@ -109,7 +110,7 @@ impl RetrySendError for MpscRetryErr {
     }
 
     fn kind(&self) -> Self::ErrKind {
-        self.kind
+        self.kind.clone()
     }
 }
 

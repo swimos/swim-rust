@@ -21,6 +21,7 @@ use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -31,7 +32,7 @@ pub enum IncomingRequest {
     Connection(mpsc::Receiver<Message>),
     Subscribe((AbsolutePath, mpsc::Sender<RouterEvent>)),
     Message(Message),
-    Unreachable,
+    Unreachable(Cow<'static, str>),
     Disconnect,
     Close(Option<CloseResponseSender>),
 }
@@ -112,9 +113,9 @@ impl IncomingHostTask {
                     }
                 }
 
-                IncomingRequest::Unreachable => {
+                IncomingRequest::Unreachable(err) => {
                     tracing::trace!("Unreachable Host");
-                    broadcast_all(&mut subscribers, RouterEvent::Unreachable).await?;
+                    broadcast_all(&mut subscribers, RouterEvent::Unreachable(err)).await?;
 
                     break Ok(());
                 }

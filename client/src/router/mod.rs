@@ -27,6 +27,7 @@ use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use futures::stream;
 use futures::{Future, Stream};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 use tokio::stream::StreamExt;
@@ -73,7 +74,9 @@ pub type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 pub enum RouterEvent {
     Envelope(Envelope),
     ConnectionClosed,
-    Unreachable,
+    /// The requested host is unreachable. Field contains the error message returned from the
+    /// connection pool.
+    Unreachable(Cow<'static, str>),
     Stopping,
 }
 
@@ -90,8 +93,10 @@ impl SwimRouter {
         let buffer_size = configuration.buffer_size().get();
         let (close_tx, close_rx) = watch::channel(None);
 
-        let connection_pool =
-            ConnectionPool::new(buffer_size, TungsteniteWsFactory::new(buffer_size).await);
+        let connection_pool = ConnectionPool::new(
+            configuration.connection_pool_params(),
+            TungsteniteWsFactory::new(buffer_size).await,
+        );
 
         let (task_manager, router_connection_request_tx, router_sink_tx) =
             TaskManager::new(connection_pool, close_rx.clone(), configuration);
@@ -384,14 +389,17 @@ impl HostManager {
                             }
                         }
                         Err(connection_error) => match connection_error {
-                            ConnectionError::Transient => {
+                            e if e.is_transient() => {
                                 let _ =
-                                    connection_response_tx.send(Err(RoutingError::ConnectionError));
+                                    connection_response_tx.send(Err(RoutingError::PoolError(e)));
                             }
-                            _ => {
+                            e => {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::ConnectionError));
-                                let _ = incoming_task_tx.send(IncomingRequest::Unreachable).await;
+                                let msg = format!("{}", e);
+                                let _ = incoming_task_tx
+                                    .send(IncomingRequest::Unreachable(msg.into()))
+                                    .await;
                             }
                         },
                     }
@@ -475,15 +483,16 @@ impl Router for SwimRouter {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum RoutingError {
     RouterDropped,
     ConnectionError,
+    PoolError(ConnectionError),
     CloseError,
 }
 
 impl RoutingError {
-    fn is_transient(self) -> bool {
+    fn is_transient(&self) -> bool {
         match self {
             RoutingError::ConnectionError => true,
             _ => false,
@@ -497,6 +506,7 @@ impl Display for RoutingError {
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::ConnectionError => write!(f, "Connection error."),
             RoutingError::CloseError => write!(f, "Closing error."),
+            RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
         }
     }
 }

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::time::Duration;
-
 use common::sink::item::ItemSink;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
@@ -32,7 +30,6 @@ async fn envelope_routing_task() {
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("node_uri"), String::from("lane_uri"));
-    let _ = sink.send_item(sync).await;
-
-    std::thread::sleep(Duration::from_secs(5));
+    let r = sink.send_item(sync).await;
+    println!("{:?}", r);
 }
