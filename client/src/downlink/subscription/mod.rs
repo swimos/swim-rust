@@ -23,7 +23,7 @@ use crate::downlink::typed::{MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
-use crate::router::{Router, RoutingError, RouterEvent};
+use crate::router::{Router, RouterEvent, RoutingError};
 use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::request::request_future::RequestError;
@@ -70,7 +70,7 @@ type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkSpecifier>,
-    _task: JoinHandle<()>,
+    _task: JoinHandle<Result<()>>,
 }
 
 /// Contains all running Warp downlinks and allows requests for downlink subscriptions.
@@ -558,7 +558,7 @@ where
                                     self.value_downlinks.remove(&path);
                                     Ok(self
                                         .create_new_value_downlink(init, schema, path.clone())
-                                        .await)
+                                        .await?)
                                 }
                             }
                         } else {
@@ -588,6 +588,7 @@ where
             },
         };
         let _ = value_req.send(dl);
+        Ok(())
     }
 
     async fn handle_map_request(
@@ -596,7 +597,7 @@ where
         key_schema: StandardSchema,
         value_schema: StandardSchema,
         map_req: Request<Result<(AnyMapDownlink, MapReceiver)>>,
-    ) {
+    ) -> Result<()> {
         let dl = match self.map_downlinks.get(&path) {
             Some(MapHandle {
                 ptr: dl,
@@ -653,6 +654,7 @@ where
             },
         };
         let _ = map_req.send(dl);
+        Ok(())
     }
 
     async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
@@ -680,7 +682,7 @@ where
         }
     }
 
-    async fn run<Req>(mut self, requests: Req)
+    async fn run<Req>(mut self, requests: Req) -> Result<()>
     where
         Req: Stream<Item = DownlinkSpecifier>,
     {
@@ -706,7 +708,8 @@ where
                     schema,
                     request,
                 })) => {
-                    self.handle_value_request(init, path, schema, request).await;
+                    self.handle_value_request(init, path, schema, request)
+                        .await?;
                 }
                 Some(Either::Left(DownlinkSpecifier::Map {
                     path,
@@ -715,7 +718,7 @@ where
                     request,
                 })) => {
                     self.handle_map_request(path, key_schema, value_schema, request)
-                        .await;
+                        .await?;
                 }
                 Some(Either::Right(stop_event)) => {
                     self.handle_stop(stop_event).await;

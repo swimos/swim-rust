@@ -232,7 +232,7 @@ async fn subscribe_map_twice() {
 
 #[tokio::test]
 async fn subscribe_value_lane_typed() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
     let result = downlinks.subscribe_value::<i32>(0, path).await;
     assert_that!(&result, ok());
@@ -243,7 +243,7 @@ async fn subscribe_value_lane_typed() {
 
 #[tokio::test]
 async fn subscribe_map_lane_typed() {
-    let path = AbsolutePath::new("host", "node", "lane");
+    let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
     let mut downlinks = dl_manager(default_config()).await;
     let result = downlinks.subscribe_map::<String, i32>(path).await;
     assert_that!(&result, ok());
