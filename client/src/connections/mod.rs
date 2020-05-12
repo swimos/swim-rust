@@ -52,24 +52,28 @@ pub struct ConnectionPoolMessage {
     pub message: String,
 }
 
-struct ConnectionRequest {
+pub struct ConnectionRequest {
     host_url: url::Url,
     tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
     recreate: bool,
 }
 
 pub trait Pool {
+    type ConnFut: Future<
+            Output = Result<
+                Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>,
+                RequestError,
+            >,
+        > + Send;
     type CloseFut: Future<Output = Result<Result<(), ConnectionError>, ConnectionError>> + Send;
 
     fn new<WsFac>(buffer_size: usize, connection_factory: WsFac) -> Self
     where
         WsFac: WebsocketFactory + 'static;
 
-    fn request_connection(
-        &mut self,
-        host_url: url::Url,
-        recreate: bool,
-    ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>;
+    fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut;
+
+    // Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>;
 
     fn close(self) -> Result<Self::CloseFut, ConnectionError>;
 }
@@ -85,11 +89,21 @@ pub struct ConnectionPool {
     stop_request_tx: mpsc::Sender<()>,
 }
 
+type Connection = (ConnectionSender, Option<ConnectionReceiver>);
+
+type ConnectionFut = Sequenced<
+    RequestFuture<ConnectionRequest>,
+    oneshot::Receiver<Result<Connection, ConnectionError>>,
+>;
+
+type CloseFut = Sequenced<
+    FutErrInto<RequestFuture<()>, ConnectionError>,
+    JoinHandle<Result<(), ConnectionError>>,
+>;
+
 impl Pool for ConnectionPool {
-    type CloseFut = Sequenced<
-        FutErrInto<RequestFuture<()>, ConnectionError>,
-        JoinHandle<Result<(), ConnectionError>>,
-    >;
+    type ConnFut = ConnectionFut;
+    type CloseFut = CloseFut;
 
     /// Creates a new connection pool for managing connections to remote hosts.
     ///
@@ -136,23 +150,18 @@ impl Pool for ConnectionPool {
     /// The receiving end of a oneshot channel that can be awaited. The value from the channel is a
     /// `Result` containing either a `ConnectionSender` that can be used to send messages to the
     /// remote host or a `ConnectionError`.
-    fn request_connection(
-        &mut self,
-        host_url: url::Url,
-        recreate: bool,
-    ) -> Result<oneshot::Receiver<Result<ConnectionChannel, ConnectionError>>, ConnectionError>
-    {
+    fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut {
         let (tx, rx) = oneshot::channel();
-
-        self.connection_request_tx
-            .try_send(ConnectionRequest {
+        let conn_request = RequestFuture::new(
+            self.connection_request_tx.clone(),
+            ConnectionRequest {
                 host_url,
                 tx,
                 recreate,
-            })
-            .map_err(|_| ConnectionError::ConnectError(None))?;
+            },
+        );
 
-        Ok(rx)
+        Sequenced::new(conn_request, rx)
     }
 
     /// Stops the pool from accepting new connection requests and closes down all existing

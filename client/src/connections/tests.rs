@@ -46,8 +46,12 @@ async fn test_connection_pool_send_single_message_single_connection() {
     let mut connection_pool =
         ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
-    let rx = connection_pool.request_connection(host_url, false).unwrap();
-    let (mut connection_sender, _connection_receiver) = rx.await.unwrap().unwrap();
+    let (mut connection_sender, _connection_receiver) = connection_pool
+        .request_connection(host_url, false)
+        .await
+        .unwrap()
+        .unwrap();
+
     // When
     connection_sender
         .send_message(Message::Text(text.to_string()))
@@ -73,13 +77,18 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     let mut connection_pool =
         ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
-    let rx = connection_pool
+    let (mut first_connection_sender, _first_connection_receiver) = connection_pool
         .request_connection(host_url.clone(), false)
+        .await
+        .unwrap()
         .unwrap();
-    let (mut first_connection_sender, _first_connection_receiver) = rx.await.unwrap().unwrap();
 
-    let rx = connection_pool.request_connection(host_url, false).unwrap();
-    let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
+    let (mut second_connection_sender, _second_connection_receiver) = connection_pool
+        .request_connection(host_url, false)
+        .await
+        .unwrap()
+        .unwrap();
+
     // When
     first_connection_sender
         .send_message(Message::Text(first_text.to_string()))
@@ -129,20 +138,23 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
         TestConnectionFactory::new_multiple(test_data).await,
     );
 
-    let rx = connection_pool
+    let (mut first_connection_sender, _first_connection_receiver) = connection_pool
         .request_connection(first_host_url, false)
+        .await
+        .unwrap()
         .unwrap();
-    let (mut first_connection_sender, _first_connection_receiver) = rx.await.unwrap().unwrap();
 
-    let rx = connection_pool
+    let (mut second_connection_sender, _second_connection_receiver) = connection_pool
         .request_connection(second_host_url, false)
+        .await
+        .unwrap()
         .unwrap();
-    let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
 
-    let rx = connection_pool
+    let (mut third_connection_sender, _third_connection_receiver) = connection_pool
         .request_connection(third_host_url, false)
+        .await
+        .unwrap()
         .unwrap();
-    let (mut third_connection_sender, _third_connection_receiver) = rx.await.unwrap().unwrap();
 
     // When
     first_connection_sender
@@ -187,8 +199,11 @@ async fn test_connection_pool_receive_single_message_single_connection() {
         ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
-    let rx = connection_pool.request_connection(host_url, false).unwrap();
-    let (_connection_sender, connection_receiver) = rx.await.unwrap().unwrap();
+    let (_connection_sender, connection_receiver) = connection_pool
+        .request_connection(host_url, false)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
@@ -211,9 +226,11 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
         ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
     // When
-    let rx = connection_pool.request_connection(host_url, false).unwrap();
-
-    let (_connection_sender, connection_receiver) = rx.await.unwrap().unwrap();
+    let (_connection_sender, connection_receiver) = connection_pool
+        .request_connection(host_url, false)
+        .await
+        .unwrap()
+        .unwrap();
 
     let mut connection_receiver = connection_receiver.unwrap();
 
@@ -260,21 +277,23 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     );
 
     // When
-
-    let rx = connection_pool
+    let (_first_sender, mut first_receiver) = connection_pool
         .request_connection(first_host_url, false)
+        .await
+        .unwrap()
         .unwrap();
-    let (_first_sender, mut first_receiver) = rx.await.unwrap().unwrap();
 
-    let rx = connection_pool
+    let (_second_sender, mut second_receiver) = connection_pool
         .request_connection(second_host_url, false)
+        .await
+        .unwrap()
         .unwrap();
-    let (_second_sender, mut second_receiver) = rx.await.unwrap().unwrap();
 
-    let rx = connection_pool
+    let (_third_sender, mut third_receiver) = connection_pool
         .request_connection(third_host_url, false)
+        .await
+        .unwrap()
         .unwrap();
-    let (_third_sender, mut third_receiver) = rx.await.unwrap().unwrap();
 
     // Then
     let first_pool_message = first_receiver.take().unwrap().recv().await.unwrap();
@@ -300,8 +319,12 @@ async fn test_connection_pool_send_and_receive_messages() {
     let mut connection_pool =
         ConnectionPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
 
-    let rx = connection_pool.request_connection(host_url, false).unwrap();
-    let (mut connection_sender, connection_receiver) = rx.await.unwrap().unwrap();
+    let (mut connection_sender, connection_receiver) = connection_pool
+        .request_connection(host_url, false)
+        .await
+        .unwrap()
+        .unwrap();
+
     // When
     connection_sender
         .send_message(Message::Text("send_bar".to_string()))
@@ -330,13 +353,14 @@ async fn test_connection_pool_connection_error() {
     );
 
     // When
-    let rx = connection_pool
-        .request_connection(host_url.clone(), false)
+
+    let connection = connection_pool
+        .request_connection(host_url, false)
+        .await
         .unwrap();
-    let connection_sender = rx.await.unwrap();
 
     // Then
-    assert!(connection_sender.is_err());
+    assert!(connection.is_err());
 }
 
 #[tokio::test]
@@ -355,20 +379,24 @@ async fn test_connection_pool_connection_error_send_message() {
     );
 
     // When
-    let rx = connection_pool
+    let first_connection = connection_pool
         .request_connection(host_url.clone(), false)
+        .await
         .unwrap();
-    let first_connection_sender = rx.await.unwrap();
 
-    let rx = connection_pool.request_connection(host_url, false).unwrap();
-    let (mut second_connection_sender, _second_connection_receiver) = rx.await.unwrap().unwrap();
+    let (mut second_connection_sender, _second_connection_receiver) = connection_pool
+        .request_connection(host_url, false)
+        .await
+        .unwrap()
+        .unwrap();
+
     second_connection_sender
         .send_message(Message::Text(text.to_string()))
         .await
         .unwrap();
 
     // Then
-    assert!(first_connection_sender.is_err());
+    assert!(first_connection.is_err());
     assert_eq!(
         writer_rx.recv().await.unwrap().into_text().unwrap(),
         "Test_message"

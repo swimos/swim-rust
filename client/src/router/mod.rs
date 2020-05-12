@@ -85,14 +85,14 @@ pub struct SwimRouter {
 }
 
 impl SwimRouter {
-    pub async fn new<ConnPool>(configuration: RouterParams, connection_pool: ConnPool) -> SwimRouter
+    pub fn new<P>(configuration: RouterParams, connection_pool: P) -> SwimRouter
     where
-        ConnPool: Pool + Clone + Send + 'static,
+        P: Pool + Clone + Send + 'static,
     {
         let (close_tx, close_rx) = watch::channel(None);
 
         let (task_manager, router_connection_request_tx, router_sink_tx) =
-            TaskManager::new(connection_pool, close_rx.clone(), configuration);
+            TaskManager::new(connection_pool, close_rx, configuration);
 
         let task_manager_handle = tokio::spawn(task_manager.run());
 
@@ -138,17 +138,17 @@ type HostManagerHandle = (
     JoinHandle<Result<(), RoutingError>>,
 );
 
-struct TaskManager<ConnPool: Pool + Clone + Send + 'static> {
+struct TaskManager<P: Pool + Clone + Send + 'static> {
     conn_request_rx: mpsc::Receiver<RouterConnRequest>,
     message_request_rx: mpsc::Receiver<RouterMessageRequest>,
-    connection_pool: ConnPool,
+    connection_pool: P,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
-impl<ConnPool: Pool + Clone + Send + 'static> TaskManager<ConnPool> {
+impl<P: Pool + Clone + Send + 'static> TaskManager<P> {
     fn new(
-        connection_pool: ConnPool,
+        connection_pool: P,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
@@ -258,15 +258,15 @@ impl<ConnPool: Pool + Clone + Send + 'static> TaskManager<ConnPool> {
     }
 }
 
-fn get_host_manager<ConnPool>(
+fn get_host_manager<P>(
     host_managers: &mut HashMap<url::Url, HostManagerHandle>,
     target: AbsolutePath,
-    connection_pool: ConnPool,
+    connection_pool: P,
     close_rx: CloseReceiver,
     config: RouterParams,
 ) -> &mut HostManagerHandle
 where
-    ConnPool: Pool + Clone + Send + 'static,
+    P: Pool + Clone + Send + 'static,
 {
     host_managers.entry(target.host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
@@ -301,23 +301,23 @@ enum HostTask {
     Close(Option<CloseResponseSender>),
 }
 
-struct HostManager<ConnPool: Pool + Clone + Send + 'static> {
+struct HostManager<P: Pool + Clone + Send + 'static> {
     target: AbsolutePath,
-    connection_pool: ConnPool,
+    connection_pool: P,
     sink_rx: mpsc::Receiver<Envelope>,
     stream_registrator_rx: mpsc::Receiver<mpsc::Sender<RouterEvent>>,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
-impl<ConnPool: Pool + Clone + Send + 'static> HostManager<ConnPool> {
+impl<P: Pool + Clone + Send + 'static> HostManager<P> {
     fn new(
         target: AbsolutePath,
-        connection_pool: ConnPool,
+        connection_pool: P,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
-        HostManager<ConnPool>,
+        HostManager<P>,
         mpsc::Sender<Envelope>,
         mpsc::Sender<mpsc::Sender<RouterEvent>>,
     ) {
@@ -368,7 +368,6 @@ impl<ConnPool: Pool + Clone + Send + 'static> HostManager<ConnPool> {
                 HostTask::Connect((connection_response_tx, recreate)) => {
                     let maybe_connection_channel = connection_pool
                         .request_connection(target.host.clone(), recreate)
-                        .map_err(|_| RoutingError::ConnectionError)?
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
 
