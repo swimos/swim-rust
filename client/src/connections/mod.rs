@@ -41,7 +41,7 @@ use url::Host;
 pub mod factory;
 
 #[cfg(test)]
-pub mod tests;
+mod tests;
 
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
