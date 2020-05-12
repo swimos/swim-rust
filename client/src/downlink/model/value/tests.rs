@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
 use common::model::ValueKind;
+use common::request::Request;
 
 const STATES: [DownlinkState; 3] = [
     DownlinkState::Unlinked,
@@ -204,7 +205,7 @@ fn update_message_synced() {
     assert!(Arc::ptr_eq(ev, &model.state));
 }
 
-fn make_get() -> (Action, oneshot::Receiver<Arc<Value>>) {
+fn make_get() -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkError>>) {
     let (tx, rx) = oneshot::channel();
     (Action::get(Request::new(tx)), rx)
 }
@@ -228,7 +229,9 @@ fn get_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let get_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let get_val = response.unwrap();
     assert!(Arc::ptr_eq(&get_val, &model.state));
 }
 
@@ -262,7 +265,7 @@ fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) ->
     response
 }
 
-fn make_set(n: i32) -> (Action, oneshot::Receiver<()>) {
+fn make_set(n: i32) -> (Action, oneshot::Receiver<Result<(), DownlinkError>>) {
     let (tx, rx) = oneshot::channel();
     (
         Action::set_and_await(Value::Int32Value(n), Request::new(tx)),
@@ -308,6 +311,28 @@ fn set_action() {
 }
 
 #[test]
+fn invalid_set_action() {
+    let mut state = DownlinkState::Synced;
+    let schema = StandardSchema::OfKind(ValueKind::Text);
+    let mut model = ValueModel::new(Value::text(""));
+    let machine = ValueStateMachine::new(Value::text(""), schema.clone());
+    let (action, mut rx) = make_set(67);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = Arc::new(Value::text(""));
+    assert_that!(&model.state, eq(&expected));
+    assert_that!(response, eq(Response::none()));
+
+    let expected_error = DownlinkError::SchemaViolation(Value::Int32Value(67), schema);
+    assert_that!(rx.try_recv(), eq(Ok(Err(expected_error))));
+}
+
+#[test]
 fn dropped_set_action() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
@@ -332,7 +357,7 @@ fn dropped_set_action() {
     assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
 }
 
-fn make_update() -> (Action, oneshot::Receiver<Arc<Value>>) {
+fn make_update() -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkError>>) {
     let (tx, rx) = oneshot::channel();
     (
         Action::update_and_await(
@@ -342,6 +367,14 @@ fn make_update() -> (Action, oneshot::Receiver<Arc<Value>>) {
             },
             Request::new(tx),
         ),
+        rx,
+    )
+}
+
+fn make_bad(n: i32) -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkError>>) {
+    let (tx, rx) = oneshot::channel();
+    (
+        Action::update_and_await(move |_| Value::Int32Value(n), Request::new(tx)),
         rx,
     )
 }
@@ -369,8 +402,35 @@ fn update_action() {
 
     let result = rx.try_recv();
     assert_that!(&result, ok());
-    let upd_val = result.unwrap();
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let upd_val = response.unwrap();
     assert!(Arc::ptr_eq(&upd_val, &model.state));
+}
+
+#[test]
+fn invalid_update_action() {
+    let mut state = DownlinkState::Synced;
+    let schema = StandardSchema::OfKind(ValueKind::Text);
+    let mut model = ValueModel::new(Value::text(""));
+    let machine = ValueStateMachine::new(Value::text(""), schema.clone());
+    let (action, mut rx) = make_bad(7);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = Arc::new(Value::text(""));
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::Int32Value(7), schema);
+
+    let result = rx.try_recv();
+    assert_that!(result, eq(Ok(Err(expected_err))))
 }
 
 #[test]

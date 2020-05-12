@@ -18,10 +18,13 @@ use crate::configuration::downlink::{
 use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
+use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
+use crate::downlink::typed::{MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
-use crate::router::{Router, RouterEvent, RoutingError};
+use crate::router::{Router, RoutingError, RouterEvent};
+use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::request::request_future::RequestError;
 use common::request::Request;
@@ -30,6 +33,7 @@ use common::sink::item::ItemSender;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 use either::Either;
+use form::ValidatedForm;
 use futures::stream::Fuse;
 use futures::Stream;
 use futures_util::future::{ready, TryFutureExt};
@@ -44,23 +48,29 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use utilities::future::{SwimFutureExt, Transformation, TransformedFuture};
+use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
 #[cfg(test)]
 pub mod tests;
 
-pub type ValueDownlink = AnyDownlink<value::Action, SharedValue>;
-type WeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
-pub type MapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
-type WeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
+pub type AnyValueDownlink = AnyDownlink<value::Action, SharedValue>;
+pub type TypedValueDownlink<T> = ValueDownlink<AnyValueDownlink, T>;
+
+pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
+pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
+pub type TypedValueReceiver<T> = UntilFailure<ValueReceiver, ApplyForm<T>>;
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
+pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>;
+
+type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
+type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
-    sender: mpsc::Sender<DownlinkRequest>,
-    _task: JoinHandle<Result<()>>,
+    sender: mpsc::Sender<DownlinkSpecifier>,
+    _task: JoinHandle<()>,
 }
 
 /// Contains all running Warp downlinks and allows requests for downlink subscriptions.
@@ -83,49 +93,165 @@ impl Downlinks {
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
-    /// subscription to its events (if there are ever no subscribers the downlink will stop
-    /// running.
-    pub async fn subscribe_value(
+    /// subscription to its events.
+    pub async fn subscribe_value_untyped(
         &mut self,
         init: Value,
         path: AbsolutePath,
-    ) -> Result<(ValueDownlink, ValueReceiver)> {
+    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+        self.subscribe_value_inner(init, StandardSchema::Anything, path)
+            .await
+    }
+
+    /// Attempt to subscribe to a remote value lane where the type of the values is described by a
+    /// [`ValidatedForm`]. The downlink is returned with a single active
+    /// subscription to its events.
+    pub async fn subscribe_value<T>(
+        &mut self,
+        init: T,
+        path: AbsolutePath,
+    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        let init_value = init.into_value();
+        let (dl, rec) = self
+            .subscribe_value_inner(init_value, T::schema(), path)
+            .await?;
+        let typed_rec = UntilFailure::new(rec, Default::default());
+        Ok((ValueDownlink::new(dl), typed_rec))
+    }
+
+    async fn subscribe_value_inner(
+        &mut self,
+        init: Value,
+        schema: StandardSchema,
+        path: AbsolutePath,
+    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkRequest::Value(init, path, Request::new(tx)))
+            .send(DownlinkSpecifier::Value {
+                init,
+                path,
+                schema,
+                request: Request::new(tx),
+            })
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 
     /// Attempt to subscribe to a map lane. The downlink is returned with a single active
-    /// subscription to its events (if there are ever no subscribers the downlink will stop
-    /// running.
-    pub async fn subscribe_map(
+    /// subscription to its events.
+    pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(MapDownlink, MapReceiver)> {
+    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+        self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
+            .await
+    }
+
+    /// Attempt to subscribe to a remote map lane where the types of the keys and values are
+    /// described by  [`ValidatedForm`]s. The downlink is returned with a single active
+    /// subscription to its events.
+    pub async fn subscribe_map<K, V>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
+    where
+        K: ValidatedForm + Send + 'static,
+        V: ValidatedForm + Send + 'static,
+    {
+        let (dl, rec) = self
+            .subscribe_map_inner(K::schema(), V::schema(), path)
+            .await?;
+        let typed_rec = UntilFailure::new(rec, Default::default());
+        Ok((MapDownlink::new(dl), typed_rec))
+    }
+
+    async fn subscribe_map_inner(
+        &mut self,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+        path: AbsolutePath,
+    ) -> Result<(AnyMapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkRequest::Map(path, Request::new(tx)))
+            .send(DownlinkSpecifier::Map {
+                path,
+                key_schema,
+                value_schema,
+                request: Request::new(tx),
+            })
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SubscriptionError {
     BadKind {
         expected: DownlinkKind,
         actual: DownlinkKind,
     },
     DownlinkTaskStopped,
+    IncompatibleValueSchema {
+        path: AbsolutePath,
+        existing: Box<StandardSchema>,
+        requested: Box<StandardSchema>,
+    },
+    IncompatibleMapSchema {
+        is_key: bool,
+        path: AbsolutePath,
+        existing: Box<StandardSchema>,
+        requested: Box<StandardSchema>,
+    },
     ConnectionError,
 }
 
-impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
-    fn from(_: SendError<DownlinkRequest>) -> Self {
+impl SubscriptionError {
+    pub fn incompatibile_value(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleValueSchema {
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+
+    pub fn incompatibile_map_key(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleMapSchema {
+            is_key: true,
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+
+    pub fn incompatibile_map_value(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleMapSchema {
+            is_key: false,
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+}
+
+impl From<mpsc::error::SendError<DownlinkSpecifier>> for SubscriptionError {
+    fn from(_: SendError<DownlinkSpecifier>) -> Self {
         SubscriptionError::DownlinkTaskStopped
     }
 }
@@ -153,6 +279,24 @@ impl Display for SubscriptionError {
             SubscriptionError::DownlinkTaskStopped => {
                 write!(f, "The downlink task has already stopped.")
             }
+            SubscriptionError::IncompatibleValueSchema {
+                path,
+                existing,
+                requested
+            } => {
+                write!(f, "A downlink was requested to {} with schema {} but one is already running with schema {}.",
+                       path, existing, requested)
+            }
+            SubscriptionError::IncompatibleMapSchema {
+                is_key,
+                path,
+                existing,
+                requested
+            } => {
+                let key_or_val = if *is_key { "key" } else { "value" };
+                write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
+                       path, key_or_val, existing, requested)
+            }
             SubscriptionError::ConnectionError => {
                 write!(f, "The downlink could not establish a connection.")
             }
@@ -170,21 +314,58 @@ impl SubscriptionError {
 
 pub type Result<T> = std::result::Result<T, SubscriptionError>;
 
-pub enum DownlinkRequest {
-    Value(
-        Value,
-        AbsolutePath,
-        Request<Result<(ValueDownlink, ValueReceiver)>>,
-    ),
-    Map(AbsolutePath, Request<Result<(MapDownlink, MapReceiver)>>),
+pub enum DownlinkSpecifier {
+    Value {
+        init: Value,
+        path: AbsolutePath,
+        schema: StandardSchema,
+        request: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+    },
+    Map {
+        path: AbsolutePath,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+        request: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+    },
 }
 
 type StopEvents = FuturesUnordered<TransformedFuture<StoppedFuture, MakeStopEvent>>;
 
+struct ValueHandle {
+    ptr: AnyWeakValueDownlink,
+    schema: StandardSchema,
+}
+
+impl ValueHandle {
+    fn new(ptr: AnyWeakValueDownlink, schema: StandardSchema) -> Self {
+        ValueHandle { ptr, schema }
+    }
+}
+
+struct MapHandle {
+    ptr: AnyWeakMapDownlink,
+    key_schema: StandardSchema,
+    value_schema: StandardSchema,
+}
+
+impl MapHandle {
+    fn new(
+        ptr: AnyWeakMapDownlink,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+    ) -> Self {
+        MapHandle {
+            ptr,
+            key_schema,
+            value_schema,
+        }
+    }
+}
+
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
-    value_downlinks: HashMap<AbsolutePath, WeakValueDownlink>,
-    map_downlinks: HashMap<AbsolutePath, WeakMapDownlink>,
+    value_downlinks: HashMap<AbsolutePath, ValueHandle>,
+    map_downlinks: HashMap<AbsolutePath, MapHandle>,
     stopped_watch: StopEvents,
     router: R,
 }
@@ -208,7 +389,7 @@ impl MakeStopEvent {
     }
 }
 
-impl Transformation<std::result::Result<(), DownlinkError>> for MakeStopEvent {
+impl TransformOnce<std::result::Result<(), DownlinkError>> for MakeStopEvent {
     type Out = DownlinkStoppedEvent;
 
     fn transform(self, input: std::result::Result<(), DownlinkError>) -> Self::Out {
@@ -241,10 +422,12 @@ where
     async fn create_new_value_downlink(
         &mut self,
         init: Value,
+        schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(ValueDownlink, ValueReceiver)> {
+    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await?;
+        let schema_cpy = schema.clone();
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
@@ -258,7 +441,7 @@ where
 
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                value_downlink_for_sink(cmd_sink, init, updates, &config)
+                value_downlink_for_sink(cmd_sink, init, schema, updates, &config)
             }
             BackpressureMode::Release { .. } => {
                 let pressure_release = ValuePump::new(cmd_sink.clone()).await;
@@ -270,11 +453,12 @@ where
                     },
                 );
 
-                value_downlink_for_sink(either_sink, init, updates, &config)
+                value_downlink_for_sink(either_sink, init, schema, updates, &config)
             }
         };
 
-        self.value_downlinks.insert(path.clone(), dl.downgrade());
+        self.value_downlinks
+            .insert(path.clone(), ValueHandle::new(dl.downgrade(), schema_cpy));
         self.stopped_watch.push(
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Value, path)),
@@ -285,9 +469,13 @@ where
     async fn create_new_map_downlink(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(MapDownlink, MapReceiver)> {
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+    ) -> Result<(AnyMapDownlink, MapReceiver)> {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await?;
+        let key_schema_cpy = key_schema.clone();
+        let value_schema_cpy = value_schema.clone();
 
         //TODO Do something with invalid envelopes rather than discarding them.
         let updates = incoming.filter_map(|event| match event {
@@ -302,7 +490,7 @@ where
                 let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
                     envelopes::map_envelope(&sink_path, cmd).1
                 });
-                map_downlink_for_sink(cmd_sink, updates, &config)
+                map_downlink_for_sink(key_schema, value_schema, cmd_sink, updates, &config)
             }
             BackpressureMode::Release {
                 input_buffer_size,
@@ -333,11 +521,14 @@ where
                         ow => Either::Left(ow),
                     },
                 );
-                map_downlink_for_sink(either_sink, updates, &config)
+                map_downlink_for_sink(key_schema, value_schema, either_sink, updates, &config)
             }
         };
 
-        self.map_downlinks.insert(path.clone(), dl.downgrade());
+        self.map_downlinks.insert(
+            path.clone(),
+            MapHandle::new(dl.downgrade(), key_schema_cpy, value_schema_cpy),
+        );
         self.stopped_watch.push(
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Map, path)),
@@ -345,17 +536,160 @@ where
         Ok((dl, rec))
     }
 
-    #[allow(clippy::cognitive_complexity)]
-    async fn run<Req>(mut self, requests: Req) -> Result<()>
+    async fn handle_value_request(
+        &mut self,
+        init: Value,
+        path: AbsolutePath,
+        schema: StandardSchema,
+        value_req: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+    ) -> Result<()> {
+        let dl = match self.value_downlinks.get(&path) {
+            Some(ValueHandle {
+                ptr: dl,
+                schema: existing_schema,
+            }) => {
+                let maybe_dl = dl.upgrade();
+                match maybe_dl {
+                    Some(mut dl_clone) if dl_clone.is_running() => {
+                        if schema.eq(existing_schema) {
+                            match dl_clone.subscribe().await {
+                                Ok(rec) => Ok((dl_clone, rec)),
+                                Err(_) => {
+                                    self.value_downlinks.remove(&path);
+                                    Ok(self
+                                        .create_new_value_downlink(init, schema, path.clone())
+                                        .await)
+                                }
+                            }
+                        } else {
+                            Err(SubscriptionError::incompatibile_value(
+                                path,
+                                existing_schema.clone(),
+                                schema,
+                            ))
+                        }
+                    }
+                    _ => {
+                        self.value_downlinks.remove(&path);
+                        Ok(self
+                            .create_new_value_downlink(init, schema, path.clone())
+                            .await?)
+                    }
+                }
+            }
+            _ => match self.map_downlinks.get(&path) {
+                Some(_) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Value,
+                    DownlinkKind::Map,
+                )),
+                _ => Ok(self
+                    .create_new_value_downlink(init, schema, path.clone())
+                    .await?),
+            },
+        };
+        let _ = value_req.send(dl);
+    }
+
+    async fn handle_map_request(
+        &mut self,
+        path: AbsolutePath,
+        key_schema: StandardSchema,
+        value_schema: StandardSchema,
+        map_req: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+    ) {
+        let dl = match self.map_downlinks.get(&path) {
+            Some(MapHandle {
+                ptr: dl,
+                key_schema: existing_key_schema,
+                value_schema: existing_value_schema,
+            }) => {
+                if !key_schema.eq(existing_key_schema) {
+                    Err(SubscriptionError::incompatibile_map_key(
+                        path,
+                        existing_key_schema.clone(),
+                        key_schema,
+                    ))
+                } else if !value_schema.eq(existing_value_schema) {
+                    Err(SubscriptionError::incompatibile_map_value(
+                        path,
+                        existing_value_schema.clone(),
+                        value_schema,
+                    ))
+                } else {
+                    let maybe_dl = dl.upgrade();
+                    match maybe_dl {
+                        Some(mut dl_clone) if dl_clone.is_running() => {
+                            match dl_clone.subscribe().await {
+                                Ok(rec) => Ok((dl_clone, rec)),
+                                Err(_) => {
+                                    self.map_downlinks.remove(&path);
+                                    Ok(self
+                                        .create_new_map_downlink(
+                                            path.clone(),
+                                            key_schema,
+                                            value_schema,
+                                        )
+                                        .await?)
+                                }
+                            }
+                        }
+                        _ => {
+                            self.map_downlinks.remove(&path);
+                            Ok(self
+                                .create_new_map_downlink(path.clone(), key_schema, value_schema)
+                                .await?)
+                        }
+                    }
+                }
+            }
+            _ => match self.value_downlinks.get(&path) {
+                Some(_) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Map,
+                    DownlinkKind::Value,
+                )),
+                _ => Ok(self
+                    .create_new_map_downlink(path.clone(), key_schema, value_schema)
+                    .await?),
+            },
+        };
+        let _ = map_req.send(dl);
+    }
+
+    async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
+        match stop_event.kind {
+            DownlinkKind::Value => {
+                if let Some(ValueHandle { ptr: weak_dl, .. }) =
+                    self.value_downlinks.get(&stop_event.path)
+                {
+                    let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
+                    if !is_running {
+                        self.value_downlinks.remove(&stop_event.path);
+                    }
+                }
+            }
+            DownlinkKind::Map => {
+                if let Some(MapHandle { ptr: weak_dl, .. }) =
+                    self.map_downlinks.get(&stop_event.path)
+                {
+                    let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
+                    if !is_running {
+                        self.map_downlinks.remove(&stop_event.path);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn run<Req>(mut self, requests: Req)
     where
-        Req: Stream<Item = DownlinkRequest>,
+        Req: Stream<Item = DownlinkSpecifier>,
     {
         pin_mut!(requests);
 
         let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
 
         loop {
-            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
+            let item: Option<Either<DownlinkSpecifier, DownlinkStoppedEvent>> =
                 if self.stopped_watch.is_empty() {
                     pinned_requests.next().await.map(Either::Left)
                 } else {
@@ -366,88 +700,26 @@ where
                 };
 
             match item {
-                Some(Either::Left(DownlinkRequest::Value(init, path, value_req))) => {
-                    let dl = match self.value_downlinks.get(&path) {
-                        Some(dl) => {
-                            let maybe_dl = dl.upgrade();
-                            match maybe_dl {
-                                Some(mut dl_clone) if dl_clone.is_running() => {
-                                    match dl_clone.subscribe().await {
-                                        Ok(rec) => Ok((dl_clone, rec)),
-                                        Err(_) => {
-                                            self.value_downlinks.remove(&path);
-                                            Ok(self
-                                                .create_new_value_downlink(init, path.clone())
-                                                .await?)
-                                        }
-                                    }
-                                }
-                                _ => {
-                                    self.value_downlinks.remove(&path);
-                                    Ok(self.create_new_value_downlink(init, path.clone()).await?)
-                                }
-                            }
-                        }
-                        _ => match self.map_downlinks.get(&path) {
-                            Some(_) => Err(SubscriptionError::bad_kind(
-                                DownlinkKind::Value,
-                                DownlinkKind::Map,
-                            )),
-                            _ => Ok(self.create_new_value_downlink(init, path.clone()).await?),
-                        },
-                    };
-                    let _ = value_req.send(dl);
+                Some(Either::Left(DownlinkSpecifier::Value {
+                    init,
+                    path,
+                    schema,
+                    request,
+                })) => {
+                    self.handle_value_request(init, path, schema, request).await;
                 }
-                Some(Either::Left(DownlinkRequest::Map(path, map_req))) => {
-                    let dl = match self.map_downlinks.get(&path) {
-                        Some(dl) => {
-                            let maybe_dl = dl.upgrade();
-                            match maybe_dl {
-                                Some(mut dl_clone) if dl_clone.is_running() => {
-                                    match dl_clone.subscribe().await {
-                                        Ok(rec) => Ok((dl_clone, rec)),
-                                        Err(_) => {
-                                            self.map_downlinks.remove(&path);
-                                            Ok(self.create_new_map_downlink(path.clone()).await?)
-                                        }
-                                    }
-                                }
-                                _ => {
-                                    self.map_downlinks.remove(&path);
-                                    Ok(self.create_new_map_downlink(path.clone()).await?)
-                                }
-                            }
-                        }
-                        _ => match self.value_downlinks.get(&path) {
-                            Some(_) => Err(SubscriptionError::bad_kind(
-                                DownlinkKind::Map,
-                                DownlinkKind::Value,
-                            )),
-                            _ => Ok(self.create_new_map_downlink(path.clone()).await?),
-                        },
-                    };
-                    let _ = map_req.send(dl);
+                Some(Either::Left(DownlinkSpecifier::Map {
+                    path,
+                    key_schema,
+                    value_schema,
+                    request,
+                })) => {
+                    self.handle_map_request(path, key_schema, value_schema, request)
+                        .await;
                 }
-                Some(Either::Right(stop_event)) => match stop_event.kind {
-                    DownlinkKind::Value => {
-                        if let Some(weak_dl) = self.value_downlinks.get(&stop_event.path) {
-                            let is_running =
-                                weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
-                            if !is_running {
-                                self.value_downlinks.remove(&stop_event.path);
-                            }
-                        }
-                    }
-                    DownlinkKind::Map => {
-                        if let Some(weak_dl) = self.map_downlinks.get(&stop_event.path) {
-                            let is_running =
-                                weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
-                            if !is_running {
-                                self.map_downlinks.remove(&stop_event.path);
-                            }
-                        }
-                    }
-                },
+                Some(Either::Right(stop_event)) => {
+                    self.handle_stop(stop_event).await;
+                }
                 None => {
                     break Ok(());
                 }
@@ -459,6 +731,7 @@ where
 fn value_downlink_for_sink<Updates, Snk>(
     cmd_sink: Snk,
     init: Value,
+    schema: StandardSchema,
     updates: Updates,
     config: &DownlinkParams,
 ) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
@@ -472,7 +745,7 @@ where
         MuxMode::Queue(n) => {
             let (dl, rec) = value::create_queue_downlink(
                 init,
-                None,
+                Some(schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -484,7 +757,7 @@ where
         MuxMode::Dropping => {
             let (dl, rec) = value::create_dropping_downlink(
                 init,
-                None,
+                Some(schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -495,7 +768,7 @@ where
         MuxMode::Buffered(n) => {
             let (dl, rec) = value::create_buffered_downlink(
                 init,
-                None,
+                Some(schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -508,6 +781,8 @@ where
 }
 
 fn map_downlink_for_sink<Updates, Snk>(
+    key_schema: StandardSchema,
+    value_schema: StandardSchema,
     cmd_sink: Snk,
     updates: Updates,
     config: &DownlinkParams,
@@ -525,8 +800,8 @@ where
     match config.mux_mode {
         MuxMode::Queue(n) => {
             let (dl, rec) = create_queue_downlink(
-                None,
-                None,
+                Some(key_schema),
+                Some(value_schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -537,8 +812,8 @@ where
         }
         MuxMode::Dropping => {
             let (dl, rec) = create_dropping_downlink(
-                None,
-                None,
+                Some(key_schema),
+                Some(value_schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
@@ -548,8 +823,8 @@ where
         }
         MuxMode::Buffered(n) => {
             let (dl, rec) = create_buffered_downlink(
-                None,
-                None,
+                Some(key_schema),
+                Some(value_schema),
                 updates,
                 dl_cmd_sink,
                 buffer_size,
