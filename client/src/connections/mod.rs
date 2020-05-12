@@ -144,12 +144,14 @@ impl Pool for ConnectionPool {
     /// # Arguments
     ///
     /// * `host_url`        - The URL of the remote host.
+    /// * `recreate`        - Boolean flag indicating whether the connection should be recreated.
     ///
     /// # Returns
     ///
-    /// The receiving end of a oneshot channel that can be awaited. The value from the channel is a
-    /// `Result` containing either a `ConnectionSender` that can be used to send messages to the
-    /// remote host or a `ConnectionError`.
+    /// A `Result` containing either a `Connection` that can be used to send and receive messages
+    /// to the remote host or a `ConnectionError`. The `Connection` contains a `ConnectionSender`
+    /// and an optional `ConnectionReceiver`. The `ConnectionReceiver` is returned either the first
+    /// time a connection is opened or when it is recreated.
     fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut {
         let (tx, rx) = oneshot::channel();
         let conn_request = RequestFuture::new(
