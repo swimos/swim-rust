@@ -174,15 +174,15 @@ where
         let req1 = Request::new(tx1);
         let req2 = Request::new(tx2);
         self.sender
-            .send_item(MapAction::update_and_await(
+            .send_item(MapAction::try_update_and_await(
                 key.into_value(),
                 wrap_option_update_fn(update_fn),
                 req1,
                 req2,
             ))
             .await?;
-        let before = await_optional(rx1).await?;
-        let after = await_optional(rx2).await?;
+        let before = await_fallible_optional(rx1).await?;
+        let after = await_fallible_optional(rx2).await?;
         Ok((before, after))
     }
 
@@ -192,7 +192,7 @@ where
         F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
         self.sender
-            .send_item(MapAction::update(
+            .send_item(MapAction::try_update(
                 key.into_value(),
                 wrap_option_update_fn(update_fn),
             ))
@@ -343,22 +343,19 @@ where
     }
 }
 
-fn wrap_option_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Option<&Value>) -> Option<Value>
+fn wrap_option_update_fn<T, F>(
+    update_fn: F,
+) -> impl FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>>
 where
     T: Form,
     F: FnOnce(Option<T>) -> Option<T>,
 {
-    move |maybe_value| {
-        match maybe_value.as_ref() {
-            Some(value) => {
-                match T::try_from_value(value) {
-                    Ok(t) => update_fn(Some(t)),
-                    Err(_) => None, //TODO Make the update function fallible so this can be avoided.
-                }
-            }
-            _ => update_fn(None),
-        }
-        .map(Form::into_value)
+    move |maybe_value| match maybe_value.as_ref() {
+        Some(value) => match T::try_from_value(value) {
+            Ok(t) => Ok(update_fn(Some(t)).map(Form::into_value)),
+            Err(e) => Err(UpdateFailure(e.to_string())),
+        },
+        _ => Ok(update_fn(None).map(Form::into_value)),
     }
 }
 
@@ -389,6 +386,24 @@ async fn await_optional<T: ValidatedForm>(
     rx: oneshot::Receiver<Result<Option<SharedValue>, DownlinkError>>,
 ) -> Result<Option<T>, DownlinkError> {
     let maybe_value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
+    match maybe_value {
+        Some(value) => Form::try_from_value(value.as_ref())
+            .map_err(|_| {
+                let schema = <T as ValidatedForm>::schema();
+                DownlinkError::SchemaViolation((*value).clone(), schema)
+            })
+            .map(Some),
+        _ => Ok(None),
+    }
+}
+
+async fn await_fallible_optional<T: ValidatedForm>(
+    rx: oneshot::Receiver<Result<UpdateResult<Option<SharedValue>>, DownlinkError>>,
+) -> Result<Option<T>, DownlinkError> {
+    let maybe_value = rx
+        .await
+        .map_err(|_| DownlinkError::DroppedChannel)??
+        .map_err(|_| DownlinkError::InvalidAction)?;
     match maybe_value {
         Some(value) => Form::try_from_value(value.as_ref())
             .map_err(|_| {
