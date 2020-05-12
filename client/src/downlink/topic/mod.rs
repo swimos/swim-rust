@@ -19,7 +19,7 @@ use futures::Stream;
 use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::macros::support::Pin;
-use utilities::future::{Transformation, TransformedFuture};
+use utilities::future::{TransformOnce, TransformedFuture};
 
 /// A wrapper around a [`Topic`] containing a pointer to an associated downlink task.
 #[derive(Debug)]
@@ -40,7 +40,6 @@ pub struct DownlinkReceiver<Inner> {
 impl<Inner> DownlinkTopic<Inner> {
     pub(in crate::downlink) fn new<T>(inner_topic: Inner, task: Arc<dyn DownlinkInternals>) -> Self
     where
-        T: Clone,
         Inner: Topic<T>,
     {
         DownlinkTopic {
@@ -82,7 +81,7 @@ impl MakeReceiver {
     }
 }
 
-impl<Inner: Stream> Transformation<Result<Inner, TopicError>> for MakeReceiver {
+impl<Inner: Stream> TransformOnce<Result<Inner, TopicError>> for MakeReceiver {
     type Out = Result<DownlinkReceiver<Inner>, TopicError>;
 
     fn transform(self, result: Result<Inner, TopicError>) -> Self::Out {
@@ -93,7 +92,6 @@ impl<Inner: Stream> Transformation<Result<Inner, TopicError>> for MakeReceiver {
 
 impl<T, Inner> Topic<T> for DownlinkTopic<Inner>
 where
-    T: Clone,
     Inner: Topic<T>,
 {
     type Receiver = DownlinkReceiver<Inner::Receiver>;

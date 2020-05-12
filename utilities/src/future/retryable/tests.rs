@@ -59,7 +59,7 @@ where
 
 impl<P> ResettableFuture for MpscSender<P>
 where
-    P: Clone,
+    P: Clone + Unpin,
 {
     fn reset(self: Pin<&mut Self>) -> bool {
         true
