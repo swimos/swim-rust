@@ -27,3 +27,4 @@ deserialize = { path = "../form/deserialize"}
 
 [dev-dependencies]
 hamcrest2 = "0.3"
+assert_matches = "1.3.0"

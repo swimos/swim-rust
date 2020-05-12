@@ -12,29 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
+
+use futures::stream;
+use futures::{Future, Stream};
+use tokio::stream::StreamExt;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::oneshot;
+use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
+
+use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use common::sink::item::map_err::SenderErrInto;
+use common::sink::item::ItemSender;
+use common::warp::envelope::Envelope;
+use common::warp::path::AbsolutePath;
 
 use crate::configuration::router::RouterParams;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
-use common::request::request_future::{RequestError, RequestFuture, Sequenced};
-use common::sink::item::map_err::SenderErrInto;
-use common::sink::item::ItemSender;
-use common::warp::envelope::Envelope;
-use common::warp::path::AbsolutePath;
-use futures::stream;
-use futures::{Future, Stream};
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::ops::Deref;
-use tokio::stream::StreamExt;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot;
-use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
 
 pub mod incoming;
 pub mod outgoing;
@@ -287,6 +289,7 @@ fn combine_router_task(
     let message_requests =
         message_request_rx.map(|payload| RouterTask::SendMessage(Box::new(payload)));
     let close_requests = close_rx.map(RouterTask::Close);
+
     stream::select(
         stream::select(conn_requests, message_requests),
         close_requests,
@@ -364,16 +367,15 @@ impl HostManager {
         let outgoing_handle = tokio::spawn(outgoing_task.run());
 
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);
+
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
             match task {
                 HostTask::Connect((connection_response_tx, recreate)) => {
                     let maybe_connection_channel = connection_pool
-                        .request_connection(target.host.clone(), recreate)
-                        .map_err(|_| RoutingError::ConnectionError)?
-                        .await
-                        .map_err(|_| RoutingError::ConnectionError)?;
+                        .request_connection_async(target.host.clone(), recreate)
+                        .await;
 
                     match maybe_connection_channel {
                         Ok((connection_tx, maybe_connection_rx)) => {
@@ -431,7 +433,9 @@ impl HostManager {
 
                     break Ok(());
                 }
-                HostTask::Close(None) => {}
+                HostTask::Close(None) => {
+                    break Ok(());
+                }
             }
         }
     }
