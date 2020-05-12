@@ -70,6 +70,26 @@ mod value {
                         Err(DownlinkError::InvalidAction)
                     }
                 }
+                Action::TryUpdate(f, maybe_cb) => {
+                    let old = state.clone();
+                    let maybe_new = f(state.as_ref());
+                    match maybe_new {
+                        Ok(new @ Value::Int32Value(_)) => {
+                            *state = SharedValue::new(new);
+                            if let Some(cb) = maybe_cb {
+                                let _ = cb.send_ok(Ok(old));
+                            }
+                            Ok(())
+                        }
+                        Ok(_) => Err(DownlinkError::InvalidAction),
+                        Err(err) => {
+                            if let Some(cb) = maybe_cb {
+                                let _ = cb.send_ok(Err(err));
+                            }
+                            Ok(())
+                        }
+                    }
+                }
             };
             ready(result)
         }

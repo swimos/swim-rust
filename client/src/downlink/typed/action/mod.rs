@@ -16,9 +16,9 @@
 mod tests;
 
 use crate::downlink::model::map::{MapAction, ValMap};
-use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::typed::event::TypedMapView;
-use crate::downlink::DownlinkError;
+use crate::downlink::{DownlinkError, UpdateFailure};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::{ItemSender, ItemSink};
@@ -79,9 +79,9 @@ where
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
         self.sender
-            .send_item(Action::update_and_await(wrapped, req))
+            .send_item(Action::try_update_and_await(wrapped, req))
             .await?;
-        await_value(rx).await
+        await_fallible(rx).await
     }
 
     /// Update the value of the downlink without waiting for the operation to complete.
@@ -90,7 +90,7 @@ where
         F: FnOnce(T) -> T + Send + 'static,
     {
         let wrapped = wrap_update_fn::<T, F>(update_fn);
-        self.sender.send_item(Action::update(wrapped)).await
+        self.sender.send_item(Action::try_update(wrapped)).await
     }
 }
 
@@ -332,16 +332,14 @@ where
     }
 }
 
-fn wrap_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Value) -> Value
+fn wrap_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Value) -> UpdateResult<Value>
 where
     T: Form,
     F: FnOnce(T) -> T,
 {
-    move |value: &Value| {
-        match Form::try_from_value(value) {
-            Ok(t) => update_fn(t).into_value(),
-            Err(_) => Value::Extant, //TODO Make the update function fallible so this can be avoided.
-        }
+    move |value: &Value| match Form::try_from_value(value) {
+        Ok(t) => Ok(update_fn(t).into_value()),
+        Err(e) => Err(UpdateFailure(e.to_string())),
     }
 }
 
@@ -368,6 +366,19 @@ async fn await_value<T: ValidatedForm>(
     rx: oneshot::Receiver<Result<SharedValue, DownlinkError>>,
 ) -> Result<T, DownlinkError> {
     let value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
+    Form::try_from_value(value.as_ref()).map_err(|_| {
+        let schema = T::schema();
+        DownlinkError::SchemaViolation((*value).clone(), schema)
+    })
+}
+
+async fn await_fallible<T: ValidatedForm>(
+    rx: oneshot::Receiver<Result<UpdateResult<SharedValue>, DownlinkError>>,
+) -> Result<T, DownlinkError> {
+    let value = rx
+        .await
+        .map_err(|_| DownlinkError::DroppedChannel)??
+        .map_err(|_| DownlinkError::InvalidAction)?;
     Form::try_from_value(value.as_ref()).map_err(|_| {
         let schema = T::schema();
         DownlinkError::SchemaViolation((*value).clone(), schema)

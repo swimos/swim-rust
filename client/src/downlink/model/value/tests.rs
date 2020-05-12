@@ -383,6 +383,7 @@ fn make_bad(n: i32) -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkErr
 fn update_action() {
     let mut state = DownlinkState::Synced;
     let mut model = ValueModel::new(Value::from(13));
+    let old = model.state.clone();
     let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, mut rx) = make_update();
     let maybe_response =
@@ -405,7 +406,7 @@ fn update_action() {
     let response = result.unwrap();
     assert_that!(&response, ok());
     let upd_val = response.unwrap();
-    assert!(Arc::ptr_eq(&upd_val, &model.state));
+    assert!(Arc::ptr_eq(&upd_val, &old));
 }
 
 #[test]
@@ -439,6 +440,146 @@ fn dropped_update_action() {
     let mut model = ValueModel::new(Value::from(13));
     let machine = ValueStateMachine::unvalidated(Value::from(0));
     let (action, rx) = make_update();
+
+    drop(rx);
+
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = Arc::new(Value::Int32Value(26));
+    assert_that!(&model.state, eq(&expected));
+
+    let (ev, cmd, err) = event_and_cmd(response);
+    assert!(Arc::ptr_eq(&ev, &model.state));
+    assert!(Arc::ptr_eq(&cmd, &model.state));
+    assert_that!(&err, some());
+    assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
+}
+
+fn make_try_update() -> (
+    Action,
+    oneshot::Receiver<Result<UpdateResult<Arc<Value>>, DownlinkError>>,
+) {
+    let (tx, rx) = oneshot::channel();
+    (
+        Action::try_update_and_await(
+            |v| match v {
+                Value::Int32Value(n) if n % 2 == 1 => Ok(Value::Int32Value(n * 2)),
+                _ => Err(UpdateFailure("Failed".to_string())),
+            },
+            Request::new(tx),
+        ),
+        rx,
+    )
+}
+
+fn make_try_bad(
+    n: i32,
+) -> (
+    Action,
+    oneshot::Receiver<Result<UpdateResult<Arc<Value>>, DownlinkError>>,
+) {
+    let (tx, rx) = oneshot::channel();
+    (
+        Action::try_update_and_await(move |_| Ok(Value::Int32Value(n)), Request::new(tx)),
+        rx,
+    )
+}
+
+#[test]
+fn successful_try_update_action() {
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let old = model.state.clone();
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let (action, mut rx) = make_try_update();
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = Arc::new(Value::Int32Value(26));
+    assert_that!(&model.state, eq(&expected));
+
+    let (ev, cmd, err) = event_and_cmd(response);
+    assert!(Arc::ptr_eq(&ev, &model.state));
+    assert!(Arc::ptr_eq(&cmd, &model.state));
+    assert_that!(err, none());
+
+    let result = rx.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let upd_res = response.unwrap();
+    assert_that!(&upd_res, ok());
+    let upd_val = upd_res.unwrap();
+    assert!(Arc::ptr_eq(&upd_val, &old));
+}
+
+#[test]
+fn unsuccessful_try_update_action() {
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(14));
+    let old = model.state.clone();
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let (action, mut rx) = make_try_update();
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+
+    assert!(Arc::ptr_eq(&model.state, &old));
+
+    assert_that!(response, eq(Response::none()));
+
+    let result = rx.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let upd_res = response.unwrap();
+    assert_that!(&upd_res, err());
+}
+
+#[test]
+fn invalid_try_update_action() {
+    let mut state = DownlinkState::Synced;
+    let schema = StandardSchema::OfKind(ValueKind::Text);
+    let mut model = ValueModel::new(Value::text(""));
+    let machine = ValueStateMachine::new(Value::text(""), schema.clone());
+    let (action, mut rx) = make_try_bad(7);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = Arc::new(Value::text(""));
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::Int32Value(7), schema);
+
+    let result = rx.try_recv();
+    assert_that!(result, eq(Ok(Err(expected_err))))
+}
+
+#[test]
+fn dropped_try_update_action() {
+    let mut state = DownlinkState::Synced;
+    let mut model = ValueModel::new(Value::from(13));
+    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let (action, rx) = make_try_update();
 
     drop(rx);
 

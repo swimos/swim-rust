@@ -249,6 +249,9 @@ pub enum TransitionError {
     IllegalTransition(String),
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct UpdateFailure(String);
+
 impl TransitionError {
     /// On encountering a fatal transition error, a downlink will terminate.
     pub fn is_fatal(&self) -> bool {
