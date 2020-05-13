@@ -1167,7 +1167,8 @@ fn update_key_schema_errors<Ev, Cmd, T>(
     key_schema: &StandardSchema,
     key: Value,
     before: Option<DownlinkRequest<T>>,
-    after: Option<DownlinkRequest<T>>) -> (BasicResponse<Ev, Cmd>, bool) {
+    after: Option<DownlinkRequest<T>>,
+) -> (BasicResponse<Ev, Cmd>, bool) {
     let result_before = send_error(before, key.clone(), key_schema.clone());
     let result_after = send_error(after, key, key_schema.clone());
     (BasicResponse::none(), result_before || result_after)
