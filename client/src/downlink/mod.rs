@@ -180,6 +180,7 @@ pub enum Message<M> {
     Synced,
     Action(M),
     Unlinked,
+    BadEnvelope(String),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -246,6 +247,16 @@ pub enum TransitionError {
     ReceiverDropped,
     SideEffectFailed,
     IllegalTransition(String),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct UpdateFailure(String);
+
+impl TransitionError {
+    /// On encountering a fatal transition error, a downlink will terminate.
+    pub fn is_fatal(&self) -> bool {
+        matches!(self, TransitionError::IllegalTransition(_))
+    }
 }
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
@@ -404,6 +415,7 @@ where
                     *state = DownlinkState::Unlinked;
                     Response::none().then_terminate()
                 }
+                Message::BadEnvelope(_) => return Err(DownlinkError::MalformedMessage),
             },
             Operation::Action(action) => self.handle_action(data_state, action).into(),
         };

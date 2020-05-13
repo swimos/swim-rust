@@ -25,7 +25,7 @@ use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
     create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest,
-    Event, Message, TransitionError,
+    Event, Message, TransitionError, UpdateFailure,
 };
 use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
@@ -38,12 +38,18 @@ mod tests;
 
 pub type SharedValue = Arc<Value>;
 
+pub type UpdateResult<T> = Result<T, UpdateFailure>;
+
 pub enum Action {
     Set(Value, Option<DownlinkRequest<()>>),
     Get(DownlinkRequest<SharedValue>),
     Update(
         Box<dyn FnOnce(&Value) -> Value + Send>,
         Option<DownlinkRequest<SharedValue>>,
+    ),
+    TryUpdate(
+        Box<dyn FnOnce(&Value) -> UpdateResult<Value> + Send>,
+        Option<DownlinkRequest<UpdateResult<SharedValue>>>,
     ),
 }
 
@@ -53,6 +59,7 @@ impl Debug for Action {
             Action::Set(v, r) => write!(f, "Set({:?}, {:?})", v, r.is_some()),
             Action::Get(_) => write!(f, "Get"),
             Action::Update(_, r) => write!(f, "Update(<closure>, {:?})", r.is_some()),
+            Action::TryUpdate(_, r) => write!(f, "TryUpdate(<closure>, {:?})", r.is_some()),
         }
     }
 }
@@ -77,6 +84,13 @@ impl Action {
         Action::Update(Box::new(f), None)
     }
 
+    pub fn try_update<F>(f: F) -> Action
+    where
+        F: FnOnce(&Value) -> UpdateResult<Value> + Send + 'static,
+    {
+        Action::TryUpdate(Box::new(f), None)
+    }
+
     pub fn update_box(f: Box<dyn FnOnce(&Value) -> Value + Send>) -> Action {
         Action::Update(f, None)
     }
@@ -86,6 +100,16 @@ impl Action {
         F: FnOnce(&Value) -> Value + Send + 'static,
     {
         Action::Update(Box::new(f), Some(request))
+    }
+
+    pub fn try_update_and_await<F>(
+        f: F,
+        request: DownlinkRequest<UpdateResult<SharedValue>>,
+    ) -> Action
+    where
+        F: FnOnce(&Value) -> UpdateResult<Value> + Send + 'static,
+    {
+        Action::TryUpdate(Box::new(f), Some(request))
     }
 
     pub fn update_box_and_await(
@@ -288,6 +312,12 @@ impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
                 let new_value = upd_fn(state.state.as_ref());
                 apply_set(state, &self.schema, new_value, maybe_resp, |s| s.clone())
             }
+            Action::TryUpdate(upd_fn, maybe_resp) => try_apply_set(
+                state,
+                &self.schema,
+                upd_fn(state.state.as_ref()),
+                maybe_resp,
+            ),
         }
     }
 }
@@ -303,14 +333,45 @@ where
     F: FnOnce(&SharedValue) -> T,
 {
     if schema.matches(&set_value) {
+        let with_old = maybe_resp.map(|req| (req, to_output(&state.state)));
         state.state = Arc::new(set_value);
         let resp = BasicResponse::of(state.state.clone(), state.state.clone());
-        match maybe_resp.and_then(|req| req.send_ok(to_output(&state.state)).err()) {
+        match with_old.and_then(|(req, old)| req.send_ok(old).err()) {
             Some(_) => resp.with_error(TransitionError::ReceiverDropped),
             _ => resp,
         }
     } else {
         send_error(maybe_resp, set_value, schema.clone())
+    }
+}
+
+fn try_apply_set(
+    state: &mut ValueModel,
+    schema: &StandardSchema,
+    maybe_set_value: UpdateResult<Value>,
+    maybe_resp: Option<DownlinkRequest<UpdateResult<SharedValue>>>,
+) -> BasicResponse<SharedValue, SharedValue> {
+    match maybe_set_value {
+        Ok(set_value) => {
+            if schema.matches(&set_value) {
+                let with_old = maybe_resp.map(|req| (req, state.state.clone()));
+                state.state = Arc::new(set_value);
+                let resp = BasicResponse::of(state.state.clone(), state.state.clone());
+                match with_old.and_then(|(req, old)| req.send_ok(Ok(old)).err()) {
+                    Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+                    _ => resp,
+                }
+            } else {
+                send_error(maybe_resp, set_value, schema.clone())
+            }
+        }
+        Err(err) => {
+            let resp = BasicResponse::none();
+            match maybe_resp.and_then(|req| req.send_ok(Err(err)).err()) {
+                Some(_) => resp.with_error(TransitionError::ReceiverDropped),
+                _ => resp,
+            }
+        }
     }
 }
 

@@ -120,6 +120,114 @@ pub type OutgoingLinkMessage = LinkMessage<OutgoingHeader>;
 pub type IncomingLinkMessage = LinkMessage<IncomingHeader>;
 pub type AnyLinkMessage = LinkMessage<LinkHeader>;
 
+impl<Header> LinkMessage<Header> {
+    fn make_message<S: Into<String>>(
+        header: Header,
+        node: S,
+        lane: S,
+        body: Option<Value>,
+    ) -> Self {
+        let path = RelativePath {
+            node: node.into(),
+            lane: lane.into(),
+        };
+        LinkMessage { header, path, body }
+    }
+}
+
+impl LinkMessage<OutgoingHeader> {
+    pub fn make_link<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_message(
+            OutgoingHeader::Link(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_unlink<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(OutgoingHeader::Unlink, node, lane, body)
+    }
+
+    pub fn make_sync<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_message(
+            OutgoingHeader::Sync(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_command<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(OutgoingHeader::Command, node, lane, body)
+    }
+
+    pub fn link<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_link(node, lane, None, None, None)
+    }
+
+    pub fn sync<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_sync(node, lane, None, None, None)
+    }
+
+    pub fn unlink<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_unlink(node, lane, None)
+    }
+}
+
+impl LinkMessage<IncomingHeader> {
+    pub fn make_linked<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_message(
+            IncomingHeader::Linked(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_unlinked<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(IncomingHeader::Unlinked, node, lane, body)
+    }
+
+    pub fn make_synced<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(IncomingHeader::Synced, node, lane, body)
+    }
+
+    pub fn make_event<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(IncomingHeader::Event, node, lane, body)
+    }
+
+    pub fn unlinked<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_unlinked(node, lane, None)
+    }
+
+    pub fn linked<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_linked(node, lane, None, None, None)
+    }
+
+    pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_synced(node, lane, None)
+    }
+}
+
 /// Model for Warp protocol envelopes.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Envelope {
