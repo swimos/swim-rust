@@ -42,6 +42,18 @@ pub trait Router: Send {
 pub enum RoutingError {
     RouterDropped,
     HostUnreachable,
+    // TODO: Stub variant to test recoverable errors until router branch is integrated
+    HostNotFound,
+}
+
+impl RoutingError {
+    pub fn is_fatal(self) -> bool {
+        match &self {
+            RoutingError::RouterDropped => true,
+            RoutingError::HostUnreachable => false,
+            RoutingError::HostNotFound => true,
+        }
+    }
 }
 
 impl Display for RoutingError {
@@ -49,6 +61,7 @@ impl Display for RoutingError {
         match self {
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::HostUnreachable => write!(f, "Host unreachable."),
+            RoutingError::HostNotFound => write!(f, "Host not found"),
         }
     }
 }

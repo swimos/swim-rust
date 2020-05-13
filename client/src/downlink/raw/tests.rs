@@ -140,12 +140,11 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                 })
             }
             Operation::Error(e) => {
-                return match e {
-                    RoutingError::HostUnreachable => {
-                        *dl_state = DownlinkState::Unlinked;
-                        Ok(Response::for_command(Command::Sync))
-                    }
-                    RoutingError::RouterDropped => Err(DownlinkError::DroppedChannel),
+                if e.is_fatal() {
+                    return Err(DownlinkError::DroppedChannel);
+                } else {
+                    *dl_state = DownlinkState::Unlinked;
+                    Ok(Response::for_command(Command::Sync))
                 }
             }
         }

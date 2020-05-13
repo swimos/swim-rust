@@ -106,6 +106,7 @@ impl From<RoutingError> for DownlinkError {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
             RoutingError::HostUnreachable => DownlinkError::DroppedChannel,
+            RoutingError::HostNotFound => DownlinkError::DroppedChannel,
         }
     }
 }
@@ -420,13 +421,14 @@ where
                 Message::BadEnvelope(_) => return Err(DownlinkError::MalformedMessage),
             },
             Operation::Action(action) => self.handle_action(data_state, action).into(),
-            Operation::Error(e) => match e {
-                RoutingError::HostUnreachable => {
+            Operation::Error(e) => {
+                if e.is_fatal() {
+                    return Err(DownlinkError::DroppedChannel);
+                } else {
                     *state = DownlinkState::Unlinked;
                     Response::for_command(Command::Sync)
                 }
-                RoutingError::RouterDropped => return Err(DownlinkError::DroppedChannel),
-            },
+            }
         };
         Ok(response)
     }
