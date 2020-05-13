@@ -105,6 +105,7 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
+            RoutingError::HostUnreachable => DownlinkError::DroppedChannel,
         }
     }
 }
@@ -198,6 +199,7 @@ pub enum Operation<M, A> {
     Start,
     Message(Message<M>),
     Action(A),
+    Error(RoutingError),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -418,6 +420,13 @@ where
                 Message::BadEnvelope(_) => return Err(DownlinkError::MalformedMessage),
             },
             Operation::Action(action) => self.handle_action(data_state, action).into(),
+            Operation::Error(e) => match e {
+                RoutingError::HostUnreachable => {
+                    *state = DownlinkState::Unlinked;
+                    Response::for_command(Command::Sync)
+                }
+                RoutingError::RouterDropped => return Err(DownlinkError::DroppedChannel),
+            },
         };
         Ok(response)
     }

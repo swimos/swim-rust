@@ -15,13 +15,14 @@
 use common::sink::item::ItemSender;
 use common::warp::envelope::{Envelope, IncomingLinkMessage, OutgoingLinkMessage};
 use common::warp::path::AbsolutePath;
+use either::Either;
 use futures::{Future, Stream};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc::error::SendError;
 
 pub trait Router: Send {
-    type ConnectionStream: Stream<Item = IncomingLinkMessage> + Send + 'static;
+    type ConnectionStream: Stream<Item = Either<IncomingLinkMessage, RoutingError>> + Send + 'static;
     type ConnectionSink: ItemSender<OutgoingLinkMessage, RoutingError>
         + Clone
         + Sync
@@ -40,12 +41,14 @@ pub trait Router: Send {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RoutingError {
     RouterDropped,
+    HostUnreachable,
 }
 
 impl Display for RoutingError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
+            RoutingError::HostUnreachable => write!(f, "Host unreachable."),
         }
     }
 }

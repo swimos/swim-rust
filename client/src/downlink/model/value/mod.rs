@@ -31,6 +31,7 @@ use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
 use common::sink::item::ItemSender;
+use either::Either;
 use std::fmt;
 
 #[cfg(test)]
@@ -130,7 +131,7 @@ pub fn create_raw_downlink<Updates, Commands>(
     on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Either<Message<Value>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     create_downlink(
@@ -156,7 +157,7 @@ pub fn create_queue_downlink<Updates, Commands>(
     QueueReceiver<SharedValue>,
 )
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Either<Message<Value>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
@@ -182,7 +183,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
     DroppingReceiver<SharedValue>,
 )
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Either<Message<Value>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
@@ -208,7 +209,7 @@ pub fn create_buffered_downlink<Updates, Commands>(
     BufferedReceiver<SharedValue>,
 )
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Either<Message<Value>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(

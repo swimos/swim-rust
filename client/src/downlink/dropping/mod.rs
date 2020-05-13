@@ -23,6 +23,7 @@ use crate::downlink::{
 use crate::router::RoutingError;
 use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
+use either::Either;
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
@@ -213,7 +214,7 @@ where
     Machine: StateMachine<State, M, A> + Send + 'static,
     Machine::Ev: Clone + Send + Sync + 'static,
     Machine::Cmd: Send + 'static,
-    Updates: Stream<Item = Message<M>> + Send + 'static,
+    Updates: Stream<Item = Either<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);

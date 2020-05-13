@@ -12,6 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::pin::Pin;
+use std::sync::Arc;
+
+use either::Either;
+use futures::stream::Fuse;
+use futures::Stream;
+use futures_util::future::TryFutureExt;
+use futures_util::select_biased;
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use pin_utils::pin_mut;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::oneshot::error::RecvError;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
+
+use common::model::schema::StandardSchema;
+use common::model::Value;
+use common::request::Request;
+use common::sink::item::either::EitherSink;
+use common::sink::item::ItemSender;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+use form::ValidatedForm;
+use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
+
 use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
 };
@@ -24,30 +51,6 @@ use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RoutingError};
-use common::model::schema::StandardSchema;
-use common::model::Value;
-use common::request::Request;
-use common::sink::item::either::EitherSink;
-use common::sink::item::ItemSender;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-use either::Either;
-use form::ValidatedForm;
-use futures::stream::Fuse;
-use futures::Stream;
-use futures_util::future::TryFutureExt;
-use futures_util::select_biased;
-use futures_util::stream::{FuturesUnordered, StreamExt};
-use pin_utils::pin_mut;
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::pin::Pin;
-use std::sync::Arc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -418,7 +421,10 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await;
         let schema_cpy = schema.clone();
 
-        let updates = incoming.map(envelopes::value::from_envelope);
+        let updates = incoming.map(|e| match e {
+            Either::Left(l) => Either::Left(envelopes::value::from_envelope(l)),
+            Either::Right(e) => Either::Right(e),
+        });
 
         let sink_path = path.clone();
         let cmd_sink = sink
@@ -462,7 +468,10 @@ where
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        let updates = incoming.map(envelopes::map::from_envelope);
+        let updates = incoming.map(|e| match e {
+            Either::Left(l) => Either::Left(envelopes::map::from_envelope(l)),
+            Either::Right(r) => Either::Right(r),
+        });
 
         let sink_path = path.clone();
 
@@ -717,7 +726,7 @@ fn value_downlink_for_sink<Updates, Snk>(
     config: &DownlinkParams,
 ) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Either<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     let buffer_size = config.buffer_size.get();
@@ -772,7 +781,7 @@ fn map_downlink_for_sink<Updates, Snk>(
     AnyReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Updates: Stream<Item = Either<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     use crate::downlink::model::map::*;
