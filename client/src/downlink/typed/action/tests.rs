@@ -70,6 +70,26 @@ mod value {
                         Err(DownlinkError::InvalidAction)
                     }
                 }
+                Action::TryUpdate(f, maybe_cb) => {
+                    let old = state.clone();
+                    let maybe_new = f(state.as_ref());
+                    match maybe_new {
+                        Ok(new @ Value::Int32Value(_)) => {
+                            *state = SharedValue::new(new);
+                            if let Some(cb) = maybe_cb {
+                                let _ = cb.send_ok(Ok(old));
+                            }
+                            Ok(())
+                        }
+                        Ok(_) => Err(DownlinkError::InvalidAction),
+                        Err(err) => {
+                            if let Some(cb) = maybe_cb {
+                                let _ = cb.send_ok(Err(err));
+                            }
+                            Ok(())
+                        }
+                    }
+                }
             };
             ready(result)
         }
@@ -270,6 +290,41 @@ mod map {
                         }
                         if let Some(cb) = after {
                             let _ = cb.send_ok(replacement);
+                        }
+                        Ok(())
+                    } else {
+                        Err(DownlinkError::InvalidAction)
+                    }
+                }
+                MapAction::TryUpdate {
+                    key,
+                    f,
+                    before,
+                    after,
+                } => {
+                    if matches!(&key, Value::Int32Value(_)) {
+                        let old_val = state.get(&key).map(Clone::clone);
+                        let replacement = match &old_val {
+                            None => f(&None),
+                            Some(v) => f(&Some(v.as_ref())),
+                        };
+                        let after_val = match replacement {
+                            Ok(Some(v)) => {
+                                let new_val = Arc::new(v);
+                                state.insert(key, new_val.clone());
+                                Ok(Some(new_val))
+                            }
+                            Ok(None) => {
+                                state.remove(&key);
+                                Ok(None)
+                            }
+                            Err(e) => Err(e),
+                        };
+                        if let Some(cb) = before {
+                            let _ = cb.send_ok(Ok(old_val));
+                        }
+                        if let Some(cb) = after {
+                            let _ = cb.send_ok(after_val);
                         }
                         Ok(())
                     } else {

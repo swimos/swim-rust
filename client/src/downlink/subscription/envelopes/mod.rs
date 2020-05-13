@@ -16,103 +16,100 @@ use crate::downlink::model::map::MapModification;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
 use common::model::Value;
-use common::warp::envelope::Envelope;
+use common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use common::warp::path::AbsolutePath;
-use deserialize::FormDeserializeErr;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::downlink) enum EnvInterpError {
-    MissingBody,
-    BadMessageKind,
-    InvalidBody(FormDeserializeErr),
-}
-
-impl Display for EnvInterpError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EnvInterpError::MissingBody => write! {f, "The envelope body was expected but absent."},
-            EnvInterpError::BadMessageKind => {
-                write! {f, "An invalid envelope kind was encountered."}
-            }
-            EnvInterpError::InvalidBody(_) => {
-                write! {f, "The envelope body did not have the correct form."}
-            }
-        }
-    }
-}
-
-impl Error for EnvInterpError {}
-
-/// Convert a downlink [`Command`] into a Warp [`Envelope`].
-fn envelope_for<T, F>(to_body: F, path: &AbsolutePath, command: Command<T>) -> (String, Envelope)
+/// Convert a downlink [`Command`] into a Warp [`OutgoingLinkMessage`].
+fn envelope_for<T, F>(
+    to_body: F,
+    path: &AbsolutePath,
+    command: Command<T>,
+) -> (String, OutgoingLinkMessage)
 where
     F: Fn(T) -> Option<Value>,
 {
-    let host = path.host.clone();
-    let node = path.node.clone();
-    let lane = path.lane.clone();
+    let (host, path) = path.clone().split();
     (
         host,
         match command {
-            Command::Sync => Envelope::sync(node, lane),
-            Command::Action(v) => Envelope::command(node, lane, to_body(v)),
-            Command::Unlink => Envelope::unlink(node, lane),
+            Command::Sync => OutgoingLinkMessage {
+                header: OutgoingHeader::Sync(Default::default()),
+                path,
+                body: None,
+            },
+            Command::Action(v) => OutgoingLinkMessage {
+                header: OutgoingHeader::Command,
+                path,
+                body: to_body(v),
+            },
+            Command::Unlink => OutgoingLinkMessage {
+                header: OutgoingHeader::Unlink,
+                path,
+                body: None,
+            },
         },
     )
 }
 
-/// Convert a downlink [`Command`], from a value lane, into a Warp [`Envelope`].
-pub fn value_envelope(path: &AbsolutePath, command: Command<SharedValue>) -> (String, Envelope) {
+/// Convert a downlink [`Command`], from a value lane, into a Warp [`OutgoingLinkMessage`].
+pub fn value_envelope(
+    path: &AbsolutePath,
+    command: Command<SharedValue>,
+) -> (String, OutgoingLinkMessage) {
     envelope_for(value::envelope_body, path, command)
 }
 
-/// Convert a downlink [`Command`], from a map lane, into a Warp [`Envelope`].
+/// Convert a downlink [`Command`], from a map lane, into a Warp [`OutgoingLinkMessage`].
 pub fn map_envelope(
     path: &AbsolutePath,
     command: Command<MapModification<Arc<Value>>>,
-) -> (String, Envelope) {
+) -> (String, OutgoingLinkMessage) {
     envelope_for(map::envelope_body, path, command)
 }
 
 pub(in crate::downlink) mod value {
     use crate::downlink::model::value::SharedValue;
-    use crate::downlink::subscription::envelopes::EnvInterpError;
     use crate::downlink::Message;
     use common::model::Value;
-    use common::warp::envelope::{Envelope, LaneAddressed};
+    use common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
 
     pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Option<Value> {
         Some((*v).clone())
     }
 
-    pub(in crate::downlink) fn try_from_envelope(
-        env: Envelope,
-    ) -> Result<Message<Value>, EnvInterpError> {
-        match env {
-            Envelope::LinkedResponse(_) => Ok(Message::Linked),
-            Envelope::SyncedResponse(_) => Ok(Message::Synced),
-            Envelope::UnlinkedResponse(_) => Ok(Message::Unlinked),
-            Envelope::EventMessage(LaneAddressed {
-                body: Some(body), ..
-            }) => Ok(Message::Action(body)),
-            Envelope::EventMessage(_) => Err(EnvInterpError::MissingBody),
-            _ => Err(EnvInterpError::BadMessageKind),
+    pub(in crate::downlink) fn from_envelope(incoming: IncomingLinkMessage) -> Message<Value> {
+        match incoming {
+            IncomingLinkMessage {
+                header: IncomingHeader::Linked(_),
+                ..
+            } => Message::Linked,
+            IncomingLinkMessage {
+                header: IncomingHeader::Synced,
+                ..
+            } => Message::Synced,
+            IncomingLinkMessage {
+                header: IncomingHeader::Unlinked,
+                ..
+            } => Message::Unlinked,
+            IncomingLinkMessage {
+                header: IncomingHeader::Event,
+                body: Some(body),
+                ..
+            } => Message::Action(body),
+            _ => Message::Action(Value::Extant),
         }
     }
 }
 
 pub(in crate::downlink) mod map {
     use crate::downlink::model::map::MapModification;
-    use crate::downlink::subscription::envelopes::EnvInterpError;
     use crate::downlink::Message;
     use common::model::Value;
-    use common::warp::envelope::{Envelope, LaneAddressed};
+    use common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
     use form::Form;
     use std::sync::Arc;
 
@@ -120,21 +117,31 @@ pub(in crate::downlink) mod map {
         Some(cmd.envelope_body())
     }
 
-    pub(in crate::downlink) fn try_from_envelope(
-        env: Envelope,
-    ) -> Result<Message<MapModification<Value>>, EnvInterpError> {
-        match env {
-            Envelope::LinkedResponse(_) => Ok(Message::Linked),
-            Envelope::SyncedResponse(_) => Ok(Message::Synced),
-            Envelope::UnlinkedResponse(_) => Ok(Message::Unlinked),
-            Envelope::EventMessage(LaneAddressed {
-                body: Some(body), ..
-            }) => match Form::try_convert(body) {
-                Ok(modification) => Ok(Message::Action(modification)),
-                Err(e) => Err(EnvInterpError::InvalidBody(e)),
+    pub(in crate::downlink) fn from_envelope(
+        incoming: IncomingLinkMessage,
+    ) -> Message<MapModification<Value>> {
+        match incoming {
+            IncomingLinkMessage {
+                header: IncomingHeader::Linked(_),
+                ..
+            } => Message::Linked,
+            IncomingLinkMessage {
+                header: IncomingHeader::Synced,
+                ..
+            } => Message::Synced,
+            IncomingLinkMessage {
+                header: IncomingHeader::Unlinked,
+                ..
+            } => Message::Unlinked,
+            IncomingLinkMessage {
+                header: IncomingHeader::Event,
+                body: Some(body),
+                ..
+            } => match Form::try_convert(body) {
+                Ok(modification) => Message::Action(modification),
+                Err(e) => Message::BadEnvelope(format!("{}", e)),
             },
-            Envelope::EventMessage(_) => Err(EnvInterpError::MissingBody),
-            _ => Err(EnvInterpError::BadMessageKind),
+            _ => Message::BadEnvelope("Event envelope had no body.".to_string()),
         }
     }
 }
