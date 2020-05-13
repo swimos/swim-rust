@@ -250,7 +250,7 @@ async fn invalid_protocol() {
         .await
         .unwrap();
 
-    assert_matches::assert_matches!(rx.err().unwrap().tungstenite_error.unwrap(), TError::Url(m) if m.eq("Url scheme not supported"));
+    assert_matches::assert_matches!(rx.err().unwrap().tungstenite_error.unwrap(), TError::Url(m));
 }
 
 #[tokio::test]
@@ -270,9 +270,7 @@ async fn no_such_host() {
         .unwrap();
 
     assert_matches::assert_matches!(rx.err().unwrap().tungstenite_error.unwrap(), TError::Io(e)
-            if e.kind() == io::ErrorKind::Other
-                && e.to_string()
-                    .eq("failed to lookup address information: Name or service not known"));
+            if e.kind() == io::ErrorKind::Other);
 }
 
 #[tokio::test]
