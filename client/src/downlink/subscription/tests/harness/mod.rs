@@ -16,7 +16,6 @@ use crate::router::{Router, RoutingError};
 use common::sink::item::drop_all::{drop_all, DropAll};
 use common::warp::envelope::{Envelope, IncomingLinkMessage, OutgoingLinkMessage};
 use common::warp::path::AbsolutePath;
-use either::Either;
 use futures::future::{ready, Ready};
 use futures::stream::{pending, Pending};
 
@@ -24,7 +23,7 @@ use futures::stream::{pending, Pending};
 pub struct StubRouter {}
 
 impl Router for StubRouter {
-    type ConnectionStream = Pending<Either<IncomingLinkMessage, RoutingError>>;
+    type ConnectionStream = Pending<Result<IncomingLinkMessage, RoutingError>>;
     type ConnectionSink = DropAll<OutgoingLinkMessage, RoutingError>;
     type GeneralSink = DropAll<(String, Envelope), RoutingError>;
     type ConnectionFut = Ready<(Self::ConnectionSink, Self::ConnectionStream)>;

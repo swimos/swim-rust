@@ -100,7 +100,7 @@ impl Downlinks {
         &mut self,
         init: Value,
         path: AbsolutePath,
-    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         self.subscribe_value_inner(init, StandardSchema::Anything, path)
             .await
     }
@@ -112,7 +112,7 @@ impl Downlinks {
         &mut self,
         init: T,
         path: AbsolutePath,
-    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
+    ) -> RequestResult<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -129,7 +129,7 @@ impl Downlinks {
         init: Value,
         schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(DownlinkSpecifier::Value {
@@ -148,7 +148,7 @@ impl Downlinks {
     pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
             .await
     }
@@ -159,7 +159,7 @@ impl Downlinks {
     pub async fn subscribe_map<K, V>(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
+    ) -> RequestResult<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
     where
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
@@ -176,7 +176,7 @@ impl Downlinks {
         key_schema: StandardSchema,
         value_schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(DownlinkSpecifier::Map {
@@ -304,20 +304,20 @@ impl SubscriptionError {
     }
 }
 
-pub type Result<T> = std::result::Result<T, SubscriptionError>;
+pub type RequestResult<T> = std::result::Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
     Value {
         init: Value,
         path: AbsolutePath,
         schema: StandardSchema,
-        request: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+        request: Request<RequestResult<(AnyValueDownlink, ValueReceiver)>>,
     },
     Map {
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        request: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+        request: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
     },
 }
 
@@ -422,8 +422,8 @@ where
         let schema_cpy = schema.clone();
 
         let updates = incoming.map(|e| match e {
-            Either::Left(l) => Either::Left(envelopes::value::from_envelope(l)),
-            Either::Right(e) => Either::Right(e),
+            Ok(l) => Ok(envelopes::value::from_envelope(l)),
+            Err(e) => Err(e),
         });
 
         let sink_path = path.clone();
@@ -469,8 +469,8 @@ where
         let value_schema_cpy = value_schema.clone();
 
         let updates = incoming.map(|e| match e {
-            Either::Left(l) => Either::Left(envelopes::map::from_envelope(l)),
-            Either::Right(r) => Either::Right(r),
+            Ok(l) => Ok(envelopes::map::from_envelope(l)),
+            Err(r) => Err(r),
         });
 
         let sink_path = path.clone();
@@ -531,7 +531,7 @@ where
         init: Value,
         path: AbsolutePath,
         schema: StandardSchema,
-        value_req: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+        value_req: Request<RequestResult<(AnyValueDownlink, ValueReceiver)>>,
     ) {
         let dl = match self.value_downlinks.get(&path) {
             Some(ValueHandle {
@@ -585,7 +585,7 @@ where
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        map_req: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+        map_req: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
     ) {
         let dl = match self.map_downlinks.get(&path) {
             Some(MapHandle {
@@ -726,7 +726,7 @@ fn value_downlink_for_sink<Updates, Snk>(
     config: &DownlinkParams,
 ) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
 where
-    Updates: Stream<Item = Either<Message<Value>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     let buffer_size = config.buffer_size.get();
@@ -781,7 +781,7 @@ fn map_downlink_for_sink<Updates, Snk>(
     AnyReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Either<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     use crate::downlink::model::map::*;

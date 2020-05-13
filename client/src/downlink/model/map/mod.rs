@@ -38,7 +38,6 @@ use crate::downlink::{
     TransitionError,
 };
 use crate::router::RoutingError;
-use either::Either;
 
 #[cfg(test)]
 mod tests;
@@ -609,7 +608,7 @@ pub fn create_raw_downlink<Updates, Commands>(
     on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
-    Updates: Stream<Item = Either<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     crate::downlink::create_downlink(
@@ -638,7 +637,7 @@ pub fn create_queue_downlink<Updates, Commands>(
     QueueReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Either<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
@@ -667,7 +666,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
     DroppingReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Either<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
@@ -696,7 +695,7 @@ pub fn create_buffered_downlink<Updates, Commands>(
     BufferedReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Either<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(

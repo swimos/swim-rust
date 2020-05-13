@@ -23,7 +23,6 @@ use crate::downlink::{
 use crate::router::RoutingError;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
-use either::Either;
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
@@ -216,7 +215,7 @@ where
     Machine: StateMachine<State, M, A> + Send + 'static,
     Machine::Ev: Clone + Send + Sync + 'static,
     Machine::Cmd: Send + 'static,
-    Updates: Stream<Item = Either<Message<M>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
     let fac = move |event_tx: BroadcastSender<Event<Machine::Ev>>| {

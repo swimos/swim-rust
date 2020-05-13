@@ -15,14 +15,13 @@
 use common::sink::item::ItemSender;
 use common::warp::envelope::{Envelope, IncomingLinkMessage, OutgoingLinkMessage};
 use common::warp::path::AbsolutePath;
-use either::Either;
 use futures::{Future, Stream};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc::error::SendError;
 
 pub trait Router: Send {
-    type ConnectionStream: Stream<Item = Either<IncomingLinkMessage, RoutingError>> + Send + 'static;
+    type ConnectionStream: Stream<Item = Result<IncomingLinkMessage, RoutingError>> + Send + 'static;
     type ConnectionSink: ItemSender<OutgoingLinkMessage, RoutingError>
         + Clone
         + Sync
