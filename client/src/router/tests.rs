@@ -1,28 +1,16 @@
-// Copyright 2015-2020 SWIM.AI inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-use std::{thread, time};
-
-use crate::configuration::router::RouterParamBuilder;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::connections::SwimConnPool;
+use crate::connections::{ConnectionError, ConnectionPool, ConnectionReceiver, ConnectionSender};
 use crate::router::{Router, SwimRouter};
-use common::model::Value;
+use common::request::request_future::RequestError;
 use common::sink::item::ItemSink;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
+use futures::future::{ready, Ready};
+use std::collections::HashMap;
 use std::sync::Once;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+use tokio::sync::oneshot::Receiver;
+use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
@@ -42,166 +30,108 @@ fn init_trace() {
     });
 }
 
-#[tokio::test(core_threads = 2)]
-#[ignore]
-async fn normal_receive() {
+//Todo change this to use channels
+
+#[tokio::test(core_threads = 3)]
+async fn connect_no_send() {
     init_trace();
+    // let (pool, handler) = TestPool::new();
+    let url = url::Url::parse("ws://127.0.0.2/").unwrap();
+    let node = "foo";
+    let lane = "bar";
 
-    let config = RouterParamBuilder::default().build();
-    let pool = SwimConnPool::new(5, TungsteniteWsFactory::new(5).await);
+    let pool = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let mut router = SwimRouter::new(config, pool);
-
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "/unit/foo",
-        "info",
-    );
-    let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
-
-    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
-
-    sink.send_item(sync).await.unwrap();
-
-    thread::sleep(time::Duration::from_secs(5));
-    let _ = router.close().await;
-    thread::sleep(time::Duration::from_secs(5));
-}
-
-#[tokio::test(core_threads = 2)]
-#[ignore]
-async fn not_interested_receive() {
-    init_trace();
-
-    let config = RouterParamBuilder::default().build();
-    let pool = SwimConnPool::new(5, TungsteniteWsFactory::new(5).await);
-    let mut router = SwimRouter::new(config, pool);
-
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "foo",
-        "bar",
-    );
-    let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
-
-    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
-
-    sink.send_item(sync).await.unwrap();
-
-    thread::sleep(time::Duration::from_secs(5));
-    let _ = router.close().await;
-    thread::sleep(time::Duration::from_secs(5));
-}
-
-#[tokio::test(core_threads = 2)]
-#[ignore]
-async fn not_found_receive() {
-    init_trace();
-
-    let config = RouterParamBuilder::default().build();
-    let pool = SwimConnPool::new(5, TungsteniteWsFactory::new(5).await);
-    let mut router = SwimRouter::new(config, pool);
-
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "foo",
-        "bar",
-    );
-    let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
-
-    let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
-
-    sink.send_item(sync).await.unwrap();
-
-    thread::sleep(time::Duration::from_secs(5));
-    let _ = router.close().await;
-    thread::sleep(time::Duration::from_secs(5));
-}
-
-#[tokio::test(core_threads = 2)]
-#[ignore]
-async fn send_commands() {
-    init_trace();
-
-    let config = RouterParamBuilder::default().build();
-    let pool = SwimConnPool::new(5, TungsteniteWsFactory::new(5).await);
-    let mut router = SwimRouter::new(config, pool);
-
-    let url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-
-    let first_message = Envelope::command(
-        String::from("/unit/foo"),
-        String::from("publishInfo"),
-        Some(Value::text("Hello, World!")),
-    );
-
-    let second_message = Envelope::command(
-        String::from("/unit/foo"),
-        String::from("publishInfo"),
-        Some(Value::text("Test message")),
-    );
-
-    let third_message = Envelope::command(
-        String::from("/unit/foo"),
-        String::from("publishInfo"),
-        Some(Value::text("Bye, World!")),
-    );
-
-    let mut router_sink = router.general_sink();
-
-    router_sink
-        .send_item((url.clone(), first_message))
+    let (mut sink, stream) = router
+        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
         .await
         .unwrap();
 
-    thread::sleep(time::Duration::from_secs(1));
-
-    router_sink
-        .send_item((url.clone(), second_message))
-        .await
-        .unwrap();
-
-    thread::sleep(time::Duration::from_secs(1));
-
-    router_sink.send_item((url, third_message)).await.unwrap();
-
-    thread::sleep(time::Duration::from_secs(1));
-
-    thread::sleep(time::Duration::from_secs(1));
-    let _ = router.close().await;
-    thread::sleep(time::Duration::from_secs(5));
-}
-
-#[tokio::test(core_threads = 2)]
-#[ignore]
-pub async fn server_stops_between_requests() {
-    init_trace();
-
-    let config = RouterParamBuilder::default().build();
-    let pool = SwimConnPool::new(5, TungsteniteWsFactory::new(5).await);
-    let mut router = SwimRouter::new(config, pool);
-
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "/unit/foo",
-        "info",
-    );
-    let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
-    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
-
-    println!("Sending item");
-    sink.send_item(sync).await.unwrap();
-    println!("Sent item");
-
-    //Terminate the remote server while waiting here
-    thread::sleep(time::Duration::from_secs(10));
-
-    let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
-
-    println!("Sending second item");
+    let sync = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send_item(sync).await;
-    println!("Sent second item");
-    thread::sleep(time::Duration::from_secs(10));
-    let _ = router.close().await;
-    thread::sleep(time::Duration::from_secs(5));
+
+    loop {
+        assert_eq!(pool.connection_requests.lock().unwrap().len(), 0);
+    }
+}
+
+type ConnHandler = (mpsc::Sender<Message>, mpsc::Receiver<Message>);
+
+#[derive(Clone)]
+struct TestPool {
+    connection_requests: Arc<Mutex<Vec<(url::Url, bool)>>>,
+    connections: Arc<Mutex<HashMap<url::Url, (mpsc::Sender<Message>, ConnHandler)>>>,
+}
+
+impl TestPool {
+    fn new() -> Self {
+        TestPool {
+            connection_requests: Arc::new(Mutex::new(Vec::new())),
+            connections: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+impl ConnectionPool for TestPool {
+    type ConnFut = Ready<
+        Result<
+            Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>,
+            RequestError,
+        >,
+    >;
+
+    type CloseFut = Ready<Result<Result<(), ConnectionError>, ConnectionError>>;
+
+    fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut {
+        self.connection_requests
+            .lock()
+            .unwrap()
+            .push((host_url.clone(), recreate.clone()));
+
+        if recreate {
+            let (sender_tx, sender_rx) = mpsc::channel(5);
+            let (receiver_tx, receiver_rx) = mpsc::channel(5);
+
+            self.connections.lock().unwrap().insert(
+                host_url.clone(),
+                (sender_tx.clone(), (receiver_tx, sender_rx)),
+            );
+
+            ready(Ok(Ok((
+                ConnectionSender { tx: sender_tx },
+                Some(receiver_rx),
+            ))))
+        } else {
+            if self.connections.lock().unwrap().get(&host_url).is_none() {
+                let (sender_tx, sender_rx) = mpsc::channel(5);
+                let (receiver_tx, receiver_rx) = mpsc::channel(5);
+
+                self.connections.lock().unwrap().insert(
+                    host_url.clone(),
+                    (sender_tx.clone(), (receiver_tx, sender_rx)),
+                );
+
+                ready(Ok(Ok((
+                    ConnectionSender { tx: sender_tx },
+                    Some(receiver_rx),
+                ))))
+            } else {
+                let sender_tx = self
+                    .connections
+                    .lock()
+                    .unwrap()
+                    .get(&host_url)
+                    .unwrap()
+                    .0
+                    .clone();
+
+                ready(Ok(Ok((ConnectionSender { tx: sender_tx }, None))))
+            }
+        }
+    }
+
+    fn close(self) -> Result<Self::CloseFut, ConnectionError> {
+        Ok(ready(Ok(Ok(()))))
+    }
 }

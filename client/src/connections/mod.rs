@@ -465,7 +465,7 @@ pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    tx: mpsc::Sender<Message>,
+    pub tx: mpsc::Sender<Message>,
 }
 
 impl ConnectionSender {
@@ -499,7 +499,7 @@ impl ConnectionSender {
     }
 }
 
-type ConnectionReceiver = mpsc::Receiver<Message>;
+pub(crate) type ConnectionReceiver = mpsc::Receiver<Message>;
 
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, PartialEq, Clone)]
