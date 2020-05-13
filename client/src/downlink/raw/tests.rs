@@ -424,7 +424,8 @@ async fn continues_on_invalid() {
 
 #[tokio::test]
 async fn unlinks_on_unreachable_host() {
-    let (_dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (_dl_tx, mut dl_rx) = dl.split();
 
     let first_cmd = commands.next().await;
     assert_that!(first_cmd, eq(Some(Command::Sync)));
@@ -435,7 +436,48 @@ async fn unlinks_on_unreachable_host() {
     );
 
     let first_cmd = commands.recv().await;
+
     assert_that!(first_cmd, eq(Some(Command::Sync)));
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+
+    let first_ev = dl_rx.event_stream.recv().await;
+    assert_that!(first_ev, eq(Some(Event(0, false))));
+}
+
+#[tokio::test]
+async fn queues_on_unreachable_host() {
+    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (mut dl_tx, dl_rx) = dl.split();
+    let mut events = dl_rx.event_stream;
+
+    let first_cmd = commands.next().await;
+    assert_that!(first_cmd, eq(Some(Command::Sync)));
+
+    assert_that!(
+        messages.send(Err(RoutingError::HostUnreachable)).await,
+        ok()
+    );
+
+    assert_that!(commands.recv().await, eq(Some(Command::Sync)));
+
+    assert_that!(dl_tx.send(AddTo::of(1)).await, ok());
+    assert_that!(dl_tx.send(AddTo::of(2)).await, ok());
+    assert_that!(dl_tx.send(AddTo::of(3)).await, ok());
+    assert_that!(dl_tx.send(AddTo::of(4)).await, ok());
+
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+
+    assert_that!(commands.recv().await, eq(Some(Command::Action(1))));
+    assert_that!(commands.recv().await, eq(Some(Command::Action(3))));
+    assert_that!(commands.recv().await, eq(Some(Command::Action(6))));
+    assert_that!(commands.recv().await, eq(Some(Command::Action(10))));
+
+    assert_that!(events.recv().await, eq(Some(Event(0, false))));
+    assert_that!(events.recv().await, eq(Some(Event(1, true))));
+    assert_that!(events.recv().await, eq(Some(Event(3, true))));
+    assert_that!(events.recv().await, eq(Some(Event(6, true))));
+    assert_that!(events.recv().await, eq(Some(Event(10, true))));
 }
 
 #[tokio::test]
