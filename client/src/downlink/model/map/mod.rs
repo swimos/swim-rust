@@ -1022,11 +1022,9 @@ fn process_action(
             after,
         } => {
             if !key_schema.matches(&key) {
-                let result_before = send_error(before, key.clone(), key_schema.clone());
-                let result_after = send_error(after, key, key_schema.clone());
-                (BasicResponse::none(), result_before || result_after)
+                update_key_schema_errors(key_schema, key, before, after)
             } else {
-                let prev = data_state.get(&key).map(|arc| arc.as_ref());
+                let prev = get_and_deref(data_state, &key);
                 let maybe_new_val = f(&prev);
                 match maybe_new_val {
                     Some(v) if !val_schema.matches(&v) => {
@@ -1056,11 +1054,9 @@ fn process_action(
             after,
         } => {
             if !key_schema.matches(&key) {
-                let result_before = send_error(before, key.clone(), key_schema.clone());
-                let result_after = send_error(after, key, key_schema.clone());
-                (BasicResponse::none(), result_before || result_after)
+                update_key_schema_errors(key_schema, key, before, after)
             } else {
-                let prev = data_state.get(&key).map(|arc| arc.as_ref());
+                let prev = get_and_deref(data_state, &key);
                 match f(&prev) {
                     Ok(maybe_new_val) => match maybe_new_val {
                         Some(v) if !val_schema.matches(&v) => {
@@ -1165,4 +1161,18 @@ fn send_error<T>(
     } else {
         false
     }
+}
+
+fn update_key_schema_errors<Ev, Cmd, T>(
+    key_schema: &StandardSchema,
+    key: Value,
+    before: Option<DownlinkRequest<T>>,
+    after: Option<DownlinkRequest<T>>) -> (BasicResponse<Ev, Cmd>, bool) {
+    let result_before = send_error(before, key.clone(), key_schema.clone());
+    let result_after = send_error(after, key, key_schema.clone());
+    (BasicResponse::none(), result_before || result_after)
+}
+
+fn get_and_deref<'a>(data_state: &'a ValMap, key: &Value) -> Option<&'a Value> {
+    data_state.get(key).map(|arc| arc.as_ref())
 }
