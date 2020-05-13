@@ -770,6 +770,8 @@ where
     }
 }
 
+type MapItemResult = Result<Message<MapModification<Value>>, RoutingError>;
+
 fn map_downlink_for_sink<Updates, Snk>(
     key_schema: StandardSchema,
     value_schema: StandardSchema,
@@ -781,7 +783,7 @@ fn map_downlink_for_sink<Updates, Snk>(
     AnyReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Result<Message<MapModification<Value>>, RoutingError>> + Send + 'static,
+    Updates: Stream<Item = MapItemResult> + Send + 'static,
     Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     use crate::downlink::model::map::*;
