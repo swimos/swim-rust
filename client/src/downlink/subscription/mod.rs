@@ -12,6 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::pin::Pin;
+use std::sync::Arc;
+
+use either::Either;
+use futures::stream::Fuse;
+use futures::Stream;
+use futures_util::future::TryFutureExt;
+use futures_util::select_biased;
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use pin_utils::pin_mut;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::oneshot::error::RecvError;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
+
+use common::model::schema::StandardSchema;
+use common::model::Value;
+use common::request::Request;
+use common::sink::item::either::EitherSink;
+use common::sink::item::ItemSender;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+use form::ValidatedForm;
+use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
+
 use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
 };
@@ -24,30 +51,6 @@ use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RoutingError};
-use common::model::schema::StandardSchema;
-use common::model::Value;
-use common::request::Request;
-use common::sink::item::either::EitherSink;
-use common::sink::item::ItemSender;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-use either::Either;
-use form::ValidatedForm;
-use futures::stream::Fuse;
-use futures::Stream;
-use futures_util::future::TryFutureExt;
-use futures_util::select_biased;
-use futures_util::stream::{FuturesUnordered, StreamExt};
-use pin_utils::pin_mut;
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::pin::Pin;
-use std::sync::Arc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -97,7 +100,7 @@ impl Downlinks {
         &mut self,
         init: Value,
         path: AbsolutePath,
-    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         self.subscribe_value_inner(init, StandardSchema::Anything, path)
             .await
     }
@@ -109,7 +112,7 @@ impl Downlinks {
         &mut self,
         init: T,
         path: AbsolutePath,
-    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
+    ) -> RequestResult<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -126,7 +129,7 @@ impl Downlinks {
         init: Value,
         schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(DownlinkSpecifier::Value {
@@ -145,7 +148,7 @@ impl Downlinks {
     pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
             .await
     }
@@ -156,7 +159,7 @@ impl Downlinks {
     pub async fn subscribe_map<K, V>(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
+    ) -> RequestResult<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
     where
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
@@ -173,7 +176,7 @@ impl Downlinks {
         key_schema: StandardSchema,
         value_schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(DownlinkSpecifier::Map {
@@ -301,20 +304,20 @@ impl SubscriptionError {
     }
 }
 
-pub type Result<T> = std::result::Result<T, SubscriptionError>;
+pub type RequestResult<T> = std::result::Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
     Value {
         init: Value,
         path: AbsolutePath,
         schema: StandardSchema,
-        request: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+        request: Request<RequestResult<(AnyValueDownlink, ValueReceiver)>>,
     },
     Map {
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        request: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+        request: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
     },
 }
 
@@ -418,7 +421,10 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await;
         let schema_cpy = schema.clone();
 
-        let updates = incoming.map(envelopes::value::from_envelope);
+        let updates = incoming.map(|e| match e {
+            Ok(l) => Ok(envelopes::value::from_envelope(l)),
+            Err(e) => Err(e),
+        });
 
         let sink_path = path.clone();
         let cmd_sink = sink
@@ -462,7 +468,10 @@ where
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        let updates = incoming.map(envelopes::map::from_envelope);
+        let updates = incoming.map(|e| match e {
+            Ok(l) => Ok(envelopes::map::from_envelope(l)),
+            Err(r) => Err(r),
+        });
 
         let sink_path = path.clone();
 
@@ -522,7 +531,7 @@ where
         init: Value,
         path: AbsolutePath,
         schema: StandardSchema,
-        value_req: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+        value_req: Request<RequestResult<(AnyValueDownlink, ValueReceiver)>>,
     ) {
         let dl = match self.value_downlinks.get(&path) {
             Some(ValueHandle {
@@ -576,7 +585,7 @@ where
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        map_req: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+        map_req: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
     ) {
         let dl = match self.map_downlinks.get(&path) {
             Some(MapHandle {
@@ -717,7 +726,7 @@ fn value_downlink_for_sink<Updates, Snk>(
     config: &DownlinkParams,
 ) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     let buffer_size = config.buffer_size.get();
@@ -761,6 +770,8 @@ where
     }
 }
 
+type MapItemResult = Result<Message<MapModification<Value>>, RoutingError>;
+
 fn map_downlink_for_sink<Updates, Snk>(
     key_schema: StandardSchema,
     value_schema: StandardSchema,
@@ -772,7 +783,7 @@ fn map_downlink_for_sink<Updates, Snk>(
     AnyReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Updates: Stream<Item = MapItemResult> + Send + 'static,
     Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     use crate::downlink::model::map::*;
