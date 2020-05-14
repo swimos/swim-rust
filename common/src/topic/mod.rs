@@ -25,7 +25,7 @@ use futures::future::{ready, BoxFuture};
 use futures::future::{ErrInto, Ready};
 use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
-use futures::{future, Future, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{future, ready, Future, FutureExt, Stream, StreamExt, TryFutureExt};
 use futures_util::select_biased;
 use pin_project::pin_project;
 use tokio::sync::broadcast::RecvError;
@@ -301,15 +301,12 @@ impl<T: Clone> Stream for BroadcastReceiver<T> {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut pinned_rec = Pin::new(&mut self.get_mut().receiver);
         loop {
-            match pinned_rec.poll_recv(cx) {
-                Poll::Ready(r) => match r {
-                    Ok(t) => return Poll::Ready(Some(t)),
-                    Err(e) => match e {
-                        RecvError::Closed => return Poll::Ready(None),
-                        RecvError::Lagged(_) => continue,
-                    },
-                },
-                Poll::Pending => return Poll::Pending,
+            match ready!(pinned_rec.as_mut().poll_next(cx)) {
+                Some(Ok(t)) => return Poll::Ready(Some(t)),
+                Some(Err(RecvError::Lagged(_))) => {
+                    continue;
+                }
+                _ => return Poll::Ready(None),
             }
         }
     }
