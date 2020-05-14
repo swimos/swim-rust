@@ -10,8 +10,8 @@ futures-util = "0.3.4"
 pin-utils = "0.1.0-alpha.4"
 pin-project = "0.4.8"
 rand = "0.7.3"
-tokio = { version = "0.2.21", features = ["time"] }
+tokio = { version = "=0.2.21", features = ["time"] }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-tokio = { version = "0.2.21", features = ["sync", "rt-threaded", "macros"] }
+tokio = { version = "=0.2.21", features = ["sync", "rt-threaded", "macros"] }
