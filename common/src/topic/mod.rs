@@ -300,6 +300,7 @@ impl<T: Clone> Stream for BroadcastReceiver<T> {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut pinned_rec = Pin::new(&mut self.get_mut().receiver);
+
         loop {
             match pinned_rec.poll_recv(cx) {
                 Poll::Ready(r) => match r {
