@@ -120,6 +120,9 @@ impl Action {
     }
 }
 
+/// Typedef for value downlink stream item.
+type ValueItemResult = Result<Message<Value>, RoutingError>;
+
 /// Create a raw value downlink.
 pub fn create_raw_downlink<Updates, Commands>(
     init: Value,
@@ -130,7 +133,7 @@ pub fn create_raw_downlink<Updates, Commands>(
     on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = ValueItemResult> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     create_downlink(
@@ -156,7 +159,7 @@ pub fn create_queue_downlink<Updates, Commands>(
     QueueReceiver<SharedValue>,
 )
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = ValueItemResult> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
@@ -182,7 +185,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
     DroppingReceiver<SharedValue>,
 )
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = ValueItemResult> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
@@ -208,7 +211,7 @@ pub fn create_buffered_downlink<Updates, Commands>(
     BufferedReceiver<SharedValue>,
 )
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = ValueItemResult> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
