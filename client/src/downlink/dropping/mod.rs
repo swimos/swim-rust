@@ -213,7 +213,7 @@ where
     Machine: StateMachine<State, M, A> + Send + 'static,
     Machine::Ev: Clone + Send + Sync + 'static,
     Machine::Cmd: Send + 'static,
-    Updates: Stream<Item = Message<M>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
