@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
@@ -26,8 +28,6 @@ use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use futures::stream;
 use futures::{Future, Stream};
-use std::collections::HashMap;
-use std::ops::Deref;
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
@@ -72,7 +72,9 @@ pub type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 pub enum RouterEvent {
     Envelope(Envelope),
     ConnectionClosed,
-    Unreachable,
+    /// The requested host is unreachable. Field contains the error message returned from the
+    /// connection pool.
+    Unreachable(String),
     Stopping,
 }
 
@@ -284,6 +286,7 @@ fn combine_router_task(
     let message_requests =
         message_request_rx.map(|payload| RouterTask::SendMessage(Box::new(payload)));
     let close_requests = close_rx.map(RouterTask::Close);
+
     stream::select(
         stream::select(conn_requests, message_requests),
         close_requests,
@@ -361,6 +364,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let outgoing_handle = tokio::spawn(outgoing_task.run());
 
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);
+
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
@@ -385,14 +389,17 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                             }
                         }
                         Err(connection_error) => match connection_error {
-                            ConnectionError::Transient => {
+                            e if e.is_transient() => {
                                 let _ =
-                                    connection_response_tx.send(Err(RoutingError::ConnectionError));
+                                    connection_response_tx.send(Err(RoutingError::PoolError(e)));
                             }
-                            _ => {
+                            e => {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::ConnectionError));
-                                let _ = incoming_task_tx.send(IncomingRequest::Unreachable).await;
+                                let msg = format!("{}", e);
+                                let _ = incoming_task_tx
+                                    .send(IncomingRequest::Unreachable(msg.to_string()))
+                                    .await;
                             }
                         },
                     }
@@ -424,7 +431,9 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
                     break Ok(());
                 }
-                HostTask::Close(None) => {}
+                HostTask::Close(None) => {
+                    break Ok(());
+                }
             }
         }
     }
@@ -476,15 +485,16 @@ impl Router for SwimRouter {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum RoutingError {
     RouterDropped,
     ConnectionError,
+    PoolError(ConnectionError),
     CloseError,
 }
 
 impl RoutingError {
-    fn is_transient(self) -> bool {
+    fn is_transient(&self) -> bool {
         match self {
             RoutingError::ConnectionError => true,
             _ => false,
@@ -498,6 +508,7 @@ impl Display for RoutingError {
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::ConnectionError => write!(f, "Connection error."),
             RoutingError::CloseError => write!(f, "Closing error."),
+            RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
         }
     }
 }

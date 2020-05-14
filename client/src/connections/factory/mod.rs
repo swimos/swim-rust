@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
-
-use super::ConnectionError;
 use futures::{Future, Sink, Stream};
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+use crate::connections::ConnectionError;
+
+#[cfg(test)]
+mod tests;
 
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
 /// to allow for alternative implementations to be provided during testing.
@@ -37,11 +38,6 @@ pub trait WebsocketFactory: Send + Sync {
 }
 
 pub mod async_factory {
-    use crate::connections::factory::errors::FlattenErrors;
-    use crate::connections::factory::WebsocketFactory;
-    use crate::connections::ConnectionError;
-    use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
-    use common::request::Request;
     use futures::future::ErrInto as FutErrInto;
     use futures::stream::StreamExt;
     use futures::TryFutureExt;
@@ -49,6 +45,13 @@ pub mod async_factory {
     use tokio::sync::{mpsc, oneshot};
     use tokio::task::JoinHandle;
     use tokio_tungstenite::tungstenite::protocol::Message;
+
+    use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
+    use common::request::Request;
+
+    use crate::connections::factory::errors::FlattenErrors;
+    use crate::connections::factory::WebsocketFactory;
+    use crate::connections::ConnectionError;
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str>(Request<Result<(Snk, Str), ConnectionError>>, url::Url);
@@ -152,22 +155,23 @@ pub mod errors {
 }
 
 pub mod tungstenite {
-    use tokio::net::TcpStream;
-    use tokio_tls::TlsStream;
-    use tokio_tungstenite::*;
-
-    use crate::connections::factory::WebsocketFactory;
-    use crate::connections::ConnectionError;
-    use common::request::request_future::SendAndAwait;
     use futures::future::ErrInto as FutErrInto;
     use futures::stream::{ErrInto as StrErrInto, SplitSink, SplitStream, StreamExt, TryStreamExt};
+    use tokio::net::TcpStream;
+    use tokio_tls::TlsStream;
     use tokio_tungstenite::stream::Stream as StreamSwitcher;
     use tokio_tungstenite::tungstenite::protocol::Message;
     use tokio_tungstenite::tungstenite::Error;
+    use tokio_tungstenite::*;
     use url::Url;
 
-    use super::async_factory;
+    use common::request::request_future::SendAndAwait;
+
     use crate::connections::factory::errors::FlattenErrors;
+    use crate::connections::factory::WebsocketFactory;
+    use crate::connections::{ConnectionError, ConnectionErrorKind};
+
+    use super::async_factory;
 
     pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 
@@ -193,48 +197,60 @@ pub mod tungstenite {
                 Ok((tx, rx.err_into()))
             }
             Err(e) => {
-                match e {
+                match &e {
                     Error::Url(m) => {
                         // Malformatted URL, permanent error
-                        let e = "Failed to connect to the host due to an invalid URL";
-                        tracing::error!(cause = %m, e);
-                        Err(ConnectionError::ConnectError(Some(e.into())))
+                        tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
+                        Err(ConnectionError::new_tungstenite_error(
+                            ConnectionErrorKind::SocketError,
+                            e,
+                        ))
                     }
-                    Error::Io(e) => {
+                    Error::Io(io_err) => {
                         // This should be considered a fatal error. How should it be handled?
-                        let m = "IO error when attempting to connect to host";
-                        tracing::error!(cause = %e, m);
-                        Err(ConnectionError::ConnectError(Some(m.into())))
+                        tracing::error!(cause = %io_err, "IO error when attempting to connect to host");
+                        Err(ConnectionError::new_tungstenite_error(
+                            ConnectionErrorKind::SocketError,
+                            e,
+                        ))
                     }
-                    Error::Tls(e) => {
+                    Error::Tls(tls_err) => {
                         // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
-                        let m = "IO error when attempting to connect to host";
-                        tracing::error!(cause = %e, m);
-                        Err(ConnectionError::ConnectError(Some(m.into())))
+                        tracing::error!(cause = %tls_err, "IO error when attempting to connect to host");
+                        Err(ConnectionError::new_tungstenite_error(
+                            ConnectionErrorKind::SocketError,
+                            e,
+                        ))
                     }
                     Error::Protocol(m) => {
-                        let e = "A protocol error occured when connecting to host";
-                        tracing::error!(cause = %m, e);
-                        Err(ConnectionError::ConnectError(Some(e.into())))
+                        tracing::error!(cause = %m, "A protocol error occured when connecting to host");
+                        Err(ConnectionError::new_tungstenite_error(
+                            ConnectionErrorKind::SocketError,
+                            e,
+                        ))
                     }
                     Error::Http(code) => {
                         // This should be expanded and determined if it is possibly a transient error
                         // but for now it will suffice
-                        let m = "HTTP error when connecting to host";
-                        tracing::error!(cause = %code, m);
-                        Err(ConnectionError::ConnectError(Some(m.into())))
+                        tracing::error!(status_code = %code, "HTTP error when connecting to host");
+                        Err(ConnectionError::new_tungstenite_error(
+                            ConnectionErrorKind::SocketError,
+                            e,
+                        ))
                     }
-                    Error::HttpFormat(e) => {
+                    Error::HttpFormat(http_err) => {
                         // This should be expanded and determined if it is possibly a transient error
                         // but for now it will suffice
-                        let m = "HTTP error when connecting to host";
-                        tracing::error!(cause = %e, m);
-                        Err(ConnectionError::ConnectError(Some(m.into())))
+                        tracing::error!(cause = %http_err, "HTTP error when connecting to host");
+                        Err(ConnectionError::new_tungstenite_error(
+                            ConnectionErrorKind::SocketError,
+                            e,
+                        ))
                     }
                     e => {
                         // Transient or unreachable errors
                         tracing::error!(cause = %e, "Failed to connect to URL");
-                        Err(ConnectionError::Transient)
+                        Err(ConnectionError::new(ConnectionErrorKind::ConnectError))
                     }
                 }
             }

@@ -74,7 +74,6 @@ impl OutgoingHostTask {
                     let message = Message::Text(envelope.into_value().to_string());
                     let request = new_request(connection_request_tx.clone(), message);
                     RetryableFuture::new(request, config.retry_strategy()).await?;
-
                     tracing::trace!("Completed request");
                 }
                 OutgoingRequest::Close(Some(_)) => {
@@ -128,6 +127,7 @@ mod route_tests {
         let _ = envelope_tx
             .send(Envelope::sync("node".into(), "lane".into()))
             .await;
+
         let (tx, _recreate) = task_request_rx.recv().await.unwrap();
         let _ = tx.send(Err(RoutingError::ConnectionError));
 

@@ -59,6 +59,14 @@ impl RouterParams {
     pub fn conn_reaper_frequency(&self) -> Duration {
         self.conn_reaper_frequency
     }
+
+    pub fn connection_pool_params(&self) -> ConnectionPoolParams {
+        ConnectionPoolParams::new(
+            self.idle_timeout,
+            self.conn_reaper_frequency,
+            self.buffer_size,
+        )
+    }
 }
 
 pub struct RouterParamBuilder {
@@ -127,5 +135,47 @@ impl RouterParamBuilder {
     pub fn with_retry_stategy(mut self, retry_strategy: RetryStrategy) -> RouterParamBuilder {
         self.retry_strategy = Some(retry_strategy);
         self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConnectionPoolParams {
+    idle_timeout: Duration,
+    conn_reaper_frequency: Duration,
+    buffer_size: NonZeroUsize,
+}
+
+impl ConnectionPoolParams {
+    #[cfg(test)]
+    pub fn default() -> ConnectionPoolParams {
+        ConnectionPoolParams {
+            idle_timeout: Duration::from_secs(60),
+            conn_reaper_frequency: Duration::from_secs(60),
+            buffer_size: NonZeroUsize::new(5).unwrap(),
+        }
+    }
+
+    fn new(
+        idle_timeout: Duration,
+        conn_reaper_frequency: Duration,
+        buffer_size: NonZeroUsize,
+    ) -> ConnectionPoolParams {
+        ConnectionPoolParams {
+            idle_timeout,
+            conn_reaper_frequency,
+            buffer_size,
+        }
+    }
+
+    pub fn idle_timeout(&self) -> Duration {
+        self.idle_timeout
+    }
+
+    pub fn conn_reaper_frequency(&self) -> Duration {
+        self.conn_reaper_frequency
+    }
+
+    pub fn buffer_size(&self) -> NonZeroUsize {
+        self.buffer_size
     }
 }
