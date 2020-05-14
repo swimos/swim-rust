@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -75,7 +74,7 @@ pub enum RouterEvent {
     ConnectionClosed,
     /// The requested host is unreachable. Field contains the error message returned from the
     /// connection pool.
-    Unreachable(Cow<'static, str>),
+    Unreachable(String),
     Stopping,
 }
 
@@ -399,7 +398,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                                     connection_response_tx.send(Err(RoutingError::ConnectionError));
                                 let msg = format!("{}", e);
                                 let _ = incoming_task_tx
-                                    .send(IncomingRequest::Unreachable(msg.into()))
+                                    .send(IncomingRequest::Unreachable(msg.to_string()))
                                     .await;
                             }
                         },
