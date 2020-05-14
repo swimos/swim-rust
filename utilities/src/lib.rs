@@ -14,3 +14,4 @@
 
 pub mod future;
 pub mod iteratee;
+pub mod lru_cache;
