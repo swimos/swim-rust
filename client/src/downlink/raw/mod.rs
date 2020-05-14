@@ -352,8 +352,8 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                         _ => Ok(()),
                     };
 
-                    if error.is_some() {
-                        break Err(DownlinkError::TransitionError); //TODO Handle this properly.
+                    if error.map(|e| e.is_fatal()).unwrap_or(false) {
+                        break Err(DownlinkError::TransitionError);
                     } else if terminate || result.is_err() {
                         break result.map_err(Into::into);
                     } else if act_terminated && events_terminated {
