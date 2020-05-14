@@ -15,6 +15,10 @@ tokio-tls = "0.3.0"
 im = "14.2.0"
 tokio-tungstenite = { version = "0.10.1", features = ["tls"] }
 url = "2.1.1"
+tracing = "0.1.13"
+tracing-subscriber = "0.2.3"
+tracing-futures = "0.2.4"
+
 common = { path = "../common" }
 utilities = { path = "../utilities" }
 form = { path = "../form" }

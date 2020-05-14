@@ -91,7 +91,7 @@ impl Future for StoppedFuture {
 #[derive(Clone, PartialEq, Debug)]
 pub enum DownlinkError {
     DroppedChannel,
-    TaskPanic,
+    TaskPanic(&'static str),
     TransitionError,
     MalformedMessage,
     InvalidAction,
@@ -105,8 +105,10 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::HostUnreachable => DownlinkError::DroppedChannel,
-            RoutingError::HostNotFound => DownlinkError::DroppedChannel,
+            RoutingError::HostUnreachable => DownlinkError::TaskPanic("Host is unreachable."),
+            RoutingError::HostNotFound => {
+                DownlinkError::TaskPanic("Failed to find the requested host.")
+            }
         }
     }
 }
@@ -118,7 +120,9 @@ impl Display for DownlinkError {
                 f,
                 "An internal channel was dropped and the downlink is now closed."
             ),
-            DownlinkError::TaskPanic => write!(f, "The downlink task panicked."),
+            DownlinkError::TaskPanic(m) => {
+                write!(f, "The downlink task panicked with: \"{:?}\"", m)
+            }
             DownlinkError::TransitionError => {
                 write!(f, "The downlink state machine produced and error.")
             }
@@ -423,7 +427,7 @@ where
             Operation::Action(action) => self.handle_action(data_state, action).into(),
             Operation::Error(e) => {
                 if e.is_fatal() {
-                    return Err(DownlinkError::DroppedChannel);
+                    return Err(DownlinkError::from(e));
                 } else {
                     *state = DownlinkState::Unlinked;
                     Response::for_command(Command::Sync)

@@ -51,6 +51,7 @@ use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RoutingError};
+use tracing::{error, info, instrument};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -366,8 +367,7 @@ struct DownlinkTask<R> {
 struct DownlinkStoppedEvent {
     kind: DownlinkKind,
     path: AbsolutePath,
-    //TODO Currently ignored, should be logged.
-    _error: Option<DownlinkError>,
+    error: Option<DownlinkError>,
 }
 
 struct MakeStopEvent {
@@ -389,7 +389,7 @@ impl TransformOnce<std::result::Result<(), DownlinkError>> for MakeStopEvent {
         DownlinkStoppedEvent {
             kind,
             path,
-            _error: input.err(),
+            error: input.err(),
         }
     }
 }
@@ -645,7 +645,13 @@ where
         let _ = map_req.send(dl);
     }
 
+    #[instrument(skip(self, stop_event))]
     async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
+        match &stop_event.error {
+            Some(e) => error!("{}", e),
+            None => info!("Downlink {} stopped successfully", stop_event.path),
+        }
+
         match stop_event.kind {
             DownlinkKind::Value => {
                 if let Some(ValueHandle { ptr: weak_dl, .. }) =
