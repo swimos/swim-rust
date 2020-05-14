@@ -28,6 +28,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tracing::{error, info, instrument};
 
 use common::model::schema::StandardSchema;
 use common::model::Value;
@@ -51,7 +52,6 @@ use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RoutingError};
-use tracing::{error, info, instrument};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -648,7 +648,7 @@ where
     #[instrument(skip(self, stop_event))]
     async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
         match &stop_event.error {
-            Some(e) => error!("{}", e),
+            Some(e) => error!("Downlink {} failed with: \"{}\"", stop_event.path, e),
             None => info!("Downlink {} stopped successfully", stop_event.path),
         }
 
