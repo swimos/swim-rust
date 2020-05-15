@@ -306,7 +306,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
                 map.insert(CacheKey::new(&new_node.key), new_node);
                 None
             } else {
-                let mut evicted = map.remove(unsafe { &nodes.tail.as_ref().key }).unwrap();
+                let mut evicted = map.remove(&nodes.tail().key).unwrap();
 
                 let old_key = std::mem::replace(&mut evicted.key, key);
                 let old_value = std::mem::replace(&mut evicted.value, value);
