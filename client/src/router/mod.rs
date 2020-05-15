@@ -231,6 +231,8 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                 }
 
                 RouterTask::Close(Some(mut close_tx)) => {
+                    drop(rx);
+
                     for (_, (_, _, handle)) in host_managers {
                         close_tx
                             .send(handle.await.map_err(|_| RoutingError::CloseError)?)
@@ -404,6 +406,8 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
                 HostTask::Close(Some(mut close_tx)) => {
+                    drop(rx);
+
                     close_tx
                         .send(
                             incoming_handle

@@ -28,6 +28,7 @@ use utilities::future::retryable::RetryableFuture;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
 enum OutgoingRequest {
     Message(Envelope),
     Close(Option<CloseResponseSender>),
@@ -67,21 +68,22 @@ impl OutgoingHostTask {
 
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
-            tracing::trace!("Received request");
+            tracing::trace!("Received request {:?}", task);
 
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let message = Message::Text(envelope.into_value().to_string());
                     let request = new_request(connection_request_tx.clone(), message);
                     RetryableFuture::new(request, config.retry_strategy()).await?;
-
-                    tracing::trace!("Completed request");
                 }
                 OutgoingRequest::Close(Some(_)) => {
+                    drop(rx);
                     break;
                 }
                 OutgoingRequest::Close(None) => {}
             }
+
+            tracing::trace!("Completed request");
         }
         Ok(())
     }

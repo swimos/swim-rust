@@ -127,6 +127,7 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Close(Some(_)) => {
+                    drop(rx);
                     tracing::trace!("Closing Router");
                     broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
 
