@@ -134,7 +134,7 @@ impl<'p> Parser<'p> {
 
     pub fn receiver_assert_quote(&self) -> Vec<TokenStream> {
         match &self.data {
-            TypeContents::Struct(CompoundType::Struct, fields) => fields
+            TypeContents::Struct(_, fields) => fields
                 .iter()
                 .map(|field| {
                     let span = field.span();
@@ -149,7 +149,7 @@ impl<'p> Parser<'p> {
                     }
                 })
                 .collect(),
-            TypeContents::Enum( variants) => variants
+            TypeContents::Enum(variants) => variants
                 .iter()
                 .flat_map(|v| v.fields.iter().map(move |f| (&v.ident, f)))
                 .map(|(ident, field)| {
@@ -165,9 +165,6 @@ impl<'p> Parser<'p> {
                     }
                 })
                 .collect(),
-            TypeContents::Struct(CompoundType::Tuple, _) => {unimplemented!()}
-            TypeContents::Struct(CompoundType::NewType, _) => {unimplemented!()}
-            TypeContents::Struct(CompoundType::Unit, _) => {unimplemented!()}
         }
     }
 }

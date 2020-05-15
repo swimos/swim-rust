@@ -27,6 +27,10 @@ fn test_derive() {
     t.pass("src/tests/derive/single_enum.rs");
     t.pass("src/tests/derive/nested_enum.rs");
     t.pass("src/tests/derive/nested_derives.rs");
+    t.pass("src/tests/derive/tuple_struct.rs");
+    t.pass("src/tests/derive/newtype.rs");
+    t.pass("src/tests/derive/unit_struct.rs");
+
     t.pass("src/tests/derive/simple_vector.rs");
     t.pass("src/tests/derive/vector_with_compound.rs");
 
