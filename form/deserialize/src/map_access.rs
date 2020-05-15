@@ -65,7 +65,7 @@ impl<'de, 'a> SeqAccess<'de> for RecordMap<'a, 'de> {
                             }
                             DeserializerState::ReadingItem(_item) => Ok(None),
 
-                            _ => unimplemented!("Illegal state"),
+                            _ => unreachable!("Illegal state"),
                         }
                     };
 
@@ -80,7 +80,7 @@ impl<'de, 'a> SeqAccess<'de> for RecordMap<'a, 'de> {
                     seed.deserialize(&mut *self.de).map(Some)
                 }
             }
-            None => unimplemented!(),
+            None => unreachable!(),
         }
     }
 }
@@ -115,7 +115,7 @@ impl<'de, 'a> MapAccess<'de> for RecordMap<'a, 'de> {
                             Ok(None)
                         }
                     }
-                    _v => unimplemented!("Illegal state"),
+                    _v => unreachable!("Illegal state"),
                 }
             } else {
                 Ok(None)
@@ -133,7 +133,7 @@ impl<'de, 'a> MapAccess<'de> for RecordMap<'a, 'de> {
             if let Item::Slot(_, value) = item {
                 self.de.current_state.value = Some(value);
             } else {
-                unimplemented!()
+                unreachable!()
             }
 
             let result = seed.deserialize(&mut *self.de);

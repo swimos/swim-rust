@@ -24,6 +24,8 @@ fn test_derive() {
     let t = TestCases::new();
 
     t.pass("src/tests/derive/single_derive.rs");
+    t.pass("src/tests/derive/single_enum.rs");
+    t.pass("src/tests/derive/nested_enum.rs");
     t.pass("src/tests/derive/nested_derives.rs");
     t.pass("src/tests/derive/simple_vector.rs");
     t.pass("src/tests/derive/vector_with_compound.rs");

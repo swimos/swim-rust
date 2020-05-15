@@ -17,9 +17,9 @@ use std::fmt::Display;
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
+use syn::DeriveInput;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::DeriveInput;
 
 pub struct Parser<'a> {
     pub ident: syn::Ident,
@@ -110,11 +110,11 @@ impl<'p> Parser<'p> {
     pub fn from_ast(context: &Context, input: &'p syn::DeriveInput) -> Option<Parser<'p>> {
         let data = match &input.data {
             syn::Data::Enum(data) => {
-                context.error_spanned_by(input, "Enums not implemented yet");
-                return None;
+                let variants = parse_enum(context, &data.variants);
+                TypeContents::Enum(variants)
             }
             syn::Data::Struct(data) => {
-                let (style, fields) = struct_from_ast(context, &data.fields);
+                let (style, fields) = parse_struct(context, &data.fields);
                 TypeContents::Struct(style, fields)
             }
             syn::Data::Union(_) => {
@@ -140,7 +140,7 @@ impl<'p> Parser<'p> {
                     let span = field.span();
                     let ty = field.ty;
                     let receiver_ident = Ident::new(
-                        &format!("__Assert_{}_Receivers", field.ident.to_string()),
+                        &format!("__Assert_{}_Receivers", field.ident),
                         Span::call_site(),
                     );
 
@@ -149,12 +149,48 @@ impl<'p> Parser<'p> {
                     }
                 })
                 .collect(),
-            _ => unimplemented!("match_funcs"),
+            TypeContents::Enum( variants) => variants
+                .iter()
+                .flat_map(|v| v.fields.iter().map(move |f| (&v.ident, f)))
+                .map(|(ident, field)| {
+                    let span = field.span();
+                    let ty = field.ty;
+                    let receiver_ident = Ident::new(
+                        &format!("__Assert_{}_{}_Receivers", ident, field.ident),
+                        Span::call_site(),
+                    );
+
+                    quote_spanned! {span=>
+                        struct #receiver_ident where #ty: Form;
+                    }
+                })
+                .collect(),
+            TypeContents::Struct(CompoundType::Tuple, _) => {unimplemented!()}
+            TypeContents::Struct(CompoundType::NewType, _) => {unimplemented!()}
+            TypeContents::Struct(CompoundType::Unit, _) => {unimplemented!()}
         }
     }
 }
 
-fn struct_from_ast<'a>(
+fn parse_enum<'a>(
+    cx: &Context,
+    variants: &'a Punctuated<syn::Variant, syn::Token![,]>,
+) -> Vec<Variant<'a>> {
+    variants
+        .iter()
+        .map(|variant| {
+            let (style, fields) = parse_struct(cx, &variant.fields);
+            Variant {
+                ident: variant.ident.clone(),
+                style,
+                fields,
+                original: variant,
+            }
+        })
+        .collect()
+}
+
+fn parse_struct<'a>(
     context: &Context,
     fields: &'a syn::Fields,
 ) -> (CompoundType, Vec<Field<'a>>) {

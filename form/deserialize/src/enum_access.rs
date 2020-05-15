@@ -53,7 +53,7 @@ impl<'de, 'a> EnumAccess<'de> for Enum<'a, 'de> {
                 ))),
             }
         } else {
-            unimplemented!()
+            unreachable!("Expected record")
         }
     }
 }
