@@ -15,13 +15,14 @@
 use std::borrow::Borrow;
 use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::ptr::NonNull;
-use std::fmt::{Debug, Formatter};
 
 #[cfg(test)]
 mod tests;
 
+// Key into the internal HashMap, pointing to the actual key in the queue.
 struct CacheKey<K>(*const K);
 
 impl<K: PartialEq> PartialEq for CacheKey<K> {
@@ -52,9 +53,7 @@ impl<K> Borrow<K> for CacheKey<K> {
 
 impl<K: Debug> Debug for CacheKey<K> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        unsafe {
-            (*self.0).fmt(f)
-        }
+        unsafe { (*self.0).fmt(f) }
     }
 }
 
@@ -66,9 +65,8 @@ struct Node<K, V> {
 }
 
 impl<K, V: Debug> Debug for Node<K, V> {
-
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-       self.value.fmt(f)
+        self.value.fmt(f)
     }
 }
 
@@ -81,11 +79,28 @@ impl<K, V> Node<K, V> {
             next: None,
         }
     }
+
+    fn next(&self) -> Option<&Node<K, V>> {
+        self.next.as_ref().map(|ptr| unsafe { ptr.as_ref() })
+    }
+
+    fn prev(&self) -> Option<&Node<K, V>> {
+        self.prev.as_ref().map(|ptr| unsafe { ptr.as_ref() })
+    }
+
+    unsafe fn next_mut<'a>(&self) -> Option<&'a mut Node<K, V>> {
+        self.next.as_ref().map(|ptr| &mut *ptr.as_ptr())
+    }
+
+    unsafe fn prev_mut<'a>(&self) -> Option<&'a mut Node<K, V>> {
+        self.prev.as_ref().map(|ptr| &mut *ptr.as_ptr())
+    }
 }
 
 type NodePtr<K, V> = NonNull<Node<K, V>>;
 
 impl<K, V> Node<K, V> {
+
     fn is_head(&self) -> bool {
         self.prev.is_none()
     }
@@ -94,6 +109,7 @@ impl<K, V> Node<K, V> {
         self.next.is_none()
     }
 
+    /// Removes the current node from the linked list. Returns true if the list is now empty.
     fn cut(&mut self) -> bool {
         let Node { prev, next, .. } = self;
 
@@ -113,6 +129,28 @@ impl<K, V> Node<K, V> {
     }
 }
 
+/// A fixed size LRU (least recently used) cache. If a new element is inserted into the cache, when
+/// it is full, the least recently accessed element (both insertions and retrievals are accesses)
+/// is evicted from the cache. The contents can be inspected and the stored values modified without
+/// altering the order of elements in the internal queue.
+///
+/// # Examples
+/// ```
+/// use utilities::lru_cache::LruCache;
+///
+/// let mut cache: LruCache<i32, String> = LruCache::new(3);
+///
+/// assert!(cache.insert(1, String::from("first")).is_none());
+/// assert!(cache.insert(2, String::from("second")).is_none());
+/// assert!(cache.insert(3, String::from("third")).is_none());
+///
+/// assert_eq!(cache.get(&0), "first");
+///
+/// let evicted = cache.insert(4, String::from("fourth"));
+///
+/// assert_eq!(evicted, Some((2, String::from("second"))));
+/// ```
+///
 pub struct LruCache<K, V, S = RandomState> {
     capacity: usize,
     map: HashMap<CacheKey<K>, Box<Node<K, V>>, S>,
@@ -121,18 +159,26 @@ pub struct LruCache<K, V, S = RandomState> {
 
 impl<K: Debug, V: Debug, S> Debug for LruCache<K, V, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LruCache[capacity = {}, contents = {:?}]", self.capacity, self.map)
+        write!(
+            f,
+            "LruCache[capacity = {}, contents = {:?}]",
+            self.capacity, self.map
+        )
     }
 }
 
 unsafe impl<K: Send, V: Send, S: Send> Send for LruCache<K, V, S> {}
+unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LruCache<K, V, S> {}
 impl<K: Unpin, V: Unpin, S: Unpin> Unpin for LruCache<K, V, S> {}
 
 impl<K: Hash + Eq, V> LruCache<K, V, RandomState> {
+
+    /// Create a new cache with the specified capacity and the default hasher.
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0, "LRU cache size must be non-zero.");
         LruCache::with_hasher(capacity, Default::default())
     }
+
 }
 
 struct Nodes<K, V> {
@@ -141,22 +187,28 @@ struct Nodes<K, V> {
 }
 
 impl<K, V> Nodes<K, V> {
-    fn new(node: &mut Box<Node<K, V>>) -> Self {
+
+    fn new(node: &mut Node<K, V>) -> Self {
         Nodes {
-            head: node.as_mut().into(),
-            tail: node.as_mut().into(),
+            head: node.into(),
+            tail: node.into(),
         }
     }
 
-    fn move_to_head(&mut self, node: &mut Box<Node<K, V>>) {
+    // Moves the specified node the the head of the queue.
+    fn move_to_head(&mut self, node: &mut Node<K, V>) {
         if !node.is_head() {
             //The node is not the head and so can't be the last node in the list.
-            self.remove_internal(node);
+            unsafe {
+                self.remove_internal(node);
+            }
             self.attach_head(node);
         }
     }
 
-    fn remove_internal(&mut self, node: &mut Box<Node<K, V>>) -> bool {
+    // Removes a node from the queue and replaces the tail if necessary. This is unsafe as it
+    // does not reconnect the head.
+    unsafe fn remove_internal(&mut self, node: &mut Node<K, V>) -> bool {
         if node.is_tail() {
             //If the node is the tail and has no previous it is already the head so we don't need
             //to do anything.
@@ -167,30 +219,67 @@ impl<K, V> Nodes<K, V> {
         node.cut()
     }
 
-    fn remove(&mut self, node: &mut Box<Node<K, V>>) -> bool {
-        let next = if node.is_head() {
-            node.next
-        } else {
-            None
-        };
-        let final_node = self.remove_internal(node);
+    // Remove an item from the queue.
+    fn remove(&mut self, node: &mut Node<K, V>) -> bool {
+        let next = if node.is_head() { node.next } else { None };
+        let final_node = unsafe { self.remove_internal(node) };
         if let Some(new_head) = next {
             self.head = new_head;
         }
         final_node
     }
 
-    fn attach_head(&mut self, node: &mut Box<Node<K, V>>) {
+    // Insert the specified node as the head of the queue.
+    fn attach_head(&mut self, node: &mut Node<K, V>) {
+        assert!(node.prev.is_none());
         node.next = Some(self.head);
-        let node_ptr = node.as_mut().into();
-        unsafe {
-            self.head.as_mut().prev = Some(node_ptr);
-        }
+        let node_ptr = node.into();
+        self.head_mut().prev = Some(node_ptr);
         self.head = node_ptr;
+    }
+
+    fn head(&self) -> &Node<K, V> {
+        unsafe { self.head.as_ref() }
+    }
+
+    fn head_mut(&mut self) -> &mut Node<K, V> {
+        unsafe { self.head.as_mut() }
+    }
+
+    fn tail(&self) -> &Node<K, V> {
+        unsafe { self.tail.as_ref() }
+    }
+
+    fn tail_mut(&mut self) -> &mut Node<K, V> {
+        unsafe { self.tail.as_mut() }
+    }
+}
+
+impl<K, V, S> LruCache<K, V, S> {
+
+    /// The current occupancy of the cache.
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    /// The maximum capacity of the cache.
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes = None;
+        self.map.clear();
     }
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
+
+    /// Creates a new cache with a custom hasher.
     pub fn with_hasher(capacity: usize, hasher: S) -> Self {
         LruCache {
             capacity,
@@ -199,6 +288,12 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
+    /// Insert an element into the cache. If an element already exists with the specified key, the
+    /// entry is replaced, no eviction occurs and the old entry is returned. If there is spare
+    /// capacity in the cache, a new entry is created and nothing returned. If the cache is full,
+    /// the least recently accessed entry is evicted and returned and a new entry inserted. In any
+    /// case, the entry associated with [`key`] is moved to the head of the queue and becomes the
+    /// most recently used entry.
     pub fn insert(&mut self, key: K, value: V) -> Option<(K, V)> {
         let LruCache {
             capacity,
@@ -234,10 +329,14 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
+    /// Get a reference to the value associated with a given key, if it exists. This moves that
+    /// entry to the head of the queue (making it the most recently used).
     pub fn get(&mut self, key: &K) -> Option<&V> {
         self.get_mut(key).map(|v| &*v)
     }
 
+    /// Get a mutable reference to the value associated with a given key, if it exists. This moves
+    /// that entry to the head of the queue (making it the most recently used).
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         let LruCache { map, nodes, .. } = self;
 
@@ -251,13 +350,17 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         }
     }
 
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    fn remove_inner<Q>(&mut self, key: &Q) -> Option<(K, V)>
+    where
+        Q: Hash + Eq,
+        CacheKey<K>: Borrow<Q>,
+    {
         let LruCache { map, nodes, .. } = self;
         let (result, remove_nodes) = if let Some(nodes) = nodes {
             match map.remove(key) {
                 Some(mut node) => {
                     let remove_nodes = nodes.remove(&mut node);
-                    (Some((*node).value), remove_nodes)
+                    (Some(((*node).key, (*node).value)), remove_nodes)
                 }
                 _ => (None, false),
             }
@@ -270,54 +373,175 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
         result
     }
 
-    pub fn clear(&mut self) {
-        self.nodes = None;
-        self.map.clear();
+    /// Remove an entry from the cache.
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        self.remove_inner(key).map(|(_, v)| v)
     }
 
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
+    /// Determine whether the cache contains an entry for the specified key.
     pub fn contains(&self, key: &K) -> bool {
         self.map.contains_key(key)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
-        self.map.iter().map(|(k, v)| (k.borrow(), &v.value))
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
-        self.map.iter_mut().map(|(k, v)| (k.borrow(), &mut v.value))
-    }
-
-    fn print_nodes(&self)
-    where
-        K: Debug,
-        V: Debug,
-    {
-        if let Some(nodes) = &self.nodes {
-            unsafe {
-                println!("Forward:");
-                let mut p = Some(nodes.head);
-
-                while let Some(n) = p {
-                    println!("{:?} -> {:?}", &n.as_ref().key, &n.as_ref().value);
-                    p = n.as_ref().next;
-                }
-
-                println!("Back:");
-                let mut p = Some(nodes.tail);
-
-                while let Some(n) = p {
-                    println!("{:?} -> {:?}", &n.as_ref().key, &n.as_ref().value);
-                    p = n.as_ref().prev;
-                }
-            }
+    /// Iterate over the entries of the cache, proceeding from the most recently accessed to the
+    /// least recently accessed. This does not affect the order of elements in the queue.
+    pub fn iter(&self) -> Iter<'_, K, V> {
+        let remaining = self.len();
+        let inner = self.nodes.as_ref().map(|nodes| nodes.head());
+        Iter {
+            inner,
+            direction: Direction::Forward,
+            remaining,
         }
+    }
+
+    /// Iterate over the entries of the cache, proceeding from the least recently accessed to the
+    /// most recently accessed. This does not affect the order of elements in the queue.
+    pub fn reverse_iter(&self) -> Iter<'_, K, V> {
+        let remaining = self.len();
+        let inner = self.nodes.as_ref().map(|nodes| nodes.tail());
+        Iter {
+            inner,
+            direction: Direction::Back,
+            remaining,
+        }
+    }
+
+    /// Mutably iterate over the entries of the cache, proceeding from the most recently accessed
+    /// to the least recently accessed. This does not affect the order of elements in the queue.
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+        let remaining = self.len();
+        let inner = self.nodes.as_mut().map(|nodes| nodes.head_mut());
+        IterMut {
+            inner,
+            direction: Direction::Forward,
+            remaining,
+        }
+    }
+
+    /// Mutably iterate over the entries of the cache, proceeding from the least recently accessed
+    /// to the most recently accessed. This does not affect the order of elements in the queue.
+    pub fn reverse_iter_mut(&mut self) -> IterMut<'_, K, V> {
+        let remaining = self.len();
+        let inner = self.nodes.as_mut().map(|nodes| nodes.tail_mut());
+        IterMut {
+            inner,
+            direction: Direction::Back,
+            remaining,
+        }
+    }
+
+    /// Peek at the least recently accessed element without affecting its position in the queue.
+    pub fn peek_lru(&self) -> Option<(&K, &V)> {
+        self.nodes.as_ref().map(|nodes| {
+            let tail = nodes.tail();
+            (&tail.key, &tail.value)
+        })
+    }
+
+    /// Peek at the least recently accessed element, mutably, without affecting its position in the
+    /// queue.
+    pub fn peek_lru_mut(&mut self) -> Option<(&K, &mut V)> {
+        self.nodes.as_mut().map(|nodes| {
+            let tail = nodes.tail_mut();
+            (&tail.key, &mut tail.value)
+        })
+    }
+
+    /// Peek at the most recently accessed element without affecting its position in the queue.
+    pub fn peek_mru(&self) -> Option<(&K, &V)> {
+        self.nodes.as_ref().map(|nodes| {
+            let head = nodes.head();
+            (&head.key, &head.value)
+        })
+    }
+
+    /// Peek at the most recently accessed element, mutably, without affecting its position in the
+    /// queue.
+    pub fn peek_mru_mut(&mut self) -> Option<(&K, &mut V)> {
+        self.nodes.as_mut().map(|nodes| {
+            let head = nodes.head_mut();
+            (&head.key, &mut head.value)
+        })
+    }
+
+    /// Remove the least recently accessed entry from the cache.
+    pub fn pop_lru(&mut self) -> Option<(K, V)> {
+        self.peek_lru()
+            .map(|(k, _)| CacheKey::new(k))
+            .and_then(|key| {
+                self.remove_inner(&key)
+            })
+    }
+}
+
+enum Direction {
+    Forward,
+    Back,
+}
+
+pub struct Iter<'a, K, V> {
+    inner: Option<&'a Node<K, V>>,
+    direction: Direction,
+    remaining: usize,
+}
+
+pub struct IterMut<'a, K, V> {
+    inner: Option<&'a mut Node<K, V>>,
+    direction: Direction,
+    remaining: usize,
+}
+
+
+impl<'a, K, V> Iterator for Iter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.inner {
+            Some(node) => {
+                let result = (&node.key, &node.value);
+                match self.direction {
+                    Direction::Forward => {
+                        self.inner = node.next();
+                    }
+                    Direction::Back => {
+                        self.inner = node.prev();
+                    }
+                }
+                self.remaining -= 1;
+                Some(result)
+            }
+            _ => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl<'a, K, V> Iterator for IterMut<'a, K, V> {
+    type Item = (&'a K, &'a mut V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.inner.take() {
+            Some(node) => {
+                let next_inner = unsafe {
+                    match self.direction {
+                        Direction::Forward => node.next_mut(),
+                        Direction::Back => node.prev_mut(),
+                    }
+                };
+                let result = (&node.key, &mut node.value);
+                self.inner = next_inner;
+                self.remaining -= 1;
+                Some(result)
+            }
+            _ => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
     }
 }
