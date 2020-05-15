@@ -44,14 +44,8 @@ async fn get_message(conn_pool: &TestPool, host_url: &url::Url) -> String {
         .to_string()
 }
 
-fn get_request(conn_pool: &TestPool, index: usize) -> (url::Url, bool) {
-    conn_pool
-        .connection_requests
-        .lock()
-        .unwrap()
-        .get(index)
-        .unwrap()
-        .clone()
+fn get_requests(conn_pool: &TestPool) -> Vec<(url::Url, bool)> {
+    conn_pool.connection_requests.lock().unwrap().clone()
 }
 
 #[tokio::test]
@@ -154,7 +148,10 @@ async fn test_route_single_outgoing_message_to_single_downlink() {
 
     assert!(router.close().await.is_ok());
     assert_eq!(pool.connection_requests.lock().unwrap().len(), 1);
-    assert_eq!(get_request(&pool, 0), (url.clone(), false));
+
+    let expected_requests = vec![(url.clone(), false)];
+
+    assert_eq!(get_requests(&pool), expected_requests);
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(get_message(&pool, &url).await, "@sync(node:foo,lane:bar)");
 }
@@ -191,8 +188,10 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
 
     assert!(router.close().await.is_ok());
     assert_eq!(pool.connection_requests.lock().unwrap().len(), 2);
-    assert_eq!(get_request(&pool, 0), (url.clone(), false));
-    assert_eq!(get_request(&pool, 1), (url.clone(), false));
+
+    let expected_requests = vec![(url.clone(), false), (url.clone(), false)];
+    assert_eq!(get_requests(&pool), expected_requests);
+
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&pool, &url).await,
@@ -248,8 +247,10 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
 
     assert!(router.close().await.is_ok());
     assert_eq!(pool.connection_requests.lock().unwrap().len(), 2);
-    assert_eq!(get_request(&pool, 0), (first_url.clone(), false));
-    assert_eq!(get_request(&pool, 1), (second_url.clone(), false));
+
+    let expected_requests = vec![(first_url.clone(), false), (second_url.clone(), false)];
+    assert_eq!(get_requests(&pool), expected_requests);
+
     assert_eq!(pool.connections.lock().unwrap().len(), 2);
     assert_eq!(
         get_message(&pool, &first_url).await,
@@ -261,8 +262,7 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
     );
 }
 
-//todo hangs
-#[tokio::test(core_threads = 10)]
+#[tokio::test(core_threads = 2)]
 async fn test_route_multiple_outgoing_messages_to_single_downlink() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let node = "foo";
@@ -290,11 +290,14 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
     );
     let _ = sink.send_item(second_env).await.unwrap();
 
-    while pool.connection_requests.lock().unwrap().len() != 1 {}
+    while pool.connection_requests.lock().unwrap().len() != 2 {}
 
     assert!(router.close().await.is_ok());
-    assert_eq!(pool.connection_requests.lock().unwrap().len(), 1);
-    assert_eq!(get_request(&pool, 0), (url.clone(), false));
+    assert_eq!(pool.connection_requests.lock().unwrap().len(), 2);
+
+    let expected_requests = vec![(url.clone(), false), (url.clone(), false)];
+    assert_eq!(get_requests(&pool), expected_requests);
+
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
 
     assert_eq!(
@@ -309,9 +312,6 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
 
 #[tokio::test(core_threads = 2)]
 async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host() {
-
-    init_trace();
-
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let node = "foo_node";
     let lane = "foo_lane";
@@ -351,12 +351,18 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     let _ = first_sink.send_item(second_env).await.unwrap();
     let _ = second_sink.send_item(third_env).await.unwrap();
 
-    while pool.connection_requests.lock().unwrap().len() != 2 {}
+    while pool.connection_requests.lock().unwrap().len() != 3 {}
 
     assert!(router.close().await.is_ok());
-    assert_eq!(pool.connection_requests.lock().unwrap().len(), 2);
-    assert_eq!(get_request(&pool, 0), (url.clone(), false));
-    assert_eq!(get_request(&pool, 1), (url.clone(), false));
+    assert_eq!(pool.connection_requests.lock().unwrap().len(), 3);
+
+    let expected_requests = vec![
+        (url.clone(), false),
+        (url.clone(), false),
+        (url.clone(), false),
+    ];
+    assert_eq!(get_requests(&pool), expected_requests);
+
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&pool, &url).await,
@@ -368,6 +374,87 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     );
     assert_eq!(
         get_message(&pool, &url).await,
+        "@command(node:third_foo,lane:third_bar){third_body}"
+    );
+}
+
+#[tokio::test(core_threads = 2)]
+async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_hosts() {
+    let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
+    let first_node = "foo_node";
+    let first_lane = "foo_lane";
+
+    let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
+    let second_node = "foo_node";
+    let second_lane = "foo_lane";
+
+    let pool = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut first_sink, _) = router
+        .connection_for(&AbsolutePath::new(
+            first_url.clone(),
+            first_node,
+            first_lane,
+        ))
+        .await
+        .unwrap();
+
+    let (mut second_sink, _) = router
+        .connection_for(&AbsolutePath::new(
+            second_url.clone(),
+            second_node,
+            second_lane,
+        ))
+        .await
+        .unwrap();
+
+    let first_env = Envelope::command(
+        String::from("first_foo"),
+        String::from("first_bar"),
+        Some(Value::text("first_body")),
+    );
+
+    let second_env = Envelope::command(
+        String::from("second_foo"),
+        String::from("second_bar"),
+        Some(Value::text("second_body")),
+    );
+
+    let third_env = Envelope::command(
+        String::from("third_foo"),
+        String::from("third_bar"),
+        Some(Value::text("third_body")),
+    );
+
+    let _ = first_sink.send_item(first_env).await.unwrap();
+    let _ = first_sink.send_item(second_env).await.unwrap();
+    let _ = second_sink.send_item(third_env).await.unwrap();
+
+    while pool.connection_requests.lock().unwrap().len() != 3 {}
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(pool.connection_requests.lock().unwrap().len(), 3);
+
+    //todo replace with something that does not care about order.
+    let expected_requests = vec![
+        (first_url.clone(), false),
+        (first_url.clone(), false),
+        (second_url.clone(), false),
+    ];
+    assert_eq!(get_requests(&pool), expected_requests);
+
+    assert_eq!(pool.connections.lock().unwrap().len(), 2);
+    assert_eq!(
+        get_message(&pool, &first_url).await,
+        "@command(node:first_foo,lane:first_bar){first_body}"
+    );
+    assert_eq!(
+        get_message(&pool, &first_url).await,
+        "@command(node:second_foo,lane:second_bar){second_body}"
+    );
+    assert_eq!(
+        get_message(&pool, &second_url).await,
         "@command(node:third_foo,lane:third_bar){third_body}"
     );
 }
