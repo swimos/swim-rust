@@ -265,19 +265,45 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        println!("Deser tuple");
+
         self.deserialize_seq(visitor)
     }
 
     fn deserialize_tuple_struct<V>(
         self,
-        _name: &'static str,
+        name: &'static str,
         _len: usize,
         visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_seq(visitor)
+        println!("deserialize_tuple_struct");
+
+        if let DeserializerState::None = &self.current_state.deserializer_state {
+            self.current_state.value = Some(self.input);
+        }
+
+        match &self.current_state.value {
+            Some(value) => {
+                if let Value::Record(attrs, _items) = value {
+                    match attrs.first() {
+                        Some(a) => {
+                            if a.name == name {
+                                self.deserialize_seq(visitor)
+                            } else {
+                                Err(FormDeserializeErr::Malformatted)
+                            }
+                        }
+                        None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
+                    }
+                } else {
+                    self.err_incorrect_type("Value::Record", Some(&Value::Extant))
+                }
+            }
+            None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
+        }
     }
 
     fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value>

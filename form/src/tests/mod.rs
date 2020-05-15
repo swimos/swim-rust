@@ -23,23 +23,24 @@ mod traits;
 fn test_derive() {
     let t = TestCases::new();
 
-    t.pass("src/tests/derive/single_derive.rs");
-    t.pass("src/tests/derive/single_enum.rs");
-    t.pass("src/tests/derive/nested_enum.rs");
-    t.pass("src/tests/derive/nested_derives.rs");
-    t.pass("src/tests/derive/tuple_struct.rs");
-    t.pass("src/tests/derive/newtype.rs");
-    t.pass("src/tests/derive/unit_struct.rs");
+    // t.pass("src/tests/derive/struct/single_derive.rs");
+    // t.pass("src/tests/derive/struct/nested_derives.rs");
+    // t.pass("src/tests/derive/struct/tuple_struct.rs");
+    // t.pass("src/tests/derive/struct/newtype.rs");
+    // t.pass("src/tests/derive/struct/unit_struct.rs");
+    // t.pass("src/tests/integration/struct/serialize_ok.rs");
+    // t.pass("src/tests/integration/struct/deserialize_ok.rs");
+    // t.pass("src/tests/integration/struct/deserialize_err.rs");
+    t.pass("src/tests/integration/struct/newtype_ser_ok.rs");
 
-    t.pass("src/tests/derive/simple_vector.rs");
-    t.pass("src/tests/derive/vector_with_compound.rs");
-
-    t.pass("src/tests/integration/serialize_ok.rs");
-    t.pass("src/tests/integration/deserialize_ok.rs");
-    t.pass("src/tests/integration/deserialize_err.rs");
-
-    t.compile_fail("src/tests/derive/unimplemented_compound.rs");
-    t.compile_fail("src/tests/derive/unimplemented_nested.rs");
-    t.compile_fail("src/tests/derive/unimplemented_primitive.rs");
-    t.compile_fail("src/tests/derive/unimplemented_vector.rs");
+    // t.pass("src/tests/derive/enum/single_enum.rs");
+    // t.pass("src/tests/derive/enum/nested_enum.rs");
+    //
+    // t.pass("src/tests/derive/collection/simple_vector.rs");
+    // t.pass("src/tests/derive/collection/vector_with_compound.rs");
+    //
+    // t.compile_fail("src/tests/derive/unimplemented/unimplemented_compound.rs");
+    // t.compile_fail("src/tests/derive/unimplemented/unimplemented_nested.rs");
+    // t.compile_fail("src/tests/derive/unimplemented/unimplemented_primitive.rs");
+    // t.compile_fail("src/tests/derive/unimplemented/unimplemented_vector.rs");
 }

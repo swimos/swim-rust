@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{FormSerializeErr, Result, SerializerState, ValueSerializer};
-use common::model::{Attr, Value};
 use serde::{Serialize, Serializer};
+
+use common::model::{Attr, Value};
+
+use crate::{FormSerializeErr, Result, SerializerState, ValueSerializer};
 
 // CLion/IntelliJ believes there is a missing implementation
 //noinspection RsTraitImplementation
@@ -98,8 +100,8 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_some<T>(self, value: &T) -> Result<()>
-    where
-        T: ?Sized + Serialize,
+        where
+            T: ?Sized + Serialize,
     {
         value.serialize(self)
     }
@@ -131,8 +133,8 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
-    where
-        T: ?Sized + Serialize,
+        where
+            T: ?Sized + Serialize,
     {
         self.push_attr(Attr::from(name));
         value.serialize(self)
@@ -145,8 +147,8 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         variant: &'static str,
         value: &T,
     ) -> Result<()>
-    where
-        T: ?Sized + Serialize,
+        where
+            T: ?Sized + Serialize,
     {
         self.push_attr(Attr::from(name));
         self.current_state.attr_name = Some(variant.to_owned());
@@ -168,8 +170,13 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct> {
-        self.push_attr(Attr::from(name));
-        self.serialize_seq(Some(len))
+        match self.serialize_seq(Some(len)) {
+            Ok(s)=> {
+                s.push_attr(Attr::from(name));
+                Ok(s)
+            },
+            Err(e)=> Err(e)
+        }
     }
 
     fn serialize_tuple_variant(

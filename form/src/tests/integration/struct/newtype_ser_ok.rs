@@ -12,20 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod connections;
-pub mod downlink;
-pub mod router;
+use common::model::{Attr, Item, Value};
+use form::Form;
+use form_derive::*;
 
-#[macro_use]
-extern crate form;
-use crate::form::Form;
-
-
-#[test]
-fn t() {
-    use common::model::{Attr, Item, Value};
-
+fn main() {
     #[form]
     #[derive(PartialEq)]
     struct Parent(i32, i32);

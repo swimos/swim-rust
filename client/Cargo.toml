@@ -19,6 +19,7 @@ common = { path = "../common" }
 utilities = { path = "../utilities" }
 form = { path = "../form" }
 deserialize = { path = "../form/deserialize"}
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
