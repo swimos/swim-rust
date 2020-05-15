@@ -149,7 +149,7 @@ where
     Machine: StateMachine<State, M, A> + Send + 'static,
     Machine::Ev: Send + 'static,
     Machine::Cmd: Send + 'static,
-    Updates: Stream<Item = Message<M>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
@@ -385,9 +385,12 @@ pub(in crate::downlink) fn make_operation_stream<M, A, Upd>(
 where
     M: Send + 'static,
     A: Send + 'static,
-    Upd: Stream<Item = Message<M>> + Send + 'static,
+    Upd: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
 {
-    let upd_operations = updates.map(Operation::Message);
+    let upd_operations = updates.map(|e| match e {
+        Ok(l) => Operation::Message(l),
+        Err(e) => Operation::Error(e),
+    });
 
     let init = once(ready(Operation::Start));
 

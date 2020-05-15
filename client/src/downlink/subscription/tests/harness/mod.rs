@@ -23,7 +23,7 @@ use futures::stream::{pending, Pending};
 pub struct StubRouter {}
 
 impl Router for StubRouter {
-    type ConnectionStream = Pending<IncomingLinkMessage>;
+    type ConnectionStream = Pending<Result<IncomingLinkMessage, RoutingError>>;
     type ConnectionSink = DropAll<OutgoingLinkMessage, RoutingError>;
     type GeneralSink = DropAll<(String, Envelope), RoutingError>;
     type ConnectionFut = Ready<(Self::ConnectionSink, Self::ConnectionStream)>;
