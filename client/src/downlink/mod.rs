@@ -106,9 +106,7 @@ impl From<RoutingError> for DownlinkError {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
             RoutingError::HostUnreachable => DownlinkError::TaskPanic("Host is unreachable."),
-            RoutingError::HostNotFound => {
-                DownlinkError::TaskPanic("Failed to find the requested host.")
-            }
+            RoutingError::HostNotFound => DownlinkError::TaskPanic("Unable to resolve host."),
         }
     }
 }
@@ -427,7 +425,7 @@ where
             Operation::Action(action) => self.handle_action(data_state, action).into(),
             Operation::Error(e) => {
                 if e.is_fatal() {
-                    return Err(DownlinkError::from(e));
+                    return Err(e.into());
                 } else {
                     *state = DownlinkState::Unlinked;
                     Response::for_command(Command::Sync)
