@@ -18,6 +18,7 @@ use hamcrest2::prelude::*;
 use tokio::sync::mpsc;
 
 use super::*;
+use std::collections::BTreeMap;
 use std::time::Duration;
 use tokio::time::timeout;
 
