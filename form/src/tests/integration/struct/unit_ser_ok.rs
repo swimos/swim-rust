@@ -12,23 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::{Attr, Item, Value};
+use common::model::{Attr, Value};
 use form::Form;
 use form_derive::*;
 
 fn main() {
     #[form]
     #[derive(PartialEq)]
-    struct Parent(i32);
+    struct Parent;
 
     let record = Value::Record(
         vec![Attr::from("Parent")],
-        vec![
-            Item::from(1),
-        ],
+        Vec::new()
     );
 
-    let parent = Parent(1);
+    let parent = Parent;
     let result = parent.as_value();
 
     assert_eq!(result, record)

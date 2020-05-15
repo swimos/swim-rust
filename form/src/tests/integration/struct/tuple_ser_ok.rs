@@ -19,16 +19,17 @@ use form_derive::*;
 fn main() {
     #[form]
     #[derive(PartialEq)]
-    struct Parent(i32);
+    struct Parent(i32, i32);
 
     let record = Value::Record(
         vec![Attr::from("Parent")],
         vec![
             Item::from(1),
+            Item::from(2),
         ],
     );
 
-    let parent = Parent(1);
+    let parent = Parent(1, 2);
     let result = parent.as_value();
 
     assert_eq!(result, record)

@@ -112,8 +112,9 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_unit_struct(self, name: &'static str) -> Result<()> {
+        self.enter_nested(SerializerState::ReadingNested);
         self.push_attr(Attr::from(name));
-        self.serialize_unit()
+        Ok(())
     }
 
     fn serialize_unit_variant(
@@ -136,6 +137,7 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         where
             T: ?Sized + Serialize,
     {
+        self.enter_nested(SerializerState::ReadingNested);
         self.push_attr(Attr::from(name));
         value.serialize(self)
     }
