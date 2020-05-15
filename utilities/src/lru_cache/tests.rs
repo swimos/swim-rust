@@ -530,7 +530,10 @@ fn reverse_iteration() {
     cache.insert(2, 2);
     cache.get(&0);
 
-    let entries = cache.reverse_iter().map(|(k, v)| (*k, *v)).collect::<Vec<_>>();
+    let entries = cache
+        .reverse_iter()
+        .map(|(k, v)| (*k, *v))
+        .collect::<Vec<_>>();
 
     assert_that!(entries, eq(vec![(1, 1), (2, 2), (0, 0)]));
 }
@@ -543,11 +546,14 @@ fn forward_iteration_mut() {
     cache.insert(2, 2);
     cache.get(&0);
 
-    let entries = cache.iter_mut().map(|(k, v)| {
-        let result = (*k, *v);
-        *v += 1;
-        result
-    }).collect::<Vec<_>>();
+    let entries = cache
+        .iter_mut()
+        .map(|(k, v)| {
+            let result = (*k, *v);
+            *v += 1;
+            result
+        })
+        .collect::<Vec<_>>();
 
     assert_that!(entries, eq(vec![(0, 0), (2, 2), (1, 1)]));
 
@@ -564,15 +570,21 @@ fn reverse_iteration_mut() {
     cache.insert(2, 2);
     cache.get(&0);
 
-    let entries = cache.reverse_iter_mut().map(|(k, v)| {
-        let result = (*k, *v);
-        *v += 1;
-        result
-    }).collect::<Vec<_>>();
+    let entries = cache
+        .reverse_iter_mut()
+        .map(|(k, v)| {
+            let result = (*k, *v);
+            *v += 1;
+            result
+        })
+        .collect::<Vec<_>>();
 
     assert_that!(entries, eq(vec![(1, 1), (2, 2), (0, 0)]));
 
-    let changed_entries = cache.reverse_iter().map(|(k, v)| (*k, *v)).collect::<Vec<_>>();
+    let changed_entries = cache
+        .reverse_iter()
+        .map(|(k, v)| (*k, *v))
+        .collect::<Vec<_>>();
 
     assert_that!(changed_entries, eq(vec![(1, 2), (2, 3), (0, 1)]));
 }

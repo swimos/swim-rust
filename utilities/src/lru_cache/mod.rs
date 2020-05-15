@@ -100,7 +100,6 @@ impl<K, V> Node<K, V> {
 type NodePtr<K, V> = NonNull<Node<K, V>>;
 
 impl<K, V> Node<K, V> {
-
     fn is_head(&self) -> bool {
         self.prev.is_none()
     }
@@ -144,7 +143,7 @@ impl<K, V> Node<K, V> {
 /// assert!(cache.insert(2, String::from("second")).is_none());
 /// assert!(cache.insert(3, String::from("third")).is_none());
 ///
-/// assert_eq!(cache.get(&0), "first");
+/// assert_eq!(cache.get(&1), Some(&String::from("first")));
 ///
 /// let evicted = cache.insert(4, String::from("fourth"));
 ///
@@ -172,13 +171,11 @@ unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LruCache<K, V, S> {}
 impl<K: Unpin, V: Unpin, S: Unpin> Unpin for LruCache<K, V, S> {}
 
 impl<K: Hash + Eq, V> LruCache<K, V, RandomState> {
-
     /// Create a new cache with the specified capacity and the default hasher.
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0, "LRU cache size must be non-zero.");
         LruCache::with_hasher(capacity, Default::default())
     }
-
 }
 
 struct Nodes<K, V> {
@@ -187,7 +184,6 @@ struct Nodes<K, V> {
 }
 
 impl<K, V> Nodes<K, V> {
-
     fn new(node: &mut Node<K, V>) -> Self {
         Nodes {
             head: node.into(),
@@ -256,7 +252,6 @@ impl<K, V> Nodes<K, V> {
 }
 
 impl<K, V, S> LruCache<K, V, S> {
-
     /// The current occupancy of the cache.
     pub fn len(&self) -> usize {
         self.map.len()
@@ -278,7 +273,6 @@ impl<K, V, S> LruCache<K, V, S> {
 }
 
 impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
-
     /// Creates a new cache with a custom hasher.
     pub fn with_hasher(capacity: usize, hasher: S) -> Self {
         LruCache {
@@ -469,9 +463,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     pub fn pop_lru(&mut self) -> Option<(K, V)> {
         self.peek_lru()
             .map(|(k, _)| CacheKey::new(k))
-            .and_then(|key| {
-                self.remove_inner(&key)
-            })
+            .and_then(|key| self.remove_inner(&key))
     }
 }
 
@@ -491,7 +483,6 @@ pub struct IterMut<'a, K, V> {
     direction: Direction,
     remaining: usize,
 }
-
 
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
