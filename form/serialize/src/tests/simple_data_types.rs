@@ -16,9 +16,9 @@ use serde::Serialize;
 
 use common::model::{Attr, Item, Value};
 
-use crate::FormSerializeErr;
 use crate::tests::assert_err;
 use crate::tests::to_value;
+use crate::FormSerializeErr;
 
 #[cfg(test)]
 mod tuples {
@@ -61,13 +61,16 @@ mod tuples {
         let test = Test(1, (2, 3));
         let parsed_value = to_value(&test).unwrap();
 
-        let expected = Value::Record(vec![Attr::of("Test")], vec![
-            Item::from(1),
-            Item::from(Value::record(vec![
-                Item::from(Value::Int64Value(2)),
-                Item::from(Value::Int64Value(3)),
-            ])),
-        ]);
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![
+                Item::from(1),
+                Item::from(Value::record(vec![
+                    Item::from(Value::Int64Value(2)),
+                    Item::from(Value::Int64Value(3)),
+                ])),
+            ],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -79,7 +82,10 @@ mod tuples {
 
         let test = Test(1, 2);
         let parsed_value = to_value(&test).unwrap();
-        let expected = Value::Record(vec![Attr::of("Test")], vec![Item::from(1), Item::ValueItem(Value::Int64Value(2))]);
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::from(1), Item::ValueItem(Value::Int64Value(2))],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -210,7 +216,7 @@ mod enumeration {
         let parsed_value = to_value(&Test {
             a: TestEnum::A(1, 2),
         })
-            .unwrap();
+        .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
@@ -237,7 +243,7 @@ mod enumeration {
         let parsed_value = to_value(&Test {
             a: TestEnum::A { a: 1, b: 2 },
         })
-            .unwrap();
+        .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],

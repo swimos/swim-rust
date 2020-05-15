@@ -79,7 +79,7 @@ impl<'de> ValueDeserializer<'de> {
             Some(v) => Err(FormDeserializeErr::IncorrectType(format!(
                 "Expected: {}, found: {}",
                 expected,
-                v.to_string()
+                v.kind()
             ))),
             None => Err(FormDeserializeErr::Message(String::from("Missing value"))),
         }

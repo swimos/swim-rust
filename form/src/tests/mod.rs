@@ -31,8 +31,14 @@ fn test_derive() {
     t.pass("src/tests/integration/struct/deserialize_ok.rs");
     t.pass("src/tests/integration/struct/deserialize_err.rs");
     t.pass("src/tests/integration/struct/tuple_ser_ok.rs");
+    t.pass("src/tests/integration/struct/tuple_de_err.rs");
+    t.pass("src/tests/integration/struct/tuple_de_ok.rs");
     t.pass("src/tests/integration/struct/newtype_ser_ok.rs");
+    t.pass("src/tests/integration/struct/newtype_de_ok.rs");
+    t.pass("src/tests/integration/struct/newtype_de_err.rs");
     t.pass("src/tests/integration/struct/unit_ser_ok.rs");
+    t.pass("src/tests/integration/struct/unit_de_ok.rs");
+    t.pass("src/tests/integration/struct/unit_de_err.rs");
 
     t.pass("src/tests/integration/enum/enum_ser_ok.rs");
     t.pass("src/tests/integration/enum/enum_ser_struct_ok.rs");

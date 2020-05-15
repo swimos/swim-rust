@@ -100,8 +100,8 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_some<T>(self, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         value.serialize(self)
     }
@@ -134,8 +134,8 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         self.enter_nested(SerializerState::ReadingNested);
         self.push_attr(Attr::from(name));
@@ -149,8 +149,8 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         variant: &'static str,
         value: &T,
     ) -> Result<()>
-        where
-            T: ?Sized + Serialize,
+    where
+        T: ?Sized + Serialize,
     {
         self.push_attr(Attr::from(name));
         self.current_state.attr_name = Some(variant.to_owned());
@@ -173,11 +173,11 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         len: usize,
     ) -> Result<Self::SerializeTupleStruct> {
         match self.serialize_seq(Some(len)) {
-            Ok(s)=> {
+            Ok(s) => {
                 s.push_attr(Attr::from(name));
                 Ok(s)
-            },
-            Err(e)=> Err(e)
+            }
+            Err(e) => Err(e),
         }
     }
 

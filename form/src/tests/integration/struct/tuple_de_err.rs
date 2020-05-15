@@ -12,29 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::model::{Attr, Item, Value};
+use form::_deserialize::FormDeserializeErr;
 use form::Form;
 use form_derive::*;
-use common::model::{Value, Attr, Item};
-use deserialize::FormDeserializeErr;
+use std::string::ToString;
 
 fn main() {
     #[form]
-    #[derive(PartialEq)]
-    struct Parent {
-        a:i32
+    #[derive(PartialEq, Debug)]
+    struct Parent(i32, i32);
+
+    let record = Value::Record(
+        vec![Attr::from("Incorrect")],
+        vec![
+            Item::from(1),
+            Item::from(2),
+        ],
+    );
+
+    let result = Parent::try_from_value(&record);
+    match result {
+        Ok(_) => panic!("Expected failure"),
+        Err(e) => assert_eq!(e, FormDeserializeErr::Malformatted),
     }
 
     let record = Value::Record(
         vec![Attr::from("Parent")],
         vec![
-            Item::from(("a", 1.0)),
+            Item::from("hello"),
         ],
     );
 
     let result = Parent::try_from_value(&record);
-
     match result {
-        Ok(_) => panic!(),
-        Err(e) => assert_eq!(e, FormDeserializeErr::IncorrectType(String::from("Expected: Value::Int32Value, found: Float64")))
+        Ok(_) => panic!("Expected failure"),
+        Err(e) => assert_eq!(e, FormDeserializeErr::IncorrectType("Expected: Value::Int32Value, found: Text".to_string())),
     }
 }

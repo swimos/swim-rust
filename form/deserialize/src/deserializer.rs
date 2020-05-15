@@ -57,7 +57,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::BooleanValue(b)) = &self.current_state.value {
             visitor.visit_bool(*b)
         } else {
-            self.err_incorrect_type("bool", self.current_state.value)
+            self.err_incorrect_type("Value::BooleanValue", self.current_state.value)
         }
     }
 
@@ -82,7 +82,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Int32Value(i)) = &self.current_state.value {
             visitor.visit_i32(*i)
         } else {
-            self.err_incorrect_type("i32", self.current_state.value)
+            self.err_incorrect_type("Value::Int32Value", self.current_state.value)
         }
     }
 
@@ -93,7 +93,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Int64Value(i)) = &self.current_state.value {
             visitor.visit_i64(*i)
         } else {
-            self.err_incorrect_type("i64", self.current_state.value)
+            self.err_incorrect_type("Value::Int64Value", self.current_state.value)
         }
     }
 
@@ -139,7 +139,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Float64Value(f)) = &self.current_state.value {
             visitor.visit_f64(*f)
         } else {
-            self.err_incorrect_type("f64", self.current_state.value)
+            self.err_incorrect_type("Value::Float64Value", self.current_state.value)
         }
     }
 
@@ -168,7 +168,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         if let Some(Value::Text(t)) = &self.current_state.value {
             visitor.visit_string(t.to_owned())
         } else {
-            self.err_incorrect_type("string", self.current_state.value)
+            self.err_incorrect_type("Value::Text", self.current_state.value)
         }
     }
 
@@ -197,25 +197,69 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         }
     }
 
-    fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        visitor.visit_unit()
     }
 
-    fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
+    fn deserialize_unit_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_unit(visitor)
+        if let DeserializerState::None = &self.current_state.deserializer_state {
+            self.current_state.value = Some(self.input);
+        }
+
+        match &self.current_state.value {
+            Some(value) => {
+                if let Value::Record(attrs, _items) = value {
+                    match attrs.first() {
+                        Some(a) => {
+                            if a.name == name {
+                                self.deserialize_unit(visitor)
+                            } else {
+                                Err(FormDeserializeErr::Malformatted)
+                            }
+                        }
+                        None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
+                    }
+                } else {
+                    self.err_incorrect_type("Value::Record", Some(&Value::Extant))
+                }
+            }
+            None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
+        }
     }
 
-    fn deserialize_newtype_struct<V>(self, _name: &'static str, _visitor: V) -> Result<V::Value>
+    fn deserialize_newtype_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        if let DeserializerState::None = &self.current_state.deserializer_state {
+            self.current_state.value = Some(self.input);
+        }
+
+        match &self.current_state.value {
+            Some(value) => {
+                if let Value::Record(attrs, _items) = value {
+                    match attrs.first() {
+                        Some(a) => {
+                            if a.name == name {
+                                self.deserialize_seq(visitor)
+                            } else {
+                                Err(FormDeserializeErr::Malformatted)
+                            }
+                        }
+                        None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
+                    }
+                } else {
+                    self.err_incorrect_type("Value::Record", Some(&Value::Extant))
+                }
+            }
+            None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
+        }
     }
 
     // Extracts the current value from what is being read.
@@ -265,8 +309,6 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        println!("Deser tuple");
-
         self.deserialize_seq(visitor)
     }
 
@@ -279,8 +321,6 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        println!("deserialize_tuple_struct");
-
         if let DeserializerState::None = &self.current_state.deserializer_state {
             self.current_state.value = Some(self.input);
         }

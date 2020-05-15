@@ -17,9 +17,9 @@ use std::fmt::Display;
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
-use syn::DeriveInput;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+use syn::DeriveInput;
 
 pub struct Parser<'a> {
     pub ident: syn::Ident,
@@ -187,10 +187,7 @@ fn parse_enum<'a>(
         .collect()
 }
 
-fn parse_struct<'a>(
-    context: &Context,
-    fields: &'a syn::Fields,
-) -> (CompoundType, Vec<Field<'a>>) {
+fn parse_struct<'a>(context: &Context, fields: &'a syn::Fields) -> (CompoundType, Vec<Field<'a>>) {
     match fields {
         syn::Fields::Named(fields) => (
             CompoundType::Struct,
