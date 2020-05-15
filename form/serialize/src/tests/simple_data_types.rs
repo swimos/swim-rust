@@ -14,14 +14,14 @@
 
 use serde::Serialize;
 
+use common::model::{Attr, Item, Value};
+
+use crate::FormSerializeErr;
 use crate::tests::assert_err;
 use crate::tests::to_value;
-use crate::FormSerializeErr;
-use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod tuples {
-
     use super::*;
 
     #[test]
@@ -61,7 +61,7 @@ mod tuples {
         let test = Test(1, (2, 3));
         let parsed_value = to_value(&test).unwrap();
 
-        let expected = Value::record(vec![
+        let expected = Value::Record(vec![Attr::of("Test")], vec![
             Item::from(1),
             Item::from(Value::record(vec![
                 Item::from(Value::Int64Value(2)),
@@ -79,8 +79,7 @@ mod tuples {
 
         let test = Test(1, 2);
         let parsed_value = to_value(&test).unwrap();
-
-        let expected = Value::record(vec![Item::from(1), Item::ValueItem(Value::Int64Value(2))]);
+        let expected = Value::Record(vec![Attr::of("Test")], vec![Item::from(1), Item::ValueItem(Value::Int64Value(2))]);
 
         assert_eq!(parsed_value, expected);
     }
@@ -89,7 +88,6 @@ mod tuples {
     fn simple_tuple() {
         let test = (1, 2);
         let parsed_value = to_value(&test).unwrap();
-
         let expected = Value::record(vec![Item::from(1), Item::from(2)]);
 
         assert_eq!(parsed_value, expected);
@@ -98,7 +96,6 @@ mod tuples {
 
 #[cfg(test)]
 mod valid_types {
-
     use super::*;
 
     #[test]
@@ -174,7 +171,6 @@ mod valid_types {
 
 #[cfg(test)]
 mod enumeration {
-
     use super::*;
 
     #[test]
@@ -214,7 +210,7 @@ mod enumeration {
         let parsed_value = to_value(&Test {
             a: TestEnum::A(1, 2),
         })
-        .unwrap();
+            .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
@@ -241,7 +237,7 @@ mod enumeration {
         let parsed_value = to_value(&Test {
             a: TestEnum::A { a: 1, b: 2 },
         })
-        .unwrap();
+            .unwrap();
 
         let expected = Value::Record(
             vec![Attr::of("Test")],
@@ -260,7 +256,6 @@ mod enumeration {
 
 #[cfg(test)]
 mod struct_valid_types {
-
     use super::*;
 
     #[test]
@@ -381,7 +376,6 @@ mod struct_valid_types {
 
 #[cfg(test)]
 mod illegal_types {
-
     use super::*;
 
     #[test]
@@ -469,7 +463,6 @@ mod illegal_types {
 
 #[cfg(test)]
 mod compound_types {
-
     use super::*;
 
     #[test]

@@ -12,7 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod connections;
-pub mod downlink;
-pub mod router;
+use form::Form;
+use form_derive::*;
+use common::model::{Value, Attr, Item};
+
+fn main() {
+    #[form]
+    #[derive(PartialEq)]
+    enum Parent {
+        A {
+            b:i32,
+            c:i64
+        }
+    }
+
+    let record = Value::Record(
+        vec![Attr::of(("A", Value::Extant))],
+        vec![Item::slot("b", 1), Item::slot("c", Value::Int64Value(2))],
+    );
+
+    let parent = Parent::A{
+        b: 1,
+        c: 2
+    };
+    let result = parent.as_value();
+
+    assert_eq!(result, record)
+}

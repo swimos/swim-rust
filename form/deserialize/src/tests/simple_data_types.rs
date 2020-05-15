@@ -119,8 +119,7 @@ mod tuples {
         struct Test(i32, (i64, i64));
 
         let expected = Test(1, (2, 3));
-
-        let record = Value::record(vec![
+        let record = Value::Record(vec![Attr::of("Test")], vec![
             Item::from(1),
             Item::from(Value::record(vec![
                 Item::from(Value::Int64Value(2)),
