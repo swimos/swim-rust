@@ -23,9 +23,9 @@ use token_buffer::*;
 use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
-use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
+use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
 mod tests;
@@ -169,16 +169,18 @@ impl Display for ParseFailure {
         match self {
             ParseFailure::TokenizationFailure(BadToken(offset, _)) => {
                 write!(f, "Bad token at offset: {}", *offset)
-            },
-            ParseFailure::InvalidToken(BadRecord(offset, err)) => {
-                write!(f, "Token at {} is not valid in this context: {:?}", *offset, *err)
-            },
+            }
+            ParseFailure::InvalidToken(BadRecord(offset, err)) => write!(
+                f,
+                "Token at {} is not valid in this context: {:?}",
+                *offset, *err
+            ),
             ParseFailure::IncompleteRecord => {
                 write!(f, "The input ended before the record was complete.")
-            },
+            }
             ParseFailure::UnconsumedInput => {
                 write!(f, "Some content from the input was not consumed.")
-            },
+            }
         }
     }
 }

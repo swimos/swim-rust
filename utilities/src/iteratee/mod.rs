@@ -539,7 +539,9 @@ pub trait Iteratee<In> {
 ///
 /// ```
 ///
-pub fn coenumerate<In, It: Iteratee<(usize, In)>>(iteratee: It) -> impl Iteratee<In, Item = It::Item> {
+pub fn coenumerate<In, It: Iteratee<(usize, In)>>(
+    iteratee: It,
+) -> impl Iteratee<In, Item = It::Item> {
     let mut index = 0;
     iteratee.comap(move |input| {
         let i = index;

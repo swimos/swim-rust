@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io;
+use crate::model::parser::{parse_document_iteratee, IterateeDecoder, ParseFailure};
+use crate::model::Item;
 use futures::StreamExt;
 use pin_utils::pin_mut;
-use crate::model::Item;
-use crate::model::parser::{ParseFailure, parse_document_iteratee, IterateeDecoder};
-use tokio::prelude::AsyncRead;
-use utilities::iteratee::{coenumerate, Iteratee};
-use std::str::Utf8Error;
-use tokio_util::codec::FramedRead;
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::io;
+use std::str::Utf8Error;
+use tokio::prelude::AsyncRead;
+use tokio_util::codec::FramedRead;
+use utilities::iteratee::{coenumerate, Iteratee};
 
 /// Error type for reading a configuration document.
 #[derive(Debug)]
@@ -32,21 +32,19 @@ pub enum ConfigurationError {
     /// The input was not valid UTF8 text.
     Utf(Utf8Error),
     /// An error occurred attempting to parse the valid UTF8 input.
-    Parser(ParseFailure)
+    Parser(ParseFailure),
 }
 
 impl Display for ConfigurationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigurationError::Io(err) => {
-                write!(f, "IO error loading configuration: {}", err)
-            },
+            ConfigurationError::Io(err) => write!(f, "IO error loading configuration: {}", err),
             ConfigurationError::Utf(err) => {
                 write!(f, "Configuration data contained invalid UTF8: {}", err)
-            },
+            }
             ConfigurationError::Parser(err) => {
                 write!(f, "Error parsing configuration data: {}", err)
-            },
+            }
         }
     }
 }
@@ -68,8 +66,8 @@ impl From<Utf8Error> for ConfigurationError {
 /// Read and parse a Recon configuration file from an [`AsyncRead`] instance.
 pub async fn read_config_from<Src: AsyncRead>(input: Src) -> Result<Vec<Item>, ConfigurationError> {
     pin_mut!(input);
-    let iteratee = coenumerate(parse_document_iteratee())
-        .map(|r| r.map_err(ConfigurationError::Parser));
+    let iteratee =
+        coenumerate(parse_document_iteratee()).map(|r| r.map_err(ConfigurationError::Parser));
     let decoder = IterateeDecoder::new(iteratee);
     let mut framed = FramedRead::new(input, decoder);
     framed.next().await.unwrap_or_else(|| Ok(vec![]))
