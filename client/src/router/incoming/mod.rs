@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, RoutingError};
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
-use common::warp::path::{AbsolutePath, RelativePath};
+use common::warp::path::RelativePath;
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -29,7 +29,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub enum IncomingRequest {
     Connection(mpsc::Receiver<Message>),
-    Subscribe((AbsolutePath, mpsc::Sender<RouterEvent>)),
+    Subscribe((RelativePath, mpsc::Sender<RouterEvent>)),
     Message(Message),
     Unreachable,
     Disconnect,
@@ -86,9 +86,9 @@ impl IncomingHostTask {
                     connection = Some(message_rx);
                 }
 
-                IncomingRequest::Subscribe((target, event_tx)) => {
+                IncomingRequest::Subscribe((relative_path, event_tx)) => {
                     subscribers
-                        .entry(target.relative_path())
+                        .entry(relative_path)
                         .or_insert_with(Vec::new)
                         .push(event_tx);
                 }
@@ -97,6 +97,7 @@ impl IncomingHostTask {
                     let message = message
                         .to_text()
                         .map_err(|_| RoutingError::ConnectionError)?;
+                    //Todo handle invalid messages
                     let value = parse_single(message).map_err(|_| RoutingError::ConnectionError)?;
                     let envelope =
                         Envelope::try_from(value).map_err(|_| RoutingError::ConnectionError)?;
