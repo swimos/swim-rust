@@ -24,6 +24,8 @@ use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
 use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
+use std::fmt::{Display, Formatter};
+use std::error::Error;
 
 #[cfg(test)]
 mod tests;
@@ -161,6 +163,27 @@ pub enum ParseFailure {
     /// Tokens remained in the input when the parse operation completed.
     UnconsumedInput,
 }
+
+impl Display for ParseFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseFailure::TokenizationFailure(BadToken(offset, _)) => {
+                write!(f, "Bad token at offset: {}", *offset)
+            },
+            ParseFailure::InvalidToken(BadRecord(offset, err)) => {
+                write!(f, "Token at {} is not valid in this context: {:?}", *offset, *err)
+            },
+            ParseFailure::IncompleteRecord => {
+                write!(f, "The input ended before the record was complete.")
+            },
+            ParseFailure::UnconsumedInput => {
+                write!(f, "Some content from the input was not consumed.")
+            },
+        }
+    }
+}
+
+impl Error for ParseFailure {}
 
 impl From<BadToken> for ParseFailure {
     fn from(err: BadToken) -> Self {
@@ -1545,7 +1568,7 @@ fn update_after_slot<S: TokenStr>(
     }
 }
 
-pub struct IterateeDecoder<I>(pub Option<I>);
+pub struct IterateeDecoder<I>(Option<I>);
 
 impl<I> IterateeDecoder<I>
 where
