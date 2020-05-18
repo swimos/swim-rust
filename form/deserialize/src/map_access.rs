@@ -64,8 +64,11 @@ impl<'de, 'a> SeqAccess<'de> for RecordMap<'a, 'de> {
                                 }
                             }
                             DeserializerState::ReadingItem(_item) => Ok(None),
-
-                            _ => unreachable!("Illegal state"),
+                            _ => {
+                                // Somehow the deserializer is in an illegal state. We should only be
+                                // reading a record or a single item here as we're reading a sequence
+                                unreachable!("Illegal state")
+                            }
                         }
                     };
 
@@ -80,7 +83,11 @@ impl<'de, 'a> SeqAccess<'de> for RecordMap<'a, 'de> {
                     seed.deserialize(&mut *self.de).map(Some)
                 }
             }
-            None => unreachable!(),
+            None => {
+                // The deserializer should be put into a state where it's reading a sequence before
+                // this is called. This is done in Serde's call to `next_key_seed`
+                unreachable!("Deserializer not initialised correctly")
+            }
         }
     }
 }
@@ -115,7 +122,13 @@ impl<'de, 'a> MapAccess<'de> for RecordMap<'a, 'de> {
                             Ok(None)
                         }
                     }
-                    _v => unreachable!("Illegal state"),
+                    v => {
+                        // Only a record is permitted at this point. So, if for some reason, there
+                        // isn't one then this cannot proceed.
+                        Err(FormDeserializeErr::IllegalItem(Item::ValueItem(
+                            v.to_owned(),
+                        )))
+                    }
                 }
             } else {
                 Ok(None)
@@ -133,6 +146,7 @@ impl<'de, 'a> MapAccess<'de> for RecordMap<'a, 'de> {
             if let Item::Slot(_, value) = item {
                 self.de.current_state.value = Some(value);
             } else {
+                // Serde only calls this function after calling [`next_key_seed`].
                 unreachable!()
             }
 

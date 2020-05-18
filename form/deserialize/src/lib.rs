@@ -70,6 +70,37 @@ impl<'de> ValueDeserializer<'de> {
         Err(FormDeserializeErr::UnsupportedType(String::from(t)))
     }
 
+    /// Checks that the current [`Value`] is of the correct structure and the attribute tag matches
+    /// [`name`].
+    fn check_struct_access(
+        &mut self,
+        name: &'static str,
+    ) -> std::result::Result<(), FormDeserializeErr> where {
+        if let DeserializerState::None = &self.current_state.deserializer_state {
+            self.current_state.value = Some(self.input);
+        }
+
+        match &self.current_state.value {
+            Some(value) => {
+                if let Value::Record(attrs, _items) = value {
+                    match attrs.first() {
+                        Some(a) => {
+                            if a.name == name {
+                                Ok(())
+                            } else {
+                                Err(FormDeserializeErr::Malformatted)
+                            }
+                        }
+                        None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
+                    }
+                } else {
+                    self.err_incorrect_type("Value::Record", Some(&Value::Extant))
+                }
+            }
+            None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
+        }
+    }
+
     pub fn err_incorrect_type<V>(
         &self,
         expected: &str,

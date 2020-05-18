@@ -208,58 +208,16 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if let DeserializerState::None = &self.current_state.deserializer_state {
-            self.current_state.value = Some(self.input);
-        }
-
-        match &self.current_state.value {
-            Some(value) => {
-                if let Value::Record(attrs, _items) = value {
-                    match attrs.first() {
-                        Some(a) => {
-                            if a.name == name {
-                                self.deserialize_unit(visitor)
-                            } else {
-                                Err(FormDeserializeErr::Malformatted)
-                            }
-                        }
-                        None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
-                    }
-                } else {
-                    self.err_incorrect_type("Value::Record", Some(&Value::Extant))
-                }
-            }
-            None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
-        }
+        self.check_struct_access(name)?;
+        self.deserialize_unit(visitor)
     }
 
     fn deserialize_newtype_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        if let DeserializerState::None = &self.current_state.deserializer_state {
-            self.current_state.value = Some(self.input);
-        }
-
-        match &self.current_state.value {
-            Some(value) => {
-                if let Value::Record(attrs, _items) = value {
-                    match attrs.first() {
-                        Some(a) => {
-                            if a.name == name {
-                                self.deserialize_seq(visitor)
-                            } else {
-                                Err(FormDeserializeErr::Malformatted)
-                            }
-                        }
-                        None => Err(FormDeserializeErr::Message(String::from("Missing tag"))),
-                    }
-                } else {
-                    self.err_incorrect_type("Value::Record", Some(&Value::Extant))
-                }
-            }
-            None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
-        }
+        self.check_struct_access(name)?;
+        self.deserialize_seq(visitor)
     }
 
     // Extracts the current value from what is being read.
