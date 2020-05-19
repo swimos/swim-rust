@@ -201,10 +201,18 @@ pub async fn all_receivers_dropped_for_broadcast_topic() {
     assert_that!(new_rx, ok());
 }
 
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(5).unwrap()
+}
+
+fn yield_after() -> NonZeroUsize {
+    NonZeroUsize::new(256).unwrap()
+}
+
 #[tokio::test]
 pub async fn single_receiver_mpsc_topic() {
     let (mut tx, rx) = mpsc::channel::<i32>(5);
-    let (_topic, mut rx) = MpscTopic::new(rx, 5);
+    let (_topic, mut rx) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let send_result = tx.send(7).await;
     assert_that!(&send_result, ok());
@@ -217,7 +225,7 @@ pub async fn single_receiver_mpsc_topic() {
 #[tokio::test]
 pub async fn multiple_receivers_mpsc_topic() {
     let (mut tx, rx) = mpsc::channel::<i32>(5);
-    let (mut topic, mut rx1) = MpscTopic::new(rx, 5);
+    let (mut topic, mut rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
@@ -236,7 +244,7 @@ pub async fn multiple_receivers_mpsc_topic() {
 #[tokio::test]
 pub async fn multiple_receivers_multiple_records_mpsc_topic() {
     let (mut tx, rx) = mpsc::channel::<i32>(5);
-    let (mut topic, rx1) = MpscTopic::new(rx, 5);
+    let (mut topic, rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
@@ -259,7 +267,7 @@ pub async fn multiple_receivers_multiple_records_mpsc_topic() {
 #[tokio::test]
 pub async fn first_receiver_dropped_for_mpsc_topic() {
     let (mut tx, rx) = mpsc::channel::<i32>(5);
-    let (mut topic, rx1) = MpscTopic::new(rx, 5);
+    let (mut topic, rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
@@ -278,7 +286,7 @@ pub async fn first_receiver_dropped_for_mpsc_topic() {
 #[tokio::test]
 pub async fn additional_receiver_dropped_for_mpsc_topic() {
     let (mut tx, rx) = mpsc::channel::<i32>(5);
-    let (mut topic, mut rx1) = MpscTopic::new(rx, 5);
+    let (mut topic, mut rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());
@@ -297,7 +305,7 @@ pub async fn additional_receiver_dropped_for_mpsc_topic() {
 #[tokio::test]
 pub async fn all_receivers_dropped_for_mpsc_topic() {
     let (mut tx, rx) = mpsc::channel::<i32>(5);
-    let (mut topic, rx1) = MpscTopic::new(rx, 5);
+    let (mut topic, rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
     assert_that!(&maybe_rx, ok());

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::downlink::DownlinkParams;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
@@ -200,8 +200,7 @@ pub(in crate::downlink) fn make_downlink<M, A, State, Machine, Updates, Commands
     machine: Machine,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    on_invalid: OnInvalidMessage,
+    config: &DownlinkParams,
 ) -> (
     DroppingDownlink<A, Machine::Ev>,
     DroppingReceiver<Machine::Ev>,
@@ -216,7 +215,7 @@ where
     Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
-    let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
+    let (act_tx, act_rx) = mpsc::channel::<A>(config.buffer_size.get());
     let (event_tx, event_rx) = watch::channel::<Option<Event<Machine::Ev>>>(None);
 
     let event_sink = item::for_watch_sender::<_, DroppedError>(event_tx);
@@ -231,13 +230,14 @@ where
         event_sink,
         completed.clone(),
         stopped_tx,
-        on_invalid,
+        config.on_invalid,
     );
 
     let lane_task = task.run(
         raw::make_operation_stream(update_stream),
         act_rx.fuse(),
         machine,
+        config.yield_after,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
