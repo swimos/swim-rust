@@ -40,11 +40,16 @@ fn build(mut input: syn::ItemFn, _args: syn::AttributeArgs) -> Result<TokenStrea
 
     let result = quote! {
         #vis #sig {
-            #runtime
+            let mut runtime = #runtime
                 .enable_all()
                 .build()
-                .expect("Failed to build Tokio runtime.")
-                .block_on(async { #body })
+                .expect("Failed to build Tokio runtime.");
+
+            runtime.block_on(async {
+                swim::interface::SwimContext::enter();
+            });
+
+            runtime.block_on(async { #body })
         }
     };
 

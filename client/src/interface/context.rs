@@ -12,15 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Borrow;
+use std::cell::RefCell;
+
 use futures::Future;
 use tokio::task::JoinHandle;
 
-#[derive(Clone)]
+// TODO: Client context writing doing properly
+thread_local! {
+    static CONTEXT: RefCell<Option<SwimContext>> = RefCell::new(None)
+}
+
+pub fn swim_context() -> Option<SwimContext> {
+    CONTEXT.with(|ctx| ctx.borrow().clone())
+}
+
+#[derive(Clone, Copy)]
 pub struct SwimContext {}
 
 impl SwimContext {
+    // TODO: Set properly
     pub fn build() -> SwimContext {
         SwimContext {}
+    }
+
+    pub fn enter() {
+        let _ = CONTEXT.with(|ctx| {
+            let _old = ctx.borrow_mut().replace(SwimContext::build());
+        });
     }
 
     pub fn spawn<F>(&mut self, future: F) -> JoinHandle<F::Output>

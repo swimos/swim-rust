@@ -19,13 +19,11 @@ use crate::configuration::downlink::Config;
 use crate::downlink::subscription::{
     AnyMapDownlink, AnyValueDownlink, TypedMapDownlink, TypedValueDownlink,
 };
-use crate::interface::context::SwimContext;
-use crate::interface::runtime::swim_context;
+pub use crate::interface::context::{swim_context, SwimContext};
 use futures::Future;
 use tokio::task::JoinError;
 
 pub mod context;
-mod runtime;
 
 pub struct SwimClient {
     // router: Router,
@@ -33,8 +31,10 @@ pub struct SwimClient {
     context: SwimContext,
 }
 
+#[derive(Debug)]
 pub enum ClientError {
-    //Cases
+    Shutdown,
+    RuntimeError,
 }
 
 impl SwimClient {
@@ -75,13 +75,20 @@ impl SwimClient {
         unimplemented!()
     }
 
-    pub async fn run_session<S, F>(&mut self, session: S) -> Result<F::Output, JoinError>
+    pub async fn run_session<S, F>(&mut self, session: S) -> Result<F::Output, ClientError>
     where
-        S: FnOnce() -> F,
+        S: FnOnce(SwimContext) -> F,
         F: Future + Send + 'static,
         F::Output: Send,
     {
-        self.context.spawn(session()).await
+        match swim_context() {
+            Some(ctx) => self
+                .context
+                .spawn(session(ctx))
+                .await
+                .map_err(|_| ClientError::RuntimeError),
+            None => Err(ClientError::Shutdown),
+        }
     }
 }
 
@@ -92,10 +99,10 @@ async fn test_client() {
     println!("Start");
 
     let _ = client
-        .run_session(|| async {
+        .run_session(|mut ctx| async move {
             println!("Running session");
 
-            swim_context().spawn(async {
+            ctx.spawn(async {
                 println!("Hello");
             });
         })
