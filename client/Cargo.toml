@@ -20,6 +20,8 @@ common = { path = "../common" }
 utilities = { path = "../utilities" }
 form = { path = "../form" }
 deserialize = { path = "../form/deserialize"}
+tracing = "0.1.13"
+tracing-futures = "0.2.4"
 
 [dev-dependencies]
 hamcrest2 = "0.3"

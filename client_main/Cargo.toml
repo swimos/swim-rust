@@ -5,5 +5,7 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
+tracing-subscriber = "0.2.4"
+tracing = "0.1.13"
 swim = { package = "client", path = "../client" }
 tokio = { version = "=0.2.21", features = ["rt-threaded"] }

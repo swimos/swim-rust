@@ -24,7 +24,7 @@ thread_local! {
 }
 
 pub fn swim_context() -> Option<SwimContext> {
-    CONTEXT.with(|ctx| ctx.borrow().clone())
+    CONTEXT.with(|ctx| *ctx.borrow())
 }
 
 #[derive(Clone, Copy)]
@@ -36,8 +36,9 @@ impl SwimContext {
         SwimContext {}
     }
 
+    // TODO: This needs to be a crate-only function. But it needs to be accesible from the macro
     pub fn enter() {
-        let _ = CONTEXT.with(|ctx| {
+        CONTEXT.with(|ctx| {
             let _old = ctx.borrow_mut().replace(SwimContext::build());
         });
     }

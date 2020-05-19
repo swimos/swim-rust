@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::Future;
+use tokio::task::JoinError;
+
 use common::warp::path::AbsolutePath;
 use form::{Form, ValidatedForm};
 
@@ -20,15 +23,14 @@ use crate::downlink::subscription::{
     AnyMapDownlink, AnyValueDownlink, TypedMapDownlink, TypedValueDownlink,
 };
 pub use crate::interface::context::{swim_context, SwimContext};
-use futures::Future;
-use tokio::task::JoinError;
+
+use tracing::{info, trace};
 
 pub mod context;
 
 pub struct SwimClient {
     // router: Router,
-    // configuration: Box<dyn Config>,
-    context: SwimContext,
+    configuration: Box<dyn Config>,
 }
 
 #[derive(Debug)]
@@ -38,11 +40,13 @@ pub enum ClientError {
 }
 
 impl SwimClient {
-    pub fn new() -> Self {
+    #[allow(clippy::new_without_default)]
+    pub fn new(configuration: Box<dyn Config>) -> Self {
+        info!("Initialising Swim Client");
+
         SwimClient {
             // router,
-            // configuration: config.into(),
-            context: SwimContext::build(),
+            configuration,
         }
     }
 
@@ -82,31 +86,14 @@ impl SwimClient {
         F::Output: Send,
     {
         match swim_context() {
-            Some(ctx) => self
-                .context
-                .spawn(session(ctx))
-                .await
-                .map_err(|_| ClientError::RuntimeError),
+            Some(mut ctx) => {
+                trace!("Running new session");
+
+                ctx.spawn(session(ctx))
+                    .await
+                    .map_err(|_| ClientError::RuntimeError)
+            }
             None => Err(ClientError::Shutdown),
         }
     }
-}
-
-#[tokio::test]
-async fn test_client() {
-    let mut client = SwimClient::new();
-
-    println!("Start");
-
-    let _ = client
-        .run_session(|mut ctx| async move {
-            println!("Running session");
-
-            ctx.spawn(async {
-                println!("Hello");
-            });
-        })
-        .await;
-
-    println!("Finish");
 }
