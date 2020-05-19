@@ -97,19 +97,42 @@ impl IncomingHostTask {
                     let message = message
                         .to_text()
                         .map_err(|_| RoutingError::ConnectionError)?;
-                    //Todo handle invalid messages
-                    let value = parse_single(message).map_err(|_| RoutingError::ConnectionError)?;
-                    let envelope =
-                        Envelope::try_from(value).map_err(|_| RoutingError::ConnectionError)?;
-                    let destination = envelope.relative_path();
-                    let event = RouterEvent::Envelope(envelope);
 
-                    tracing::trace!("{:?}", event);
+                    let value = parse_single(message);
 
-                    if let Some(relative_path) = destination {
-                        broadcast_destination(&mut subscribers, relative_path, event).await?;
-                    } else {
-                        tracing::warn!("Host messages are not supported: {:?}", event);
+                    match value {
+                        Ok(val) => {
+                            let envelope = Envelope::try_from(val);
+
+                            match envelope {
+                                Ok(env) => {
+                                    let destination = env.relative_path();
+                                    let event = RouterEvent::Envelope(env);
+
+                                    tracing::trace!("{:?}", event);
+
+                                    if let Some(relative_path) = destination {
+                                        broadcast_destination(
+                                            &mut subscribers,
+                                            relative_path,
+                                            event,
+                                        )
+                                        .await?;
+                                    } else {
+                                        tracing::warn!(
+                                            "Host messages are not supported: {:?}",
+                                            event
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!("Parsing error {:?}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Parsing error {:?}", e);
+                        }
                     }
                 }
 
