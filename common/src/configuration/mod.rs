@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::model::parser::{parse_document_iteratee, IterateeDecoder, ParseFailure};
 use crate::model::Item;
 use futures::StreamExt;
@@ -30,7 +33,7 @@ pub enum ConfigurationError {
     /// An IO error occurred reading the source data.
     Io(io::Error),
     /// The input was not valid UTF8 text.
-    Utf(Utf8Error),
+    BadUtf8(Utf8Error),
     /// An error occurred attempting to parse the valid UTF8 input.
     Parser(ParseFailure),
 }
@@ -39,7 +42,7 @@ impl Display for ConfigurationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigurationError::Io(err) => write!(f, "IO error loading configuration: {}", err),
-            ConfigurationError::Utf(err) => {
+            ConfigurationError::BadUtf8(err) => {
                 write!(f, "Configuration data contained invalid UTF8: {}", err)
             }
             ConfigurationError::Parser(err) => {
@@ -59,7 +62,7 @@ impl From<io::Error> for ConfigurationError {
 
 impl From<Utf8Error> for ConfigurationError {
     fn from(err: Utf8Error) -> Self {
-        ConfigurationError::Utf(err)
+        ConfigurationError::BadUtf8(err)
     }
 }
 
