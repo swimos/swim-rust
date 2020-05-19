@@ -69,6 +69,8 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
+use tracing::info;
+use tracing::instrument;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkSpecifier>,
@@ -79,6 +81,7 @@ pub struct Downlinks {
 impl Downlinks {
     /// Create a new downlink manager, using the specified configuration, which will attach all
     /// create downlinks to the provided router.
+    #[instrument(skip(config, router), level = "info")]
     pub async fn new<C, R>(config: Arc<C>, router: R) -> Downlinks
     where
         C: Config + 'static,
@@ -88,6 +91,9 @@ impl Downlinks {
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
         let task_handle = tokio::task::spawn(task.run(rx));
+
+        info!("Initialised downlinks");
+
         Downlinks {
             sender: tx,
             _task: task_handle,

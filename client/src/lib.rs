@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub use common::warp::path::AbsolutePath;
+
 pub mod configuration;
 pub mod connections;
 pub mod downlink;

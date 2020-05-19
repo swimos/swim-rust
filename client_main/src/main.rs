@@ -1,5 +1,6 @@
 use swim::configuration::downlink::*;
 use swim::interface::SwimClient;
+use swim::AbsolutePath;
 use tokio::time::Duration;
 use tracing::info;
 
@@ -25,6 +26,10 @@ async fn main() {
     let r = client
         .run_session(|mut ctx| async move {
             info!("Running session");
+            let val_path = AbsolutePath::new("my_host", "my_agent", "value_lane");
+
+            let dl = ctx.value_downlink(1, val_path).await;
+            println!("Downlink result: {:?}", dl.is_ok());
 
             ctx.spawn(async {
                 info!("Running spawned task");

@@ -21,7 +21,7 @@ use form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::Config;
 use crate::downlink::subscription::{
-    AnyMapDownlink, AnyValueDownlink, TypedMapDownlink, TypedValueDownlink,
+    AnyMapDownlink, AnyValueDownlink, SubscriptionError, TypedMapDownlink, TypedValueDownlink,
 };
 pub use crate::interface::context::{swim_context, SwimContext};
 
