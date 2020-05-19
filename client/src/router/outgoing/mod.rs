@@ -80,7 +80,7 @@ impl OutgoingHostTask {
                     drop(rx);
                     break;
                 }
-                OutgoingRequest::Close(None) => {}
+                OutgoingRequest::Close(None) => { /*NO OP*/ }
             }
 
             tracing::trace!("Completed request");
@@ -130,7 +130,6 @@ mod route_tests {
         let _ = envelope_tx
             .send(Envelope::sync("node".into(), "lane".into()))
             .await;
-
         let (tx, _recreate) = task_request_rx.recv().await.unwrap();
         let _ = tx.send(Err(RoutingError::ConnectionError));
 

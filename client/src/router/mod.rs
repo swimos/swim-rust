@@ -258,7 +258,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                     break Ok(());
                 }
 
-                RouterTask::Close(None) => {}
+                RouterTask::Close(None) => { /*NO OP*/ }
             }
         }
     }
@@ -291,7 +291,6 @@ fn combine_router_task(
     let message_requests =
         message_request_rx.map(|payload| RouterTask::SendMessage(Box::new(payload)));
     let close_requests = close_rx.map(RouterTask::Close);
-
     stream::select(
         stream::select(conn_requests, message_requests),
         close_requests,
@@ -440,9 +439,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
                     break Ok(());
                 }
-                HostTask::Close(None) => {
-                    break Ok(());
-                }
+                HostTask::Close(None) => { /*NO OP*/ }
             }
         }
     }
