@@ -70,8 +70,6 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
-use tracing::info;
-use tracing::instrument;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkSpecifier>,
