@@ -32,7 +32,6 @@ use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::factory::{async_factory, WebsocketFactory};
 
 use super::*;
-use std::io;
 
 type TError = tungstenite::error::Error;
 
