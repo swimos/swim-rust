@@ -14,6 +14,7 @@
 
 use futures::Future;
 use tokio::task::JoinError;
+use tracing::{info, trace};
 
 use common::warp::path::AbsolutePath;
 use form::{Form, ValidatedForm};
@@ -24,13 +25,12 @@ use crate::downlink::subscription::{
 };
 pub use crate::interface::context::{swim_context, SwimContext};
 
-use tracing::{info, trace};
-
 pub mod context;
+mod stub;
 
 pub struct SwimClient {
     // router: Router,
-    configuration: Box<dyn Config>,
+// configuration: Box<dyn Config>,
 }
 
 #[derive(Debug)]
@@ -39,15 +39,21 @@ pub enum ClientError {
     RuntimeError,
 }
 
+use crate::interface::stub::StubRouter;
+use crate::router::Router;
+
 impl SwimClient {
     #[allow(clippy::new_without_default)]
-    pub fn new(configuration: Box<dyn Config>) -> Self {
+    pub async fn new<C>(configuration: C) -> Self
+    where
+        C: Config + 'static,
+    {
         info!("Initialising Swim Client");
 
-        SwimClient {
-            // router,
-            configuration,
-        }
+        let ctx = SwimContext::build(configuration, StubRouter::new()).await;
+        SwimContext::enter(ctx);
+
+        SwimClient {}
     }
 
     pub async fn send_command<T: Form>(
@@ -89,7 +95,7 @@ impl SwimClient {
             Some(mut ctx) => {
                 trace!("Running new session");
 
-                ctx.spawn(session(ctx))
+                ctx.spawn(session(ctx.clone()))
                     .await
                     .map_err(|_| ClientError::RuntimeError)
             }

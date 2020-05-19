@@ -15,8 +15,19 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
 
+use crate::downlink::subscription::{
+    AnyMapDownlink, AnyValueDownlink, Downlinks, TypedMapDownlink, TypedValueDownlink,
+};
 use futures::Future;
 use tokio::task::JoinHandle;
+
+use common::warp::path::AbsolutePath;
+use form::{Form, ValidatedForm};
+
+use crate::configuration::downlink::Config;
+use crate::interface::ClientError;
+use crate::router::Router;
+use std::sync::Arc;
 
 // TODO: Client context writing doing properly
 thread_local! {
@@ -24,22 +35,29 @@ thread_local! {
 }
 
 pub fn swim_context() -> Option<SwimContext> {
-    CONTEXT.with(|ctx| *ctx.borrow())
+    CONTEXT.with(|ctx| ctx.borrow().clone())
 }
 
-#[derive(Clone, Copy)]
-pub struct SwimContext {}
+#[derive(Clone)]
+pub struct SwimContext {
+    downlinks: Arc<Downlinks>,
+}
 
 impl SwimContext {
-    // TODO: Set properly
-    pub fn build() -> SwimContext {
-        SwimContext {}
+    pub(crate) async fn build<R, C>(configuration: C, router: R) -> SwimContext
+    where
+        R: Router + 'static,
+        C: Config + 'static,
+    {
+        SwimContext {
+            downlinks: Arc::new(Downlinks::new(Arc::new(configuration), router).await),
+        }
     }
 
     // TODO: This needs to be a crate-only function. But it needs to be accesible from the macro
-    pub fn enter() {
+    pub(crate) fn enter(new: SwimContext) {
         CONTEXT.with(|ctx| {
-            let _old = ctx.borrow_mut().replace(SwimContext::build());
+            let _old = ctx.borrow_mut().replace(new);
         });
     }
 
@@ -49,5 +67,34 @@ impl SwimContext {
         F::Output: Send,
     {
         tokio::spawn(future)
+    }
+
+    pub async fn send_command<T: Form>(
+        _target: AbsolutePath,
+        _value: T,
+    ) -> Result<(), ClientError> {
+        unimplemented!()
+    }
+
+    pub async fn value_downlink<T: ValidatedForm>(
+        _path: AbsolutePath,
+    ) -> Result<TypedValueDownlink<T>, ClientError> {
+        unimplemented!()
+    }
+
+    pub async fn map_downlink<K: ValidatedForm, V: ValidatedForm>(
+        _path: AbsolutePath,
+    ) -> Result<TypedMapDownlink<K, V>, ClientError> {
+        unimplemented!()
+    }
+
+    pub async fn untyped_value_downlink(
+        _path: AbsolutePath,
+    ) -> Result<AnyValueDownlink, ClientError> {
+        unimplemented!()
+    }
+
+    pub async fn untyped_map_downlink(_path: AbsolutePath) -> Result<AnyMapDownlink, ClientError> {
+        unimplemented!()
     }
 }

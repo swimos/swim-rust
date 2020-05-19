@@ -20,7 +20,7 @@ async fn main() {
     .unwrap();
 
     let config = ConfigHierarchy::new(client_params, default_params);
-    let mut client = SwimClient::new(Box::new(config));
+    let mut client = SwimClient::new(config).await;
 
     let r = client
         .run_session(|mut ctx| async move {
