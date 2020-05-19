@@ -270,25 +270,6 @@ async fn invalid_protocol() {
 }
 
 #[tokio::test]
-async fn no_such_host() {
-    let buffer_size = 5;
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TungsteniteWsFactory::new(buffer_size).await,
-    );
-
-    let url =
-        url::Url::parse("wss://ThisHost-Shouldnt_ExistDuringThisTest1234567.UnitTest").unwrap();
-    let rx = connection_pool
-        .request_connection(url, false)
-        .await
-        .unwrap();
-
-    assert_matches::assert_matches!(rx.err().unwrap().tungstenite_error.unwrap(), TError::Io(e)
-            if e.kind() == io::ErrorKind::Other);
-}
-
-#[tokio::test]
 async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     // Given
     let mut first_items = Vec::new();
