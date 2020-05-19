@@ -12,11 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod connections;
-pub mod downlink;
-#[allow(dead_code, unused_imports)]
-pub mod interface;
-pub mod router;
+use futures::Future;
+use tokio::task::JoinHandle;
 
-pub use macros::client;
+#[derive(Clone)]
+pub struct SwimContext {}
+
+impl SwimContext {
+    pub fn build() -> SwimContext {
+        SwimContext {}
+    }
+
+    pub fn spawn<F>(&mut self, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send,
+    {
+        tokio::spawn(future)
+    }
+}

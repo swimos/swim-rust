@@ -1,0 +1,9 @@
+[package]
+name = "client_main"
+version = "0.1.0"
+authors = ["SirCipher <tklapwijk92@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+swim = { package = "client", path = "../client" }
+tokio = { version = "=0.2.21", features = ["rt-threaded"] }

@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod connections;
-pub mod downlink;
-#[allow(dead_code, unused_imports)]
-pub mod interface;
-pub mod router;
+use crate::interface::context::SwimContext;
+use std::borrow::Borrow;
+use std::cell::RefCell;
 
-pub use macros::client;
+thread_local! {
+    static CONTEXT: RefCell<Option<SwimContext>> = RefCell::new(Some(SwimContext::build()))
+}
+
+pub(crate) fn swim_context() -> SwimContext {
+    CONTEXT.with(|ctx| match *ctx.borrow() {
+        Some(ref ctx) => ctx.clone(),
+        None => panic!("Todo"),
+    })
+}

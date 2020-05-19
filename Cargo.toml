@@ -5,4 +5,5 @@ members = [
     "common",
     "server",
     "utilities",
+    "client_main"
 ]
