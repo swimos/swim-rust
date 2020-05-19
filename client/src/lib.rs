@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use common::warp::path::AbsolutePath;
-
+pub use common;
 pub mod configuration;
 pub mod connections;
 pub mod downlink;
@@ -21,4 +20,5 @@ pub mod downlink;
 pub mod interface;
 pub mod router;
 
+#[cfg(not(test))]
 pub use macros::client;

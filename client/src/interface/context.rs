@@ -25,7 +25,7 @@ use common::warp::path::AbsolutePath;
 use form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::Config;
-use crate::interface::ClientError;
+use crate::interface::error::{ClientError, ErrorKind};
 use crate::router::Router;
 use common::model::Value;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ thread_local! {
     static CONTEXT: RefCell<Option<SwimContext>> = RefCell::new(None)
 }
 
-pub fn swim_context() -> Option<SwimContext> {
+pub(crate) fn swim_context() -> Option<SwimContext> {
     CONTEXT.with(|ctx| ctx.borrow().clone())
 }
 
@@ -93,7 +93,7 @@ impl SwimContext {
             .await
             .subscribe_value(default, path)
             .await
-            .map_err(|_| ClientError::RuntimeError)
+            .map_err(|_| ClientError::from(ErrorKind::RuntimeError, None))
             // todo
             .map(|r| r.0)
     }

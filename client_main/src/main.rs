@@ -1,6 +1,10 @@
 use swim::configuration::downlink::*;
 use swim::interface::SwimClient;
-use swim::AbsolutePath;
+
+use swim::common::sink::item::ItemSink;
+use swim::common::topic::Topic;
+use swim::common::warp::path::AbsolutePath;
+use swim::downlink::model::value::Action;
 use tokio::time::Duration;
 use tracing::info;
 
@@ -26,13 +30,17 @@ async fn main() {
     let r = client
         .run_session(|mut ctx| async move {
             info!("Running session");
-            let val_path = AbsolutePath::new("my_host", "my_agent", "value_lane");
 
-            let dl = ctx.value_downlink(1, val_path).await;
-            println!("Downlink result: {:?}", dl.is_ok());
+            let val_path = AbsolutePath::new("my_host", "my_agent", "value_lane");
+            let mut dl = ctx.value_downlink::<i32>(0, val_path).await.unwrap();
+            let r = dl.send_item(Action::set(1.into())).await;
+            let _sub = dl.subscribe().await.unwrap();
+
+            println!("Send_item result: {:?}", r);
 
             ctx.spawn(async {
-                info!("Running spawned task");
+                // let _r = dl.unwrap().subscribe().await.unwrap();
+                info!("Subscribed");
             });
         })
         .await;

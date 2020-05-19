@@ -23,9 +23,10 @@ use crate::configuration::downlink::Config;
 use crate::downlink::subscription::{
     AnyMapDownlink, AnyValueDownlink, SubscriptionError, TypedMapDownlink, TypedValueDownlink,
 };
-pub use crate::interface::context::{swim_context, SwimContext};
+use crate::interface::context::{swim_context, SwimContext};
 
 pub mod context;
+pub mod error;
 mod stub;
 
 pub struct SwimClient {
@@ -33,12 +34,9 @@ pub struct SwimClient {
 // configuration: Box<dyn Config>,
 }
 
-#[derive(Debug)]
-pub enum ClientError {
-    Shutdown,
-    RuntimeError,
-}
-
+use crate::downlink::Operation::Error;
+use crate::interface::error::ClientError;
+use crate::interface::error::ErrorKind;
 use crate::interface::stub::StubRouter;
 use crate::router::Router;
 
@@ -97,9 +95,9 @@ impl SwimClient {
 
                 ctx.spawn(session(ctx.clone()))
                     .await
-                    .map_err(|_| ClientError::RuntimeError)
+                    .map_err(|_| ClientError::from(ErrorKind::RuntimeError, None))
             }
-            None => Err(ClientError::Shutdown),
+            None => Err(ClientError::from(ErrorKind::RuntimeError, None)),
         }
     }
 }
