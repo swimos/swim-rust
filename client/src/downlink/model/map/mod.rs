@@ -679,7 +679,7 @@ where
         ),
         update_stream,
         cmd_sink,
-        config,
+        &config,
     )
 }
 
