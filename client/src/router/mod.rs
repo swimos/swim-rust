@@ -254,7 +254,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                     break Ok(());
                 }
 
-                RouterTask::Close(None) => {}
+                RouterTask::Close(None) => { /*NO OP*/ }
             }
         }
     }
@@ -431,9 +431,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
                     break Ok(());
                 }
-                HostTask::Close(None) => {
-                    break Ok(());
-                }
+                HostTask::Close(None) => { /*NO OP*/ }
             }
         }
     }

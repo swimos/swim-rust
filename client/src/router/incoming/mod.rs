@@ -134,7 +134,7 @@ impl IncomingHostTask {
                     break Ok(());
                 }
 
-                _ => {}
+                IncomingRequest::Close(None) => { /*NO OP*/ }
             }
         }
     }

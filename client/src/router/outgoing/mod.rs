@@ -25,9 +25,6 @@ use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
-#[cfg(test)]
-mod tests;
-
 enum OutgoingRequest {
     Message(Envelope),
     Close(Option<CloseResponseSender>),
@@ -79,7 +76,7 @@ impl OutgoingHostTask {
                 OutgoingRequest::Close(Some(_)) => {
                     break;
                 }
-                OutgoingRequest::Close(None) => {}
+                OutgoingRequest::Close(None) => { /*NO OP*/ }
             }
         }
         Ok(())
