@@ -28,9 +28,13 @@ use common::request::request_future::SendAndAwait;
 
 use crate::connections::factory::async_factory::AsyncFactory;
 use crate::connections::factory::errors::FlattenErrors;
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::factory::{async_factory, WebsocketFactory};
 
 use super::*;
+use std::io;
+
+type TError = tungstenite::error::Error;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -43,8 +47,10 @@ async fn test_connection_pool_send_single_message_single_connection() {
 
     let test_data = TestData::new(vec![], writer_tx);
 
-    let mut connection_pool =
-        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+    let mut connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TestConnectionFactory::new(test_data).await,
+    );
 
     let (mut connection_sender, _connection_receiver) = connection_pool
         .request_connection(host_url, false)
@@ -65,7 +71,6 @@ async fn test_connection_pool_send_single_message_single_connection() {
 #[tokio::test]
 async fn test_connection_pool_send_multiple_messages_single_connection() {
     // Given
-    let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let first_text = "First_Text";
     let second_text = "Second_Text";
@@ -74,8 +79,10 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
 
     let test_data = TestData::new(vec![], writer_tx);
 
-    let mut connection_pool =
-        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+    let mut connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TestConnectionFactory::new(test_data).await,
+    );
 
     let (mut first_connection_sender, _first_connection_receiver) = connection_pool
         .request_connection(host_url.clone(), false)
@@ -113,7 +120,6 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
 #[tokio::test]
 async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     // Given
-    let buffer_size = 5;
     let first_host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let second_host_url = url::Url::parse("ws://127.0.0.2/").unwrap();
     let third_host_url = url::Url::parse("ws://127.0.0.3//").unwrap();
@@ -134,7 +140,7 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     ];
 
     let mut connection_pool = SwimConnPool::new(
-        buffer_size,
+        ConnectionPoolParams::default(),
         TestConnectionFactory::new_multiple(test_data).await,
     );
 
@@ -188,15 +194,16 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
 #[tokio::test]
 async fn test_connection_pool_receive_single_message_single_connection() {
     // Given
-    let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
     items.push(Message::text("new_message"));
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
-    let mut connection_pool =
-        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+    let mut connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TestConnectionFactory::new(test_data).await,
+    );
 
     // When
     let (_connection_sender, connection_receiver) = connection_pool
@@ -213,7 +220,6 @@ async fn test_connection_pool_receive_single_message_single_connection() {
 #[tokio::test]
 async fn test_connection_pool_receive_multiple_messages_single_connection() {
     // Given
-    let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
     items.push(Message::text("first_message"));
@@ -222,8 +228,10 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
-    let mut connection_pool =
-        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+    let mut connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TestConnectionFactory::new(test_data).await,
+    );
 
     // When
     let (_connection_sender, connection_receiver) = connection_pool
@@ -245,10 +253,44 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
 }
 
 #[tokio::test]
+async fn invalid_protocol() {
+    let buffer_size = 5;
+    let mut connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TungsteniteWsFactory::new(buffer_size).await,
+    );
+
+    let url = url::Url::parse("xyz://swim.ai").unwrap();
+    let rx = connection_pool
+        .request_connection(url, false)
+        .await
+        .unwrap();
+
+    assert_matches::assert_matches!(rx.err().unwrap().tungstenite_error.unwrap(), TError::Url(_));
+}
+
+#[tokio::test]
+async fn no_such_host() {
+    let buffer_size = 5;
+    let mut connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TungsteniteWsFactory::new(buffer_size).await,
+    );
+
+    let url =
+        url::Url::parse("wss://ThisHost-Shouldnt_ExistDuringThisTest1234567.UnitTest").unwrap();
+    let rx = connection_pool
+        .request_connection(url, false)
+        .await
+        .unwrap();
+
+    assert_matches::assert_matches!(rx.err().unwrap().tungstenite_error.unwrap(), TError::Io(e)
+            if e.kind() == io::ErrorKind::Other);
+}
+
+#[tokio::test]
 async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     // Given
-    let buffer_size = 5;
-
     let mut first_items = Vec::new();
     let mut second_items = Vec::new();
     let mut third_items = Vec::new();
@@ -272,7 +314,7 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     ];
 
     let mut connection_pool = SwimConnPool::new(
-        buffer_size,
+        ConnectionPoolParams::default(),
         TestConnectionFactory::new_multiple(test_data).await,
     );
 
@@ -308,7 +350,6 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
 #[tokio::test]
 async fn test_connection_pool_send_and_receive_messages() {
     // Given
-    let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
     items.push(Message::text("recv_baz"));
@@ -316,8 +357,10 @@ async fn test_connection_pool_send_and_receive_messages() {
 
     let test_data = TestData::new(items, writer_tx);
 
-    let mut connection_pool =
-        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+    let mut connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TestConnectionFactory::new(test_data).await,
+    );
 
     let (mut connection_sender, connection_receiver) = connection_pool
         .request_connection(host_url, false)
@@ -344,11 +387,10 @@ async fn test_connection_pool_send_and_receive_messages() {
 #[tokio::test]
 async fn test_connection_pool_connection_error() {
     // Given
-    let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
 
     let mut connection_pool = SwimConnPool::new(
-        buffer_size,
+        ConnectionPoolParams::default(),
         TestConnectionFactory::new_multiple(vec![]).await,
     );
 
@@ -366,7 +408,6 @@ async fn test_connection_pool_connection_error() {
 #[tokio::test]
 async fn test_connection_pool_connection_error_send_message() {
     // Given
-    let buffer_size = 5;
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let text = "Test_message";
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
@@ -374,7 +415,7 @@ async fn test_connection_pool_connection_error_send_message() {
     let test_data = vec![None, Some(TestData::new(vec![], writer_tx))];
 
     let mut connection_pool = SwimConnPool::new(
-        buffer_size,
+        ConnectionPoolParams::default(),
         TestConnectionFactory::new_multiple_with_errs(test_data).await,
     );
 
@@ -406,14 +447,14 @@ async fn test_connection_pool_connection_error_send_message() {
 #[tokio::test]
 async fn test_connection_pool_close() {
     // Given
-    let buffer_size = 5;
-
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(vec![], writer_tx);
 
-    let connection_pool =
-        SwimConnPool::new(buffer_size, TestConnectionFactory::new(test_data).await);
+    let connection_pool = SwimConnPool::new(
+        ConnectionPoolParams::default(),
+        TestConnectionFactory::new(test_data).await,
+    );
 
     // When
     assert!(connection_pool.close().unwrap().await.is_ok());
@@ -534,7 +575,10 @@ async fn test_connection_receive_message_error() {
     let result = connection._receive_handler.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(result.err(), Some(ConnectionError::ReceiveMessageError));
+    assert_eq!(
+        *result.err().unwrap(),
+        ConnectionErrorKind::ReceiveMessageError
+    );
 }
 
 #[tokio::test]
@@ -556,7 +600,10 @@ async fn test_new_connection_send_message_error() {
     let result = connection._send_handler.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(result.err(), Some(ConnectionError::SendMessageError));
+    assert_eq!(
+        *result.err().unwrap(),
+        ConnectionErrorKind::SendMessageError
+    );
 }
 
 #[derive(Clone)]
@@ -570,13 +617,17 @@ impl Stream for TestReadStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.error {
-            Poll::Ready(Some(Err(ConnectionError::ReceiveMessageError)))
+            Poll::Ready(Some(Err(ConnectionError::from(
+                ConnectionErrorKind::ReceiveMessageError,
+            ))))
         } else {
             if self.items.is_empty() {
                 Poll::Ready(None)
             } else {
                 let message = self.items.drain(0..1).next();
-                Poll::Ready(Some(message.ok_or(ConnectionError::SendMessageError)))
+                Poll::Ready(Some(message.ok_or(ConnectionError::from(
+                    ConnectionErrorKind::SendMessageError,
+                ))))
             }
         }
     }
@@ -696,7 +747,7 @@ impl MultipleTestData {
     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
         let i = self.n.fetch_add(1, Ordering::AcqRel);
         if i >= self.connections.len() {
-            Err(ConnectionError::ConnectError(None))
+            Err(ConnectionError::from(ConnectionErrorKind::ConnectError))
         } else {
             let maybe_conn = &self.connections[i];
             match maybe_conn {
@@ -713,7 +764,7 @@ impl MultipleTestData {
                     };
                     Ok((output, input))
                 }
-                _ => Err(ConnectionError::ConnectError(None)),
+                _ => Err(ConnectionError::from(ConnectionErrorKind::ConnectError)),
             }
         }
     }

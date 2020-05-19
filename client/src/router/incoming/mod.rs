@@ -33,7 +33,7 @@ pub enum IncomingRequest {
     Connection(mpsc::Receiver<Message>),
     Subscribe(SubscriberRequest),
     Message(Message),
-    Unreachable,
+    Unreachable(String),
     Disconnect,
     Close(Option<CloseResponseSender>),
 }
@@ -138,9 +138,10 @@ impl IncomingHostTask {
                     }
                 }
 
-                IncomingRequest::Unreachable => {
+                IncomingRequest::Unreachable(err) => {
                     tracing::trace!("Unreachable Host");
-                    broadcast_all(&mut subscribers, RouterEvent::Unreachable).await?;
+                    broadcast_all(&mut subscribers, RouterEvent::Unreachable(err.to_string()))
+                        .await?;
 
                     break Ok(());
                 }
