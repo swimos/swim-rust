@@ -134,7 +134,7 @@ enum RouterTask {
 
 type HostManagerHandle = (
     mpsc::Sender<Envelope>,
-    mpsc::Sender<(RelativePath, mpsc::Sender<RouterEvent>)>,
+    mpsc::Sender<SubscriberRequest>,
     JoinHandle<Result<(), RoutingError>>,
 );
 
@@ -300,9 +300,11 @@ pub type ConnectionRequest = (
     bool, // Whether or not to recreate the connection
 );
 
+type SubscriberRequest = (RelativePath, mpsc::Sender<RouterEvent>);
+
 enum HostTask {
     Connect(ConnectionRequest),
-    Subscribe((RelativePath, mpsc::Sender<RouterEvent>)),
+    Subscribe(SubscriberRequest),
     Close(Option<CloseResponseSender>),
 }
 
@@ -310,7 +312,7 @@ struct HostManager<Pool: ConnectionPool> {
     host: url::Url,
     connection_pool: Pool,
     sink_rx: mpsc::Receiver<Envelope>,
-    stream_registrator_rx: mpsc::Receiver<(RelativePath, mpsc::Sender<RouterEvent>)>,
+    stream_registrator_rx: mpsc::Receiver<SubscriberRequest>,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
@@ -324,7 +326,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
     ) -> (
         HostManager<Pool>,
         mpsc::Sender<Envelope>,
-        mpsc::Sender<(RelativePath, mpsc::Sender<RouterEvent>)>,
+        mpsc::Sender<SubscriberRequest>,
     ) {
         let (sink_tx, sink_rx) = mpsc::channel(config.buffer_size().get());
         let (stream_registrator_tx, stream_registrator_rx) =
@@ -439,7 +441,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
 fn combine_host_streams(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
-    stream_registrator_rx: mpsc::Receiver<(RelativePath, mpsc::Sender<RouterEvent>)>,
+    stream_registrator_rx: mpsc::Receiver<SubscriberRequest>,
     close_rx: CloseReceiver,
 ) -> impl stream::Stream<Item = HostTask> + Send + 'static {
     let connection_requests = connection_requests_rx.map(HostTask::Connect);

@@ -7,7 +7,6 @@ use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use futures::future::{ready, Ready};
 use std::collections::HashMap;
-use std::sync::Once;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;

@@ -14,7 +14,9 @@
 
 use std::collections::HashMap;
 
-use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, RoutingError};
+use crate::router::{
+    CloseReceiver, CloseResponseSender, RouterEvent, RoutingError, SubscriberRequest,
+};
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
 use common::warp::path::RelativePath;
@@ -29,7 +31,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 pub enum IncomingRequest {
     Connection(mpsc::Receiver<Message>),
-    Subscribe((RelativePath, mpsc::Sender<RouterEvent>)),
+    Subscribe(SubscriberRequest),
     Message(Message),
     Unreachable,
     Disconnect,
