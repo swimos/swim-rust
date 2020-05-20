@@ -385,6 +385,7 @@ async fn mpsc_topic_task<T: Clone>(
                         outputs.iter_mut().map(|sender| sender.send(value.clone())),
                     )
                     .await;
+
                     let num_terminated = results.iter().filter(|r| r.is_err()).count();
                     if num_terminated > 0 {
                         outputs = remove_terminated(results, std::mem::take(&mut outputs));
