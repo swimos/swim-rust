@@ -13,23 +13,24 @@ use tokio::sync::mpsc;
 use tokio::time::{delay_for, timeout};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-async fn get_message(conn_pool: &TestPool, host_url: &url::Url) -> Option<String> {
+async fn get_message(conn_pool: &TestPool, host_url: &url::Url) -> Option<Message> {
     if let Some((_, receiver)) = conn_pool.handlers.lock().unwrap().get_mut(host_url) {
         Some(
-            timeout(Duration::from_millis(10), receiver.recv())
+            timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
-                .unwrap()
-                .to_string(),
+                .unwrap(),
         )
     } else {
         None
     }
 }
 
-async fn send_message(conn_pool: &TestPool, host_url: &url::Url, message: Message) {
+async fn send_message(conn_pool: &TestPool, host_url: &url::Url, message: &str) {
+    let message = Message::Text(message.to_string());
+
     if let Some((sender, _)) = conn_pool.handlers.lock().unwrap().get_mut(host_url) {
-        timeout(Duration::from_millis(10), sender.send(message))
+        timeout(Duration::from_secs(1), sender.send(message))
             .await
             .unwrap()
             .unwrap();
@@ -50,81 +51,32 @@ async fn wait_for_n_requests(pool: &TestPool, n: usize) {
     }
 }
 
-#[tokio::test]
-async fn test_create_router() {
-    let pool = TestPool::new();
-    let router = SwimRouter::new(Default::default(), pool.clone());
-
-    assert!(router.close().await.is_ok());
-    assert_eq!(get_request_count(&pool), 0);
-    assert_eq!(pool.connections.lock().unwrap().len(), 0);
-}
-
-#[tokio::test]
-async fn test_create_single_downlink() {
-    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
-
-    let pool = TestPool::new();
-    let mut router = SwimRouter::new(Default::default(), pool.clone());
-
-    let _ = router
-        .connection_for(&AbsolutePath::new(url, node, lane))
-        .await
-        .unwrap();
-
-    assert!(router.close().await.is_ok());
-    assert_eq!(get_request_count(&pool), 0);
-    assert_eq!(pool.connections.lock().unwrap().len(), 0);
-}
-
-#[tokio::test]
-async fn test_create_multiple_downlinks_same_host() {
-    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
-
-    let pool = TestPool::new();
-    let mut router = SwimRouter::new(Default::default(), pool.clone());
-
-    let _ = router
+async fn open_connection(
+    router: &mut SwimRouter,
+    url: &url::Url,
+    node: &str,
+    lane: &str,
+) -> (
+    <SwimRouter as Router>::ConnectionSink,
+    <SwimRouter as Router>::ConnectionStream,
+) {
+    router
         .connection_for(&AbsolutePath::new(url.clone(), node, lane))
         .await
-        .unwrap();
-
-    let _ = router
-        .connection_for(&AbsolutePath::new(url, node, lane))
-        .await
-        .unwrap();
-
-    assert!(router.close().await.is_ok());
-    assert_eq!(get_request_count(&pool), 0);
-    assert_eq!(pool.connections.lock().unwrap().len(), 0);
+        .unwrap()
 }
 
 #[tokio::test]
-async fn test_create_multiple_downlinks_different_hosts() {
+async fn test_create_downlinks() {
     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "first_foo";
-    let first_lane = "first_bar";
-
     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let second_node = "second_foo";
-    let second_lane = "second_bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let _ = router
-        .connection_for(&AbsolutePath::new(first_url, first_node, first_lane))
-        .await
-        .unwrap();
-
-    let _ = router
-        .connection_for(&AbsolutePath::new(second_url, second_node, second_lane))
-        .await
-        .unwrap();
+    let _ = open_connection(&mut router, &first_url, "foo", "bar").await;
+    let _ = open_connection(&mut router, &first_url, "foo", "bar").await;
+    let _ = open_connection(&mut router, &second_url, "oof", "rab").await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 0);
@@ -134,16 +86,11 @@ async fn test_create_multiple_downlinks_different_hosts() {
 #[tokio::test]
 async fn test_route_single_outgoing_message_to_single_downlink() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, _) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send_item(envelope).await.unwrap();
@@ -160,28 +107,19 @@ async fn test_route_single_outgoing_message_to_single_downlink() {
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@sync(node:foo,lane:bar)"
+        Message::text("@sync(node:foo,lane:bar)")
     );
 }
 
 #[tokio::test]
 async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo_node";
-    let lane = "foo_lane";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
-
-    let (mut second_sink, _) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
+    let (mut second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
 
     let env = Envelope::command(
         String::from("oof"),
@@ -201,48 +139,29 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
     expected_requests.insert((url.clone(), false), 2);
 
     assert_eq!(get_requests(&pool), expected_requests);
-
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@command(node:oof,lane:rab){bye}"
+        Message::text("@command(node:oof,lane:rab){bye}")
     );
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@command(node:oof,lane:rab){bye}"
+        Message::text("@command(node:oof,lane:rab){bye}")
     );
 }
 
 #[tokio::test]
 async fn test_route_single_outgoing_message_to_multiple_downlinks_different_hosts() {
     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "first_foo";
-    let first_lane = "first_bar";
-
     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let second_node = "second_foo";
-    let second_lane = "second_bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) = router
-        .connection_for(&AbsolutePath::new(
-            first_url.clone(),
-            first_node,
-            first_lane,
-        ))
-        .await
-        .unwrap();
-
-    let (mut second_sink, _) = router
-        .connection_for(&AbsolutePath::new(
-            second_url.clone(),
-            second_node,
-            second_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut first_sink, _) =
+        open_connection(&mut router, &first_url, "first_foo", "first_bar").await;
+    let (mut second_sink, _) =
+        open_connection(&mut router, &second_url, "second_foo", "second_bar").await;
 
     let env = Envelope::command(
         String::from("foo"),
@@ -263,31 +182,25 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
     expected_requests.insert((second_url.clone(), false), 1);
 
     assert_eq!(get_requests(&pool), expected_requests);
-
     assert_eq!(pool.connections.lock().unwrap().len(), 2);
     assert_eq!(
         get_message(&pool, &first_url).await.unwrap(),
-        "@command(node:foo,lane:bar){hello}"
+        Message::text("@command(node:foo,lane:bar){hello}")
     );
     assert_eq!(
         get_message(&pool, &second_url).await.unwrap(),
-        "@command(node:foo,lane:bar){hello}"
+        Message::text("@command(node:foo,lane:bar){hello}")
     );
 }
 
 #[tokio::test]
 async fn test_route_multiple_outgoing_messages_to_single_downlink() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, _) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let first_env = Envelope::command(
         String::from("foo"),
@@ -312,37 +225,27 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
     expected_requests.insert((url.clone(), false), 2);
 
     assert_eq!(get_requests(&pool), expected_requests);
-
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
 
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@command(node:foo,lane:bar){First_Downlink}"
+        Message::text("@command(node:foo,lane:bar){First_Downlink}")
     );
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@command(node:foo,lane:bar){Second_Downlink}"
+        Message::text("@command(node:foo,lane:bar){Second_Downlink}")
     );
 }
 
 #[tokio::test]
 async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo_node";
-    let lane = "foo_lane";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
-
-    let (mut second_sink, _) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
+    let (mut second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
 
     let first_env = Envelope::command(
         String::from("first_foo"),
@@ -379,48 +282,30 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@command(node:first_foo,lane:first_bar){first_body}"
+        Message::text("@command(node:first_foo,lane:first_bar){first_body}")
     );
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@command(node:second_foo,lane:second_bar){second_body}"
+        Message::text("@command(node:second_foo,lane:second_bar){second_body}")
     );
     assert_eq!(
         get_message(&pool, &url).await.unwrap(),
-        "@command(node:third_foo,lane:third_bar){third_body}"
+        Message::text("@command(node:third_foo,lane:third_bar){third_body}")
     );
 }
 
 #[tokio::test]
 async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_hosts() {
     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "foo_node";
-    let first_lane = "foo_lane";
-
     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let second_node = "foo_node";
-    let second_lane = "foo_lane";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) = router
-        .connection_for(&AbsolutePath::new(
-            first_url.clone(),
-            first_node,
-            first_lane,
-        ))
-        .await
-        .unwrap();
-
-    let (mut second_sink, _) = router
-        .connection_for(&AbsolutePath::new(
-            second_url.clone(),
-            second_node,
-            second_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut first_sink, _) =
+        open_connection(&mut router, &first_url, "foo_node", "foo_lane").await;
+    let (mut second_sink, _) =
+        open_connection(&mut router, &second_url, "foo_node", "foo_lane").await;
 
     let first_env = Envelope::command(
         String::from("first_foo"),
@@ -458,38 +343,28 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_h
     assert_eq!(pool.connections.lock().unwrap().len(), 2);
     assert_eq!(
         get_message(&pool, &first_url).await.unwrap(),
-        "@command(node:first_foo,lane:first_bar){first_body}"
+        Message::text("@command(node:first_foo,lane:first_bar){first_body}")
     );
     assert_eq!(
         get_message(&pool, &first_url).await.unwrap(),
-        "@command(node:second_foo,lane:second_bar){second_body}"
+        Message::text("@command(node:second_foo,lane:second_bar){second_body}")
     );
     assert_eq!(
         get_message(&pool, &second_url).await.unwrap(),
-        "@command(node:third_foo,lane:third_bar){third_body}"
+        Message::text("@command(node:third_foo,lane:third_bar){third_body}")
     );
 }
 
 #[tokio::test]
 async fn test_route_single_incoming_message_to_single_downlink_before_outgoing() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (_, mut stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (_, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){Hello}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){Hello}").await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 0);
@@ -501,16 +376,11 @@ async fn test_route_single_incoming_message_to_single_downlink_before_outgoing()
 #[tokio::test]
 async fn test_route_single_incoming_message_to_single_downlink_after_outgoing() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
 
@@ -518,12 +388,7 @@ async fn test_route_single_incoming_message_to_single_downlink_after_outgoing() 
 
     wait_for_n_requests(&pool, 1).await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){Hello}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){Hello}").await;
 
     let expected_env = Envelope::command(
         String::from("foo"),
@@ -551,33 +416,19 @@ async fn test_route_single_incoming_message_to_single_downlink_after_outgoing() 
 #[tokio::test]
 async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same_path() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
-
-    let (_, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send_item(envelope).await.unwrap();
 
     wait_for_n_requests(&pool, 1).await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){Goodbye}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){Goodbye}").await;
 
     let expected_env = Envelope::command(
         String::from("foo"),
@@ -611,36 +462,19 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same
 #[tokio::test]
 async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_different_paths() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "oof";
-    let first_lane = "rab";
-
-    let second_node = "foo";
-    let second_lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), first_node, first_lane))
-        .await
-        .unwrap();
-
-    let (_, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), second_node, second_lane))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) = open_connection(&mut router, &url, "oof", "rab").await;
+    let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send_item(envelope.clone()).await.unwrap();
 
     wait_for_n_requests(&pool, 1).await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){tseT}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){tseT}").await;
 
     let expected_env = Envelope::command(
         String::from("foo"),
@@ -648,7 +482,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
         Some(Value::text("tseT")),
     );
 
-    assert!(timeout(Duration::from_millis(10), first_stream.recv())
+    assert!(timeout(Duration::from_secs(1), first_stream.recv())
         .await
         .is_err());
 
@@ -673,33 +507,15 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
 #[tokio::test]
 async fn test_route_single_incoming_message_to_multiple_downlinks_different_hosts_same_path() {
     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "foo";
-    let first_lane = "bar";
-
     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let second_node = "foo";
-    let second_lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(
-            first_url.clone(),
-            first_node,
-            first_lane,
-        ))
-        .await
-        .unwrap();
-
-    let (mut second_sink, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(
-            second_url.clone(),
-            second_node,
-            second_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) =
+        open_connection(&mut router, &first_url, "foo", "bar").await;
+    let (mut second_sink, mut second_stream) =
+        open_connection(&mut router, &second_url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send_item(envelope.clone()).await.unwrap();
@@ -710,14 +526,14 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     send_message(
         &pool,
         &first_url,
-        Message::Text("@command(node:foo,lane:bar){\"First Hello\"}".to_string()),
+        "@command(node:foo,lane:bar){\"First Hello\"}",
     )
     .await;
 
     send_message(
         &pool,
         &second_url,
-        Message::Text("@command(node:foo,lane:bar){\"Second Hello\"}".to_string()),
+        "@command(node:foo,lane:bar){\"Second Hello\"}",
     )
     .await;
 
@@ -761,46 +577,20 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
 async fn test_route_single_incoming_message_to_multiple_downlinks_different_hosts_different_paths()
 {
     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "foo";
-    let first_lane = "bar";
-
     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let second_node = "oof";
-    let second_lane = "rab";
-
     let third_url = url::Url::parse("ws://127.0.0.3/").unwrap();
-    let third_node = "ofo";
-    let third_lane = "abr";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(
-            first_url.clone(),
-            first_node,
-            first_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) =
+        open_connection(&mut router, &first_url, "foo", "bar").await;
 
-    let (mut second_sink, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(
-            second_url.clone(),
-            second_node,
-            second_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut second_sink, mut second_stream) =
+        open_connection(&mut router, &second_url, "oof", "rab").await;
 
-    let (mut third_sink, mut third_stream) = router
-        .connection_for(&AbsolutePath::new(
-            third_url.clone(),
-            third_node,
-            third_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut third_sink, mut third_stream) =
+        open_connection(&mut router, &third_url, "ofo", "abr").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send_item(envelope.clone()).await.unwrap();
@@ -812,21 +602,21 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     send_message(
         &pool,
         &first_url,
-        Message::Text("@command(node:foo,lane:bar){\"Hello First\"}".to_string()),
+        "@command(node:foo,lane:bar){\"Hello First\"}",
     )
     .await;
 
     send_message(
         &pool,
         &second_url,
-        Message::Text("@command(node:oof,lane:rab){\"Hello Second\"}".to_string()),
+        "@command(node:oof,lane:rab){\"Hello Second\"}",
     )
     .await;
 
     send_message(
         &pool,
         &third_url,
-        Message::Text("@command(node:ofo,lane:abr){\"Hello Third\"}".to_string()),
+        "@command(node:ofo,lane:abr){\"Hello Third\"}",
     )
     .await;
 
@@ -882,30 +672,14 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
 #[tokio::test]
 async fn test_route_multiple_incoming_messages_to_single_downlink_before_outgoing() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (_, mut stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (_, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){First}".to_string()),
-    )
-    .await;
-
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){Second}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){First}").await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){Second}").await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 0);
@@ -917,36 +691,19 @@ async fn test_route_multiple_incoming_messages_to_single_downlink_before_outgoin
 #[tokio::test]
 async fn test_route_multiple_incoming_messages_to_single_downlink_after_outgoing() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let node = "foo";
-    let lane = "bar";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
-
     let _ = sink.send_item(envelope.clone()).await.unwrap();
 
     wait_for_n_requests(&pool, 1).await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){\"First!\"}".to_string()),
-    )
-    .await;
-
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:foo,lane:bar){\"Second!\"}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){\"First!\"}").await;
+    send_message(&pool, &url, "@command(node:foo,lane:bar){\"Second!\"}").await;
 
     let first_env = Envelope::command(
         String::from("foo"),
@@ -985,40 +742,21 @@ async fn test_route_multiple_incoming_messages_to_single_downlink_after_outgoing
 #[tokio::test]
 async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_same_path() {
     let url = url::Url::parse("ws://192.168.0.1/").unwrap();
-    let node = "room";
-    let lane = "five";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
-
-    let (_, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), node, lane))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) =
+        open_connection(&mut router, &url, "room", "five").await;
+    let (_, mut second_stream) = open_connection(&mut router, &url, "room", "five").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send_item(envelope).await.unwrap();
 
     wait_for_n_requests(&pool, 1).await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:room,lane:five){\"John Doe\"}".to_string()),
-    )
-    .await;
-
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:room,lane:five){\"Jane Doe\"}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:room,lane:five){\"John Doe\"}").await;
+    send_message(&pool, &url, "@command(node:room,lane:five){\"Jane Doe\"}").await;
 
     let first_env = Envelope::command(
         String::from("room"),
@@ -1068,43 +806,21 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_s
 #[tokio::test]
 async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_different_paths() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "room";
-    let first_lane = "five";
-
-    let second_node = "room";
-    let second_lane = "six";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), first_node, first_lane))
-        .await
-        .unwrap();
-
-    let (_, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(url.clone(), second_node, second_lane))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) =
+        open_connection(&mut router, &url, "room", "five").await;
+    let (_, mut second_stream) = open_connection(&mut router, &url, "room", "six").await;
 
     let envelope = Envelope::sync(String::from("room"), String::from("seven"));
     let _ = first_sink.send_item(envelope.clone()).await.unwrap();
 
     wait_for_n_requests(&pool, 1).await;
 
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:room,lane:five){\"John Doe\"}".to_string()),
-    )
-    .await;
-
-    send_message(
-        &pool,
-        &url,
-        Message::Text("@command(node:room,lane:six){\"Jane Doe\"}".to_string()),
-    )
-    .await;
+    send_message(&pool, &url, "@command(node:room,lane:five){\"John Doe\"}").await;
+    send_message(&pool, &url, "@command(node:room,lane:six){\"Jane Doe\"}").await;
 
     let first_env = Envelope::command(
         String::from("room"),
@@ -1123,7 +839,7 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
         RouterEvent::Envelope(first_env)
     );
 
-    assert!(timeout(Duration::from_millis(10), first_stream.recv())
+    assert!(timeout(Duration::from_secs(1), first_stream.recv())
         .await
         .is_err());
 
@@ -1132,7 +848,7 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
         RouterEvent::Envelope(second_env)
     );
 
-    assert!(timeout(Duration::from_millis(10), second_stream.recv())
+    assert!(timeout(Duration::from_secs(1), second_stream.recv())
         .await
         .is_err());
 
@@ -1152,33 +868,16 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
 #[tokio::test]
 async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_hosts_same_path() {
     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "building";
-    let first_lane = "1";
-
     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let second_node = "building";
-    let second_lane = "1";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(
-            first_url.clone(),
-            first_node,
-            first_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) =
+        open_connection(&mut router, &first_url, "building", "1").await;
 
-    let (mut second_sink, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(
-            second_url.clone(),
-            second_node,
-            second_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut second_sink, mut second_stream) =
+        open_connection(&mut router, &second_url, "building", "1").await;
 
     let envelope = Envelope::sync(String::from("building"), String::from("1"));
     let _ = first_sink.send_item(envelope.clone()).await.unwrap();
@@ -1189,28 +888,28 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     send_message(
         &pool,
         &first_url,
-        Message::Text("@command(node:building,lane:\"1\"){\"Room 101\"}".to_string()),
+        "@command(node:building,lane:\"1\"){\"Room 101\"}",
     )
     .await;
 
     send_message(
         &pool,
         &first_url,
-        Message::Text("@command(node:building,lane:\"1\"){\"Room 102\"}".to_string()),
+        "@command(node:building,lane:\"1\"){\"Room 102\"}",
     )
     .await;
 
     send_message(
         &pool,
         &second_url,
-        Message::Text("@command(node:building,lane:\"1\"){\"Room 201\"}".to_string()),
+        "@command(node:building,lane:\"1\"){\"Room 201\"}",
     )
     .await;
 
     send_message(
         &pool,
         &second_url,
-        Message::Text("@command(node:building,lane:\"1\"){\"Room 202\"}".to_string()),
+        "@command(node:building,lane:\"1\"){\"Room 202\"}",
     )
     .await;
 
@@ -1276,46 +975,20 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
 async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_hosts_different_paths(
 ) {
     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_node = "building";
-    let first_lane = "1";
-
     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let second_node = "room";
-    let second_lane = "2";
-
     let third_url = url::Url::parse("ws://127.0.0.3/").unwrap();
-    let third_node = "building";
-    let third_lane = "3";
 
     let pool = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = router
-        .connection_for(&AbsolutePath::new(
-            first_url.clone(),
-            first_node,
-            first_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut first_sink, mut first_stream) =
+        open_connection(&mut router, &first_url, "building", "1").await;
 
-    let (mut second_sink, mut second_stream) = router
-        .connection_for(&AbsolutePath::new(
-            second_url.clone(),
-            second_node,
-            second_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut second_sink, mut second_stream) =
+        open_connection(&mut router, &second_url, "room", "2").await;
 
-    let (mut third_sink, mut third_stream) = router
-        .connection_for(&AbsolutePath::new(
-            third_url.clone(),
-            third_node,
-            third_lane,
-        ))
-        .await
-        .unwrap();
+    let (mut third_sink, mut third_stream) =
+        open_connection(&mut router, &third_url, "building", "3").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send_item(envelope.clone()).await.unwrap();
@@ -1327,49 +1000,49 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     send_message(
         &pool,
         &first_url,
-        Message::Text("@command(node:building,lane:\"1\"){\"Building 101\"}".to_string()),
+        "@command(node:building,lane:\"1\"){\"Building 101\"}",
     )
     .await;
 
     send_message(
         &pool,
         &first_url,
-        Message::Text("@command(node:building,lane:\"1\"){\"Building 102\"}".to_string()),
+        "@command(node:building,lane:\"1\"){\"Building 102\"}",
     )
     .await;
 
     send_message(
         &pool,
         &second_url,
-        Message::Text("@command(node:room,lane:\"2\"){\"Room 201\"}".to_string()),
+        "@command(node:room,lane:\"2\"){\"Room 201\"}",
     )
     .await;
 
     send_message(
         &pool,
         &second_url,
-        Message::Text("@command(node:room,lane:\"2\"){\"Room 202\"}".to_string()),
+        "@command(node:room,lane:\"2\"){\"Room 202\"}",
     )
     .await;
 
     send_message(
         &pool,
         &second_url,
-        Message::Text("@command(node:room,lane:\"2\"){\"Room 203\"}".to_string()),
+        "@command(node:room,lane:\"2\"){\"Room 203\"}",
     )
     .await;
 
     send_message(
         &pool,
         &third_url,
-        Message::Text("@command(node:building,lane:\"3\"){\"Building 301\"}".to_string()),
+        "@command(node:building,lane:\"3\"){\"Building 301\"}",
     )
     .await;
 
     send_message(
         &pool,
         &third_url,
-        Message::Text("@command(node:building,lane:\"3\"){\"Building 302\"}".to_string()),
+        "@command(node:building,lane:\"3\"){\"Building 302\"}",
     )
     .await;
 
@@ -1539,12 +1212,12 @@ impl ConnectionPool for TestPool {
 
             self.log_request(host_url, recreate);
 
-            ready(Ok(Ok((ConnectionSender { tx: sender_tx }, None))))
+            ready(Ok(Ok((ConnectionSender::new(sender_tx), None))))
         } else {
             let (sender_tx, receiver_rx) = self.create_connection(host_url, recreate);
 
             ready(Ok(Ok((
-                ConnectionSender { tx: sender_tx },
+                ConnectionSender::new(sender_tx),
                 Some(receiver_rx),
             ))))
         }

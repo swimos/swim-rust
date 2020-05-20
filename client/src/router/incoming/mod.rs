@@ -88,7 +88,10 @@ impl IncomingHostTask {
                     connection = Some(message_rx);
                 }
 
-                IncomingRequest::Subscribe((relative_path, event_tx)) => {
+                IncomingRequest::Subscribe(SubscriberRequest {
+                    path: relative_path,
+                    subscriber_tx: event_tx,
+                }) => {
                     subscribers
                         .entry(relative_path)
                         .or_insert_with(Vec::new)

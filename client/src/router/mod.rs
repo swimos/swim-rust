@@ -193,7 +193,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                 RouterTask::Connect((target, response_tx)) => {
                     let (sink, stream_registrator, _) = get_host_manager(
                         &mut host_managers,
-                        target.clone(),
+                        target.host.clone(),
                         connection_pool.clone(),
                         close_rx.clone(),
                         config,
@@ -204,7 +204,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                     let (_, relative_path) = target.split();
 
                     stream_registrator
-                        .send((relative_path, subscriber_tx))
+                        .send(SubscriberRequest::new(relative_path, subscriber_tx))
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
 
@@ -223,7 +223,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
 
                     let (sink, _, _) = get_host_manager(
                         &mut host_managers,
-                        target,
+                        target.host.clone(),
                         connection_pool.clone(),
                         close_rx.clone(),
                         config,
@@ -266,7 +266,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
 
 fn get_host_manager<Pool>(
     host_managers: &mut HashMap<url::Url, HostManagerHandle>,
-    target: AbsolutePath,
+    host: url::Url,
     connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
@@ -274,7 +274,6 @@ fn get_host_manager<Pool>(
 where
     Pool: ConnectionPool,
 {
-    let (host, _) = target.split();
     host_managers.entry(host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
             HostManager::new(host, connection_pool, close_rx, config);
@@ -297,12 +296,38 @@ fn combine_router_task(
     )
 }
 
-pub type ConnectionRequest = (
-    oneshot::Sender<Result<ConnectionSender, RoutingError>>,
-    bool, // Whether or not to recreate the connection
-);
+pub struct ConnectionRequest {
+    request_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+    recreate: bool,
+}
 
-type SubscriberRequest = (RelativePath, mpsc::Sender<RouterEvent>);
+impl ConnectionRequest {
+    fn new(
+        request_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+        recreate: bool,
+    ) -> Self {
+        ConnectionRequest {
+            request_tx,
+            recreate,
+        }
+    }
+}
+
+pub struct SubscriberRequest {
+    path: RelativePath,
+    subscriber_tx: mpsc::Sender<RouterEvent>,
+}
+
+impl SubscriberRequest {
+    fn new(path: RelativePath, subscriber_tx: mpsc::Sender<RouterEvent>) -> Self {
+        SubscriberRequest {
+            path,
+            subscriber_tx,
+        }
+    }
+}
+
+// type SubscriberRequest = (RelativePath, mpsc::Sender<RouterEvent>);
 
 enum HostTask {
     Connect(ConnectionRequest),
@@ -375,7 +400,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
             match task {
-                HostTask::Connect((connection_response_tx, recreate)) => {
+                HostTask::Connect(ConnectionRequest{request_tx: connection_response_tx, recreate}) => {
                     let maybe_connection_channel = connection_pool
                         .request_connection(host.clone(), recreate)
                         .await
@@ -410,9 +435,15 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                         },
                     }
                 }
-                HostTask::Subscribe((relative_path, event_tx)) => {
+                HostTask::Subscribe(SubscriberRequest {
+                    path: relative_path,
+                    subscriber_tx: event_tx,
+                }) => {
                     incoming_task_tx
-                        .send(IncomingRequest::Subscribe((relative_path, event_tx)))
+                        .send(IncomingRequest::Subscribe(SubscriberRequest::new(
+                            relative_path,
+                            event_tx,
+                        )))
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }

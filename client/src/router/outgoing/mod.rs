@@ -128,8 +128,10 @@ mod route_tests {
             .send(Envelope::sync("node".into(), "lane".into()))
             .await;
 
-        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
-        let _ = tx.send(Err(RoutingError::ConnectionError));
+        let connection_request = task_request_rx.recv().await.unwrap();
+        let _ = connection_request
+            .request_tx
+            .send(Err(RoutingError::ConnectionError));
 
         let task_result = handle.await.unwrap();
         assert_eq!(task_result, Err(RoutingError::ConnectionError))
@@ -151,13 +153,17 @@ mod route_tests {
             .send(Envelope::sync("node".into(), "lane".into()))
             .await;
 
-        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
-        let _ = tx.send(Err(RoutingError::ConnectionError));
+        let connection_request = task_request_rx.recv().await.unwrap();
+        let _ = connection_request
+            .request_tx
+            .send(Err(RoutingError::ConnectionError));
 
-        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
+        let connection_request = task_request_rx.recv().await.unwrap();
         let (dummy_tx, _dummy_rx) = mpsc::channel(config.buffer_size().get());
 
-        let _ = tx.send(Ok(ConnectionSender::new(dummy_tx)));
+        let _ = connection_request
+            .request_tx
+            .send(Ok(ConnectionSender::new(dummy_tx)));
 
         let (response_tx, mut _response_rx) = mpsc::channel(config.buffer_size().get());
         close_tx.broadcast(Some(response_tx)).unwrap();
