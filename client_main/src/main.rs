@@ -37,6 +37,14 @@ async fn main() {
             let (mut dl, _receiver) = ctx.value_downlink::<i32>(0, val_path).await.unwrap();
             let r = dl.send_item(Action::set(1.into())).await;
             info!("{:?}", r);
+
+            ctx.clone().spawn(async move {
+                info!("First inner future");
+
+                ctx.clone().spawn(async {
+                    info!("Second inner future");
+                });
+            });
         })
         .await;
 
