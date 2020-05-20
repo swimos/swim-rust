@@ -21,24 +21,23 @@ use form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::Config;
 use crate::downlink::subscription::{
-    AnyMapDownlink, AnyValueDownlink, MapReceiver, SubscriptionError, TypedMapDownlink,
+    AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedMapDownlink,
     TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
 use crate::downlink::Operation::Error;
-use crate::interface::context::{swim_context, SwimContext};
 use crate::interface::error::ClientError;
 use crate::interface::error::ErrorKind;
 use crate::interface::stub::StubRouter;
 use crate::router::Router;
 use common::model::Value;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub mod context;
 pub mod error;
 mod stub;
 
 pub struct SwimClient {
-    // router: Router,
-// configuration: Box<dyn Config>,
+    downlinks: Arc<Mutex<Downlinks>>,
 }
 
 impl SwimClient {
@@ -49,10 +48,11 @@ impl SwimClient {
     {
         info!("Initialising Swim Client");
 
-        let ctx = SwimContext::build(configuration, StubRouter::new()).await;
-        SwimContext::enter(ctx);
-
-        SwimClient {}
+        SwimClient {
+            downlinks: Arc::new(Mutex::new(
+                Downlinks::new(Arc::new(configuration), stub::StubRouter::new()).await,
+            )),
+        }
     }
 
     pub async fn send_command<T: Form>(
@@ -63,61 +63,62 @@ impl SwimClient {
     }
 
     pub async fn value_downlink<T>(
+        &self,
         path: AbsolutePath,
         default: T,
     ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>), ClientError>
     where
         T: ValidatedForm + Send + 'static,
     {
-        let mut ctx = Self::swim_context()?;
-        ctx.value_downlink(default, path).await
+        self.downlinks
+            .lock()
+            .await
+            .subscribe_value(default, path)
+            .await
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 
     pub async fn map_downlink<K, V>(
+        &self,
+
         path: AbsolutePath,
     ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>), ClientError>
     where
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
     {
-        let ctx = Self::swim_context()?;
-        ctx.map_downlink(path).await
+        self.downlinks
+            .lock()
+            .await
+            .subscribe_map(path)
+            .await
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 
     pub async fn untyped_value_downlink(
+        &self,
+
         path: AbsolutePath,
         default: Value,
     ) -> Result<(AnyValueDownlink, ValueReceiver), ClientError> {
-        let ctx = Self::swim_context()?;
-        ctx.untyped_value_downlink(path, default).await
+        self.downlinks
+            .lock()
+            .await
+            .subscribe_value_untyped(default, path)
+            .await
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 
     pub async fn untyped_map_downlink(
+        &self,
+
         path: AbsolutePath,
     ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
-        let ctx = Self::swim_context()?;
-        ctx.untyped_map_downlink(path).await
-    }
-
-    pub fn swim_context() -> Result<SwimContext, ClientError> {
-        match swim_context() {
-            Some(ctx) => Ok(ctx),
-            None => Err(ClientError::from(ErrorKind::RuntimeError, None)),
-        }
-    }
-
-    pub async fn run_session<S, F>(&mut self, session: S) -> Result<F::Output, ClientError>
-    where
-        S: FnOnce(SwimContext) -> F,
-        F: Future + Send + 'static,
-        F::Output: Send,
-    {
-        let mut ctx = Self::swim_context()?;
-
-        trace!("Running new session");
-
-        ctx.spawn(session(ctx.clone()))
+        self.downlinks
+            .lock()
             .await
-            .map_err(|_| ClientError::from(ErrorKind::RuntimeError, None))
+            .subscribe_map_untyped(path)
+            .await
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 }

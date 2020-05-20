@@ -21,32 +21,16 @@ fn config() -> ConfigHierarchy {
     ConfigHierarchy::new(client_params, default_params)
 }
 
-#[swim::client]
+#[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::TRACE)
         .init();
 
-    let mut client = SwimClient::new(config()).await;
+    let client = SwimClient::new(config()).await;
 
-    let r = client
-        .run_session(|mut ctx| async move {
-            info!("Running session");
-
-            let val_path = AbsolutePath::new("my_host", "my_agent", "value_lane");
-            let (mut dl, _receiver) = ctx.value_downlink::<i32>(0, val_path).await.unwrap();
-            let r = dl.send_item(Action::set(1.into())).await;
-            info!("{:?}", r);
-
-            ctx.clone().spawn(async move {
-                info!("First inner future");
-
-                ctx.clone().spawn(async {
-                    info!("Second inner future");
-                });
-            });
-        })
-        .await;
-
-    info!("Session result: {:?}", r);
+    let val_path = AbsolutePath::new("my_host", "my_agent", "value_lane");
+    let (mut dl, _receiver) = client.value_downlink::<i32>(val_path, 0).await.unwrap();
+    let r = dl.send_item(Action::set(1.into())).await;
+    info!("{:?}", r);
 }

@@ -19,6 +19,3 @@ pub mod downlink;
 #[allow(dead_code, unused_imports)]
 pub mod interface;
 pub mod router;
-
-#[cfg(not(test))]
-pub use macros::client;
