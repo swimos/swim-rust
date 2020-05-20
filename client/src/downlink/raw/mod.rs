@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::OnInvalidMessage;
-use crate::downlink::{
-    Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
-    Operation, Response, StateMachine, StoppedFuture,
-};
-use crate::router::RoutingError;
-use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
 use futures::{Stream, StreamExt};
@@ -26,11 +23,17 @@ use futures_util::future::ready;
 use futures_util::select_biased;
 use futures_util::stream::once;
 use pin_utils::pin_mut;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+
+use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+
+use crate::configuration::downlink::OnInvalidMessage;
+use crate::downlink::{
+    Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
+    Operation, Response, StateMachine, StoppedFuture,
+};
+use crate::router::RoutingError;
 
 #[cfg(test)]
 pub mod tests;
@@ -326,13 +329,18 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                         terminate,
                     } = match state_machine.handle_operation(&mut dl_state, &mut model, op) {
                         Ok(r) => r,
-                        Err(e) => match on_invalid {
-                            OnInvalidMessage::Ignore => {
-                                continue;
-                            }
-                            OnInvalidMessage::Terminate => {
+                        Err(e) => match e {
+                            e @ DownlinkError::TaskPanic(_) => {
                                 break Err(e);
                             }
+                            _ => match on_invalid {
+                                OnInvalidMessage::Ignore => {
+                                    continue;
+                                }
+                                OnInvalidMessage::Terminate => {
+                                    break Err(e);
+                                }
+                            },
                         },
                     };
                     let result = match (event, command) {

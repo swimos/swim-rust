@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::ZeroUsize;
 use std::borrow::Borrow;
 use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasher, Hash, Hasher};
+use std::num::NonZeroUsize;
 use std::ptr::NonNull;
 
 #[cfg(test)]
@@ -137,7 +139,7 @@ impl<K, V> Node<K, V> {
 /// ```
 /// use utilities::lru_cache::LruCache;
 ///
-/// let mut cache: LruCache<i32, String> = LruCache::new(3);
+/// let mut cache: LruCache<i32, String> = LruCache::with_capacity(3).unwrap();
 ///
 /// assert!(cache.insert(1, String::from("first")).is_none());
 /// assert!(cache.insert(2, String::from("second")).is_none());
@@ -172,9 +174,16 @@ impl<K: Unpin, V: Unpin, S: Unpin> Unpin for LruCache<K, V, S> {}
 
 impl<K: Hash + Eq, V> LruCache<K, V, RandomState> {
     /// Create a new cache with the specified capacity and the default hasher.
-    pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "LRU cache size must be non-zero.");
+    pub fn new(capacity: NonZeroUsize) -> Self {
         LruCache::with_hasher(capacity, Default::default())
+    }
+
+    /// Create a new cache with the specified capacity and the default hasher.
+    pub fn with_capacity(capacity: usize) -> Result<Self, ZeroUsize> {
+        match NonZeroUsize::new(capacity) {
+            Some(n) => Ok(Self::new(n)),
+            _ => Err(ZeroUsize),
+        }
     }
 }
 
@@ -274,9 +283,9 @@ impl<K, V, S> LruCache<K, V, S> {
 
 impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// Creates a new cache with a custom hasher.
-    pub fn with_hasher(capacity: usize, hasher: S) -> Self {
+    pub fn with_hasher(capacity: NonZeroUsize, hasher: S) -> Self {
         LruCache {
-            capacity,
+            capacity: capacity.into(),
             map: HashMap::with_hasher(hasher),
             nodes: None,
         }
