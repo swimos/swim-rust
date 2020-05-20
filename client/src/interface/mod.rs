@@ -12,36 +12,47 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
+
 use futures::Future;
+use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tracing::{info, trace};
 
+use common::model::Value;
 use common::warp::path::AbsolutePath;
 use form::{Form, ValidatedForm};
 
-use crate::configuration::downlink::Config;
+use crate::configuration::downlink::{
+    BackpressureMode, ClientParams, Config, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+};
+use crate::downlink::model::value::Action;
 use crate::downlink::subscription::{
     AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedMapDownlink,
     TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
+use crate::downlink::DownlinkError;
 use crate::downlink::Operation::Error;
-use crate::interface::error::ClientError;
-use crate::interface::error::ErrorKind;
 use crate::interface::stub::StubRouter;
 use crate::router::Router;
-use common::model::Value;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::router::RoutingError;
+use common::sink::item::ItemSink;
+use tokio::time::Duration;
 
-pub mod error;
 mod stub;
 
+#[derive(Debug, PartialEq)]
+pub enum ClientError {
+    SubscriptionError(SubscriptionError),
+    RoutingError(RoutingError),
+    DownlinkError(DownlinkError),
+}
+
 pub struct SwimClient {
-    downlinks: Arc<Mutex<Downlinks>>,
+    downlinks: Downlinks,
 }
 
 impl SwimClient {
-    #[allow(clippy::new_without_default)]
     pub async fn new<C>(configuration: C) -> Self
     where
         C: Config + 'static,
@@ -49,9 +60,7 @@ impl SwimClient {
         info!("Initialising Swim Client");
 
         SwimClient {
-            downlinks: Arc::new(Mutex::new(
-                Downlinks::new(Arc::new(configuration), stub::StubRouter::new()).await,
-            )),
+            downlinks: Downlinks::new(Arc::new(configuration), stub::StubRouter::new()).await,
         }
     }
 
@@ -63,7 +72,7 @@ impl SwimClient {
     }
 
     pub async fn value_downlink<T>(
-        &self,
+        &mut self,
         path: AbsolutePath,
         default: T,
     ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>), ClientError>
@@ -71,16 +80,13 @@ impl SwimClient {
         T: ValidatedForm + Send + 'static,
     {
         self.downlinks
-            .lock()
-            .await
             .subscribe_value(default, path)
             .await
-            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
+            .map_err(ClientError::SubscriptionError)
     }
 
     pub async fn map_downlink<K, V>(
-        &self,
-
+        &mut self,
         path: AbsolutePath,
     ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>), ClientError>
     where
@@ -88,37 +94,57 @@ impl SwimClient {
         V: ValidatedForm + Send + 'static,
     {
         self.downlinks
-            .lock()
-            .await
             .subscribe_map(path)
             .await
-            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
+            .map_err(ClientError::SubscriptionError)
     }
 
     pub async fn untyped_value_downlink(
-        &self,
-
+        &mut self,
         path: AbsolutePath,
         default: Value,
     ) -> Result<(AnyValueDownlink, ValueReceiver), ClientError> {
         self.downlinks
-            .lock()
-            .await
             .subscribe_value_untyped(default, path)
             .await
-            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
+            .map_err(ClientError::SubscriptionError)
     }
 
     pub async fn untyped_map_downlink(
-        &self,
-
+        &mut self,
         path: AbsolutePath,
     ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
         self.downlinks
-            .lock()
-            .await
             .subscribe_map_untyped(path)
             .await
-            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
+            .map_err(ClientError::SubscriptionError)
     }
+}
+
+fn config() -> ConfigHierarchy {
+    let client_params = ClientParams::new(2).unwrap();
+    let default_params = DownlinkParams::new_queue(
+        BackpressureMode::Propagate,
+        5,
+        Duration::from_secs(60000),
+        5,
+        OnInvalidMessage::Terminate,
+    )
+    .unwrap();
+
+    ConfigHierarchy::new(client_params, default_params)
+}
+
+#[tokio::test]
+async fn test() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .init();
+
+    let mut client = SwimClient::new(config()).await;
+    let val_path = AbsolutePath::new("my_host", "my_agent", "value_lane");
+    let (mut dl, _receiver) = client.value_downlink::<i32>(val_path, 0).await.unwrap();
+    let r = dl.send_item(Action::set(1.into())).await;
+
+    info!("{:?}", r);
 }

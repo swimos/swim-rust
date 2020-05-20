@@ -71,9 +71,10 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
+#[derive(Clone)]
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkSpecifier>,
-    _task: JoinHandle<()>,
+    _task: Arc<JoinHandle<()>>,
 }
 
 /// Contains all running Warp downlinks and allows requests for downlink subscriptions.
@@ -95,7 +96,7 @@ impl Downlinks {
 
         Downlinks {
             sender: tx,
-            _task: task_handle,
+            _task: Arc::new(task_handle),
         }
     }
 
