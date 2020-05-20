@@ -23,11 +23,15 @@ use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
+fn yield_after() -> NonZeroUsize {
+    NonZeroUsize::new(256).unwrap()
+}
+
 #[tokio::test(threaded_scheduler)]
 async fn single_pass_through() {
     let (tx, mut rx) = mpsc::channel::<i32>(5);
 
-    let mut pump = ValuePump::new(tx.map_err_into()).await;
+    let mut pump = ValuePump::new(tx.map_err_into(), yield_after()).await;
 
     let receiver = tokio::task::spawn(async move { rx.recv().await.unwrap() });
 
@@ -43,7 +47,7 @@ async fn single_pass_through() {
 async fn send_multiple() {
     let (tx, mut rx) = mpsc::channel::<i32>(5);
 
-    let mut pump = ValuePump::new(tx.map_err_into()).await;
+    let mut pump = ValuePump::new(tx.map_err_into(), yield_after()).await;
 
     let receiver = tokio::task::spawn(async move {
         let mut observed: i32 = 0;
@@ -83,7 +87,7 @@ async fn send_multiple() {
 async fn send_multiple_chunks() {
     let (tx, mut rx) = mpsc::channel::<i32>(5);
 
-    let mut pump = ValuePump::new(tx.map_err_into()).await;
+    let mut pump = ValuePump::new(tx.map_err_into(), yield_after()).await;
 
     let receiver1 = tokio::task::spawn(async move {
         let mut observed: i32 = 0;

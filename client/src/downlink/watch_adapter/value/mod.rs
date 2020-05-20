@@ -15,6 +15,7 @@
 use crate::router::RoutingError;
 use common::sink::item::{ItemSender, ItemSink};
 use futures::future::{ready, Ready};
+use std::num::NonZeroUsize;
 use tokio::task::JoinHandle;
 
 #[cfg(test)]
@@ -44,12 +45,12 @@ impl<T> ValuePump<T>
 where
     T: Clone + Send + Sync + 'static,
 {
-    pub async fn new<Snk>(sink: Snk) -> Self
+    pub async fn new<Snk>(sink: Snk, yield_after: NonZeroUsize) -> Self
     where
         Snk: ItemSender<T, RoutingError> + Send + 'static,
     {
         let (tx, rx) = super::channel(None);
-        let task = ValuePumpTask::new(rx, sink);
+        let task = ValuePumpTask::new(rx, sink, yield_after);
         ValuePump {
             sender: tx,
             _task: tokio::task::spawn(task.run()),
@@ -60,6 +61,7 @@ where
 struct ValuePumpTask<T, Snk> {
     receiver: super::EpochReceiver<Option<T>>,
     sender: Snk,
+    yield_after: NonZeroUsize,
 }
 
 impl<T, Snk> ValuePumpTask<T, Snk>
@@ -67,10 +69,11 @@ where
     T: Clone,
     Snk: ItemSender<T, RoutingError>,
 {
-    fn new(rx: super::EpochReceiver<Option<T>>, sink: Snk) -> Self {
+    fn new(rx: super::EpochReceiver<Option<T>>, sink: Snk, yield_after: NonZeroUsize) -> Self {
         ValuePumpTask {
             receiver: rx,
             sender: sink,
+            yield_after,
         }
     }
 
@@ -78,10 +81,17 @@ where
         let ValuePumpTask {
             mut receiver,
             mut sender,
+            yield_after,
         } = self;
+        let yield_mod = yield_after.get();
+        let mut iteration_count: usize = 0;
         while let Some(value) = receiver.recv_defined().await {
             if sender.send_item(value).await.is_err() {
                 break;
+            }
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
         }
     }

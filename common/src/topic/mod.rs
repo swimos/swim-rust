@@ -28,6 +28,7 @@ use futures::task::{Context, Poll};
 use futures::{future, ready, Future, FutureExt, Stream, StreamExt, TryFutureExt};
 use futures_util::select_biased;
 use pin_project::pin_project;
+use std::num::NonZeroUsize;
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
@@ -245,13 +246,13 @@ impl<T> Clone for MpscTopic<T> {
 impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
     pub fn new(
         input: mpsc::Receiver<T>,
-        buffer_size: usize,
+        buffer_size: NonZeroUsize,
+        yield_after: NonZeroUsize,
     ) -> (MpscTopic<T>, MpscTopicReceiver<T>) {
-        assert!(buffer_size > 0, "MPSC buffer size must be positive.");
         let (sub_tx, sub_rx) = mpsc::channel(1);
-        let (tx, rx) = mpsc::channel(buffer_size);
+        let (tx, rx) = mpsc::channel(buffer_size.get());
 
-        let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size);
+        let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size, yield_after);
         let task = tokio::task::spawn(task_fut);
         (
             MpscTopic {
@@ -353,12 +354,16 @@ async fn mpsc_topic_task<T: Clone>(
     input: mpsc::Receiver<T>,
     init_sender: mpsc::Sender<T>,
     subscriptions: mpsc::Receiver<SubRequest<T>>,
-    buffer_size: usize,
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
 ) {
     let mut subs_fused = subscriptions.fuse();
     let mut in_fused = input.fuse();
 
     let mut outputs: Vec<mpsc::Sender<T>> = vec![init_sender];
+
+    let yield_mod = yield_after.get();
+    let mut iteration_count: usize = 0;
 
     loop {
         let item = select_biased! {
@@ -367,7 +372,7 @@ async fn mpsc_topic_task<T: Clone>(
         };
         match item {
             Some(Either::Left(req)) => {
-                let (tx, rx) = mpsc::channel(buffer_size);
+                let (tx, rx) = mpsc::channel(buffer_size.get());
                 if req.send(MpscTopicReceiver::new(rx)).is_ok() {
                     outputs.push(tx);
                 }
@@ -397,6 +402,10 @@ async fn mpsc_topic_task<T: Clone>(
             _ => {
                 break;
             }
+        }
+        iteration_count += 1;
+        if iteration_count % yield_mod == 0 {
+            tokio::task::yield_now().await;
         }
     }
 }
