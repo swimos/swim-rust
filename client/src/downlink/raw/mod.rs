@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
+use crate::configuration::downlink::OnInvalidMessage;
+use crate::downlink::{
+    Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
+    Operation, Response, StateMachine, StoppedFuture,
+};
+use crate::router::RoutingError;
+use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
 use futures::{Stream, StreamExt};
@@ -23,17 +26,12 @@ use futures_util::future::ready;
 use futures_util::select_biased;
 use futures_util::stream::once;
 use pin_utils::pin_mut;
+use std::num::NonZeroUsize;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
-
-use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
-
-use crate::configuration::downlink::OnInvalidMessage;
-use crate::downlink::{
-    Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
-    Operation, Response, StateMachine, StoppedFuture,
-};
-use crate::router::RoutingError;
 
 #[cfg(test)]
 pub mod tests;
@@ -142,7 +140,8 @@ pub(in crate::downlink) fn create_downlink<M, A, State, Machine, Updates, Comman
     machine: Machine,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
     on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<A>, mpsc::Receiver<Event<Machine::Ev>>>
 where
@@ -155,8 +154,8 @@ where
     Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
-    let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
-    let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(buffer_size);
+    let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size.get());
+    let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(buffer_size.get());
 
     let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
 
@@ -173,7 +172,12 @@ where
         on_invalid,
     );
 
-    let lane_task = task.run(make_operation_stream(update_stream), act_rx.fuse(), machine);
+    let lane_task = task.run(
+        make_operation_stream(update_stream),
+        act_rx.fuse(),
+        machine,
+        yield_after,
+    );
 
     let join_handle = tokio::task::spawn(lane_task);
 
@@ -271,6 +275,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         ops: Ops,
         acts: Acts,
         state_machine: Machine,
+        yield_after: NonZeroUsize,
     ) -> Result<(), DownlinkError>
     where
         Machine: StateMachine<State, M, A>,
@@ -289,6 +294,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
 
         let mut dl_state = DownlinkState::Unlinked;
         let mut model = state_machine.init_state();
+        let yield_mod = yield_after.get();
 
         pin_mut!(ops);
         pin_mut!(acts);
@@ -298,6 +304,8 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         let mut act_terminated = false;
         let mut events_terminated = false;
         let mut read_act = false;
+
+        let mut iteration_count: usize = 0;
 
         let result: Result<(), DownlinkError> = loop {
             let next_op: TaskInput<M, A> = if dl_state == DownlinkState::Synced && !act_terminated {
@@ -377,6 +385,10 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                 TaskInput::Terminated => {
                     break Ok(());
                 }
+            }
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
         };
         completed.store(true, Ordering::Release);
