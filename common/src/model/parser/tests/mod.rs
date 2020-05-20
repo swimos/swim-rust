@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod documents;
+
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
