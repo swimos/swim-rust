@@ -12,9 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod model;
-pub mod request;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+use common::model::{Attr, Item, Value};
+use form::Form;
+use form_derive::*;
+
+fn main() {
+    #[form]
+    #[derive(PartialEq)]
+    struct Parent(i32);
+
+    let record = Value::Record(
+        vec![Attr::from("Parent")],
+        vec![
+            Item::from(1),
+        ],
+    );
+
+    let parent = Parent(1);
+    let result = parent.as_value();
+
+    assert_eq!(result, record)
+}

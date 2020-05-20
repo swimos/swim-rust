@@ -12,9 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod model;
-pub mod request;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+use form::Form;
+use form_derive::*;
+use common::model::{Value, Attr};
+
+fn main() {
+    #[form]
+    #[derive(PartialEq)]
+    enum Parent {
+        A
+    }
+
+    let record = Value::of_attr(Attr::of(("A", Value::Extant)));
+    let parent = Parent::A;
+    let result = parent.as_value();
+
+    assert_eq!(result, record)
+}

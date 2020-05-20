@@ -12,9 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod model;
-pub mod request;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+use form_derive::*;
+
+#[form]
+enum Parent {
+    A,
+    B(i32),
+    C { c: Child },
+}
+
+#[form]
+enum Child {
+    A,
+    B(i32),
+    C { a: String },
+}
+
+
+fn main() {
+    let _ = Parent::C { c: Child::C { a: String::from("A String") } };
+}

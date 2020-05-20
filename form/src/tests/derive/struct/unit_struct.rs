@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod model;
-pub mod request;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+
+use form_derive::*;
+
+#[form]
+struct FormStruct;
+
+fn main() {
+    let _ = FormStruct;
+}

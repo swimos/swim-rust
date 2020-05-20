@@ -12,9 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod model;
-pub mod request;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+use form_derive::*;
+
+#[form]
+enum SomeEnum {
+    A,
+    B(i32),
+    C { a: String },
+}
+
+fn main() {
+    let _ = SomeEnum::C { a: String::from("A String") };
+}

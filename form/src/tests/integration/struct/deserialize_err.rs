@@ -12,9 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod model;
-pub mod request;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+use form::Form;
+use form_derive::*;
+use common::model::{Value, Attr, Item};
+use deserialize::FormDeserializeErr;
+
+fn main() {
+    #[form]
+    #[derive(PartialEq)]
+    struct Parent {
+        a:i32
+    }
+
+    let record = Value::Record(
+        vec![Attr::from("Parent")],
+        vec![
+            Item::from(("a", 1.0)),
+        ],
+    );
+
+    let result = Parent::try_from_value(&record);
+
+    match result {
+        Ok(_) => panic!(),
+        Err(e) => assert_eq!(e, FormDeserializeErr::IncorrectType(String::from("Expected: Value::Int32Value, found: Float64")))
+    }
+}
