@@ -605,3 +605,19 @@ fn fallible_composition() {
 
     assert_that!(iteratee.flush(), eq(Some(Ok(vec![4]))));
 }
+
+#[test]
+fn enumerate_input() {
+    let inner = identity::<(usize, i32)>()
+        .with_flush((0, 0))
+        .filter(|(_, n)| *n % 2 == 0);
+
+    let mut iteratee = coenumerate(inner);
+
+    assert_that!(iteratee.feed(10), eq(Some((0, 10))));
+    assert_that!(iteratee.feed(11), none());
+    assert_that!(iteratee.feed(12), eq(Some((2, 12))));
+    assert_that!(iteratee.feed(13), none());
+    assert_that!(iteratee.feed(14), eq(Some((4, 14))));
+    assert_that!(iteratee.flush(), eq(Some((0, 0))));
+}
