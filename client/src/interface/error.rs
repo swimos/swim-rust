@@ -37,6 +37,7 @@ impl Display for ClientError {
             // todo: Add sensible messages
             ErrorKind::Shutdown => "A shutdown error occurred.",
             ErrorKind::RuntimeError => "A runtime error occurred.",
+            ErrorKind::SubscriptionError => "Failed to subscribe to downlink",
         };
 
         match &self.cause {
@@ -50,12 +51,24 @@ impl Display for ClientError {
 #[derive(Debug, PartialOrd, PartialEq, Eq, Ord)]
 pub enum ErrorKind {
     Shutdown,
+    // todo: remove
     RuntimeError,
+    SubscriptionError,
 }
 
 impl ClientError {
-    pub(crate) fn from(inner: ErrorKind, cause: Option<Cause>) -> ClientError {
-        ClientError { kind: inner, cause }
+    pub(in crate::interface) fn with_cause<C>(kind: ErrorKind, cause: C) -> ClientError
+    where
+        C: Into<Cause>,
+    {
+        ClientError {
+            kind,
+            cause: Some(cause.into()),
+        }
+    }
+
+    pub(in crate::interface) fn from(kind: ErrorKind, cause: Option<Cause>) -> ClientError {
+        ClientError { kind, cause }
     }
 
     pub fn kind(&self) -> &ErrorKind {

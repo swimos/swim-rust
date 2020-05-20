@@ -14,24 +14,24 @@
 
 use std::borrow::Borrow;
 use std::cell::RefCell;
+use std::sync::Arc;
 
-use crate::downlink::subscription::{
-    AnyMapDownlink, AnyValueDownlink, Downlinks, TypedMapDownlink, TypedValueDownlink,
-};
 use futures::Future;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+use common::model::Value;
 use common::warp::path::AbsolutePath;
 use form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::Config;
+use crate::downlink::subscription::{
+    AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, TypedMapDownlink, TypedMapReceiver,
+    TypedValueDownlink, TypedValueReceiver, ValueReceiver,
+};
 use crate::interface::error::{ClientError, ErrorKind};
 use crate::router::Router;
-use common::model::Value;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
-// TODO: Client context writing doing properly
 thread_local! {
     static CONTEXT: RefCell<Option<SwimContext>> = RefCell::new(None)
 }
@@ -72,7 +72,7 @@ impl SwimContext {
         });
     }
 
-    pub async fn send_command<T: Form>(
+    pub async fn send_command<T>(
         &self,
         _target: AbsolutePath,
         _value: T,
@@ -84,7 +84,7 @@ impl SwimContext {
         &mut self,
         default: T,
         path: AbsolutePath,
-    ) -> Result<TypedValueDownlink<T>, ClientError>
+    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>), ClientError>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -93,29 +93,47 @@ impl SwimContext {
             .await
             .subscribe_value(default, path)
             .await
-            .map_err(|_| ClientError::from(ErrorKind::RuntimeError, None))
-            // todo
-            .map(|r| r.0)
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 
-    pub async fn map_downlink<K: ValidatedForm, V: ValidatedForm>(
+    pub async fn map_downlink<K, V>(
         &self,
-        _path: AbsolutePath,
-    ) -> Result<TypedMapDownlink<K, V>, ClientError> {
-        unimplemented!()
+        path: AbsolutePath,
+    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>), ClientError>
+    where
+        K: ValidatedForm + Send + 'static,
+        V: ValidatedForm + Send + 'static,
+    {
+        self.downlinks
+            .lock()
+            .await
+            .subscribe_map(path)
+            .await
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 
     pub async fn untyped_value_downlink(
         &self,
-        _path: AbsolutePath,
-    ) -> Result<AnyValueDownlink, ClientError> {
-        unimplemented!()
+        path: AbsolutePath,
+        default: Value,
+    ) -> Result<(AnyValueDownlink, ValueReceiver), ClientError> {
+        self.downlinks
+            .lock()
+            .await
+            .subscribe_value_untyped(default, path)
+            .await
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 
     pub async fn untyped_map_downlink(
         &self,
-        _path: AbsolutePath,
-    ) -> Result<AnyMapDownlink, ClientError> {
-        unimplemented!()
+        path: AbsolutePath,
+    ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
+        self.downlinks
+            .lock()
+            .await
+            .subscribe_map_untyped(path)
+            .await
+            .map_err(|e| ClientError::with_cause(ErrorKind::SubscriptionError, e))
     }
 }

@@ -21,9 +21,16 @@ use form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::Config;
 use crate::downlink::subscription::{
-    AnyMapDownlink, AnyValueDownlink, SubscriptionError, TypedMapDownlink, TypedValueDownlink,
+    AnyMapDownlink, AnyValueDownlink, MapReceiver, SubscriptionError, TypedMapDownlink,
+    TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
+use crate::downlink::Operation::Error;
 use crate::interface::context::{swim_context, SwimContext};
+use crate::interface::error::ClientError;
+use crate::interface::error::ErrorKind;
+use crate::interface::stub::StubRouter;
+use crate::router::Router;
+use common::model::Value;
 
 pub mod context;
 pub mod error;
@@ -33,12 +40,6 @@ pub struct SwimClient {
     // router: Router,
 // configuration: Box<dyn Config>,
 }
-
-use crate::downlink::Operation::Error;
-use crate::interface::error::ClientError;
-use crate::interface::error::ErrorKind;
-use crate::interface::stub::StubRouter;
-use crate::router::Router;
 
 impl SwimClient {
     #[allow(clippy::new_without_default)]
@@ -61,26 +62,48 @@ impl SwimClient {
         unimplemented!()
     }
 
-    pub async fn value_downlink<T: ValidatedForm>(
-        _path: AbsolutePath,
-    ) -> Result<TypedValueDownlink<T>, ClientError> {
-        unimplemented!()
+    pub async fn value_downlink<T>(
+        path: AbsolutePath,
+        default: T,
+    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>), ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        let mut ctx = Self::swim_context()?;
+        ctx.value_downlink(default, path).await
     }
 
-    pub async fn map_downlink<K: ValidatedForm, V: ValidatedForm>(
-        _path: AbsolutePath,
-    ) -> Result<TypedMapDownlink<K, V>, ClientError> {
-        unimplemented!()
+    pub async fn map_downlink<K, V>(
+        path: AbsolutePath,
+    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>), ClientError>
+    where
+        K: ValidatedForm + Send + 'static,
+        V: ValidatedForm + Send + 'static,
+    {
+        let ctx = Self::swim_context()?;
+        ctx.map_downlink(path).await
     }
 
     pub async fn untyped_value_downlink(
-        _path: AbsolutePath,
-    ) -> Result<AnyValueDownlink, ClientError> {
-        unimplemented!()
+        path: AbsolutePath,
+        default: Value,
+    ) -> Result<(AnyValueDownlink, ValueReceiver), ClientError> {
+        let ctx = Self::swim_context()?;
+        ctx.untyped_value_downlink(path, default).await
     }
 
-    pub async fn untyped_map_downlink(_path: AbsolutePath) -> Result<AnyMapDownlink, ClientError> {
-        unimplemented!()
+    pub async fn untyped_map_downlink(
+        path: AbsolutePath,
+    ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
+        let ctx = Self::swim_context()?;
+        ctx.untyped_map_downlink(path).await
+    }
+
+    pub fn swim_context() -> Result<SwimContext, ClientError> {
+        match swim_context() {
+            Some(ctx) => Ok(ctx),
+            None => Err(ClientError::from(ErrorKind::RuntimeError, None)),
+        }
     }
 
     pub async fn run_session<S, F>(&mut self, session: S) -> Result<F::Output, ClientError>
@@ -89,15 +112,12 @@ impl SwimClient {
         F: Future + Send + 'static,
         F::Output: Send,
     {
-        match swim_context() {
-            Some(mut ctx) => {
-                trace!("Running new session");
+        let mut ctx = Self::swim_context()?;
 
-                ctx.spawn(session(ctx.clone()))
-                    .await
-                    .map_err(|_| ClientError::from(ErrorKind::RuntimeError, None))
-            }
-            None => Err(ClientError::from(ErrorKind::RuntimeError, None)),
-        }
+        trace!("Running new session");
+
+        ctx.spawn(session(ctx.clone()))
+            .await
+            .map_err(|_| ClientError::from(ErrorKind::RuntimeError, None))
     }
 }
