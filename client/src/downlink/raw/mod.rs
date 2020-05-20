@@ -337,13 +337,18 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                         terminate,
                     } = match state_machine.handle_operation(&mut dl_state, &mut model, op) {
                         Ok(r) => r,
-                        Err(e) => match on_invalid {
-                            OnInvalidMessage::Ignore => {
-                                continue;
-                            }
-                            OnInvalidMessage::Terminate => {
+                        Err(e) => match e {
+                            e @ DownlinkError::TaskPanic(_) => {
                                 break Err(e);
                             }
+                            _ => match on_invalid {
+                                OnInvalidMessage::Ignore => {
+                                    continue;
+                                }
+                                OnInvalidMessage::Terminate => {
+                                    break Err(e);
+                                }
+                            },
                         },
                     };
                     let result = match (event, command) {
