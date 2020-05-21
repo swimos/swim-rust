@@ -48,6 +48,7 @@ fn init_trace() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[cfg(not(target_os = "macos"))]
 async fn normal_receive() {
     init_trace();
 
@@ -77,6 +78,7 @@ async fn normal_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[cfg(not(target_os = "macos"))]
 async fn not_interested_receive() {
     init_trace();
 
@@ -105,6 +107,7 @@ async fn not_interested_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[cfg(not(target_os = "macos"))]
 async fn not_found_receive() {
     init_trace();
 
@@ -133,6 +136,7 @@ async fn not_found_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
+#[cfg(not(target_os = "macos"))]
 async fn send_commands() {
     init_trace();
 
@@ -193,8 +197,9 @@ async fn send_commands() {
     thread::sleep(time::Duration::from_secs(5));
 }
 
-#[tokio::test(core_threads = 2)]
 #[ignore]
+#[tokio::test(core_threads = 2)]
+#[cfg(not(target_os = "macos"))]
 pub async fn server_stops_between_requests() {
     init_trace();
 
