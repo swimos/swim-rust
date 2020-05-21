@@ -64,6 +64,7 @@ fn main() {
     };
 
     println!("Build output:");
+
     for out in String::from_utf8(cmd_output.stdout).iter() {
         println!("{}", out);
     }

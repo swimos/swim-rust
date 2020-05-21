@@ -42,25 +42,13 @@ fn config() -> ConfigHierarchy {
     ConfigHierarchy::new(client_params, default_params)
 }
 
-fn init_tracing() {
-    let filter = tracing_subscriber::EnvFilter::from_default_env()
-        .add_directive("client=trace".parse().unwrap())
-        .add_directive("common=trace".parse().unwrap());
-
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_env_filter(filter)
-        .init();
-}
-
 #[tokio::test]
+#[ignore]
 async fn init() {
     let docker = Cli::default();
     let container = docker.run(SwimTestServer);
     let port = container.get_host_port(9001).unwrap();
     let host = format!("ws://127.0.0.1:{}", port);
-
-    init_tracing();
 
     let mut client = SwimClient::new(config()).await;
     let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");

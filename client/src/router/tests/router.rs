@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Once;
 use std::{thread, time};
+
+use tracing::Level;
+use tracing_subscriber::EnvFilter;
+
+use common::model::Value;
+use common::sink::item::ItemSink;
+use common::warp::envelope::Envelope;
+use common::warp::path::AbsolutePath;
 
 use crate::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::router::{Router, SwimRouter};
-use common::model::Value;
-use common::sink::item::ItemSink;
-use common::warp::envelope::Envelope;
-use common::warp::path::AbsolutePath;
-use std::sync::Once;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
+use crate::ts::clients::Cli;
+use crate::ts::Docker;
+use crate::ts::SwimTestServer;
 
 static INIT: Once = Once::new();
 
@@ -43,10 +48,14 @@ fn init_trace() {
 }
 
 #[tokio::test(core_threads = 2)]
-#[ignore]
 async fn normal_receive() {
     init_trace();
 
+    let docker = Cli::default();
+    let container = docker.run(SwimTestServer);
+    let port = container.get_host_port(9001).unwrap();
+    let host = format!("ws://127.0.0.1:{}", port);
+
     let config = RouterParamBuilder::default().build();
     let pool = SwimConnPool::new(
         ConnectionPoolParams::default(),
@@ -55,11 +64,7 @@ async fn normal_receive() {
 
     let mut router = SwimRouter::new(config, pool);
 
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "/unit/foo",
-        "info",
-    );
+    let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -72,10 +77,14 @@ async fn normal_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
-#[ignore]
 async fn not_interested_receive() {
     init_trace();
 
+    let docker = Cli::default();
+    let container = docker.run(SwimTestServer);
+    let port = container.get_host_port(9001).unwrap();
+    let host = format!("ws://127.0.0.1:{}", port);
+
     let config = RouterParamBuilder::default().build();
     let pool = SwimConnPool::new(
         ConnectionPoolParams::default(),
@@ -83,11 +92,7 @@ async fn not_interested_receive() {
     );
     let mut router = SwimRouter::new(config, pool);
 
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "foo",
-        "bar",
-    );
+    let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
@@ -100,9 +105,13 @@ async fn not_interested_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
-#[ignore]
 async fn not_found_receive() {
     init_trace();
+
+    let docker = Cli::default();
+    let container = docker.run(SwimTestServer);
+    let port = container.get_host_port(9001).unwrap();
+    let host = format!("ws://127.0.0.1:{}", port);
 
     let config = RouterParamBuilder::default().build();
     let pool = SwimConnPool::new(
@@ -111,11 +120,7 @@ async fn not_found_receive() {
     );
     let mut router = SwimRouter::new(config, pool);
 
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "foo",
-        "bar",
-    );
+    let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
 
     let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
@@ -128,9 +133,13 @@ async fn not_found_receive() {
 }
 
 #[tokio::test(core_threads = 2)]
-#[ignore]
 async fn send_commands() {
     init_trace();
+
+    let docker = Cli::default();
+    let container = docker.run(SwimTestServer);
+    let port = container.get_host_port(9001).unwrap();
+    let host = format!("ws://127.0.0.1:{}", port);
 
     let config = RouterParamBuilder::default().build();
     let pool = SwimConnPool::new(
@@ -139,7 +148,7 @@ async fn send_commands() {
     );
     let mut router = SwimRouter::new(config, pool);
 
-    let url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let url = url::Url::parse(&host).unwrap();
 
     let first_message = Envelope::command(
         String::from("/unit/foo"),
@@ -189,6 +198,13 @@ async fn send_commands() {
 pub async fn server_stops_between_requests() {
     init_trace();
 
+    let docker = Cli::default();
+    let container = docker.run(SwimTestServer);
+    let port = container.get_host_port(9001).unwrap();
+    let host = format!("ws://127.0.0.1:{}", port);
+
+    println!("{}", host);
+
     let config = RouterParamBuilder::default().build();
     let pool = SwimConnPool::new(
         ConnectionPoolParams::default(),
@@ -196,11 +212,7 @@ pub async fn server_stops_between_requests() {
     );
     let mut router = SwimRouter::new(config, pool);
 
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "/unit/foo",
-        "info",
-    );
+    let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
     let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
@@ -208,8 +220,7 @@ pub async fn server_stops_between_requests() {
     sink.send_item(sync).await.unwrap();
     println!("Sent item");
 
-    //Terminate the remote server while waiting here
-    thread::sleep(time::Duration::from_secs(10));
+    docker.stop(container.id());
 
     let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 

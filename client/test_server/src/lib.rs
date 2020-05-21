@@ -19,7 +19,7 @@ pub use testcontainers::*;
 #[derive(Default)]
 pub struct SwimTestServer;
 
-const IMAGE: &'static str = "org.swimos/swim-test-server:1.1";
+const IMAGE: &str = "org.swimos/swim-test-server:1.1";
 
 impl Image for SwimTestServer {
     type Args = Vec<String>;
@@ -39,7 +39,7 @@ impl Image for SwimTestServer {
     }
 
     fn args(&self) -> <Self as Image>::Args {
-        vec![String::from("-p 9001:9001")]
+        vec![]
     }
 
     fn env_vars(&self) -> Self::EnvVars {
@@ -50,8 +50,7 @@ impl Image for SwimTestServer {
         HashMap::new()
     }
 
-    fn with_args(self, mut arguments: <Self as Image>::Args) -> Self {
-        arguments.push("-p 9001:9001".into());
+    fn with_args(self, _arguments: <Self as Image>::Args) -> Self {
         self
     }
 }

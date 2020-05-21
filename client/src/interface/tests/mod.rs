@@ -13,4 +13,3 @@
 // limitations under the License.
 
 mod docker;
-mod simple;
