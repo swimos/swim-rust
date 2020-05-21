@@ -12,14 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod configuration;
-pub mod connections;
-pub mod downlink;
-pub mod interface;
-pub mod router;
-
-#[cfg(test)]
-pub use test_server as ts;
-
-#[macro_use]
-extern crate utilities;
+mod docker;
+mod simple;

@@ -51,7 +51,7 @@ fn init_tracing() {
 }
 
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn client_test() {
     init_tracing();
 
@@ -85,8 +85,8 @@ async fn client_test() {
         let _res = dl.send_item(Action::set(v.into())).await;
     }
 
-    jh.await;
-    jh2.await;
+    let _r1 = jh.await;
+    let _r2 = jh2.await;
 
     println!("Finished sending");
 }

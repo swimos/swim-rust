@@ -11,6 +11,9 @@ matrix:
     - os: osx
     - os: windows
 
+services:
+  - docker
+
 rust:
   - 1.43.0
 
