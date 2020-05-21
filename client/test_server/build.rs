@@ -17,6 +17,10 @@ use std::process::Command;
 use git2::{ErrorCode, Repository};
 
 fn main() {
+    if cfg!(not(target_os = "linux")) {
+        return;
+    }
+
     // Tell Cargo to rerun this script if the server directory has changed
     println!("cargo:rerun-if-changed=../../target/tests/server");
 
