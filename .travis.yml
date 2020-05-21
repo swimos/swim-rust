@@ -8,12 +8,10 @@ branches:
 matrix:
   include:
     - os: linux
+      services:
+        - docker
     - os: osx
     - os: windows
-
-services:
-  - docker
-  if: "$TRAVIS_OS_NAME" == "linux"
 
 rust:
   - 1.43.0
