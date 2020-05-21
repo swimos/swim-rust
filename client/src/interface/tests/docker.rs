@@ -17,14 +17,14 @@ use crate::configuration::downlink::{
 };
 use crate::downlink::model::value::Action;
 use crate::interface::SwimClient;
-use crate::ts::clients::Cli;
-use crate::ts::Docker;
-use crate::ts::SwimTestServer;
 use common::model::Value;
 use common::sink::item::ItemSink;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 use futures::StreamExt;
+use test_server::clients::Cli;
+use test_server::Docker;
+use test_server::SwimTestServer;
 use tokio::time::Duration;
 use tracing::info;
 

@@ -22,14 +22,14 @@ use common::model::Value;
 use common::sink::item::ItemSink;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
+use test_server::clients::Cli;
+use test_server::Docker;
+use test_server::SwimTestServer;
 
 use crate::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::router::{Router, SwimRouter};
-use crate::ts::clients::Cli;
-use crate::ts::Docker;
-use crate::ts::SwimTestServer;
 
 static INIT: Once = Once::new();
 

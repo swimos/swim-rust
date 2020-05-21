@@ -13,4 +13,5 @@
 // limitations under the License.
 
 mod host_manager;
+#[cfg(all(test, target_os = "linux"))]
 mod router;

@@ -18,8 +18,5 @@ pub mod downlink;
 pub mod interface;
 pub mod router;
 
-#[cfg(test)]
-pub use test_server as ts;
-
 #[macro_use]
 extern crate utilities;
