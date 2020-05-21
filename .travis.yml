@@ -13,6 +13,7 @@ matrix:
 
 services:
   - docker
+  if: "$TRAVIS_OS_NAME" == "linux"
 
 rust:
   - 1.43.0
