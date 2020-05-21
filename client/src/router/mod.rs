@@ -400,7 +400,10 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
             match task {
-                HostTask::Connect(ConnectionRequest{request_tx: connection_response_tx, recreate}) => {
+                HostTask::Connect(ConnectionRequest {
+                    request_tx: connection_response_tx,
+                    recreate,
+                }) => {
                     let maybe_connection_channel = connection_pool
                         .request_connection(host.clone(), recreate)
                         .await
