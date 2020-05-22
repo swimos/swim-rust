@@ -14,14 +14,20 @@ matrix:
 rust:
   - 1.43.0
 
-cache: cargo
+cache:
+  directories:
+    - $HOME/.cargo
+    - $HOME/.rustup
+
+before_cache:
+  - rm -rf /home/travis/.cargo/registry
 
 before_script:
   - rustup component add clippy
   - rustup component add rustfmt
 
 script:
-  - cargo test
+  - cargo test --workspace --all-features
   - cargo fmt -- --check
   - cargo clippy --all-features -- -D warnings
 
