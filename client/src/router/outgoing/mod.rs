@@ -18,6 +18,7 @@ use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
 use tokio::sync::mpsc;
+use tracing::{span, trace, Level};
 
 use crate::router::retry::new_request;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -25,6 +26,7 @@ use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
+#[derive(Debug)]
 enum OutgoingRequest {
     Message(Envelope),
     Close(Option<CloseResponseSender>),
@@ -64,20 +66,25 @@ impl OutgoingHostTask {
 
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
-            tracing::trace!("Received request");
+
+            let span = span!(Level::TRACE, "outgoing_event");
+            let _enter = span.enter();
+            trace!("Received request {:?}", task);
 
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let message = Message::Text(envelope.into_value().to_string());
                     let request = new_request(connection_request_tx.clone(), message);
                     RetryableFuture::new(request, config.retry_strategy()).await?;
-                    tracing::trace!("Completed request");
                 }
                 OutgoingRequest::Close(Some(_)) => {
+                    drop(rx);
                     break;
                 }
-                OutgoingRequest::Close(None) => { /*NO OP*/ }
+                OutgoingRequest::Close(None) => {}
             }
+
+            trace!("Completed request");
         }
         Ok(())
     }
@@ -125,8 +132,10 @@ mod route_tests {
             .send(Envelope::sync("node".into(), "lane".into()))
             .await;
 
-        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
-        let _ = tx.send(Err(RoutingError::ConnectionError));
+        let connection_request = task_request_rx.recv().await.unwrap();
+        let _ = connection_request
+            .request_tx
+            .send(Err(RoutingError::ConnectionError));
 
         let task_result = handle.await.unwrap();
         assert_eq!(task_result, Err(RoutingError::ConnectionError))
@@ -148,13 +157,17 @@ mod route_tests {
             .send(Envelope::sync("node".into(), "lane".into()))
             .await;
 
-        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
-        let _ = tx.send(Err(RoutingError::ConnectionError));
+        let connection_request = task_request_rx.recv().await.unwrap();
+        let _ = connection_request
+            .request_tx
+            .send(Err(RoutingError::ConnectionError));
 
-        let (tx, _recreate) = task_request_rx.recv().await.unwrap();
+        let connection_request = task_request_rx.recv().await.unwrap();
         let (dummy_tx, _dummy_rx) = mpsc::channel(config.buffer_size().get());
 
-        let _ = tx.send(Ok(ConnectionSender::new(dummy_tx)));
+        let _ = connection_request
+            .request_tx
+            .send(Ok(ConnectionSender::new(dummy_tx)));
 
         let (response_tx, mut _response_rx) = mpsc::channel(config.buffer_size().get());
         close_tx.broadcast(Some(response_tx)).unwrap();

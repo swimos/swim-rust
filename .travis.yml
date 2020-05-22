@@ -27,9 +27,9 @@ before_script:
   - rustup component add rustfmt
 
 script:
-  - cargo test --workspace --all-features
   - cargo fmt -- --check
   - cargo clippy --all-features -- -D warnings
+  - cargo test --workspace --all-features
 
 addons:
   apt:

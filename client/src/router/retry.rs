@@ -63,7 +63,11 @@ async fn acquire_sender(
 ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
     let (connection_tx, connection_rx) = oneshot::channel();
 
-    if sender.send((connection_tx, is_retry)).await.is_err() {
+    if sender
+        .send(ConnectionRequest::new(connection_tx, is_retry))
+        .await
+        .is_err()
+    {
         return MpscRetryErr::from(RoutingError::ConnectionError, Some(sender), None);
     }
 
