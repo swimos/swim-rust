@@ -146,7 +146,6 @@ pub struct ConnectionPoolParams {
 }
 
 impl ConnectionPoolParams {
-    #[cfg(test)]
     pub fn default() -> ConnectionPoolParams {
         ConnectionPoolParams {
             idle_timeout: Duration::from_secs(60),
