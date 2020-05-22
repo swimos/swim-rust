@@ -1,0 +1,35 @@
+trigger: ["master"]
+pr: ["master"]
+
+variables:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  # Test top level crate
+  - template: ci/azure-test-stable.yml
+    parameters:
+      name: test_crates
+      rust: 1.43.0
+      displayName: Test all crates except client
+      cross: true
+      crates:
+        - common
+        - form
+        - server
+        - utilities
+
+#  - template: ci/azure-client-test.yml
+#    parameters:
+#      name: test_client
+#      rust: 1.43.0
+#      displayName: Test client
+
+  - template: ci/azure-clippy.yml
+    parameters:
+      rust: stable
+      name: clippy
+
+  - template: ci/azure-check-docs.yml
+    parameters:
+      rust: stable
+      name: docs
