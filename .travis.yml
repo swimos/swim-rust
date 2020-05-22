@@ -16,21 +16,24 @@ matrix:
       script:
         - cd client
 #       Features aren't allowed in the root of a virtual workspace
-        - cargo test client --features test-server
+        - cargo test --package client --features test-server
         - cd ..
-        - cargo test --all --exclude client
+        - cargo test --workspace --exclude client
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings
+
     - os: osx
       script:
-      - cargo test --workspace
-      - cargo fmt -- --check
-      - cargo clippy --all-features -- -D warnings
+        - cargo test --workspace
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings
+
     - os: windows
       script:
         - cargo test --workspace
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings
+
 rust:
   - 1.43.0
 
