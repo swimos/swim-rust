@@ -404,7 +404,6 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                     request_tx: connection_response_tx,
                     recreate,
                 }) => {
-                    //TODO This will always be ConnectionError error which is always transient
                     let maybe_connection_channel = connection_pool
                         .request_connection(host.clone(), recreate)
                         .await
@@ -428,7 +427,6 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::PoolError(e)));
                             }
-                            //TODO this will never be executed
                             e => {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::ConnectionError));

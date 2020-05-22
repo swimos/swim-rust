@@ -1,4 +1,6 @@
-use crate::connections::{ConnectionError, ConnectionPool, ConnectionReceiver, ConnectionSender};
+use crate::connections::{
+    ConnectionError, ConnectionErrorKind, ConnectionPool, ConnectionReceiver, ConnectionSender,
+};
 use crate::router::{Router, RouterEvent, SwimRouter};
 use common::model::Value;
 use common::request::request_future::RequestError;
@@ -1654,33 +1656,28 @@ async fn test_rout_incoming_parse_envelope_error() {
     assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
 }
 
-//Todo add this once the bug in the router is fixed.
+#[tokio::test]
+async fn test_rout_incoming_unreachable_host() {
+    let url = url::Url::parse("ws://unreachable/").unwrap();
 
-// #[tokio::test]
-// async fn test_rout_incoming_unreachable_host() {
-//     let url = url::Url::parse("ws://unreachable/").unwrap();
-//
-//     let (pool, _) = TestPool::new();
-//     let mut router = SwimRouter::new(Default::default(), pool.clone());
-//
-//     let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
-//
-//     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
-//     let _ = sink.send_item(envelope.clone()).await.unwrap();
-//
-//     assert_eq!(stream.recv().await.unwrap(), RouterEvent::Unreachable("temp_message".to_string()));
-//
-//     assert!(router.close().await.is_ok());
-//     assert_eq!(get_request_count(&pool), 1);
-//
-//     let mut expected_requests = HashMap::new();
-//     expected_requests.insert((url.clone(), false), 1);
-//
-//     assert_eq!(get_requests(&pool), expected_requests);
-//
-//     println!("2");
-//     assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
-// }
+    let (pool, _) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = sink.send_item(envelope.clone()).await.unwrap();
+
+    assert_eq!(
+        stream.recv().await.unwrap(),
+        RouterEvent::Unreachable("An error was produced by the web socket.".to_string())
+    );
+
+    assert_eq!(get_request_count(&pool), 1);
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((url.clone(), false), 1);
+    assert_eq!(get_requests(&pool), expected_requests);
+}
 
 #[tokio::test]
 async fn test_rout_incoming_connection_closed_single() {
@@ -1802,7 +1799,6 @@ struct TestPool {
     connection_handlers_tx: mpsc::Sender<(url::Url, PoolHandler)>,
     connection_requests: Arc<Mutex<HashMap<(url::Url, bool), usize>>>,
     connections: Arc<Mutex<HashMap<url::Url, mpsc::Sender<Message>>>>,
-    retry_error_url: url::Url,
     permanent_error_url: url::Url,
 }
 
@@ -1815,7 +1811,6 @@ impl TestPool {
                 connection_handlers_tx,
                 connection_requests: Arc::new(Mutex::new(HashMap::new())),
                 connections: Arc::new(Mutex::new(HashMap::new())),
-                retry_error_url: url::Url::parse("ws://retry/").unwrap(),
                 permanent_error_url: url::Url::parse("ws://unreachable/").unwrap(),
             },
             connection_handlers_rx,
@@ -1865,10 +1860,11 @@ impl ConnectionPool for TestPool {
     type CloseFut = Ready<Result<Result<(), ConnectionError>, ConnectionError>>;
 
     fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut {
-        if host_url == self.permanent_error_url || host_url == self.retry_error_url {
-            println!("1");
+        if host_url == self.permanent_error_url {
             self.log_request(host_url, recreate);
-            return ready(Err(RequestError {}));
+            return ready(Ok(Err(ConnectionError::new(
+                ConnectionErrorKind::SocketError,
+            ))));
         }
 
         if !recreate && self.connections.lock().unwrap().get(&host_url).is_some() {

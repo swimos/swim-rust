@@ -142,6 +142,7 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Unreachable(err) => {
+                    drop(rx);
                     trace!("Unreachable Host");
                     broadcast_all(&mut subscribers, RouterEvent::Unreachable(err.to_string()))
                         .await?;
