@@ -27,9 +27,9 @@ before_script:
   - rustup component add rustfmt
 
 script:
-  - cargo test --workspace --all-features
   - cargo fmt -- --check
   - cargo clippy --all-features -- -D warnings
+  - cargo test --workspace --all-features
 
 addons:
   apt:
@@ -47,7 +47,7 @@ env:
 
 after_success:
   - |
-    if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_BRANCH" = "master" ]]; then
+    if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
     wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
     tar xzf master.tar.gz &&
     cd kcov-master &&
