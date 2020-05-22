@@ -1151,6 +1151,111 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
 }
 
 #[tokio::test]
+async fn test_rout_incoming_host_message() {
+    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
+
+    let (pool, pool_handlers_rx) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = sink.send_item(envelope.clone()).await.unwrap();
+
+    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+
+    send_message(&mut pool_handlers, &url, "@auth()").await;
+
+    assert!(timeout(Duration::from_secs(1), stream.recv())
+        .await
+        .is_err());
+
+    send_message(
+        &mut pool_handlers,
+        &url,
+        "@command(node:foo,lane:bar){Hello}",
+    )
+    .await;
+
+    let expected_env = Envelope::command(
+        String::from("foo"),
+        String::from("bar"),
+        Some(Value::text("Hello")),
+    );
+
+    assert_eq!(
+        stream.recv().await.unwrap(),
+        RouterEvent::Envelope(expected_env)
+    );
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(get_request_count(&pool), 1);
+
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((url.clone(), false), 1);
+
+    assert_eq!(get_requests(&pool), expected_requests);
+    assert_eq!(pool.connections.lock().unwrap().len(), 1);
+
+    assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
+}
+
+#[tokio::test]
+async fn test_rout_incoming_message_of_no_interest() {
+    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
+
+    let (pool, pool_handlers_rx) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = sink.send_item(envelope.clone()).await.unwrap();
+
+    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+
+    send_message(
+        &mut pool_handlers,
+        &url,
+        "@command(node:building,lane:swim){Second}",
+    )
+    .await;
+
+    assert!(timeout(Duration::from_secs(1), stream.recv())
+        .await
+        .is_err());
+
+    send_message(
+        &mut pool_handlers,
+        &url,
+        "@command(node:foo,lane:bar){Hello}",
+    )
+    .await;
+
+    let expected_env = Envelope::command(
+        String::from("foo"),
+        String::from("bar"),
+        Some(Value::text("Hello")),
+    );
+
+    assert_eq!(
+        stream.recv().await.unwrap(),
+        RouterEvent::Envelope(expected_env)
+    );
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(get_request_count(&pool), 1);
+
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((url.clone(), false), 1);
+
+    assert_eq!(get_requests(&pool), expected_requests);
+    assert_eq!(pool.connections.lock().unwrap().len(), 1);
+
+    assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
+}
+
+#[tokio::test]
 async fn test_single_direct_message_existing_connection() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
 
@@ -1467,6 +1572,229 @@ async fn test_router_close_error() {
     assert!(router.close().await.is_err());
 }
 
+#[tokio::test]
+async fn test_rout_incoming_parse_message_error() {
+    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
+
+    let (pool, pool_handlers_rx) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = sink.send_item(envelope.clone()).await.unwrap();
+
+    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+
+    send_message(&mut pool_handlers, &url, "|").await;
+
+    assert!(timeout(Duration::from_secs(1), stream.recv())
+        .await
+        .is_err());
+
+    send_message(
+        &mut pool_handlers,
+        &url,
+        "@command(node:foo,lane:bar){Hello}",
+    )
+    .await;
+
+    let expected_env = Envelope::command(
+        String::from("foo"),
+        String::from("bar"),
+        Some(Value::text("Hello")),
+    );
+
+    assert_eq!(
+        stream.recv().await.unwrap(),
+        RouterEvent::Envelope(expected_env)
+    );
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(get_request_count(&pool), 1);
+
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((url.clone(), false), 1);
+
+    assert_eq!(get_requests(&pool), expected_requests);
+    assert_eq!(pool.connections.lock().unwrap().len(), 1);
+
+    assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
+}
+
+#[tokio::test]
+async fn test_rout_incoming_parse_envelope_error() {
+    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
+
+    let (pool, pool_handlers_rx) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = sink.send_item(envelope.clone()).await.unwrap();
+
+    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+
+    send_message(&mut pool_handlers, &url, "@invalid(node:oof,lane:rab){bye}").await;
+
+    assert!(timeout(Duration::from_secs(1), stream.recv())
+        .await
+        .is_err());
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(get_request_count(&pool), 1);
+
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((url.clone(), false), 1);
+
+    assert_eq!(get_requests(&pool), expected_requests);
+    assert_eq!(pool.connections.lock().unwrap().len(), 1);
+
+    assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
+}
+
+//Todo add this once the bug in the router is fixed.
+
+// #[tokio::test]
+// async fn test_rout_incoming_unreachable_host() {
+//     let url = url::Url::parse("ws://unreachable/").unwrap();
+//
+//     let (pool, _) = TestPool::new();
+//     let mut router = SwimRouter::new(Default::default(), pool.clone());
+//
+//     let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+//
+//     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+//     let _ = sink.send_item(envelope.clone()).await.unwrap();
+//
+//     assert_eq!(stream.recv().await.unwrap(), RouterEvent::Unreachable("temp_message".to_string()));
+//
+//     assert!(router.close().await.is_ok());
+//     assert_eq!(get_request_count(&pool), 1);
+//
+//     let mut expected_requests = HashMap::new();
+//     expected_requests.insert((url.clone(), false), 1);
+//
+//     assert_eq!(get_requests(&pool), expected_requests);
+//
+//     println!("2");
+//     assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
+// }
+
+#[tokio::test]
+async fn test_rout_incoming_connection_closed_single() {
+    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
+
+    let (pool, pool_handlers_rx) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = sink.send_item(envelope.clone()).await.unwrap();
+
+    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+
+    drop(pool_handlers.remove(&url).unwrap());
+
+    assert_eq!(stream.recv().await.unwrap(), RouterEvent::ConnectionClosed);
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(get_request_count(&pool), 1);
+
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((url.clone(), false), 1);
+
+    assert_eq!(get_requests(&pool), expected_requests);
+    assert_eq!(pool.connections.lock().unwrap().len(), 1);
+
+    assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
+}
+
+#[tokio::test]
+async fn test_rout_incoming_connection_closed_multiple_same_host() {
+    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
+
+    let (pool, pool_handlers_rx) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (_, mut second_stream) = open_connection(&mut router, &url, "oof", "rab").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = first_sink.send_item(envelope.clone()).await.unwrap();
+
+    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+
+    drop(pool_handlers.remove(&url).unwrap());
+
+    assert_eq!(
+        first_stream.recv().await.unwrap(),
+        RouterEvent::ConnectionClosed
+    );
+    assert_eq!(
+        second_stream.recv().await.unwrap(),
+        RouterEvent::ConnectionClosed
+    );
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(get_request_count(&pool), 1);
+
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((url.clone(), false), 1);
+
+    assert_eq!(get_requests(&pool), expected_requests);
+    assert_eq!(pool.connections.lock().unwrap().len(), 1);
+
+    assert_eq!(first_stream.recv().await.unwrap(), RouterEvent::Stopping);
+    assert_eq!(second_stream.recv().await.unwrap(), RouterEvent::Stopping);
+}
+
+#[tokio::test]
+async fn test_rout_incoming_connection_closed_multiple_different_hosts() {
+    let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
+    let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
+
+    let (pool, pool_handlers_rx) = TestPool::new();
+    let mut router = SwimRouter::new(Default::default(), pool.clone());
+
+    let (mut first_sink, mut first_stream) =
+        open_connection(&mut router, &first_url, "foo", "bar").await;
+    let (mut second_sink, mut second_stream) =
+        open_connection(&mut router, &second_url, "foo", "bar").await;
+
+    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let _ = first_sink.send_item(envelope.clone()).await.unwrap();
+    let _ = second_sink.send_item(envelope.clone()).await.unwrap();
+
+    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(2).collect().await;
+
+    drop(pool_handlers.remove(&first_url).unwrap());
+
+    assert_eq!(
+        first_stream.recv().await.unwrap(),
+        RouterEvent::ConnectionClosed
+    );
+
+    assert!(timeout(Duration::from_secs(1), second_stream.recv())
+        .await
+        .is_err());
+
+    assert!(router.close().await.is_ok());
+    assert_eq!(get_request_count(&pool), 2);
+
+    let mut expected_requests = HashMap::new();
+    expected_requests.insert((first_url.clone(), false), 1);
+    expected_requests.insert((second_url.clone(), false), 1);
+
+    assert_eq!(get_requests(&pool), expected_requests);
+    assert_eq!(pool.connections.lock().unwrap().len(), 2);
+
+    assert_eq!(first_stream.recv().await.unwrap(), RouterEvent::Stopping);
+    assert_eq!(second_stream.recv().await.unwrap(), RouterEvent::Stopping);
+}
+
 type PoolHandler = (mpsc::Sender<Message>, mpsc::Receiver<Message>);
 
 #[derive(Clone)]
@@ -1474,6 +1802,8 @@ struct TestPool {
     connection_handlers_tx: mpsc::Sender<(url::Url, PoolHandler)>,
     connection_requests: Arc<Mutex<HashMap<(url::Url, bool), usize>>>,
     connections: Arc<Mutex<HashMap<url::Url, mpsc::Sender<Message>>>>,
+    retry_error_url: url::Url,
+    permanent_error_url: url::Url,
 }
 
 impl TestPool {
@@ -1485,6 +1815,8 @@ impl TestPool {
                 connection_handlers_tx,
                 connection_requests: Arc::new(Mutex::new(HashMap::new())),
                 connections: Arc::new(Mutex::new(HashMap::new())),
+                retry_error_url: url::Url::parse("ws://retry/").unwrap(),
+                permanent_error_url: url::Url::parse("ws://unreachable/").unwrap(),
             },
             connection_handlers_rx,
         )
@@ -1533,6 +1865,12 @@ impl ConnectionPool for TestPool {
     type CloseFut = Ready<Result<Result<(), ConnectionError>, ConnectionError>>;
 
     fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut {
+        if host_url == self.permanent_error_url || host_url == self.retry_error_url {
+            println!("1");
+            self.log_request(host_url, recreate);
+            return ready(Err(RequestError {}));
+        }
+
         if !recreate && self.connections.lock().unwrap().get(&host_url).is_some() {
             let sender_tx = self
                 .connections

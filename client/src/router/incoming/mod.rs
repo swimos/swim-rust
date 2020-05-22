@@ -26,6 +26,7 @@ use futures::stream::StreamExt;
 use std::convert::TryFrom;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tracing::{error, span, trace, warn, Level};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
@@ -114,7 +115,9 @@ impl IncomingHostTask {
                                     let destination = env.relative_path();
                                     let event = RouterEvent::Envelope(env);
 
-                                    tracing::trace!("{:?}", event);
+                                    let span = span!(Level::TRACE, "incoming_event");
+                                    let _enter = span.enter();
+                                    trace!("{:?}", event);
 
                                     if let Some(relative_path) = destination {
                                         broadcast_destination(
@@ -124,25 +127,22 @@ impl IncomingHostTask {
                                         )
                                         .await?;
                                     } else {
-                                        tracing::warn!(
-                                            "Host messages are not supported: {:?}",
-                                            event
-                                        );
+                                        warn!("Host messages are not supported: {:?}", event);
                                     }
                                 }
                                 Err(e) => {
-                                    tracing::error!("Parsing error {:?}", e);
+                                    error!("Parsing error {:?}", e);
                                 }
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Parsing error {:?}", e);
+                            error!("Parsing error {:?}", e);
                         }
                     }
                 }
 
                 IncomingRequest::Unreachable(err) => {
-                    tracing::trace!("Unreachable Host");
+                    trace!("Unreachable Host");
                     broadcast_all(&mut subscribers, RouterEvent::Unreachable(err.to_string()))
                         .await?;
 
@@ -150,7 +150,7 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Disconnect => {
-                    tracing::trace!("Connection closed");
+                    trace!("Connection closed");
                     connection = None;
 
                     broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
@@ -158,7 +158,7 @@ impl IncomingHostTask {
 
                 IncomingRequest::Close(Some(_)) => {
                     drop(rx);
-                    tracing::trace!("Closing Router");
+                    trace!("Closing Router");
                     broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
 
                     break Ok(());
@@ -204,7 +204,7 @@ async fn broadcast_destination(
             futures.push(subscriber.send(event.clone()));
         }
     } else {
-        tracing::trace!("No downlink interested in event: {:?}", event);
+        trace!("No downlink interested in event: {:?}", event);
     };
 
     for result in futures.collect::<Vec<_>>().await {

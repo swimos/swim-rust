@@ -18,6 +18,7 @@ use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
 use tokio::sync::mpsc;
+use tracing::{span, trace, Level};
 
 use crate::router::retry::new_request;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -65,7 +66,10 @@ impl OutgoingHostTask {
 
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
-            tracing::trace!("Received request {:?}", task);
+
+            let span = span!(Level::TRACE, "outgoing_event");
+            let _enter = span.enter();
+            trace!("Received request {:?}", task);
 
             match task {
                 OutgoingRequest::Message(envelope) => {
@@ -80,7 +84,7 @@ impl OutgoingHostTask {
                 OutgoingRequest::Close(None) => {}
             }
 
-            tracing::trace!("Completed request");
+            trace!("Completed request");
         }
         Ok(())
     }
