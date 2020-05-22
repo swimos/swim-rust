@@ -495,7 +495,7 @@ impl ConnectionSender {
     }
 }
 
-type ConnectionReceiver = mpsc::Receiver<Message>;
+pub(crate) type ConnectionReceiver = mpsc::Receiver<Message>;
 
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone)]

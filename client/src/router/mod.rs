@@ -25,7 +25,7 @@ use common::request::request_future::{RequestError, RequestFuture, Sequenced};
 use common::sink::item::map_err::SenderErrInto;
 use common::sink::item::ItemSender;
 use common::warp::envelope::Envelope;
-use common::warp::path::AbsolutePath;
+use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
 use futures::{Future, Stream};
 use tokio::stream::StreamExt;
@@ -136,7 +136,7 @@ enum RouterTask {
 
 type HostManagerHandle = (
     mpsc::Sender<Envelope>,
-    mpsc::Sender<mpsc::Sender<RouterEvent>>,
+    mpsc::Sender<SubscriberRequest>,
     JoinHandle<Result<(), RoutingError>>,
 );
 
@@ -193,7 +193,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                 RouterTask::Connect((target, response_tx)) => {
                     let (sink, stream_registrator, _) = get_host_manager(
                         &mut host_managers,
-                        target,
+                        target.host.clone(),
                         connection_pool.clone(),
                         close_rx.clone(),
                         config,
@@ -201,8 +201,10 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
 
                     let (subscriber_tx, stream) = mpsc::channel(config.buffer_size().get());
 
+                    let (_, relative_path) = target.split();
+
                     stream_registrator
-                        .send(subscriber_tx)
+                        .send(SubscriberRequest::new(relative_path, subscriber_tx))
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
 
@@ -221,7 +223,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
 
                     let (sink, _, _) = get_host_manager(
                         &mut host_managers,
-                        target,
+                        target.host.clone(),
                         connection_pool.clone(),
                         close_rx.clone(),
                         config,
@@ -233,6 +235,8 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                 }
 
                 RouterTask::Close(Some(mut close_tx)) => {
+                    drop(rx);
+
                     for (_, (_, _, handle)) in host_managers {
                         close_tx
                             .send(handle.await.map_err(|_| RoutingError::CloseError)?)
@@ -262,7 +266,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
 
 fn get_host_manager<Pool>(
     host_managers: &mut HashMap<url::Url, HostManagerHandle>,
-    target: AbsolutePath,
+    host: url::Url,
     connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
@@ -270,9 +274,9 @@ fn get_host_manager<Pool>(
 where
     Pool: ConnectionPool,
 {
-    host_managers.entry(target.host.clone()).or_insert_with(|| {
+    host_managers.entry(host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
-            HostManager::new(target, connection_pool, close_rx, config);
+            HostManager::new(host, connection_pool, close_rx, config);
         (sink, stream_registrator, tokio::spawn(host_manager.run()))
     })
 }
@@ -286,43 +290,70 @@ fn combine_router_task(
     let message_requests =
         message_request_rx.map(|payload| RouterTask::SendMessage(Box::new(payload)));
     let close_requests = close_rx.map(RouterTask::Close);
-
     stream::select(
         stream::select(conn_requests, message_requests),
         close_requests,
     )
 }
 
-pub type ConnectionRequest = (
-    oneshot::Sender<Result<ConnectionSender, RoutingError>>,
-    bool, // Whether or not to recreate the connection
-);
+pub struct ConnectionRequest {
+    request_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+    recreate: bool,
+}
+
+impl ConnectionRequest {
+    fn new(
+        request_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+        recreate: bool,
+    ) -> Self {
+        ConnectionRequest {
+            request_tx,
+            recreate,
+        }
+    }
+}
+
+pub struct SubscriberRequest {
+    path: RelativePath,
+    subscriber_tx: mpsc::Sender<RouterEvent>,
+}
+
+impl SubscriberRequest {
+    fn new(path: RelativePath, subscriber_tx: mpsc::Sender<RouterEvent>) -> Self {
+        SubscriberRequest {
+            path,
+            subscriber_tx,
+        }
+    }
+}
+
+// type SubscriberRequest = (RelativePath, mpsc::Sender<RouterEvent>);
 
 enum HostTask {
     Connect(ConnectionRequest),
-    Subscribe(mpsc::Sender<RouterEvent>),
+    Subscribe(SubscriberRequest),
     Close(Option<CloseResponseSender>),
 }
 
 struct HostManager<Pool: ConnectionPool> {
-    target: AbsolutePath,
+    host: url::Url,
     connection_pool: Pool,
     sink_rx: mpsc::Receiver<Envelope>,
-    stream_registrator_rx: mpsc::Receiver<mpsc::Sender<RouterEvent>>,
+    stream_registrator_rx: mpsc::Receiver<SubscriberRequest>,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
 impl<Pool: ConnectionPool> HostManager<Pool> {
     fn new(
-        target: AbsolutePath,
+        host: url::Url,
         connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
         HostManager<Pool>,
         mpsc::Sender<Envelope>,
-        mpsc::Sender<mpsc::Sender<RouterEvent>>,
+        mpsc::Sender<SubscriberRequest>,
     ) {
         let (sink_tx, sink_rx) = mpsc::channel(config.buffer_size().get());
         let (stream_registrator_tx, stream_registrator_rx) =
@@ -330,7 +361,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
         (
             HostManager {
-                target,
+                host,
                 connection_pool,
                 sink_rx,
                 stream_registrator_rx,
@@ -344,7 +375,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
     async fn run(self) -> Result<(), RoutingError> {
         let HostManager {
-            target,
+            host,
             mut connection_pool,
             sink_rx,
             stream_registrator_rx,
@@ -369,9 +400,13 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
             match task {
-                HostTask::Connect((connection_response_tx, recreate)) => {
+                HostTask::Connect(ConnectionRequest {
+                    request_tx: connection_response_tx,
+                    recreate,
+                }) => {
+                    //TODO This will always be ConnectionError error which is always transient
                     let maybe_connection_channel = connection_pool
-                        .request_connection(target.host.clone(), recreate)
+                        .request_connection(host.clone(), recreate)
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
 
@@ -393,6 +428,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::PoolError(e)));
                             }
+                            //TODO this will never be executed
                             e => {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::ConnectionError));
@@ -404,13 +440,21 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                         },
                     }
                 }
-                HostTask::Subscribe(event_tx) => {
+                HostTask::Subscribe(SubscriberRequest {
+                    path: relative_path,
+                    subscriber_tx: event_tx,
+                }) => {
                     incoming_task_tx
-                        .send(IncomingRequest::Subscribe((target.clone(), event_tx)))
+                        .send(IncomingRequest::Subscribe(SubscriberRequest::new(
+                            relative_path,
+                            event_tx,
+                        )))
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
                 HostTask::Close(Some(mut close_tx)) => {
+                    drop(rx);
+
                     close_tx
                         .send(
                             incoming_handle
@@ -439,7 +483,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
 fn combine_host_streams(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
-    stream_registrator_rx: mpsc::Receiver<mpsc::Sender<RouterEvent>>,
+    stream_registrator_rx: mpsc::Receiver<SubscriberRequest>,
     close_rx: CloseReceiver,
 ) -> impl stream::Stream<Item = HostTask> + Send + 'static {
     let connection_requests = connection_requests_rx.map(HostTask::Connect);

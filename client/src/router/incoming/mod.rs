@@ -14,22 +14,25 @@
 
 use std::collections::HashMap;
 
-use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, RoutingError};
+use crate::router::{
+    CloseReceiver, CloseResponseSender, RouterEvent, RoutingError, SubscriberRequest,
+};
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
-use common::warp::path::{AbsolutePath, RelativePath};
+use common::warp::path::RelativePath;
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use std::convert::TryFrom;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tracing::{error, span, trace, warn, Level};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
 pub enum IncomingRequest {
     Connection(mpsc::Receiver<Message>),
-    Subscribe((AbsolutePath, mpsc::Sender<RouterEvent>)),
+    Subscribe(SubscriberRequest),
     Message(Message),
     Unreachable(String),
     Disconnect,
@@ -86,9 +89,12 @@ impl IncomingHostTask {
                     connection = Some(message_rx);
                 }
 
-                IncomingRequest::Subscribe((target, event_tx)) => {
+                IncomingRequest::Subscribe(SubscriberRequest {
+                    path: relative_path,
+                    subscriber_tx: event_tx,
+                }) => {
                     subscribers
-                        .entry(target.relative_path())
+                        .entry(relative_path)
                         .or_insert_with(Vec::new)
                         .push(event_tx);
                 }
@@ -97,23 +103,46 @@ impl IncomingHostTask {
                     let message = message
                         .to_text()
                         .map_err(|_| RoutingError::ConnectionError)?;
-                    let value = parse_single(message).map_err(|_| RoutingError::ConnectionError)?;
-                    let envelope =
-                        Envelope::try_from(value).map_err(|_| RoutingError::ConnectionError)?;
-                    let destination = envelope.relative_path();
-                    let event = RouterEvent::Envelope(envelope);
 
-                    tracing::trace!("{:?}", event);
+                    let value = parse_single(message);
 
-                    if let Some(relative_path) = destination {
-                        broadcast_destination(&mut subscribers, relative_path, event).await?;
-                    } else {
-                        tracing::warn!("Host messages are not supported: {:?}", event);
+                    match value {
+                        Ok(val) => {
+                            let envelope = Envelope::try_from(val);
+
+                            match envelope {
+                                Ok(env) => {
+                                    let destination = env.relative_path();
+                                    let event = RouterEvent::Envelope(env);
+
+                                    let span = span!(Level::TRACE, "incoming_event");
+                                    let _enter = span.enter();
+                                    trace!("{:?}", event);
+
+                                    if let Some(relative_path) = destination {
+                                        broadcast_destination(
+                                            &mut subscribers,
+                                            relative_path,
+                                            event,
+                                        )
+                                        .await?;
+                                    } else {
+                                        warn!("Host messages are not supported: {:?}", event);
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Parsing error {:?}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Parsing error {:?}", e);
+                        }
                     }
                 }
 
                 IncomingRequest::Unreachable(err) => {
-                    tracing::trace!("Unreachable Host");
+                    trace!("Unreachable Host");
                     broadcast_all(&mut subscribers, RouterEvent::Unreachable(err.to_string()))
                         .await?;
 
@@ -121,14 +150,15 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Disconnect => {
-                    tracing::trace!("Connection closed");
+                    trace!("Connection closed");
                     connection = None;
 
                     broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
                 }
 
                 IncomingRequest::Close(Some(_)) => {
-                    tracing::trace!("Closing Router");
+                    drop(rx);
+                    trace!("Closing Router");
                     broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
 
                     break Ok(());
@@ -174,7 +204,7 @@ async fn broadcast_destination(
             futures.push(subscriber.send(event.clone()));
         }
     } else {
-        tracing::trace!("No downlink interested in event: {:?}", event);
+        trace!("No downlink interested in event: {:?}", event);
     };
 
     for result in futures.collect::<Vec<_>>().await {
