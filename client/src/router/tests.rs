@@ -56,13 +56,13 @@ fn get_request_count(conn_pool: &TestPool) -> usize {
 }
 
 async fn open_connection(
-    router: &mut SwimRouter,
+    router: &mut SwimRouter<TestPool>,
     url: &url::Url,
     node: &str,
     lane: &str,
 ) -> (
-    <SwimRouter as Router>::ConnectionSink,
-    <SwimRouter as Router>::ConnectionStream,
+    <SwimRouter<TestPool> as Router>::ConnectionSink,
+    <SwimRouter<TestPool> as Router>::ConnectionStream,
 ) {
     router
         .connection_for(&AbsolutePath::new(url.clone(), node, lane))
@@ -1555,6 +1555,7 @@ async fn test_router_close_error() {
         router_connection_request_tx,
         router_sink_tx,
         task_manager_handle,
+        connection_pool,
         close_tx: _,
         configuration,
     } = router;
@@ -1567,6 +1568,7 @@ async fn test_router_close_error() {
         router_connection_request_tx,
         router_sink_tx,
         task_manager_handle,
+        connection_pool,
         close_tx,
         configuration,
     };
