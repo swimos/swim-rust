@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::raw;
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::downlink::DownlinkParams;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
@@ -29,6 +29,7 @@ use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
+use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
@@ -123,14 +124,15 @@ where
 {
     pub fn from_raw(
         raw: raw::RawDownlink<mpsc::Sender<Act>, mpsc::Receiver<Event<Upd>>>,
-        buffer_size: usize,
+        buffer_size: NonZeroUsize,
+        yield_after: NonZeroUsize,
     ) -> (QueueDownlink<Act, Upd>, QueueReceiver<Upd>) {
         let raw::RawDownlink {
             receiver,
             sender,
             task,
         } = raw;
-        let (topic, first) = MpscTopic::new(receiver, buffer_size);
+        let (topic, first) = MpscTopic::new(receiver, buffer_size, yield_after);
         let internal = Internal {
             input: sender.clone(),
             topic: topic.clone(),
@@ -208,9 +210,8 @@ pub(in crate::downlink) fn make_downlink<M, A, State, Machine, Updates, Commands
     machine: Machine,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    queue_size: usize,
-    on_invalid: OnInvalidMessage,
+    queue_size: NonZeroUsize,
+    config: &DownlinkParams,
 ) -> (QueueDownlink<A, Machine::Ev>, QueueReceiver<Machine::Ev>)
 where
     M: Send + 'static,
@@ -219,11 +220,11 @@ where
     Machine: StateMachine<State, M, A> + Send + 'static,
     Machine::Ev: Clone + Send + Sync + 'static,
     Machine::Cmd: Send + 'static,
-    Updates: Stream<Item = Message<M>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
-    let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
-    let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(buffer_size);
+    let (act_tx, act_rx) = mpsc::channel::<A>(config.buffer_size.get());
+    let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(config.buffer_size.get());
 
     let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
 
@@ -237,13 +238,14 @@ where
         event_sink,
         completed.clone(),
         stopped_tx,
-        on_invalid,
+        config.on_invalid,
     );
 
     let lane_task = task.run(
         raw::make_operation_stream(update_stream),
         act_rx.fuse(),
         machine,
+        config.yield_after,
     );
 
     let join_handle = tokio::task::spawn(lane_task);
@@ -252,5 +254,5 @@ where
 
     let raw_dl = raw::RawDownlink::new(act_tx, event_rx, dl_task);
 
-    QueueDownlink::from_raw(raw_dl, queue_size)
+    QueueDownlink::from_raw(raw_dl, queue_size, config.yield_after)
 }

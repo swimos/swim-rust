@@ -24,7 +24,7 @@ use crate::router::outgoing::OutgoingHostTask;
 use common::request::request_future::{RequestError, RequestFuture, Sequenced};
 use common::sink::item::map_err::SenderErrInto;
 use common::sink::item::ItemSender;
-use common::warp::envelope::Envelope;
+use common::warp::envelope::{Envelope, IncomingLinkMessage};
 use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
 use futures::stream::FuturesUnordered;
@@ -71,7 +71,7 @@ pub type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
-    Envelope(Envelope),
+    Message(IncomingLinkMessage),
     ConnectionClosed,
     /// The requested host is unreachable. Field contains the error message returned from the
     /// connection pool.
@@ -227,6 +227,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                     let (host, message) = payload.deref();
 
                     let target = message
+                        .header
                         .relative_path()
                         .ok_or(RoutingError::ConnectionError)?
                         .for_host(host.clone());
@@ -318,6 +319,7 @@ impl ConnectionRequest {
     }
 }
 
+#[derive(Debug)]
 pub struct SubscriberRequest {
     path: RelativePath,
     subscriber_tx: mpsc::Sender<RouterEvent>,
@@ -331,8 +333,6 @@ impl SubscriberRequest {
         }
     }
 }
-
-// type SubscriberRequest = (RelativePath, mpsc::Sender<RouterEvent>);
 
 enum HostTask {
     Connect(ConnectionRequest),
@@ -526,16 +526,26 @@ impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RoutingError {
-    RouterDropped,
     ConnectionError,
+    HostUnreachable,
     PoolError(ConnectionError),
+    RouterDropped,
     CloseError,
 }
 
+//Todo this should be unified
 impl RoutingError {
-    fn is_transient(&self) -> bool {
-        match self {
+    pub fn is_transient(&self) -> bool {
+        match &self {
             RoutingError::ConnectionError => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_fatal(&self) -> bool {
+        match &self {
+            RoutingError::RouterDropped => true,
+            RoutingError::HostUnreachable => false,
             _ => false,
         }
     }
@@ -544,10 +554,11 @@ impl RoutingError {
 impl Display for RoutingError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::ConnectionError => write!(f, "Connection error."),
-            RoutingError::CloseError => write!(f, "Closing error."),
+            RoutingError::HostUnreachable => write!(f, "Host unreachable."),
             RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
+            RoutingError::RouterDropped => write!(f, "Router was dropped."),
+            RoutingError::CloseError => write!(f, "Closing error."),
         }
     }
 }

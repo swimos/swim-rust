@@ -17,7 +17,7 @@ use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
+use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
 use common::model::schema::Schema;
 use common::request::Request;
 
@@ -2020,4 +2020,654 @@ fn invalid_remove_synced() {
             StandardSchema::OfKind(ValueKind::Int32)
         ))
     );
+}
+
+fn make_update(
+    key: i32,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+) {
+    make_update_raw(Value::from(key))
+}
+
+fn make_update_raw(
+    key: Value,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+) {
+    let upd_fn = |maybe_v: &Option<&Value>| match maybe_v {
+        Some(Value::Text(t)) if !t.is_empty() => Some(Value::Text(t.to_uppercase())),
+        _ => None,
+    };
+    let (tx_before, rx_before) = oneshot::channel();
+    let (tx_after, rx_after) = oneshot::channel();
+    (
+        MapAction::update_and_await(key, upd_fn, Request::new(tx_before), Request::new(tx_after)),
+        rx_before,
+        rx_after,
+    )
+}
+
+fn make_update_bad(
+    key: i32,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+    oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
+) {
+    let upd_fn = |maybe_v: &Option<&Value>| match maybe_v {
+        Some(Value::Text(t)) if !t.is_empty() => Some(Value::BooleanValue(true)),
+        _ => None,
+    };
+    let (tx_before, rx_before) = oneshot::channel();
+    let (tx_after, rx_after) = oneshot::channel();
+    (
+        MapAction::update_and_await(
+            Value::from(key),
+            upd_fn,
+            Request::new(tx_before),
+            Request::new(tx_after),
+        ),
+        rx_before,
+        rx_after,
+    )
+}
+
+fn make_try_update(
+    key: i32,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<UpdateResult<Option<Arc<Value>>>, DownlinkError>>,
+    oneshot::Receiver<Result<UpdateResult<Option<Arc<Value>>>, DownlinkError>>,
+) {
+    make_try_update_raw(Value::from(key))
+}
+
+fn make_try_update_raw(
+    key: Value,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<UpdateResult<Option<Arc<Value>>>, DownlinkError>>,
+    oneshot::Receiver<Result<UpdateResult<Option<Arc<Value>>>, DownlinkError>>,
+) {
+    let upd_fn = |maybe_v: &Option<&Value>| match maybe_v {
+        Some(Value::Text(t)) if t.len() > 1 => Ok(Some(Value::Text(t.to_uppercase()))),
+        Some(Value::Text(t)) if t.is_empty() => Ok(None),
+        _ => Err(UpdateFailure("Update failed.".to_string())),
+    };
+    let (tx_before, rx_before) = oneshot::channel();
+    let (tx_after, rx_after) = oneshot::channel();
+    (
+        MapAction::try_update_and_await(
+            key,
+            upd_fn,
+            Request::new(tx_before),
+            Request::new(tx_after),
+        ),
+        rx_before,
+        rx_after,
+    )
+}
+
+fn make_try_update_bad(
+    key: i32,
+) -> (
+    MapAction,
+    oneshot::Receiver<Result<UpdateResult<Option<Arc<Value>>>, DownlinkError>>,
+    oneshot::Receiver<Result<UpdateResult<Option<Arc<Value>>>, DownlinkError>>,
+) {
+    let upd_fn = |maybe_v: &Option<&Value>| match maybe_v {
+        Some(Value::Text(t)) if !t.is_empty() => Ok(Some(Value::BooleanValue(true))),
+        _ => Err(UpdateFailure("Update failed.".to_string())),
+    };
+    let (tx_before, rx_before) = oneshot::channel();
+    let (tx_after, rx_after) = oneshot::channel();
+    (
+        MapAction::try_update_and_await(
+            Value::from(key),
+            upd_fn,
+            Request::new(tx_before),
+            Request::new(tx_after),
+        ),
+        rx_before,
+        rx_after,
+    )
+}
+
+#[test]
+fn update_to_defined_action() {
+    let original_val = "original".to_string();
+    let expected_val = original_val.to_uppercase();
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
+
+    let (action, mut rx_before, mut rx_after) = make_update(13);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(expected_val.clone()))]);
+    assert_that!(&model.state, eq(&expected));
+
+    let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
+
+    assert!(view.ptr_eq(&model.state));
+    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    match cmd {
+        MapModification::Insert(cmd_k, cmd_v) => {
+            assert_that!(&cmd_k, eq(&k));
+            assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
+        }
+        ow => {
+            panic!("{:?} is not an insertion.", ow);
+        }
+    }
+    assert_that!(err, none());
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
+    assert_that!(&maybe_old_val, some());
+    let old_val = maybe_old_val.unwrap();
+    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_new_val = response.unwrap();
+    assert_that!(&maybe_new_val, some());
+    let new_val = maybe_new_val.unwrap();
+    assert_that!(new_val, eq(Arc::new(Value::Text(expected_val.clone()))));
+}
+
+#[test]
+fn update_to_undefined_action() {
+    let original_val = "".to_string();
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
+
+    let (action, mut rx_before, mut rx_after) = make_update(13);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::new();
+    assert_that!(&model.state, eq(&expected));
+
+    let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
+
+    assert!(view.ptr_eq(&model.state));
+    assert_that!(event, eq(MapEvent::Remove(k.clone())));
+    match cmd {
+        MapModification::Remove(cmd_k) => {
+            assert_that!(&cmd_k, eq(&k));
+        }
+        ow => {
+            panic!("{:?} is not an removal.", ow);
+        }
+    }
+    assert_that!(err, none());
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
+    assert_that!(&maybe_old_val, some());
+    let old_val = maybe_old_val.unwrap();
+    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_new_val = response.unwrap();
+    assert_that!(&maybe_new_val, none());
+}
+
+#[test]
+fn update_action_with_invalid_key() {
+    let original_val = "original".to_string();
+
+    let k = Value::from(13);
+    let key_schema = StandardSchema::OfKind(ValueKind::Int32);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::new(key_schema.clone(), StandardSchema::OfKind(ValueKind::Text));
+
+    let (action, mut rx_before, mut rx_after) = make_update_raw(Value::text("a"));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::text("a"), key_schema);
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+}
+
+#[test]
+fn update_action_with_invalid_value() {
+    let original_val = "original".to_string();
+
+    let k = Value::from(13);
+    let value_schema = StandardSchema::OfKind(ValueKind::Text);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        value_schema.clone(),
+    );
+
+    let (action, mut rx_before, mut rx_after) = make_update_bad(13);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::BooleanValue(true), value_schema);
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+}
+
+#[test]
+fn update_action_dropped_receiver() {
+    let original_val = "original".to_string();
+    let expected_val = original_val.to_uppercase();
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
+
+    let (action, rx_before, mut rx_after) = make_update(13);
+
+    drop(rx_before);
+
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(expected_val.clone()))]);
+    assert_that!(&model.state, eq(&expected));
+
+    let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
+
+    assert!(view.ptr_eq(&model.state));
+    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    match cmd {
+        MapModification::Insert(cmd_k, cmd_v) => {
+            assert_that!(&cmd_k, eq(&k));
+            assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
+        }
+        ow => {
+            panic!("{:?} is not an insertion.", ow);
+        }
+    }
+    assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_new_val = response.unwrap();
+    assert_that!(&maybe_new_val, some());
+    let old_val = maybe_new_val.unwrap();
+    assert_that!(old_val, eq(Arc::new(Value::Text(expected_val.clone()))));
+}
+
+#[test]
+fn try_update_to_successful_defined_action() {
+    let original_val = "original".to_string();
+    let expected_val = original_val.to_uppercase();
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
+
+    let (action, mut rx_before, mut rx_after) = make_try_update(13);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(expected_val.clone()))]);
+    assert_that!(&model.state, eq(&expected));
+
+    let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
+
+    assert!(view.ptr_eq(&model.state));
+    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    match cmd {
+        MapModification::Insert(cmd_k, cmd_v) => {
+            assert_that!(&cmd_k, eq(&k));
+            assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
+        }
+        ow => {
+            panic!("{:?} is not an insertion.", ow);
+        }
+    }
+    assert_that!(err, none());
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
+    assert_that!(&maybe_old_val, ok());
+    let old_result = maybe_old_val.unwrap();
+    assert_that!(&old_result, some());
+    let old_val = old_result.unwrap();
+    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_new_val = response.unwrap();
+    assert_that!(&maybe_new_val, ok());
+    let new_result = maybe_new_val.unwrap();
+    assert_that!(&new_result, some());
+    let new_val = new_result.unwrap();
+    assert_that!(new_val, eq(Arc::new(Value::Text(expected_val.clone()))));
+}
+
+#[test]
+fn try_update_to_undefined_action() {
+    let original_val = "".to_string();
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
+
+    let (action, mut rx_before, mut rx_after) = make_try_update(13);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::new();
+    assert_that!(&model.state, eq(&expected));
+
+    let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
+
+    assert!(view.ptr_eq(&model.state));
+    assert_that!(event, eq(MapEvent::Remove(k.clone())));
+    match cmd {
+        MapModification::Remove(cmd_k) => {
+            assert_that!(&cmd_k, eq(&k));
+        }
+        ow => {
+            panic!("{:?} is not an removal.", ow);
+        }
+    }
+    assert_that!(err, none());
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
+    assert_that!(&maybe_old_val, ok());
+    let old_result = maybe_old_val.unwrap();
+    assert_that!(&old_result, some());
+    let old_val = old_result.unwrap();
+    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let new_result = response.unwrap();
+    assert_that!(&new_result, ok());
+    let maybe_new_val = new_result.unwrap();
+    assert_that!(&maybe_new_val, none());
+}
+
+#[test]
+fn try_update_to_failed_action() {
+    let original_val = "a".to_string();
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
+
+    let (action, mut rx_before, mut rx_after) = make_try_update(13);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
+    assert_that!(&maybe_old_val, err());
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_new_val = response.unwrap();
+    assert_that!(&maybe_new_val, err());
+}
+
+#[test]
+fn try_update_action_with_invalid_key() {
+    let original_val = "original".to_string();
+
+    let k = Value::from(13);
+    let key_schema = StandardSchema::OfKind(ValueKind::Int32);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::new(key_schema.clone(), StandardSchema::OfKind(ValueKind::Text));
+
+    let (action, mut rx_before, mut rx_after) = make_try_update_raw(Value::text("a"));
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::text("a"), key_schema);
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+}
+
+#[test]
+fn try_update_action_with_invalid_value() {
+    let original_val = "original".to_string();
+
+    let k = Value::from(13);
+    let value_schema = StandardSchema::OfKind(ValueKind::Text);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        value_schema.clone(),
+    );
+
+    let (action, mut rx_before, mut rx_after) = make_try_update_bad(13);
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(original_val))]);
+    assert_that!(&model.state, eq(&expected));
+
+    assert_that!(response, eq(Response::none()));
+
+    let expected_err = DownlinkError::SchemaViolation(Value::BooleanValue(true), value_schema);
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+
+    let result = rx_after.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, err());
+    let error = response.err().unwrap();
+    assert_that!(&error, eq(&expected_err));
+}
+
+#[test]
+fn try_update_action_with_dropped_receiver() {
+    let original_val = "original".to_string();
+    let expected_val = original_val.to_uppercase();
+
+    let k = Value::Int32Value(13);
+
+    let mut state = DownlinkState::Synced;
+    let mut model = make_model_with(13, original_val.clone());
+    let machine = MapStateMachine::unvalidated();
+
+    let (action, mut rx_before, rx_after) = make_try_update(13);
+
+    drop(rx_after);
+
+    let maybe_response =
+        machine.handle_operation(&mut state, &mut model, Operation::Action(action));
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Synced));
+    let expected = ValMap::from(vec![(k.clone(), Value::text(expected_val.clone()))]);
+    assert_that!(&model.state, eq(&expected));
+
+    let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
+
+    assert!(view.ptr_eq(&model.state));
+    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    match cmd {
+        MapModification::Insert(cmd_k, cmd_v) => {
+            assert_that!(&cmd_k, eq(&k));
+            assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
+        }
+        ow => {
+            panic!("{:?} is not an insertion.", ow);
+        }
+    }
+    assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
+
+    let result = rx_before.try_recv();
+    assert_that!(&result, ok());
+    let response = result.unwrap();
+    assert_that!(&response, ok());
+    let maybe_old_val = response.unwrap();
+    assert_that!(&maybe_old_val, ok());
+    let old_result = maybe_old_val.unwrap();
+    assert_that!(&old_result, some());
+    let old_val = old_result.unwrap();
+    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
 }

@@ -84,7 +84,7 @@ impl OutgoingHostTask {
                 OutgoingRequest::Close(None) => {}
             }
 
-            trace!("Completed request");
+            trace!("Completed outgoing request");
         }
         Ok(())
     }
@@ -128,9 +128,7 @@ mod route_tests {
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
         let handle = tokio::spawn(outgoing_task.run());
 
-        let _ = envelope_tx
-            .send(Envelope::sync("node".into(), "lane".into()))
-            .await;
+        let _ = envelope_tx.send(Envelope::sync("node", "lane")).await;
 
         let connection_request = task_request_rx.recv().await.unwrap();
         let _ = connection_request
@@ -153,9 +151,7 @@ mod route_tests {
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
 
         let handle = tokio::spawn(outgoing_task.run());
-        let _ = envelope_tx
-            .send(Envelope::sync("node".into(), "lane".into()))
-            .await;
+        let _ = envelope_tx.send(Envelope::sync("node", "lane")).await;
 
         let connection_request = task_request_rx.recv().await.unwrap();
         let _ = connection_request

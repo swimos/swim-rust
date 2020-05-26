@@ -30,6 +30,7 @@ use tracing::{error, span, trace, warn, Level};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
+#[derive(Debug)]
 pub enum IncomingRequest {
     Connection(mpsc::Receiver<Message>),
     Subscribe(SubscriberRequest),
@@ -84,6 +85,10 @@ impl IncomingHostTask {
                 rx.next().await.ok_or(RoutingError::ConnectionError)?
             };
 
+            let span = span!(Level::TRACE, "incoming_event");
+            let _enter = span.enter();
+            trace!("{:?}", task);
+
             match task {
                 IncomingRequest::Connection(message_rx) => {
                     connection = Some(message_rx);
@@ -112,22 +117,17 @@ impl IncomingHostTask {
 
                             match envelope {
                                 Ok(env) => {
-                                    let destination = env.relative_path();
-                                    let event = RouterEvent::Envelope(env);
+                                    let message = env.into_incoming();
 
-                                    let span = span!(Level::TRACE, "incoming_event");
-                                    let _enter = span.enter();
-                                    trace!("{:?}", event);
-
-                                    if let Some(relative_path) = destination {
+                                    if let Ok(incoming) = message {
                                         broadcast_destination(
                                             &mut subscribers,
-                                            relative_path,
-                                            event,
+                                            incoming.path.clone(),
+                                            RouterEvent::Message(incoming),
                                         )
                                         .await?;
                                     } else {
-                                        warn!("Host messages are not supported: {:?}", event);
+                                        warn!("Unsupported message: {:?}", message)
                                     }
                                 }
                                 Err(e) => {
@@ -167,6 +167,7 @@ impl IncomingHostTask {
 
                 IncomingRequest::Close(None) => { /*NO OP*/ }
             }
+            trace!("Completed incoming request")
         }
     }
 }

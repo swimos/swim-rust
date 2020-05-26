@@ -939,11 +939,10 @@ impl From<std::fmt::Error> for ValueEncodeErr {
     }
 }
 
-impl Encoder for ValueEncoder {
-    type Item = Value;
+impl Encoder<Value> for ValueEncoder {
     type Error = ValueEncodeErr;
 
-    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: Value, dst: &mut BytesMut) -> Result<(), Self::Error> {
         dst.reserve(ValueEncoder::estimate_size(&item));
         self.encode_value(item, dst)
     }

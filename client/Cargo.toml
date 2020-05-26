@@ -10,15 +10,15 @@ pin-project = "0.4.8"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
-tokio = { version = "0.2", features = ["sync", "stream", "rt-threaded", "macros", "time"] }
-tokio-tls = "0.3.0"
+tokio = { version = "=0.2.21", features = ["sync", "stream", "rt-threaded", "macros", "time"] }
+tokio-tls = "=0.3.1"
 im = "14.2.0"
 tokio-tungstenite = { version = "0.10.1", features = ["tls"] }
 url = "2.1.1"
 rand = "0.7.3"
-tracing = { version = "0.1.13"}
+tracing = "0.1.13"
 tracing-subscriber = "0.2.3"
-tracing-futures = "0.2.3"
+tracing-futures = "0.2.4"
 
 common = { path = "../common" }
 utilities = { path = "../utilities" }

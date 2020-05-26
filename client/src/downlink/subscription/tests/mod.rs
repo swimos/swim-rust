@@ -34,6 +34,7 @@ fn default_config() -> ConfigHierarchy {
         timeout,
         5,
         OnInvalidMessage::Terminate,
+        256,
     )
     .unwrap();
     ConfigHierarchy::new(client_params, default_params)
@@ -47,6 +48,7 @@ fn per_host_config() -> ConfigHierarchy {
         timeout,
         5,
         OnInvalidMessage::Terminate,
+        256,
     )
     .unwrap();
     let mut conf = default_config();
@@ -63,6 +65,7 @@ fn per_lane_config() -> ConfigHierarchy {
         timeout,
         5,
         OnInvalidMessage::Terminate,
+        256,
     )
     .unwrap();
     let mut conf = per_host_config();
