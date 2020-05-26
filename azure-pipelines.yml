@@ -1,11 +1,10 @@
-trigger: ["master"]
+trigger: ["master", "router"]
 pr: ["master"]
 
 variables:
   RUSTFLAGS: -Dwarnings
 
 jobs:
-  # Test top level crate
   - template: ci/azure-test-stable.yml
     parameters:
       name: test_crates
@@ -18,11 +17,12 @@ jobs:
         - server
         - utilities
 
-#  - template: ci/azure-client-test.yml
-#    parameters:
-#      name: test_client
-#      rust: 1.43.0
-#      displayName: Test client
+  - template: ci/azure-test-client.yml
+    parameters:
+      name: test_client
+      rust: 1.43.0
+      cross: true
+      displayName: Test client
 
   - template: ci/azure-clippy.yml
     parameters:

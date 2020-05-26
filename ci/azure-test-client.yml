@@ -1,0 +1,25 @@
+
+jobs:
+  - job: ${{ parameters.name }}
+    displayName: ${{ parameters.displayName }}
+    strategy:
+      matrix:
+        Linux:
+          vmImage: ubuntu-16.04
+
+        ${{ if parameters.cross }}:
+          MacOS:
+            vmImage: macos-latest
+          Windows:
+            vmImage: vs2017-win2016
+    pool:
+      vmImage: $(vmImage)
+
+    steps:
+      # Run with all crate features
+      - script: cargo test --features test-server
+        env:
+          RUST_BACKTRACE: 1
+          CI: 'True'
+        displayName: client - cargo test --features test-server
+        workingDirectory: $(Build.SourcesDirectory)/client

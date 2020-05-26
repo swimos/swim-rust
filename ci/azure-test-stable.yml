@@ -28,12 +28,3 @@ jobs:
               CI: 'True'
             displayName: ${{ crate }} - cargo test --all-features
             workingDirectory: $(Build.SourcesDirectory)/${{ crate }}
-
-      - ${{ each crate in parameters.crates }}:
-          # Run with all crate features
-          - script: cargo test --all-features
-            env:
-              RUST_BACKTRACE: 1
-              CI: 'True'
-            displayName: ${{ crate }} - cargo test --all-features
-            workingDirectory: $(Build.SourcesDirectory)/${{ crate }}
