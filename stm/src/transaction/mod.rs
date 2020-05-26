@@ -18,6 +18,10 @@ use std::sync::Arc;
 
 use crate::ptr::PtrKey;
 use crate::var::{TVarInner, VarRef};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use crate::stm::{ExecResult, Stm};
+use futures::{Stream, StreamExt};
 
 #[derive(Debug)]
 enum LogState {
@@ -110,5 +114,91 @@ impl Transaction {
             }
         }
     }
+
+    pub(crate) async fn try_commit(&mut self) -> bool {
+        unimplemented!()
+    }
+
+    pub(crate) async fn wait_for_change(&self) {
+        unimplemented!()
+    }
+
+
 }
 
+#[derive(Debug)]
+pub enum TransactionError {
+    Aborted {
+        error: Box<dyn Error + 'static>,
+    },
+    HighContention {
+        num_failed: usize,
+    },
+    TransactionDiverged,
+    StackOverflow {
+        depth: usize,
+    }
+}
+
+impl Display for TransactionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransactionError::Aborted { error } => {
+                write!(f, "Transaction aborted: {}", error)
+            },
+            TransactionError::HighContention { num_failed: num_retries } => {
+                write!(f, "Transaction could not commit after {} attempts.", num_retries)
+            },
+            TransactionError::TransactionDiverged => {
+                write!(f, "Transaction took too long to execute.")
+            },
+            TransactionError::StackOverflow { depth } => {
+                write!(f, "The stack depth of the transaction ({}) exceeded the maximum depth.", depth)
+            },
+        }
+    }
+}
+
+impl Error for TransactionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            TransactionError::Aborted { error } => Some(error.as_ref()),
+            _ => None
+        }
+    }
+}
+
+
+pub async fn atomically<S, C>(stm: &S,
+                              mut contention_manager: C,
+) -> Result<S::Result, TransactionError>
+where
+    S: Stm,
+    C: Stream<Item = ()> + Unpin,
+{
+
+    let mut transaction = Transaction::new();
+    let mut failed_commits: usize = 0;
+
+    loop {
+        let exec_result = stm.run_in(&mut transaction).await;
+        match exec_result {
+            ExecResult::Done(t) => {
+                if transaction.try_commit().await {
+                    return Ok(t);
+                } else {
+                    failed_commits += 1;
+                    if contention_manager.next().await.is_none() {
+                        return Err(TransactionError::HighContention { num_failed: failed_commits })
+                    }
+                }
+            },
+            ExecResult::Abort(error) => {
+                return Err(TransactionError::Aborted { error });
+            },
+            ExecResult::Retry => {},
+        }
+        transaction.wait_for_change().await;
+    }
+
+}

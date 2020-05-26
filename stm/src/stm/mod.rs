@@ -29,7 +29,7 @@ pub type ResultFuture<'a, T> = Pin<Box<dyn Future<Output = ExecResult<T>> + 'a>>
 pub enum ExecResult<T> {
     Done(T),
     Retry,
-    Abort(Box<dyn Error>),
+    Abort(Box<dyn Error + 'static>),
 }
 
 macro_rules! done {
