@@ -30,8 +30,9 @@ use std::fmt::{Debug, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
+use tracing::trace_span;
+use tracing_futures::Instrument;
 use utilities::future::{SwimFutureExt, TransformedFuture};
-
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
 #[derive(Debug)]
@@ -242,7 +243,7 @@ where
             machine,
         );
 
-        let join_handle = tokio::task::spawn(lane_task);
+        let join_handle = tokio::task::spawn(lane_task.instrument(trace_span!("downlink task")));
 
         let dl_task = raw::DownlinkTaskHandle::new(join_handle, stopped_rx, completed);
 

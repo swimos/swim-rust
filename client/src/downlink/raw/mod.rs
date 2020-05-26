@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::{
     Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
@@ -31,6 +30,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+use tracing::trace;
 
 #[cfg(test)]
 pub mod tests;
@@ -295,6 +295,8 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         let mut act_terminated = false;
         let mut events_terminated = false;
         let mut read_act = false;
+
+        trace!("Running downlink task");
 
         let result: Result<(), DownlinkError> = loop {
             let next_op: TaskInput<M, A> = if dl_state == DownlinkState::Synced && !act_terminated {

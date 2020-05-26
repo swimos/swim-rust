@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::router::RouterParams;
-use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
-use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
 use tokio::sync::mpsc;
-
-use crate::router::retry::new_request;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tracing::{error, info, trace};
+
+use common::warp::envelope::Envelope;
 use utilities::future::retryable::RetryableFuture;
+
+use crate::configuration::router::RouterParams;
+use crate::router::retry::new_request;
+use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -64,16 +66,23 @@ impl OutgoingHostTask {
 
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
-            tracing::trace!("Received request");
 
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let message = Message::Text(envelope.into_value().to_string());
                     let request = new_request(connection_request_tx.clone(), message);
-                    RetryableFuture::new(request, config.retry_strategy()).await?;
-                    tracing::trace!("Completed request");
+                    RetryableFuture::new(request, config.retry_strategy())
+                        .await
+                        .map_err(|e| {
+                            error!(cause = %e, "Failed to send envelope");
+                            e
+                        })?;
+
+                    trace!("Completed request");
                 }
                 OutgoingRequest::Close(Some(_)) => {
+                    info!("Closing");
+
                     break;
                 }
                 OutgoingRequest::Close(None) => { /*NO OP*/ }
@@ -96,13 +105,14 @@ fn combine_outgoing_streams(
 mod route_tests {
     use std::num::NonZeroUsize;
 
-    use utilities::future::retryable::strategy::RetryStrategy;
+    use tokio::sync::watch;
 
-    use super::*;
+    use utilities::future::retryable::strategy::RetryStrategy;
 
     use crate::configuration::router::RouterParamBuilder;
     use crate::connections::ConnectionSender;
-    use tokio::sync::watch;
+
+    use super::*;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
         RouterParamBuilder::new()

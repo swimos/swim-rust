@@ -103,7 +103,7 @@ impl IncomingHostTask {
                     let destination = envelope.relative_path();
                     let event = RouterEvent::Envelope(envelope);
 
-                    tracing::trace!("{:?}", event);
+                    tracing::trace!("Received incoming message request: {:?}", event);
 
                     if let Some(relative_path) = destination {
                         broadcast_destination(&mut subscribers, relative_path, event).await?;
@@ -113,7 +113,7 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Unreachable(err) => {
-                    tracing::trace!("Unreachable Host");
+                    tracing::trace!(cause = %err, "Unreachable Host");
                     broadcast_all(&mut subscribers, RouterEvent::Unreachable(err.to_string()))
                         .await?;
 

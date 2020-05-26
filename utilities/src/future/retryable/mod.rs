@@ -29,6 +29,8 @@ pub mod request;
 pub mod strategy;
 use pin_project::{pin_project, project};
 
+use tracing::{error, trace};
+
 /// A future that can be reset back to its initial state and retried once again.
 pub trait ResettableFuture: Future {
     /// Reset the future back to its initial state. Returns true if the future successfully reset or
@@ -85,6 +87,8 @@ where
                 RetryState::Retrying(ref mut e) => match this.strategy.next() {
                     Some(s) => {
                         if future.reset() {
+                            trace!("Retrying");
+
                             match s {
                                 Some(dur) => {
                                     *this.state = RetryState::Sleeping(delay_for(dur));
@@ -94,6 +98,8 @@ where
                                 }
                             }
                         } else if let Some(e) = e.take() {
+                            error!("Retryable failed");
+
                             return Poll::Ready(Err(e));
                         } else {
                             unreachable!()
@@ -101,6 +107,8 @@ where
                     }
                     None => {
                         if let Some(e) = e.take() {
+                            error!("Retries exceeded");
+
                             return Poll::Ready(Err(e));
                         } else {
                             unreachable!()

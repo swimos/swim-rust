@@ -33,6 +33,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+use tracing_futures::Instrument;
 
 pub mod incoming;
 pub mod outgoing;
@@ -259,7 +260,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
         }
     }
 }
-
+use tracing::trace_span;
 fn get_host_manager<Pool>(
     host_managers: &mut HashMap<url::Url, HostManagerHandle>,
     target: AbsolutePath,
@@ -273,7 +274,11 @@ where
     host_managers.entry(target.host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
             HostManager::new(target, connection_pool, close_rx, config);
-        (sink, stream_registrator, tokio::spawn(host_manager.run()))
+        (
+            sink,
+            stream_registrator,
+            tokio::spawn(host_manager.run().instrument(trace_span!("host manager"))),
+        )
     })
 }
 
@@ -312,6 +317,8 @@ struct HostManager<Pool: ConnectionPool> {
     close_rx: CloseReceiver,
     config: RouterParams,
 }
+
+use tracing::{span, Level};
 
 impl<Pool: ConnectionPool> HostManager<Pool> {
     fn new(
@@ -360,8 +367,16 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let outgoing_task =
             OutgoingHostTask::new(sink_rx, connection_request_tx, close_rx.clone(), config);
 
-        let incoming_handle = tokio::spawn(incoming_task.run());
-        let outgoing_handle = tokio::spawn(outgoing_task.run());
+        let incoming_handle = tokio::spawn(
+            incoming_task
+                .run()
+                .instrument(span!(Level::TRACE, "incoming")),
+        );
+        let outgoing_handle = tokio::spawn(
+            outgoing_task
+                .run()
+                .instrument(span!(Level::TRACE, "outgoing")),
+        );
 
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);
 

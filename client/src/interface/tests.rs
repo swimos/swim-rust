@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::StreamExt;
+use tokio::time::Duration;
+use tracing::info;
+
+use common::model::Value;
+use common::sink::item::ItemSink;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+
 use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
 use crate::downlink::model::value::Action;
 use crate::interface::SwimClient;
-use common::model::Value;
-use common::sink::item::ItemSink;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-use futures::StreamExt;
-use tokio::time::Duration;
-use tracing::info;
 
 fn config() -> ConfigHierarchy {
     let client_params = ClientParams::new(2, Default::default()).unwrap();
@@ -51,7 +53,7 @@ fn init_tracing() {
 }
 
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn client_test() {
     init_tracing();
 
@@ -85,8 +87,8 @@ async fn client_test() {
         let _res = dl.send_item(Action::set(v.into())).await;
     }
 
-    jh.await;
-    jh2.await;
+    let _a = jh.await;
+    let _b = jh2.await;
 
     println!("Finished sending");
 }

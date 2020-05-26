@@ -212,7 +212,7 @@ impl ConsumerTask {
         {
             return false;
         }
-        //Stop processing until he special action has been processed to maintain
+        //Stop processing until the special action has been processed to maintain
         //temporal consistency.
         rx.await.is_ok()
     }

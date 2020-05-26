@@ -12,6 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::pin::Pin;
+use std::sync::Arc;
+
+use either::Either;
+use futures::stream::Fuse;
+use futures::Stream;
+use futures_util::future::{ready, TryFutureExt};
+use futures_util::select_biased;
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use pin_utils::pin_mut;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::oneshot::error::RecvError;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
+use tracing::trace_span;
+use tracing::{info, instrument};
+
+use common::model::schema::StandardSchema;
+use common::model::Value;
+use common::request::request_future::RequestError;
+use common::request::Request;
+use common::sink::item::either::EitherSink;
+use common::sink::item::ItemSender;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+use form::ValidatedForm;
+use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
+
 use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
 };
@@ -24,31 +54,6 @@ use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RouterEvent, RoutingError};
-use common::model::schema::StandardSchema;
-use common::model::Value;
-use common::request::request_future::RequestError;
-use common::request::Request;
-use common::sink::item::either::EitherSink;
-use common::sink::item::ItemSender;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-use either::Either;
-use form::ValidatedForm;
-use futures::stream::Fuse;
-use futures::Stream;
-use futures_util::future::{ready, TryFutureExt};
-use futures_util::select_biased;
-use futures_util::stream::{FuturesUnordered, StreamExt};
-use pin_utils::pin_mut;
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::pin::Pin;
-use std::sync::Arc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -77,15 +82,19 @@ pub struct Downlinks {
 impl Downlinks {
     /// Create a new downlink manager, using the specified configuration, which will attach all
     /// create downlinks to the provided router.
+    #[instrument(skip(config, router))]
     pub async fn new<C, R>(config: Arc<C>, router: R) -> Downlinks
     where
         C: Config + 'static,
         R: Router + 'static,
     {
+        info!("Initialising downlink manager");
+
         let client_params = config.client_params();
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
         let task_handle = tokio::task::spawn(task.run(rx));
+
         Downlinks {
             sender: tx,
             _task: task_handle,
@@ -94,11 +103,14 @@ impl Downlinks {
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self), level = "info")]
     pub async fn subscribe_value_untyped(
         &mut self,
         init: Value,
         path: AbsolutePath,
     ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+        info!("Subscribing to untyped value lane");
+
         self.subscribe_value_inner(init, StandardSchema::Anything, path)
             .await
     }
@@ -106,6 +118,7 @@ impl Downlinks {
     /// Attempt to subscribe to a remote value lane where the type of the values is described by a
     /// [`ValidatedForm`]. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self, init), level = "info")]
     pub async fn subscribe_value<T>(
         &mut self,
         init: T,
@@ -114,6 +127,8 @@ impl Downlinks {
     where
         T: ValidatedForm + Send + 'static,
     {
+        info!("Subscribing to type value lane");
+
         let init_value = init.into_value();
         let (dl, rec) = self
             .subscribe_value_inner(init_value, T::schema(), path)
@@ -143,10 +158,13 @@ impl Downlinks {
 
     /// Attempt to subscribe to a map lane. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
     ) -> Result<(AnyMapDownlink, MapReceiver)> {
+        info!("Subscribing to untyped map lane");
+
         self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
             .await
     }
@@ -154,6 +172,7 @@ impl Downlinks {
     /// Attempt to subscribe to a remote map lane where the types of the keys and values are
     /// described by  [`ValidatedForm`]s. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map<K, V>(
         &mut self,
         path: AbsolutePath,
@@ -162,6 +181,8 @@ impl Downlinks {
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
     {
+        info!("Subscribing to typed map lane");
+
         let (dl, rec) = self
             .subscribe_map_inner(K::schema(), V::schema(), path)
             .await?;
@@ -425,6 +446,9 @@ where
         schema: StandardSchema,
         path: AbsolutePath,
     ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+        let span = trace_span!("value downlink", path = ?path);
+        let _g = span.enter();
+
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await?;
         let schema_cpy = schema.clone();
@@ -472,6 +496,9 @@ where
         key_schema: StandardSchema,
         value_schema: StandardSchema,
     ) -> Result<(AnyMapDownlink, MapReceiver)> {
+        let span = trace_span!("map downlink", path = ?path);
+        let _g = span.enter();
+
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await?;
         let key_schema_cpy = key_schema.clone();
