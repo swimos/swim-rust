@@ -13,31 +13,61 @@
 // limitations under the License.
 
 use futures::task::AtomicWaker;
-use tokio::sync::RwLock;
-use std::sync::Arc;
-use std::fmt::{Debug, Formatter};
+use futures::future::FutureExt;
 
-pub(crate) trait VarRef {}
+use tokio::sync::RwLock;
+use std::sync::{Arc, Mutex};
+use std::fmt::{Debug, Formatter};
+use std::any::Any;
+use std::ops::Deref;
+
+pub(crate) trait VarRef {
+
+    fn has_changed(&self, ptr: Arc<dyn Any + Send + Sync>) -> bool;
+
+    fn subscribe(&self, waker: Arc<AtomicWaker>);
+
+}
 
 pub(crate) struct TVarInner<T> {
     content: RwLock<Arc<T>>,
-    _waker: AtomicWaker,
+    wakers: Mutex<Vec<Arc<AtomicWaker>>>,
 }
 
-impl<T> VarRef for TVarInner<T> {}
+impl<T: Any + Send + Sync> VarRef for TVarInner<T> {
+    fn has_changed(&self, ptr: Arc<dyn Any + Send + Sync>) -> bool {
+        if let Ok(as_t) = ptr.downcast::<T>() {
+            if let Some(guard) = self.content.read().now_or_never() {
+                !Arc::ptr_eq(guard.deref(), &as_t)
+            } else {
+                false
+            }
+        } else {
+            panic!("Incompatible pointers.")
+        }
+    }
+
+    fn subscribe(&self, waker: Arc<AtomicWaker>) {
+        self.wakers.lock().unwrap().push(waker);
+    }
+}
 
 impl<T: Send + Sync + 'static> TVarInner<T> {
 
     pub(crate) fn new(value: T) -> Self {
         TVarInner {
             content: RwLock::new(Arc::new(value)),
-            _waker: AtomicWaker::new()
+            wakers: Mutex::new(vec![])
         }
     }
 
     pub(crate) async fn read(&self) -> Arc<T> {
         let lock = self.content.read().await;
         lock.clone()
+    }
+
+    pub(crate) fn notify(&self) {
+        self.wakers.lock().unwrap().drain(..).for_each(|w| w.wake());
     }
 
 }

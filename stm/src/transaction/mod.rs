@@ -21,7 +21,9 @@ use crate::var::{TVarInner, VarRef};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use crate::stm::{ExecResult, Stm};
-use futures::{Stream, StreamExt};
+use futures::{Future, Stream, StreamExt};
+use futures::task::{AtomicWaker, Context, Poll};
+use tokio::macros::support::Pin;
 
 #[derive(Debug)]
 enum LogState {
@@ -69,12 +71,14 @@ impl LogEntry {
 #[derive(Debug, Default)]
 pub struct Transaction {
     log: HashMap<PtrKey<Arc<dyn VarRef>>, LogEntry>,
+    waiter: Option<Arc<AtomicWaker>>,
 }
 
 impl Transaction {
     pub fn new() -> Self {
         Transaction {
             log: HashMap::new(),
+            waiter: None,
         }
     }
 
@@ -119,8 +123,15 @@ impl Transaction {
         unimplemented!()
     }
 
-    pub(crate) async fn wait_for_change(&self) {
-        unimplemented!()
+    fn reads_changed_or_locked(&self) -> bool {
+        self.log.iter().any(|(PtrKey(var), entry)| {
+            match &entry.state {
+                LogState::UnconditionalGet | LogState::ConditionalSet(_) => {
+                    var.has_changed(entry.current.clone())
+                },
+                _ => false
+            }
+        })
     }
 
 
@@ -196,9 +207,52 @@ where
             ExecResult::Abort(error) => {
                 return Err(TransactionError::Aborted { error });
             },
-            ExecResult::Retry => {},
+            ExecResult::Retry => {
+                AwaitChanged::new(&mut transaction).await;
+            },
         }
-        transaction.wait_for_change().await;
+
     }
 
+}
+
+pub struct AwaitChanged<'a>(Option<&'a mut Transaction>);
+
+impl<'a> AwaitChanged<'a> {
+
+    fn new(transaction: &'a mut Transaction) -> Self {
+        AwaitChanged(Some(transaction))
+    }
+
+}
+
+
+impl<'a> Future for AwaitChanged<'a> {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Some(transaction) = self.0.take() {
+            if transaction.reads_changed_or_locked() {
+                return Poll::Ready(());
+            }
+            let waker = transaction.waiter.get_or_insert_with(|| Arc::new(AtomicWaker::new()));
+            waker.register(cx.waker());
+            transaction.log.iter().for_each(|(PtrKey(var), entry)| {
+                match &entry.state {
+                    LogState::UnconditionalGet | LogState::ConditionalSet(_) => {
+                        var.subscribe(waker.clone());
+                    },
+                    _ => {}
+                }
+            });
+            if transaction.reads_changed_or_locked() {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        } else {
+            Poll::Ready(())
+        }
+
+    }
 }
