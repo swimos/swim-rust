@@ -14,8 +14,8 @@
 
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 use std::ops::Deref;
+use std::fmt::{Debug, Formatter};
 
 pub trait Addressed {
 
@@ -33,8 +33,13 @@ impl<T: Deref> Addressed for T {
     }
 }
 
-
 pub struct PtrKey<A>(pub A);
+
+impl<A: Addressed> Debug for PtrKey<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PtrKey({:?})", self.addr())
+    }
+}
 
 impl<A: Addressed> Addressed for PtrKey<A> {
     type Referrent = A::Referrent;
@@ -44,7 +49,6 @@ impl<A: Addressed> Addressed for PtrKey<A> {
         inner.addr()
     }
 }
-
 
 impl<A: Addressed> PartialEq for PtrKey<A> {
     fn eq(&self, other: &Self) -> bool {

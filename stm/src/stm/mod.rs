@@ -16,6 +16,29 @@ use crate::var::{TVarRead, TVarWrite};
 use std::marker::PhantomData;
 use std::fmt::{Debug, Formatter};
 use std::error::Error;
+use crate::transaction::Transaction;
+use futures::Future;
+use futures::future::ready;
+use std::sync::Arc;
+use std::any::Any;
+use std::pin::Pin;
+
+pub type ResultFuture<'a, T> = Pin<Box<dyn Future<Output = ExecResult<T>> + 'a>>;
+
+#[derive(Debug)]
+pub enum ExecResult<T> {
+    Done(T),
+    Retry,
+    Abort(Box<dyn Error>),
+}
+
+macro_rules! done {
+    ($e:expr $(,)?) => (match $e {
+        ExecResult::Done(t) => t,
+        ExecResult::Retry => return ExecResult::Retry,
+        ExecResult::Abort(err) => return ExecResult::Abort(err),
+    })
+}
 
 pub trait Stm: private::Sealed {
     type Result;
@@ -23,7 +46,7 @@ pub trait Stm: private::Sealed {
     fn map<T, F>(self, f: F) -> MapStm<Self, F>
     where
         Self: Sized,
-        F: Fn(&Self::Result) -> T,
+        F: Fn(Self::Result) -> T,
     {
         MapStm {
             input: self,
@@ -35,7 +58,7 @@ pub trait Stm: private::Sealed {
     where
         Self: Sized,
         S: Stm,
-        F: Fn(&Self::Result) -> S,
+        F: Fn(Self::Result) -> S,
     {
         AndThen {
             input: self,
@@ -68,6 +91,8 @@ pub trait Stm: private::Sealed {
     {
         Catch::new(self, handler)
     }
+
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result>;
 
 }
 
@@ -114,15 +139,16 @@ pub struct AndThen<S, F> {
 }
 
 pub struct Choice<S1, S2> {
-    first: S1,
-    second: S2,
+    _first: S1,
+    _second: S2,
 }
 
 impl<S1, S2> Choice<S1, S2> {
 
     pub fn new(first: S1, second: S2) -> Self {
         Choice {
-            first, second
+            _first: first,
+            _second: second,
         }
     }
 
@@ -171,8 +197,8 @@ where
 }
 
 pub struct Catch<E, S1, S2, F: Fn(&E) -> S2> {
-    input: S1,
-    handler: F,
+    _input: S1,
+    _handler: F,
     _handler_type: PhantomData<dyn Fn(&E) -> S2>
 }
 
@@ -180,25 +206,66 @@ impl<E, S1, S2, F: Fn(&E) -> S2> Catch<E, S1, S2, F> {
 
     pub fn new(input: S1, handler: F) -> Self {
         Catch {
-            input,
-            handler,
+            _input: input,
+            _handler: handler,
             _handler_type: PhantomData,
         }
     }
 
 }
 
-impl<T> Stm for TVarRead<T> { type Result = T; }
-impl<T> Stm for TVarWrite<T> { type Result = (); }
-impl<T> Stm for Retry<T> { type Result = T; }
-impl<T> Stm for Constant<T> { type Result = T; }
+impl<T: Any + Send + Sync> Stm for TVarRead<T> {
+    type Result = Arc<T>;
+
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        let TVarRead(inner) = self;
+        Box::pin(async move {
+            let value = transaction.apply_get(inner).await;
+            ExecResult::Done(value)
+        })
+    }
+}
+
+impl<T: Any + Send + Sync> Stm for TVarWrite<T> {
+    type Result = ();
+
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        let TVarWrite { inner, value} = self;
+        transaction.apply_set(inner, value.clone());
+        Box::pin(ready(ExecResult::Done(())))
+    }
+}
+impl<T> Stm for Retry<T> {
+    type Result = T;
+
+    fn run_in<'a>(&'a self, _: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        Box::pin(ready(ExecResult::Retry))
+    }
+}
+
+impl<T: Clone> Stm for Constant<T> {
+    type Result = T;
+
+    fn run_in<'a>(&'a self, _: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        let Constant(c) = self;
+        Box::pin(ready(ExecResult::Done(c.clone())))
+    }
+}
 impl<S1, S2, F> Stm for AndThen<S1, F>
 where
     S1: Stm,
     S2: Stm,
-    F: Fn(&S1::Result) -> S2,
+    F: Fn(S1::Result) -> S2,
 {
     type Result = S2::Result;
+
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        let AndThen { input, f } = self;
+        Box::pin(async move {
+            let in_value = done!(input.run_in(transaction).await);
+            f(in_value).run_in(transaction).await
+        })
+    }
 }
 impl<S1, S2> Stm for Choice<S1, S2>
 where
@@ -206,13 +273,25 @@ where
     S2: Stm<Result = S1::Result>,
 {
     type Result = S1::Result;
+
+    fn run_in<'a>(&'a self, _transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        unimplemented!("Stack unwinding not yet implemented.")
+    }
 }
 impl<S, T, F> Stm for MapStm<S, F>
     where
         S: Stm,
-        F: Fn(&S::Result) -> T,
+        F: Fn(S::Result) -> T,
 {
     type Result = T;
+
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        let MapStm { input, f } = self;
+        Box::pin(async move {
+            let in_value = done!(input.run_in(transaction).await);
+            ExecResult::Done(f(in_value))
+        })
+    }
 }
 
 impl<S1, S2> Stm for Sequence<S1, S2>
@@ -221,23 +300,41 @@ where
     S2: Stm,
 {
     type Result = S2::Result;
+
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        let Sequence { first, second } = self;
+        Box::pin(async move {
+            let _ = done!(first.run_in(transaction).await);
+            second.run_in(transaction).await
+        })
+    }
 }
 
 impl<E, T> Stm for Abort<E, T>
 where
-    E: Error + Send + Sync + 'static,
+    E: Error + Clone + 'static,
 {
     type Result = T;
+
+    fn run_in<'a>(&'a self, _: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        let Abort { error, .. } = self;
+        Box::pin(ready(ExecResult::Abort(Box::new(error.clone()))))
+    }
+
 }
 
 impl<E, S1, S2, F> Stm for Catch<E, S1, S2, F>
 where
     S1: Stm,
     S2: Stm<Result = S1::Result>,
-    E: Error + Send + Sync + 'static,
+    E: Error + Clone + 'static,
     F: Fn(&E) -> S2,
 {
     type Result = S1::Result;
+
+    fn run_in<'a>(&'a self, _transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        unimplemented!("Stack unwinding not yet implemented.")
+    }
 }
 
 

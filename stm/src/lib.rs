@@ -14,4 +14,5 @@
 
 pub(crate) mod ptr;
 pub mod stm;
+pub mod transaction;
 pub mod var;

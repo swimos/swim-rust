@@ -17,18 +17,27 @@ use tokio::sync::RwLock;
 use std::sync::Arc;
 use std::fmt::{Debug, Formatter};
 
+pub(crate) trait VarRef {}
+
 pub(crate) struct TVarInner<T> {
     content: RwLock<Arc<T>>,
-    waker: AtomicWaker,
+    _waker: AtomicWaker,
 }
+
+impl<T> VarRef for TVarInner<T> {}
 
 impl<T: Send + Sync + 'static> TVarInner<T> {
 
     pub(crate) fn new(value: T) -> Self {
         TVarInner {
             content: RwLock::new(Arc::new(value)),
-            waker: AtomicWaker::new()
+            _waker: AtomicWaker::new()
         }
+    }
+
+    pub(crate) async fn read(&self) -> Arc<T> {
+        let lock = self.content.read().await;
+        lock.clone()
     }
 
 }
@@ -54,7 +63,7 @@ impl<T> Debug for TVarRead<T> {
 
 pub struct TVarWrite<T> {
     pub(crate) inner: Arc<TVarInner<T>>,
-    pub(crate) value: T,
+    pub(crate) value: Arc<T>,
 }
 
 impl<T: Debug> Debug for TVarWrite<T> {
@@ -62,6 +71,7 @@ impl<T: Debug> Debug for TVarWrite<T> {
         write!(f, "Write[TVar<{}> << {:?}]", std::any::type_name::<T>(), &self.value)
     }
 }
+
 
 impl<T: Send + Sync + 'static> TVar<T> {
 
@@ -82,7 +92,7 @@ impl<T> TVar<T> {
         let TVar(inner) = self;
         TVarWrite {
             inner: inner.clone(),
-            value
+            value: Arc::new(value),
         }
     }
 
