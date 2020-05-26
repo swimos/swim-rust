@@ -17,14 +17,12 @@ use tokio::time::Duration;
 use tracing::info;
 
 use common::model::Value;
-use common::sink::item::ItemSink;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 
 use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
-use crate::downlink::model::value::Action;
 use crate::interface::SwimClient;
 
 fn config() -> ConfigHierarchy {
@@ -53,7 +51,7 @@ fn init_tracing() {
 }
 
 #[tokio::test]
-// #[ignore]
+#[ignore]
 async fn client_test() {
     init_tracing();
 
@@ -83,9 +81,9 @@ async fn client_test() {
         }
     });
 
-    for v in 0..100i32 {
-        let _res = dl.send_item(Action::set(v.into())).await;
-    }
+    // for v in 0..100i32 {
+    //     let _res = dl.send_item(Action::set(v.into())).await;
+    // }
 
     let _a = jh.await;
     let _b = jh2.await;

@@ -1,3 +1,21 @@
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use futures::stream::FusedStream;
+use futures::task::{Context, Poll};
+use futures::{Stream, StreamExt};
+use futures_util::future::ready;
+use futures_util::select_biased;
+use futures_util::stream::once;
+use pin_utils::pin_mut;
+use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
+use tracing::instrument;
+use tracing::trace;
+
+use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+
 // Copyright 2015-2020 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,20 +35,6 @@ use crate::downlink::{
     Operation, Response, StateMachine, StoppedFuture,
 };
 use crate::router::RoutingError;
-use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
-use futures::stream::FusedStream;
-use futures::task::{Context, Poll};
-use futures::{Stream, StreamExt};
-use futures_util::future::ready;
-use futures_util::select_biased;
-use futures_util::stream::once;
-use pin_utils::pin_mut;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
-use tracing::trace;
 
 #[cfg(test)]
 pub mod tests;
@@ -263,6 +267,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         }
     }
 
+    #[instrument(skip(self, ops, acts, state_machine))]
     pub(in crate::downlink) async fn run<M, A, Ops, Acts, State, Machine>(
         self,
         ops: Ops,
@@ -289,6 +294,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
 
         pin_mut!(ops);
         pin_mut!(acts);
+
         let mut ops_str: Pin<&mut Ops> = ops;
         let mut act_str: Pin<&mut Acts> = acts;
 
