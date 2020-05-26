@@ -1,4 +1,3 @@
-
 jobs:
   - job: ${{ parameters.name }}
     displayName: ${{ parameters.displayName }}

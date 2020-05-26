@@ -3,6 +3,8 @@ pr: ["master"]
 
 variables:
   RUSTFLAGS: -Dwarnings
+  TEST_SERVER_VERSION: v1.1
+  TEST_SERVER_IMAGE_NAME: "org.swimos/swim-test-server:1.1"
 
 jobs:
   - template: ci/azure-test-stable.yml
