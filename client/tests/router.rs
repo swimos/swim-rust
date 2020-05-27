@@ -47,6 +47,7 @@ mod tests {
         });
     }
 
+    #[ignore]
     #[tokio::test(core_threads = 2)]
     async fn normal_receive() {
         init_trace();
@@ -76,6 +77,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
+    #[ignore]
     #[tokio::test(core_threads = 2)]
     async fn not_interested_receive() {
         init_trace();
@@ -104,6 +106,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
+    #[ignore]
     #[tokio::test(core_threads = 2)]
     async fn not_found_receive() {
         init_trace();
@@ -132,6 +135,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
+    #[ignore]
     #[tokio::test(core_threads = 2)]
     async fn send_commands() {
         init_trace();
