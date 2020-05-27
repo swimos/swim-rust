@@ -53,7 +53,12 @@ fn assert_err<T: PartialEq + Debug>(
 fn from_bool() {
     fn expect_err(from: Value) {
         let r = bool::try_from_value(&from);
-        assert_err(r, de_incorrect_type::<bool>("bool", &from).err().unwrap());
+        assert_err(
+            r,
+            de_incorrect_type::<bool>("Value::BooleanValue", &from)
+                .err()
+                .unwrap(),
+        );
     }
 
     let r = bool::try_from_value(&Value::from(true));
@@ -89,7 +94,7 @@ fn from_str() {
     let r = String::try_from_value(&Value::from(1.0));
     assert_err(
         r,
-        de_incorrect_type::<bool>("String", &Value::from(1.0))
+        de_incorrect_type::<bool>("Value::Text", &Value::from(1.0))
             .err()
             .unwrap(),
     );
@@ -107,9 +112,11 @@ fn vector_mismatched_types() {
         Err(e) => {
             assert_that!(
                 e,
-                eq(de_incorrect_type::<bool>("i64", &Value::from(1.0))
-                    .err()
-                    .unwrap())
+                eq(
+                    de_incorrect_type::<bool>("Value::Int64Value", &Value::from(1.0))
+                        .err()
+                        .unwrap()
+                )
             );
         }
     }

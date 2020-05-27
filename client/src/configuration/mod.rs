@@ -44,12 +44,14 @@ pub mod downlink {
         /// Attempt to relieve back-pressure through the downlink as much as possible.
         Release {
             /// Input queue size for the back-pressure relief component.
-            input_buffer_size: usize,
+            input_buffer_size: NonZeroUsize,
             /// Queue size for control messages between different components of the pressure
             /// relief component. This only applies to map downlinks.
-            bridge_buffer_size: usize,
+            bridge_buffer_size: NonZeroUsize,
             /// Maximum number of active keys in the pressure relief component for map downlinks.
-            max_active_keys: usize,
+            max_active_keys: NonZeroUsize,
+            /// Number of values to process before yielding to the runtime.
+            yield_after: NonZeroUsize,
         },
     }
 
@@ -103,6 +105,9 @@ pub mod downlink {
 
         /// What do do on receipt of an invalid message.
         pub on_invalid: OnInvalidMessage,
+
+        /// Number of operations after which a downlink will yield to the runtime.
+        pub yield_after: NonZeroUsize,
     }
 
     impl DownlinkParams {
@@ -112,19 +117,25 @@ pub mod downlink {
             idle_timeout: Duration,
             buffer_size: usize,
             on_invalid: OnInvalidMessage,
+            yield_after: usize,
         ) -> Result<DownlinkParams, String> {
             if idle_timeout == Duration::from_millis(0) {
                 Err(BAD_TIMEOUT.to_string())
             } else {
-                match NonZeroUsize::new(buffer_size) {
-                    Some(nz) => Ok(DownlinkParams {
+                match (
+                    NonZeroUsize::new(buffer_size),
+                    NonZeroUsize::new(yield_after),
+                ) {
+                    (Some(nz), Some(ya)) => Ok(DownlinkParams {
                         back_pressure,
                         mux_mode,
                         idle_timeout,
                         buffer_size: nz,
                         on_invalid,
+                        yield_after: ya,
                     }),
-                    _ => Err(BAD_BUFFER_SIZE.to_string()),
+                    (None, _) => Err(BAD_BUFFER_SIZE.to_string()),
+                    _ => Err(BAD_YIELD_AFTER.to_string()),
                 }
             }
         }
@@ -135,6 +146,7 @@ pub mod downlink {
             idle_timeout: Duration,
             buffer_size: usize,
             on_invalid: OnInvalidMessage,
+            yield_after: usize,
         ) -> Result<DownlinkParams, String> {
             match NonZeroUsize::new(queue_size) {
                 Some(nz) => Self::new(
@@ -143,6 +155,7 @@ pub mod downlink {
                     idle_timeout,
                     buffer_size,
                     on_invalid,
+                    yield_after,
                 ),
                 _ => Err(BAD_BUFFER_SIZE.to_string()),
             }
@@ -153,6 +166,7 @@ pub mod downlink {
             idle_timeout: Duration,
             buffer_size: usize,
             on_invalid: OnInvalidMessage,
+            yield_after: usize,
         ) -> Result<DownlinkParams, String> {
             Self::new(
                 back_pressure,
@@ -160,6 +174,7 @@ pub mod downlink {
                 idle_timeout,
                 buffer_size,
                 on_invalid,
+                yield_after,
             )
         }
 
@@ -169,6 +184,7 @@ pub mod downlink {
             idle_timeout: Duration,
             buffer_size: usize,
             on_invalid: OnInvalidMessage,
+            yield_after: usize,
         ) -> Result<DownlinkParams, String> {
             match NonZeroUsize::new(queue_size) {
                 Some(nz) => Self::new(
@@ -177,6 +193,7 @@ pub mod downlink {
                     idle_timeout,
                     buffer_size,
                     on_invalid,
+                    yield_after,
                 ),
                 _ => Err(BAD_BUFFER_SIZE.to_string()),
             }
@@ -193,6 +210,7 @@ pub mod downlink {
     }
 
     const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
+    const BAD_YIELD_AFTER: &str = "Yield after count must be positive..";
     const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
     impl ClientParams {

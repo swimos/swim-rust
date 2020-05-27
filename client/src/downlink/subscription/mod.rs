@@ -32,22 +32,25 @@ use common::sink::item::either::EitherSink;
 use common::sink::item::ItemSender;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
-use either::Either;
-use form::ValidatedForm;
-use futures::stream::Fuse;
-use futures::Stream;
-use futures_util::future::{ready, TryFutureExt};
-use futures_util::select_biased;
-use futures_util::stream::{FuturesUnordered, StreamExt};
-use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
+
+use either::Either;
+use futures::stream::Fuse;
+use futures::Stream;
+use futures_util::future::TryFutureExt;
+use futures_util::select_biased;
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use pin_utils::pin_mut;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tracing::{error, info, instrument};
+
+use form::ValidatedForm;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
@@ -70,7 +73,7 @@ type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkSpecifier>,
-    _task: JoinHandle<Result<()>>,
+    _task: JoinHandle<RequestResult<()>>,
 }
 
 /// Contains all running Warp downlinks and allows requests for downlink subscriptions.
@@ -98,7 +101,7 @@ impl Downlinks {
         &mut self,
         init: Value,
         path: AbsolutePath,
-    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         self.subscribe_value_inner(init, StandardSchema::Anything, path)
             .await
     }
@@ -110,7 +113,7 @@ impl Downlinks {
         &mut self,
         init: T,
         path: AbsolutePath,
-    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
+    ) -> RequestResult<(TypedValueDownlink<T>, TypedValueReceiver<T>)>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -127,7 +130,7 @@ impl Downlinks {
         init: Value,
         schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(DownlinkSpecifier::Value {
@@ -146,7 +149,7 @@ impl Downlinks {
     pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
             .await
     }
@@ -157,7 +160,7 @@ impl Downlinks {
     pub async fn subscribe_map<K, V>(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
+    ) -> RequestResult<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>)>
     where
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
@@ -174,7 +177,7 @@ impl Downlinks {
         key_schema: StandardSchema,
         value_schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(DownlinkSpecifier::Map {
@@ -312,20 +315,20 @@ impl SubscriptionError {
     }
 }
 
-pub type Result<T> = std::result::Result<T, SubscriptionError>;
+pub type RequestResult<T> = std::result::Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
     Value {
         init: Value,
         path: AbsolutePath,
         schema: StandardSchema,
-        request: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
+        request: Request<RequestResult<(AnyValueDownlink, ValueReceiver)>>,
     },
     Map {
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        request: Request<Result<(AnyMapDownlink, MapReceiver)>>,
+        request: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
     },
 }
 
@@ -374,8 +377,7 @@ struct DownlinkTask<R> {
 struct DownlinkStoppedEvent {
     kind: DownlinkKind,
     path: AbsolutePath,
-    //TODO Currently ignored, should be logged.
-    _error: Option<DownlinkError>,
+    error: Option<DownlinkError>,
 }
 
 struct MakeStopEvent {
@@ -397,7 +399,7 @@ impl TransformOnce<std::result::Result<(), DownlinkError>> for MakeStopEvent {
         DownlinkStoppedEvent {
             kind,
             path,
-            _error: input.err(),
+            error: input.err(),
         }
     }
 }
@@ -424,27 +426,29 @@ where
         init: Value,
         schema: StandardSchema,
         path: AbsolutePath,
-    ) -> Result<(AnyValueDownlink, ValueReceiver)> {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await?;
         let schema_cpy = schema.clone();
 
-        //TODO Do something with invalid envelopes rather than discarding them.
-        let updates = incoming.filter_map(|event| match event {
-            RouterEvent::Envelope(env) => ready(envelopes::value::try_from_envelope(env).ok()),
-            _ => ready(None),
+        let updates = incoming.map(|e| match e {
+            RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
+            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
         let sink_path = path.clone();
-        let cmd_sink = sink
-            .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&sink_path, cmd).1);
+        let cmd_sink = sink.comap(move |cmd: Command<SharedValue>| {
+            envelopes::value_envelope(&sink_path, cmd).1.into()
+        });
 
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
                 value_downlink_for_sink(cmd_sink, init, schema, updates, &config)
             }
-            BackpressureMode::Release { .. } => {
-                let pressure_release = ValuePump::new(cmd_sink.clone()).await;
+            BackpressureMode::Release { yield_after, .. } => {
+                let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
 
                 let either_sink = EitherSink::new(cmd_sink, pressure_release).comap(
                     move |cmd: Command<SharedValue>| match cmd {
@@ -471,16 +475,17 @@ where
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-    ) -> Result<(AnyMapDownlink, MapReceiver)> {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         let config = self.config.config_for(&path);
         let (sink, incoming) = self.router.connection_for(&path).await?;
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        //TODO Do something with invalid envelopes rather than discarding them.
-        let updates = incoming.filter_map(|event| match event {
-            RouterEvent::Envelope(env) => ready(envelopes::map::try_from_envelope(env).ok()),
-            _ => ready(None),
+        let updates = incoming.map(|e| match e {
+            RouterEvent::Message(l) => Ok(envelopes::map::from_envelope(l)),
+            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
         let sink_path = path.clone();
@@ -488,7 +493,7 @@ where
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
                 let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
-                    envelopes::map_envelope(&sink_path, cmd).1
+                    envelopes::map_envelope(&sink_path, cmd).1.into()
                 });
                 map_downlink_for_sink(key_schema, value_schema, cmd_sink, updates, &config)
             }
@@ -496,15 +501,18 @@ where
                 input_buffer_size,
                 bridge_buffer_size,
                 max_active_keys,
+                yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
                 let direct_sink =
                     sink.clone()
                         .comap(move |cmd: Command<MapModification<Arc<Value>>>| {
-                            envelopes::map_envelope(&sink_path_duplicate, cmd).1
+                            envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
                         });
                 let action_sink = sink.comap(move |act: MapModification<Arc<Value>>| {
-                    envelopes::map_envelope(&sink_path, Command::Action(act)).1
+                    envelopes::map_envelope(&sink_path, Command::Action(act))
+                        .1
+                        .into()
                 });
 
                 let pressure_release = KeyedWatch::new(
@@ -512,6 +520,7 @@ where
                     input_buffer_size,
                     bridge_buffer_size,
                     max_active_keys,
+                    yield_after,
                 )
                 .await;
 
@@ -541,8 +550,8 @@ where
         init: Value,
         path: AbsolutePath,
         schema: StandardSchema,
-        value_req: Request<Result<(AnyValueDownlink, ValueReceiver)>>,
-    ) -> Result<()> {
+        value_req: Request<RequestResult<(AnyValueDownlink, ValueReceiver)>>,
+    ) -> RequestResult<()> {
         let dl = match self.value_downlinks.get(&path) {
             Some(ValueHandle {
                 ptr: dl,
@@ -596,8 +605,8 @@ where
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        map_req: Request<Result<(AnyMapDownlink, MapReceiver)>>,
-    ) -> Result<()> {
+        map_req: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
+    ) -> RequestResult<()> {
         let dl = match self.map_downlinks.get(&path) {
             Some(MapHandle {
                 ptr: dl,
@@ -657,7 +666,13 @@ where
         Ok(())
     }
 
+    #[instrument(skip(self, stop_event))]
     async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
+        match &stop_event.error {
+            Some(e) => error!("Downlink {} failed with: \"{}\"", stop_event.path, e),
+            None => info!("Downlink {} stopped successfully", stop_event.path),
+        }
+
         match stop_event.kind {
             DownlinkKind::Value => {
                 if let Some(ValueHandle { ptr: weak_dl, .. }) =
@@ -682,7 +697,7 @@ where
         }
     }
 
-    async fn run<Req>(mut self, requests: Req) -> Result<()>
+    async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
     where
         Req: Stream<Item = DownlinkSpecifier>,
     {
@@ -739,33 +754,19 @@ fn value_downlink_for_sink<Updates, Snk>(
     config: &DownlinkParams,
 ) -> (AnyDownlink<Action, SharedValue>, AnyReceiver<SharedValue>)
 where
-    Updates: Stream<Item = Message<Value>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
-    let buffer_size = config.buffer_size.get();
     let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {
         MuxMode::Queue(n) => {
-            let (dl, rec) = value::create_queue_downlink(
-                init,
-                Some(schema),
-                updates,
-                dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
-            );
+            let (dl, rec) =
+                value::create_queue_downlink(init, Some(schema), updates, dl_cmd_sink, n, &config);
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
         MuxMode::Dropping => {
-            let (dl, rec) = value::create_dropping_downlink(
-                init,
-                Some(schema),
-                updates,
-                dl_cmd_sink,
-                buffer_size,
-                config.on_invalid,
-            );
+            let (dl, rec) =
+                value::create_dropping_downlink(init, Some(schema), updates, dl_cmd_sink, &config);
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
         MuxMode::Buffered(n) => {
@@ -774,14 +775,15 @@ where
                 Some(schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
+                n,
+                &config,
             );
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }
 }
+
+type MapItemResult = Result<Message<MapModification<Value>>, RoutingError>;
 
 fn map_downlink_for_sink<Updates, Snk>(
     key_schema: StandardSchema,
@@ -794,11 +796,10 @@ fn map_downlink_for_sink<Updates, Snk>(
     AnyReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Updates: Stream<Item = MapItemResult> + Send + 'static,
     Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     use crate::downlink::model::map::*;
-    let buffer_size = config.buffer_size.get();
     let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {
         MuxMode::Queue(n) => {
@@ -807,9 +808,8 @@ where
                 Some(value_schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
+                n,
+                &config,
             );
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
@@ -819,8 +819,7 @@ where
                 Some(value_schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                config.on_invalid,
+                &config,
             );
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
@@ -830,9 +829,8 @@ where
                 Some(value_schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
+                n,
+                &config,
             );
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }

@@ -110,11 +110,11 @@ impl<'p> Parser<'p> {
     pub fn from_ast(context: &Context, input: &'p syn::DeriveInput) -> Option<Parser<'p>> {
         let data = match &input.data {
             syn::Data::Enum(data) => {
-                context.error_spanned_by(input, "Enums not implemented yet");
-                return None;
+                let variants = parse_enum(context, &data.variants);
+                TypeContents::Enum(variants)
             }
             syn::Data::Struct(data) => {
-                let (style, fields) = struct_from_ast(context, &data.fields);
+                let (style, fields) = parse_struct(context, &data.fields);
                 TypeContents::Struct(style, fields)
             }
             syn::Data::Union(_) => {
@@ -134,13 +134,13 @@ impl<'p> Parser<'p> {
 
     pub fn receiver_assert_quote(&self) -> Vec<TokenStream> {
         match &self.data {
-            TypeContents::Struct(CompoundType::Struct, fields) => fields
+            TypeContents::Struct(_, fields) => fields
                 .iter()
                 .map(|field| {
                     let span = field.span();
                     let ty = field.ty;
                     let receiver_ident = Ident::new(
-                        &format!("__Assert_{}_Receivers", field.ident.to_string()),
+                        &format!("__Assert_{}_Receivers", field.ident),
                         Span::call_site(),
                     );
 
@@ -149,15 +149,45 @@ impl<'p> Parser<'p> {
                     }
                 })
                 .collect(),
-            _ => unimplemented!("match_funcs"),
+            TypeContents::Enum(variants) => variants
+                .iter()
+                .flat_map(|v| v.fields.iter().map(move |f| (&v.ident, f)))
+                .map(|(ident, field)| {
+                    let span = field.span();
+                    let ty = field.ty;
+                    let receiver_ident = Ident::new(
+                        &format!("__Assert_{}_{}_Receivers", ident, field.ident),
+                        Span::call_site(),
+                    );
+
+                    quote_spanned! {span=>
+                        struct #receiver_ident where #ty: Form;
+                    }
+                })
+                .collect(),
         }
     }
 }
 
-fn struct_from_ast<'a>(
-    context: &Context,
-    fields: &'a syn::Fields,
-) -> (CompoundType, Vec<Field<'a>>) {
+fn parse_enum<'a>(
+    cx: &Context,
+    variants: &'a Punctuated<syn::Variant, syn::Token![,]>,
+) -> Vec<Variant<'a>> {
+    variants
+        .iter()
+        .map(|variant| {
+            let (style, fields) = parse_struct(cx, &variant.fields);
+            Variant {
+                ident: variant.ident.clone(),
+                style,
+                fields,
+                original: variant,
+            }
+        })
+        .collect()
+}
+
+fn parse_struct<'a>(context: &Context, fields: &'a syn::Fields) -> (CompoundType, Vec<Field<'a>>) {
     match fields {
         syn::Fields::Named(fields) => (
             CompoundType::Struct,

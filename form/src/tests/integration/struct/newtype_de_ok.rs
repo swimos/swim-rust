@@ -12,4 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod host_manager;
+use common::model::{Attr, Item, Value};
+use form::Form;
+use form_derive::*;
+
+fn main() {
+    #[form]
+    #[derive(PartialEq, Debug)]
+    struct Parent(i32);
+
+    let record = Value::Record(
+        vec![Attr::from("Parent")],
+        vec![
+            Item::from(1),
+        ],
+    );
+
+    let result = Parent::try_from_value(&record).unwrap();
+    assert_eq!(result, Parent(1))
+}
