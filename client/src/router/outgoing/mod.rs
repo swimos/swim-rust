@@ -26,13 +26,22 @@ use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
+/// Tasks that the outgoing task can handle.
 #[derive(Debug)]
 enum OutgoingRequest {
     Message(Envelope),
     Close(Option<CloseResponseSender>),
 }
 
-pub struct OutgoingHostTask {
+/// The outgoing task is responsible for routing messages coming from the
+/// subscribers (typically downlinks) or direct messages, to remote hosts.
+/// A single outgoing task is responsible for a single remote host.
+/// Depending on the retry strategy, the outgoing task may try multiple times to send a message
+/// if a non-fatal connection error is encountered.
+///
+/// Note: The outgoing task *DOES NOT* open connections by default when created.
+/// It will only open connections when required.
+pub(crate) struct OutgoingHostTask {
     envelope_rx: mpsc::Receiver<Envelope>,
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
     close_rx: CloseReceiver,

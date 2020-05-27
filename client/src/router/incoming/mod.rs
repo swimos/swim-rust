@@ -30,8 +30,9 @@ use tracing::{error, span, trace, warn, Level};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
+/// Tasks that the incoming task can handle.
 #[derive(Debug)]
-pub enum IncomingRequest {
+pub(crate) enum IncomingRequest {
     Connection(mpsc::Receiver<Message>),
     Subscribe(SubscriberRequest),
     Message(Message),
@@ -40,7 +41,12 @@ pub enum IncomingRequest {
     Close(Option<CloseResponseSender>),
 }
 
-pub struct IncomingHostTask {
+/// The incoming task is responsible for routing messages coming from remote hosts to
+/// its subscribers (typically downlinks). A single incoming task is responsible for a single
+/// remote host. The subscribers and connections are independent and adding a subscriber *WILL NOT*
+/// automatically create a connection. Additionally, if a connection error occurs, all subscribers
+/// will be notified, and if the error is non-fatal a new connection may be provided to the task.
+pub(crate) struct IncomingHostTask {
     task_rx: mpsc::Receiver<IncomingRequest>,
     close_rx: CloseReceiver,
 }
@@ -172,6 +178,12 @@ impl IncomingHostTask {
     }
 }
 
+/// Broadcasts an event to all subscribers of the task.
+///
+/// # Arguments
+///
+/// * `subscribers`             - A map of all subscribers.
+/// * `event`                   - An event to be broadcasted.
 async fn broadcast_all(
     subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     event: RouterEvent,
@@ -190,6 +202,14 @@ async fn broadcast_all(
     Ok(())
 }
 
+/// Broadcasts an event to all subscribers of the task that are subscribed to a given path.
+/// The path is the combination of the node and lane.
+///
+/// # Arguments
+///
+/// * `subscribers`             - A map of all subscribers.
+/// * `destination`             - The node and lane.
+/// * `event`                   - An event to be broadcasted.
 async fn broadcast_destination(
     subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     destination: RelativePath,
