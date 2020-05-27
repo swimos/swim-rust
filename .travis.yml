@@ -8,8 +8,32 @@ branches:
 matrix:
   include:
     - os: linux
+      services:
+          - docker
+      env:
+        - TEST_SERVER_VERSION=v1.1
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
+        - REPO_URL="https://github.com/SirCipher/swim-test-server/"
+      script:
+        - cd client
+#       Features aren't allowed in the root of a virtual workspace
+        - cargo test --package client --features test-server
+        - cd ..
+        - cargo test --workspace --exclude client
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+
     - os: osx
+      script:
+        - cargo test --workspace
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+
     - os: windows
+      script:
+        - cargo test --workspace
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
 
 rust:
   - 1.43.0
@@ -25,11 +49,6 @@ before_cache:
 before_script:
   - rustup component add clippy
   - rustup component add rustfmt
-
-script:
-  - cargo fmt -- --check
-  - cargo clippy --all-features -- -D warnings
-  - cargo test --workspace --all-features
 
 addons:
   apt:

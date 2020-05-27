@@ -4,6 +4,16 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = []
+all = ["test-server"]
+test-server = ["test_server"]
+
+[dependencies.test_server]
+path = "test_server"
+features = ["enabled"]
+optional = true
+
 [dependencies]
 pin-utils = "0.1.0-alpha.4"
 pin-project = "0.4.8"
@@ -27,4 +37,3 @@ deserialize = { path = "../form/deserialize"}
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-assert_matches = "1.3.0"
