@@ -18,6 +18,7 @@ use std::fmt::{Display, Formatter};
 pub mod future;
 pub mod iteratee;
 pub mod lru_cache;
+pub mod trace;
 
 #[macro_use]
 pub mod macros;
