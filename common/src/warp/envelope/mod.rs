@@ -13,177 +13,514 @@
 // limitations under the License.
 
 use std::convert::TryFrom;
-use std::ops::Deref;
 
 use crate::model::{Attr, Item, Value};
 use crate::warp::path::RelativePath;
+use either::Either;
 
 #[cfg(test)]
 mod tests;
 
-/// A model to exchange over WARP connections.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Envelope {
-    // @link
-    LinkRequest(LinkAddressed),
-    // @sync
-    SyncRequest(LinkAddressed),
-    // @linked
-    LinkedResponse(LinkAddressed),
+const NODE_FIELD: &str = "node";
+const LANE_FIELD: &str = "lane";
+const PRIO_FIELD: &str = "prio";
+const RATE_FIELD: &str = "rate";
 
-    // @event
-    EventMessage(LaneAddressed),
-    // @command
-    CommandMessage(LaneAddressed),
-    // @synced
-    SyncedResponse(LaneAddressed),
-    // @unlink
-    UnlinkRequest(LaneAddressed),
-    // @unlinked
-    UnlinkedResponse(LaneAddressed),
+const AUTH_TAG: &str = "auth";
+const AUTHED_TAG: &str = "authed";
+const DEAUTH_TAG: &str = "deauth";
+const DEAUTHED_TAG: &str = "deauthed";
+const LINK_TAG: &str = "link";
+const SYNC_TAG: &str = "sync";
+const UNLINK_TAG: &str = "unlink";
+const CMD_TAG: &str = "command";
+const LINKED_TAG: &str = "linked";
+const SYNCED_TAG: &str = "synced";
+const UNLINKED_TAG: &str = "unlinked";
+const EVENT_TAG: &str = "event";
 
-    // @auth
-    AuthRequest(HostAddressed),
-    // @authed
-    AuthedResponse(HostAddressed),
-    // @deauth
-    DeauthRequest(HostAddressed),
-    // @deauthed
-    DeauthedResponse(HostAddressed),
+/// Header for negotiation envelopes (authorization and deauthorization).
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum NegotiationHeader {
+    Auth,
+    Deauth,
+}
+
+/// Parameters to configure a Warp link.
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
+pub struct LinkParams {
+    pub rate: Option<f64>,
+    pub prio: Option<f64>,
+}
+
+impl LinkParams {
+    pub fn new(rate: Option<f64>, prio: Option<f64>) -> Self {
+        LinkParams { rate, prio }
+    }
+}
+
+/// Either an authorization or deauthorization request.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct NegotiationRequest {
+    pub header: NegotiationHeader,
+    pub body: Option<Value>,
+}
+
+/// Either an authorization or deauthorization response.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct NegotiationResponse {
+    pub header: NegotiationHeader,
+    pub body: Option<Value>,
+}
+
+/// Header for outgoing link envelopes.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum OutgoingHeader {
+    Link(LinkParams),
+    Sync(LinkParams),
+    Unlink,
+    Command,
+}
+
+/// Header for incoming link envelopes.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum IncomingHeader {
+    Linked(LinkParams),
+    Synced,
+    Unlinked,
+    Event,
+}
+
+pub type LinkHeader = Either<IncomingHeader, OutgoingHeader>;
+
+/// Whether an envelope is a request or a response.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Direction {
+    Request,
+    Response,
+}
+
+/// Header for any envelope, completely describing the type.
+#[derive(Debug, PartialEq, Clone)]
+pub enum EnvelopeHeader {
+    IncomingLink(IncomingHeader, RelativePath),
+    OutgoingLink(OutgoingHeader, RelativePath),
+    Negotiation(NegotiationHeader, Direction),
+}
+
+impl EnvelopeHeader {
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        match self {
+            EnvelopeHeader::IncomingLink(_, path) => Some(path.clone()),
+            EnvelopeHeader::OutgoingLink(_, path) => Some(path.clone()),
+            EnvelopeHeader::Negotiation(_, _) => None,
+        }
+    }
+}
+
+/// A message related to a link to or from a remote lane.
+#[derive(Debug, PartialEq, Clone)]
+pub struct LinkMessage<Header> {
+    pub header: Header,
+    pub path: RelativePath,
+    pub body: Option<Value>,
+}
+
+pub type OutgoingLinkMessage = LinkMessage<OutgoingHeader>;
+pub type IncomingLinkMessage = LinkMessage<IncomingHeader>;
+pub type AnyLinkMessage = LinkMessage<LinkHeader>;
+
+impl<Header> LinkMessage<Header> {
+    fn make_message<S: Into<String>>(
+        header: Header,
+        node: S,
+        lane: S,
+        body: Option<Value>,
+    ) -> Self {
+        let path = RelativePath {
+            node: node.into(),
+            lane: lane.into(),
+        };
+        LinkMessage { header, path, body }
+    }
+}
+
+impl LinkMessage<OutgoingHeader> {
+    pub fn make_link<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_message(
+            OutgoingHeader::Link(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_unlink<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(OutgoingHeader::Unlink, node, lane, body)
+    }
+
+    pub fn make_sync<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_message(
+            OutgoingHeader::Sync(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_command<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(OutgoingHeader::Command, node, lane, body)
+    }
+
+    pub fn link<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_link(node, lane, None, None, None)
+    }
+
+    pub fn sync<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_sync(node, lane, None, None, None)
+    }
+
+    pub fn unlink<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_unlink(node, lane, None)
+    }
+}
+
+impl LinkMessage<IncomingHeader> {
+    pub fn make_linked<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_message(
+            IncomingHeader::Linked(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_unlinked<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(IncomingHeader::Unlinked, node, lane, body)
+    }
+
+    pub fn make_synced<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(IncomingHeader::Synced, node, lane, body)
+    }
+
+    pub fn make_event<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_message(IncomingHeader::Event, node, lane, body)
+    }
+
+    pub fn unlinked<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_unlinked(node, lane, None)
+    }
+
+    pub fn linked<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_linked(node, lane, None, None, None)
+    }
+
+    pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_synced(node, lane, None)
+    }
+}
+
+/// Model for Warp protocol envelopes.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Envelope {
+    pub header: EnvelopeHeader,
+    pub body: Option<Value>,
+}
+
+impl Envelope {
+    /// Determine the kind of a message.
+    pub fn into_message(self) -> AnyMessage {
+        let Envelope { header, body } = self;
+        match header {
+            EnvelopeHeader::IncomingLink(header, path) => {
+                AnyMessage::IncomingLink(IncomingLinkMessage { header, path, body })
+            }
+            EnvelopeHeader::OutgoingLink(header, path) => {
+                AnyMessage::OutgoingLink(OutgoingLinkMessage { header, path, body })
+            }
+            EnvelopeHeader::Negotiation(header, Direction::Request) => {
+                AnyMessage::NegotiationRequest(NegotiationRequest { header, body })
+            }
+            EnvelopeHeader::Negotiation(header, Direction::Response) => {
+                AnyMessage::NegotiationResponse(NegotiationResponse { header, body })
+            }
+        }
+    }
+
+    /// Determine if this message is an incoming message.
+    pub fn into_incoming(self) -> Result<IncomingLinkMessage, Self> {
+        let Envelope { header, body } = self;
+        match header {
+            EnvelopeHeader::IncomingLink(header, path) => {
+                Ok(IncomingLinkMessage { header, path, body })
+            }
+            _ => Err(Envelope { header, body }),
+        }
+    }
+
+    /// Determine if this message is an outgoing message.
+    pub fn into_outgoing(self) -> Result<OutgoingLinkMessage, Self> {
+        let Envelope { header, body } = self;
+        match header {
+            EnvelopeHeader::OutgoingLink(header, path) => {
+                Ok(OutgoingLinkMessage { header, path, body })
+            }
+            _ => Err(Envelope { header, body }),
+        }
+    }
+
+    /// Determine if this message is a negotiation request.
+    pub fn into_negotiation_request(self) -> Result<NegotiationRequest, Self> {
+        let Envelope { header, body } = self;
+        match header {
+            EnvelopeHeader::Negotiation(header, Direction::Request) => {
+                Ok(NegotiationRequest { header, body })
+            }
+            _ => Err(Envelope { header, body }),
+        }
+    }
+
+    /// Determine if this message is a negotiation response.
+    pub fn into_negotiation_response(self) -> Result<NegotiationResponse, Self> {
+        let Envelope { header, body } = self;
+        match header {
+            EnvelopeHeader::Negotiation(header, Direction::Response) => {
+                Ok(NegotiationResponse { header, body })
+            }
+            _ => Err(Envelope { header, body }),
+        }
+    }
+
+    fn make_incoming<S: Into<String>>(
+        header: IncomingHeader,
+        node: S,
+        lane: S,
+        body: Option<Value>,
+    ) -> Self {
+        let path = RelativePath {
+            node: node.into(),
+            lane: lane.into(),
+        };
+        Envelope {
+            header: EnvelopeHeader::IncomingLink(header, path),
+            body,
+        }
+    }
+
+    fn make_outgoing<S: Into<String>>(
+        header: OutgoingHeader,
+        node: S,
+        lane: S,
+        body: Option<Value>,
+    ) -> Self {
+        let path = RelativePath {
+            node: node.into(),
+            lane: lane.into(),
+        };
+        Envelope {
+            header: EnvelopeHeader::OutgoingLink(header, path),
+            body,
+        }
+    }
+
+    pub fn make_sync<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_outgoing(
+            OutgoingHeader::Sync(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_link<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_outgoing(
+            OutgoingHeader::Link(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_linked<S: Into<String>>(
+        node: S,
+        lane: S,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        body: Option<Value>,
+    ) -> Self {
+        Self::make_incoming(
+            IncomingHeader::Linked(LinkParams::new(rate, prio)),
+            node,
+            lane,
+            body,
+        )
+    }
+
+    pub fn make_auth(body: Option<Value>) -> Self {
+        Envelope {
+            header: EnvelopeHeader::Negotiation(NegotiationHeader::Auth, Direction::Request),
+            body,
+        }
+    }
+
+    pub fn make_authed(body: Option<Value>) -> Self {
+        Envelope {
+            header: EnvelopeHeader::Negotiation(NegotiationHeader::Auth, Direction::Response),
+            body,
+        }
+    }
+
+    pub fn make_deauth(body: Option<Value>) -> Self {
+        Envelope {
+            header: EnvelopeHeader::Negotiation(NegotiationHeader::Deauth, Direction::Request),
+            body,
+        }
+    }
+
+    pub fn make_deauthed(body: Option<Value>) -> Self {
+        Envelope {
+            header: EnvelopeHeader::Negotiation(NegotiationHeader::Deauth, Direction::Response),
+            body,
+        }
+    }
+
+    pub fn make_unlink<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_outgoing(OutgoingHeader::Unlink, node, lane, body)
+    }
+
+    pub fn make_unlinked<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_incoming(IncomingHeader::Unlinked, node, lane, body)
+    }
+
+    pub fn make_command<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_outgoing(OutgoingHeader::Command, node, lane, body)
+    }
+
+    pub fn make_event<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_incoming(IncomingHeader::Event, node, lane, body)
+    }
+
+    pub fn make_synced<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+        Self::make_incoming(IncomingHeader::Synced, node, lane, body)
+    }
+}
+
+impl From<OutgoingLinkMessage> for Envelope {
+    fn from(outgoing_message: OutgoingLinkMessage) -> Self {
+        let OutgoingLinkMessage { header, path, body } = outgoing_message;
+
+        Envelope {
+            header: EnvelopeHeader::OutgoingLink(header, path),
+            body,
+        }
+    }
+}
+
+/// Enumeration that splits out each type of message at the top level.
+pub enum AnyMessage {
+    OutgoingLink(OutgoingLinkMessage),
+    IncomingLink(IncomingLinkMessage),
+    NegotiationRequest(NegotiationRequest),
+    NegotiationResponse(NegotiationResponse),
 }
 
 impl Envelope {
     /// Returns the tag (envelope type) of the current [`Envelope`] variant.
     pub fn tag(&self) -> &'static str {
-        match self {
-            Envelope::LinkRequest(_) => "link",
-            Envelope::SyncRequest(_) => "sync",
-            Envelope::LinkedResponse(_) => "linked",
-            Envelope::EventMessage(_) => "event",
-            Envelope::CommandMessage(_) => "command",
-            Envelope::SyncedResponse(_) => "synced",
-            Envelope::UnlinkRequest(_) => "unlink",
-            Envelope::UnlinkedResponse(_) => "unlinked",
-            Envelope::AuthRequest(_) => "auth",
-            Envelope::AuthedResponse(_) => "authed",
-            Envelope::DeauthRequest(_) => "deauth",
-            Envelope::DeauthedResponse(_) => "deauthed",
-        }
-    }
-
-    pub fn get_node_uri(&self) -> Option<String> {
-        match self {
-            Envelope::LinkRequest(link_addressed)
-            | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => {
-                Some(link_addressed.lane.node_uri.clone())
+        match self.header {
+            EnvelopeHeader::IncomingLink(IncomingHeader::Linked(_), _) => LINKED_TAG,
+            EnvelopeHeader::IncomingLink(IncomingHeader::Synced, _) => SYNC_TAG,
+            EnvelopeHeader::IncomingLink(IncomingHeader::Unlinked, _) => UNLINKED_TAG,
+            EnvelopeHeader::IncomingLink(IncomingHeader::Event, _) => EVENT_TAG,
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), _) => LINK_TAG,
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(_), _) => SYNC_TAG,
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Unlink, _) => UNLINK_TAG,
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Command, _) => CMD_TAG,
+            EnvelopeHeader::Negotiation(NegotiationHeader::Auth, Direction::Request) => AUTH_TAG,
+            EnvelopeHeader::Negotiation(NegotiationHeader::Deauth, Direction::Request) => {
+                DEAUTH_TAG
             }
-            Envelope::EventMessage(lane_addressed)
-            | Envelope::CommandMessage(lane_addressed)
-            | Envelope::SyncedResponse(lane_addressed)
-            | Envelope::UnlinkRequest(lane_addressed)
-            | Envelope::UnlinkedResponse(lane_addressed) => Some(lane_addressed.node_uri.clone()),
-
-            _ => None,
-        }
-    }
-
-    pub fn get_lane_uri(&self) -> Option<String> {
-        match self {
-            Envelope::LinkRequest(link_addressed)
-            | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => {
-                Some(link_addressed.lane.lane_uri.clone())
+            EnvelopeHeader::Negotiation(NegotiationHeader::Auth, Direction::Response) => AUTHED_TAG,
+            EnvelopeHeader::Negotiation(NegotiationHeader::Deauth, Direction::Response) => {
+                DEAUTHED_TAG
             }
-            Envelope::EventMessage(lane_addressed)
-            | Envelope::CommandMessage(lane_addressed)
-            | Envelope::SyncedResponse(lane_addressed)
-            | Envelope::UnlinkRequest(lane_addressed)
-            | Envelope::UnlinkedResponse(lane_addressed) => Some(lane_addressed.lane_uri.clone()),
+        }
+    }
 
+    pub fn get_params(&self) -> Option<LinkParams> {
+        match self.header {
+            EnvelopeHeader::IncomingLink(IncomingHeader::Linked(params), _)
+            | EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(params), _)
+            | EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(params), _) => Some(params),
             _ => None,
         }
-    }
-
-    pub fn get_prio(&self) -> Option<f64> {
-        match self {
-            Envelope::LinkRequest(link_addressed)
-            | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => link_addressed.prio,
-            _ => None,
-        }
-    }
-
-    pub fn get_rate(&self) -> Option<f64> {
-        match self {
-            Envelope::LinkRequest(link_addressed)
-            | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => link_addressed.rate,
-            _ => None,
-        }
-    }
-
-    pub fn get_body(&self) -> Option<Value> {
-        match self {
-            Envelope::LinkRequest(link_addressed)
-            | Envelope::SyncRequest(link_addressed)
-            | Envelope::LinkedResponse(link_addressed) => link_addressed.lane.body.clone(),
-
-            Envelope::EventMessage(lane_addressed)
-            | Envelope::CommandMessage(lane_addressed)
-            | Envelope::SyncedResponse(lane_addressed)
-            | Envelope::UnlinkRequest(lane_addressed)
-            | Envelope::UnlinkedResponse(lane_addressed) => lane_addressed.body.clone(),
-
-            Envelope::AuthRequest(host_addressed)
-            | Envelope::AuthedResponse(host_addressed)
-            | Envelope::DeauthRequest(host_addressed)
-            | Envelope::DeauthedResponse(host_addressed) => host_addressed.body.clone(),
-        }
-    }
-
-    pub fn relative_path(&self) -> Option<RelativePath> {
-        Some(RelativePath::new(
-            &self.get_node_uri()?,
-            &self.get_lane_uri()?,
-        ))
     }
 
     pub fn into_value(self) -> Value {
         let mut headers = Vec::new();
 
-        if let Some(node_uri) = self.get_node_uri() {
+        if let Some(path) = self.header.relative_path() {
             headers.push(Item::Slot(
                 Value::Text(String::from("node")),
-                Value::Text(node_uri),
+                Value::Text(path.node),
             ));
-        }
 
-        if let Some(lane_uri) = self.get_lane_uri() {
             headers.push(Item::Slot(
                 Value::Text(String::from("lane")),
-                Value::Text(lane_uri),
+                Value::Text(path.lane),
             ));
         }
 
-        if let Some(prio) = self.get_prio() {
-            headers.push(Item::Slot(
-                Value::Text(String::from("prio")),
-                Value::Float64Value(prio),
-            ));
-        }
+        if let Some(params) = self.get_params() {
+            if let Some(prio) = params.prio {
+                headers.push(Item::Slot(
+                    Value::Text(String::from("prio")),
+                    Value::Float64Value(prio),
+                ));
+            }
 
-        if let Some(rate) = self.get_rate() {
-            headers.push(Item::Slot(
-                Value::Text(String::from("rate")),
-                Value::Float64Value(rate),
-            ));
+            if let Some(rate) = params.rate {
+                headers.push(Item::Slot(
+                    Value::Text(String::from("rate")),
+                    Value::Float64Value(rate),
+                ));
+            }
         }
 
         let headers = Value::Record(Vec::new(), headers);
         let attr = Attr::of((self.tag(), headers));
 
-        let body_vec = match self.get_body() {
+        let body_vec = match self.body {
             None => vec![],
             Some(body) => vec![Item::ValueItem(body)],
         };
@@ -191,105 +528,29 @@ impl Envelope {
         Value::Record(vec![attr], body_vec)
     }
 
-    pub fn link(node: String, lane: String) -> Self {
-        Envelope::LinkRequest(LinkAddressed {
-            lane: LaneAddressed {
-                node_uri: node,
-                lane_uri: lane,
-                body: None,
-            },
-            rate: None,
-            prio: None,
-        })
+    pub fn link<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_link(node, lane, None, None, None)
     }
 
-    pub fn sync(node: String, lane: String) -> Self {
-        Envelope::SyncRequest(LinkAddressed {
-            lane: LaneAddressed {
-                node_uri: node,
-                lane_uri: lane,
-                body: None,
-            },
-            rate: None,
-            prio: None,
-        })
+    pub fn sync<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_sync(node, lane, None, None, None)
     }
 
-    pub fn unlink(node: String, lane: String) -> Self {
-        Envelope::UnlinkRequest(LaneAddressed {
-            node_uri: node,
-            lane_uri: lane,
-            body: None,
-        })
+    pub fn unlink<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_unlink(node, lane, None)
     }
 
-    pub fn unlinked(node: String, lane: String) -> Self {
-        Envelope::UnlinkedResponse(LaneAddressed {
-            node_uri: node,
-            lane_uri: lane,
-            body: None,
-        })
+    pub fn unlinked<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_unlinked(node, lane, None)
     }
 
-    pub fn linked(node: String, lane: String) -> Self {
-        Envelope::LinkedResponse(LinkAddressed {
-            lane: LaneAddressed {
-                node_uri: node,
-                lane_uri: lane,
-                body: None,
-            },
-            rate: None,
-            prio: None,
-        })
+    pub fn linked<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_linked(node, lane, None, None, None)
     }
 
-    pub fn synced(node: String, lane: String) -> Self {
-        Envelope::SyncedResponse(LaneAddressed {
-            node_uri: node,
-            lane_uri: lane,
-            body: None,
-        })
+    pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
+        Self::make_synced(node, lane, None)
     }
-
-    pub fn event(node: String, lane: String, body: Option<Value>) -> Self {
-        Envelope::EventMessage(LaneAddressed {
-            node_uri: node,
-            lane_uri: lane,
-            body,
-        })
-    }
-
-    pub fn command(node: String, lane: String, body: Option<Value>) -> Self {
-        Envelope::CommandMessage(LaneAddressed {
-            node_uri: node,
-            lane_uri: lane,
-            body,
-        })
-    }
-}
-
-/// A simple [`Envelope`] payload to deliver to the other end of an active network connection.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HostAddressed {
-    pub body: Option<Value>,
-}
-
-/// An [`Envelope`]'s payload that is routed to a particular lane, of a particular node. Both the
-/// `node_uri` and `lane_uri` must be provided.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LaneAddressed {
-    pub node_uri: String,
-    pub lane_uri: String,
-    pub body: Option<Value>,
-}
-
-/// An [`Envelope`] to route along the path of a currently open link. If the `rate` or `prio` are
-/// not provided then they are set to `None`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LinkAddressed {
-    pub lane: LaneAddressed,
-    pub rate: Option<f64>,
-    pub prio: Option<f64>,
 }
 
 /// Errors that may occur when parsing a [`Value`] in to an [`Envelope`]. A variant's associated
@@ -298,227 +559,12 @@ pub struct LinkAddressed {
 pub enum EnvelopeParseErr {
     MissingHeader(String),
     UnexpectedKey(String),
+    DuplicateKey(String),
     UnexpectedType(Value),
     UnexpectedItem(Item),
     Malformatted,
     DuplicateHeader(String),
     UnknownTag(String),
-}
-
-#[derive(Debug, PartialEq)]
-struct LaneAddressedBuilder {
-    node_uri: Option<String>,
-    lane_uri: Option<String>,
-    body: Option<Value>,
-}
-
-#[derive(Debug, PartialEq)]
-struct LinkAddressedBuilder {
-    lane: LaneAddressedBuilder,
-    rate: Option<f64>,
-    prio: Option<f64>,
-}
-
-/// Builds a [`LaneAddressed`] variant. Verifying that neither the `node_uri` or `lane_uri` are
-/// `None`.
-impl LaneAddressedBuilder {
-    fn build(self) -> Result<LaneAddressed, EnvelopeParseErr> {
-        match self {
-            LaneAddressedBuilder {
-                node_uri: Some(node_uri),
-                lane_uri: Some(lane_uri),
-                body,
-            } => Ok(LaneAddressed {
-                node_uri,
-                lane_uri,
-                body,
-            }),
-            LaneAddressedBuilder { node_uri: None, .. } => {
-                Err(EnvelopeParseErr::MissingHeader(String::from("node")))
-            }
-            LaneAddressedBuilder { lane_uri: None, .. } => {
-                Err(EnvelopeParseErr::MissingHeader(String::from("lane")))
-            }
-        }
-    }
-}
-
-impl LinkAddressedBuilder {
-    fn build(self) -> Result<LinkAddressed, EnvelopeParseErr> {
-        let LinkAddressedBuilder { lane, .. } = self;
-        let lane = lane.build()?;
-        Ok(LinkAddressed {
-            lane,
-            rate: self.rate,
-            prio: self.prio,
-        })
-    }
-}
-
-/// Parses a [`LinkAddressed`] envelope from a vector of [`Item`]s. Returning a builder which
-/// can be used for validation or an [`EnvelopeParseErr`] with a cause if any errors are
-/// encountered.
-fn parse_link_addressed(
-    items: Vec<Item>,
-    body: Option<Value>,
-) -> Result<LinkAddressedBuilder, EnvelopeParseErr> {
-    items.iter().enumerate().try_fold(
-        LinkAddressedBuilder {
-            lane: LaneAddressedBuilder {
-                node_uri: None,
-                lane_uri: None,
-                body,
-            },
-            rate: None,
-            prio: None,
-        },
-        |mut link_addressed, (index, item)| {
-            match item {
-                Item::Slot(slot_key, slot_value) => {
-                    if let Value::Text(slot_key_val) = slot_key {
-                        match slot_key_val.as_str() {
-                            "prio" => {
-                                if let Value::Float64Value(slot_val) = slot_value {
-                                    link_addressed.prio = Some(*slot_val);
-                                    Ok(link_addressed)
-                                } else {
-                                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
-                                }
-                            }
-                            "rate" => {
-                                if let Value::Float64Value(slot_val) = slot_value {
-                                    link_addressed.rate = Some(*slot_val);
-                                    Ok(link_addressed)
-                                } else {
-                                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
-                                }
-                            }
-                            _ => {
-                                if let Value::Text(slot_val) = slot_value {
-                                    parse_lane_addressed_value(
-                                        slot_key_val,
-                                        slot_val,
-                                        &mut link_addressed.lane,
-                                    )?;
-                                    Ok(link_addressed)
-                                } else {
-                                    Err(EnvelopeParseErr::UnexpectedType(slot_value.to_owned()))
-                                }
-                            }
-                        }
-                    } else {
-                        Err(EnvelopeParseErr::UnexpectedType(slot_key.to_owned()))
-                    }
-                }
-                // Lane/Node URI without a key
-                Item::ValueItem(slot_value) => {
-                    parse_lane_addressed_index(index, slot_value, &mut link_addressed.lane)?;
-                    Ok(link_addressed)
-                }
-            }
-        },
-    )
-}
-
-/// Parses a [`LaneAddressed`] envelope from a vector of [`Item`]s. Returning a builder which
-/// can be used for validation or an [`EnvelopeParseErr`] with a cause if any errors are
-/// encountered. Both the `node_uri` and `lane_uri` [`Item`]s should be provided.
-fn parse_lane_addressed(
-    items: Vec<Item>,
-    body: Option<Value>,
-) -> Result<LaneAddressedBuilder, EnvelopeParseErr> {
-    items.iter().enumerate().try_fold(
-        LaneAddressedBuilder {
-            node_uri: None,
-            lane_uri: None,
-            body,
-        },
-        |mut lane_addressed, (index, item)| match item {
-            Item::Slot(Value::Text(slot_key), Value::Text(slot_value)) => {
-                parse_lane_addressed_value(slot_key, slot_value, &mut lane_addressed)?;
-                Ok(lane_addressed)
-            }
-            Item::ValueItem(slot_value) => {
-                parse_lane_addressed_index(index, slot_value, &mut lane_addressed)?;
-                Ok(lane_addressed)
-            }
-            _ => Err(EnvelopeParseErr::UnexpectedItem(item.to_owned())),
-        },
-    )
-}
-
-fn parse_lane_addressed_value(
-    key: &str,
-    val: &str,
-    lane_addressed: &mut LaneAddressedBuilder,
-) -> Result<(), EnvelopeParseErr> {
-    if key == "node" {
-        match lane_addressed.node_uri {
-            Some(_) => Err(EnvelopeParseErr::DuplicateHeader(String::from("node"))),
-            None => {
-                lane_addressed.node_uri = Some(val.deref().to_string());
-                Ok(())
-            }
-        }
-    } else if key == "lane" {
-        match lane_addressed.lane_uri {
-            Some(_) => Err(EnvelopeParseErr::DuplicateHeader(String::from("lane"))),
-            None => {
-                lane_addressed.lane_uri = Some(val.deref().to_string());
-                Ok(())
-            }
-        }
-    } else {
-        Err(EnvelopeParseErr::UnexpectedKey(key.to_owned()))
-    }
-}
-
-fn parse_lane_addressed_index(
-    index: usize,
-    value: &Value,
-    lane_addressed: &mut LaneAddressedBuilder,
-) -> Result<(), EnvelopeParseErr> {
-    if index == 0 {
-        parse_lane_addressed_value("node", &value.to_string(), lane_addressed)
-    } else if index == 1 {
-        parse_lane_addressed_value("lane", &value.to_string(), lane_addressed)
-    } else {
-        Err(EnvelopeParseErr::Malformatted)
-    }
-}
-
-fn to_linked_addressed<F>(
-    value: Value,
-    body: Option<Value>,
-    func: F,
-) -> Result<Envelope, EnvelopeParseErr>
-where
-    F: Fn(LinkAddressed) -> Envelope,
-{
-    match value {
-        Value::Record(_, headers) => {
-            let link_addressed = parse_link_addressed(headers, body)?.build()?;
-            Ok(func(link_addressed))
-        }
-        v => Err(EnvelopeParseErr::UnexpectedType(v)),
-    }
-}
-
-fn to_lane_addressed<F>(
-    value: Value,
-    body: Option<Value>,
-    func: F,
-) -> Result<Envelope, EnvelopeParseErr>
-where
-    F: Fn(LaneAddressed) -> Envelope,
-{
-    match value {
-        Value::Record(_, headers) => {
-            let lane_builder = parse_lane_addressed(headers, body)?.build()?;
-            Ok(func(lane_builder))
-        }
-        v => Err(EnvelopeParseErr::UnexpectedType(v)),
-    }
 }
 
 /// Attempt to parse a ['Value'] in to an ['Envelope']. Returning either the parsed [`Envelope`] or
@@ -528,7 +574,7 @@ where
 /// ```
 /// use std::convert::TryFrom;
 /// use common::model::{Value, Attr, Item};
-/// use common::warp::envelope::{Envelope, LaneAddressed};
+/// use common::warp::envelope::Envelope;
 ///
 /// let record = Value::Record(
 ///         vec![
@@ -544,11 +590,7 @@ where
 ///     );
 ///
 /// let envelope = Envelope::try_from(record).unwrap();
-/// assert_eq!(envelope, Envelope::CommandMessage(LaneAddressed {
-///        node_uri: String::from("node_uri"),
-///        lane_uri: String::from("lane_uri"),
-///        body: None,
-/// }));
+/// assert_eq!(envelope, Envelope::make_command("node_uri".to_string(), "lane_uri".to_string(), None));
 /// ```
 /// An ['Envelope'] is formed of named headers and a value, with the exception of `node` and `lane` where they
 /// may be positional; `node` at header index 0 and `lane` at header index 1. See [`Envelope`] for
@@ -580,27 +622,284 @@ impl TryFrom<Value> for Envelope {
             }
         };
 
-        let envelope_type = match attrs.pop() {
+        let envelope_header = match attrs.pop() {
             Some(v) => v,
             None => return Err(EnvelopeParseErr::Malformatted),
         };
 
-        match envelope_type.name.as_str() {
-            "event" => to_lane_addressed(envelope_type.value, body, Envelope::EventMessage),
-            "command" => to_lane_addressed(envelope_type.value, body, Envelope::CommandMessage),
-            "link" => to_linked_addressed(envelope_type.value, body, Envelope::LinkRequest),
-            "linked" => to_linked_addressed(envelope_type.value, body, Envelope::LinkedResponse),
-            "sync" => to_linked_addressed(envelope_type.value, body, Envelope::SyncRequest),
-            "synced" => to_lane_addressed(envelope_type.value, body, Envelope::SyncedResponse),
-            "unlink" => to_lane_addressed(envelope_type.value, body, Envelope::UnlinkRequest),
-            "unlinked" => {
-                to_lane_addressed(envelope_type.value, body, { Envelope::UnlinkedResponse })
+        let Attr { name: tag, value } = envelope_header;
+
+        match tag.as_str() {
+            LINKED_TAG => {
+                let (path, params) = extract_path_and_params(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::IncomingLink(IncomingHeader::Linked(params), path),
+                    body,
+                })
             }
-            "auth" => Ok(Envelope::AuthRequest(HostAddressed { body })),
-            "authed" => Ok(Envelope::AuthedResponse(HostAddressed { body })),
-            "deauth" => Ok(Envelope::DeauthRequest(HostAddressed { body })),
-            "deauthed" => Ok(Envelope::DeauthedResponse(HostAddressed { body })),
+            SYNCED_TAG => {
+                let path = extract_path(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::IncomingLink(IncomingHeader::Synced, path),
+                    body,
+                })
+            }
+            UNLINKED_TAG => {
+                let path = extract_path(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::IncomingLink(IncomingHeader::Unlinked, path),
+                    body,
+                })
+            }
+            EVENT_TAG => {
+                let path = extract_path(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::IncomingLink(IncomingHeader::Event, path),
+                    body,
+                })
+            }
+            LINK_TAG => {
+                let (path, params) = extract_path_and_params(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(params), path),
+                    body,
+                })
+            }
+            SYNC_TAG => {
+                let (path, params) = extract_path_and_params(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(params), path),
+                    body,
+                })
+            }
+            UNLINK_TAG => {
+                let path = extract_path(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::OutgoingLink(OutgoingHeader::Unlink, path),
+                    body,
+                })
+            }
+            CMD_TAG => {
+                let path = extract_path(value)?;
+                Ok(Envelope {
+                    header: EnvelopeHeader::OutgoingLink(OutgoingHeader::Command, path),
+                    body,
+                })
+            }
+            AUTH_TAG => {
+                if value != Value::Extant {
+                    Err(EnvelopeParseErr::UnexpectedType(value))
+                } else {
+                    Ok(Envelope {
+                        header: EnvelopeHeader::Negotiation(
+                            NegotiationHeader::Auth,
+                            Direction::Request,
+                        ),
+                        body,
+                    })
+                }
+            }
+            DEAUTH_TAG => {
+                if value != Value::Extant {
+                    Err(EnvelopeParseErr::UnexpectedType(value))
+                } else {
+                    Ok(Envelope {
+                        header: EnvelopeHeader::Negotiation(
+                            NegotiationHeader::Deauth,
+                            Direction::Request,
+                        ),
+                        body,
+                    })
+                }
+            }
+            AUTHED_TAG => {
+                if value != Value::Extant {
+                    Err(EnvelopeParseErr::UnexpectedType(value))
+                } else {
+                    Ok(Envelope {
+                        header: EnvelopeHeader::Negotiation(
+                            NegotiationHeader::Auth,
+                            Direction::Response,
+                        ),
+                        body,
+                    })
+                }
+            }
+            DEAUTHED_TAG => {
+                if value != Value::Extant {
+                    Err(EnvelopeParseErr::UnexpectedType(value))
+                } else {
+                    Ok(Envelope {
+                        header: EnvelopeHeader::Negotiation(
+                            NegotiationHeader::Deauth,
+                            Direction::Response,
+                        ),
+                        body,
+                    })
+                }
+            }
             s => Err(EnvelopeParseErr::UnknownTag(String::from(s))),
         }
     }
+}
+
+fn extract_path(items: Value) -> Result<RelativePath, EnvelopeParseErr> {
+    match extract_path_and_params(items)? {
+        (
+            path,
+            LinkParams {
+                rate: None,
+                prio: None,
+            },
+        ) => Ok(path),
+        (_, LinkParams { rate: Some(_), .. }) => {
+            Err(EnvelopeParseErr::UnexpectedKey(RATE_FIELD.to_string()))
+        }
+        _ => Err(EnvelopeParseErr::UnexpectedKey(PRIO_FIELD.to_string())),
+    }
+}
+
+const POS_NODE_ORDINAL: usize = 0;
+const POS_LANE_ORDINAL: usize = 1;
+
+fn extract_path_and_params(items: Value) -> Result<(RelativePath, LinkParams), EnvelopeParseErr> {
+    match items {
+        Value::Record(attrs, items) if attrs.is_empty() => {
+            let parts = items.into_iter().enumerate().try_fold(
+                (None, None, None, None),
+                |(mut node, mut lane, mut rate, mut prio), (index, item)| match item {
+                    Item::Slot(Value::Text(name), value) if name == NODE_FIELD => {
+                        get_text(NODE_FIELD, &mut node, value)?;
+                        Ok((node, lane, rate, prio))
+                    }
+                    Item::ValueItem(value) if index == POS_NODE_ORDINAL => {
+                        get_text(NODE_FIELD, &mut node, value)?;
+                        Ok((node, lane, rate, prio))
+                    }
+                    Item::Slot(Value::Text(name), value) if name == LANE_FIELD => {
+                        get_text(LANE_FIELD, &mut lane, value)?;
+                        Ok((node, lane, rate, prio))
+                    }
+                    Item::ValueItem(value) if index == POS_LANE_ORDINAL => {
+                        get_text(LANE_FIELD, &mut lane, value)?;
+                        Ok((node, lane, rate, prio))
+                    }
+                    Item::Slot(Value::Text(name), value) if name == RATE_FIELD => {
+                        get_float(RATE_FIELD, &mut rate, value)?;
+                        Ok((node, lane, rate, prio))
+                    }
+                    Item::Slot(Value::Text(name), value) if name == PRIO_FIELD => {
+                        get_float(PRIO_FIELD, &mut prio, value)?;
+                        Ok((node, lane, rate, prio))
+                    }
+                    Item::Slot(Value::Text(name), _) => Err(EnvelopeParseErr::UnexpectedKey(name)),
+                    ow => Err(EnvelopeParseErr::UnexpectedItem(ow)),
+                },
+            );
+            match parts? {
+                (Some(node), Some(lane), rate, prio) => {
+                    Ok((RelativePath { node, lane }, LinkParams { rate, prio }))
+                }
+                (Some(_), _, _, _) => Err(EnvelopeParseErr::MissingHeader(LANE_FIELD.to_string())),
+                _ => Err(EnvelopeParseErr::MissingHeader(NODE_FIELD.to_string())),
+            }
+        }
+        ow => Err(EnvelopeParseErr::UnexpectedType(ow)),
+    }
+}
+
+fn get_text(name: &str, target: &mut Option<String>, value: Value) -> Result<(), EnvelopeParseErr> {
+    if target.is_some() {
+        Err(EnvelopeParseErr::DuplicateHeader(name.to_string()))
+    } else {
+        match value {
+            Value::Text(node_str) => {
+                *target = Some(node_str);
+                Ok(())
+            }
+            bad_value => Err(EnvelopeParseErr::UnexpectedType(bad_value)),
+        }
+    }
+}
+
+fn get_float(name: &str, target: &mut Option<f64>, value: Value) -> Result<(), EnvelopeParseErr> {
+    if target.is_some() {
+        Err(EnvelopeParseErr::DuplicateHeader(name.to_string()))
+    } else {
+        match value {
+            Value::Float64Value(x) => {
+                *target = Some(x);
+                Ok(())
+            }
+            bad_value => Err(EnvelopeParseErr::UnexpectedType(bad_value)),
+        }
+    }
+}
+
+impl From<Envelope> for Value {
+    fn from(envelope: Envelope) -> Self {
+        let Envelope { header, body } = envelope;
+        let header_attr = match header {
+            EnvelopeHeader::IncomingLink(IncomingHeader::Linked(params), path) => {
+                Attr::with_items(LINKED_TAG, header_slots(path, Some(params)))
+            }
+            EnvelopeHeader::IncomingLink(IncomingHeader::Synced, path) => {
+                Attr::with_items(SYNCED_TAG, header_slots(path, None))
+            }
+            EnvelopeHeader::IncomingLink(IncomingHeader::Unlinked, path) => {
+                Attr::with_items(UNLINKED_TAG, header_slots(path, None))
+            }
+            EnvelopeHeader::IncomingLink(IncomingHeader::Event, path) => {
+                Attr::with_items(EVENT_TAG, header_slots(path, None))
+            }
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(params), path) => {
+                Attr::with_items(LINK_TAG, header_slots(path, Some(params)))
+            }
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(params), path) => {
+                Attr::with_items(SYNC_TAG, header_slots(path, Some(params)))
+            }
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Unlink, path) => {
+                Attr::with_items(UNLINK_TAG, header_slots(path, None))
+            }
+            EnvelopeHeader::OutgoingLink(OutgoingHeader::Command, path) => {
+                Attr::with_items(CMD_TAG, header_slots(path, None))
+            }
+            EnvelopeHeader::Negotiation(NegotiationHeader::Auth, Direction::Request) => {
+                Attr::from(AUTH_TAG)
+            }
+            EnvelopeHeader::Negotiation(NegotiationHeader::Deauth, Direction::Request) => {
+                Attr::from(DEAUTH_TAG)
+            }
+            EnvelopeHeader::Negotiation(NegotiationHeader::Auth, Direction::Response) => {
+                Attr::from(AUTHED_TAG)
+            }
+            EnvelopeHeader::Negotiation(NegotiationHeader::Deauth, Direction::Response) => {
+                Attr::from(DEAUTHED_TAG)
+            }
+        };
+        let mut attrs = vec![header_attr];
+        let envelope = match body {
+            Some(Value::Record(mut body_attrs, body)) => {
+                attrs.append(&mut body_attrs);
+                body
+            }
+            Some(ow) => vec![Item::ValueItem(ow)],
+            _ => vec![],
+        };
+        Value::Record(attrs, envelope)
+    }
+}
+
+fn header_slots(path: RelativePath, params: Option<LinkParams>) -> Vec<Item> {
+    let RelativePath { node, lane } = path;
+    let mut slots = vec![Item::slot(NODE_FIELD, node), Item::slot(LANE_FIELD, lane)];
+    if let Some(LinkParams { rate, prio }) = params {
+        if let Some(r) = rate {
+            slots.push(Item::slot(RATE_FIELD, r))
+        }
+        if let Some(p) = prio {
+            slots.push(Item::slot(PRIO_FIELD, p))
+        }
+    }
+    slots
 }

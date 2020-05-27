@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::downlink::DownlinkParams;
 use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
@@ -27,6 +27,7 @@ use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
 use std::fmt::{Debug, Formatter};
+use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
@@ -125,12 +126,12 @@ where
 {
     pub(in crate::downlink) fn assemble<F>(
         raw_factory: F,
-        buffer_size: usize,
+        buffer_size: NonZeroUsize,
     ) -> (BufferedDownlink<Act, Upd>, BufferedReceiver<Upd>)
     where
         F: FnOnce(BroadcastSender<Event<Upd>>) -> (mpsc::Sender<Act>, DownlinkTaskHandle),
     {
-        let (topic, sender, first) = BroadcastTopic::new(buffer_size);
+        let (topic, sender, first) = BroadcastTopic::new(buffer_size.get());
         let (input, task) = raw_factory(sender);
         let internal = Internal {
             input: input.clone(),
@@ -202,9 +203,8 @@ pub(in crate::downlink) fn make_downlink<M, A, State, Machine, Updates, Commands
     machine: Machine,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    queue_size: usize,
-    on_invalid: OnInvalidMessage,
+    queue_size: NonZeroUsize,
+    config: &DownlinkParams,
 ) -> (
     BufferedDownlink<A, Machine::Ev>,
     BufferedReceiver<Machine::Ev>,
@@ -216,11 +216,11 @@ where
     Machine: StateMachine<State, M, A> + Send + 'static,
     Machine::Ev: Clone + Send + Sync + 'static,
     Machine::Cmd: Send + 'static,
-    Updates: Stream<Item = Message<M>> + Send + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + 'static,
     Commands: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + 'static,
 {
     let fac = move |event_tx: BroadcastSender<Event<Machine::Ev>>| {
-        let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size);
+        let (act_tx, act_rx) = mpsc::channel::<A>(config.buffer_size.get());
 
         let event_sink = event_tx.map_err_into();
 
@@ -234,13 +234,14 @@ where
             event_sink,
             completed.clone(),
             stopped_tx,
-            on_invalid,
+            config.on_invalid,
         );
 
         let lane_task = task.run(
             raw::make_operation_stream(update_stream),
             act_rx.fuse(),
             machine,
+            config.yield_after,
         );
 
         let join_handle = tokio::task::spawn(lane_task.instrument(trace_span!("downlink task")));

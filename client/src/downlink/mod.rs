@@ -92,7 +92,7 @@ impl Future for StoppedFuture {
 #[derive(Clone, PartialEq, Debug)]
 pub enum DownlinkError {
     DroppedChannel,
-    TaskPanic,
+    TaskPanic(&'static str),
     TransitionError,
     MalformedMessage,
     InvalidAction,
@@ -109,6 +109,7 @@ impl From<RoutingError> for DownlinkError {
             RoutingError::ConnectionError => DownlinkError::DroppedChannel,
             RoutingError::CloseError => DownlinkError::DroppedChannel,
             RoutingError::PoolError(_) => DownlinkError::DroppedChannel,
+            RoutingError::HostUnreachable => DownlinkError::DroppedChannel,
         }
     }
 }
@@ -120,7 +121,9 @@ impl Display for DownlinkError {
                 f,
                 "An internal channel was dropped and the downlink is now closed."
             ),
-            DownlinkError::TaskPanic => write!(f, "The downlink task panicked."),
+            DownlinkError::TaskPanic(m) => {
+                write!(f, "The downlink task panicked with: \"{:?}\"", m)
+            }
             DownlinkError::TransitionError => {
                 write!(f, "The downlink state machine produced and error.")
             }
@@ -184,6 +187,7 @@ pub enum Message<M> {
     Synced,
     Action(M),
     Unlinked,
+    BadEnvelope(String),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -196,11 +200,12 @@ pub enum Command<A> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Event<A>(pub A, pub bool);
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Operation<M, A> {
     Start,
     Message(Message<M>),
     Action(A),
+    Error(RoutingError),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -250,6 +255,16 @@ pub enum TransitionError {
     ReceiverDropped,
     SideEffectFailed,
     IllegalTransition(String),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct UpdateFailure(String);
+
+impl TransitionError {
+    /// On encountering a fatal transition error, a downlink will terminate.
+    pub fn is_fatal(&self) -> bool {
+        matches!(self, TransitionError::IllegalTransition(_))
+    }
 }
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
@@ -413,8 +428,17 @@ where
                     *state = DownlinkState::Unlinked;
                     Response::none().then_terminate()
                 }
+                Message::BadEnvelope(_) => return Err(DownlinkError::MalformedMessage),
             },
             Operation::Action(action) => self.handle_action(data_state, action).into(),
+            Operation::Error(e) => {
+                if e.is_fatal() {
+                    return Err(e.into());
+                } else {
+                    *state = DownlinkState::Unlinked;
+                    Response::for_command(Command::Sync)
+                }
+            }
         };
         Ok(response)
     }

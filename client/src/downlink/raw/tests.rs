@@ -17,6 +17,7 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::TransitionError;
+use crate::router::RoutingError;
 use common::sink::item::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
@@ -117,6 +118,9 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                     _ => result,
                 }
             }
+            Operation::Message(Message::BadEnvelope(_)) => {
+                return Err(DownlinkError::MalformedMessage);
+            }
             Operation::Action(AddTo(n, maybe_cb)) => {
                 let next = model.0 + n;
                 let resp = if next < 0 {
@@ -135,6 +139,14 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                     },
                     _ => resp,
                 })
+            }
+            Operation::Error(e) => {
+                if e.is_fatal() {
+                    return Err(DownlinkError::DroppedChannel);
+                } else {
+                    *dl_state = DownlinkState::Unlinked;
+                    Ok(Response::for_command(Command::Sync))
+                }
             }
         }
     }
@@ -156,7 +168,7 @@ async fn make_test_dl_custom_on_invalid(
     on_invalid: OnInvalidMessage,
 ) -> (
     RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
-    Snk<Message<Msg>>,
+    Snk<Result<Message<Msg>, RoutingError>>,
     Str<Command<i32>>,
 ) {
     let (tx_in, rx_in) = mpsc::channel(10);
@@ -165,7 +177,8 @@ async fn make_test_dl_custom_on_invalid(
         TestStateMachine,
         rx_in,
         for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
-        10,
+        NonZeroUsize::new(10).unwrap(),
+        NonZeroUsize::new(256).unwrap(),
         on_invalid,
     );
     (downlink, tx_in, rx_out)
@@ -173,7 +186,7 @@ async fn make_test_dl_custom_on_invalid(
 
 async fn make_test_dl() -> (
     RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
-    Snk<Message<Msg>>,
+    Snk<Result<Message<Msg>, RoutingError>>,
     Str<Command<i32>>,
 ) {
     make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate).await
@@ -192,8 +205,8 @@ async fn event_on_sync() {
     let (dl, mut messages, _commands) = make_test_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
-    assert_that!(messages.send(Message::Linked).await, ok());
-    assert_that!(messages.send(Message::Synced).await, ok());
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(0, false))));
@@ -204,9 +217,9 @@ async fn ignore_update_before_link() {
     let (dl, mut messages, _commands) = make_test_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
-    assert_that!(messages.send(Message::Action(Msg::of(12))).await, ok());
-    assert_that!(messages.send(Message::Linked).await, ok());
-    assert_that!(messages.send(Message::Synced).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(Msg::of(12)))).await, ok());
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(0, false))));
@@ -217,9 +230,9 @@ async fn apply_updates_between_link_and_sync() {
     let (dl, mut messages, _commands) = make_test_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
-    assert_that!(messages.send(Message::Linked).await, ok());
-    assert_that!(messages.send(Message::Action(Msg::of(12))).await, ok());
-    assert_that!(messages.send(Message::Synced).await, ok());
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(Msg::of(12)))).await, ok());
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
     assert_that!(first_ev, eq(Some(Event(12, false))));
@@ -228,7 +241,7 @@ async fn apply_updates_between_link_and_sync() {
 /// Pre-synchronizes a downlink for tests that require the ['DownlinkState::Synced'] state.
 async fn sync_dl(
     init: Msg,
-    messages: &mut Snk<Message<Msg>>,
+    messages: &mut Snk<Result<Message<Msg>, RoutingError>>,
     events: &mut Str<Event<i32>>,
     commands: &mut Str<Command<i32>>,
 ) {
@@ -236,9 +249,9 @@ async fn sync_dl(
     let first_cmd = commands.recv().await;
     assert_that!(first_cmd, eq(Some(Command::Sync)));
 
-    assert_that!(messages.send(Message::Linked).await, ok());
-    assert_that!(messages.send(Message::Action(init)).await, ok());
-    assert_that!(messages.send(Message::Synced).await, ok());
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(init))).await, ok());
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = events.recv().await;
     assert_that!(first_ev, eq(Some(Event(n, false))));
@@ -253,9 +266,9 @@ async fn updates_processed_when_synced() {
 
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 
-    assert_that!(messages.send(Message::Action(Msg::of(10))).await, ok());
-    assert_that!(messages.send(Message::Action(Msg::of(20))).await, ok());
-    assert_that!(messages.send(Message::Action(Msg::of(30))).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(Msg::of(10)))).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(Msg::of(20)))).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(Msg::of(30)))).await, ok());
 
     assert_that!(events.recv().await, eq(Some(Event(10, false))));
     assert_that!(events.recv().await, eq(Some(Event(20, false))));
@@ -321,15 +334,15 @@ async fn actions_paused_when_unlinked() {
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 
     //Unlink the downlink.
-    assert_that!(messages.send(Message::Unlinked).await, ok());
+    assert_that!(messages.send(Ok(Message::Unlinked)).await, ok());
     //Then send an action.
     assert_that!(dl_tx.send(action).await, ok());
     //Link but don't yet sync.
-    assert_that!(messages.send(Message::Linked).await, ok());
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
     //Send an update that we expect to be handled before the action.
-    assert_that!(messages.send(Message::Action(msg)).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(msg))).await, ok());
     //Re-sync which we expect to unblock the action.
-    assert_that!(messages.send(Message::Synced).await, ok());
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     //Check that the events happened in the correct order.
     let action_at = act_rx.await;
@@ -382,7 +395,7 @@ async fn terminates_on_invalid() {
 
     let msg = Msg(-1, Some(msg_tx));
 
-    assert_that!(messages.send(Message::Action(msg)).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(msg))).await, ok());
     //Wait for the message to be processed.
     assert_that!(msg_rx.await, ok());
 
@@ -404,9 +417,81 @@ async fn continues_on_invalid() {
 
     let msg = Msg(-1, Some(msg_tx));
 
-    assert_that!(messages.send(Message::Action(msg)).await, ok());
+    assert_that!(messages.send(Ok(Message::Action(msg))).await, ok());
     //Wait for the message to be processed.
     assert_that!(msg_rx.await, ok());
 
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
+}
+
+#[tokio::test]
+async fn unlinks_on_unreachable_host() {
+    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (_dl_tx, mut dl_rx) = dl.split();
+
+    let first_cmd = commands.next().await;
+    assert_that!(first_cmd, eq(Some(Command::Sync)));
+
+    assert_that!(
+        messages.send(Err(RoutingError::HostUnreachable)).await,
+        ok()
+    );
+
+    let first_cmd = commands.recv().await;
+
+    assert_that!(first_cmd, eq(Some(Command::Sync)));
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+
+    let first_ev = dl_rx.event_stream.recv().await;
+    assert_that!(first_ev, eq(Some(Event(0, false))));
+}
+
+#[tokio::test]
+async fn queues_on_unreachable_host() {
+    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (mut dl_tx, dl_rx) = dl.split();
+    let mut events = dl_rx.event_stream;
+
+    let first_cmd = commands.next().await;
+    assert_that!(first_cmd, eq(Some(Command::Sync)));
+
+    assert_that!(
+        messages.send(Err(RoutingError::HostUnreachable)).await,
+        ok()
+    );
+
+    assert_that!(commands.recv().await, eq(Some(Command::Sync)));
+
+    assert_that!(dl_tx.send(AddTo::of(1)).await, ok());
+    assert_that!(dl_tx.send(AddTo::of(2)).await, ok());
+    assert_that!(dl_tx.send(AddTo::of(3)).await, ok());
+    assert_that!(dl_tx.send(AddTo::of(4)).await, ok());
+
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+
+    assert_that!(commands.recv().await, eq(Some(Command::Action(1))));
+    assert_that!(commands.recv().await, eq(Some(Command::Action(3))));
+    assert_that!(commands.recv().await, eq(Some(Command::Action(6))));
+    assert_that!(commands.recv().await, eq(Some(Command::Action(10))));
+
+    assert_that!(events.recv().await, eq(Some(Event(0, false))));
+    assert_that!(events.recv().await, eq(Some(Event(1, true))));
+    assert_that!(events.recv().await, eq(Some(Event(3, true))));
+    assert_that!(events.recv().await, eq(Some(Event(6, true))));
+    assert_that!(events.recv().await, eq(Some(Event(10, true))));
+}
+
+#[tokio::test]
+async fn terminates_when_router_dropped() {
+    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl_tx, _dl_rx) = dl.split();
+    let first_cmd = commands.next().await;
+
+    assert_that!(first_cmd, eq(Some(Command::Sync)));
+
+    assert_that!(messages.send(Err(RoutingError::RouterDropped)).await, ok());
+
+    let stop_res = dl_tx.task.task_handle().await_stopped().await;
+    assert_that!(stop_res.err().unwrap(), eq(DownlinkError::DroppedChannel));
 }
