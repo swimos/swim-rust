@@ -78,7 +78,7 @@ impl SwimClient {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             config.connection_pool_params(),
-            TungsteniteWsFactory::new(5).await,
+            TungsteniteWsFactory::new(config.buffer_size().get()).await,
         );
         let router = SwimRouter::new(config, pool);
 
