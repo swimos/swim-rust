@@ -12,16 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::convert::TryInto;
+use std::fmt::{Debug, Formatter};
+use std::ops::Deref;
 use std::sync::Arc;
 
+use futures::Stream;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
+use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
 use common::model::{Attr, Item, Value, ValueKind};
+use common::sink::item::ItemSender;
+use deserialize::FormDeserializeErr;
+use form::{Form, ValidatedForm};
 
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
+use crate::downlink::model::value::UpdateResult;
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
@@ -29,14 +38,7 @@ use crate::downlink::{
     TransitionError,
 };
 use crate::router::RoutingError;
-use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
-use common::sink::item::ItemSender;
-use deserialize::FormDeserializeErr;
-use form::{Form, ValidatedForm};
-use futures::Stream;
-use std::convert::TryInto;
-use std::fmt::{Debug, Formatter};
-use std::ops::Deref;
+use std::num::NonZeroUsize;
 
 #[cfg(test)]
 mod tests;
@@ -322,6 +324,12 @@ pub enum MapAction {
         before: Option<DownlinkRequest<Option<Arc<Value>>>>,
         after: Option<DownlinkRequest<Option<Arc<Value>>>>,
     },
+    TryUpdate {
+        key: Value,
+        f: Box<dyn FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send>,
+        before: Option<DownlinkRequest<UpdateResult<Option<Arc<Value>>>>>,
+        after: Option<DownlinkRequest<UpdateResult<Option<Arc<Value>>>>>,
+    },
 }
 
 impl MapAction {
@@ -426,6 +434,18 @@ impl MapAction {
         }
     }
 
+    pub fn try_update<F>(key: Value, f: F) -> MapAction
+    where
+        F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
+    {
+        MapAction::TryUpdate {
+            key,
+            f: Box::new(f),
+            before: None,
+            after: None,
+        }
+    }
+
     pub fn update_box(
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
@@ -448,6 +468,23 @@ impl MapAction {
         F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
     {
         MapAction::Update {
+            key,
+            f: Box::new(f),
+            before: Some(val_before),
+            after: Some(val_after),
+        }
+    }
+
+    pub fn try_update_and_await<F>(
+        key: Value,
+        f: F,
+        val_before: DownlinkRequest<UpdateResult<Option<Arc<Value>>>>,
+        val_after: DownlinkRequest<UpdateResult<Option<Arc<Value>>>>,
+    ) -> MapAction
+    where
+        F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
+    {
+        MapAction::TryUpdate {
             key,
             f: Box::new(f),
             before: Some(val_before),
@@ -489,6 +526,13 @@ impl Debug for MapAction {
             MapAction::Update {
                 key, before, after, ..
             } => write!(f, "Update({:?}, <closure>, {:?}, {:?})", key, before, after),
+            MapAction::TryUpdate {
+                key, before, after, ..
+            } => write!(
+                f,
+                "TryUpdate({:?}, <closure>, {:?}, {:?})",
+                key, before, after
+            ),
         }
     }
 }
@@ -555,17 +599,21 @@ impl ViewWithEvent {
     }
 }
 
+/// Typedef for map downlink stream item.
+type MapItemResult = Result<Message<MapModification<Value>>, RoutingError>;
+
 /// Create a map downlink.
 pub fn create_raw_downlink<Updates, Commands>(
     key_schema: Option<StandardSchema>,
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
     on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Updates: Stream<Item = MapItemResult> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     crate::downlink::create_downlink(
@@ -576,6 +624,7 @@ where
         update_stream,
         cmd_sink,
         buffer_size,
+        yield_after,
         on_invalid,
     )
 }
@@ -586,15 +635,14 @@ pub fn create_queue_downlink<Updates, Commands>(
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    queue_size: usize,
-    on_invalid: OnInvalidMessage,
+    queue_size: NonZeroUsize,
+    config: &DownlinkParams,
 ) -> (
     QueueDownlink<MapAction, ViewWithEvent>,
     QueueReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Updates: Stream<Item = MapItemResult> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
@@ -604,9 +652,8 @@ where
         ),
         update_stream,
         cmd_sink,
-        buffer_size,
         queue_size,
-        on_invalid,
+        &config,
     )
 }
 
@@ -616,14 +663,13 @@ pub fn create_dropping_downlink<Updates, Commands>(
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    on_invalid: OnInvalidMessage,
+    config: &DownlinkParams,
 ) -> (
     DroppingDownlink<MapAction, ViewWithEvent>,
     DroppingReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Updates: Stream<Item = MapItemResult> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
@@ -633,8 +679,7 @@ where
         ),
         update_stream,
         cmd_sink,
-        buffer_size,
-        on_invalid,
+        &config,
     )
 }
 
@@ -644,15 +689,14 @@ pub fn create_buffered_downlink<Updates, Commands>(
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    queue_size: usize,
-    on_invalid: OnInvalidMessage,
+    queue_size: NonZeroUsize,
+    config: &DownlinkParams,
 ) -> (
     BufferedDownlink<MapAction, ViewWithEvent>,
     BufferedReceiver<ViewWithEvent>,
 )
 where
-    Updates: Stream<Item = Message<MapModification<Value>>> + Send + 'static,
+    Updates: Stream<Item = MapItemResult> + Send + 'static,
     Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
@@ -662,9 +706,8 @@ where
         ),
         update_stream,
         cmd_sink,
-        buffer_size,
         queue_size,
-        on_invalid,
+        &config,
     )
 }
 
@@ -975,38 +1018,75 @@ fn process_action(
         MapAction::Update {
             key,
             f,
-            before: old,
-            after: replacement,
+            before,
+            after,
         } => {
-            let prev = data_state.get(&key).map(|arc| arc.as_ref());
-            let maybe_new_val = f(&prev);
-            match maybe_new_val {
-                Some(new_val) => {
-                    let v_arc = Arc::new(new_val);
-                    let replaced = data_state.insert(key.clone(), v_arc.clone());
-                    let err1 = old.and_then(|req| req.send_ok(replaced).err());
-                    let err2 = replacement.and_then(|req| req.send_ok(Some(v_arc.clone())).err());
-                    (
-                        BasicResponse::of(
-                            ViewWithEvent::insert(data_state, key.clone()),
-                            MapModification::Insert(key, v_arc),
-                        ),
-                        err1.is_some() || err2.is_some(),
-                    )
+            if !key_schema.matches(&key) {
+                update_key_schema_errors(key_schema, key, before, after)
+            } else {
+                let prev = get_and_deref(data_state, &key);
+                let maybe_new_val = f(&prev);
+                match maybe_new_val {
+                    Some(v) if !val_schema.matches(&v) => {
+                        let result_before = send_error(before, v.clone(), val_schema.clone());
+                        let result_after = send_error(after, v, val_schema.clone());
+                        (BasicResponse::none(), result_before || result_after)
+                    }
+                    validated => {
+                        let had_existing = prev.is_some();
+                        handle_update(
+                            data_state,
+                            key,
+                            had_existing,
+                            validated,
+                            before,
+                            after,
+                            |v| v,
+                        )
+                    }
                 }
-                _ if prev.is_some() => {
-                    let removed = data_state.remove(&key);
-                    let err1 = old.and_then(|req| req.send_ok(removed).err());
-                    let err2 = replacement.and_then(|req| req.send_ok(None).err());
-                    (
-                        BasicResponse::of(
-                            ViewWithEvent::remove(data_state, key.clone()),
-                            MapModification::Remove(key),
-                        ),
-                        err1.is_some() || err2.is_some(),
-                    )
+            }
+        }
+        MapAction::TryUpdate {
+            key,
+            f,
+            before,
+            after,
+        } => {
+            if !key_schema.matches(&key) {
+                update_key_schema_errors(key_schema, key, before, after)
+            } else {
+                let prev = get_and_deref(data_state, &key);
+                match f(&prev) {
+                    Ok(maybe_new_val) => match maybe_new_val {
+                        Some(v) if !val_schema.matches(&v) => {
+                            let result_before = send_error(before, v.clone(), val_schema.clone());
+                            let result_after = send_error(after, v, val_schema.clone());
+                            (BasicResponse::none(), result_before || result_after)
+                        }
+                        validated => {
+                            let had_existing = prev.is_some();
+                            handle_update(
+                                data_state,
+                                key,
+                                had_existing,
+                                validated,
+                                before,
+                                after,
+                                Ok,
+                            )
+                        }
+                    },
+                    Err(e) => {
+                        let result_before = before
+                            .map(|req| req.send_ok(Err(e.clone())).is_err())
+                            .unwrap_or(false);
+                        let result_after = after
+                            .map(|req| req.send_ok(Err(e)).is_err())
+                            .unwrap_or(false);
+                        (BasicResponse::none(), result_before || result_after)
+                    }
                 }
-                _ => (BasicResponse::none(), false),
             }
         }
     };
@@ -1014,6 +1094,59 @@ fn process_action(
         resp.with_error(TransitionError::ReceiverDropped)
     } else {
         resp
+    }
+}
+
+fn handle_update<F, T>(
+    data_state: &mut ValMap,
+    key: Value,
+    had_existing: bool,
+    maybe_new_val: Option<Value>,
+    old: Option<DownlinkRequest<T>>,
+    replacement: Option<DownlinkRequest<T>>,
+    to_event: F,
+) -> (
+    BasicResponse<ViewWithEvent, MapModification<Arc<Value>>>,
+    bool,
+)
+where
+    F: Fn(Option<Arc<Value>>) -> T + Send + 'static,
+{
+    match maybe_new_val {
+        Some(new_val) => {
+            let v_arc = Arc::new(new_val);
+            let replaced = data_state.insert(key.clone(), v_arc.clone());
+            let err1 = old
+                .map(|req| req.send_ok(to_event(replaced)).is_err())
+                .unwrap_or(false);
+            let err2 = replacement
+                .map(|req| req.send_ok(to_event(Some(v_arc.clone()))).is_err())
+                .unwrap_or(false);
+            (
+                BasicResponse::of(
+                    ViewWithEvent::insert(data_state, key.clone()),
+                    MapModification::Insert(key, v_arc),
+                ),
+                err1 || err2,
+            )
+        }
+        _ if had_existing => {
+            let removed = data_state.remove(&key);
+            let err1 = old
+                .map(|req| req.send_ok(to_event(removed)).is_err())
+                .unwrap_or(false);
+            let err2 = replacement
+                .map(|req| req.send_ok(to_event(None)).is_err())
+                .unwrap_or(false);
+            (
+                BasicResponse::of(
+                    ViewWithEvent::remove(data_state, key.clone()),
+                    MapModification::Remove(key),
+                ),
+                err1 || err2,
+            )
+        }
+        _ => (BasicResponse::none(), false),
     }
 }
 
@@ -1028,4 +1161,19 @@ fn send_error<T>(
     } else {
         false
     }
+}
+
+fn update_key_schema_errors<Ev, Cmd, T>(
+    key_schema: &StandardSchema,
+    key: Value,
+    before: Option<DownlinkRequest<T>>,
+    after: Option<DownlinkRequest<T>>,
+) -> (BasicResponse<Ev, Cmd>, bool) {
+    let result_before = send_error(before, key.clone(), key_schema.clone());
+    let result_after = send_error(after, key, key_schema.clone());
+    (BasicResponse::none(), result_before || result_after)
+}
+
+fn get_and_deref<'a>(data_state: &'a ValMap, key: &Value) -> Option<&'a Value> {
+    data_state.get(key).map(|arc| arc.as_ref())
 }

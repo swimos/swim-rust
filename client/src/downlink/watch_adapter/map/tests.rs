@@ -18,6 +18,7 @@ use hamcrest2::prelude::*;
 use tokio::sync::mpsc;
 
 use super::*;
+use std::collections::BTreeMap;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -68,11 +69,30 @@ async fn validate_receive(
     return Err(map);
 }
 
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(5).unwrap()
+}
+
+fn max_active_keys() -> NonZeroUsize {
+    NonZeroUsize::new(5).unwrap()
+}
+
+fn yield_after() -> NonZeroUsize {
+    NonZeroUsize::new(256).unwrap()
+}
+
 #[tokio::test(threaded_scheduler)]
 async fn single_pass_through() {
     let (tx, mut rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
@@ -89,7 +109,14 @@ async fn single_pass_through() {
 async fn multiple_one_key() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let modifications = vec![insert(1, 5), remove(1), insert(1, 8)];
 
@@ -114,7 +141,14 @@ async fn multiple_one_key() {
 async fn multiple_keys() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let modifications = vec![insert(1, 5), insert(2, 8)];
 
@@ -140,7 +174,14 @@ async fn multiple_keys() {
 async fn multiple_keys_multiple_values() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let modifications = vec![insert(1, 5), insert(2, 8), insert(1, 22), remove(2)];
 
@@ -165,7 +206,14 @@ async fn multiple_keys_multiple_values() {
 async fn single_clear() {
     let (tx, mut rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
@@ -182,7 +230,14 @@ async fn single_clear() {
 async fn single_take() {
     let (tx, mut rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
@@ -199,7 +254,14 @@ async fn single_take() {
 async fn single_skip() {
     let (tx, mut rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
@@ -216,7 +278,14 @@ async fn single_skip() {
 async fn special_action_ordering() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 5).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let modifications = vec![
         insert(1, 5),
@@ -248,7 +317,14 @@ async fn special_action_ordering() {
 async fn overflow_active_keys() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(tx.map_err_into(), 5, 5, 2).await;
+    let mut watcher = KeyedWatch::new(
+        tx.map_err_into(),
+        buffer_size(),
+        buffer_size(),
+        max_active_keys(),
+        yield_after(),
+    )
+    .await;
 
     let mut modifications = (1..5).into_iter().map(|i| insert(i, i)).collect::<Vec<_>>();
 

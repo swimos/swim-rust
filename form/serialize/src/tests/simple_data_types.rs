@@ -14,14 +14,14 @@
 
 use serde::Serialize;
 
+use common::model::{Attr, Item, Value};
+
 use crate::tests::assert_err;
 use crate::tests::to_value;
 use crate::FormSerializeErr;
-use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod tuples {
-
     use super::*;
 
     #[test]
@@ -61,13 +61,16 @@ mod tuples {
         let test = Test(1, (2, 3));
         let parsed_value = to_value(&test).unwrap();
 
-        let expected = Value::record(vec![
-            Item::from(1),
-            Item::from(Value::record(vec![
-                Item::from(Value::Int64Value(2)),
-                Item::from(Value::Int64Value(3)),
-            ])),
-        ]);
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![
+                Item::from(1),
+                Item::from(Value::record(vec![
+                    Item::from(Value::Int64Value(2)),
+                    Item::from(Value::Int64Value(3)),
+                ])),
+            ],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -79,8 +82,10 @@ mod tuples {
 
         let test = Test(1, 2);
         let parsed_value = to_value(&test).unwrap();
-
-        let expected = Value::record(vec![Item::from(1), Item::ValueItem(Value::Int64Value(2))]);
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::from(1), Item::ValueItem(Value::Int64Value(2))],
+        );
 
         assert_eq!(parsed_value, expected);
     }
@@ -89,7 +94,6 @@ mod tuples {
     fn simple_tuple() {
         let test = (1, 2);
         let parsed_value = to_value(&test).unwrap();
-
         let expected = Value::record(vec![Item::from(1), Item::from(2)]);
 
         assert_eq!(parsed_value, expected);

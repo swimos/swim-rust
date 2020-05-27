@@ -18,15 +18,16 @@ use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender};
+use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender, SwimConnPool};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use common::request::request_future::{RequestError, RequestFuture, Sequenced};
 use common::sink::item::map_err::SenderErrInto;
 use common::sink::item::ItemSender;
-use common::warp::envelope::Envelope;
+use common::warp::envelope::{Envelope, IncomingLinkMessage};
 use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
+use futures::stream::FuturesUnordered;
 use futures::{Future, Stream};
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc::error::SendError;
@@ -57,8 +58,8 @@ pub trait Router: Send {
 pub type RouterConnRequest = (
     AbsolutePath,
     oneshot::Sender<(
-        <SwimRouter as Router>::ConnectionSink,
-        <SwimRouter as Router>::ConnectionStream,
+        <SwimRouter<SwimConnPool> as Router>::ConnectionSink,
+        <SwimRouter<SwimConnPool> as Router>::ConnectionStream,
     )>,
 );
 
@@ -70,7 +71,7 @@ pub type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
-    Envelope(Envelope),
+    Message(IncomingLinkMessage),
     ConnectionClosed,
     /// The requested host is unreachable. Field contains the error message returned from the
     /// connection pool.
@@ -78,23 +79,24 @@ pub enum RouterEvent {
     Stopping,
 }
 
-pub struct SwimRouter {
+pub struct SwimRouter<Pool: ConnectionPool> {
     router_connection_request_tx: mpsc::Sender<RouterConnRequest>,
     router_sink_tx: mpsc::Sender<RouterMessageRequest>,
     task_manager_handle: JoinHandle<Result<(), RoutingError>>,
+    connection_pool: Pool,
     close_tx: CloseSender,
     configuration: RouterParams,
 }
 
-impl SwimRouter {
-    pub fn new<Pool>(configuration: RouterParams, connection_pool: Pool) -> SwimRouter
+impl<Pool: ConnectionPool> SwimRouter<Pool> {
+    pub fn new(configuration: RouterParams, connection_pool: Pool) -> SwimRouter<Pool>
     where
         Pool: ConnectionPool,
     {
         let (close_tx, close_rx) = watch::channel(None);
 
         let (task_manager, router_connection_request_tx, router_sink_tx) =
-            TaskManager::new(connection_pool, close_rx, configuration);
+            TaskManager::new(connection_pool.clone(), close_rx, configuration);
 
         let task_manager_handle = tokio::spawn(task_manager.run());
 
@@ -102,6 +104,7 @@ impl SwimRouter {
             router_connection_request_tx,
             router_sink_tx,
             task_manager_handle,
+            connection_pool,
             close_tx,
             configuration,
         }
@@ -123,6 +126,13 @@ impl SwimRouter {
         if let Err(e) = self.task_manager_handle.await {
             tracing::error!("{:?}", e);
         };
+
+        self.connection_pool
+            .close()
+            .map_err(|_| RoutingError::CloseError)?
+            .await
+            .map_err(|_| RoutingError::CloseError)?
+            .map_err(|_| RoutingError::CloseError)?;
 
         Ok(())
     }
@@ -217,6 +227,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                     let (host, message) = payload.deref();
 
                     let target = message
+                        .header
                         .relative_path()
                         .ok_or(RoutingError::ConnectionError)?
                         .for_host(host.clone());
@@ -237,23 +248,18 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                 RouterTask::Close(Some(mut close_tx)) => {
                     drop(rx);
 
-                    for (_, (_, _, handle)) in host_managers {
+                    let futures = FuturesUnordered::new();
+
+                    host_managers
+                        .iter_mut()
+                        .for_each(|(_, (_, _, handle))| futures.push(handle));
+
+                    for result in futures.collect::<Vec<_>>().await {
                         close_tx
-                            .send(handle.await.map_err(|_| RoutingError::CloseError)?)
+                            .send(result.unwrap_or(Err(RoutingError::CloseError)))
                             .await
                             .map_err(|_| RoutingError::CloseError)?;
                     }
-
-                    let close_result: Result<(), ConnectionError> = connection_pool
-                        .close()
-                        .map_err(|_| RoutingError::ConnectionError)?
-                        .await
-                        .map_err(|_| RoutingError::ConnectionError)?;
-
-                    close_tx
-                        .send(close_result.map_err(|_| RoutingError::ConnectionError))
-                        .await
-                        .map_err(|_| RoutingError::CloseError)?;
 
                     break Ok(());
                 }
@@ -313,6 +319,7 @@ impl ConnectionRequest {
     }
 }
 
+#[derive(Debug)]
 pub struct SubscriberRequest {
     path: RelativePath,
     subscriber_tx: mpsc::Sender<RouterEvent>,
@@ -326,8 +333,6 @@ impl SubscriberRequest {
         }
     }
 }
-
-// type SubscriberRequest = (RelativePath, mpsc::Sender<RouterEvent>);
 
 enum HostTask {
     Connect(ConnectionRequest),
@@ -404,7 +409,6 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                     request_tx: connection_response_tx,
                     recreate,
                 }) => {
-                    //TODO This will always be ConnectionError error which is always transient
                     let maybe_connection_channel = connection_pool
                         .request_connection(host.clone(), recreate)
                         .await
@@ -428,7 +432,6 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::PoolError(e)));
                             }
-                            //TODO this will never be executed
                             e => {
                                 let _ =
                                     connection_response_tx.send(Err(RoutingError::ConnectionError));
@@ -455,23 +458,17 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                 HostTask::Close(Some(mut close_tx)) => {
                     drop(rx);
 
-                    close_tx
-                        .send(
-                            incoming_handle
-                                .await
-                                .map_err(|_| RoutingError::CloseError)?,
-                        )
-                        .await
-                        .map_err(|_| RoutingError::CloseError)?;
+                    let futures = FuturesUnordered::new();
 
-                    close_tx
-                        .send(
-                            outgoing_handle
-                                .await
-                                .map_err(|_| RoutingError::CloseError)?,
-                        )
-                        .await
-                        .map_err(|_| RoutingError::CloseError)?;
+                    futures.push(incoming_handle);
+                    futures.push(outgoing_handle);
+
+                    for result in futures.collect::<Vec<_>>().await {
+                        close_tx
+                            .send(result.unwrap_or(Err(RoutingError::CloseError)))
+                            .await
+                            .map_err(|_| RoutingError::CloseError)?;
+                    }
 
                     break Ok(());
                 }
@@ -498,8 +495,8 @@ fn combine_host_streams(
 type SwimRouterConnectionFut = Sequenced<
     RequestFuture<RouterConnRequest>,
     oneshot::Receiver<(
-        <SwimRouter as Router>::ConnectionSink,
-        <SwimRouter as Router>::ConnectionStream,
+        <SwimRouter<SwimConnPool> as Router>::ConnectionSink,
+        <SwimRouter<SwimConnPool> as Router>::ConnectionStream,
     )>,
 >;
 
@@ -512,7 +509,7 @@ fn connect(
     Sequenced::new(request_future, response_rx)
 }
 
-impl Router for SwimRouter {
+impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
     type ConnectionStream = mpsc::Receiver<RouterEvent>;
     type ConnectionSink = SenderErrInto<mpsc::Sender<Envelope>, RoutingError>;
     type GeneralSink = SenderErrInto<mpsc::Sender<(url::Url, Envelope)>, RoutingError>;
@@ -529,16 +526,26 @@ impl Router for SwimRouter {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RoutingError {
-    RouterDropped,
     ConnectionError,
+    HostUnreachable,
     PoolError(ConnectionError),
+    RouterDropped,
     CloseError,
 }
 
+//Todo this should be unified
 impl RoutingError {
-    fn is_transient(&self) -> bool {
-        match self {
+    pub fn is_transient(&self) -> bool {
+        match &self {
             RoutingError::ConnectionError => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_fatal(&self) -> bool {
+        match &self {
+            RoutingError::RouterDropped => true,
+            RoutingError::HostUnreachable => false,
             _ => false,
         }
     }
@@ -547,10 +554,11 @@ impl RoutingError {
 impl Display for RoutingError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::ConnectionError => write!(f, "Connection error."),
-            RoutingError::CloseError => write!(f, "Closing error."),
+            RoutingError::HostUnreachable => write!(f, "Host unreachable."),
             RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
+            RoutingError::RouterDropped => write!(f, "Router was dropped."),
+            RoutingError::CloseError => write!(f, "Closing error."),
         }
     }
 }
