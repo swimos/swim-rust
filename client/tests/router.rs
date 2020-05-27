@@ -22,29 +22,15 @@ mod tests {
     use common::sink::item::ItemSink;
     use common::warp::envelope::Envelope;
     use common::warp::path::AbsolutePath;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::EnvFilter;
+    use utilities::trace;
 
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;
     use tokio::time::Duration;
 
-    static INIT: Once = Once::new();
-
     fn init_trace() {
-        INIT.call_once(|| {
-            extern crate tracing;
-
-            let filter = EnvFilter::from_default_env()
-                .add_directive("client::router=trace".parse().unwrap());
-
-            let _ = tracing_subscriber::fmt()
-                .with_max_level(Level::TRACE)
-                .with_env_filter(filter)
-                .init();
-        });
+        trace::init_trace(vec!["client::router=trace"]);
     }
 
     #[ignore]
