@@ -14,8 +14,6 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use std::thread;
-
     use client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
     use client::connections::SwimConnPool;
@@ -73,9 +71,9 @@ mod tests {
 
         sink.send_item(sync).await.unwrap();
 
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
         let _ = router.close().await;
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
     #[tokio::test(core_threads = 2)]
@@ -101,9 +99,9 @@ mod tests {
 
         sink.send_item(sync).await.unwrap();
 
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
         let _ = router.close().await;
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
     #[tokio::test(core_threads = 2)]
@@ -129,9 +127,9 @@ mod tests {
 
         sink.send_item(sync).await.unwrap();
 
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
         let _ = router.close().await;
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
     #[tokio::test(core_threads = 2)]
@@ -177,22 +175,22 @@ mod tests {
             .await
             .unwrap();
 
-        thread::sleep(Duration::from_secs(1));
+        tokio::time::delay_for(Duration::from_secs(1)).await;
 
         router_sink
             .send_item((url.clone(), second_message))
             .await
             .unwrap();
 
-        thread::sleep(Duration::from_secs(1));
+        tokio::time::delay_for(Duration::from_secs(1)).await;
 
         router_sink.send_item((url, third_message)).await.unwrap();
 
-        thread::sleep(Duration::from_secs(1));
+        tokio::time::delay_for(Duration::from_secs(1)).await;
 
-        thread::sleep(Duration::from_secs(1));
+        tokio::time::delay_for(Duration::from_secs(1)).await;
         let _ = router.close().await;
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
     #[tokio::test(core_threads = 2)]
@@ -227,8 +225,8 @@ mod tests {
         println!("Sending second item");
         let _ = sink.send_item(sync).await;
         println!("Sent second item");
-        thread::sleep(Duration::from_secs(10));
+        tokio::time::delay_for(Duration::from_secs(10)).await;
         let _ = router.close().await;
-        thread::sleep(Duration::from_secs(5));
+        tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 }
