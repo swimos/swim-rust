@@ -25,7 +25,6 @@ impl Image for SwimTestServer {
     type EnvVars = HashMap<String, String>;
     type Volumes = HashMap<String, String>;
 
-    #[allow(clippy::match_wild_err_arm)]
     fn descriptor(&self) -> String {
         match env::var("TEST_SERVER_IMAGE_NAME") {
             Ok(descriptor) => descriptor,

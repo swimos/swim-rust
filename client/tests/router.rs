@@ -14,7 +14,7 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use std::{thread, time};
+    use std::thread;
 
     use client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
@@ -31,6 +31,7 @@ mod tests {
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;
+    use tokio::time::Duration;
 
     static INIT: Once = Once::new();
 
@@ -72,9 +73,9 @@ mod tests {
 
         sink.send_item(sync).await.unwrap();
 
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
         let _ = router.close().await;
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
     }
 
     #[tokio::test(core_threads = 2)]
@@ -100,9 +101,9 @@ mod tests {
 
         sink.send_item(sync).await.unwrap();
 
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
         let _ = router.close().await;
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
     }
 
     #[tokio::test(core_threads = 2)]
@@ -128,9 +129,9 @@ mod tests {
 
         sink.send_item(sync).await.unwrap();
 
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
         let _ = router.close().await;
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
     }
 
     #[tokio::test(core_threads = 2)]
@@ -151,19 +152,19 @@ mod tests {
 
         let url = url::Url::parse(&host).unwrap();
 
-        let first_message = Envelope::command(
+        let first_message = Envelope::make_command(
             String::from("/unit/foo"),
             String::from("publishInfo"),
             Some(Value::text("Hello, World!")),
         );
 
-        let second_message = Envelope::command(
+        let second_message = Envelope::make_command(
             String::from("/unit/foo"),
             String::from("publishInfo"),
             Some(Value::text("Test message")),
         );
 
-        let third_message = Envelope::command(
+        let third_message = Envelope::make_command(
             String::from("/unit/foo"),
             String::from("publishInfo"),
             Some(Value::text("Bye, World!")),
@@ -176,22 +177,22 @@ mod tests {
             .await
             .unwrap();
 
-        thread::sleep(time::Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(1));
 
         router_sink
             .send_item((url.clone(), second_message))
             .await
             .unwrap();
 
-        thread::sleep(time::Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(1));
 
         router_sink.send_item((url, third_message)).await.unwrap();
 
-        thread::sleep(time::Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(1));
 
-        thread::sleep(time::Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(1));
         let _ = router.close().await;
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
     }
 
     #[tokio::test(core_threads = 2)]
@@ -226,8 +227,8 @@ mod tests {
         println!("Sending second item");
         let _ = sink.send_item(sync).await;
         println!("Sent second item");
-        thread::sleep(time::Duration::from_secs(10));
+        thread::sleep(Duration::from_secs(10));
         let _ = router.close().await;
-        thread::sleep(time::Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(5));
     }
 }
