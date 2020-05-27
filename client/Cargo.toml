@@ -8,6 +8,12 @@ edition = "2018"
 default = []
 debug = ["log_verbose"]
 log_verbose = []
+test-server = ["test_server"]
+
+[dependencies.test_server]
+path = "test_server"
+features = ["enabled"]
+optional = true
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -37,4 +43,3 @@ deserialize = { path = "../form/deserialize"}
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-assert_matches = "1.3.0"

@@ -265,7 +265,10 @@ async fn invalid_protocol() {
         .await
         .unwrap();
 
-    assert_matches::assert_matches!(rx.err().unwrap().tungstenite_error.unwrap(), TError::Url(_));
+    assert!(matches!(
+        rx.err().unwrap().tungstenite_error.unwrap(),
+        TError::Url(_)
+    ));
 }
 
 #[tokio::test]
