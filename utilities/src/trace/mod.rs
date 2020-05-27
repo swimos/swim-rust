@@ -1,5 +1,4 @@
 use std::sync::Once;
-use tracing;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
@@ -18,7 +17,7 @@ pub fn init_trace(directives: Vec<&str>) {
             filter = filter.add_directive(directive.parse().unwrap());
         }
 
-        let _ = tracing_subscriber::fmt()
+        tracing_subscriber::fmt()
             .with_max_level(Level::TRACE)
             .with_env_filter(filter)
             .init();
