@@ -30,6 +30,9 @@ use crate::downlink::subscription::{
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
+use std::error::Error;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 
 #[cfg(test)]
 mod tests;
@@ -39,6 +42,26 @@ pub enum ClientError {
     SubscriptionError(SubscriptionError),
     RoutingError(RoutingError),
     DownlinkError(DownlinkError),
+}
+
+impl Display for ClientError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Client error. Caused by: {}", self.source().unwrap())
+    }
+}
+
+impl Error for ClientError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match &self {
+            ClientError::SubscriptionError(e) => Some(e),
+            ClientError::RoutingError(e) => Some(e),
+            ClientError::DownlinkError(e) => Some(e),
+        }
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        self.source()
+    }
 }
 
 pub struct SwimClient {

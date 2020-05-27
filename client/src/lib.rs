@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! ## Feature flags
+//!
+//! - `debug`: Enables all debug features listed below.
+//! - `log_verbose`: Sets the global tracing level to the highest.
+//!
+
 pub mod configuration;
 pub mod connections;
 pub mod downlink;

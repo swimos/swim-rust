@@ -286,7 +286,11 @@ where
         (
             sink,
             stream_registrator,
-            tokio::spawn(host_manager.run().instrument(trace_span!("host manager"))),
+            tokio::spawn(
+                host_manager
+                    .run()
+                    .instrument(trace_span!(HOST_MANAGER_TASK_NAME)),
+            ),
         )
     })
 }
@@ -336,6 +340,10 @@ impl SubscriberRequest {
         }
     }
 }
+
+const INCOMING_TASK_NAME: &str = "incoming";
+const OUTGOING_TASK_NAME: &str = "outgoing";
+const HOST_MANAGER_TASK_NAME: &str = "host manager";
 
 // type SubscriberRequest = (RelativePath, mpsc::Sender<RouterEvent>);
 
@@ -406,12 +414,12 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let incoming_handle = tokio::spawn(
             incoming_task
                 .run()
-                .instrument(span!(Level::TRACE, "incoming")),
+                .instrument(span!(Level::TRACE, INCOMING_TASK_NAME)),
         );
         let outgoing_handle = tokio::spawn(
             outgoing_task
                 .run()
-                .instrument(span!(Level::TRACE, "outgoing")),
+                .instrument(span!(Level::TRACE, OUTGOING_TASK_NAME)),
         );
 
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);

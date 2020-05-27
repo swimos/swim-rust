@@ -69,6 +69,7 @@ impl OutgoingHostTask {
 
             let span = span!(Level::TRACE, "outgoing_event");
             let _enter = span.enter();
+
             trace!("Received request {:?}", task);
 
             match task {

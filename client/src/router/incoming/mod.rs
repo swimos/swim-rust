@@ -26,7 +26,8 @@ use futures::stream::StreamExt;
 use std::convert::TryFrom;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tracing::{error, span, trace, warn, Level};
+use tracing::level_filters::STATIC_MAX_LEVEL;
+use tracing::{debug, error, span, trace, warn, Level};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
@@ -113,15 +114,21 @@ impl IncomingHostTask {
                             match envelope {
                                 Ok(env) => {
                                     let destination = env.relative_path();
+                                    let tag = env.tag();
+
                                     let event = RouterEvent::Envelope(env);
 
                                     let span = span!(Level::TRACE, "incoming_event");
                                     let _enter = span.enter();
 
-                                    tracing::trace!(
-                                        "Received incoming message request: {:?}",
-                                        event
-                                    );
+                                    if Some(Level::DEBUG) <= STATIC_MAX_LEVEL.into_level() {
+                                        debug!("Received incoming message request: {:?}", event);
+                                    } else {
+                                        tracing::trace!(
+                                            "Received incoming message request: {:?}",
+                                            tag
+                                        );
+                                    }
 
                                     if let Some(relative_path) = destination {
                                         broadcast_destination(

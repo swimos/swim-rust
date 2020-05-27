@@ -20,13 +20,47 @@ use utilities::future::retryable::ResettableFuture;
 
 use crate::connections::ConnectionSender;
 use crate::router::{ConnectionRequest, RoutingError};
+use futures::task::{Context, Poll};
+use futures::Future;
+use pin_project::{pin_project, project};
+use std::pin::Pin;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
+
+use tracing::trace;
+
+#[pin_project]
+struct LoggingRetryable<F> {
+    #[pin]
+    f: F,
+}
+
+impl<F> Future for LoggingRetryable<F>
+where
+    F: ResettableFuture + Future,
+{
+    type Output = F::Output;
+
+    #[project]
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.project().f.poll(cx)
+    }
+}
+
+impl<F> ResettableFuture for LoggingRetryable<F>
+where
+    F: ResettableFuture,
+{
+    fn reset(self: Pin<&mut Self>) -> bool {
+        trace!("Retry failed. Retrying");
+        self.project().f.reset()
+    }
+}
 
 pub(crate) fn new_request(
     sender: mpsc::Sender<ConnectionRequest>,
     payload: Message,
 ) -> impl ResettableFuture<Output = Result<(), RoutingError>> {
-    RetryableRequest::new(
+    let retryable = RetryableRequest::new(
         sender,
         payload,
         |sender, payload, is_retry| {
@@ -54,7 +88,9 @@ pub(crate) fn new_request(
             })
         },
         |e| e.payload.expect("Missing payload"),
-    )
+    );
+
+    LoggingRetryable { f: retryable }
 }
 
 async fn acquire_sender(
