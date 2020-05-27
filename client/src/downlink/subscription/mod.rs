@@ -49,7 +49,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, trace_span};
 
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 

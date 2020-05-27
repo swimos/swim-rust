@@ -33,6 +33,7 @@ fn config() -> ConfigHierarchy {
         Duration::from_secs(60000),
         5,
         OnInvalidMessage::Terminate,
+        10000,
     )
     .unwrap();
 

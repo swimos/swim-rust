@@ -88,7 +88,10 @@ impl IncomingHostTask {
 
             let span = span!(Level::TRACE, "incoming_event");
             let _enter = span.enter();
-            trace!("{:?}", task);
+
+            if Some(Level::DEBUG) <= STATIC_MAX_LEVEL.into_level() {
+                debug!("Received request: {:?}", task);
+            }
 
             match task {
                 IncomingRequest::Connection(message_rx) => {
