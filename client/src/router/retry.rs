@@ -51,8 +51,14 @@ where
     F: ResettableFuture,
 {
     fn reset(self: Pin<&mut Self>) -> bool {
-        trace!("Retry failed. Retrying");
-        self.project().f.reset()
+        let result = self.project().f.reset();
+        if result {
+            trace!("Request failed. Retrying");
+        } else {
+            trace!("Request failed. Couldn't reset request. Not retrying");
+        }
+
+        result
     }
 }
 
