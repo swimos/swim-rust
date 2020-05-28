@@ -39,7 +39,6 @@ tracing-futures = "0.2.3"
 common = { path = "../common" }
 utilities = { path = "../utilities" }
 form = { path = "../form" }
-deserialize = { path = "../form/deserialize"}
 
 [dev-dependencies]
 hamcrest2 = "0.3"

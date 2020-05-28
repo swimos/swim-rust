@@ -15,7 +15,7 @@
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use crate::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
 use common::model::Value;
-use deserialize::FormDeserializeErr;
+use form::FormDeserializeErr;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use im::OrdMap;

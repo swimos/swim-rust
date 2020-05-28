@@ -14,8 +14,8 @@
 
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use common::model::Value;
-use deserialize::FormDeserializeErr;
 use form::Form;
+use form::FormDeserializeErr;
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
