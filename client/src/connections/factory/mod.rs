@@ -187,7 +187,6 @@ pub mod tungstenite {
         inner: async_factory::AsyncFactory<TungWsSink, TungWsStream>,
     }
 
-    #[allow(clippy::cognitive_complexity)]
     async fn open_conn(url: url::Url) -> Result<(TungWsSink, TungWsStream), ConnectionError> {
         tracing::info!("Connecting to URL {:?}", &url);
 

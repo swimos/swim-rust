@@ -265,26 +265,26 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
-                RouterTask::Close(Some(mut close_tx)) => {
-                    drop(rx);
+                RouterTask::Close(close_rx) => {
+                    if let Some(mut close_response_tx) = close_rx {
+                        drop(rx);
 
-                    let futures = FuturesUnordered::new();
+                        let futures = FuturesUnordered::new();
 
-                    host_managers
-                        .iter_mut()
-                        .for_each(|(_, (_, _, handle))| futures.push(handle));
+                        host_managers
+                            .iter_mut()
+                            .for_each(|(_, (_, _, handle))| futures.push(handle));
 
-                    for result in futures.collect::<Vec<_>>().await {
-                        close_tx
-                            .send(result.unwrap_or(Err(RoutingError::CloseError)))
-                            .await
-                            .map_err(|_| RoutingError::CloseError)?;
+                        for result in futures.collect::<Vec<_>>().await {
+                            close_response_tx
+                                .send(result.unwrap_or(Err(RoutingError::CloseError)))
+                                .await
+                                .map_err(|_| RoutingError::CloseError)?;
+                        }
+
+                        break Ok(());
                     }
-
-                    break Ok(());
                 }
-
-                RouterTask::Close(None) => { /*NO OP*/ }
             }
         }
     }
@@ -510,24 +510,25 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
-                HostTask::Close(Some(mut close_tx)) => {
-                    drop(rx);
+                HostTask::Close(close_rx) => {
+                    if let Some(mut close_response_tx) = close_rx {
+                        drop(rx);
 
-                    let futures = FuturesUnordered::new();
+                        let futures = FuturesUnordered::new();
 
-                    futures.push(incoming_handle);
-                    futures.push(outgoing_handle);
+                        futures.push(incoming_handle);
+                        futures.push(outgoing_handle);
 
-                    for result in futures.collect::<Vec<_>>().await {
-                        close_tx
-                            .send(result.unwrap_or(Err(RoutingError::CloseError)))
-                            .await
-                            .map_err(|_| RoutingError::CloseError)?;
+                        for result in futures.collect::<Vec<_>>().await {
+                            close_response_tx
+                                .send(result.unwrap_or(Err(RoutingError::CloseError)))
+                                .await
+                                .map_err(|_| RoutingError::CloseError)?;
+                        }
+
+                        break Ok(());
                     }
-
-                    break Ok(());
                 }
-                HostTask::Close(None) => { /*NO OP*/ }
             }
         }
     }

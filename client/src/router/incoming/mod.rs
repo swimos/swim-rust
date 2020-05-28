@@ -167,15 +167,15 @@ impl IncomingHostTask {
                     broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
                 }
 
-                IncomingRequest::Close(Some(_)) => {
-                    drop(rx);
-                    trace!("Closing Router");
-                    broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
+                IncomingRequest::Close(close_rx) => {
+                    if close_rx.is_some() {
+                        drop(rx);
+                        trace!("Closing Router");
+                        broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
 
-                    break Ok(());
+                        break Ok(());
+                    }
                 }
-
-                IncomingRequest::Close(None) => { /*NO OP*/ }
             }
             trace!("Completed incoming request")
         }

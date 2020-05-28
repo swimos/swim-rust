@@ -106,10 +106,10 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::ConnectionError => DownlinkError::DroppedChannel,
-            RoutingError::CloseError => DownlinkError::DroppedChannel,
-            RoutingError::PoolError(_) => DownlinkError::DroppedChannel,
-            RoutingError::HostUnreachable => DownlinkError::DroppedChannel,
+            RoutingError::ConnectionError => DownlinkError::TaskPanic("Connection error."),
+            RoutingError::HostUnreachable => DownlinkError::TaskPanic("Host is unreachable."),
+            RoutingError::PoolError(_) => DownlinkError::TaskPanic("Pool error."),
+            RoutingError::CloseError => DownlinkError::TaskPanic("The router could not close."),
         }
     }
 }

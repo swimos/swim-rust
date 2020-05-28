@@ -95,18 +95,16 @@ impl OutgoingHostTask {
 
                     trace!("Completed request");
                 }
-                OutgoingRequest::Close(Some(_)) => {
-                    info!("Closing");
-
-                    drop(rx);
-                    break;
+                OutgoingRequest::Close(close_rx) => {
+                    if close_rx.is_some() {
+                        info!("Closing");
+                        drop(rx);
+                        break Ok(());
+                    }
                 }
-                OutgoingRequest::Close(None) => {}
             }
-
             trace!("Completed outgoing request");
         }
-        Ok(())
     }
 }
 

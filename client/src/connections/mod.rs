@@ -74,6 +74,9 @@ pub trait ConnectionPool: Clone + Send + 'static {
 
 type ConnectionPoolSharedHandle = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
 
+/// The connection pool is responsible for opening new connections to remote hosts and managing
+/// them. It is possible to request a connection to be recreated or to return a cached connection
+/// for a given host if it already exists.
 #[derive(Clone)]
 pub struct SwimConnPool {
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
