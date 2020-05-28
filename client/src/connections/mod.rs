@@ -20,6 +20,7 @@ use futures::{Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -30,6 +31,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tracing::{instrument, trace};
 use tungstenite::error::Error as TError;
 use url::Host;
 
@@ -46,11 +48,11 @@ mod tests;
 
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
-pub struct ConnectionPoolMessage {
+pub(crate) struct ConnectionPoolMessage {
     /// The URL of the remote host.
-    pub host: Host,
+    host: Host,
     /// The message from the remote host.
-    pub message: String,
+    message: String,
 }
 
 pub struct ConnectionRequest {
@@ -62,12 +64,7 @@ pub struct ConnectionRequest {
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
 pub trait ConnectionPool: Clone + Send + 'static {
-    type ConnFut: Future<
-            Output = Result<
-                Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>,
-                RequestError,
-            >,
-        > + Send;
+    type ConnFut: Future<Output = Result<Result<Connection, ConnectionError>, RequestError>> + Send;
     type CloseFut: Future<Output = Result<Result<(), ConnectionError>, ConnectionError>> + Send;
 
     fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut;
@@ -75,12 +72,12 @@ pub trait ConnectionPool: Clone + Send + 'static {
     fn close(self) -> Result<Self::CloseFut, ConnectionError>;
 }
 
-type ConnectionPoolSharedHandler = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
+type ConnectionPoolSharedHandle = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
 
 #[derive(Clone)]
 pub struct SwimConnPool {
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
-    connection_requests_handler: ConnectionPoolSharedHandler,
+    connection_requests_handle: ConnectionPoolSharedHandle,
     stop_request_tx: mpsc::Sender<()>,
 }
 
@@ -104,7 +101,7 @@ impl SwimConnPool {
         let task = PoolTask::new(
             connection_request_rx,
             connection_factory,
-            config.buffer_size().get(),
+            config.buffer_size(),
             stop_request_rx,
         );
 
@@ -112,7 +109,7 @@ impl SwimConnPool {
 
         SwimConnPool {
             connection_request_tx,
-            connection_requests_handler: Arc::new(Mutex::new(Some(connection_requests_handler))),
+            connection_requests_handle: Arc::new(Mutex::new(Some(connection_requests_handler))),
             stop_request_tx,
         }
     }
@@ -172,7 +169,7 @@ impl ConnectionPool for SwimConnPool {
             TryFutureExt::err_into::<ConnectionError>(RequestFuture::new(self.stop_request_tx, ()));
 
         let handle = self
-            .connection_requests_handler
+            .connection_requests_handle
             .lock()
             .map_err(|_| ConnectionErrorKind::ClosedError)?
             .take()
@@ -194,7 +191,7 @@ where
 {
     connection_request_rx: mpsc::Receiver<ConnectionRequest>,
     connection_factory: WsFac,
-    buffer_size: usize,
+    buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
 
@@ -205,7 +202,7 @@ where
     fn new(
         connection_request_rx: mpsc::Receiver<ConnectionRequest>,
         connection_factory: WsFac,
-        buffer_size: usize,
+        buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
         PoolTask {
@@ -260,13 +257,17 @@ where
                     };
 
                     let connection_channel = if recreate {
-                        SwimConnection::new(host_url.clone(), buffer_size, &mut connection_factory)
-                            .await
-                            .and_then(|connection| {
-                                let (inner, sender, receiver) = InnerConnection::from(connection)?;
-                                let _ = connections.insert(host.clone(), inner);
-                                Ok((sender, Some(receiver)))
-                            })
+                        SwimConnection::new(
+                            host_url.clone(),
+                            buffer_size.get(),
+                            &mut connection_factory,
+                        )
+                        .await
+                        .and_then(|connection| {
+                            let (inner, sender, receiver) = InnerConnection::from(connection)?;
+                            let _ = connections.insert(host.clone(), inner);
+                            Ok((sender, Some(receiver)))
+                        })
                     } else {
                         let mut inner_connection = connections
                             .get_mut(&host)
@@ -296,8 +297,6 @@ where
         }
     }
 }
-
-use tracing::{instrument, trace};
 
 fn combine_connection_streams(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
@@ -431,8 +430,8 @@ pub struct SwimConnection {
     stopped: Arc<AtomicBool>,
     tx: mpsc::Sender<Message>,
     rx: Option<mpsc::Receiver<Message>>,
-    _send_handler: JoinHandle<Result<(), ConnectionError>>,
-    _receive_handler: JoinHandle<Result<(), ConnectionError>>,
+    _send_handle: JoinHandle<Result<(), ConnectionError>>,
+    _receive_handle: JoinHandle<Result<(), ConnectionError>>,
 }
 
 impl SwimConnection {
@@ -458,8 +457,8 @@ impl SwimConnection {
             stopped,
             tx: sender_tx,
             rx: Some(receiver_rx),
-            _send_handler: send_handler,
-            _receive_handler: receive_handler,
+            _send_handle: send_handler,
+            _receive_handle: receive_handler,
         })
     }
 }
@@ -506,7 +505,7 @@ impl ConnectionSender {
 pub(crate) type ConnectionReceiver = mpsc::Receiver<Message>;
 
 /// Connection error types returned by the connection pool and the connections.
-#[derive(Debug, PartialOrd, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ConnectionErrorKind {
     /// Error that occurred when connecting to a remote host.
     ConnectError,
@@ -557,7 +556,7 @@ impl PartialEq for ConnectionError {
 impl Clone for ConnectionError {
     fn clone(&self) -> Self {
         ConnectionError {
-            kind: self.kind.clone(),
+            kind: self.kind,
             tungstenite_error: None,
         }
     }
@@ -599,7 +598,7 @@ impl ConnectionError {
     }
 
     pub fn kind(&self) -> ConnectionErrorKind {
-        self.kind.clone()
+        self.kind
     }
 
     pub fn into_kind(self) -> ConnectionErrorKind {

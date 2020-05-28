@@ -555,7 +555,7 @@ async fn test_connection_receive_message_error() {
         .await
         .unwrap();
     // When
-    let result = connection._receive_handler.await.unwrap();
+    let result = connection._receive_handle.await.unwrap();
     // Then
     assert!(result.is_err());
     assert_eq!(
@@ -580,7 +580,7 @@ async fn test_new_connection_send_message_error() {
         .await
         .unwrap();
     // When
-    let result = connection._send_handler.await.unwrap();
+    let result = connection._send_handle.await.unwrap();
     // Then
     assert!(result.is_err());
     assert_eq!(
