@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::task::AtomicWaker;
 use futures::future::FutureExt;
 
 use tokio::sync::{RwLock, RwLockWriteGuard, RwLockReadGuard};
@@ -21,12 +20,13 @@ use std::fmt::{Debug, Formatter};
 use std::any::Any;
 use std::ops::Deref;
 use std::marker::PhantomData;
+use std::task::Waker;
 
 pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 
 pub(crate) struct TVarInner {
     content: RwLock<Contents>,
-    wakers: Mutex<Vec<Arc<AtomicWaker>>>,
+    wakers: Mutex<Vec<Waker>>,
 }
 
 impl TVarInner {
@@ -55,7 +55,7 @@ impl TVarInner {
         }
     }
 
-    pub(crate) fn subscribe(&self, waker: Arc<AtomicWaker>) {
+    pub(crate) fn subscribe(&self, waker: Waker) {
         self.wakers.lock().unwrap().push(waker);
     }
 

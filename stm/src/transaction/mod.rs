@@ -22,7 +22,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use crate::stm::{ExecResult, Stm};
 use futures::{Future, Stream, StreamExt};
-use futures::task::{AtomicWaker, Context, Poll};
+use futures::task::{Context, Poll};
 use tokio::macros::support::Pin;
 use futures_util::stream::FuturesUnordered;
 use futures::stream::FusedStream;
@@ -73,14 +73,12 @@ impl LogEntry {
 #[derive(Debug, Default)]
 pub struct Transaction {
     log: HashMap<PtrKey<Arc<TVarInner>>, Option<LogEntry>>,
-    waiter: Option<Arc<AtomicWaker>>,
 }
 
 impl Transaction {
     pub fn new() -> Self {
         Transaction {
             log: HashMap::new(),
-            waiter: None,
         }
     }
 
@@ -183,6 +181,10 @@ impl Transaction {
         })
     }
 
+    fn reset(&mut self) {
+        self.log.clear()
+    }
+
 
 }
 
@@ -282,21 +284,21 @@ impl<'a> Future for AwaitChanged<'a> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(transaction) = self.0.take() {
             if transaction.reads_changed_or_locked() {
+                transaction.reset();
                 return Poll::Ready(());
             }
-            let waker = transaction.waiter.get_or_insert_with(|| Arc::new(AtomicWaker::new()));
-            waker.register(cx.waker());
             transaction.log.iter().for_each(|(PtrKey(var), entry)| {
                 if let Some(entry) = entry {
                     match &entry.state {
                         LogState::UnconditionalGet | LogState::ConditionalSet(_) => {
-                            var.subscribe(waker.clone());
+                            var.subscribe(cx.waker().clone());
                         },
                         _ => {}
                     }
                 }
             });
             if transaction.reads_changed_or_locked() {
+                transaction.reset();
                 Poll::Ready(())
             } else {
                 Poll::Pending
