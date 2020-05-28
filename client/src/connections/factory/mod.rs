@@ -54,7 +54,10 @@ pub mod async_factory {
     use crate::connections::ConnectionError;
 
     /// A request for a new connection.
-    pub struct ConnReq<Snk, Str>(Request<Result<(Snk, Str), ConnectionError>>, url::Url);
+    pub struct ConnReq<Snk, Str> {
+        request: Request<Result<(Snk, Str), ConnectionError>>,
+        url: url::Url,
+    }
 
     /// Abstract asynchronous factory where requests are serviced by an independent task.
     pub struct AsyncFactory<Snk, Str> {
@@ -95,7 +98,7 @@ pub mod async_factory {
         Fac: FnMut(url::Url) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
     {
-        while let Some(ConnReq(request, url)) = receiver.next().await {
+        while let Some(ConnReq { request, url }) = receiver.next().await {
             let conn: Result<(Snk, Str), ConnectionError> = connect_async(url).await;
             let _ = request.send(conn);
         }
@@ -115,7 +118,10 @@ pub mod async_factory {
 
         fn connect(&mut self, url: url::Url) -> Self::ConnectFut {
             let (tx, rx) = oneshot::channel();
-            let req = ConnReq(Request::new(tx), url);
+            let req = ConnReq {
+                request: Request::new(tx),
+                url,
+            };
             let req_fut = RequestFuture::new(self.sender.clone(), req);
             FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(
                 req_fut, rx,
