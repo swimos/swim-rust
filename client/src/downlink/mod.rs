@@ -42,6 +42,7 @@ use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
+use tracing::{instrument, trace};
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -379,6 +380,7 @@ where
         self.init()
     }
 
+    #[instrument(skip(self, state, data_state, op))]
     fn handle_operation(
         &self,
         state: &mut DownlinkState,
@@ -388,13 +390,16 @@ where
         let response = match op {
             Operation::Start => {
                 if *state == DownlinkState::Synced {
+                    trace!("Downlink synced");
                     Response::none()
                 } else {
+                    trace!("Downlink syncing");
                     Response::for_command(Command::Sync)
                 }
             }
             Operation::Message(message) => match message {
                 Message::Linked => {
+                    trace!("Downlink linked");
                     *state = DownlinkState::Linked;
                     Response::none()
                 }
@@ -419,6 +424,7 @@ where
                     },
                 },
                 Message::Unlinked => {
+                    trace!("Downlink unlinked");
                     *state = DownlinkState::Unlinked;
                     Response::none().then_terminate()
                 }

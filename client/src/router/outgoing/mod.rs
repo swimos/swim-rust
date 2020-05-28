@@ -18,7 +18,7 @@ use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
 use tokio::sync::mpsc;
-use tracing::{span, trace, Level};
+use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -78,15 +78,26 @@ impl OutgoingHostTask {
 
             let span = span!(Level::TRACE, "outgoing_event");
             let _enter = span.enter();
+
             trace!("Received request {:?}", task);
 
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let message = Message::Text(envelope.into_value().to_string());
                     let request = new_request(connection_request_tx.clone(), message);
-                    RetryableFuture::new(request, config.retry_strategy()).await?;
+
+                    RetryableFuture::new(request, config.retry_strategy())
+                        .await
+                        .map_err(|e| {
+                            error!(cause = %e, "Failed to send envelope");
+                            e
+                        })?;
+
+                    trace!("Completed request");
                 }
                 OutgoingRequest::Close(Some(_)) => {
+                    info!("Closing");
+
                     drop(rx);
                     break;
                 }

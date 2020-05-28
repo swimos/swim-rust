@@ -92,6 +92,7 @@ impl SwimConnPool {
     /// * `buffer_size`             - The buffer size of the internal channels in the connection
     ///                               pool as an integer.
     /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
+    #[instrument(skip(config, connection_factory))]
     pub fn new<WsFac>(config: ConnectionPoolParams, connection_factory: WsFac) -> SwimConnPool
     where
         WsFac: WebsocketFactory + 'static,
@@ -215,6 +216,7 @@ where
         }
     }
 
+    #[instrument(skip(self, config))]
     async fn run(self, config: ConnectionPoolParams) -> Result<(), ConnectionError> {
         let PoolTask {
             connection_request_rx,
@@ -280,7 +282,11 @@ where
                 }
 
                 RequestType::Prune => {
+                    let before_size = connections.len();
                     connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
+                    let after_size = connections.len();
+
+                    trace!("Pruned {} inactive connections", (before_size - after_size));
                 }
 
                 RequestType::Close => {
@@ -290,6 +296,8 @@ where
         }
     }
 }
+
+use tracing::{instrument, trace};
 
 fn combine_connection_streams(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
