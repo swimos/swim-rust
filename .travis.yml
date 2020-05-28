@@ -64,6 +64,8 @@ addons:
 after_success:
   - |
     if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+    pwd
+    cd ..
     wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
     tar xzf master.tar.gz &&
     cd kcov-master &&
