@@ -21,6 +21,7 @@ matrix:
         - cd client
 #       Features aren't allowed in the root of a virtual workspace
         - cargo test --package client --features test-server
+        - cd ..
 
     - os: osx
       script:
