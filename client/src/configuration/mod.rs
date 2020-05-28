@@ -234,7 +234,7 @@ pub mod downlink {
     pub struct ConfigHierarchy {
         client_params: ClientParams,
         default: DownlinkParams,
-        by_host: HashMap<url::Url, DownlinkParams>,
+        by_host: HashMap<String, DownlinkParams>,
         by_lane: HashMap<AbsolutePath, DownlinkParams>,
     }
 
@@ -250,7 +250,7 @@ pub mod downlink {
         }
 
         /// Add specific configuration for a host.
-        pub fn for_host(&mut self, host: url::Url, params: DownlinkParams) {
+        pub fn for_host(&mut self, host: String, params: DownlinkParams) {
             self.by_host.insert(host, params);
         }
 
@@ -271,10 +271,16 @@ pub mod downlink {
             } = self;
             match by_lane.get(path) {
                 Some(params) => *params,
-                _ => match by_host.get(&path.host) {
-                    Some(params) => *params,
-                    _ => *default,
-                },
+                _ => {
+                    if path.host.has_host() {
+                        match by_host.get(&path.host.host().unwrap().to_string()) {
+                            Some(params) => *params,
+                            _ => *default,
+                        }
+                    } else {
+                        *default
+                    }
+                }
             }
         }
 
