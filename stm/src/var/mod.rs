@@ -157,6 +157,28 @@ impl<T> TVar<T> {
 
 }
 
+impl<T: Any + Send + Sync> TVar<T> {
+
+    pub async fn load(&self) -> Arc<T> {
+        let TVar(inner, ..) = self;
+        let lock = inner.content.read().await;
+        let content_ref: Arc<T> = lock.deref().clone().downcast().unwrap();
+        content_ref
+    }
+}
+
+impl<T: Any + Clone> TVar<T> {
+
+    pub async fn snapshot(&self) -> T {
+        let TVar(inner, ..) = self;
+        let lock = inner.content.read().await;
+        let content_ref: &T = lock.deref().downcast_ref().unwrap();
+        content_ref.clone()
+    }
+
+}
+
+
 pub(crate) struct ApplyWrite<'a> {
     var: &'a TVarInner,
     guard: RwLockWriteGuard<'a, Contents>,
