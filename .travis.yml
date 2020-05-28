@@ -8,8 +8,9 @@ branches:
 matrix:
   include:
     - os: linux
+      arch: amd64
       services:
-          - docker
+        - docker
       env:
         - TEST_SERVER_VERSION=v1.1
         - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
@@ -20,17 +21,29 @@ matrix:
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace --exclude client
         - cd client
-#       Features aren't allowed in the root of a virtual workspace
+        #       Features aren't allowed in the root of a virtual workspace
         - cargo test --package client --features test-server
         - cd ..
 
+    - os: linux
+      arch: arm64
+      env: ARCH=arm64
+      script:
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo test --workspace
+
     - os: osx
+      arch: amd64
+      env: ARCH=amd64
       script:
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace
 
     - os: windows
+      arch: amd64
+      env: ARCH=amd64
       script:
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
@@ -61,10 +74,10 @@ addons:
       - gcc
       - binutils-dev
       - libiberty-dev
-    
+
 after_success:
   - |
-    if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_BRANCH" = "master" ]]; then
     wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
     tar xzf master.tar.gz &&
     cd kcov-master &&
