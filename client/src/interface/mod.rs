@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use tracing::info;
@@ -30,17 +33,18 @@ use crate::downlink::subscription::{
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
-use std::error::Error;
-use std::fmt;
-use std::fmt::{Display, Formatter};
 
 #[cfg(test)]
 mod tests;
 
+/// Respresents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
+    /// An error that occured when subscribing to a downlink.
     SubscriptionError(SubscriptionError),
+    /// An error that occured in the router.
     RoutingError(RoutingError),
+    /// An error that occured in a downlink.
     DownlinkError(DownlinkError),
 }
 
