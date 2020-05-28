@@ -14,6 +14,7 @@ matrix:
         - TEST_SERVER_VERSION=v1.1
         - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
         - REPO_URL="https://github.com/SirCipher/swim-test-server/"
+        - SWIM_CRATES="client form common server utilities deserialize serialize"
       script:
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
@@ -21,7 +22,6 @@ matrix:
         - cd client
 #       Features aren't allowed in the root of a virtual workspace
         - cargo test --package client --features test-server
-        - cd ..
 
     - os: osx
       script:
@@ -60,11 +60,7 @@ addons:
       - gcc
       - binutils-dev
       - libiberty-dev
-
-env:
-  global:
-    - SWIM_CRATES="client form common server utilities deserialize serialize"
-
+    
 after_success:
   - |
     if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
