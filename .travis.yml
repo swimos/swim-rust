@@ -9,7 +9,9 @@ matrix:
   include:
     - os: linux
       arch: amd64
-      env: ARCH=amd64
+      env:
+        - ARCH=amd64
+        - SWIM_CRATES="client form common server utilities deserialize serialize"
     - os: linux
       arch: arm64
       env: ARCH=arm64
@@ -50,10 +52,6 @@ addons:
       - gcc
       - binutils-dev
       - libiberty-dev
-
-env:
-  global:
-    - SWIM_CRATES="client form common server utilities deserialize serialize"
 
 after_success:
   - |
