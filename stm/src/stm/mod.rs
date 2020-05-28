@@ -218,7 +218,7 @@ impl<T: Any + Send + Sync> Stm for TVarRead<T> {
     type Result = Arc<T>;
 
     fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
-        let TVarRead(inner) = self;
+        let inner = self.inner();
         Box::pin(async move {
             let value = transaction.apply_get(inner).await;
             ExecResult::Done(value)
@@ -230,7 +230,7 @@ impl<T: Any + Send + Sync> Stm for TVarWrite<T> {
     type Result = ();
 
     fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
-        let TVarWrite { inner, value} = self;
+        let TVarWrite { inner, value, ..} = self;
         transaction.apply_set(inner, value.clone());
         Box::pin(ready(ExecResult::Done(())))
     }

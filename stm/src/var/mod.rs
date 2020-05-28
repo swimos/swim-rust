@@ -15,53 +15,30 @@
 use futures::task::AtomicWaker;
 use futures::future::FutureExt;
 
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, RwLockWriteGuard, RwLockReadGuard};
 use std::sync::{Arc, Mutex};
 use std::fmt::{Debug, Formatter};
 use std::any::Any;
 use std::ops::Deref;
+use std::marker::PhantomData;
 
-pub(crate) trait VarRef {
+pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 
-    fn has_changed(&self, ptr: Arc<dyn Any + Send + Sync>) -> bool;
-
-    fn subscribe(&self, waker: Arc<AtomicWaker>);
-
-}
-
-pub(crate) struct TVarInner<T> {
-    content: RwLock<Arc<T>>,
+pub(crate) struct TVarInner {
+    content: RwLock<Contents>,
     wakers: Mutex<Vec<Arc<AtomicWaker>>>,
 }
 
-impl<T: Any + Send + Sync> VarRef for TVarInner<T> {
-    fn has_changed(&self, ptr: Arc<dyn Any + Send + Sync>) -> bool {
-        if let Ok(as_t) = ptr.downcast::<T>() {
-            if let Some(guard) = self.content.read().now_or_never() {
-                !Arc::ptr_eq(guard.deref(), &as_t)
-            } else {
-                false
-            }
-        } else {
-            panic!("Incompatible pointers.")
-        }
-    }
+impl TVarInner {
 
-    fn subscribe(&self, waker: Arc<AtomicWaker>) {
-        self.wakers.lock().unwrap().push(waker);
-    }
-}
-
-impl<T: Send + Sync + 'static> TVarInner<T> {
-
-    pub(crate) fn new(value: T) -> Self {
+    pub(crate) fn new<T: Send + Sync + 'static>(value: T) -> Self {
         TVarInner {
             content: RwLock::new(Arc::new(value)),
-            wakers: Mutex::new(vec![])
+            wakers: Mutex::new(vec![]),
         }
     }
 
-    pub(crate) async fn read(&self) -> Arc<T> {
+    pub(crate) async fn read(&self) -> Contents {
         let lock = self.content.read().await;
         lock.clone()
     }
@@ -70,12 +47,50 @@ impl<T: Send + Sync + 'static> TVarInner<T> {
         self.wakers.lock().unwrap().drain(..).for_each(|w| w.wake());
     }
 
+    pub(crate) fn has_changed(&self, ptr: &Contents) -> bool {
+        if let Some(guard) = self.content.read().now_or_never() {
+            !Arc::ptr_eq(guard.deref(), ptr)
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn subscribe(&self, waker: Arc<AtomicWaker>) {
+        self.wakers.lock().unwrap().push(waker);
+    }
+
+    pub(crate) async fn validate_read(&self,
+                                      expected: Contents) -> Option<RwLockReadGuard<'_, Contents>> {
+        let guard = self.content.read().await;
+        if Arc::ptr_eq(guard.deref(), &expected) {
+            Some(guard)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) async fn prepare_write(&self,
+                                      expected: Option<Contents>,
+                                      value: Contents) -> Option<ApplyWrite<'_>> {
+        let guard = self.content.write().await;
+        match expected {
+            Some(expected) if !Arc::ptr_eq(guard.deref(), &expected) => None,
+            _ => {
+                Some(ApplyWrite {
+                    var: self,
+                    guard,
+                    value,
+                })
+            }
+        }
+    }
+
 }
 
 
 
 #[derive(Clone)]
-pub struct TVar<T>(Arc<TVarInner<T>>);
+pub struct TVar<T>(Arc<TVarInner>, PhantomData<Arc<T>>,);
 
 impl<T> Debug for TVar<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -83,7 +98,15 @@ impl<T> Debug for TVar<T> {
     }
 }
 
-pub struct TVarRead<T>(pub(crate) Arc<TVarInner<T>>);
+pub struct TVarRead<T>(Arc<TVarInner>, PhantomData<fn() -> Arc<T>>);
+
+impl<T> TVarRead<T> {
+
+    pub(crate) fn inner(&self) -> &Arc<TVarInner> {
+        &self.0
+    }
+
+}
 
 impl<T> Debug for TVarRead<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -92,8 +115,9 @@ impl<T> Debug for TVarRead<T> {
 }
 
 pub struct TVarWrite<T> {
-    pub(crate) inner: Arc<TVarInner<T>>,
+    pub(crate) inner: Arc<TVarInner>,
     pub(crate) value: Arc<T>,
+    _op_t_: PhantomData<fn(Arc<T>) -> ()>
 }
 
 impl<T: Debug> Debug for TVarWrite<T> {
@@ -106,7 +130,7 @@ impl<T: Debug> Debug for TVarWrite<T> {
 impl<T: Send + Sync + 'static> TVar<T> {
 
     pub fn new(initial: T) -> Self {
-        TVar(Arc::new(TVarInner::new(initial)))
+        TVar(Arc::new(TVarInner::new(initial)), PhantomData)
     }
 
 }
@@ -114,15 +138,16 @@ impl<T: Send + Sync + 'static> TVar<T> {
 impl<T> TVar<T> {
 
     pub fn get(&self) -> TVarRead<T> {
-        let TVar(inner) = self;
-        TVarRead(inner.clone())
+        let TVar(inner, ..) = self;
+        TVarRead(inner.clone(), PhantomData)
     }
 
     pub fn put(&self, value: T) -> TVarWrite<T> {
-        let TVar(inner) = self;
+        let TVar(inner, ..) = self;
         TVarWrite {
             inner: inner.clone(),
             value: Arc::new(value),
+            _op_t_: PhantomData
         }
     }
 
@@ -131,3 +156,21 @@ impl<T> TVar<T> {
     }
 
 }
+
+pub(crate) struct ApplyWrite<'a> {
+    var: &'a TVarInner,
+    guard: RwLockWriteGuard<'a, Contents>,
+    value: Contents,
+}
+
+impl<'a> ApplyWrite<'a> {
+
+    pub fn apply(self) {
+        let ApplyWrite { var, mut guard, value } = self;
+        *guard = value;
+        drop(guard);
+        var.notify();
+    }
+
+}
+
