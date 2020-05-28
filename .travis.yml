@@ -52,7 +52,8 @@ addons:
       - libiberty-dev
 
 env:
-  - SWIM_CRATES="client form common server utilities deserialize serialize"
+  global:
+    - SWIM_CRATES="client form common server utilities deserialize serialize"
 
 after_success:
   - |
