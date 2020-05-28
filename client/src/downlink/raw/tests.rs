@@ -176,7 +176,8 @@ async fn make_test_dl_custom_on_invalid(
         TestStateMachine,
         rx_in,
         for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
-        10,
+        NonZeroUsize::new(10).unwrap(),
+        NonZeroUsize::new(256).unwrap(),
         on_invalid,
     );
     (downlink, tx_in, rx_out)
