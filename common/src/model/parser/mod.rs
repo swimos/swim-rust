@@ -23,6 +23,8 @@ use token_buffer::*;
 use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
@@ -162,6 +164,29 @@ pub enum ParseFailure {
     UnconsumedInput,
 }
 
+impl Display for ParseFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseFailure::TokenizationFailure(BadToken(offset, _)) => {
+                write!(f, "Bad token at offset: {}", *offset)
+            }
+            ParseFailure::InvalidToken(BadRecord(offset, err)) => write!(
+                f,
+                "Token at {} is not valid in this context: {:?}",
+                *offset, *err
+            ),
+            ParseFailure::IncompleteRecord => {
+                write!(f, "The input ended before the record was complete.")
+            }
+            ParseFailure::UnconsumedInput => {
+                write!(f, "Some content from the input was not consumed.")
+            }
+        }
+    }
+}
+
+impl Error for ParseFailure {}
+
 impl From<BadToken> for ParseFailure {
     fn from(err: BadToken) -> Self {
         ParseFailure::TokenizationFailure(err)
@@ -174,10 +199,16 @@ impl From<BadRecord> for ParseFailure {
     }
 }
 
+type TokenErrOrTerminator<'a> = Option<Result<LocatedReconToken<&'a str>, BadToken>>;
+
+fn tokenize_and_terminate(repr: &str) -> impl Iterator<Item = TokenErrOrTerminator> {
+    tokenize_str(repr).map(Some).chain(iter::once(None))
+}
+
 /// Parse a stream of ['Value']s from a stream of characters. More values will be read until either
 /// an error is encountered or the end of the stream is reached.
-pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseFailure>> + 'a {
-    let tokens = tokenize_str(repr).map(Some).chain(iter::once(None));
+pub fn parse_all(repr: &str) -> impl Iterator<Item = Result<Value, ParseFailure>> + '_ {
+    let tokens = tokenize_and_terminate(repr);
 
     tokens
         .scan(Some(vec![]), |maybe_state, maybe_token| {
@@ -202,26 +233,114 @@ pub fn parse_all<'a>(repr: &'a str) -> impl Iterator<Item = Result<Value, ParseF
         .flatten()
 }
 
-///Creates a final ['Value'] from the contents of the stack where possible.
+/// Parses a Recon document (a sequence of [`Item`]s without an enclosing body) from a string.
+pub fn parse_document(repr: &str) -> Result<Vec<Item>, ParseFailure> {
+    let mut tokens = tokenize_str(repr);
+
+    let init_state = vec![Frame::new_record(StartAt::RecordBody)];
+
+    let final_state = tokens.try_fold(init_state, |mut state, maybe_token| {
+        let token = maybe_token.map_err(ParseFailure::TokenizationFailure)?;
+        let offset = token.1;
+        match consume_token(&mut state, token) {
+            Some(ParseTermination::Failed(err)) => Err(err),
+            Some(ParseTermination::EarlyTermination(_)) => Err(ParseFailure::InvalidToken(
+                BadRecord(offset, RecordError::BadStackOnClose),
+            )),
+            _ => Ok(state),
+        }
+    });
+
+    final_state.and_then(handle_document_end)
+}
+
+///Creates a final ['Value'] from the contents of the stack, where possible.
 fn handle_tok_stream_end(state: &mut Vec<Frame>) -> Option<Result<Value, ParseFailure>> {
     let depth = state.len();
     match state.pop() {
         Some(Frame {
-            mut attrs,
+            attrs,
             items,
             parse_state,
-        }) if depth == 1 => match parse_state {
-            ValueParseState::ReadingAttribute(name) => {
-                attrs.push(Attr {
-                    name,
-                    value: Value::Extant,
-                });
-                Some(Ok(Value::Record(attrs, items)))
-            }
-            ValueParseState::AfterAttribute => Some(Ok(Value::Record(attrs, items))),
-            _ => Some(Err(ParseFailure::IncompleteRecord)),
-        },
+        }) if depth == 1 => Some(end_record(attrs, items, parse_state)),
         _ => None,
+    }
+}
+
+fn end_record(
+    mut attrs: Vec<Attr>,
+    items: Vec<Item>,
+    parse_state: ValueParseState,
+) -> Result<Value, ParseFailure> {
+    match parse_state {
+        ValueParseState::ReadingAttribute(name) => {
+            attrs.push(Attr {
+                name,
+                value: Value::Extant,
+            });
+            Ok(Value::Record(attrs, items))
+        }
+        ValueParseState::AfterAttribute => Ok(Value::Record(attrs, items)),
+        _ => Err(ParseFailure::IncompleteRecord),
+    }
+}
+
+///Creates a final vector fo [`Item`]s from the contents of the stack, where possible.
+fn handle_document_end(mut state: Vec<Frame>) -> Result<Vec<Item>, ParseFailure> {
+    if state.len() > 2 {
+        return Err(ParseFailure::IncompleteRecord);
+    }
+
+    match state.pop() {
+        Some(Frame {
+            attrs,
+            items,
+            parse_state,
+            ..
+        }) => match state.pop() {
+            Some(bottom) => {
+                let value = end_record(attrs, items, parse_state)?;
+                let Frame {
+                    mut items,
+                    mut parse_state,
+                    ..
+                } = bottom;
+                match parse_state {
+                    ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) => {
+                        parse_state = ValueParseState::Single(p, value);
+                    }
+                    ValueParseState::ReadingSlot(p, key) => {
+                        items.push(Item::Slot(key, value));
+                        parse_state = ValueParseState::AfterSlot(p);
+                    }
+                    _ => {
+                        return Err(ParseFailure::IncompleteRecord);
+                    }
+                }
+                end_document(items, parse_state)
+            }
+            _ => end_document(items, parse_state),
+        },
+        _ => Err(ParseFailure::IncompleteRecord),
+    }
+}
+
+fn end_document(
+    mut items: Vec<Item>,
+    parse_state: ValueParseState,
+) -> Result<Vec<Item>, ParseFailure> {
+    match parse_state {
+        ValueParseState::RecordStart(false) | ValueParseState::AfterSlot(false) => Ok(items),
+        ValueParseState::InsideBody(false, _) => Ok(items),
+        ValueParseState::Single(false, value) => {
+            items.push(Item::ValueItem(value));
+            Ok(items)
+        }
+        ValueParseState::ReadingSlot(false, key) => {
+            items.push(Item::Slot(key, Value::Extant));
+            Ok(items)
+        }
+        _ => Err(ParseFailure::IncompleteRecord),
     }
 }
 
@@ -240,11 +359,38 @@ fn from_tokens_iteratee(
     )
 }
 
+/// Iteratee converting Recon tokens into a Recon document.
+fn from_tokens_document_iteratee(
+) -> impl Iteratee<LocatedReconToken<String>, Item = Result<Vec<Item>, ParseFailure>> {
+    let init_state = vec![Frame::new_record(StartAt::RecordBody)];
+    unfold_with_flush(
+        init_state,
+        |state: &mut Vec<Frame>, loc_token: LocatedReconToken<String>| {
+            let offset = loc_token.1;
+            consume_token(state, loc_token).map(|res| match res {
+                ParseTermination::EarlyTermination(_) => Err(ParseFailure::InvalidToken(
+                    BadRecord(offset, RecordError::BadStackOnClose),
+                )),
+                ParseTermination::Failed(failure) => Err(failure),
+            })
+        },
+        |state: Vec<Frame>| Some(handle_document_end(state)),
+    )
+}
+
 /// Iteratee that parses a stream of UTF characters into Recon ['Value']s.
 pub fn parse_iteratee() -> impl Iteratee<(usize, char), Item = Result<Value, ParseFailure>> {
     tokenize_iteratee()
         .and_then_fallible(from_tokens_iteratee())
         .fuse_on_error()
+}
+
+/// Iteratee that parses a stream of UTF characters into a recon document.
+pub fn parse_document_iteratee(
+) -> impl Iteratee<(usize, char), Item = Result<Vec<Item>, ParseFailure>> {
+    tokenize_iteratee()
+        .and_then_fallible(from_tokens_document_iteratee())
+        .fuse()
 }
 
 /// Parse exactly one ['Value'] from the input, returning an error if the string does not contain
@@ -1424,7 +1570,7 @@ fn update_after_slot<S: TokenStr>(
     }
 }
 
-pub struct IterateeDecoder<I>(pub Option<I>);
+pub struct IterateeDecoder<I>(Option<I>);
 
 impl<I> IterateeDecoder<I>
 where

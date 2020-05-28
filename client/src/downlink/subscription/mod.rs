@@ -28,6 +28,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tracing::{error, info, instrument};
 
 use common::model::schema::StandardSchema;
 use common::model::Value;
@@ -366,8 +367,7 @@ struct DownlinkTask<R> {
 struct DownlinkStoppedEvent {
     kind: DownlinkKind,
     path: AbsolutePath,
-    //TODO Currently ignored, should be logged.
-    _error: Option<DownlinkError>,
+    error: Option<DownlinkError>,
 }
 
 struct MakeStopEvent {
@@ -389,7 +389,7 @@ impl TransformOnce<std::result::Result<(), DownlinkError>> for MakeStopEvent {
         DownlinkStoppedEvent {
             kind,
             path,
-            _error: input.err(),
+            error: input.err(),
         }
     }
 }
@@ -434,8 +434,8 @@ where
             BackpressureMode::Propagate => {
                 value_downlink_for_sink(cmd_sink, init, schema, updates, &config)
             }
-            BackpressureMode::Release { .. } => {
-                let pressure_release = ValuePump::new(cmd_sink.clone()).await;
+            BackpressureMode::Release { yield_after, .. } => {
+                let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
 
                 let either_sink = EitherSink::new(cmd_sink, pressure_release).comap(
                     move |cmd: Command<SharedValue>| match cmd {
@@ -486,6 +486,7 @@ where
                 input_buffer_size,
                 bridge_buffer_size,
                 max_active_keys,
+                yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
                 let direct_sink =
@@ -502,6 +503,7 @@ where
                     input_buffer_size,
                     bridge_buffer_size,
                     max_active_keys,
+                    yield_after,
                 )
                 .await;
 
@@ -645,7 +647,13 @@ where
         let _ = map_req.send(dl);
     }
 
+    #[instrument(skip(self, stop_event))]
     async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
+        match &stop_event.error {
+            Some(e) => error!("Downlink {} failed with: \"{}\"", stop_event.path, e),
+            None => info!("Downlink {} stopped successfully", stop_event.path),
+        }
+
         match stop_event.kind {
             DownlinkKind::Value => {
                 if let Some(ValueHandle { ptr: weak_dl, .. }) =
@@ -729,30 +737,16 @@ where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
-    let buffer_size = config.buffer_size.get();
     let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {
         MuxMode::Queue(n) => {
-            let (dl, rec) = value::create_queue_downlink(
-                init,
-                Some(schema),
-                updates,
-                dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
-            );
+            let (dl, rec) =
+                value::create_queue_downlink(init, Some(schema), updates, dl_cmd_sink, n, &config);
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
         MuxMode::Dropping => {
-            let (dl, rec) = value::create_dropping_downlink(
-                init,
-                Some(schema),
-                updates,
-                dl_cmd_sink,
-                buffer_size,
-                config.on_invalid,
-            );
+            let (dl, rec) =
+                value::create_dropping_downlink(init, Some(schema), updates, dl_cmd_sink, &config);
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
         MuxMode::Buffered(n) => {
@@ -761,9 +755,8 @@ where
                 Some(schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
+                n,
+                &config,
             );
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
@@ -787,7 +780,6 @@ where
     Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     use crate::downlink::model::map::*;
-    let buffer_size = config.buffer_size.get();
     let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {
         MuxMode::Queue(n) => {
@@ -796,9 +788,8 @@ where
                 Some(value_schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
+                n,
+                &config,
             );
             (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
         }
@@ -808,8 +799,7 @@ where
                 Some(value_schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                config.on_invalid,
+                &config,
             );
             (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
         }
@@ -819,9 +809,8 @@ where
                 Some(value_schema),
                 updates,
                 dl_cmd_sink,
-                buffer_size,
-                n.get(),
-                config.on_invalid,
+                n,
+                &config,
             );
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }

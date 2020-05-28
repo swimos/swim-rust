@@ -75,9 +75,9 @@ pub trait Form: Sized {
         self.as_value()
     }
 
-    fn try_from_value(value: &Value) -> std::result::Result<Self, FormDeserializeErr>;
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr>;
 
-    fn try_convert(value: Value) -> std::result::Result<Self, FormDeserializeErr> {
+    fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
         Form::try_from_value(&value)
     }
 }

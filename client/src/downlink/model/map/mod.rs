@@ -27,7 +27,7 @@ use common::sink::item::ItemSender;
 use deserialize::FormDeserializeErr;
 use form::{Form, ValidatedForm};
 
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::model::value::UpdateResult;
@@ -38,6 +38,7 @@ use crate::downlink::{
     TransitionError,
 };
 use crate::router::RoutingError;
+use std::num::NonZeroUsize;
 
 #[cfg(test)]
 mod tests;
@@ -607,7 +608,8 @@ pub fn create_raw_downlink<Updates, Commands>(
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
     on_invalid: OnInvalidMessage,
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
@@ -622,6 +624,7 @@ where
         update_stream,
         cmd_sink,
         buffer_size,
+        yield_after,
         on_invalid,
     )
 }
@@ -632,9 +635,8 @@ pub fn create_queue_downlink<Updates, Commands>(
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    queue_size: usize,
-    on_invalid: OnInvalidMessage,
+    queue_size: NonZeroUsize,
+    config: &DownlinkParams,
 ) -> (
     QueueDownlink<MapAction, ViewWithEvent>,
     QueueReceiver<ViewWithEvent>,
@@ -650,9 +652,8 @@ where
         ),
         update_stream,
         cmd_sink,
-        buffer_size,
         queue_size,
-        on_invalid,
+        &config,
     )
 }
 
@@ -662,8 +663,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    on_invalid: OnInvalidMessage,
+    config: &DownlinkParams,
 ) -> (
     DroppingDownlink<MapAction, ViewWithEvent>,
     DroppingReceiver<ViewWithEvent>,
@@ -679,8 +679,7 @@ where
         ),
         update_stream,
         cmd_sink,
-        buffer_size,
-        on_invalid,
+        &config,
     )
 }
 
@@ -690,9 +689,8 @@ pub fn create_buffered_downlink<Updates, Commands>(
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sink: Commands,
-    buffer_size: usize,
-    queue_size: usize,
-    on_invalid: OnInvalidMessage,
+    queue_size: NonZeroUsize,
+    config: &DownlinkParams,
 ) -> (
     BufferedDownlink<MapAction, ViewWithEvent>,
     BufferedReceiver<ViewWithEvent>,
@@ -708,9 +706,8 @@ where
         ),
         update_stream,
         cmd_sink,
-        buffer_size,
         queue_size,
-        on_invalid,
+        &config,
     )
 }
 
