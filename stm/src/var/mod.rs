@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use futures::future::FutureExt;
 
 use tokio::sync::{RwLock, RwLockWriteGuard, RwLockReadGuard};
@@ -24,30 +27,30 @@ use std::task::Waker;
 
 pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 
-pub(crate) struct TVarInner {
+pub(in crate) struct TVarInner {
     content: RwLock<Contents>,
     wakers: Mutex<Vec<Waker>>,
 }
 
 impl TVarInner {
 
-    pub(crate) fn new<T: Send + Sync + 'static>(value: T) -> Self {
+    pub fn new<T: Send + Sync + 'static>(value: T) -> Self {
         TVarInner {
             content: RwLock::new(Arc::new(value)),
             wakers: Mutex::new(vec![]),
         }
     }
 
-    pub(crate) async fn read(&self) -> Contents {
+    pub async fn read(&self) -> Contents {
         let lock = self.content.read().await;
         lock.clone()
     }
 
-    pub(crate) fn notify(&self) {
+    pub fn notify(&self) {
         self.wakers.lock().unwrap().drain(..).for_each(|w| w.wake());
     }
 
-    pub(crate) fn has_changed(&self, ptr: &Contents) -> bool {
+    pub fn has_changed(&self, ptr: &Contents) -> bool {
         if let Some(guard) = self.content.read().now_or_never() {
             !Arc::ptr_eq(guard.deref(), ptr)
         } else {
@@ -55,11 +58,11 @@ impl TVarInner {
         }
     }
 
-    pub(crate) fn subscribe(&self, waker: Waker) {
+    pub fn subscribe(&self, waker: Waker) {
         self.wakers.lock().unwrap().push(waker);
     }
 
-    pub(crate) async fn validate_read(&self,
+    pub async fn validate_read(&self,
                                       expected: Contents) -> Option<RwLockReadGuard<'_, Contents>> {
         let guard = self.content.read().await;
         if Arc::ptr_eq(guard.deref(), &expected) {
@@ -69,7 +72,7 @@ impl TVarInner {
         }
     }
 
-    pub(crate) async fn prepare_write(&self,
+    pub async fn prepare_write(&self,
                                       expected: Option<Contents>,
                                       value: Contents) -> Option<ApplyWrite<'_>> {
         let guard = self.content.write().await;
@@ -164,6 +167,18 @@ impl<T: Any + Send + Sync> TVar<T> {
         let lock = inner.content.read().await;
         let content_ref: Arc<T> = lock.deref().clone().downcast().unwrap();
         content_ref
+    }
+
+    pub async fn store_arc(&self, value: Arc<T>) {
+        let TVar(inner, ..) = self;
+        let mut lock = inner.content.write().await;
+        *lock = value;
+        drop(lock);
+        self.0.notify();
+    }
+
+    pub async fn store(&self, value: T) {
+        self.store_arc(Arc::new(value)).await
     }
 }
 

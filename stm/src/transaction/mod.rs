@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -82,6 +85,10 @@ impl Transaction {
         }
     }
 
+    fn num_dependencies(&self) -> usize {
+        self.log.len()
+    }
+
     pub(crate) async fn apply_get<T: Any + Send + Sync>(
         &mut self,
         var: &Arc<TVarInner>,
@@ -139,26 +146,30 @@ impl Transaction {
             }
         }
         let mut read_locks = Vec::with_capacity(reads.len());
-        while !reads.is_terminated() {
-            match reads.select_next_some().await {
-                Some(lck) => {
-                    read_locks.push(lck);
-                }
-                _ => {
-                    return false;
-                }
-            };
+        if !reads.is_empty() {
+            while !reads.is_terminated() {
+                match reads.select_next_some().await {
+                    Some(lck) => {
+                        read_locks.push(lck);
+                    }
+                    _ => {
+                        return false;
+                    }
+                };
+            }
         }
         let mut write_locks = Vec::with_capacity(writes.len());
-        while !writes.is_terminated() {
-            match writes.select_next_some().await {
-                Some(lck) => {
-                    write_locks.push(lck);
-                }
-                _ => {
-                    return false;
-                }
-            };
+        if !writes.is_empty() {
+            while !writes.is_terminated() {
+                match writes.select_next_some().await {
+                    Some(lck) => {
+                        write_locks.push(lck);
+                    }
+                    _ => {
+                        return false;
+                    }
+                };
+            }
         }
         for write in write_locks.into_iter() {
             write.apply();
@@ -199,7 +210,11 @@ pub enum TransactionError {
     TransactionDiverged,
     StackOverflow {
         depth: usize,
-    }
+    },
+    TooManyAttempts {
+        num_attempts: usize,
+    },
+    InvalidRetry,
 }
 
 impl Display for TransactionError {
@@ -217,6 +232,12 @@ impl Display for TransactionError {
             TransactionError::StackOverflow { depth } => {
                 write!(f, "The stack depth of the transaction ({}) exceeded the maximum depth.", depth)
             },
+            TransactionError::TooManyAttempts { num_attempts } => {
+                write!(f, "Failed to complete after {} attempts.", num_attempts)
+            }
+            TransactionError::InvalidRetry => {
+                write!(f, "Retry on transaction with no data dependencies.")
+            }
         }
     }
 }
@@ -231,18 +252,34 @@ impl Error for TransactionError {
 }
 
 
-pub async fn atomically<S, C>(stm: &S,
-                              mut contention_manager: C,
+pub trait RetryManager {
+
+    type ContentionManager: Stream<Item = ()> + Unpin;
+
+    fn contention_manager(&self) -> Self::ContentionManager;
+
+    fn max_retries(&self) -> usize;
+
+}
+
+pub async fn atomically<S, Retries>(stm: &S,
+                              retries: Retries,
 ) -> Result<S::Result, TransactionError>
 where
     S: Stm,
-    C: Stream<Item = ()> + Unpin,
+    Retries: RetryManager,
 {
 
+    let mut contention_manager = retries.contention_manager();
+    let max_retries = retries.max_retries();
     let mut transaction = Transaction::new();
     let mut failed_commits: usize = 0;
+    let mut num_attempts: usize = 0;
 
     loop {
+        if num_attempts >= max_retries + 1 {
+            return Err(TransactionError::TooManyAttempts { num_attempts });
+        }
         let exec_result = stm.run_in(&mut transaction).await;
         match exec_result {
             ExecResult::Done(t) => {
@@ -259,10 +296,14 @@ where
                 return Err(TransactionError::Aborted { error });
             },
             ExecResult::Retry => {
-                AwaitChanged::new(&mut transaction).await;
+                if transaction.num_dependencies() == 0 {
+                    return Err(TransactionError::InvalidRetry);
+                } else {
+                    AwaitChanged::new(&mut transaction).await;
+                }
             },
         }
-
+        num_attempts += 1;
     }
 
 }

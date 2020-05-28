@@ -214,6 +214,11 @@ impl<E, S1, S2, F: Fn(&E) -> S2> Catch<E, S1, S2, F> {
 
 }
 
+pub enum StmEither<S1, S2> {
+    Left(S1),
+    Right(S2),
+}
+
 impl<T: Any + Send + Sync> Stm for TVarRead<T> {
     type Result = Arc<T>;
 
@@ -278,6 +283,8 @@ where
         unimplemented!("Stack unwinding not yet implemented.")
     }
 }
+
+
 impl<S, T, F> Stm for MapStm<S, F>
     where
         S: Stm,
@@ -337,11 +344,21 @@ where
     }
 }
 
+impl<S1: Stm, S2: Stm<Result = S1::Result>> Stm for StmEither<S1, S2> {
+    type Result = S1::Result;
+
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        match self {
+            StmEither::Left(l) => l.run_in(transaction),
+            StmEither::Right(r) => r.run_in(transaction),
+        }
+    }
+}
 
 mod private {
     use crate::var::{TVarRead, TVarWrite};
     use super::Retry;
-    use crate::stm::{Constant, AndThen, Choice, MapStm, Sequence, Abort, Catch};
+    use crate::stm::{Constant, AndThen, Choice, MapStm, Sequence, Abort, Catch, StmEither};
 
     pub trait Sealed {}
 
@@ -355,4 +372,5 @@ mod private {
     impl<S1, S2> Sealed for Sequence<S1, S2> {}
     impl<E, T> Sealed for Abort<E, T> {}
     impl<E, S1, S2, F: Fn(&E) -> S2> Sealed for Catch<E, S1, S2, F> {}
+    impl<S1, S2> Sealed for StmEither<S1, S2> {}
 }
