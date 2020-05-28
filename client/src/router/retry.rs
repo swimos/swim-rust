@@ -73,27 +73,38 @@ pub(crate) fn new_request(
             acquire_sender(sender, is_retry).then(|r| async move {
                 match r {
                     Ok(r) => {
-                        let mut sender = r.0;
-                        match sender.send_message(payload).await {
-                            Ok(res) => Ok((res, r.1)),
-                            Err(e) => Err((
-                                MpscRetryErr {
-                                    kind: RoutingError::ConnectionError,
-                                    transient: true,
-                                    payload: Some(e.0),
-                                },
-                                r.1,
-                            )),
+                        let mut connection_sender = r.0;
+                        let request_sender = r.1;
+
+                        match connection_sender.send_message(payload).await {
+                            Ok(result) => Ok((result, request_sender)),
+                            Err(e) => {
+                                let payload = e.0;
+                                Err((
+                                    MpscRetryErr {
+                                        kind: RoutingError::ConnectionError,
+                                        transient: true,
+                                        payload: Some(payload),
+                                    },
+                                    request_sender,
+                                ))
+                            }
                         }
                     }
-                    Err((mut e, s)) => {
-                        e.payload = Some(payload);
-                        Err((e, s))
+                    Err((mut error, sender)) => {
+                        error.payload = Some(payload);
+                        Err((error, sender))
                     }
                 }
             })
         },
-        |e| e.payload.expect("Missing payload"),
+        |e| match e.payload {
+            Some(payload) => payload,
+            None => {
+                // The payload is set after the request is reset so this isn't reachable.
+                unreachable!()
+            }
+        },
     );
 
     LoggingRetryable { f: retryable }
