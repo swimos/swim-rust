@@ -8,8 +8,17 @@ branches:
 matrix:
   include:
     - os: linux
+      arch: amd64
+      env: ARCH=amd64
+    - os: linux
+      arch: arm64
+      env: ARCH=arm64
     - os: osx
+      arch: amd64
+      env: ARCH=amd64
     - os: windows
+      arch: amd64
+      env: ARCH=amd64
 
 rust:
   - 1.43.0
@@ -47,7 +56,7 @@ env:
 
 after_success:
   - |
-    if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_BRANCH" = "master" ]]; then
+    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_BRANCH" = "master" ]]; then
     wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
     tar xzf master.tar.gz &&
     cd kcov-master &&
