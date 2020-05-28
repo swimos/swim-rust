@@ -125,7 +125,7 @@ impl Downlinks {
     where
         T: ValidatedForm + Send + 'static,
     {
-        info!("Subscribing to type value lane");
+        info!("Subscribing to typed value lane");
 
         let init_value = init.into_value();
         let (dl, rec) = self

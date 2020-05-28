@@ -484,11 +484,9 @@ impl Envelope {
         match self.header {
             EnvelopeHeader::IncomingLink(incoming_header, path) => {
                 add_path(&mut headers, path);
-                match incoming_header {
-                    IncomingHeader::Linked(params) => {
-                        add_params(&mut headers, params);
-                    }
-                    _ => {}
+
+                if let IncomingHeader::Linked(params) = incoming_header {
+                    add_params(&mut headers, params);
                 }
             }
             EnvelopeHeader::OutgoingLink(outgoing_header, path) => {
