@@ -477,48 +477,36 @@ impl Envelope {
         }
     }
 
-    pub fn get_params(&self) -> Option<LinkParams> {
-        match self.header {
-            EnvelopeHeader::IncomingLink(IncomingHeader::Linked(params), _)
-            | EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(params), _)
-            | EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(params), _) => Some(params),
-            _ => None,
-        }
-    }
-
     pub fn into_value(self) -> Value {
         let mut headers = Vec::new();
+        let tag = self.tag();
 
-        if let Some(path) = self.header.relative_path() {
-            headers.push(Item::Slot(
-                Value::Text(String::from("node")),
-                Value::Text(path.node),
-            ));
+        match self.header {
+            EnvelopeHeader::IncomingLink(incoming_header, path) => {
+                add_path(&mut headers, path);
+                match incoming_header {
+                    IncomingHeader::Linked(params) => {
+                        add_params(&mut headers, params);
+                    }
+                    _ => {}
+                }
+            }
+            EnvelopeHeader::OutgoingLink(outgoing_header, path) => {
+                add_path(&mut headers, path);
 
-            headers.push(Item::Slot(
-                Value::Text(String::from("lane")),
-                Value::Text(path.lane),
-            ));
-        }
-
-        if let Some(params) = self.get_params() {
-            if let Some(prio) = params.prio {
-                headers.push(Item::Slot(
-                    Value::Text(String::from("prio")),
-                    Value::Float64Value(prio),
-                ));
+                match outgoing_header {
+                    OutgoingHeader::Link(params) | OutgoingHeader::Sync(params) => {
+                        add_params(&mut headers, params);
+                    }
+                    _ => {}
+                }
             }
 
-            if let Some(rate) = params.rate {
-                headers.push(Item::Slot(
-                    Value::Text(String::from("rate")),
-                    Value::Float64Value(rate),
-                ));
-            }
+            _ => {}
         }
 
         let headers = Value::Record(Vec::new(), headers);
-        let attr = Attr::of((self.tag(), headers));
+        let attr = Attr::of((tag, headers));
 
         let body_vec = match self.body {
             None => vec![],
@@ -550,6 +538,34 @@ impl Envelope {
 
     pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_synced(node, lane, None)
+    }
+}
+
+fn add_path(headers: &mut Vec<Item>, path: RelativePath) {
+    headers.push(Item::Slot(
+        Value::Text(String::from("node")),
+        Value::Text(path.node),
+    ));
+
+    headers.push(Item::Slot(
+        Value::Text(String::from("lane")),
+        Value::Text(path.lane),
+    ));
+}
+
+fn add_params(headers: &mut Vec<Item>, params: LinkParams) {
+    if let Some(prio) = params.prio {
+        headers.push(Item::Slot(
+            Value::Text(String::from("prio")),
+            Value::Float64Value(prio),
+        ));
+    }
+
+    if let Some(rate) = params.rate {
+        headers.push(Item::Slot(
+            Value::Text(String::from("rate")),
+            Value::Float64Value(rate),
+        ));
     }
 }
 
