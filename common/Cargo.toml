@@ -18,4 +18,4 @@ utilities = { path = "../utilities" }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-tokio = { version = "=0.2.21", features = ["macros"] }
+tokio = { version = "=0.2.21", features = ["fs", "macros"] }

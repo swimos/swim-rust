@@ -27,7 +27,7 @@ impl Form for f64 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Float64Value(i) => Ok(*i),
-            v => de_incorrect_type("f64", v),
+            v => de_incorrect_type("Value::Float64Value", v),
         }
     }
 }
@@ -42,7 +42,7 @@ pub fn de_incorrect_type<V>(expected: &str, actual: &Value) -> Result<V, FormDes
     Err(FormDeserializeErr::IncorrectType(format!(
         "Expected: {}, found: {}",
         expected,
-        actual.to_string()
+        actual.kind()
     )))
 }
 
@@ -54,7 +54,7 @@ impl Form for i32 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Int32Value(i) => Ok(*i),
-            v => de_incorrect_type("i32", v),
+            v => de_incorrect_type("Value::Int32Value", v),
         }
     }
 }
@@ -73,7 +73,7 @@ impl Form for i64 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Int64Value(i) => Ok(*i),
-            v => de_incorrect_type("i64", v),
+            v => de_incorrect_type("Value::Int64Value", v),
         }
     }
 }
@@ -92,7 +92,7 @@ impl Form for bool {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::BooleanValue(i) => Ok(*i),
-            v => de_incorrect_type("bool", v),
+            v => de_incorrect_type("Value::BooleanValue", v),
         }
     }
 }
@@ -111,7 +111,7 @@ impl Form for String {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Text(i) => Ok(i.to_owned()),
-            v => de_incorrect_type("String", v),
+            v => de_incorrect_type("Value::Text", v),
         }
     }
 }

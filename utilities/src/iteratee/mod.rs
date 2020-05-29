@@ -524,6 +524,32 @@ pub trait Iteratee<In> {
     }
 }
 
+/// Attaches an ordinal to the input values to an iteratee.
+///
+/// # Examples
+/// ```
+/// use utilities::iteratee::*;
+///
+/// let collector = identity::<(usize, i32)>();
+/// let mut it = coenumerate(collector);
+///
+/// assert_eq!(it.feed(7), Some((0, 7)));
+/// assert_eq!(it.feed(-2), Some((1, -2)));
+/// assert_eq!(it.feed(42), Some((2, 42)));
+///
+/// ```
+///
+pub fn coenumerate<In, It: Iteratee<(usize, In)>>(
+    iteratee: It,
+) -> impl Iteratee<In, Item = It::Item> {
+    let mut index = 0;
+    iteratee.comap(move |input| {
+        let i = index;
+        index += 1;
+        (i, input)
+    })
+}
+
 /// Create a stateful iteratee that generates its outputs from its internal state and the value
 /// of each input.
 ///
