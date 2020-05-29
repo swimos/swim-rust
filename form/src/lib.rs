@@ -21,8 +21,9 @@ pub extern crate serialize as _serialize;
 
 use _common::model::schema::StandardSchema;
 use common::model::Value;
-use deserialize::FormDeserializeErr;
+pub use deserialize::FormDeserializeErr;
 pub use form_derive::*;
+pub use serialize::FormSerializeErr;
 
 #[cfg(test)]
 mod tests;

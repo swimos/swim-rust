@@ -32,6 +32,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+use tracing::{instrument, trace};
 
 #[cfg(test)]
 pub mod tests;
@@ -270,6 +271,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         }
     }
 
+    #[instrument(skip(self, ops, acts, state_machine))]
     pub(in crate::downlink) async fn run<M, A, Ops, Acts, State, Machine>(
         self,
         ops: Ops,
@@ -298,6 +300,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
 
         pin_mut!(ops);
         pin_mut!(acts);
+
         let mut ops_str: Pin<&mut Ops> = ops;
         let mut act_str: Pin<&mut Acts> = acts;
 
@@ -306,6 +309,8 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         let mut read_act = false;
 
         let mut iteration_count: usize = 0;
+
+        trace!("Running downlink task");
 
         let result: Result<(), DownlinkError> = loop {
             let next_op: TaskInput<M, A> = if dl_state == DownlinkState::Synced && !act_terminated {
@@ -386,6 +391,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                     break Ok(());
                 }
             }
+
             iteration_count += 1;
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;

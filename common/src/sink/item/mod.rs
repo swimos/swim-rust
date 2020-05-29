@@ -166,6 +166,7 @@ pub mod map_err {
     use futures_util::future::TryFutureExt;
     use std::marker::PhantomData;
 
+    #[derive(Clone, Debug)]
     pub struct SenderErrInto<Sender, E> {
         sender: Sender,
         _target: PhantomData<E>,

@@ -19,19 +19,18 @@ use futures::{ready, TryFuture};
 use futures::{Future, FutureExt};
 use tokio::time::{delay_for, Delay};
 
-use pin_project::{pin_project, project};
-
 use crate::future::retryable::strategy::RetryStrategy;
 
 #[cfg(test)]
 mod tests;
 
 pub mod factory;
-
+pub mod request;
 pub mod strategy;
+use pin_project::{pin_project, project};
 
 /// A future that can be reset back to its initial state and retried once again.
-pub trait ResettableFuture {
+pub trait ResettableFuture: Future {
     /// Reset the future back to its initial state. Returns true if the future successfully reset or
     /// false otherwise.
     ///

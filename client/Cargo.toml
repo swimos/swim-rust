@@ -4,6 +4,23 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = []
+debug = ["log_verbose"]
+log_verbose = []
+test-server = ["test_server"]
+
+[dependencies.test_server]
+path = "test_server"
+features = ["enabled"]
+optional = true
+
+[target.'cfg(log_verbose)'.dependencies]
+tracing = { version = "0.1.13", features = ["max_level_debug"] }
+
+[target.'cfg(not(log_verbose))'.dependencies]
+tracing = "0.1.13"
+
 [dependencies]
 pin-utils = "0.1.0-alpha.4"
 pin-project = "0.4.8"
@@ -15,14 +32,13 @@ tokio-tls = "=0.3.1"
 im = "14.2.0"
 tokio-tungstenite = { version = "0.10.1", features = ["tls"] }
 url = "2.1.1"
-tracing = "0.1.13"
+rand = "0.7.3"
 tracing-subscriber = "0.2.3"
-tracing-futures = "0.2.4"
+tracing-futures = "0.2.3"
 
 common = { path = "../common" }
 utilities = { path = "../utilities" }
 form = { path = "../form" }
-deserialize = { path = "../form/deserialize"}
 
 [dev-dependencies]
 hamcrest2 = "0.3"
