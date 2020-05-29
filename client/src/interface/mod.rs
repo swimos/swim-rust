@@ -41,17 +41,22 @@ mod tests;
 /// Respresents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
-    /// An error that occured when subscribing to a downlink.
+    /// An error that occurred when subscribing to a downlink.
     SubscriptionError(SubscriptionError),
-    /// An error that occured in the router.
+    /// An error that occurred in the router.
     RoutingError(RoutingError),
-    /// An error that occured in a downlink.
+    /// An error that occurred in a downlink.
     DownlinkError(DownlinkError),
+    /// An error that occurred when closing the client.
+    CloseError,
 }
 
 impl Display for ClientError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Client error. Caused by: {}", self.source().unwrap())
+        match self.source() {
+            Some(e) => write!(f, "Client error. Caused by: {}", e),
+            None => write!(f, "Client error"),
+        }
     }
 }
 
@@ -61,6 +66,7 @@ impl Error for ClientError {
             ClientError::SubscriptionError(e) => Some(e),
             ClientError::RoutingError(e) => Some(e),
             ClientError::DownlinkError(e) => Some(e),
+            ClientError::CloseError => None,
         }
     }
 
@@ -110,6 +116,16 @@ impl SwimClient {
 
         SwimClient {
             downlinks: Downlinks::new(Arc::new(configuration), router).await,
+        }
+    }
+
+    /// Shut down the client and wait for all tasks to finish running.
+    pub async fn close(self) -> Result<(), ClientError> {
+        let result = self.downlinks.close().await;
+
+        match result {
+            Ok(r) => r.map_err(ClientError::SubscriptionError),
+            Err(_) => Err(ClientError::CloseError),
         }
     }
 
