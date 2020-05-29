@@ -15,7 +15,7 @@ matrix:
         - TEST_SERVER_VERSION=v1.1
         - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
         - REPO_URL="https://github.com/SirCipher/swim-test-server/"
-        - SWIM_CRATES="client form common server utilities deserialize serialize;"
+        - SWIM_CRATES="client form common server utilities deserialize serialize"
       script:
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
