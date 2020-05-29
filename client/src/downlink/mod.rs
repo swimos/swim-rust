@@ -97,6 +97,7 @@ pub enum DownlinkError {
     MalformedMessage,
     InvalidAction,
     SchemaViolation(Value, StandardSchema),
+    ConnectionFailure,
 }
 
 /// A request to a downlink for a value.
@@ -106,7 +107,7 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::ConnectionError => DownlinkError::TaskPanic("Connection error."),
+            RoutingError::ConnectionError => DownlinkError::ConnectionFailure,
             RoutingError::HostUnreachable => DownlinkError::TaskPanic("Host is unreachable."),
             RoutingError::PoolError(_) => DownlinkError::TaskPanic("Pool error."),
             RoutingError::CloseError => DownlinkError::TaskPanic("The router could not close."),
@@ -138,6 +139,7 @@ impl Display for DownlinkError {
             DownlinkError::InvalidAction => {
                 write!(f, "An action could not be applied to the internal state.")
             }
+            DownlinkError::ConnectionFailure => write!(f, "A connection has failed permanently."),
         }
     }
 }
