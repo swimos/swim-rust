@@ -39,7 +39,6 @@ use crate::configuration::router::ConnectionPoolParams;
 use crate::connections::factory::WebsocketFactory;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::ops::Deref;
 
 pub mod factory;
 
@@ -397,7 +396,6 @@ where
 
 struct InnerConnection {
     conn: SwimConnection,
-    _birth: Instant,
     last_accessed: Instant,
 }
 
@@ -418,7 +416,6 @@ impl InnerConnection {
 
         let inner = InnerConnection {
             conn,
-            _birth: Instant::now(),
             last_accessed: Instant::now(),
         };
         Ok((inner, sender, receiver))
@@ -577,14 +574,6 @@ impl Display for ConnectionError {
     }
 }
 
-impl Deref for ConnectionError {
-    type Target = ConnectionErrorKind;
-
-    fn deref(&self) -> &Self::Target {
-        &self.kind
-    }
-}
-
 impl ConnectionError {
     pub fn new(kind: ConnectionErrorKind) -> Self {
         ConnectionError {
@@ -614,7 +603,7 @@ impl ConnectionError {
 
     /// Returns whether or not the error kind is deemed to be transient.
     pub fn is_transient(&self) -> bool {
-        match self.deref() {
+        match &self.kind() {
             ConnectionErrorKind::SocketError => false,
             _ => true,
         }

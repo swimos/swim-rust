@@ -559,7 +559,7 @@ async fn test_connection_receive_message_error() {
     // Then
     assert!(result.is_err());
     assert_eq!(
-        *result.err().unwrap(),
+        result.err().unwrap().kind(),
         ConnectionErrorKind::ReceiveMessageError
     );
 }
@@ -584,7 +584,7 @@ async fn test_new_connection_send_message_error() {
     // Then
     assert!(result.is_err());
     assert_eq!(
-        *result.err().unwrap(),
+        result.err().unwrap().kind(),
         ConnectionErrorKind::SendMessageError
     );
 }
