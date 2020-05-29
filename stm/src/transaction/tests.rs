@@ -17,7 +17,9 @@ use super::atomically;
 use futures::stream::{Empty, empty};
 use std::fmt::{Display, Formatter, Debug};
 use std::error::Error;
+use std::sync::Arc;
 use crate::transaction::{TransactionError, RetryManager};
+use crate::var::TVar;
 
 struct ExactlyOnce;
 
@@ -115,6 +117,16 @@ async fn and_then_constant_transaction() {
 }
 
 #[tokio::test]
+async fn followed_constant_transaction() {
+
+    let stm = Constant(5).followed_by(Constant(10));
+
+    let result = atomically(&stm, ExactlyOnce).await;
+
+    assert!(matches!(result, Ok(10)));
+}
+
+#[tokio::test]
 async fn either_constant_transaction() {
 
     let stm_left: StmEither<Constant<i32>, Constant<i32>> = StmEither::Left(Constant(2));
@@ -130,5 +142,47 @@ async fn either_constant_transaction() {
 async fn invalid_retry() {
     let stm = stm::retry::<i32>();
     let result = atomically(&stm, ExactlyOnce).await;
-    assert!(matches!(result, Err(TransactionError::InvalidRetry)))
+    assert!(matches!(result, Err(TransactionError::InvalidRetry)));
+}
+
+#[tokio::test]
+async fn single_read() {
+    let var = TVar::new(2);
+    let stm = var.get();
+    let content = var.load().await;
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if Arc::ptr_eq(&v, &content)));
+}
+
+#[tokio::test]
+async fn single_put() {
+    let var = TVar::new(2);
+    let stm = var.put(5);
+    let before = var.load().await;
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(_)));
+    let after = var.load().await;
+    assert_eq!(*before, 2);
+    assert_eq!(*after, 5);
+}
+
+#[tokio::test]
+async fn get_and_set() {
+    let var = TVar::new(2);
+    let stm = var.get().and_then(|n| var.put(*n + 1));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(_)));
+    let after = var.load().await;
+    assert_eq!(*after, 3);
+}
+
+#[tokio::test]
+async fn set_get_and_set() {
+    let var = TVar::new(2);
+    let stm = var.put(12)
+        .followed_by(var.get().and_then(|n| var.put(*n + 1)));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(_)));
+    let after = var.load().await;
+    assert_eq!(*after, 13);
 }

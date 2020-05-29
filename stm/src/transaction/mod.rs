@@ -62,8 +62,9 @@ impl LogEntry {
         }
     }
 
-    fn set<T: Any + Send + Sync>(&mut self, value: T) {
-        let old_value = std::mem::replace(&mut self.current, Arc::new(value));
+    fn set<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
+        assert_eq!(value.as_ref().type_id(), self.current.as_ref().type_id());
+        let old_value = std::mem::replace(&mut self.current, value);
         let old_state = std::mem::take(&mut self.state);
         self.state = match old_state {
             LogState::UnconditionalGet => LogState::ConditionalSet(old_value),
@@ -147,28 +148,30 @@ impl Transaction {
         }
         let mut read_locks = Vec::with_capacity(reads.len());
         if !reads.is_empty() {
-            while !reads.is_terminated() {
-                match reads.select_next_some().await {
+            while let Some(maybe_lck) = reads.next().await {
+                match maybe_lck {
                     Some(lck) => {
                         read_locks.push(lck);
                     }
                     _ => {
                         return false;
                     }
-                };
+                }
             }
         }
         let mut write_locks = Vec::with_capacity(writes.len());
         if !writes.is_empty() {
             while !writes.is_terminated() {
-                match writes.select_next_some().await {
-                    Some(lck) => {
-                        write_locks.push(lck);
+                while let Some(maybe_lck) = writes.next().await {
+                    match maybe_lck {
+                        Some(lck) => {
+                            write_locks.push(lck);
+                        }
+                        _ => {
+                            return false;
+                        }
                     }
-                    _ => {
-                        return false;
-                    }
-                };
+                }
             }
         }
         for write in write_locks.into_iter() {
