@@ -112,7 +112,7 @@ impl SwimClient {
         }
     }
 
-    /// Sends a command directly to the provided [`target`] downlink.
+    /// Sends a command directly to the provided [`target`] lane.
     pub async fn send_command<T: Form>(
         _target: AbsolutePath,
         _value: T,
