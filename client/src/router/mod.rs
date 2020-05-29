@@ -34,6 +34,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+use tracing::{error, trace_span};
 use tracing_futures::Instrument;
 
 pub mod incoming;
@@ -289,7 +290,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
         }
     }
 }
-use tracing::trace_span;
+
 fn get_host_manager<Pool>(
     host_managers: &mut HashMap<url::Url, HostManagerHandle>,
     host: url::Url,
@@ -457,7 +458,10 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);
 
         loop {
-            let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            let task = rx.next().await.ok_or({
+                error!("Sender dropped");
+                RoutingError::ConnectionError
+            })?;
 
             match task {
                 HostTask::Connect(ConnectionRequest {
