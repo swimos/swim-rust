@@ -21,7 +21,7 @@ use tracing::info;
 
 use common::model::Value;
 use common::warp::path::AbsolutePath;
-use form::{Form, ValidatedForm};
+use form::ValidatedForm;
 
 use crate::configuration::downlink::Config;
 use crate::configuration::router::RouterParamBuilder;
@@ -33,6 +33,7 @@ use crate::downlink::subscription::{
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
+use common::warp::envelope::Envelope;
 
 #[cfg(test)]
 mod tests;
@@ -113,11 +114,15 @@ impl SwimClient {
     }
 
     /// Sends a command directly to the provided [`target`] lane.
-    pub async fn send_command<T: Form>(
-        _target: AbsolutePath,
-        _value: T,
+    pub async fn send_command(
+        &mut self,
+        target: AbsolutePath,
+        envelope: Envelope,
     ) -> Result<(), ClientError> {
-        unimplemented!()
+        self.downlinks
+            .send_command(target, envelope)
+            .await
+            .map_err(ClientError::SubscriptionError)
     }
 
     /// Opens a new typed value downlink at the provided path and initialises it with [`default`].

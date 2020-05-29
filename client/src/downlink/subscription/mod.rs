@@ -30,9 +30,9 @@ use common::request::request_future::RequestError;
 use common::request::Request;
 use common::sink::item::either::EitherSink;
 use common::sink::item::ItemSender;
+use common::sink::item::ItemSink;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
-
 use either::Either;
 use form::ValidatedForm;
 use futures::stream::Fuse;
@@ -51,6 +51,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{error, info, instrument, trace_span};
 
+use common::warp::envelope::Envelope;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
@@ -72,8 +73,16 @@ type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
-    sender: mpsc::Sender<DownlinkSpecifier>,
+    sender: mpsc::Sender<DownlinkRequest>,
     _task: JoinHandle<RequestResult<()>>,
+}
+
+enum DownlinkRequest {
+    Subscription(DownlinkSpecifier),
+    Command {
+        path: AbsolutePath,
+        envelope: Envelope,
+    },
 }
 
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
@@ -97,6 +106,19 @@ impl Downlinks {
             sender: tx,
             _task: task_handle,
         }
+    }
+
+    pub async fn send_command(
+        &mut self,
+        path: AbsolutePath,
+        envelope: Envelope,
+    ) -> RequestResult<()> {
+        self.sender
+            .send(DownlinkRequest::Command { path, envelope })
+            .map_err(|_| SubscriptionError::ConnectionError)
+            .await?;
+
+        Ok(())
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
@@ -143,12 +165,12 @@ impl Downlinks {
     ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkSpecifier::Value {
+            .send(DownlinkRequest::Subscription(DownlinkSpecifier::Value {
                 init,
                 path,
                 schema,
                 request: Request::new(tx),
-            })
+            }))
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -196,12 +218,12 @@ impl Downlinks {
     ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkSpecifier::Map {
+            .send(DownlinkRequest::Subscription(DownlinkSpecifier::Map {
                 path,
                 key_schema,
                 value_schema,
                 request: Request::new(tx),
-            })
+            }))
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -269,8 +291,8 @@ impl SubscriptionError {
     }
 }
 
-impl From<mpsc::error::SendError<DownlinkSpecifier>> for SubscriptionError {
-    fn from(_: SendError<DownlinkSpecifier>) -> Self {
+impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
+    fn from(_: SendError<DownlinkRequest>) -> Self {
         SubscriptionError::DownlinkTaskStopped
     }
 }
@@ -721,14 +743,14 @@ where
 
     async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
     where
-        Req: Stream<Item = DownlinkSpecifier>,
+        Req: Stream<Item = DownlinkRequest>,
     {
         pin_mut!(requests);
 
         let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
 
         loop {
-            let item: Option<Either<DownlinkSpecifier, DownlinkStoppedEvent>> =
+            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
                 if self.stopped_watch.is_empty() {
                     pinned_requests.next().await.map(Either::Left)
                 } else {
@@ -739,32 +761,48 @@ where
                 };
 
             match item {
-                Some(Either::Left(DownlinkSpecifier::Value {
-                    init,
-                    path,
-                    schema,
-                    request,
-                })) => {
-                    self.handle_value_request(init, path, schema, request)
-                        .await?;
-                }
-                Some(Either::Left(DownlinkSpecifier::Map {
-                    path,
-                    key_schema,
-                    value_schema,
-                    request,
-                })) => {
-                    self.handle_map_request(path, key_schema, value_schema, request)
-                        .await?;
-                }
+                Some(Either::Left(left)) => match left {
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Value {
+                        init,
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_value_request(init, path, schema, request)
+                            .await?;
+                    }
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Map {
+                        path,
+                        key_schema,
+                        value_schema,
+                        request,
+                    }) => {
+                        self.handle_map_request(path, key_schema, value_schema, request)
+                            .await?;
+                    }
+                    DownlinkRequest::Command { path, envelope } => {
+                        self.handle_command_message(path, envelope).await?;
+                    }
+                },
                 Some(Either::Right(stop_event)) => {
                     self.handle_stop(stop_event).await;
                 }
-                None => {
-                    break Ok(());
-                }
+                None => break Ok(()),
             }
         }
+    }
+
+    async fn handle_command_message(
+        &mut self,
+        path: AbsolutePath,
+        envelope: Envelope,
+    ) -> RequestResult<()> {
+        self.router
+            .general_sink()
+            .send_item((path.host, envelope))
+            .map_err(|_| SubscriptionError::ConnectionError)
+            .await?;
+        Ok(())
     }
 }
 
