@@ -205,7 +205,7 @@ impl Transaction {
 #[derive(Debug)]
 pub enum TransactionError {
     Aborted {
-        error: Box<dyn Error + 'static>,
+        error: Box<dyn Error + Send + 'static>,
     },
     HighContention {
         num_failed: usize,
@@ -280,17 +280,17 @@ where
     let mut num_attempts: usize = 0;
 
     loop {
-        if num_attempts >= max_retries + 1 {
-            return Err(TransactionError::TooManyAttempts { num_attempts });
-        }
+        num_attempts += 1;
         let exec_result = stm.run_in(&mut transaction).await;
         match exec_result {
             ExecResult::Done(t) => {
                 if transaction.try_commit().await {
                     return Ok(t);
                 } else {
-                    failed_commits += 1;
-                    if contention_manager.next().await.is_none() {
+                    failed_commits = failed_commits.saturating_add(1);
+                    if num_attempts >= max_retries.saturating_add(1) {
+                        return Err(TransactionError::TooManyAttempts { num_attempts });
+                    } else if contention_manager.next().await.is_none() {
                         return Err(TransactionError::HighContention { num_failed: failed_commits })
                     }
                 }
@@ -301,12 +301,14 @@ where
             ExecResult::Retry => {
                 if transaction.num_dependencies() == 0 {
                     return Err(TransactionError::InvalidRetry);
+                } else if num_attempts >= max_retries.saturating_add(1) {
+                    return Err(TransactionError::TooManyAttempts { num_attempts });
                 } else {
                     AwaitChanged::new(&mut transaction).await;
                 }
             },
         }
-        num_attempts += 1;
+        transaction.reset();
     }
 
 }
@@ -328,7 +330,6 @@ impl<'a> Future for AwaitChanged<'a> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(transaction) = self.0.take() {
             if transaction.reads_changed_or_locked() {
-                transaction.reset();
                 return Poll::Ready(());
             }
             transaction.log.iter().for_each(|(PtrKey(var), entry)| {
@@ -342,7 +343,6 @@ impl<'a> Future for AwaitChanged<'a> {
                 }
             });
             if transaction.reads_changed_or_locked() {
-                transaction.reset();
                 Poll::Ready(())
             } else {
                 Poll::Pending

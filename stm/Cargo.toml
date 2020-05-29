@@ -12,5 +12,5 @@ tokio = { version = "=0.2.21", features = ["sync"] }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-tokio = { version = "=0.2.21", features = ["rt-threaded", "macros"] }
+tokio = { version = "=0.2.21", features = ["rt-threaded", "macros", "time"] }
 

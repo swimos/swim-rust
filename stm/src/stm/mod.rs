@@ -23,13 +23,13 @@ use std::sync::Arc;
 use std::any::Any;
 use std::pin::Pin;
 
-pub type ResultFuture<'a, T> = Pin<Box<dyn Future<Output = ExecResult<T>> + 'a>>;
+pub type ResultFuture<'a, T> = Pin<Box<dyn Future<Output = ExecResult<T>> + Send + 'a>>;
 
 #[derive(Debug)]
 pub enum ExecResult<T> {
     Done(T),
     Retry,
-    Abort(Box<dyn Error + 'static>),
+    Abort(Box<dyn Error + Send + 'static>),
 }
 
 macro_rules! done {
@@ -40,8 +40,8 @@ macro_rules! done {
     })
 }
 
-pub trait Stm: private::Sealed {
-    type Result;
+pub trait Stm: Send + Sync + private::Sealed {
+    type Result: Send + Sync;
 
     fn map<T, F>(self, f: F) -> MapStm<Self, F>
     where
@@ -199,7 +199,7 @@ where
 pub struct Catch<E, S1, S2, F: Fn(&E) -> S2> {
     _input: S1,
     _handler: F,
-    _handler_type: PhantomData<dyn Fn(&E) -> S2>
+    _handler_type: PhantomData<dyn Fn(&E) -> S2 + Send + Sync>
 }
 
 impl<E, S1, S2, F: Fn(&E) -> S2> Catch<E, S1, S2, F> {
@@ -217,6 +217,14 @@ impl<E, S1, S2, F: Fn(&E) -> S2> Catch<E, S1, S2, F> {
 pub enum StmEither<S1, S2> {
     Left(S1),
     Right(S2),
+}
+
+pub fn left<S1: Stm, S2: Stm>(stm: S1) -> StmEither<S1, S2> {
+    StmEither::Left(stm)
+}
+
+pub fn right<S1: Stm, S2: Stm>(stm: S2) -> StmEither<S1, S2> {
+    StmEither::Right(stm)
 }
 
 impl<T: Any + Send + Sync> Stm for TVarRead<T> {
@@ -240,7 +248,7 @@ impl<T: Any + Send + Sync> Stm for TVarWrite<T> {
         Box::pin(ready(ExecResult::Done(())))
     }
 }
-impl<T> Stm for Retry<T> {
+impl<T: Send + Sync> Stm for Retry<T> {
     type Result = T;
 
     fn run_in<'a>(&'a self, _: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
@@ -248,7 +256,7 @@ impl<T> Stm for Retry<T> {
     }
 }
 
-impl<T: Clone> Stm for Constant<T> {
+impl<T: Send + Sync + Clone> Stm for Constant<T> {
     type Result = T;
 
     fn run_in<'a>(&'a self, _: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
@@ -260,7 +268,7 @@ impl<S1, S2, F> Stm for AndThen<S1, F>
 where
     S1: Stm,
     S2: Stm,
-    F: Fn(S1::Result) -> S2,
+    F: Fn(S1::Result) -> S2 + Send + Sync,
 {
     type Result = S2::Result;
 
@@ -288,7 +296,8 @@ where
 impl<S, T, F> Stm for MapStm<S, F>
     where
         S: Stm,
-        F: Fn(S::Result) -> T,
+        T: Send + Sync,
+        F: Fn(S::Result) -> T + Send + Sync,
 {
     type Result = T;
 
@@ -319,7 +328,8 @@ where
 
 impl<E, T> Stm for Abort<E, T>
 where
-    E: Error + Clone + 'static,
+    E: Error + Send + Sync + Clone + 'static,
+    T: Send + Sync,
 {
     type Result = T;
 
@@ -335,7 +345,7 @@ where
     S1: Stm,
     S2: Stm<Result = S1::Result>,
     E: Error + Clone + 'static,
-    F: Fn(&E) -> S2,
+    F: Fn(&E) -> S2 + Send + Sync,
 {
     type Result = S1::Result;
 
