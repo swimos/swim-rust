@@ -199,7 +199,7 @@ pub mod tungstenite {
         match connect_async(url).await {
             Ok((ws_str, _)) => {
                 let (tx, rx) = ws_str.split();
-                Ok((tx, rx.err_into()))
+                Ok((tx, rx.err_into::<ConnectionError>()))
             }
             Err(e) => {
                 match &e {

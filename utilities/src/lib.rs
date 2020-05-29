@@ -20,9 +20,6 @@ pub mod iteratee;
 pub mod lru_cache;
 pub mod trace;
 
-#[macro_use]
-pub mod macros;
-
 /// Error thrown by methods that required a usize to be positive.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ZeroUsize;

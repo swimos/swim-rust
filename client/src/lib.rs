@@ -24,5 +24,4 @@ pub mod downlink;
 pub mod interface;
 pub mod router;
 
-#[macro_use]
 extern crate utilities;
