@@ -48,7 +48,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle};
 use tracing::{error, info, instrument, trace_span};
 
 use common::warp::envelope::Envelope;
@@ -74,7 +74,7 @@ type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
-    _task: JoinHandle<RequestResult<()>>,
+    task: JoinHandle<RequestResult<()>>,
 }
 
 enum DownlinkRequest {
@@ -104,7 +104,7 @@ impl Downlinks {
 
         Downlinks {
             sender: tx,
-            _task: task_handle,
+            task: task_handle,
         }
     }
 
@@ -119,6 +119,12 @@ impl Downlinks {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn close(self) -> Result<RequestResult<()>, JoinError> {
+        let Downlinks { sender, task } = self;
+        drop(sender);
+        task.await
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
