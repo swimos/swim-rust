@@ -15,7 +15,7 @@ matrix:
         - TEST_SERVER_VERSION=v1.1
         - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
         - REPO_URL="https://github.com/SirCipher/swim-test-server/"
-        - SWIM_CRATES="client form common server utilities deserialize serialize"
+        - SWIM_CRATES="client form common server utilities deserialize serialize;"
       script:
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
@@ -77,7 +77,7 @@ addons:
 
 after_success:
   - |
-    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_BRANCH" = "master" ]]; then
+    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux"]]; then
     wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
     tar xzf master.tar.gz &&
     cd kcov-master &&
