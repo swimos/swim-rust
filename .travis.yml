@@ -12,6 +12,7 @@ matrix:
       services:
         - docker
       env:
+        - ARCH=amd64
         - TEST_SERVER_VERSION=v1.1
         - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
         - REPO_URL="https://github.com/SirCipher/swim-test-server/"
