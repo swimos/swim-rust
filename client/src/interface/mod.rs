@@ -68,11 +68,32 @@ impl Error for ClientError {
     }
 }
 
+/// A Swim streaming API client for linking to stateful Web Agents using WARP. The Swim client handles
+/// opening downlinks, message routing and connections.
+///
+/// # Downlinks
+/// A downlink provides a virtual, bidirectional stream between the client and the lane of a remote
+/// Web Agent. Client connections are multiplexed over a single WebSocket connection to the remote
+/// host and network failures during message routing are managed. Swim clients handle multicast
+/// event routing to the same remote Web Agent.
+///
+/// Two downlink types are available:
+///
+/// - A `ValueDownlink` synchronises a shared real-time value with a remote value lane.
+/// - A `MapDownlink` synchronises a shared real-time key-value map with a remote map lane.
+///
+/// Both value and map downlinks are available in typed and untyped flavours. Typed downlinks must
+/// conform to a contract that is imposed by a form implementation and all actions are verified
+/// against the provided schema to ensure that its views are consistent.
+///
 pub struct SwimClient {
+    /// The downlink manager attached to this Swim Client.
     downlinks: Downlinks,
 }
 
 impl SwimClient {
+    /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.
+    /// The provided configuration is used when opening new downlinks.
     pub async fn new<C>(configuration: C) -> Self
     where
         C: Config + 'static,
@@ -91,6 +112,7 @@ impl SwimClient {
         }
     }
 
+    /// Sends a command directly to the provided [`target`] downlink.
     pub async fn send_command<T: Form>(
         _target: AbsolutePath,
         _value: T,
@@ -98,6 +120,7 @@ impl SwimClient {
         unimplemented!()
     }
 
+    /// Opens a new typed value downlink at the provided path and initialises it with [`default`].
     pub async fn value_downlink<T>(
         &mut self,
         path: AbsolutePath,
@@ -112,6 +135,7 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new typed map downlink at the provided path.
     pub async fn map_downlink<K, V>(
         &mut self,
         path: AbsolutePath,
@@ -126,6 +150,7 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new untyped value downlink at the provided path and initialises it with [`default`] value.
     pub async fn untyped_value_downlink(
         &mut self,
         path: AbsolutePath,
@@ -137,6 +162,7 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new untyped value downlink at the provided path.
     pub async fn untyped_map_downlink(
         &mut self,
         path: AbsolutePath,

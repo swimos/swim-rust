@@ -76,7 +76,7 @@ pub struct Downlinks {
     _task: JoinHandle<RequestResult<()>>,
 }
 
-/// Contains all running Warp downlinks and allows requests for downlink subscriptions.
+/// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl Downlinks {
     /// Create a new downlink manager, using the specified configuration, which will attach all
     /// create downlinks to the provided router.
