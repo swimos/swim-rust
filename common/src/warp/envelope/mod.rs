@@ -108,6 +108,16 @@ pub enum EnvelopeHeader {
     Negotiation(NegotiationHeader, Direction),
 }
 
+impl EnvelopeHeader {
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        match self {
+            EnvelopeHeader::IncomingLink(_, path) => Some(path.clone()),
+            EnvelopeHeader::OutgoingLink(_, path) => Some(path.clone()),
+            EnvelopeHeader::Negotiation(_, _) => None,
+        }
+    }
+}
+
 /// A message related to a link to or from a remote lane.
 #[derive(Debug, PartialEq, Clone)]
 pub struct LinkMessage<Header> {
@@ -425,6 +435,17 @@ impl Envelope {
     }
 }
 
+impl From<OutgoingLinkMessage> for Envelope {
+    fn from(outgoing_message: OutgoingLinkMessage) -> Self {
+        let OutgoingLinkMessage { header, path, body } = outgoing_message;
+
+        Envelope {
+            header: EnvelopeHeader::OutgoingLink(header, path),
+            body,
+        }
+    }
+}
+
 /// Enumeration that splits out each type of message at the top level.
 pub enum AnyMessage {
     OutgoingLink(OutgoingLinkMessage),
@@ -456,6 +477,43 @@ impl Envelope {
         }
     }
 
+    pub fn into_value(self) -> Value {
+        let mut headers = Vec::new();
+        let tag = self.tag();
+
+        match self.header {
+            EnvelopeHeader::IncomingLink(incoming_header, path) => {
+                add_path(&mut headers, path);
+
+                if let IncomingHeader::Linked(params) = incoming_header {
+                    add_params(&mut headers, params);
+                }
+            }
+            EnvelopeHeader::OutgoingLink(outgoing_header, path) => {
+                add_path(&mut headers, path);
+
+                match outgoing_header {
+                    OutgoingHeader::Link(params) | OutgoingHeader::Sync(params) => {
+                        add_params(&mut headers, params);
+                    }
+                    _ => {}
+                }
+            }
+
+            _ => {}
+        }
+
+        let headers = Value::Record(Vec::new(), headers);
+        let attr = Attr::of((tag, headers));
+
+        let body_vec = match self.body {
+            None => vec![],
+            Some(body) => vec![Item::ValueItem(body)],
+        };
+
+        Value::Record(vec![attr], body_vec)
+    }
+
     pub fn link<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_link(node, lane, None, None, None)
     }
@@ -478,6 +536,34 @@ impl Envelope {
 
     pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
         Self::make_synced(node, lane, None)
+    }
+}
+
+fn add_path(headers: &mut Vec<Item>, path: RelativePath) {
+    headers.push(Item::Slot(
+        Value::Text(String::from("node")),
+        Value::Text(path.node),
+    ));
+
+    headers.push(Item::Slot(
+        Value::Text(String::from("lane")),
+        Value::Text(path.lane),
+    ));
+}
+
+fn add_params(headers: &mut Vec<Item>, params: LinkParams) {
+    if let Some(prio) = params.prio {
+        headers.push(Item::Slot(
+            Value::Text(String::from("prio")),
+            Value::Float64Value(prio),
+        ));
+    }
+
+    if let Some(rate) = params.rate {
+        headers.push(Item::Slot(
+            Value::Text(String::from("rate")),
+            Value::Float64Value(rate),
+        ));
     }
 }
 

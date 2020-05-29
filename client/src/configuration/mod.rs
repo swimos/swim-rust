@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod router;
+
 pub mod downlink {
+    use crate::configuration::router::RouterParams;
     use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
     use std::fmt::{Display, Formatter};
@@ -202,6 +205,8 @@ pub mod downlink {
     pub struct ClientParams {
         /// Buffer size for servicing requests for new downlinks.
         pub dl_req_buffer_size: NonZeroUsize,
+
+        pub router_params: RouterParams,
     }
 
     const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
@@ -209,10 +214,14 @@ pub mod downlink {
     const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
     impl ClientParams {
-        pub fn new(dl_req_buffer_size: usize) -> Result<ClientParams, String> {
+        pub fn new(
+            dl_req_buffer_size: usize,
+            router_params: RouterParams,
+        ) -> Result<ClientParams, String> {
             match NonZeroUsize::new(dl_req_buffer_size) {
                 Some(nz) => Ok(ClientParams {
                     dl_req_buffer_size: nz,
+                    router_params,
                 }),
                 _ => Err(BAD_BUFFER_SIZE.to_string()),
             }
@@ -241,8 +250,8 @@ pub mod downlink {
         }
 
         /// Add specific configuration for a host.
-        pub fn for_host(&mut self, host: &str, params: DownlinkParams) {
-            self.by_host.insert(host.to_string(), params);
+        pub fn for_host(&mut self, host: String, params: DownlinkParams) {
+            self.by_host.insert(host, params);
         }
 
         /// Add specific configuration for an absolute path (this will override host level
@@ -262,10 +271,16 @@ pub mod downlink {
             } = self;
             match by_lane.get(path) {
                 Some(params) => *params,
-                _ => match by_host.get(&path.host) {
-                    Some(params) => *params,
-                    _ => *default,
-                },
+                _ => {
+                    if path.host.has_host() {
+                        match by_host.get(&path.host.host().unwrap().to_string()) {
+                            Some(params) => *params,
+                            _ => *default,
+                        }
+                    } else {
+                        *default
+                    }
+                }
             }
         }
 

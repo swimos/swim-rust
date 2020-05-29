@@ -159,8 +159,9 @@ mod valid_types {
 
 #[cfg(test)]
 mod invalid_types {
-    use super::*;
     use std::collections::BTreeMap;
+
+    use super::*;
 
     #[test]
     fn invalid_nested_type() {

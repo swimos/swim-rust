@@ -12,34 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::pin::Pin;
-use std::sync::Arc;
-
-use either::Either;
-use futures::stream::Fuse;
-use futures::Stream;
-use futures_util::future::TryFutureExt;
-use futures_util::select_biased;
-use futures_util::stream::{FuturesUnordered, StreamExt};
-use pin_utils::pin_mut;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
-use tracing::{error, info, instrument};
-
-use common::model::schema::StandardSchema;
-use common::model::Value;
-use common::request::Request;
-use common::sink::item::either::EitherSink;
-use common::sink::item::ItemSender;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-use form::ValidatedForm;
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
-
 use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
 };
@@ -51,7 +23,36 @@ use crate::downlink::typed::{MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
-use crate::router::{Router, RoutingError};
+use crate::router::{Router, RouterEvent, RoutingError};
+use common::model::schema::StandardSchema;
+use common::model::Value;
+use common::request::request_future::RequestError;
+use common::request::Request;
+use common::sink::item::either::EitherSink;
+use common::sink::item::ItemSender;
+use common::sink::item::ItemSink;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+use either::Either;
+use form::ValidatedForm;
+use futures::stream::Fuse;
+use futures::Stream;
+use futures_util::future::TryFutureExt;
+use futures_util::select_biased;
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use pin_utils::pin_mut;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::pin::Pin;
+use std::sync::Arc;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::oneshot::error::RecvError;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::{JoinError, JoinHandle};
+use tracing::{error, info, instrument, trace_span};
+
+use common::warp::envelope::Envelope;
+use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -72,36 +73,70 @@ type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
-    sender: mpsc::Sender<DownlinkSpecifier>,
-    _task: JoinHandle<()>,
+    sender: mpsc::Sender<DownlinkRequest>,
+    task: JoinHandle<RequestResult<()>>,
 }
 
-/// Contains all running Warp downlinks and allows requests for downlink subscriptions.
+enum DownlinkRequest {
+    Subscription(DownlinkSpecifier),
+    Command {
+        path: AbsolutePath,
+        envelope: Envelope,
+    },
+}
+
+/// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl Downlinks {
     /// Create a new downlink manager, using the specified configuration, which will attach all
     /// create downlinks to the provided router.
+    #[instrument(skip(config, router))]
     pub async fn new<C, R>(config: Arc<C>, router: R) -> Downlinks
     where
         C: Config + 'static,
         R: Router + 'static,
     {
+        info!("Initialising downlink manager");
+
         let client_params = config.client_params();
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
         let task_handle = tokio::task::spawn(task.run(rx));
+
         Downlinks {
             sender: tx,
-            _task: task_handle,
+            task: task_handle,
         }
+    }
+
+    pub async fn send_command(
+        &mut self,
+        path: AbsolutePath,
+        envelope: Envelope,
+    ) -> RequestResult<()> {
+        self.sender
+            .send(DownlinkRequest::Command { path, envelope })
+            .map_err(|_| SubscriptionError::ConnectionError)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn close(self) -> Result<RequestResult<()>, JoinError> {
+        let Downlinks { sender, task } = self;
+        drop(sender);
+        task.await
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self), level = "info")]
     pub async fn subscribe_value_untyped(
         &mut self,
         init: Value,
         path: AbsolutePath,
     ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
+        info!("Subscribing to untyped value lane");
+
         self.subscribe_value_inner(init, StandardSchema::Anything, path)
             .await
     }
@@ -109,6 +144,7 @@ impl Downlinks {
     /// Attempt to subscribe to a remote value lane where the type of the values is described by a
     /// [`ValidatedForm`]. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self, init), level = "info")]
     pub async fn subscribe_value<T>(
         &mut self,
         init: T,
@@ -117,6 +153,8 @@ impl Downlinks {
     where
         T: ValidatedForm + Send + 'static,
     {
+        info!("Subscribing to typed value lane");
+
         let init_value = init.into_value();
         let (dl, rec) = self
             .subscribe_value_inner(init_value, T::schema(), path)
@@ -133,12 +171,12 @@ impl Downlinks {
     ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkSpecifier::Value {
+            .send(DownlinkRequest::Subscription(DownlinkSpecifier::Value {
                 init,
                 path,
                 schema,
                 request: Request::new(tx),
-            })
+            }))
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -146,10 +184,13 @@ impl Downlinks {
 
     /// Attempt to subscribe to a map lane. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map_untyped(
         &mut self,
         path: AbsolutePath,
     ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
+        info!("Subscribing to untyped map lane");
+
         self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
             .await
     }
@@ -157,6 +198,7 @@ impl Downlinks {
     /// Attempt to subscribe to a remote map lane where the types of the keys and values are
     /// described by  [`ValidatedForm`]s. The downlink is returned with a single active
     /// subscription to its events.
+    #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map<K, V>(
         &mut self,
         path: AbsolutePath,
@@ -165,6 +207,8 @@ impl Downlinks {
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
     {
+        info!("Subscribing to typed map lane");
+
         let (dl, rec) = self
             .subscribe_map_inner(K::schema(), V::schema(), path)
             .await?;
@@ -180,12 +224,12 @@ impl Downlinks {
     ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(DownlinkSpecifier::Map {
+            .send(DownlinkRequest::Subscription(DownlinkSpecifier::Map {
                 path,
                 key_schema,
                 value_schema,
                 request: Request::new(tx),
-            })
+            }))
             .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
@@ -210,6 +254,7 @@ pub enum SubscriptionError {
         existing: Box<StandardSchema>,
         requested: Box<StandardSchema>,
     },
+    ConnectionError,
 }
 
 impl SubscriptionError {
@@ -252,8 +297,8 @@ impl SubscriptionError {
     }
 }
 
-impl From<mpsc::error::SendError<DownlinkSpecifier>> for SubscriptionError {
-    fn from(_: SendError<DownlinkSpecifier>) -> Self {
+impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
+    fn from(_: SendError<DownlinkRequest>) -> Self {
         SubscriptionError::DownlinkTaskStopped
     }
 }
@@ -261,6 +306,12 @@ impl From<mpsc::error::SendError<DownlinkSpecifier>> for SubscriptionError {
 impl From<oneshot::error::RecvError> for SubscriptionError {
     fn from(_: RecvError) -> Self {
         SubscriptionError::DownlinkTaskStopped
+    }
+}
+
+impl From<RequestError> for SubscriptionError {
+    fn from(_: RequestError) -> Self {
+        SubscriptionError::ConnectionError
     }
 }
 
@@ -292,6 +343,9 @@ impl Display for SubscriptionError {
                 let key_or_val = if *is_key { "key" } else { "value" };
                 write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
                        path, key_or_val, existing, requested)
+            }
+            SubscriptionError::ConnectionError => {
+                write!(f, "The downlink could not establish a connection.")
             }
         }
     }
@@ -416,19 +470,25 @@ where
         init: Value,
         schema: StandardSchema,
         path: AbsolutePath,
-    ) -> (AnyValueDownlink, ValueReceiver) {
+    ) -> RequestResult<(AnyValueDownlink, ValueReceiver)> {
+        let span = trace_span!("value downlink", path = ?path);
+        let _g = span.enter();
+
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.router.connection_for(&path).await;
+        let (sink, incoming) = self.router.connection_for(&path).await?;
         let schema_cpy = schema.clone();
 
         let updates = incoming.map(|e| match e {
-            Ok(l) => Ok(envelopes::value::from_envelope(l)),
-            Err(e) => Err(e),
+            RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
+            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
         let sink_path = path.clone();
-        let cmd_sink = sink
-            .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&sink_path, cmd).1);
+        let cmd_sink = sink.comap(move |cmd: Command<SharedValue>| {
+            envelopes::value_envelope(&sink_path, cmd).1.into()
+        });
 
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -454,7 +514,7 @@ where
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Value, path)),
         );
-        (dl, rec)
+        Ok((dl, rec))
     }
 
     async fn create_new_map_downlink(
@@ -462,15 +522,20 @@ where
         path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-    ) -> (AnyMapDownlink, MapReceiver) {
+    ) -> RequestResult<(AnyMapDownlink, MapReceiver)> {
+        let span = trace_span!("map downlink", path = ?path);
+        let _g = span.enter();
+
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.router.connection_for(&path).await;
+        let (sink, incoming) = self.router.connection_for(&path).await?;
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
         let updates = incoming.map(|e| match e {
-            Ok(l) => Ok(envelopes::map::from_envelope(l)),
-            Err(r) => Err(r),
+            RouterEvent::Message(l) => Ok(envelopes::map::from_envelope(l)),
+            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
         let sink_path = path.clone();
@@ -478,7 +543,7 @@ where
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
                 let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
-                    envelopes::map_envelope(&sink_path, cmd).1
+                    envelopes::map_envelope(&sink_path, cmd).1.into()
                 });
                 map_downlink_for_sink(key_schema, value_schema, cmd_sink, updates, &config)
             }
@@ -492,10 +557,12 @@ where
                 let direct_sink =
                     sink.clone()
                         .comap(move |cmd: Command<MapModification<Arc<Value>>>| {
-                            envelopes::map_envelope(&sink_path_duplicate, cmd).1
+                            envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
                         });
                 let action_sink = sink.comap(move |act: MapModification<Arc<Value>>| {
-                    envelopes::map_envelope(&sink_path, Command::Action(act)).1
+                    envelopes::map_envelope(&sink_path, Command::Action(act))
+                        .1
+                        .into()
                 });
 
                 let pressure_release = KeyedWatch::new(
@@ -525,7 +592,7 @@ where
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Map, path)),
         );
-        (dl, rec)
+        Ok((dl, rec))
     }
 
     async fn handle_value_request(
@@ -534,7 +601,7 @@ where
         path: AbsolutePath,
         schema: StandardSchema,
         value_req: Request<RequestResult<(AnyValueDownlink, ValueReceiver)>>,
-    ) {
+    ) -> RequestResult<()> {
         let dl = match self.value_downlinks.get(&path) {
             Some(ValueHandle {
                 ptr: dl,
@@ -550,7 +617,7 @@ where
                                     self.value_downlinks.remove(&path);
                                     Ok(self
                                         .create_new_value_downlink(init, schema, path.clone())
-                                        .await)
+                                        .await?)
                                 }
                             }
                         } else {
@@ -565,7 +632,7 @@ where
                         self.value_downlinks.remove(&path);
                         Ok(self
                             .create_new_value_downlink(init, schema, path.clone())
-                            .await)
+                            .await?)
                     }
                 }
             }
@@ -576,10 +643,11 @@ where
                 )),
                 _ => Ok(self
                     .create_new_value_downlink(init, schema, path.clone())
-                    .await),
+                    .await?),
             },
         };
         let _ = value_req.send(dl);
+        Ok(())
     }
 
     async fn handle_map_request(
@@ -588,7 +656,7 @@ where
         key_schema: StandardSchema,
         value_schema: StandardSchema,
         map_req: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
-    ) {
+    ) -> RequestResult<()> {
         let dl = match self.map_downlinks.get(&path) {
             Some(MapHandle {
                 ptr: dl,
@@ -621,7 +689,7 @@ where
                                             key_schema,
                                             value_schema,
                                         )
-                                        .await)
+                                        .await?)
                                 }
                             }
                         }
@@ -629,7 +697,7 @@ where
                             self.map_downlinks.remove(&path);
                             Ok(self
                                 .create_new_map_downlink(path.clone(), key_schema, value_schema)
-                                .await)
+                                .await?)
                         }
                     }
                 }
@@ -641,10 +709,11 @@ where
                 )),
                 _ => Ok(self
                     .create_new_map_downlink(path.clone(), key_schema, value_schema)
-                    .await),
+                    .await?),
             },
         };
         let _ = map_req.send(dl);
+        Ok(())
     }
 
     #[instrument(skip(self, stop_event))]
@@ -678,16 +747,16 @@ where
         }
     }
 
-    async fn run<Req>(mut self, requests: Req)
+    async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
     where
-        Req: Stream<Item = DownlinkSpecifier>,
+        Req: Stream<Item = DownlinkRequest>,
     {
         pin_mut!(requests);
 
         let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
 
         loop {
-            let item: Option<Either<DownlinkSpecifier, DownlinkStoppedEvent>> =
+            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
                 if self.stopped_watch.is_empty() {
                     pinned_requests.next().await.map(Either::Left)
                 } else {
@@ -698,31 +767,48 @@ where
                 };
 
             match item {
-                Some(Either::Left(DownlinkSpecifier::Value {
-                    init,
-                    path,
-                    schema,
-                    request,
-                })) => {
-                    self.handle_value_request(init, path, schema, request).await;
-                }
-                Some(Either::Left(DownlinkSpecifier::Map {
-                    path,
-                    key_schema,
-                    value_schema,
-                    request,
-                })) => {
-                    self.handle_map_request(path, key_schema, value_schema, request)
-                        .await;
-                }
+                Some(Either::Left(left)) => match left {
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Value {
+                        init,
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_value_request(init, path, schema, request)
+                            .await?;
+                    }
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Map {
+                        path,
+                        key_schema,
+                        value_schema,
+                        request,
+                    }) => {
+                        self.handle_map_request(path, key_schema, value_schema, request)
+                            .await?;
+                    }
+                    DownlinkRequest::Command { path, envelope } => {
+                        self.handle_command_message(path, envelope).await?;
+                    }
+                },
                 Some(Either::Right(stop_event)) => {
                     self.handle_stop(stop_event).await;
                 }
-                None => {
-                    break;
-                }
+                None => break Ok(()),
             }
         }
+    }
+
+    async fn handle_command_message(
+        &mut self,
+        path: AbsolutePath,
+        envelope: Envelope,
+    ) -> RequestResult<()> {
+        self.router
+            .general_sink()
+            .send_item((path.host, envelope))
+            .map_err(|_| SubscriptionError::ConnectionError)
+            .await?;
+        Ok(())
     }
 }
 
