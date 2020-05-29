@@ -648,20 +648,23 @@ impl From<tokio::task::JoinError> for ConnectionError {
     }
 }
 
-impl From<tungstenite::error::Error> for ConnectionError {
+impl From<TError> for ConnectionError {
     fn from(e: TError) -> Self {
         match e {
             TError::ConnectionClosed | TError::AlreadyClosed => {
                 ConnectionError::from(ConnectionErrorKind::ClosedError)
             }
-            e @ TError::Http(_) | e @ TError::HttpFormat(_) | e @ TError::Tls(_) => {
-                ConnectionError {
-                    kind: ConnectionErrorKind::SocketError,
-                    tungstenite_error: Some(e),
-                }
-            }
+            e @ TError::Http(_)
+            | e @ TError::HttpFormat(_)
+            | e @ TError::Tls(_)
+            | e @ TError::Protocol(_)
+            | e @ TError::Io(_)
+            | e @ TError::Url(_) => ConnectionError {
+                kind: ConnectionErrorKind::SocketError,
+                tungstenite_error: Some(e),
+            },
             _ => ConnectionError {
-                kind: ConnectionErrorKind::ReceiveMessageError,
+                kind: ConnectionErrorKind::ConnectError,
                 tungstenite_error: Some(e),
             },
         }
