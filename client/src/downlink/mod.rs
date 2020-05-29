@@ -32,6 +32,7 @@ pub mod typed;
 pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
+use crate::connections::ConnectionError;
 use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::model::schema::StandardSchema;
@@ -97,7 +98,9 @@ pub enum DownlinkError {
     MalformedMessage,
     InvalidAction,
     SchemaViolation(Value, StandardSchema),
-    ConnectionFailure,
+    ConnectionFailure(String),
+    ConnectionPoolFailure(ConnectionError),
+    ClosingFailure,
 }
 
 /// A request to a downlink for a value.
@@ -107,10 +110,14 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::ConnectionError => DownlinkError::ConnectionFailure,
-            RoutingError::HostUnreachable => DownlinkError::TaskPanic("Host is unreachable."),
-            RoutingError::PoolError(_) => DownlinkError::TaskPanic("Pool error."),
-            RoutingError::CloseError => DownlinkError::TaskPanic("The router could not close."),
+            RoutingError::ConnectionError => {
+                DownlinkError::ConnectionFailure("The connection has been lost".to_string())
+            }
+            RoutingError::PoolError(e) => DownlinkError::ConnectionPoolFailure(e),
+            RoutingError::CloseError => DownlinkError::ClosingFailure,
+            RoutingError::HostUnreachable => {
+                DownlinkError::ConnectionFailure("The host is unreachable".to_string())
+            }
         }
     }
 }
@@ -139,7 +146,14 @@ impl Display for DownlinkError {
             DownlinkError::InvalidAction => {
                 write!(f, "An action could not be applied to the internal state.")
             }
-            DownlinkError::ConnectionFailure => write!(f, "A connection has failed permanently."),
+            DownlinkError::ConnectionFailure(error) => write!(f, "Connection failure: {}.", error),
+
+            DownlinkError::ConnectionPoolFailure(connection_error) => write!(
+                f,
+                "The connection pool has encountered a failure: {}",
+                connection_error
+            ),
+            DownlinkError::ClosingFailure => write!(f, "An error occurred while closing down."),
         }
     }
 }
