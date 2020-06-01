@@ -28,8 +28,9 @@ use crate::configuration::router::RouterParamBuilder;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
-    AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedMapDownlink,
-    TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
+    AnyCommandDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
+    SubscriptionError, TypedMapDownlink, TypedMapReceiver, TypedValueDownlink, TypedValueReceiver,
+    ValueReceiver,
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
@@ -190,6 +191,16 @@ impl SwimClient {
     ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
         self.downlinks
             .subscribe_map_untyped(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    pub async fn command_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<AnyCommandDownlink, ClientError> {
+        self.downlinks
+            .subscribe_command(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }

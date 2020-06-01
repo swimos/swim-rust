@@ -22,15 +22,43 @@ mod tests {
     use common::sink::item::ItemSink;
     use common::warp::envelope::Envelope;
     use common::warp::path::AbsolutePath;
-    use utilities::trace;
-
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;
     use tokio::time::Duration;
+    use utilities::trace;
 
     fn init_trace() {
         trace::init_trace(vec!["client::router=trace"]);
+    }
+
+    use client::configuration::downlink::{
+        BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+    };
+    use client::interface::SwimClient;
+
+    fn config() -> ConfigHierarchy {
+        let client_params = ClientParams::new(2, Default::default()).unwrap();
+        let default_params = DownlinkParams::new_queue(
+            BackpressureMode::Propagate,
+            5,
+            Duration::from_secs(60000),
+            5,
+            OnInvalidMessage::Terminate,
+            10000,
+        )
+        .unwrap();
+
+        ConfigHierarchy::new(client_params, default_params)
+    }
+
+    #[tokio::test(core_threads = 5)]
+    async fn test() {
+        let mut client = SwimClient::new(config()).await;
+        let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
+        let command_dl = client.command_downlink(path).await.unwrap();
+
+        command_dl.upgrade().unwrap().send_item()
     }
 
     #[tokio::test(core_threads = 2)]

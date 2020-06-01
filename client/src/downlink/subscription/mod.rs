@@ -72,6 +72,9 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
+pub type AnyCommandDownlink = AnyWeakDownlink<value::Action, ()>;
+type AnyWeakCommandDownlink = AnyWeakDownlink<value::Action, ()>;
+
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
     task: JoinHandle<RequestResult<()>>,
@@ -79,7 +82,7 @@ pub struct Downlinks {
 
 enum DownlinkRequest {
     Subscription(DownlinkSpecifier),
-    Command {
+    DirectCommand {
         path: AbsolutePath,
         envelope: Envelope,
     },
@@ -114,7 +117,7 @@ impl Downlinks {
         envelope: Envelope,
     ) -> RequestResult<()> {
         self.sender
-            .send(DownlinkRequest::Command { path, envelope })
+            .send(DownlinkRequest::DirectCommand { path, envelope })
             .map_err(|_| SubscriptionError::ConnectionError)
             .await?;
 
@@ -232,6 +235,23 @@ impl Downlinks {
             }))
             .err_into::<SubscriptionError>()
             .await?;
+        rx.await.map_err(Into::into).and_then(|r| r)
+    }
+
+    pub async fn subscribe_command(
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<AnyCommandDownlink> {
+        let (tx, rx) = oneshot::channel();
+
+        self.sender
+            .send(DownlinkRequest::Subscription(DownlinkSpecifier::Command {
+                path,
+                request: Request::new(tx),
+            }))
+            .err_into::<SubscriptionError>()
+            .await?;
+
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 }
@@ -359,7 +379,7 @@ impl SubscriptionError {
     }
 }
 
-pub type RequestResult<T> = std::result::Result<T, SubscriptionError>;
+pub type RequestResult<T> = Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
     Value {
@@ -373,6 +393,10 @@ pub enum DownlinkSpecifier {
         key_schema: StandardSchema,
         value_schema: StandardSchema,
         request: Request<RequestResult<(AnyMapDownlink, MapReceiver)>>,
+    },
+    Command {
+        path: AbsolutePath,
+        request: Request<RequestResult<AnyCommandDownlink>>,
     },
 }
 
@@ -409,10 +433,15 @@ impl MapHandle {
     }
 }
 
+struct CommandHandle {
+    ptr: AnyWeakCommandDownlink,
+}
+
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
     value_downlinks: HashMap<AbsolutePath, ValueHandle>,
     map_downlinks: HashMap<AbsolutePath, MapHandle>,
+    command_downlinks: HashMap<AbsolutePath, CommandHandle>,
     stopped_watch: StopEvents,
     router: R,
 }
@@ -460,6 +489,7 @@ where
             config,
             value_downlinks: HashMap::new(),
             map_downlinks: HashMap::new(),
+            command_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
             router,
         }
@@ -595,6 +625,17 @@ where
         Ok((dl, rec))
     }
 
+    async fn create_new_command_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<AnyCommandDownlink> {
+        let (sink, _) = self.router.connection_for(&path).await?;
+        let cmd_sink = sink
+            .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&path, cmd).1.into());
+
+        Ok(command_downlink_for_sink(cmd_sink))
+    }
+
     async fn handle_value_request(
         &mut self,
         init: Value,
@@ -716,6 +757,22 @@ where
         Ok(())
     }
 
+    async fn handle_command_request(
+        &mut self,
+        path: AbsolutePath,
+        value_req: Request<RequestResult<AnyCommandDownlink>>,
+    ) -> RequestResult<()> {
+        let dl = match self.command_downlinks.get(&path) {
+            Some(CommandHandle { ptr: dl }) => {
+                Ok(self.create_new_command_downlink(path.clone()).await?)
+            }
+            _ => Ok(self.create_new_command_downlink(path.clone()).await?),
+        };
+
+        let _ = value_req.send(dl);
+        Ok(())
+    }
+
     #[instrument(skip(self, stop_event))]
     async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
         match &stop_event.error {
@@ -777,6 +834,7 @@ where
                         self.handle_value_request(init, path, schema, request)
                             .await?;
                     }
+
                     DownlinkRequest::Subscription(DownlinkSpecifier::Map {
                         path,
                         key_schema,
@@ -786,7 +844,12 @@ where
                         self.handle_map_request(path, key_schema, value_schema, request)
                             .await?;
                     }
-                    DownlinkRequest::Command { path, envelope } => {
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Command { path, request }) => {
+                        self.handle_command_request(path, request).await?;
+                    }
+
+                    DownlinkRequest::DirectCommand { path, envelope } => {
                         self.handle_command_message(path, envelope).await?;
                     }
                 },
@@ -901,4 +964,11 @@ where
             (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
         }
     }
+}
+
+fn command_downlink_for_sink<Snk>(cmd_sink: Snk) -> AnyCommandDownlink
+where
+    Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
+{
+    let dl_cmd_sink = cmd_sink.map_err_into();
 }
