@@ -36,7 +36,7 @@ use crate::transaction::stack::NonEmptyStack;
 use crate::transaction::frame_mask::FrameMask;
 
 const DEFAULT_LOG_CAP: usize = 32;
-const STARTING_STACK_CAP: usize = 8;
+const DEFAULT_STACK_SIZE: usize = 8;
 
 #[derive(Debug, Clone)]
 enum LogState {
@@ -98,20 +98,16 @@ pub struct Transaction {
     log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
     log: Slab<LogEntry>,
     masks: NonEmptyStack<FrameMask>,
-}
-
-impl Default for Transaction {
-    fn default() -> Self {
-        Transaction::new()
-    }
+    stack_size: usize,
 }
 
 impl Transaction {
-    pub fn new() -> Self {
+    pub fn new(stack_size: usize) -> Self {
         Transaction {
             log_assoc: HashMap::new(),
             log: Slab::with_capacity(DEFAULT_LOG_CAP),
-            masks: NonEmptyStack::new(FrameMask::new(), STARTING_STACK_CAP),
+            masks: NonEmptyStack::new(FrameMask::new(), stack_size + 1),
+            stack_size,
         }
     }
 
@@ -131,7 +127,7 @@ impl Transaction {
                 let result = value.clone().downcast().unwrap();
                 let entry = LogEntry {
                     current: value,
-                    state: NonEmptyStack::new(LogState::UnconditionalGet, STARTING_STACK_CAP),
+                    state: NonEmptyStack::new(LogState::UnconditionalGet, self.stack_size + 1),
                 };
                 let i = self.log.insert(entry);
                 self.log_assoc.insert(k, i);
@@ -143,7 +139,7 @@ impl Transaction {
     fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<Arc<TVarInner>>, value: Arc<T>) {
         let entry = LogEntry {
             current: value,
-            state: NonEmptyStack::new(LogState::UnconditionalSet, STARTING_STACK_CAP),
+            state: NonEmptyStack::new(LogState::UnconditionalSet, self.stack_size),
         };
         let i = self.log.insert(entry);
         self.masks.peek_mut().insert(i);
@@ -151,7 +147,7 @@ impl Transaction {
     }
 
     pub(crate) fn apply_set<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>, value: Arc<T>) {
-        let Transaction { log_assoc, log, masks } = self;
+        let Transaction { log_assoc, log, masks, .. } = self;
         let k = PtrKey(var.clone());
         if let Some(i) = log_assoc.get(&k) {
             let entry = log.get_mut(*i)
@@ -312,7 +308,7 @@ where
 
     let mut contention_manager = retries.contention_manager();
     let max_retries = retries.max_retries();
-    let mut transaction = Transaction::new();
+    let mut transaction = Transaction::new(S::required_stack().unwrap_or(DEFAULT_STACK_SIZE));
     let mut failed_commits: usize = 0;
     let mut num_attempts: usize = 0;
 

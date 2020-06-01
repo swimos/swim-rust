@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stm::{self, Constant, Abort, Stm, StmEither};
+use crate::stm::{self, Constant, Abort, Stm, StmEither, BoxStm, Retry, Catch, Choice};
 use super::atomically;
 use futures::stream::{Empty, empty};
 use std::fmt::{Display, Formatter, Debug};
@@ -357,3 +357,127 @@ async fn eventual_retry() {
     assert!(matches!(result, Ok(Ok(s)) if s == "Done"));
 
 }
+
+#[tokio::test(threaded_scheduler)]
+async fn boxed_transaction() {
+
+    let stm = Box::new(Constant(3));
+
+    let result = atomically(&stm, ExactlyOnce).await;
+
+    assert!(matches!(result, Ok(3)));
+
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn ref_transaction() {
+
+    let stm = Constant(3);
+
+    let result = atomically(&&stm, ExactlyOnce).await;
+
+    assert!(matches!(result, Ok(3)));
+
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn arc_transaction() {
+
+    let stm = Arc::new(Constant(3));
+
+    let result = atomically(&stm, ExactlyOnce).await;
+
+    assert!(matches!(result, Ok(3)));
+
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn dyn_boxed_transaction() {
+
+    let stm = Constant(3).boxed();
+
+    let result = atomically(&stm, ExactlyOnce).await;
+
+    assert!(matches!(result, Ok(3)));
+
+}
+
+fn stack_size<T: Stm>(_: &T) -> Option<usize> {
+    T::required_stack()
+}
+
+#[test]
+fn zero_stack_sizes() {
+    let var = TVar::new(0);
+
+    assert_eq!(stack_size(&Constant(1)), Some(0));
+    assert_eq!(stack_size(&Constant(1).followed_by(Constant(1))), Some(0));
+    assert_eq!(stack_size(&Constant(1).map(|n| n * 2)), Some(0));
+    assert_eq!(stack_size(&var.get()), Some(0));
+    assert_eq!(stack_size(&var.put(1)), Some(0));
+    assert_eq!(stack_size::<Abort<TestError, i32>>(&stm::abort(TestError("Boom".to_string()))), Some(0));
+    assert_eq!(stack_size::<Retry<i32>>(&stm::retry()), Some(0));
+}
+
+#[test]
+fn increase_stack_sizes() {
+
+    let catch = Catch::new(Constant(1), |e: &TestError| Constant(1));
+    assert_eq!(stack_size(&catch), Some(1));
+    let catch2 = Catch::new(catch, |e: &TestError| Constant(1));
+    assert_eq!(stack_size(&catch2), Some(2));
+
+    let choice = Choice::new(Constant(1), Constant(1));
+    assert_eq!(stack_size(&choice), Some(1));
+    let choice2 = Choice::new(choice, Constant(1));
+    assert_eq!(stack_size(&choice2), Some(2));
+}
+
+fn catch<S: Stm<Result = i32>>(s: S) -> impl Stm<Result = i32> {
+    Catch::new(s, |_: &TestError| Constant(1))
+}
+
+#[test]
+fn greater_of_two_stack_sizes() {
+
+    let seq1 = catch(Constant(1)).followed_by(Constant(1));
+    let seq2 = Constant(1).followed_by(catch(Constant(1)));
+    let seq3 = catch(Constant(1)).followed_by(catch(Constant(1)));
+    assert_eq!(stack_size(&seq1), Some(1));
+    assert_eq!(stack_size(&seq2), Some(1));
+    assert_eq!(stack_size(&seq3), Some(1));
+
+    let and_then1 = Constant(1).and_then(|_| catch(Constant(1)));
+    let and_then2 = catch(Constant(1)).and_then(|_| Constant(1));
+    let and_then3 = catch(Constant(1)).and_then(|_| catch(Constant(1)));
+    assert_eq!(stack_size(&and_then1), Some(1));
+    assert_eq!(stack_size(&and_then2), Some(1));
+    assert_eq!(stack_size(&and_then3), Some(1));
+
+    let longer_recovery1 = Catch::new(Constant(1), |_: &TestError| {
+        catch(catch(Constant(1)))
+    });
+    let longer_recovery2 = Choice::new(Constant(1), catch(catch(Constant(1))));
+    assert_eq!(stack_size(&longer_recovery1), Some(2));
+    assert_eq!(stack_size(&longer_recovery2), Some(2));
+}
+
+#[test]
+fn dyn_stm_erases_stack_size() {
+
+    assert!(stack_size(&Constant(1).boxed()).is_none());
+    let catch = Catch::new(Constant(1).boxed(), |e: &TestError| Constant(1));
+    assert!(stack_size(&catch).is_none());
+    let choice = Choice::new(Constant(1).boxed(), Constant(1));
+    assert!(stack_size(&choice).is_none());
+
+    assert!(stack_size(&Constant(1).boxed().followed_by(Constant(1))).is_none());
+    assert!(stack_size(&Constant(1).followed_by(Constant(1).boxed())).is_none());
+    assert!(stack_size(&Constant(1).boxed().and_then(|_| Constant(1))).is_none());
+    assert!(stack_size(&Constant(1).and_then(|_| Constant(1).boxed())).is_none());
+    assert!(stack_size(&Constant(1).boxed().map(|i| i * 2)).is_none());
+
+}
+
+
+
