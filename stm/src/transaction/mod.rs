@@ -29,6 +29,7 @@ use futures::task::{Context, Poll};
 use tokio::macros::support::Pin;
 use futures_util::stream::FuturesUnordered;
 use futures::stream::FusedStream;
+use slab::Slab;
 
 #[derive(Debug)]
 enum LogState {
@@ -74,15 +75,19 @@ impl LogEntry {
     }
 }
 
+const DEFAULT_LOG_SIZE: usize = 32;
+
 #[derive(Debug, Default)]
 pub struct Transaction {
-    log: HashMap<PtrKey<Arc<TVarInner>>, Option<LogEntry>>,
+    log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
+    log: Slab<LogEntry>,
 }
 
 impl Transaction {
     pub fn new() -> Self {
         Transaction {
-            log: HashMap::new(),
+            log_assoc: HashMap::new(),
+            log: Slab::with_capacity(DEFAULT_LOG_SIZE),
         }
     }
 
@@ -95,8 +100,8 @@ impl Transaction {
         var: &Arc<TVarInner>,
     ) -> Arc<T> {
         let k = PtrKey(var.clone());
-        match self.log.get_mut(&k) {
-            Some(Some(entry)) => entry.get_value(),
+        match self.log_assoc.get(&k).and_then(|i| self.log.get(*i)) {
+            Some(entry) => entry.get_value(),
             _ => {
                 let value = var.read().await;
                 let result = value.clone().downcast().unwrap();
@@ -104,7 +109,8 @@ impl Transaction {
                     current: value,
                     state: LogState::UnconditionalGet,
                 };
-                self.log.insert(k, Some(entry));
+                let i = self.log.insert(entry);
+                self.log_assoc.insert(k, i);
                 result
             }
         }
@@ -112,8 +118,8 @@ impl Transaction {
 
     pub(crate) fn apply_set<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>, value: Arc<T>) {
         let k = PtrKey(var.clone());
-        match self.log.get_mut(&k) {
-            Some(Some(entry)) => {
+        match self.log_assoc.get(&k).cloned().and_then(|i| self.log.get_mut(i)) {
+            Some(entry) => {
                 entry.set(value);
             }
             _ => {
@@ -121,7 +127,8 @@ impl Transaction {
                     current: value,
                     state: LogState::UnconditionalSet,
                 };
-                self.log.insert(k, Some(entry));
+                let i = self.log.insert(entry);
+                self.log_assoc.insert(k, i);
             }
         }
     }
@@ -129,21 +136,20 @@ impl Transaction {
     pub(crate) async fn try_commit(&mut self) -> bool {
         let mut reads = FuturesUnordered::new();
         let mut writes = FuturesUnordered::new();
-        for (key, entry) in self.log.iter_mut() {
-            if let Some(LogEntry { current, state }) = entry.take() {
-                let PtrKey(var) = key;
+        for (key, i) in self.log_assoc.iter() {
+            let LogEntry { current, state } = self.log.remove(*i);
+            let PtrKey(var) = key;
 
-                match state {
-                    LogState::UnconditionalGet => {
-                        reads.push(var.validate_read(current));
-                    },
-                    LogState::UnconditionalSet => {
-                        writes.push(var.prepare_write(None, current));
-                    },
-                    LogState::ConditionalSet(old) => {
-                        writes.push(var.prepare_write(Some(old), current));
-                    },
-                }
+            match state {
+                LogState::UnconditionalGet => {
+                    reads.push(var.validate_read(current));
+                },
+                LogState::UnconditionalSet => {
+                    writes.push(var.prepare_write(None, current));
+                },
+                LogState::ConditionalSet(old) => {
+                    writes.push(var.prepare_write(Some(old), current));
+                },
             }
         }
         let mut read_locks = Vec::with_capacity(reads.len());
@@ -181,22 +187,20 @@ impl Transaction {
     }
 
     fn reads_changed_or_locked(&self) -> bool {
-        self.log.iter().any(|(PtrKey(var), entry)| {
-            if let Some(entry) = entry {
-                match &entry.state {
-                    LogState::UnconditionalGet | LogState::ConditionalSet(_) => {
-                        var.has_changed(&entry.current)
-                    },
-                    _ => false
-                }
-            } else {
-                false
+        self.log_assoc.iter().any(|(PtrKey(var), i)| {
+            match self.log.get(*i) {
+                Some(LogEntry { state: LogState::UnconditionalGet, current }) |
+                Some(LogEntry { state: LogState::ConditionalSet(_), current }) => {
+                    var.has_changed(current)
+                },
+                _ => false
             }
         })
     }
 
     fn reset(&mut self) {
-        self.log.clear()
+        self.log_assoc.clear();
+        self.log.clear();
     }
 
 
@@ -332,14 +336,13 @@ impl<'a> Future for AwaitChanged<'a> {
             if transaction.reads_changed_or_locked() {
                 return Poll::Ready(());
             }
-            transaction.log.iter().for_each(|(PtrKey(var), entry)| {
-                if let Some(entry) = entry {
-                    match &entry.state {
-                        LogState::UnconditionalGet | LogState::ConditionalSet(_) => {
-                            var.subscribe(cx.waker().clone());
-                        },
-                        _ => {}
-                    }
+            transaction.log_assoc.iter().for_each(|(PtrKey(var), i)| {
+                match transaction.log.get(*i) {
+                    Some(LogEntry { state: LogState::UnconditionalGet, ..}) |
+                    Some(LogEntry { state: LogState::ConditionalSet(_), ..}) => {
+                        var.subscribe(cx.waker().clone());
+                    },
+                    _ => {}
                 }
             });
             if transaction.reads_changed_or_locked() {
