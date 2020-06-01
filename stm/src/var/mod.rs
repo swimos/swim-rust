@@ -17,13 +17,13 @@ mod tests;
 
 use futures::future::FutureExt;
 
-use tokio::sync::{RwLock, RwLockWriteGuard, RwLockReadGuard};
-use std::sync::{Arc, Mutex};
-use std::fmt::{Debug, Formatter};
 use std::any::Any;
-use std::ops::Deref;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
 use std::task::Waker;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 
@@ -33,7 +33,6 @@ pub(in crate) struct TVarInner {
 }
 
 impl TVarInner {
-
     pub fn new<T: Send + Sync + 'static>(value: T) -> Self {
         TVarInner {
             content: RwLock::new(Arc::new(value)),
@@ -62,8 +61,7 @@ impl TVarInner {
         self.wakers.lock().unwrap().push(waker);
     }
 
-    pub async fn validate_read(&self,
-                                      expected: Contents) -> Option<RwLockReadGuard<'_, Contents>> {
+    pub async fn validate_read(&self, expected: Contents) -> Option<RwLockReadGuard<'_, Contents>> {
         let guard = self.content.read().await;
         if Arc::ptr_eq(guard.deref(), &expected) {
             Some(guard)
@@ -72,28 +70,25 @@ impl TVarInner {
         }
     }
 
-    pub async fn prepare_write(&self,
-                                      expected: Option<Contents>,
-                                      value: Contents) -> Option<ApplyWrite<'_>> {
+    pub async fn prepare_write(
+        &self,
+        expected: Option<Contents>,
+        value: Contents,
+    ) -> Option<ApplyWrite<'_>> {
         let guard = self.content.write().await;
         match expected {
             Some(expected) if !Arc::ptr_eq(guard.deref(), &expected) => None,
-            _ => {
-                Some(ApplyWrite {
-                    var: self,
-                    guard,
-                    value,
-                })
-            }
+            _ => Some(ApplyWrite {
+                var: self,
+                guard,
+                value,
+            }),
         }
     }
-
 }
 
-
-
 #[derive(Clone)]
-pub struct TVar<T>(Arc<TVarInner>, PhantomData<Arc<T>>,);
+pub struct TVar<T>(Arc<TVarInner>, PhantomData<Arc<T>>);
 
 impl<T> Debug for TVar<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -104,11 +99,9 @@ impl<T> Debug for TVar<T> {
 pub struct TVarRead<T>(Arc<TVarInner>, PhantomData<fn() -> Arc<T>>);
 
 impl<T> TVarRead<T> {
-
     pub(crate) fn inner(&self) -> &Arc<TVarInner> {
         &self.0
     }
-
 }
 
 impl<T> Debug for TVarRead<T> {
@@ -120,26 +113,27 @@ impl<T> Debug for TVarRead<T> {
 pub struct TVarWrite<T> {
     pub(crate) inner: Arc<TVarInner>,
     pub(crate) value: Arc<T>,
-    _op_t_: PhantomData<fn(Arc<T>) -> ()>
+    _op_t_: PhantomData<fn(Arc<T>) -> ()>,
 }
 
 impl<T: Debug> Debug for TVarWrite<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Write[TVar<{}> << {:?}]", std::any::type_name::<T>(), &self.value)
+        write!(
+            f,
+            "Write[TVar<{}> << {:?}]",
+            std::any::type_name::<T>(),
+            &self.value
+        )
     }
 }
 
-
 impl<T: Send + Sync + 'static> TVar<T> {
-
     pub fn new(initial: T) -> Self {
         TVar(Arc::new(TVarInner::new(initial)), PhantomData)
     }
-
 }
 
 impl<T> TVar<T> {
-
     pub fn get(&self) -> TVarRead<T> {
         let TVar(inner, ..) = self;
         TVarRead(inner.clone(), PhantomData)
@@ -150,18 +144,16 @@ impl<T> TVar<T> {
         TVarWrite {
             inner: inner.clone(),
             value: Arc::new(value),
-            _op_t_: PhantomData
+            _op_t_: PhantomData,
         }
     }
 
     pub fn same_var(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
-
 }
 
 impl<T: Any + Send + Sync> TVar<T> {
-
     pub async fn load(&self) -> Arc<T> {
         let TVar(inner, ..) = self;
         let lock = inner.content.read().await;
@@ -183,16 +175,13 @@ impl<T: Any + Send + Sync> TVar<T> {
 }
 
 impl<T: Any + Clone> TVar<T> {
-
     pub async fn snapshot(&self) -> T {
         let TVar(inner, ..) = self;
         let lock = inner.content.read().await;
         let content_ref: &T = lock.deref().downcast_ref().unwrap();
         content_ref.clone()
     }
-
 }
-
 
 pub(crate) struct ApplyWrite<'a> {
     var: &'a TVarInner,
@@ -201,13 +190,14 @@ pub(crate) struct ApplyWrite<'a> {
 }
 
 impl<'a> ApplyWrite<'a> {
-
     pub fn apply(self) {
-        let ApplyWrite { var, mut guard, value } = self;
+        let ApplyWrite {
+            var,
+            mut guard,
+            value,
+        } = self;
         *guard = value;
         drop(guard);
         var.notify();
     }
-
 }
-

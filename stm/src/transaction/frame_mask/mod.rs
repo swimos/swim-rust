@@ -24,13 +24,16 @@ pub struct FrameMask(u128);
 pub struct FrameMaskIter<'a>(&'a u128, usize, usize);
 
 impl FrameMask {
-
     pub fn new() -> Self {
         Default::default()
     }
 
     pub fn insert(&mut self, n: usize) {
-        assert!(n < MAX_SIZE, "A transaction can refer to at most {} variables.", MAX_SIZE);
+        assert!(
+            n < MAX_SIZE,
+            "A transaction can refer to at most {} variables.",
+            MAX_SIZE
+        );
         let FrameMask(m) = self;
         *m = *m | (1 << n);
     }
@@ -44,7 +47,6 @@ impl FrameMask {
         let FrameMask(m) = self;
         FrameMaskIter(m, MAX_SIZE - m.leading_zeros() as usize, 0)
     }
-
 }
 
 impl<'a> Iterator for FrameMaskIter<'a> {

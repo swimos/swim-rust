@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stm::{self, Constant, Abort, Stm, StmEither, BoxStm, Retry, Catch, Choice};
 use super::atomically;
-use futures::stream::{Empty, empty};
-use std::fmt::{Display, Formatter, Debug};
-use std::error::Error;
-use std::sync::Arc;
-use crate::transaction::{TransactionError, RetryManager};
+use crate::stm::{self, Abort, BoxStm, Catch, Choice, Constant, Retry, Stm, StmEither};
+use crate::transaction::{RetryManager, TransactionError};
 use crate::var::TVar;
-use tokio::task::JoinHandle;
-use futures::Stream;
-use std::task::Context;
+use futures::stream::{empty, Empty};
 use futures::task::Poll;
+use futures::Stream;
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
+use std::sync::Arc;
+use std::task::Context;
+use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
 struct ExactlyOnce;
@@ -40,7 +40,7 @@ impl RetryManager for RetryFor {
     }
 
     fn max_retries(&self) -> usize {
-       self.0
+        self.0
     }
 }
 
@@ -80,24 +80,20 @@ fn forever() -> RetryFor {
 
 #[tokio::test(threaded_scheduler)]
 async fn constant_transaction() {
-
     let stm = Constant(3);
 
     let result = atomically(&stm, ExactlyOnce).await;
 
     assert!(matches!(result, Ok(3)));
-
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct TestError(String);
 
 impl TestError {
-
     fn new<S: Into<String>>(txt: S) -> TestError {
         TestError(txt.into())
     }
-
 }
 
 impl Display for TestError {
@@ -110,22 +106,22 @@ impl Error for TestError {}
 
 fn assert_aborts_with<T: Debug>(result: Result<T, TransactionError>, expected: TestError) {
     match result {
-        Ok(v) => panic!("Expected to fail with {} but succeeded with {:?}.", expected, v),
-        Err(TransactionError::Aborted { error }) => {
-            match error.downcast_ref::<TestError>() {
-                Some(e) => {
-                    assert_eq!(e, &expected);
-                },
-                _ => panic!("Error had the wrong type."),
+        Ok(v) => panic!(
+            "Expected to fail with {} but succeeded with {:?}.",
+            expected, v
+        ),
+        Err(TransactionError::Aborted { error }) => match error.downcast_ref::<TestError>() {
+            Some(e) => {
+                assert_eq!(e, &expected);
             }
-        }
+            _ => panic!("Error had the wrong type."),
+        },
         err => panic!("Unexpected error: {:?}", err),
     }
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn immediate_abort() {
-
     let stm: Abort<TestError, i32> = stm::abort(TestError::new("Boom"));
 
     let result = atomically(&stm, ExactlyOnce).await;
@@ -135,7 +131,6 @@ async fn immediate_abort() {
 
 #[tokio::test(threaded_scheduler)]
 async fn map_constant_transaction() {
-
     let stm = Constant(2).map(|n| n * 2);
 
     let result = atomically(&stm, ExactlyOnce).await;
@@ -145,13 +140,12 @@ async fn map_constant_transaction() {
 
 #[tokio::test(threaded_scheduler)]
 async fn and_then_constant_transaction() {
-
     let stm = Constant(5).and_then(|n| {
-       if n % 2 == 0 {
-           Constant("Even")
-       } else {
-           Constant("Odd")
-       }
+        if n % 2 == 0 {
+            Constant("Even")
+        } else {
+            Constant("Odd")
+        }
     });
 
     let result = atomically(&stm, ExactlyOnce).await;
@@ -161,7 +155,6 @@ async fn and_then_constant_transaction() {
 
 #[tokio::test(threaded_scheduler)]
 async fn followed_constant_transaction() {
-
     let stm = Constant(5).followed_by(Constant(10));
 
     let result = atomically(&stm, ExactlyOnce).await;
@@ -171,7 +164,6 @@ async fn followed_constant_transaction() {
 
 #[tokio::test(threaded_scheduler)]
 async fn either_constant_transaction() {
-
     let stm_left: StmEither<Constant<i32>, Constant<i32>> = StmEither::Left(Constant(2));
     let result_left = atomically(&stm_left, ExactlyOnce).await;
     assert!(matches!(result_left, Ok(2)));
@@ -222,7 +214,8 @@ async fn get_and_set() {
 #[tokio::test(threaded_scheduler)]
 async fn set_get_and_set() {
     let var = TVar::new(2);
-    let stm = var.put(12)
+    let stm = var
+        .put(12)
         .followed_by(var.get().and_then(|n| var.put(*n + 1)));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(_)));
@@ -232,7 +225,6 @@ async fn set_get_and_set() {
 
 #[tokio::test(threaded_scheduler)]
 async fn increment_concurrently() {
-
     let var = TVar::new(0);
     let var_copy = var.clone();
     let barrier = Arc::new(tokio::sync::Barrier::new(2));
@@ -259,12 +251,10 @@ async fn increment_concurrently() {
 
     let after: Arc<i32> = var.load().await;
     assert_eq!(*after, 20);
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn simple_retry() {
-
     let var = TVar::new(0i32);
 
     let var_copy = var.clone();
@@ -287,12 +277,10 @@ async fn simple_retry() {
     let result = task.await;
 
     assert!(matches!(result, Ok(Ok(s)) if s == "Done"));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn fail_after_retry() {
-
     let var = TVar::new(0i32);
 
     let var_copy = var.clone();
@@ -314,13 +302,14 @@ async fn fail_after_retry() {
 
     let result = task.await;
 
-    assert!(matches!(result, Ok(Err(TransactionError::TooManyAttempts { num_attempts: 2}))));
-
+    assert!(matches!(
+        result,
+        Ok(Err(TransactionError::TooManyAttempts { num_attempts: 2 }))
+    ));
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn eventual_retry() {
-
     let var = TVar::new(0i32);
 
     let var_copy = var.clone();
@@ -355,51 +344,42 @@ async fn eventual_retry() {
     let result = task.await;
 
     assert!(matches!(result, Ok(Ok(s)) if s == "Done"));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn boxed_transaction() {
-
     let stm = Box::new(Constant(3));
 
     let result = atomically(&stm, ExactlyOnce).await;
 
     assert!(matches!(result, Ok(3)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn ref_transaction() {
-
     let stm = Constant(3);
 
     let result = atomically(&&stm, ExactlyOnce).await;
 
     assert!(matches!(result, Ok(3)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn arc_transaction() {
-
     let stm = Arc::new(Constant(3));
 
     let result = atomically(&stm, ExactlyOnce).await;
 
     assert!(matches!(result, Ok(3)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn dyn_boxed_transaction() {
-
     let stm = Constant(3).boxed();
 
     let result = atomically(&stm, ExactlyOnce).await;
 
     assert!(matches!(result, Ok(3)));
-
 }
 
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {
@@ -415,13 +395,15 @@ fn zero_stack_sizes() {
     assert_eq!(stack_size(&Constant(1).map(|n| n * 2)), Some(0));
     assert_eq!(stack_size(&var.get()), Some(0));
     assert_eq!(stack_size(&var.put(1)), Some(0));
-    assert_eq!(stack_size::<Abort<TestError, i32>>(&stm::abort(TestError("Boom".to_string()))), Some(0));
+    assert_eq!(
+        stack_size::<Abort<TestError, i32>>(&stm::abort(TestError("Boom".to_string()))),
+        Some(0)
+    );
     assert_eq!(stack_size::<Retry<i32>>(&stm::retry()), Some(0));
 }
 
 #[test]
 fn increase_stack_sizes() {
-
     let catch = Catch::new(Constant(1), |e: &TestError| Constant(1));
     assert_eq!(stack_size(&catch), Some(1));
     let catch2 = Catch::new(catch, |e: &TestError| Constant(1));
@@ -439,7 +421,6 @@ fn catch<S: Stm<Result = i32>>(s: S) -> impl Stm<Result = i32> {
 
 #[test]
 fn greater_of_two_stack_sizes() {
-
     let seq1 = catch(Constant(1)).followed_by(Constant(1));
     let seq2 = Constant(1).followed_by(catch(Constant(1)));
     let seq3 = catch(Constant(1)).followed_by(catch(Constant(1)));
@@ -454,9 +435,7 @@ fn greater_of_two_stack_sizes() {
     assert_eq!(stack_size(&and_then2), Some(1));
     assert_eq!(stack_size(&and_then3), Some(1));
 
-    let longer_recovery1 = Catch::new(Constant(1), |_: &TestError| {
-        catch(catch(Constant(1)))
-    });
+    let longer_recovery1 = Catch::new(Constant(1), |_: &TestError| catch(catch(Constant(1))));
     let longer_recovery2 = Choice::new(Constant(1), catch(catch(Constant(1))));
     assert_eq!(stack_size(&longer_recovery1), Some(2));
     assert_eq!(stack_size(&longer_recovery2), Some(2));
@@ -464,7 +443,6 @@ fn greater_of_two_stack_sizes() {
 
 #[test]
 fn dyn_stm_erases_stack_size() {
-
     assert!(stack_size(&Constant(1).boxed()).is_none());
     let catch = Catch::new(Constant(1).boxed(), |e: &TestError| Constant(1));
     assert!(stack_size(&catch).is_none());
@@ -476,8 +454,4 @@ fn dyn_stm_erases_stack_size() {
     assert!(stack_size(&Constant(1).boxed().and_then(|_| Constant(1))).is_none());
     assert!(stack_size(&Constant(1).and_then(|_| Constant(1).boxed())).is_none());
     assert!(stack_size(&Constant(1).boxed().map(|i| i * 2)).is_none());
-
 }
-
-
-

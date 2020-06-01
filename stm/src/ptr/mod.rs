@@ -13,16 +13,14 @@
 // limitations under the License.
 
 use std::cmp::Ordering;
+use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
-use std::fmt::{Debug, Formatter};
 
 pub trait Addressed {
-
     type Referrent: ?Sized;
 
     fn addr(&self) -> *const Self::Referrent;
-
 }
 
 impl<T: Deref> Addressed for T {
@@ -59,11 +57,9 @@ impl<A: Addressed> PartialEq for PtrKey<A> {
 impl<A: Addressed> Eq for PtrKey<A> {}
 
 impl<A: Addressed> PartialOrd for PtrKey<A> {
-
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.addr().partial_cmp(&other.addr())
     }
-
 }
 
 impl<A: Addressed> Ord for PtrKey<A> {

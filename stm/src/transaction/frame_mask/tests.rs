@@ -38,7 +38,6 @@ fn insert_and_contains() {
         mask.insert(i);
         assert!(mask.contains(i));
     }
-
 }
 
 #[test]
@@ -123,5 +122,4 @@ fn all_iter() {
     }
     let contents = mask.iter().collect::<Vec<_>>();
     assert_eq!(contents, (0..MAX_SIZE).into_iter().collect::<Vec<_>>());
-
 }

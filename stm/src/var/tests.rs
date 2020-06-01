@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn var_get() {
-
     let var = TVar::new(3);
     let n = var.load().await;
     assert_eq!(n, Arc::new(3));
@@ -25,7 +24,6 @@ async fn var_get() {
 
 #[tokio::test]
 async fn var_snapshot() {
-
     let var = TVar::new(3);
     let n = var.snapshot().await;
     assert_eq!(n, 3);
@@ -33,7 +31,6 @@ async fn var_snapshot() {
 
 #[tokio::test]
 async fn var_store() {
-
     let var = TVar::new(3);
     var.store(7).await;
     let n = var.snapshot().await;
@@ -42,7 +39,6 @@ async fn var_store() {
 
 #[tokio::test]
 async fn var_store_arc() {
-
     let var = TVar::new(3);
     let replacement = Arc::new(7);
     var.store_arc(replacement.clone()).await;

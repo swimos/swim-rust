@@ -16,7 +16,6 @@
 pub struct NonEmptyStack<T>(Vec<T>);
 
 impl<T> NonEmptyStack<T> {
-
     pub fn new(entry: T, capacity: usize) -> Self {
         let mut contents = Vec::with_capacity(capacity);
         contents.push(entry);
@@ -57,5 +56,4 @@ impl<T> NonEmptyStack<T> {
         let NonEmptyStack(contents) = self;
         contents.len()
     }
-
 }

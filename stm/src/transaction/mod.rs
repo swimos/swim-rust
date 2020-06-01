@@ -22,18 +22,18 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ptr::PtrKey;
+use crate::stm::{ExecResult, Stm};
+use crate::transaction::frame_mask::FrameMask;
+use crate::transaction::stack::NonEmptyStack;
 use crate::var::TVarInner;
+use futures::stream::FusedStream;
+use futures::task::{Context, Poll};
+use futures::{Future, Stream, StreamExt};
+use futures_util::stream::FuturesUnordered;
+use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use crate::stm::{ExecResult, Stm};
-use futures::{Future, Stream, StreamExt};
-use futures::task::{Context, Poll};
 use tokio::macros::support::Pin;
-use futures_util::stream::FuturesUnordered;
-use futures::stream::FusedStream;
-use slab::Slab;
-use crate::transaction::stack::NonEmptyStack;
-use crate::transaction::frame_mask::FrameMask;
 
 const DEFAULT_LOG_CAP: usize = 32;
 const DEFAULT_STACK_SIZE: usize = 8;
@@ -46,11 +46,9 @@ enum LogState {
 }
 
 impl LogState {
-
     fn has_dependency(&self) -> bool {
         !matches!(self, LogState::UnconditionalSet)
     }
-
 }
 
 impl Default for LogState {
@@ -91,8 +89,6 @@ impl LogEntry {
     }
 }
 
-
-
 #[derive(Debug)]
 pub struct Transaction {
     log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
@@ -115,10 +111,7 @@ impl Transaction {
         self.log.len()
     }
 
-    pub(crate) async fn apply_get<T: Any + Send + Sync>(
-        &mut self,
-        var: &Arc<TVarInner>,
-    ) -> Arc<T> {
+    pub(crate) async fn apply_get<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>) -> Arc<T> {
         let k = PtrKey(var.clone());
         match self.log_assoc.get(&k).and_then(|i| self.log.get(*i)) {
             Some(entry) => entry.get_value(),
@@ -147,10 +140,16 @@ impl Transaction {
     }
 
     pub(crate) fn apply_set<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>, value: Arc<T>) {
-        let Transaction { log_assoc, log, masks, .. } = self;
+        let Transaction {
+            log_assoc,
+            log,
+            masks,
+            ..
+        } = self;
         let k = PtrKey(var.clone());
         if let Some(i) = log_assoc.get(&k) {
-            let entry = log.get_mut(*i)
+            let entry = log
+                .get_mut(*i)
                 .expect("Log entries must be defined in they are in the association map.");
             if !masks.peek().contains(*i) {
                 let new_state = (*entry.state.peek()).clone();
@@ -173,13 +172,13 @@ impl Transaction {
             match state.take_top() {
                 LogState::UnconditionalGet => {
                     reads.push(var.validate_read(current));
-                },
+                }
                 LogState::UnconditionalSet => {
                     writes.push(var.prepare_write(None, current));
-                },
+                }
                 LogState::ConditionalSet(old) => {
                     writes.push(var.prepare_write(Some(old), current));
-                },
+                }
             }
         }
         let mut read_locks = Vec::with_capacity(reads.len());
@@ -217,22 +216,20 @@ impl Transaction {
     }
 
     fn reads_changed_or_locked(&self) -> bool {
-        self.log_assoc.iter().any(|(PtrKey(var), i)| {
-            match self.log.get(*i) {
-                Some(LogEntry { state, current }) if state.peek().has_dependency()=> {
+        self.log_assoc
+            .iter()
+            .any(|(PtrKey(var), i)| match self.log.get(*i) {
+                Some(LogEntry { state, current }) if state.peek().has_dependency() => {
                     var.has_changed(current)
-                },
-                _ => false
-            }
-        })
+                }
+                _ => false,
+            })
     }
 
     fn reset(&mut self) {
         self.log_assoc.clear();
         self.log.clear();
     }
-
-
 }
 
 #[derive(Debug)]
@@ -256,18 +253,22 @@ pub enum TransactionError {
 impl Display for TransactionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransactionError::Aborted { error } => {
-                write!(f, "Transaction aborted: {}", error)
-            },
-            TransactionError::HighContention { num_failed: num_retries } => {
-                write!(f, "Transaction could not commit after {} attempts.", num_retries)
-            },
+            TransactionError::Aborted { error } => write!(f, "Transaction aborted: {}", error),
+            TransactionError::HighContention {
+                num_failed: num_retries,
+            } => write!(
+                f,
+                "Transaction could not commit after {} attempts.",
+                num_retries
+            ),
             TransactionError::TransactionDiverged => {
                 write!(f, "Transaction took too long to execute.")
-            },
-            TransactionError::StackOverflow { depth } => {
-                write!(f, "The stack depth of the transaction ({}) exceeded the maximum depth.", depth)
-            },
+            }
+            TransactionError::StackOverflow { depth } => write!(
+                f,
+                "The stack depth of the transaction ({}) exceeded the maximum depth.",
+                depth
+            ),
             TransactionError::TooManyAttempts { num_attempts } => {
                 write!(f, "Failed to complete after {} attempts.", num_attempts)
             }
@@ -282,30 +283,27 @@ impl Error for TransactionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             TransactionError::Aborted { error } => Some(error.as_ref()),
-            _ => None
+            _ => None,
         }
     }
 }
 
-
 pub trait RetryManager {
-
     type ContentionManager: Stream<Item = ()> + Unpin;
 
     fn contention_manager(&self) -> Self::ContentionManager;
 
     fn max_retries(&self) -> usize;
-
 }
 
-pub async fn atomically<S, Retries>(stm: &S,
-                              retries: Retries,
+pub async fn atomically<S, Retries>(
+    stm: &S,
+    retries: Retries,
 ) -> Result<S::Result, TransactionError>
 where
     S: Stm,
     Retries: RetryManager,
 {
-
     let mut contention_manager = retries.contention_manager();
     let max_retries = retries.max_retries();
     let mut transaction = Transaction::new(S::required_stack().unwrap_or(DEFAULT_STACK_SIZE));
@@ -324,13 +322,15 @@ where
                     if num_attempts >= max_retries.saturating_add(1) {
                         return Err(TransactionError::TooManyAttempts { num_attempts });
                     } else if contention_manager.next().await.is_none() {
-                        return Err(TransactionError::HighContention { num_failed: failed_commits })
+                        return Err(TransactionError::HighContention {
+                            num_failed: failed_commits,
+                        });
                     }
                 }
-            },
+            }
             ExecResult::Abort(error) => {
                 return Err(TransactionError::Aborted { error });
-            },
+            }
             ExecResult::Retry => {
                 if transaction.num_dependencies() == 0 {
                     return Err(TransactionError::InvalidRetry);
@@ -339,23 +339,19 @@ where
                 } else {
                     AwaitChanged::new(&mut transaction).await;
                 }
-            },
+            }
         }
         transaction.reset();
     }
-
 }
 
 pub struct AwaitChanged<'a>(Option<&'a mut Transaction>);
 
 impl<'a> AwaitChanged<'a> {
-
     fn new(transaction: &'a mut Transaction) -> Self {
         AwaitChanged(Some(transaction))
     }
-
 }
-
 
 impl<'a> Future for AwaitChanged<'a> {
     type Output = ();
@@ -367,9 +363,9 @@ impl<'a> Future for AwaitChanged<'a> {
             }
             transaction.log_assoc.iter().for_each(|(PtrKey(var), i)| {
                 match transaction.log.get(*i) {
-                    Some(LogEntry { state, ..}) if state.peek().has_dependency()  => {
+                    Some(LogEntry { state, .. }) if state.peek().has_dependency() => {
                         var.subscribe(cx.waker().clone());
-                    },
+                    }
                     _ => {}
                 }
             });
@@ -381,6 +377,5 @@ impl<'a> Future for AwaitChanged<'a> {
         } else {
             Poll::Ready(())
         }
-
     }
 }
