@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod frame_mask;
+mod stack;
 #[cfg(test)]
 mod tests;
 
@@ -30,12 +32,25 @@ use tokio::macros::support::Pin;
 use futures_util::stream::FuturesUnordered;
 use futures::stream::FusedStream;
 use slab::Slab;
+use crate::transaction::stack::NonEmptyStack;
+use crate::transaction::frame_mask::FrameMask;
 
-#[derive(Debug)]
+const DEFAULT_LOG_CAP: usize = 32;
+const STARTING_STACK_CAP: usize = 8;
+
+#[derive(Debug, Clone)]
 enum LogState {
     UnconditionalGet,
     UnconditionalSet,
     ConditionalSet(Arc<dyn Any + Send + Sync>),
+}
+
+impl LogState {
+
+    fn has_dependency(&self) -> bool {
+        !matches!(self, LogState::UnconditionalSet)
+    }
+
 }
 
 impl Default for LogState {
@@ -47,7 +62,7 @@ impl Default for LogState {
 #[derive(Debug)]
 struct LogEntry {
     current: Arc<dyn Any + Send + Sync>,
-    state: LogState,
+    state: NonEmptyStack<LogState>,
 }
 
 impl LogEntry {
@@ -66,8 +81,9 @@ impl LogEntry {
     fn set<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
         assert_eq!(value.as_ref().type_id(), self.current.as_ref().type_id());
         let old_value = std::mem::replace(&mut self.current, value);
-        let old_state = std::mem::take(&mut self.state);
-        self.state = match old_state {
+        let state = self.state.peek_mut();
+        let old_state = std::mem::take(state);
+        *state = match old_state {
             LogState::UnconditionalGet => LogState::ConditionalSet(old_value),
             LogState::UnconditionalSet => LogState::UnconditionalSet,
             cond => cond,
@@ -75,19 +91,27 @@ impl LogEntry {
     }
 }
 
-const DEFAULT_LOG_SIZE: usize = 32;
 
-#[derive(Debug, Default)]
+
+#[derive(Debug)]
 pub struct Transaction {
     log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
     log: Slab<LogEntry>,
+    masks: NonEmptyStack<FrameMask>,
+}
+
+impl Default for Transaction {
+    fn default() -> Self {
+        Transaction::new()
+    }
 }
 
 impl Transaction {
     pub fn new() -> Self {
         Transaction {
             log_assoc: HashMap::new(),
-            log: Slab::with_capacity(DEFAULT_LOG_SIZE),
+            log: Slab::with_capacity(DEFAULT_LOG_CAP),
+            masks: NonEmptyStack::new(FrameMask::new(), STARTING_STACK_CAP),
         }
     }
 
@@ -107,7 +131,7 @@ impl Transaction {
                 let result = value.clone().downcast().unwrap();
                 let entry = LogEntry {
                     current: value,
-                    state: LogState::UnconditionalGet,
+                    state: NonEmptyStack::new(LogState::UnconditionalGet, STARTING_STACK_CAP),
                 };
                 let i = self.log.insert(entry);
                 self.log_assoc.insert(k, i);
@@ -116,20 +140,30 @@ impl Transaction {
         }
     }
 
+    fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<Arc<TVarInner>>, value: Arc<T>) {
+        let entry = LogEntry {
+            current: value,
+            state: NonEmptyStack::new(LogState::UnconditionalSet, STARTING_STACK_CAP),
+        };
+        let i = self.log.insert(entry);
+        self.masks.peek_mut().insert(i);
+        self.log_assoc.insert(k, i);
+    }
+
     pub(crate) fn apply_set<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>, value: Arc<T>) {
+        let Transaction { log_assoc, log, masks } = self;
         let k = PtrKey(var.clone());
-        match self.log_assoc.get(&k).cloned().and_then(|i| self.log.get_mut(i)) {
-            Some(entry) => {
-                entry.set(value);
+        if let Some(i) = log_assoc.get(&k) {
+            let entry = log.get_mut(*i)
+                .expect("Log entries must be defined in they are in the association map.");
+            if !masks.peek().contains(*i) {
+                let new_state = (*entry.state.peek()).clone();
+                entry.state.push(new_state);
             }
-            _ => {
-                let entry = LogEntry {
-                    current: value,
-                    state: LogState::UnconditionalSet,
-                };
-                let i = self.log.insert(entry);
-                self.log_assoc.insert(k, i);
-            }
+            entry.set(value);
+            self.masks.peek_mut().insert(*i);
+        } else {
+            self.entry_for_set(k, value);
         }
     }
 
@@ -140,7 +174,7 @@ impl Transaction {
             let LogEntry { current, state } = self.log.remove(*i);
             let PtrKey(var) = key;
 
-            match state {
+            match state.take_top() {
                 LogState::UnconditionalGet => {
                     reads.push(var.validate_read(current));
                 },
@@ -189,8 +223,7 @@ impl Transaction {
     fn reads_changed_or_locked(&self) -> bool {
         self.log_assoc.iter().any(|(PtrKey(var), i)| {
             match self.log.get(*i) {
-                Some(LogEntry { state: LogState::UnconditionalGet, current }) |
-                Some(LogEntry { state: LogState::ConditionalSet(_), current }) => {
+                Some(LogEntry { state, current }) if state.peek().has_dependency()=> {
                     var.has_changed(current)
                 },
                 _ => false
@@ -338,8 +371,7 @@ impl<'a> Future for AwaitChanged<'a> {
             }
             transaction.log_assoc.iter().for_each(|(PtrKey(var), i)| {
                 match transaction.log.get(*i) {
-                    Some(LogEntry { state: LogState::UnconditionalGet, ..}) |
-                    Some(LogEntry { state: LogState::ConditionalSet(_), ..}) => {
+                    Some(LogEntry { state, ..}) if state.peek().has_dependency()  => {
                         var.subscribe(cx.waker().clone());
                     },
                     _ => {}
