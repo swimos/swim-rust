@@ -16,6 +16,7 @@ use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
 };
 use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
+use crate::downlink::model::command;
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
@@ -51,7 +52,9 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{error, info, instrument, trace_span};
 
+use crate::downlink::model::command::CommandAction;
 use common::warp::envelope::Envelope;
+use std::num::NonZeroUsize;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
@@ -72,8 +75,8 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
-pub type AnyCommandDownlink = AnyWeakDownlink<value::Action, ()>;
-type AnyWeakCommandDownlink = AnyWeakDownlink<value::Action, ()>;
+pub type AnyCommandDownlink = AnyDownlink<CommandAction, ()>;
+type AnyWeakCommandDownlink = AnyWeakDownlink<CommandAction, ()>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
@@ -241,11 +244,13 @@ impl Downlinks {
     pub async fn subscribe_command(
         &mut self,
         path: AbsolutePath,
+        schema: StandardSchema,
     ) -> RequestResult<AnyCommandDownlink> {
         let (tx, rx) = oneshot::channel();
 
         self.sender
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Command {
+                schema,
                 path,
                 request: Request::new(tx),
             }))
@@ -396,6 +401,7 @@ pub enum DownlinkSpecifier {
     },
     Command {
         path: AbsolutePath,
+        schema: StandardSchema,
         request: Request<RequestResult<AnyCommandDownlink>>,
     },
 }
@@ -628,12 +634,15 @@ where
     async fn create_new_command_downlink(
         &mut self,
         path: AbsolutePath,
+        schema: StandardSchema,
     ) -> RequestResult<AnyCommandDownlink> {
         let (sink, _) = self.router.connection_for(&path).await?;
+
+        let config = self.config.config_for(&path);
         let cmd_sink = sink
             .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&path, cmd).1.into());
 
-        Ok(command_downlink_for_sink(cmd_sink))
+        Ok(command_downlink_for_sink(cmd_sink, schema, &config))
     }
 
     async fn handle_value_request(
@@ -760,13 +769,16 @@ where
     async fn handle_command_request(
         &mut self,
         path: AbsolutePath,
+        schema: StandardSchema,
         value_req: Request<RequestResult<AnyCommandDownlink>>,
     ) -> RequestResult<()> {
         let dl = match self.command_downlinks.get(&path) {
-            Some(CommandHandle { ptr: dl }) => {
-                Ok(self.create_new_command_downlink(path.clone()).await?)
-            }
-            _ => Ok(self.create_new_command_downlink(path.clone()).await?),
+            Some(CommandHandle { ptr: dl }) => Ok(self
+                .create_new_command_downlink(path.clone(), schema)
+                .await?),
+            _ => Ok(self
+                .create_new_command_downlink(path.clone(), schema)
+                .await?),
         };
 
         let _ = value_req.send(dl);
@@ -845,8 +857,12 @@ where
                             .await?;
                     }
 
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Command { path, request }) => {
-                        self.handle_command_request(path, request).await?;
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Command {
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_command_request(path, schema, request).await?;
                     }
 
                     DownlinkRequest::DirectCommand { path, envelope } => {
@@ -966,9 +982,48 @@ where
     }
 }
 
-fn command_downlink_for_sink<Snk>(cmd_sink: Snk) -> AnyCommandDownlink
+fn command_downlink_for_sink<Snk>(
+    cmd_sink: Snk,
+    schema: StandardSchema,
+    config: &DownlinkParams,
+) -> AnyCommandDownlink
 where
     Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
 {
     let dl_cmd_sink = cmd_sink.map_err_into();
+
+    match config.mux_mode {
+        MuxMode::Queue(n) => {
+            let dl = command::create_queue_downlink(Some(schema), dl_cmd_sink, n, &config);
+            AnyDownlink::Queue(dl)
+        }
+        // MuxMode::Dropping => {
+        //     let (dl, rec) = command::create_dropping_downlink(
+        //         Some(schema),
+        //         updates,
+        //         dl_cmd_sink,
+        //         &config,
+        //     );
+        //     (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
+        // }
+        // MuxMode::Buffered(n) => {
+        //     let (dl, rec) = command::create_buffered_downlink(
+        //         Some(schema),
+        //         updates,
+        //         dl_cmd_sink,
+        //         n,
+        //         &config,
+        //     );
+        //     (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
+        // }
+        _ => {
+            let dl = command::create_queue_downlink(
+                Some(schema),
+                dl_cmd_sink,
+                NonZeroUsize::new(3).unwrap(),
+                &config,
+            );
+            AnyDownlink::Queue(dl)
+        }
+    }
 }

@@ -91,3 +91,22 @@ async fn client_test() {
 
     println!("Finished sending");
 }
+
+use crate::downlink::model::command::CommandAction;
+use crate::downlink::model::value::Action;
+use common::sink::item::ItemSink;
+
+#[tokio::test(core_threads = 5)]
+async fn test_foo() {
+    let mut client = SwimClient::new(config()).await;
+    let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "unit", "foo");
+    let mut command_dl = client.command_downlink(path).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+    command_dl
+        .send_item(CommandAction::ValueAction(Action::set(4.into())))
+        .await
+        .unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(5)).await;
+}
