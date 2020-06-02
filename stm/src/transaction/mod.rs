@@ -13,7 +13,6 @@
 // limitations under the License.
 
 mod frame_mask;
-mod stack;
 #[cfg(test)]
 mod tests;
 
@@ -24,8 +23,7 @@ use std::sync::Arc;
 use crate::ptr::PtrKey;
 use crate::stm::{ExecResult, Stm, StmError};
 use crate::transaction::frame_mask::FrameMask;
-use crate::transaction::stack::NonEmptyStack;
-use crate::var::TVarInner;
+use crate::var::{Contents, TVarInner};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
 use futures::{Future, Stream, StreamExt};
@@ -79,41 +77,39 @@ impl MaskStack {
 
 #[derive(Debug, Clone)]
 enum LogState {
-    UnconditionalGet,
-    UnconditionalSet(Arc<dyn Any + Send + Sync>),
-    ConditionalSet(Arc<dyn Any + Send + Sync>),
-}
-
-impl LogState {
-    fn has_dependency(&self) -> bool {
-        !matches!(self, LogState::UnconditionalSet(_))
-    }
+    UnconditionalGet(Contents),
+    UnconditionalSet,
+    ConditionalSet(Contents),
 }
 
 impl Default for LogState {
     fn default() -> Self {
-        LogState::UnconditionalGet
+        LogState::UnconditionalSet
+    }
+}
+
+impl LogState {
+    fn has_dependency(&self) -> bool {
+        !matches!(self, LogState::UnconditionalSet)
     }
 }
 
 #[derive(Debug)]
 struct LogEntry {
-    original: Option<Arc<dyn Any + Send + Sync>>,
-    state: NonEmptyStack<LogState>,
+    state: LogState,
+    stack: Vec<Contents>,
 }
 
-const INCONSISTENT_STATE: &str = "Original must be present for a variable that was fetched.";
+const INCONSISTENT_STATE: &str = "Stack must be non-empty when a value has been set.";
 
 impl LogEntry {
     fn get_value<T: Any + Send + Sync>(&self) -> Arc<T> {
-        let LogEntry { original, state } = self;
-        let current = match state.peek() {
-            LogState::UnconditionalGet => original
-                .as_ref()
-                .map(Clone::clone)
-                .expect(INCONSISTENT_STATE),
-            LogState::UnconditionalSet(current) => current.clone(),
-            LogState::ConditionalSet(current) => current.clone(),
+        let LogEntry { state, stack } = self;
+        let current = match state {
+            LogState::UnconditionalGet(original) => original.clone(),
+            LogState::UnconditionalSet | LogState::ConditionalSet(_) => {
+                stack.last().expect(INCONSISTENT_STATE).clone()
+            }
         };
         match current.clone().downcast() {
             Err(_) => panic!(
@@ -125,36 +121,49 @@ impl LogEntry {
         }
     }
 
+    fn update_state_for_set(&mut self) {
+        let old_state = std::mem::take(&mut self.state);
+        self.state = match old_state {
+            LogState::UnconditionalGet(original) | LogState::ConditionalSet(original) => {
+                LogState::ConditionalSet(original)
+            }
+            ow => ow,
+        };
+    }
+
     fn set<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
         assert_eq!(value.as_ref().type_id(), self.get_type_id());
-        let state = self.state.peek_mut();
-        let old_state = std::mem::take(state);
-        *state = match old_state {
-            LogState::UnconditionalSet(_) => LogState::UnconditionalSet(value),
-            _ => LogState::ConditionalSet(value),
-        };
+        self.update_state_for_set();
+        match self.stack.last_mut() {
+            Some(top) => *top = value,
+            _ => self.stack.push(value),
+        }
     }
 
     fn enter<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
         assert_eq!(value.as_ref().type_id(), self.get_type_id());
-        let state = self.state.peek_mut();
-        let new_state = match state {
-            LogState::UnconditionalSet(_) => LogState::UnconditionalSet(value),
-            _ => LogState::ConditionalSet(value),
-        };
-        self.state.push(new_state);
+        self.update_state_for_set();
+        self.stack.push(value);
     }
 
     fn get_type_id(&self) -> TypeId {
-        match self.state.peek() {
-            LogState::UnconditionalGet => self
-                .original
-                .as_ref()
+        match &self.state {
+            LogState::UnconditionalGet(original) | LogState::ConditionalSet(original) => {
+                original.as_ref().type_id()
+            }
+            LogState::UnconditionalSet => self
+                .stack
+                .last()
                 .expect(INCONSISTENT_STATE)
                 .as_ref()
                 .type_id(),
-            LogState::UnconditionalSet(current) => current.as_ref().type_id(),
-            LogState::ConditionalSet(current) => current.as_ref().type_id(),
+        }
+    }
+
+    fn pop(&mut self) {
+        let LogEntry { state, stack } = self;
+        if matches!(state, LogState::UnconditionalSet | LogState::ConditionalSet(_)) {
+            stack.pop().expect(INCONSISTENT_STATE);
         }
     }
 }
@@ -189,20 +198,23 @@ impl Transaction {
                 let value = var.read().await;
                 let result = value.clone().downcast().unwrap();
                 let entry = LogEntry {
-                    original: Some(value),
-                    state: NonEmptyStack::new(LogState::UnconditionalGet, self.stack_size + 1),
+                    state: LogState::UnconditionalGet(value),
+                    stack: Vec::with_capacity(self.stack_size),
                 };
                 let i = self.log.insert(entry);
                 self.log_assoc.insert(k, i);
+                self.masks.set_updated(i);
                 result
             }
         }
     }
 
     fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<Arc<TVarInner>>, value: Arc<T>) {
+        let mut stack: Vec<Contents> = Vec::with_capacity(self.stack_size);
+        stack.push(value);
         let entry = LogEntry {
-            original: None,
-            state: NonEmptyStack::new(LogState::UnconditionalSet(value), self.stack_size),
+            state: LogState::UnconditionalSet,
+            stack,
         };
         let i = self.log.insert(entry);
         self.masks.set_updated(i);
@@ -236,18 +248,20 @@ impl Transaction {
         let mut reads = FuturesUnordered::new();
         let mut writes = FuturesUnordered::new();
         for (key, i) in self.log_assoc.iter() {
-            let LogEntry { state, original } = self.log.remove(*i);
+            let LogEntry { state, mut stack } = self.log.remove(*i);
             let PtrKey(var) = key;
 
-            match state.take_top() {
-                LogState::UnconditionalGet => {
-                    reads.push(var.validate_read(original.expect(INCONSISTENT_STATE)));
+            match state {
+                LogState::UnconditionalGet(original) => {
+                    reads.push(var.validate_read(original));
                 }
-                LogState::UnconditionalSet(current) => {
+                LogState::UnconditionalSet => {
+                    let current = stack.pop().expect(INCONSISTENT_STATE);
                     writes.push(var.prepare_write(None, current));
                 }
-                LogState::ConditionalSet(current) => {
-                    writes.push(var.prepare_write(original, current));
+                LogState::ConditionalSet(original) => {
+                    let current = stack.pop().expect(INCONSISTENT_STATE);
+                    writes.push(var.prepare_write(Some(original), current));
                 }
             }
         }
@@ -289,10 +303,12 @@ impl Transaction {
         self.log_assoc
             .iter()
             .any(|(PtrKey(var), i)| match self.log.get(*i) {
-                Some(LogEntry {
-                    original: Some(original),
-                    ..
-                }) => var.has_changed(original),
+                Some(LogEntry { state, .. }) => match state {
+                    LogState::UnconditionalGet(original) | LogState::ConditionalSet(original) => {
+                        var.has_changed(original)
+                    }
+                    _ => false,
+                },
                 _ => false,
             })
     }
@@ -314,7 +330,7 @@ impl Transaction {
             Some(mask) => {
                 for index in mask.iter() {
                     if let Some(entry) = log.get_mut(index) {
-                        entry.state.pop();
+                        entry.pop();
                     }
                 }
             }
@@ -446,7 +462,7 @@ impl<'a> Future for AwaitChanged<'a> {
             }
             transaction.log_assoc.iter().for_each(|(PtrKey(var), i)| {
                 match transaction.log.get(*i) {
-                    Some(LogEntry { state, .. }) if state.peek().has_dependency() => {
+                    Some(LogEntry { state, .. }) if state.has_dependency() => {
                         var.subscribe(cx.waker().clone());
                     }
                     _ => {}
