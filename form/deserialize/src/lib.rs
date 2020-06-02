@@ -40,7 +40,14 @@ pub type Result<T> = ::std::result::Result<T, FormDeserializeErr>;
 
 impl Display for FormDeserializeErr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.to_string())
+        match self {
+            FormDeserializeErr::Message(m) => write!(f, "{}", m),
+            FormDeserializeErr::UnsupportedType(t) => write!(f, "Unsupported type: {}", t),
+            FormDeserializeErr::IncorrectType(t) => write!(f, "Incorrect type: {}", t),
+            FormDeserializeErr::IllegalItem(i) => write!(f, "Illegal item: {}", i),
+            FormDeserializeErr::IllegalState(s) => write!(f, "Illegal state: {}", s),
+            FormDeserializeErr::Malformatted => write!(f, "Malformatted"),
+        }
     }
 }
 

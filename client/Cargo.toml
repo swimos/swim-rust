@@ -42,3 +42,7 @@ form = { path = "../form" }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
+
+
+[[example]]
+name = "rolling_mean"
