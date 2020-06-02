@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ptr::PtrKey;
-use crate::stm::{ExecResult, Stm};
+use crate::stm::{ExecResult, Stm, StmError};
 use crate::transaction::frame_mask::FrameMask;
 use crate::transaction::stack::NonEmptyStack;
 use crate::var::TVarInner;
@@ -38,16 +38,55 @@ use tokio::macros::support::Pin;
 const DEFAULT_LOG_CAP: usize = 32;
 const DEFAULT_STACK_SIZE: usize = 8;
 
+#[derive(Debug)]
+struct MaskStack(Vec<FrameMask>);
+
+impl MaskStack {
+    fn new(capacity: usize) -> Self {
+        MaskStack(Vec::with_capacity(capacity))
+    }
+
+    fn enter(&mut self) {
+        let MaskStack(stack) = self;
+        stack.push(FrameMask::new());
+    }
+
+    fn pop(&mut self) -> Option<FrameMask> {
+        let MaskStack(stack) = self;
+        stack.pop()
+    }
+
+    fn root_or_updated(&self, i: usize) -> bool {
+        let MaskStack(stack) = self;
+        match stack.last() {
+            Some(mask) => mask.contains(i),
+            _ => true,
+        }
+    }
+
+    fn set_updated(&mut self, i: usize) {
+        let MaskStack(stack) = self;
+        if let Some(mask) = stack.last_mut() {
+            mask.insert(i);
+        }
+    }
+
+    fn clear(&mut self) {
+        let MaskStack(stack) = self;
+        stack.clear();
+    }
+}
+
 #[derive(Debug, Clone)]
 enum LogState {
     UnconditionalGet,
-    UnconditionalSet,
+    UnconditionalSet(Arc<dyn Any + Send + Sync>),
     ConditionalSet(Arc<dyn Any + Send + Sync>),
 }
 
 impl LogState {
     fn has_dependency(&self) -> bool {
-        !matches!(self, LogState::UnconditionalSet)
+        !matches!(self, LogState::UnconditionalSet(_))
     }
 }
 
@@ -59,13 +98,23 @@ impl Default for LogState {
 
 #[derive(Debug)]
 struct LogEntry {
-    current: Arc<dyn Any + Send + Sync>,
+    original: Option<Arc<dyn Any + Send + Sync>>,
     state: NonEmptyStack<LogState>,
 }
 
+const INCONSISTENT_STATE: &str = "Original must be present for a variable that was fetched.";
+
 impl LogEntry {
     fn get_value<T: Any + Send + Sync>(&self) -> Arc<T> {
-        let LogEntry { current, .. } = self;
+        let LogEntry { original, state } = self;
+        let current = match state.peek() {
+            LogState::UnconditionalGet => original
+                .as_ref()
+                .map(Clone::clone)
+                .expect(INCONSISTENT_STATE),
+            LogState::UnconditionalSet(current) => current.clone(),
+            LogState::ConditionalSet(current) => current.clone(),
+        };
         match current.clone().downcast() {
             Err(_) => panic!(
                 "Inconsistent transaction log. Expected {:?} but was {:?}.",
@@ -77,15 +126,36 @@ impl LogEntry {
     }
 
     fn set<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
-        assert_eq!(value.as_ref().type_id(), self.current.as_ref().type_id());
-        let old_value = std::mem::replace(&mut self.current, value);
+        assert_eq!(value.as_ref().type_id(), self.get_type_id());
         let state = self.state.peek_mut();
         let old_state = std::mem::take(state);
         *state = match old_state {
-            LogState::UnconditionalGet => LogState::ConditionalSet(old_value),
-            LogState::UnconditionalSet => LogState::UnconditionalSet,
-            cond => cond,
+            LogState::UnconditionalSet(_) => LogState::UnconditionalSet(value),
+            _ => LogState::ConditionalSet(value),
         };
+    }
+
+    fn enter<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
+        assert_eq!(value.as_ref().type_id(), self.get_type_id());
+        let state = self.state.peek_mut();
+        let new_state = match state {
+            LogState::UnconditionalSet(_) => LogState::UnconditionalSet(value),
+            _ => LogState::ConditionalSet(value),
+        };
+        self.state.push(new_state);
+    }
+
+    fn get_type_id(&self) -> TypeId {
+        match self.state.peek() {
+            LogState::UnconditionalGet => self
+                .original
+                .as_ref()
+                .expect(INCONSISTENT_STATE)
+                .as_ref()
+                .type_id(),
+            LogState::UnconditionalSet(current) => current.as_ref().type_id(),
+            LogState::ConditionalSet(current) => current.as_ref().type_id(),
+        }
     }
 }
 
@@ -93,7 +163,7 @@ impl LogEntry {
 pub struct Transaction {
     log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
     log: Slab<LogEntry>,
-    masks: NonEmptyStack<FrameMask>,
+    masks: MaskStack,
     stack_size: usize,
 }
 
@@ -102,7 +172,7 @@ impl Transaction {
         Transaction {
             log_assoc: HashMap::new(),
             log: Slab::with_capacity(DEFAULT_LOG_CAP),
-            masks: NonEmptyStack::new(FrameMask::new(), stack_size + 1),
+            masks: MaskStack::new(stack_size),
             stack_size,
         }
     }
@@ -119,7 +189,7 @@ impl Transaction {
                 let value = var.read().await;
                 let result = value.clone().downcast().unwrap();
                 let entry = LogEntry {
-                    current: value,
+                    original: Some(value),
                     state: NonEmptyStack::new(LogState::UnconditionalGet, self.stack_size + 1),
                 };
                 let i = self.log.insert(entry);
@@ -131,11 +201,11 @@ impl Transaction {
 
     fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<Arc<TVarInner>>, value: Arc<T>) {
         let entry = LogEntry {
-            current: value,
-            state: NonEmptyStack::new(LogState::UnconditionalSet, self.stack_size),
+            original: None,
+            state: NonEmptyStack::new(LogState::UnconditionalSet(value), self.stack_size),
         };
         let i = self.log.insert(entry);
-        self.masks.peek_mut().insert(i);
+        self.masks.set_updated(i);
         self.log_assoc.insert(k, i);
     }
 
@@ -151,33 +221,33 @@ impl Transaction {
             let entry = log
                 .get_mut(*i)
                 .expect("Log entries must be defined in they are in the association map.");
-            if !masks.peek().contains(*i) {
-                let new_state = (*entry.state.peek()).clone();
-                entry.state.push(new_state);
+            if masks.root_or_updated(*i) {
+                entry.set(value)
+            } else {
+                entry.enter(value);
+                self.masks.set_updated(*i);
             }
-            entry.set(value);
-            self.masks.peek_mut().insert(*i);
         } else {
             self.entry_for_set(k, value);
         }
     }
 
-    pub(crate) async fn try_commit(&mut self) -> bool {
+    async fn try_commit(&mut self) -> bool {
         let mut reads = FuturesUnordered::new();
         let mut writes = FuturesUnordered::new();
         for (key, i) in self.log_assoc.iter() {
-            let LogEntry { current, state } = self.log.remove(*i);
+            let LogEntry { state, original } = self.log.remove(*i);
             let PtrKey(var) = key;
 
             match state.take_top() {
                 LogState::UnconditionalGet => {
-                    reads.push(var.validate_read(current));
+                    reads.push(var.validate_read(original.expect(INCONSISTENT_STATE)));
                 }
-                LogState::UnconditionalSet => {
+                LogState::UnconditionalSet(current) => {
                     writes.push(var.prepare_write(None, current));
                 }
-                LogState::ConditionalSet(old) => {
-                    writes.push(var.prepare_write(Some(old), current));
+                LogState::ConditionalSet(current) => {
+                    writes.push(var.prepare_write(original, current));
                 }
             }
         }
@@ -219,9 +289,10 @@ impl Transaction {
         self.log_assoc
             .iter()
             .any(|(PtrKey(var), i)| match self.log.get(*i) {
-                Some(LogEntry { state, current }) if state.peek().has_dependency() => {
-                    var.has_changed(current)
-                }
+                Some(LogEntry {
+                    original: Some(original),
+                    ..
+                }) => var.has_changed(original),
                 _ => false,
             })
     }
@@ -229,24 +300,36 @@ impl Transaction {
     fn reset(&mut self) {
         self.log_assoc.clear();
         self.log.clear();
+        self.masks.clear();
+    }
+
+    pub(crate) fn enter_frame(&mut self) {
+        self.masks.enter();
+    }
+
+    pub(crate) fn pop_frame(&mut self) {
+        let Transaction { log, masks, .. } = self;
+
+        match masks.pop() {
+            Some(mask) => {
+                for index in mask.iter() {
+                    if let Some(entry) = log.get_mut(index) {
+                        entry.state.pop();
+                    }
+                }
+            }
+            _ => panic!("The root frame of a transaction was popped."),
+        }
     }
 }
 
 #[derive(Debug)]
 pub enum TransactionError {
-    Aborted {
-        error: Box<dyn Error + Send + 'static>,
-    },
-    HighContention {
-        num_failed: usize,
-    },
+    Aborted { error: StmError },
+    HighContention { num_failed: usize },
     TransactionDiverged,
-    StackOverflow {
-        depth: usize,
-    },
-    TooManyAttempts {
-        num_attempts: usize,
-    },
+    StackOverflow { depth: usize },
+    TooManyAttempts { num_attempts: usize },
     InvalidRetry,
 }
 
@@ -282,7 +365,7 @@ impl Display for TransactionError {
 impl Error for TransactionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            TransactionError::Aborted { error } => Some(error.as_ref()),
+            TransactionError::Aborted { error } => Some(error.as_error()),
             _ => None,
         }
     }

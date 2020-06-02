@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::atomically;
-use crate::stm::{self, Abort, BoxStm, Catch, Choice, Constant, Retry, Stm, StmEither};
+use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither};
 use crate::transaction::{RetryManager, TransactionError};
 use crate::var::TVar;
 use futures::stream::{empty, Empty};
@@ -404,9 +404,9 @@ fn zero_stack_sizes() {
 
 #[test]
 fn increase_stack_sizes() {
-    let catch = Catch::new(Constant(1), |e: &TestError| Constant(1));
+    let catch = Catch::new(Constant(1), |_: &TestError| Constant(1));
     assert_eq!(stack_size(&catch), Some(1));
-    let catch2 = Catch::new(catch, |e: &TestError| Constant(1));
+    let catch2 = Catch::new(catch, |_: &TestError| Constant(1));
     assert_eq!(stack_size(&catch2), Some(2));
 
     let choice = Choice::new(Constant(1), Constant(1));
@@ -444,7 +444,7 @@ fn greater_of_two_stack_sizes() {
 #[test]
 fn dyn_stm_erases_stack_size() {
     assert!(stack_size(&Constant(1).boxed()).is_none());
-    let catch = Catch::new(Constant(1).boxed(), |e: &TestError| Constant(1));
+    let catch = Catch::new(Constant(1).boxed(), |_: &TestError| Constant(1));
     assert!(stack_size(&catch).is_none());
     let choice = Choice::new(Constant(1).boxed(), Constant(1));
     assert!(stack_size(&choice).is_none());

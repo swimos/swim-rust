@@ -51,9 +51,4 @@ impl<T> NonEmptyStack<T> {
         let NonEmptyStack(mut contents) = self;
         contents.pop().unwrap()
     }
-
-    pub fn len(&self) -> usize {
-        let NonEmptyStack(contents) = self;
-        contents.len()
-    }
 }

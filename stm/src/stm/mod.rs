@@ -16,14 +16,52 @@ use crate::transaction::Transaction;
 use crate::var::{TVarRead, TVarWrite};
 use futures::future::ready;
 use futures::Future;
-use std::any::Any;
-use std::cmp::Ordering;
+use std::any::{Any, TypeId};
 use std::error::Error;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
+
+pub struct StmError {
+    as_any: Arc<dyn Any + Send + Sync>,
+    as_err: Arc<dyn Error + Send + Sync + 'static>,
+}
+
+impl Debug for StmError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StmError({:?})", self.as_err.as_ref())
+    }
+}
+
+impl Display for StmError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StmError({})", self.as_err.as_ref())
+    }
+}
+
+impl StmError {
+    pub fn new<E: Any + Error + Send + Sync>(err: E) -> Self {
+        let original = Arc::new(err);
+        StmError {
+            as_any: original.clone(),
+            as_err: original,
+        }
+    }
+
+    pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+        self.as_any.downcast_ref()
+    }
+
+    pub fn type_id(&self) -> TypeId {
+        self.as_any.type_id()
+    }
+
+    pub fn as_error(&self) -> &(dyn Error + 'static) {
+        self.as_err.as_ref()
+    }
+}
 
 pub type ResultFuture<'a, T> = Pin<Box<dyn Future<Output = ExecResult<T>> + Send + 'a>>;
 
@@ -31,7 +69,7 @@ pub type ResultFuture<'a, T> = Pin<Box<dyn Future<Output = ExecResult<T>> + Send
 pub enum ExecResult<T> {
     Done(T),
     Retry,
-    Abort(Box<dyn Error + Send + 'static>),
+    Abort(StmError),
 }
 
 macro_rules! done {
@@ -89,7 +127,7 @@ pub trait Stm: DynamicStm {
     fn catch<E, S, F>(self, handler: F) -> Catch<E, Self, S, F>
     where
         Self: Sized,
-        E: Error + Send + Sync + 'static,
+        E: Any + Error + Send + Sync,
         S: Stm,
         F: Fn(&E) -> S,
     {
@@ -149,16 +187,13 @@ pub struct AndThen<S, F> {
 }
 
 pub struct Choice<S1, S2> {
-    _first: S1,
-    _second: S2,
+    first: S1,
+    second: S2,
 }
 
 impl<S1, S2> Choice<S1, S2> {
     pub fn new(first: S1, second: S2) -> Self {
-        Choice {
-            _first: first,
-            _second: second,
-        }
+        Choice { first, second }
     }
 }
 
@@ -194,22 +229,22 @@ impl<E, T> Abort<E, T> {
 
 pub fn abort<E, T>(error: E) -> Abort<E, T>
 where
-    E: Error + Send + Sync + 'static,
+    E: Any + Error + Send + Sync,
 {
     Abort::new(error)
 }
 
 pub struct Catch<E, S1, S2, F: Fn(&E) -> S2> {
-    _input: S1,
-    _handler: F,
+    input: S1,
+    handler: F,
     _handler_type: PhantomData<dyn Fn(&E) -> S2 + Send + Sync>,
 }
 
-impl<E, S1, S2, F: Fn(&E) -> S2> Catch<E, S1, S2, F> {
+impl<E: Sized + 'static, S1, S2, F: Fn(&E) -> S2> Catch<E, S1, S2, F> {
     pub fn new(input: S1, handler: F) -> Self {
         Catch {
-            _input: input,
-            _handler: handler,
+            input,
+            handler,
             _handler_type: PhantomData,
         }
     }
@@ -313,8 +348,22 @@ where
 {
     type Result = S1::Result;
 
-    fn run_in<'a>(&'a self, _transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
-        unimplemented!("Stack unwinding not yet implemented.")
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        Box::pin(async move {
+            let Choice { first, second } = self;
+            transaction.enter_frame();
+            match first.run_in(transaction).await {
+                ExecResult::Retry => {
+                    transaction.pop_frame();
+                    second.run_in(transaction).await
+                }
+                r @ ExecResult::Done(_) => r,
+                ab @ ExecResult::Abort(_) => {
+                    transaction.pop_frame();
+                    ab
+                }
+            }
+        })
     }
 }
 
@@ -390,20 +439,20 @@ where
 
 impl<E, T> DynamicStm for Abort<E, T>
 where
-    E: Error + Send + Sync + Clone + 'static,
+    E: Any + Error + Send + Sync + Clone,
     T: Send + Sync,
 {
     type Result = T;
 
     fn run_in<'a>(&'a self, _: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
         let Abort { error, .. } = self;
-        Box::pin(ready(ExecResult::Abort(Box::new(error.clone()))))
+        Box::pin(ready(ExecResult::Abort(StmError::new(error.clone()))))
     }
 }
 
 impl<E, T> Stm for Abort<E, T>
 where
-    E: Error + Send + Sync + Clone + 'static,
+    E: Any + Error + Send + Sync + Clone,
     T: Send + Sync,
 {
 }
@@ -412,13 +461,31 @@ impl<E, S1, S2, F> DynamicStm for Catch<E, S1, S2, F>
 where
     S1: Stm,
     S2: Stm<Result = S1::Result>,
-    E: Error + Clone + 'static,
+    E: Any + Error + Send + Sync,
     F: Fn(&E) -> S2 + Send + Sync,
 {
     type Result = S1::Result;
 
-    fn run_in<'a>(&'a self, _transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
-        unimplemented!("Stack unwinding not yet implemented.")
+    fn run_in<'a>(&'a self, transaction: &'a mut Transaction) -> ResultFuture<'a, Self::Result> {
+        Box::pin(async move {
+            let Catch { input, handler, .. } = self;
+            transaction.enter_frame();
+            match input.run_in(transaction).await {
+                ExecResult::Retry => {
+                    transaction.pop_frame();
+                    ExecResult::Retry
+                }
+                r @ ExecResult::Done(_) => r,
+                ExecResult::Abort(stm_err) => {
+                    transaction.pop_frame();
+                    if let Some(err) = stm_err.downcast_ref::<E>() {
+                        handler(err).run_in(transaction).await
+                    } else {
+                        ExecResult::Abort(stm_err)
+                    }
+                }
+            }
+        })
     }
 }
 
@@ -426,7 +493,7 @@ impl<E, S1, S2, F> Stm for Catch<E, S1, S2, F>
 where
     S1: Stm,
     S2: Stm<Result = S1::Result>,
-    E: Error + Clone + 'static,
+    E: Any + Error + Send + Sync,
     F: Fn(&E) -> S2 + Send + Sync,
 {
     fn required_stack() -> Option<usize> {
