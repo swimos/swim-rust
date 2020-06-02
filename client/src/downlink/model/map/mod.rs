@@ -39,6 +39,7 @@ use crate::downlink::{
 };
 use crate::router::RoutingError;
 use std::num::NonZeroUsize;
+use tracing::error;
 
 #[cfg(test)]
 mod tests;
@@ -52,7 +53,7 @@ pub enum MapModification<V> {
     Clear,
 }
 
-const INSERT_NAME: &str = "insert";
+const INSERT_NAME: &str = "update";
 const REMOVE_NAME: &str = "remove";
 const TAKE_NAME: &str = "take";
 const SKIP_NAME: &str = "drop";
@@ -126,6 +127,8 @@ impl Form for MapModification<Value> {
     }
 
     fn try_convert(body: Value) -> Result<Self, FormDeserializeErr> {
+        let b2 = body.clone();
+
         use Value::*;
         if let Record(attrs, items) = body {
             let single_attr = items.is_empty() && attrs.len() < 2;
@@ -144,6 +147,9 @@ impl Form for MapModification<Value> {
                 Some(Attr { name, value }) if name == REMOVE_NAME && single_attr => {
                     extract_key(value).map(MapModification::Remove)
                 }
+                Some(Attr { name, value }) if name == REMOVE_NAME && single_attr => {
+                    extract_key(value).map(MapModification::Remove)
+                }
                 Some(Attr { name, value }) if name == INSERT_NAME => {
                     let attr_tail = attr_it.collect::<Vec<_>>();
                     let insert_value = if attr_tail.is_empty() && items.len() < 2 {
@@ -157,7 +163,10 @@ impl Form for MapModification<Value> {
                     };
                     extract_key(value).map(|key| MapModification::Insert(key, insert_value))
                 }
-                _ => Err(FormDeserializeErr::Malformatted),
+                _ => {
+                    error!("Failed to convert: {:?}", b2);
+                    Err(FormDeserializeErr::Malformatted)
+                }
             }
         } else {
             Err(FormDeserializeErr::Malformatted)
