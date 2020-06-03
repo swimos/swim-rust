@@ -52,7 +52,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{error, info, instrument, trace_span};
 
-use crate::downlink::model::command::CommandAction;
+use crate::downlink::model::command::CommandValue;
 use common::warp::envelope::Envelope;
 use std::num::NonZeroUsize;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
@@ -75,8 +75,8 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
-pub type AnyCommandDownlink = AnyDownlink<CommandAction, ()>;
-type AnyWeakCommandDownlink = AnyWeakDownlink<CommandAction, ()>;
+pub type AnyCommandDownlink = AnyDownlink<CommandValue, ()>;
+type AnyWeakCommandDownlink = AnyWeakDownlink<CommandValue, ()>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
@@ -639,8 +639,9 @@ where
         let (sink, _) = self.router.connection_for(&path).await?;
 
         let config = self.config.config_for(&path);
-        let cmd_sink = sink
-            .comap(move |cmd: Command<SharedValue>| envelopes::value_envelope(&path, cmd).1.into());
+        let cmd_sink = sink.comap(move |cmd: Command<CommandValue>| {
+            envelopes::command_envelope(&path, cmd).1.into()
+        });
 
         Ok(command_downlink_for_sink(cmd_sink, schema, &config))
     }
@@ -988,7 +989,7 @@ fn command_downlink_for_sink<Snk>(
     config: &DownlinkParams,
 ) -> AnyCommandDownlink
 where
-    Snk: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
+    Snk: ItemSender<Command<CommandValue>, RoutingError> + Send + 'static,
 {
     let dl_cmd_sink = cmd_sink.map_err_into();
 

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::downlink::model::command::CommandValue;
 use crate::downlink::model::map::MapModification;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
@@ -69,6 +70,14 @@ pub fn map_envelope(
     command: Command<MapModification<Arc<Value>>>,
 ) -> (url::Url, OutgoingLinkMessage) {
     envelope_for(map::envelope_body, path, command)
+}
+
+/// Convert a downlink [`Command`], from a command lane, into a Warp [`OutgoingLinkMessage`].
+pub fn command_envelope(
+    path: &AbsolutePath,
+    command: Command<CommandValue>,
+) -> (url::Url, OutgoingLinkMessage) {
+    envelope_for(command::envelope_body, path, command)
 }
 
 pub(in crate::downlink) mod value {
@@ -142,6 +151,19 @@ pub(in crate::downlink) mod map {
                 Err(e) => Message::BadEnvelope(format!("{}", e)),
             },
             _ => Message::BadEnvelope("Event envelope had no body.".to_string()),
+        }
+    }
+}
+
+pub(in crate::downlink) mod command {
+    use crate::downlink::model::command::CommandValue;
+    use crate::downlink::model::map::{map_body, MapModification};
+    use common::model::Value;
+
+    pub(super) fn envelope_body(cmd: CommandValue) -> Option<Value> {
+        match cmd {
+            CommandValue::Value(value) => Some(value),
+            CommandValue::Map(value) => Some(map_body(value)),
         }
     }
 }

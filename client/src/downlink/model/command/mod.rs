@@ -1,18 +1,24 @@
 use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::model::map::MapAction;
-use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::model::map::{MapAction, MapModification};
+use crate::downlink::model::value::{Action, SharedValue, ValueModel};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::{
-    queue, BasicResponse, BasicStateMachine, Command, DownlinkError, TransitionError,
+    queue, BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest, Message,
+    Operation, TransitionError,
 };
 use crate::router::RoutingError;
-use common::model::schema::StandardSchema;
+use common::model::schema::{Schema, StandardSchema};
+use common::model::Value;
 use common::sink::item::ItemSender;
+use futures::{Stream, StreamExt};
+use futures_util::future::ready;
+use futures_util::stream::once;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
-pub enum CommandAction {
-    ValueAction(Action),
-    MapAction(MapAction),
+pub enum CommandValue {
+    Value(Value),
+    Map(MapModification<Value>),
 }
 
 pub fn create_queue_downlink<Commands>(
@@ -20,13 +26,16 @@ pub fn create_queue_downlink<Commands>(
     cmd_sender: Commands,
     queue_size: NonZeroUsize,
     config: &DownlinkParams,
-) -> QueueDownlink<CommandAction, ()>
+) -> QueueDownlink<CommandValue, ()>
 where
-    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<CommandValue>, RoutingError> + Send + 'static,
 {
+    let init = once(ready(Ok(Message::Synced)));
+    let upd_stream = init.chain(futures::stream::pending());
+
     queue::make_downlink(
         CommandStateMachine::new(schema.unwrap()),
-        futures::stream::pending(),
+        upd_stream,
         cmd_sender,
         queue_size,
         &config,
@@ -44,9 +53,9 @@ impl CommandStateMachine {
     }
 }
 
-impl BasicStateMachine<(), (), CommandAction> for CommandStateMachine {
+impl BasicStateMachine<(), (), CommandValue> for CommandStateMachine {
     type Ev = ();
-    type Cmd = SharedValue;
+    type Cmd = CommandValue;
 
     fn init(&self) -> () {}
 
@@ -67,32 +76,11 @@ impl BasicStateMachine<(), (), CommandAction> for CommandStateMachine {
     fn handle_action(
         &self,
         state: &mut (),
-        action: CommandAction,
+        action: CommandValue,
     ) -> BasicResponse<Self::Ev, Self::Cmd> {
-        // match action {
-        //     CommandAction::ValueAction(action) => match action {
-        //         Action::Get(resp) => match resp.send_ok(state.state.clone()) {
-        //             Err(_) => BasicResponse::none().with_error(TransitionError::ReceiverDropped),
-        //             _ => BasicResponse::none(),
-        //         },
-        //         Action::Set(set_value, maybe_resp) => {
-        //             apply_set(state, &self.schema, set_value, maybe_resp, |_| ())
-        //         }
-        //         Action::Update(upd_fn, maybe_resp) => {
-        //             let new_value = upd_fn(state.state.as_ref());
-        //             apply_set(state, &self.schema, new_value, maybe_resp, |s| s.clone())
-        //         }
-        //         Action::TryUpdate(upd_fn, maybe_resp) => try_apply_set(
-        //             state,
-        //             &self.schema,
-        //             upd_fn(state.state.as_ref()),
-        //             maybe_resp,
-        //         ),
-        //     },
-        //     CommandAction::MapAction(map_action) => {
-        //         unimplemented!();
-        //     }
-        // }
-        unimplemented!()
+        match action {
+            CommandValue::Value(value) => BasicResponse::of((), CommandValue::Value(value)),
+            CommandValue::Map(value) => BasicResponse::of((), CommandValue::Map(value)),
+        }
     }
 }
