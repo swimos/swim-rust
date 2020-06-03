@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use crate::ptr::PtrKey;
 use crate::stm::{ExecResult, Stm, StmError};
-use crate::transaction::frame_mask::FrameMask;
+use crate::transaction::frame_mask::{FrameMask, ReadWrite};
 use crate::var::{Contents, TVarInner};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
@@ -85,6 +85,7 @@ impl MaskStack {
 #[derive(Debug, Clone)]
 enum LogState {
     UnconditionalGet(Contents),
+    ReadInFailedPath(Contents),
     UnconditionalSet,
     ConditionalSet(Contents),
 }
@@ -110,14 +111,22 @@ struct LogEntry {
 const INCONSISTENT_STATE: &str = "Stack must be non-empty when a value has been set.";
 
 impl LogEntry {
-    fn get_value<T: Any + Send + Sync>(&self) -> Arc<T> {
-        let LogEntry { state, stack } = self;
-        let current = match state {
-            LogState::UnconditionalGet(original) => original.clone(),
-            LogState::UnconditionalSet | LogState::ConditionalSet(_) => {
-                stack.last().expect(INCONSISTENT_STATE).clone()
+    fn is_active(&self) -> bool {
+        !matches!(self.state, LogState::ReadInFailedPath(_))
+    }
+
+    fn get_value<T: Any + Send + Sync>(&mut self) -> Arc<T> {
+        let LogEntry { state, stack, .. } = self;
+        let old_state = std::mem::take(state);
+        let (current, new_state) = match old_state {
+            LogState::UnconditionalGet(original) | LogState::ReadInFailedPath(original) => {
+                (original.clone(), LogState::UnconditionalGet(original))
+            }
+            s @ LogState::UnconditionalSet | s @ LogState::ConditionalSet(_) => {
+                (stack.last().expect(INCONSISTENT_STATE).clone(), s)
             }
         };
+        *state = new_state;
         match current.clone().downcast() {
             Err(_) => panic!(
                 "Inconsistent transaction log. Expected {:?} but was {:?}.",
@@ -155,9 +164,9 @@ impl LogEntry {
 
     fn get_type_id(&self) -> TypeId {
         match &self.state {
-            LogState::UnconditionalGet(original) | LogState::ConditionalSet(original) => {
-                original.as_ref().type_id()
-            }
+            LogState::UnconditionalGet(original)
+            | LogState::ConditionalSet(original)
+            | LogState::ReadInFailedPath(original) => original.as_ref().type_id(),
             LogState::UnconditionalSet => self
                 .stack
                 .last()
@@ -167,10 +176,44 @@ impl LogEntry {
         }
     }
 
-    fn pop(&mut self) {
+    fn pop(&mut self, rw: ReadWrite) -> bool {
         let LogEntry { state, stack } = self;
-        if matches!(state, LogState::UnconditionalSet | LogState::ConditionalSet(_)) {
-            stack.pop().expect(INCONSISTENT_STATE);
+        let old_state = std::mem::take(state);
+        let new_state = match old_state {
+            LogState::UnconditionalGet(original) => {
+                debug_assert!(rw == ReadWrite::Read);
+                Some(LogState::ReadInFailedPath(original))
+            }
+            LogState::UnconditionalSet => {
+                debug_assert!(rw == ReadWrite::Write);
+                stack.pop().expect(INCONSISTENT_STATE);
+                if stack.is_empty() {
+                    None
+                } else {
+                    Some(LogState::UnconditionalSet)
+                }
+            }
+            LogState::ConditionalSet(original) => {
+                debug_assert!(rw != ReadWrite::Read);
+                stack.pop().expect(INCONSISTENT_STATE);
+                if stack.is_empty() {
+                    if rw == ReadWrite::Write {
+                        Some(LogState::UnconditionalGet(original))
+                    } else {
+                        Some(LogState::ReadInFailedPath(original))
+                    }
+                } else {
+                    Some(LogState::ConditionalSet(original))
+                }
+            }
+            _ => None,
+        };
+        match new_state {
+            Some(s) => {
+                *state = s;
+                false
+            }
+            _ => true,
         }
     }
 }
@@ -181,6 +224,16 @@ pub struct Transaction {
     log: Slab<LogEntry>,
     masks: MaskStack,
     stack_size: usize,
+}
+
+fn get_entry<'a>(log_assoc: &HashMap<PtrKey<Arc<TVarInner>>, usize>,
+             log: &'a mut Slab<LogEntry>,
+             k: &PtrKey<Arc<TVarInner>>) -> Option<(usize, &'a mut LogEntry)> {
+    if let Some(i) = log_assoc.get(k) {
+        log.get_mut(*i).map(|entry| (*i, entry))
+    } else {
+        None
+    }
 }
 
 impl Transaction {
@@ -198,19 +251,30 @@ impl Transaction {
     }
 
     pub(crate) async fn apply_get<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>) -> Arc<T> {
+        let Transaction {
+            log_assoc,
+            log,
+            masks,
+            stack_size,
+        } = self;
         let k = PtrKey(var.clone());
-        match self.log_assoc.get(&k).and_then(|i| self.log.get(*i)) {
-            Some(entry) => entry.get_value(),
+        match get_entry(log_assoc, log, &k) {
+            Some((i, entry)) => {
+                if !entry.is_active() {
+                    masks.set_read(i);
+                }
+                entry.get_value()
+            }
             _ => {
                 let value = var.read().await;
                 let result = value.clone().downcast().unwrap();
                 let entry = LogEntry {
                     state: LogState::UnconditionalGet(value),
-                    stack: Vec::with_capacity(self.stack_size),
+                    stack: Vec::with_capacity(*stack_size),
                 };
-                let i = self.log.insert(entry);
-                self.log_assoc.insert(k, i);
-                self.masks.set_read(i);
+                let i = log.insert(entry);
+                log_assoc.insert(k, i);
+                masks.set_read(i);
                 result
             }
         }
@@ -236,15 +300,12 @@ impl Transaction {
             ..
         } = self;
         let k = PtrKey(var.clone());
-        if let Some(i) = log_assoc.get(&k) {
-            let entry = log
-                .get_mut(*i)
-                .expect("Log entries must be defined in they are in the association map.");
-            if masks.root_or_updated(*i) {
+        if let Some((i, entry)) = get_entry(log_assoc, log, &k) {
+            if masks.root_or_updated(i) {
                 entry.set(value)
             } else {
                 entry.enter(value);
-                self.masks.set_written(*i);
+                self.masks.set_written(i);
             }
         } else {
             self.entry_for_set(k, value);
@@ -255,7 +316,9 @@ impl Transaction {
         let mut reads = FuturesUnordered::new();
         let mut writes = FuturesUnordered::new();
         for (key, i) in self.log_assoc.iter() {
-            let LogEntry { state, mut stack } = self.log.remove(*i);
+            let LogEntry {
+                state, mut stack, ..
+            } = self.log.remove(*i);
             let PtrKey(var) = key;
 
             match state {
@@ -270,6 +333,7 @@ impl Transaction {
                     let current = stack.pop().expect(INCONSISTENT_STATE);
                     writes.push(var.prepare_write(Some(original), current));
                 }
+                _ => {}
             }
         }
         let mut read_locks = Vec::with_capacity(reads.len());
@@ -335,9 +399,14 @@ impl Transaction {
 
         match masks.pop() {
             Some(mask) => {
-                for (index, _) in mask.iter() {
-                    if let Some(entry) = log.get_mut(index) {
-                        entry.pop();
+                for (index, rw) in mask.iter() {
+                    let remove_entry = if let Some(entry) = log.get_mut(index) {
+                        entry.pop(rw)
+                    } else {
+                        false
+                    };
+                    if remove_entry {
+                        log.remove(index);
                     }
                 }
             }
