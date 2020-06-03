@@ -54,11 +54,15 @@ impl MaskStack {
         stack.pop()
     }
 
-    fn root_or_updated(&self, i: usize) -> bool {
+    fn root_or_set_in_frame(&self, i: usize) -> bool {
         let MaskStack(stack) = self;
-        match stack.last() {
-            Some(mask) => mask.get(i).is_some(),
-            _ => true,
+        if let Some(mask) = stack.last() {
+            matches!(
+                mask.get(i),
+                Some(ReadWrite::Write) | Some(ReadWrite::ReadWrite)
+            )
+        } else {
+            true
         }
     }
 
@@ -226,9 +230,11 @@ pub struct Transaction {
     stack_size: usize,
 }
 
-fn get_entry<'a>(log_assoc: &HashMap<PtrKey<Arc<TVarInner>>, usize>,
-             log: &'a mut Slab<LogEntry>,
-             k: &PtrKey<Arc<TVarInner>>) -> Option<(usize, &'a mut LogEntry)> {
+fn get_entry<'a>(
+    log_assoc: &HashMap<PtrKey<Arc<TVarInner>>, usize>,
+    log: &'a mut Slab<LogEntry>,
+    k: &PtrKey<Arc<TVarInner>>,
+) -> Option<(usize, &'a mut LogEntry)> {
     if let Some(i) = log_assoc.get(k) {
         log.get_mut(*i).map(|entry| (*i, entry))
     } else {
@@ -301,7 +307,7 @@ impl Transaction {
         } = self;
         let k = PtrKey(var.clone());
         if let Some((i, entry)) = get_entry(log_assoc, log, &k) {
-            if masks.root_or_updated(i) {
+            if masks.root_or_set_in_frame(i) {
                 entry.set(value)
             } else {
                 entry.enter(value);

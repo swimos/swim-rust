@@ -19,6 +19,7 @@ use crate::var::TVar;
 use futures::stream::{empty, Empty};
 use futures::task::Poll;
 use futures::Stream;
+use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
@@ -98,19 +99,33 @@ impl TestError {
 
 impl Display for TestError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "TestError({})", self.0)
     }
 }
 
 impl Error for TestError {}
 
-fn assert_aborts_with<T: Debug>(result: Result<T, TransactionError>, expected: TestError) {
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct NumericError(pub i32);
+
+impl Display for NumericError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NumericError({})", self.0)
+    }
+}
+
+impl Error for NumericError {}
+
+fn assert_aborts_with<T: Debug, E: Any + Error + Eq>(
+    result: Result<T, TransactionError>,
+    expected: E,
+) {
     match result {
         Ok(v) => panic!(
             "Expected to fail with {} but succeeded with {:?}.",
             expected, v
         ),
-        Err(TransactionError::Aborted { error }) => match error.downcast_ref::<TestError>() {
+        Err(TransactionError::Aborted { error }) => match error.downcast_ref::<E>() {
             Some(e) => {
                 assert_eq!(e, &expected);
             }
@@ -384,10 +399,85 @@ async fn dyn_boxed_transaction() {
 
 #[tokio::test(threaded_scheduler)]
 async fn catch_no_abort() {
-
     let stm = Catch::new(Constant(0), |_: TestError| Constant(1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn catch_abort_different_error() {
+    let stm = Catch::new(stm::abort(NumericError(3)), |_: TestError| Constant(1));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert_aborts_with(result, NumericError(3));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn recover_from_abort() {
+    let stm = Catch::new(stm::abort(NumericError(3)), |NumericError(i)| Constant(i));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(3)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_abort1() {
+    let var = TVar::new(0);
+    let stm = Catch::new(
+        var.put(1).followed_by(stm::abort(NumericError(3))),
+        |NumericError(_)| var.get(),
+    );
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_abort2() {
+    let var = TVar::new(0);
+    let stm = var.put(1).followed_by(Catch::new(
+        var.put(2).followed_by(stm::abort(NumericError(3))),
+        |NumericError(_)| var.get(),
+    ));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(1)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_abort3() {
+    let var = TVar::new(0);
+    let stm = Catch::new(
+        var.get()
+            .and_then(|i| var.put(*i + 1))
+            .followed_by(stm::abort(NumericError(3))),
+        |NumericError(_)| var.get(),
+    );
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_abort4() {
+    let var = TVar::new(0);
+    let stm = var.get().and_then(|i| {
+        Catch::new(
+            var.put(*i + 1).followed_by(stm::abort(NumericError(3))),
+            |NumericError(_)| var.get(),
+        )
+    });
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_abort5() {
+    let var = TVar::new(0);
+
+    let incr = var.get().and_then(|i| var.put(*i + 1));
+
+    let stm = (&incr).followed_by(Catch::new(
+        (&incr).followed_by(stm::abort(NumericError(3))),
+        |NumericError(_)| var.get(),
+    ));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {

@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 pub struct StmError {
     as_any: Box<dyn Any>,
-    as_err: *const(dyn Error + Send + Sync + 'static),
+    as_err: *const (dyn Error + Send + Sync + 'static),
 }
 
 unsafe impl Send for StmError {}
@@ -35,26 +35,22 @@ impl Unpin for StmError {}
 
 impl Debug for StmError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        unsafe {
-            write!(f, "StmError({:?})", &*self.as_err)
-        }
+        unsafe { write!(f, "StmError({:?})", &*self.as_err) }
     }
 }
 
 impl Display for StmError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        unsafe {
-            write!(f, "StmError({})", &*self.as_err)
-        }
+        unsafe { write!(f, "StmError({})", &*self.as_err) }
     }
 }
 
 impl StmError {
     pub fn new<E: Any + Error + Send + Sync>(err: E) -> Self {
         let original = Box::new(err);
-        let as_err = original.as_ref() as *const(dyn Error + Send + Sync + 'static);
+        let as_err = original.as_ref() as *const (dyn Error + Send + Sync + 'static);
         StmError {
-            as_any : original,
+            as_any: original,
             as_err,
         }
     }
@@ -65,11 +61,10 @@ impl StmError {
 
     pub fn into_specific<T: Any>(self) -> Result<T, Self> {
         let StmError { as_err, as_any } = self;
-        as_any.downcast().map(|b| *b)
-            .map_err(|as_any| StmError {
-            as_any,
-            as_err,
-        })
+        as_any
+            .downcast()
+            .map(|b| *b)
+            .map_err(|as_any| StmError { as_any, as_err })
     }
 
     pub fn type_id(&self) -> TypeId {
@@ -77,9 +72,7 @@ impl StmError {
     }
 
     pub fn as_error(&self) -> &(dyn Error + 'static) {
-        unsafe {
-            &*self.as_err
-        }
+        unsafe { &*self.as_err }
     }
 }
 
@@ -500,7 +493,7 @@ where
                     transaction.pop_frame();
                     match stm_err.into_specific::<E>() {
                         Ok(err) => handler(err).run_in(transaction).await,
-                        Err(stm_err) => ExecResult::Abort(stm_err)
+                        Err(stm_err) => ExecResult::Abort(stm_err),
                     }
                 }
             }
