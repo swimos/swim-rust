@@ -15,59 +15,87 @@
 #[cfg(test)]
 mod tests;
 
-const MAX_SIZE: usize = 128;
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReadWrite {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+const MAX_SIZE: usize = 64;
 
 #[derive(Debug, Default)]
 pub struct FrameMask(u128);
 
 #[derive(Debug)]
-pub struct FrameMaskIter<'a>(&'a u128, usize, usize);
+pub struct FrameMaskIter<'a>(&'a FrameMask, usize, usize);
 
 impl FrameMask {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn insert(&mut self, n: usize) {
+    pub fn read(&mut self, n: usize) {
+        assert!(
+            n < MAX_SIZE,
+            "A transaction can refer to at most {} variables.",
+            MAX_SIZE
+        );
+        if !self.writes(n) {
+            let FrameMask(m) = self;
+            *m = *m | (1 << (2 * n));
+        }
+    }
+
+    pub fn write(&mut self, n: usize) {
         assert!(
             n < MAX_SIZE,
             "A transaction can refer to at most {} variables.",
             MAX_SIZE
         );
         let FrameMask(m) = self;
-        *m = *m | (1 << n);
+        *m = *m | (1 << (2 * n + 1));
     }
 
-    pub fn contains(&self, n: usize) -> bool {
+    fn extract(&self, n: usize) -> u8 {
         let FrameMask(m) = self;
-        (*m >> n) & 0x1 != 0
+        ((*m >> (2 * n)) & 0x3) as u8
+    }
+
+    fn writes(&self, n: usize) -> bool {
+        self.extract(n) > 1
+    }
+
+    pub fn get(&self, n: usize) -> Option<ReadWrite> {
+        match self.extract(n) {
+            3 => Some(ReadWrite::ReadWrite),
+            2 => Some(ReadWrite::Write),
+            1 => Some(ReadWrite::Read),
+            _ => None,
+        }
     }
 
     pub fn iter(&self) -> FrameMaskIter<'_> {
-        let FrameMask(m) = self;
-        FrameMaskIter(m, MAX_SIZE - m.leading_zeros() as usize, 0)
+        FrameMaskIter(self, 2 * MAX_SIZE - self.0.leading_zeros() as usize, 0)
     }
 }
 
 impl<'a> Iterator for FrameMaskIter<'a> {
-    type Item = usize;
+    type Item = (usize, ReadWrite);
 
     fn next(&mut self) -> Option<Self::Item> {
         let FrameMaskIter(m, last_set, i) = self;
-        let mask = *m;
-        if *last_set <= *i {
+        if *last_set <= 2 * *i {
             None
         } else {
-            while *i < MAX_SIZE && (*mask & (1 << *i)) == 0 {
+            let mut current = None;
+            while *i < MAX_SIZE && current.is_none() {
+                if let Some(rw) = m.get(*i) {
+                    current = Some((*i, rw));
+                }
                 *i += 1;
             }
-            if *i >= MAX_SIZE {
-                None
-            } else {
-                let index = *i;
-                *i += 1;
-                Some(index)
-            }
+            return current;
         }
     }
 }

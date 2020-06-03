@@ -57,15 +57,22 @@ impl MaskStack {
     fn root_or_updated(&self, i: usize) -> bool {
         let MaskStack(stack) = self;
         match stack.last() {
-            Some(mask) => mask.contains(i),
+            Some(mask) => mask.get(i).is_some(),
             _ => true,
         }
     }
 
-    fn set_updated(&mut self, i: usize) {
+    fn set_read(&mut self, i: usize) {
         let MaskStack(stack) = self;
         if let Some(mask) = stack.last_mut() {
-            mask.insert(i);
+            mask.read(i);
+        }
+    }
+
+    fn set_written(&mut self, i: usize) {
+        let MaskStack(stack) = self;
+        if let Some(mask) = stack.last_mut() {
+            mask.write(i);
         }
     }
 
@@ -203,7 +210,7 @@ impl Transaction {
                 };
                 let i = self.log.insert(entry);
                 self.log_assoc.insert(k, i);
-                self.masks.set_updated(i);
+                self.masks.set_read(i);
                 result
             }
         }
@@ -217,7 +224,7 @@ impl Transaction {
             stack,
         };
         let i = self.log.insert(entry);
-        self.masks.set_updated(i);
+        self.masks.set_written(i);
         self.log_assoc.insert(k, i);
     }
 
@@ -237,7 +244,7 @@ impl Transaction {
                 entry.set(value)
             } else {
                 entry.enter(value);
-                self.masks.set_updated(*i);
+                self.masks.set_written(*i);
             }
         } else {
             self.entry_for_set(k, value);
@@ -328,7 +335,7 @@ impl Transaction {
 
         match masks.pop() {
             Some(mask) => {
-                for index in mask.iter() {
+                for (index, _) in mask.iter() {
                     if let Some(entry) = log.get_mut(index) {
                         entry.pop();
                     }
