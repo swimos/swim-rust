@@ -25,28 +25,37 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 pub struct StmError {
-    as_any: Arc<dyn Any + Send + Sync>,
-    as_err: Arc<dyn Error + Send + Sync + 'static>,
+    as_any: Box<dyn Any>,
+    as_err: *const(dyn Error + Send + Sync + 'static),
 }
+
+unsafe impl Send for StmError {}
+unsafe impl Sync for StmError {}
+impl Unpin for StmError {}
 
 impl Debug for StmError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StmError({:?})", self.as_err.as_ref())
+        unsafe {
+            write!(f, "StmError({:?})", &*self.as_err)
+        }
     }
 }
 
 impl Display for StmError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StmError({})", self.as_err.as_ref())
+        unsafe {
+            write!(f, "StmError({})", &*self.as_err)
+        }
     }
 }
 
 impl StmError {
     pub fn new<E: Any + Error + Send + Sync>(err: E) -> Self {
-        let original = Arc::new(err);
+        let original = Box::new(err);
+        let as_err = original.as_ref() as *const(dyn Error + Send + Sync + 'static);
         StmError {
-            as_any: original.clone(),
-            as_err: original,
+            as_any : original,
+            as_err,
         }
     }
 
@@ -54,12 +63,23 @@ impl StmError {
         self.as_any.downcast_ref()
     }
 
+    pub fn into_specific<T: Any>(self) -> Result<T, Self> {
+        let StmError { as_err, as_any } = self;
+        as_any.downcast().map(|b| *b)
+            .map_err(|as_any| StmError {
+            as_any,
+            as_err,
+        })
+    }
+
     pub fn type_id(&self) -> TypeId {
         self.as_any.type_id()
     }
 
     pub fn as_error(&self) -> &(dyn Error + 'static) {
-        self.as_err.as_ref()
+        unsafe {
+            &*self.as_err
+        }
     }
 }
 
@@ -129,7 +149,7 @@ pub trait Stm: DynamicStm {
         Self: Sized,
         E: Any + Error + Send + Sync,
         S: Stm,
-        F: Fn(&E) -> S,
+        F: Fn(E) -> S,
     {
         Catch::new(self, handler)
     }
@@ -234,16 +254,16 @@ where
     Abort::new(error)
 }
 
-pub struct Catch<E, S1, S2, F: Fn(&E) -> S2> {
+pub struct Catch<E, S1, S2, F: Fn(E) -> S2> {
     input: S1,
     handler: F,
-    _handler_type: PhantomData<dyn Fn(&E) -> S2 + Send + Sync>,
+    _handler_type: PhantomData<dyn Fn(E) -> S2 + Send + Sync>,
 }
 
-impl<E: Sized + 'static, S1, S2, F: Fn(&E) -> S2> Catch<E, S1, S2, F> {
-    pub fn new(input: S1, handler: F) -> Self {
+impl<E: Sized + 'static, S1, S2, F: Fn(E) -> S2> Catch<E, S1, S2, F> {
+    pub fn new(attempt: S1, handler: F) -> Self {
         Catch {
-            input,
+            input: attempt,
             handler,
             _handler_type: PhantomData,
         }
@@ -462,7 +482,7 @@ where
     S1: Stm,
     S2: Stm<Result = S1::Result>,
     E: Any + Error + Send + Sync,
-    F: Fn(&E) -> S2 + Send + Sync,
+    F: Fn(E) -> S2 + Send + Sync,
 {
     type Result = S1::Result;
 
@@ -478,10 +498,9 @@ where
                 r @ ExecResult::Done(_) => r,
                 ExecResult::Abort(stm_err) => {
                     transaction.pop_frame();
-                    if let Some(err) = stm_err.downcast_ref::<E>() {
-                        handler(err).run_in(transaction).await
-                    } else {
-                        ExecResult::Abort(stm_err)
+                    match stm_err.into_specific::<E>() {
+                        Ok(err) => handler(err).run_in(transaction).await,
+                        Err(stm_err) => ExecResult::Abort(stm_err)
                     }
                 }
             }
@@ -494,7 +513,7 @@ where
     S1: Stm,
     S2: Stm<Result = S1::Result>,
     E: Any + Error + Send + Sync,
-    F: Fn(&E) -> S2 + Send + Sync,
+    F: Fn(E) -> S2 + Send + Sync,
 {
     fn required_stack() -> Option<usize> {
         match (S1::required_stack(), S2::required_stack()) {
@@ -568,7 +587,7 @@ mod private {
     impl<S, F> Sealed for MapStm<S, F> {}
     impl<S1, S2> Sealed for Sequence<S1, S2> {}
     impl<E, T> Sealed for Abort<E, T> {}
-    impl<E, S1, S2, F: Fn(&E) -> S2> Sealed for Catch<E, S1, S2, F> {}
+    impl<E, S1, S2, F: Fn(E) -> S2> Sealed for Catch<E, S1, S2, F> {}
     impl<S1, S2> Sealed for StmEither<S1, S2> {}
     impl<SRef> Sealed for SRef
     where

@@ -382,6 +382,14 @@ async fn dyn_boxed_transaction() {
     assert!(matches!(result, Ok(3)));
 }
 
+#[tokio::test(threaded_scheduler)]
+async fn catch_no_abort() {
+
+    let stm = Catch::new(Constant(0), |_: TestError| Constant(1));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(0)));
+}
+
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {
     T::required_stack()
 }
@@ -404,9 +412,9 @@ fn zero_stack_sizes() {
 
 #[test]
 fn increase_stack_sizes() {
-    let catch = Catch::new(Constant(1), |_: &TestError| Constant(1));
+    let catch = Catch::new(Constant(1), |_: TestError| Constant(1));
     assert_eq!(stack_size(&catch), Some(1));
-    let catch2 = Catch::new(catch, |_: &TestError| Constant(1));
+    let catch2 = Catch::new(catch, |_: TestError| Constant(1));
     assert_eq!(stack_size(&catch2), Some(2));
 
     let choice = Choice::new(Constant(1), Constant(1));
@@ -416,7 +424,7 @@ fn increase_stack_sizes() {
 }
 
 fn catch<S: Stm<Result = i32>>(s: S) -> impl Stm<Result = i32> {
-    Catch::new(s, |_: &TestError| Constant(1))
+    Catch::new(s, |_: TestError| Constant(1))
 }
 
 #[test]
@@ -435,7 +443,7 @@ fn greater_of_two_stack_sizes() {
     assert_eq!(stack_size(&and_then2), Some(1));
     assert_eq!(stack_size(&and_then3), Some(1));
 
-    let longer_recovery1 = Catch::new(Constant(1), |_: &TestError| catch(catch(Constant(1))));
+    let longer_recovery1 = Catch::new(Constant(1), |_: TestError| catch(catch(Constant(1))));
     let longer_recovery2 = Choice::new(Constant(1), catch(catch(Constant(1))));
     assert_eq!(stack_size(&longer_recovery1), Some(2));
     assert_eq!(stack_size(&longer_recovery2), Some(2));
@@ -444,7 +452,7 @@ fn greater_of_two_stack_sizes() {
 #[test]
 fn dyn_stm_erases_stack_size() {
     assert!(stack_size(&Constant(1).boxed()).is_none());
-    let catch = Catch::new(Constant(1).boxed(), |_: &TestError| Constant(1));
+    let catch = Catch::new(Constant(1).boxed(), |_: TestError| Constant(1));
     assert!(stack_size(&catch).is_none());
     let choice = Choice::new(Constant(1).boxed(), Constant(1));
     assert!(stack_size(&choice).is_none());
