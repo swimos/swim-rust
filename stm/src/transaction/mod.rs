@@ -471,28 +471,28 @@ impl Error for TransactionError {
 
 pub trait RetryManager {
     type ContentionManager: Stream<Item = ()> + Unpin;
+    type RetryFut: Future<Output = bool> + Unpin;
 
     fn contention_manager(&self) -> Self::ContentionManager;
 
-    fn max_retries(&self) -> usize;
+    fn retry(&mut self) -> Self::RetryFut;
 }
 
 pub async fn atomically<S, Retries>(
     stm: &S,
-    retries: Retries,
+    mut retries: Retries,
 ) -> Result<S::Result, TransactionError>
 where
     S: Stm,
     Retries: RetryManager,
 {
     let mut contention_manager = retries.contention_manager();
-    let max_retries = retries.max_retries();
     let mut transaction = Transaction::new(S::required_stack().unwrap_or(DEFAULT_STACK_SIZE));
     let mut failed_commits: usize = 0;
     let mut num_attempts: usize = 0;
 
     loop {
-        num_attempts += 1;
+        num_attempts = num_attempts.saturating_add(1);
         let exec_result = stm.run_in(&mut transaction).await;
         match exec_result {
             ExecResult::Done(t) => {
@@ -500,7 +500,7 @@ where
                     return Ok(t);
                 } else {
                     failed_commits = failed_commits.saturating_add(1);
-                    if num_attempts >= max_retries.saturating_add(1) {
+                    if !retries.retry().await {
                         return Err(TransactionError::TooManyAttempts { num_attempts });
                     } else if contention_manager.next().await.is_none() {
                         return Err(TransactionError::HighContention {
@@ -515,7 +515,7 @@ where
             ExecResult::Retry => {
                 if transaction.num_dependencies() == 0 {
                     return Err(TransactionError::InvalidRetry);
-                } else if num_attempts >= max_retries.saturating_add(1) {
+                } else if !retries.retry().await {
                     return Err(TransactionError::TooManyAttempts { num_attempts });
                 } else {
                     AwaitChanged::new(&mut transaction).await;

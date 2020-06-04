@@ -26,26 +26,57 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 use tokio::task::JoinHandle;
-use tokio::time::Duration;
+use tokio::time::{Duration, timeout};
+use futures::future::{Ready, ready};
+use tokio::sync::oneshot;
 
 struct ExactlyOnce;
 
-#[derive(Clone)]
-struct RetryFor(usize);
+struct RetryStream(usize);
 
-impl RetryManager for RetryFor {
-    type ContentionManager = RetryFor;
+struct RetryFor {
+    max_retries: usize,
+    retry_senders: Vec<oneshot::Sender<()>>,
+}
 
-    fn contention_manager(&self) -> Self::ContentionManager {
-        self.clone()
+impl RetryFor {
+
+    fn new(n: usize) -> (RetryFor, Vec<oneshot::Receiver<()>>) {
+        let mut senders = Vec::with_capacity(n);
+        let mut receivers = Vec::with_capacity(n);
+        for _ in 0..n {
+            let (tx, rx) = oneshot::channel();
+            senders.push(tx);
+            receivers.push(rx);
+        }
+        (RetryFor {
+            max_retries: n,
+            retry_senders: senders,
+        }, receivers)
     }
 
-    fn max_retries(&self) -> usize {
-        self.0
+}
+
+impl RetryManager for RetryFor {
+    type ContentionManager = RetryStream;
+    type RetryFut = Ready<bool>;
+
+    fn contention_manager(&self) -> Self::ContentionManager {
+        RetryStream(self.max_retries)
+    }
+
+    fn retry(&mut self) -> Self::RetryFut {
+        let RetryFor { retry_senders, .. } = self;
+        if let Some(tx) = retry_senders.pop() {
+            assert!(tx.send(()).is_ok());
+            ready(true)
+        } else {
+            ready(false)
+        }
     }
 }
 
-impl Stream for RetryFor {
+impl Stream for RetryStream {
     type Item = ();
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -59,24 +90,57 @@ impl Stream for RetryFor {
     }
 }
 
+async fn wait_for_retries(receivers: &mut Vec<oneshot::Receiver<()>>, n: usize) -> Result<(), ()> {
+    for _ in 0..n {
+        if let Some(rx) = receivers.pop() {
+            timeout(Duration::from_secs(1), rx).await
+                .map_err(|_| ())?
+                .map_err(|_| ())?
+        } else {
+            return Err(())
+        }
+    }
+    Ok(())
+}
+
 impl RetryManager for ExactlyOnce {
     type ContentionManager = Empty<()>;
+    type RetryFut = Ready<bool>;
 
     fn contention_manager(&self) -> Self::ContentionManager {
         empty()
     }
 
-    fn max_retries(&self) -> usize {
-        0
+    fn retry(&mut self) -> Self::RetryFut {
+        ready(false)
     }
 }
 
-fn retry_for(n: usize) -> RetryFor {
-    RetryFor(n)
+fn retry_for(n: usize) -> (RetryFor, Vec<oneshot::Receiver<()>>) {
+    RetryFor::new(n)
 }
 
-fn forever() -> RetryFor {
-    retry_for(usize::max_value())
+struct Forever;
+
+impl RetryManager for Forever {
+    type ContentionManager = Forever;
+    type RetryFut = Ready<bool>;
+
+    fn contention_manager(&self) -> Self::ContentionManager {
+        Forever
+    }
+
+    fn retry(&mut self) -> Self::RetryFut {
+        ready(true)
+    }
+}
+
+impl Stream for Forever {
+    type Item = ();
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(Some(()))
+    }
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -249,7 +313,7 @@ async fn increment_concurrently() {
         barrier.wait().await;
         for _ in 0..10 {
             let stm = var_copy.get().and_then(|n| var_copy.put(*n + 1));
-            atomically(&stm, forever()).await?;
+            atomically(&stm, Forever).await?;
         }
         Ok(())
     });
@@ -257,7 +321,7 @@ async fn increment_concurrently() {
     barrier_copy.wait().await;
     for _ in 0..10 {
         let stm = var.get().and_then(|n| var.put(*n + 1));
-        assert!(atomically(&stm, forever()).await.is_ok());
+        assert!(atomically(&stm, Forever).await.is_ok());
     }
 
     let result = task.await;
@@ -274,6 +338,8 @@ async fn simple_retry() {
 
     let var_copy = var.clone();
 
+    let (manager, mut retries) = retry_for(1);
+
     let task = tokio::task::spawn(async move {
         let stm = var_copy.get().and_then(|n| {
             if *n == 1 {
@@ -282,10 +348,10 @@ async fn simple_retry() {
                 stm::right(stm::retry())
             }
         });
-        atomically(&stm, retry_for(1)).await
+        atomically(&stm, manager).await
     });
 
-    tokio::time::delay_for(Duration::from_millis(100u64)).await;
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
 
     var.store(1).await;
 
@@ -300,6 +366,8 @@ async fn fail_after_retry() {
 
     let var_copy = var.clone();
 
+    let (manager, mut retries) = retry_for(1);
+
     let task = tokio::task::spawn(async move {
         let stm = var_copy.get().and_then(|n| {
             if *n == 1 {
@@ -308,10 +376,10 @@ async fn fail_after_retry() {
                 stm::right(stm::retry())
             }
         });
-        atomically(&stm, retry_for(1)).await
+        atomically(&stm, manager).await
     });
 
-    tokio::time::delay_for(Duration::from_millis(100u64)).await;
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
 
     var.store(2).await;
 
@@ -329,6 +397,8 @@ async fn eventual_retry() {
 
     let var_copy = var.clone();
 
+    let (manager, mut retries) = retry_for(10);
+
     let task = tokio::task::spawn(async move {
         let stm = var_copy.get().and_then(|n| {
             if *n == 1 {
@@ -337,22 +407,22 @@ async fn eventual_retry() {
                 stm::right(stm::retry())
             }
         });
-        atomically(&stm, retry_for(10)).await
+        atomically(&stm, manager).await
     });
 
-    tokio::time::delay_for(Duration::from_millis(10u64)).await;
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
 
     var.store(2).await;
-    tokio::time::delay_for(Duration::from_millis(10u64)).await;
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
 
     var.store(3).await;
-    tokio::time::delay_for(Duration::from_millis(10u64)).await;
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
 
     var.store(4).await;
-    tokio::time::delay_for(Duration::from_millis(10u64)).await;
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
 
     var.store(5).await;
-    tokio::time::delay_for(Duration::from_millis(10u64)).await;
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
 
     var.store(1).await;
 
@@ -576,7 +646,6 @@ async fn stores_rolled_back_on_retry5() {
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
-
 
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {
     T::required_stack()
