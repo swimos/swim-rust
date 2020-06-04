@@ -124,8 +124,7 @@ impl BasicStateMachine<(), (), CommandValue> for CommandStateMachine {
                 if self.schema.matches(&value) {
                     BasicResponse::of((), CommandValue::Value(value))
                 } else {
-                    //Todo
-                    unimplemented!();
+                    BasicResponse::none()
                 }
             }
             CommandValue::Map(value) => BasicResponse::of((), CommandValue::Map(value)),

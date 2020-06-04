@@ -110,7 +110,7 @@ async fn test_foo() {
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
     command_dl
-        .send_item(CommandValue::Value("test".into()))
+        .send_item(CommandValue::Value(13.into()))
         .await
         .unwrap();
 
