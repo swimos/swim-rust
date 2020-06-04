@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::*;
+use std::fmt::Debug;
+use std::pin::Pin;
+
 use futures::task::{Context, Poll};
 use futures::Future;
-use std::pin::Pin;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
+
+use super::*;
 
 pub struct Sequenced<F1: Unpin, F2: Unpin> {
     first: Option<F1>,
@@ -85,6 +88,7 @@ pub fn send_and_await<T: Unpin + Send + 'static>(
     Sequenced::new(RequestFuture::new(sender.clone(), Request::new(tx)), rx)
 }
 
+#[derive(Debug, Clone)]
 pub struct RequestError {}
 
 impl From<RecvError> for RequestError {

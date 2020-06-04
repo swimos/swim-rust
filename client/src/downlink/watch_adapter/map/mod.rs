@@ -24,11 +24,11 @@ use either::Either;
 use futures::stream::SelectAll;
 use futures::{select_biased, Stream};
 use futures::{FutureExt, StreamExt};
-use std::collections::{BTreeMap, HashMap};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use utilities::lru_cache::LruCache;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe
@@ -108,11 +108,8 @@ enum BridgeMessage {
 pub struct ConsumerTask {
     input: mpsc::Receiver<Mod>,
     bridge: mpsc::Sender<BridgeMessage>,
-    max_active_keys: NonZeroUsize,
     yield_after: NonZeroUsize,
-    epoch: u64,
-    senders: HashMap<Value, EpochSender<Mod>>,
-    ages: BTreeMap<u64, Value>,
+    senders: LruCache<Value, EpochSender<Mod>>,
 }
 
 impl ConsumerTask {
@@ -125,16 +122,12 @@ impl ConsumerTask {
         ConsumerTask {
             input,
             bridge,
-            max_active_keys,
             yield_after,
-            epoch: 0,
-            senders: HashMap::new(),
-            ages: BTreeMap::new(),
+            senders: LruCache::new(max_active_keys),
         }
     }
 
     async fn run(mut self) {
-        //TODO The eviction strategy throws away the sender for the oldest key which isn't ideal. This would preferably be an LRU cache
         let yield_mod = self.yield_after.get();
         let mut iteration_count: usize = 0;
         while let Some(action) = self.input.recv().await {
@@ -161,45 +154,33 @@ impl ConsumerTask {
 
     async fn handle_keyed(&mut self, keyed: KeyedAction) -> bool {
         let ConsumerTask {
-            senders,
-            ages,
-            bridge,
-            epoch,
-            max_active_keys,
-            ..
+            senders, bridge, ..
         } = self;
         let KeyedAction(key, action) = keyed;
         match senders.get_mut(&key) {
             Some(sender) => sender.broadcast(action).is_ok(),
             _ => {
-                if senders.len() > max_active_keys.get() {
-                    let (tx, rx) = oneshot::channel();
-                    if bridge.send_item(BridgeMessage::Flush(tx)).await.is_err() {
+                let (tx, rx) = super::channel(action);
+
+                if let Some((_, _evicted)) = senders.insert(key, tx) {
+                    //Evicted sender must not be dropped until the flush completes.
+
+                    let (tx_flush, rx_flush) = oneshot::channel();
+                    if bridge
+                        .send_item(BridgeMessage::Flush(tx_flush))
+                        .await
+                        .is_err()
+                    {
                         return false;
                     }
-                    let first = ages
-                        .iter()
-                        .next()
-                        .and_then(|(age, key)| senders.remove(key).map(|sender| (*age, sender)));
-                    if let Some((age, sender)) = first {
-                        if rx.await.is_err() {
-                            //Wait for the flush to complete.
-                            //The produce task has been dropped.
-                            return false;
-                        }
-                        drop(sender);
-                        ages.remove(&age);
+                    //Wait for the flush to complete
+                    if rx_flush.await.is_err() {
+                        //The produce task was dropped.
+                        return false;
                     }
                 }
-                let (tx, rx) = super::channel(action);
-                let msg = BridgeMessage::Register(rx);
-                let entry = senders.entry(key);
-                let k = entry.key().clone();
-                entry.or_insert(tx);
-                let ts = *epoch;
-                *epoch += 1;
-                ages.insert(ts, k);
 
+                let msg = BridgeMessage::Register(rx);
                 bridge.send(msg).await.is_ok()
             }
         }
@@ -215,7 +196,7 @@ impl ConsumerTask {
         {
             return false;
         }
-        //Stop processing until he special action has been processed to maintain
+        //Stop processing until the special action has been processed to maintain
         //temporal consistency.
         rx.await.is_ok()
     }

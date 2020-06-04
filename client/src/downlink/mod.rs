@@ -32,6 +32,7 @@ pub mod typed;
 pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
+use crate::connections::ConnectionError;
 use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
 use common::model::schema::StandardSchema;
@@ -42,6 +43,7 @@ use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
+use tracing::{instrument, trace};
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -96,6 +98,9 @@ pub enum DownlinkError {
     MalformedMessage,
     InvalidAction,
     SchemaViolation(Value, StandardSchema),
+    ConnectionFailure(String),
+    ConnectionPoolFailure(ConnectionError),
+    ClosingFailure,
 }
 
 /// A request to a downlink for a value.
@@ -105,8 +110,14 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::HostUnreachable => DownlinkError::TaskPanic("Host is unreachable."),
-            RoutingError::HostNotFound => DownlinkError::TaskPanic("Unable to resolve host."),
+            RoutingError::ConnectionError => {
+                DownlinkError::ConnectionFailure("The connection has been lost".to_string())
+            }
+            RoutingError::PoolError(e) => DownlinkError::ConnectionPoolFailure(e),
+            RoutingError::CloseError => DownlinkError::ClosingFailure,
+            RoutingError::HostUnreachable => {
+                DownlinkError::ConnectionFailure("The host is unreachable".to_string())
+            }
         }
     }
 }
@@ -135,6 +146,14 @@ impl Display for DownlinkError {
             DownlinkError::InvalidAction => {
                 write!(f, "An action could not be applied to the internal state.")
             }
+            DownlinkError::ConnectionFailure(error) => write!(f, "Connection failure: {}.", error),
+
+            DownlinkError::ConnectionPoolFailure(connection_error) => write!(
+                f,
+                "The connection pool has encountered a failure: {}",
+                connection_error
+            ),
+            DownlinkError::ClosingFailure => write!(f, "An error occurred while closing down."),
         }
     }
 }
@@ -197,7 +216,7 @@ pub enum Command<A> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Event<A>(pub A, pub bool);
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Operation<M, A> {
     Start,
     Message(Message<M>),
@@ -377,6 +396,7 @@ where
         self.init()
     }
 
+    #[instrument(skip(self, state, data_state, op))]
     fn handle_operation(
         &self,
         state: &mut DownlinkState,
@@ -386,13 +406,16 @@ where
         let response = match op {
             Operation::Start => {
                 if *state == DownlinkState::Synced {
+                    trace!("Downlink synced");
                     Response::none()
                 } else {
+                    trace!("Downlink syncing");
                     Response::for_command(Command::Sync)
                 }
             }
             Operation::Message(message) => match message {
                 Message::Linked => {
+                    trace!("Downlink linked");
                     *state = DownlinkState::Linked;
                     Response::none()
                 }
@@ -417,6 +440,7 @@ where
                     },
                 },
                 Message::Unlinked => {
+                    trace!("Downlink unlinked");
                     *state = DownlinkState::Unlinked;
                     Response::none().then_terminate()
                 }

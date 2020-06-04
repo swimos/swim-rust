@@ -17,6 +17,7 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::TransitionError;
+use crate::router::RoutingError;
 use common::sink::item::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;

@@ -8,8 +8,47 @@ branches:
 matrix:
   include:
     - os: linux
+      arch: amd64
+      services:
+        - docker
+      env:
+        - ARCH=amd64
+        - TEST_SERVER_VERSION=v1.1
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
+        - REPO_URL="https://github.com/SirCipher/swim-test-server/"
+        - SWIM_CRATES="client form common server utilities deserialize serialize"
+      script:
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo test --workspace --exclude client
+        - cd client
+        #       Features aren't allowed in the root of a virtual workspace
+        - cargo test --package client --features test-server
+        - cd ..
+
+    - os: linux
+      arch: arm64
+      env: ARCH=arm64
+      script:
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo test --workspace
+
     - os: osx
+      arch: amd64
+      env: ARCH=amd64
+      script:
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo test --workspace
+
     - os: windows
+      arch: amd64
+      env: ARCH=amd64
+      script:
+        - cargo fmt -- --check
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo test --workspace
 
 rust:
   - 1.43.0
@@ -26,11 +65,6 @@ before_script:
   - rustup component add clippy
   - rustup component add rustfmt
 
-script:
-  - cargo test --workspace --all-features
-  - cargo fmt -- --check
-  - cargo clippy --all-features -- -D warnings
-
 addons:
   apt:
     packages:
@@ -42,12 +76,9 @@ addons:
       - binutils-dev
       - libiberty-dev
 
-env:
-  - SWIM_CRATES="client form common server utilities deserialize serialize"
-
 after_success:
   - |
-    if [[ "$TRAVIS_OS_NAME" == "linux" && "$TRAVIS_BRANCH" = "master" ]]; then
+    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
     wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
     tar xzf master.tar.gz &&
     cd kcov-master &&

@@ -1,0 +1,15 @@
+[package]
+name = "test_server"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[features]
+default = ["enabled"]
+enabled = []
+
+[dependencies]
+testcontainers = "0.9.1"
+
+[build-dependencies]
+git2 = { version = "^0.13", default-features = false, features = ["https"] }

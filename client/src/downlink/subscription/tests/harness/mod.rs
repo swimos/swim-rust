@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{Router, RoutingError};
+use crate::router::{Router, RouterEvent, RoutingError};
+use common::request::request_future::RequestError;
 use common::sink::item::drop_all::{drop_all, DropAll};
-use common::warp::envelope::{Envelope, IncomingLinkMessage, OutgoingLinkMessage};
+use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use futures::future::{ready, Ready};
 use futures::stream::{pending, Pending};
@@ -23,18 +24,18 @@ use futures::stream::{pending, Pending};
 pub struct StubRouter {}
 
 impl Router for StubRouter {
-    type ConnectionStream = Pending<Result<IncomingLinkMessage, RoutingError>>;
-    type ConnectionSink = DropAll<OutgoingLinkMessage, RoutingError>;
-    type GeneralSink = DropAll<(String, Envelope), RoutingError>;
-    type ConnectionFut = Ready<(Self::ConnectionSink, Self::ConnectionStream)>;
-    type GeneralFut = Ready<Self::GeneralSink>;
+    type ConnectionStream = Pending<RouterEvent>;
+    type ConnectionSink = DropAll<Envelope, RoutingError>;
+    type GeneralSink = DropAll<(url::Url, Envelope), RoutingError>;
+    type ConnectionFut =
+        Ready<Result<(Self::ConnectionSink, Self::ConnectionStream), RequestError>>;
 
     fn connection_for(&mut self, _target: &AbsolutePath) -> Self::ConnectionFut {
-        ready((drop_all(), pending()))
+        ready(Ok((drop_all(), pending())))
     }
 
-    fn general_sink(&mut self) -> Self::GeneralFut {
-        ready(drop_all())
+    fn general_sink(&mut self) -> Self::GeneralSink {
+        drop_all()
     }
 }
 

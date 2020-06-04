@@ -28,7 +28,7 @@ fn envelope_for<T, F>(
     to_body: F,
     path: &AbsolutePath,
     command: Command<T>,
-) -> (String, OutgoingLinkMessage)
+) -> (url::Url, OutgoingLinkMessage)
 where
     F: Fn(T) -> Option<Value>,
 {
@@ -59,7 +59,7 @@ where
 pub fn value_envelope(
     path: &AbsolutePath,
     command: Command<SharedValue>,
-) -> (String, OutgoingLinkMessage) {
+) -> (url::Url, OutgoingLinkMessage) {
     envelope_for(value::envelope_body, path, command)
 }
 
@@ -67,7 +67,7 @@ pub fn value_envelope(
 pub fn map_envelope(
     path: &AbsolutePath,
     command: Command<MapModification<Arc<Value>>>,
-) -> (String, OutgoingLinkMessage) {
+) -> (url::Url, OutgoingLinkMessage) {
     envelope_for(map::envelope_body, path, command)
 }
 

@@ -22,14 +22,14 @@ use common::model::Value::Int32Value;
 use common::warp::envelope::LinkMessage;
 
 fn path() -> AbsolutePath {
-    AbsolutePath::new("host", "node", "lane")
+    AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane")
 }
 
 #[test]
 fn unlink_value_command_to_envelope() {
     let expected = LinkMessage::unlink("node", "lane");
     let (host, envelope) = value_envelope(&path(), Command::Unlink);
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -44,7 +44,7 @@ fn unlinked_value_message_from_envelope() {
 fn sync_value_command_to_envelope() {
     let expected = LinkMessage::sync("node", "lane");
     let (host, envelope) = value_envelope(&path(), Command::Sync);
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -69,7 +69,7 @@ fn data_value_command_to_envelope() {
         &path(),
         Command::Action(SharedValue::new(Value::Int32Value(5))),
     );
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -84,7 +84,7 @@ fn data_value_message_from_envelope() {
 fn unlink_map_command_to_envelope() {
     let expected = LinkMessage::unlink("node", "lane");
     let (host, envelope) = map_envelope(&path(), Command::Unlink);
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -92,7 +92,7 @@ fn unlink_map_command_to_envelope() {
 fn sync_map_command_to_envelope() {
     let expected = LinkMessage::sync("node", "lane");
     let (host, envelope) = map_envelope(&path(), Command::Sync);
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -102,7 +102,7 @@ fn clear_map_command_to_envelope() {
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
     let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Clear));
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -112,7 +112,7 @@ fn take_map_command_to_envelope() {
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
     let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Take(7)));
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -122,7 +122,7 @@ fn skip_map_command_to_envelope() {
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
     let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Skip(7)));
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -137,7 +137,7 @@ fn remove_map_command_to_envelope() {
         &path(),
         Command::Action(MapModification::Remove(Value::text("key"))),
     );
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
@@ -152,7 +152,7 @@ fn insert_map_command_to_envelope() {
     let arc_action = MapModification::Insert(Value::text("key"), Arc::new(Value::text("value")));
 
     let (host, envelope) = map_envelope(&path(), Command::Action(arc_action));
-    assert_that!(host, eq("host"));
+    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
