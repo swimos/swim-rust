@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::match_wild_err_arm)]
+
 pub(crate) mod ptr;
 pub mod stm;
 pub mod transaction;
