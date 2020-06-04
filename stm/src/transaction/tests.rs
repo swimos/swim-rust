@@ -647,6 +647,109 @@ async fn stores_rolled_back_on_retry5() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
+
+fn retry_if_zero(var: &TVar<i32>, result: &'static str) -> impl Stm<Result = String> {
+    var.get().and_then(move |i| {
+        if *i == 0 {
+            stm::left(stm::retry())
+        } else {
+            stm::right(Constant(result.to_string()))
+        }
+    })
+}
+
+#[derive(Debug, Clone, Default)]
+struct RetryExample {
+    a: TVar<i32>,
+    b: TVar<i32>,
+    c: TVar<i32>,
+}
+
+impl RetryExample {
+
+    fn make_stm(&self) -> impl Stm<Result = String> + '_ {
+        let RetryExample{ a, b, c} = self;
+        a.get().and_then(move |va|{
+            if *va == 0 {
+                stm::left(Choice::new(
+                    retry_if_zero(&b, "b"),
+                    retry_if_zero(&c, "c")
+                ))
+            } else {
+                stm::right(Constant("a".to_string()))
+            }
+        })
+    }
+
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn wait_on_var_before_choice() {
+    let vars: RetryExample = Default::default();
+    let vars_copy = vars.clone();
+
+    let (manager, mut retries) = retry_for(1);
+
+    let task = tokio::task::spawn(async move {
+        let vars = vars_copy;
+        let stm = vars.make_stm();
+        atomically(&stm, manager).await
+    });
+
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
+    vars.a.store(1).await;
+
+    let result = task.await;
+
+    assert!(matches!(result, Ok(Ok(s)) if s == "a"));
+
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn wait_on_var_choice_first() {
+    let vars: RetryExample = Default::default();
+    let vars_copy = vars.clone();
+
+    let (manager, mut retries) = retry_for(1);
+
+    let task = tokio::task::spawn(async move {
+        let vars = vars_copy;
+        let stm = vars.make_stm();
+        atomically(&stm, manager).await
+    });
+
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
+    vars.b.store(1).await;
+
+    let result = task.await;
+
+    assert!(matches!(result, Ok(Ok(s)) if s == "b"));
+
+}
+
+
+#[tokio::test(threaded_scheduler)]
+async fn wait_on_var_choice_second() {
+    let vars: RetryExample = Default::default();
+    let vars_copy = vars.clone();
+
+    let (manager, mut retries) = retry_for(1);
+
+    let task = tokio::task::spawn(async move {
+        let vars = vars_copy;
+        let stm = vars.make_stm();
+        atomically(&stm, manager).await
+    });
+
+    assert!(wait_for_retries(&mut retries, 1).await.is_ok());
+    vars.c.store(1).await;
+
+    let result = task.await;
+
+    assert!(matches!(result, Ok(Ok(s)) if s == "c"));
+
+}
+
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {
     T::required_stack()
 }

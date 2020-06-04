@@ -96,6 +96,12 @@ impl<T> Debug for TVar<T> {
     }
 }
 
+impl<T: Default + Send + Sync + 'static> Default for TVar<T> {
+    fn default() -> Self {
+        TVar::new(Default::default())
+    }
+}
+
 pub struct TVarRead<T>(Arc<TVarInner>, PhantomData<fn() -> Arc<T>>);
 
 impl<T> TVarRead<T> {
