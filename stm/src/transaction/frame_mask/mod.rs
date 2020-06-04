@@ -43,7 +43,7 @@ impl FrameMask {
         );
         if !self.writes(n) {
             let FrameMask(m) = self;
-            *m = *m | (1 << (2 * n));
+            *m |= 1 << (2 * n);
         }
     }
 
@@ -54,7 +54,7 @@ impl FrameMask {
             MAX_SIZE
         );
         let FrameMask(m) = self;
-        *m = *m | (1 << (2 * n + 1));
+        *m |= 1 << (2 * n + 1);
     }
 
     fn extract(&self, n: usize) -> u8 {
@@ -95,7 +95,7 @@ impl<'a> Iterator for FrameMaskIter<'a> {
                 }
                 *i += 1;
             }
-            return current;
+            current
         }
     }
 }

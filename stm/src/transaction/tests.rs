@@ -16,6 +16,7 @@ use super::atomically;
 use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither};
 use crate::transaction::{RetryManager, TransactionError};
 use crate::var::TVar;
+use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::task::Poll;
 use futures::Stream;
@@ -25,10 +26,9 @@ use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::task::JoinHandle;
-use tokio::time::{Duration, timeout};
-use futures::future::{Ready, ready};
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tokio::time::{timeout, Duration};
 
 struct ExactlyOnce;
 
@@ -40,7 +40,6 @@ struct RetryFor {
 }
 
 impl RetryFor {
-
     fn new(n: usize) -> (RetryFor, Vec<oneshot::Receiver<()>>) {
         let mut senders = Vec::with_capacity(n);
         let mut receivers = Vec::with_capacity(n);
@@ -49,12 +48,14 @@ impl RetryFor {
             senders.push(tx);
             receivers.push(rx);
         }
-        (RetryFor {
-            max_retries: n,
-            retry_senders: senders,
-        }, receivers)
+        (
+            RetryFor {
+                max_retries: n,
+                retry_senders: senders,
+            },
+            receivers,
+        )
     }
-
 }
 
 impl RetryManager for RetryFor {
@@ -93,11 +94,12 @@ impl Stream for RetryStream {
 async fn wait_for_retries(receivers: &mut Vec<oneshot::Receiver<()>>, n: usize) -> Result<(), ()> {
     for _ in 0..n {
         if let Some(rx) = receivers.pop() {
-            timeout(Duration::from_secs(1), rx).await
+            timeout(Duration::from_secs(1), rx)
+                .await
                 .map_err(|_| ())?
                 .map_err(|_| ())?
         } else {
-            return Err(())
+            return Err(());
         }
     }
     Ok(())
@@ -588,10 +590,7 @@ async fn abort_propagates_choice_second() {
 #[tokio::test(threaded_scheduler)]
 async fn stores_rolled_back_on_retry1() {
     let var = TVar::new(0);
-    let stm = Choice::new(
-        var.put(1).followed_by(stm::retry()),
-        var.get(),
-    );
+    let stm = Choice::new(var.put(1).followed_by(stm::retry()), var.get());
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
@@ -599,10 +598,9 @@ async fn stores_rolled_back_on_retry1() {
 #[tokio::test(threaded_scheduler)]
 async fn stores_rolled_back_on_retry2() {
     let var = TVar::new(0);
-    let stm = var.put(1).followed_by(Choice::new(
-        var.put(2).followed_by(stm::retry()),
-        var.get(),
-    ));
+    let stm = var
+        .put(1)
+        .followed_by(Choice::new(var.put(2).followed_by(stm::retry()), var.get()));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
@@ -623,12 +621,9 @@ async fn stores_rolled_back_on_retry3() {
 #[tokio::test(threaded_scheduler)]
 async fn stores_rolled_back_on_retry4() {
     let var = TVar::new(0);
-    let stm = var.get().and_then(|i| {
-        Choice::new(
-            var.put(*i + 1).followed_by(stm::retry()),
-            var.get(),
-        )
-    });
+    let stm = var
+        .get()
+        .and_then(|i| Choice::new(var.put(*i + 1).followed_by(stm::retry()), var.get()));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
@@ -639,14 +634,10 @@ async fn stores_rolled_back_on_retry5() {
 
     let incr = var.get().and_then(|i| var.put(*i + 1));
 
-    let stm = (&incr).followed_by(Choice::new(
-        (&incr).followed_by(stm::retry()),
-        var.get(),
-    ));
+    let stm = (&incr).followed_by(Choice::new((&incr).followed_by(stm::retry()), var.get()));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
-
 
 fn retry_if_zero(var: &TVar<i32>, result: &'static str) -> impl Stm<Result = String> {
     var.get().and_then(move |i| {
@@ -666,21 +657,16 @@ struct RetryExample {
 }
 
 impl RetryExample {
-
     fn make_stm(&self) -> impl Stm<Result = String> + '_ {
-        let RetryExample{ a, b, c} = self;
-        a.get().and_then(move |va|{
+        let RetryExample { a, b, c } = self;
+        a.get().and_then(move |va| {
             if *va == 0 {
-                stm::left(Choice::new(
-                    retry_if_zero(&b, "b"),
-                    retry_if_zero(&c, "c")
-                ))
+                stm::left(Choice::new(retry_if_zero(&b, "b"), retry_if_zero(&c, "c")))
             } else {
                 stm::right(Constant("a".to_string()))
             }
         })
     }
-
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -702,7 +688,6 @@ async fn wait_on_var_before_choice() {
     let result = task.await;
 
     assert!(matches!(result, Ok(Ok(s)) if s == "a"));
-
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -724,9 +709,7 @@ async fn wait_on_var_choice_first() {
     let result = task.await;
 
     assert!(matches!(result, Ok(Ok(s)) if s == "b"));
-
 }
-
 
 #[tokio::test(threaded_scheduler)]
 async fn wait_on_var_choice_second() {
@@ -747,7 +730,6 @@ async fn wait_on_var_choice_second() {
     let result = task.await;
 
     assert!(matches!(result, Ok(Ok(s)) if s == "c"));
-
 }
 
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {
