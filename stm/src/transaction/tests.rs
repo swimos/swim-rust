@@ -480,6 +480,104 @@ async fn stores_rolled_back_on_abort5() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
+#[tokio::test(threaded_scheduler)]
+async fn choice_first_success() {
+    let stm = Choice::new(Constant(0), Constant(1));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn choice_fallback() {
+    let stm = Choice::new(stm::retry(), Constant(1));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(1)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn retry_both_choice_branches() {
+    let stm = Choice::new(stm::retry::<i32>(), stm::retry::<i32>());
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Err(TransactionError::InvalidRetry)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn abort_propagates_choice_first() {
+    let stm = Choice::new(stm::abort(NumericError(0)), Constant(1));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Err(TransactionError::Aborted { .. })));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn abort_propagates_choice_second() {
+    let stm = Choice::new(stm::retry::<i32>(), stm::abort(NumericError(0)));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Err(TransactionError::Aborted { .. })));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_retry1() {
+    let var = TVar::new(0);
+    let stm = Choice::new(
+        var.put(1).followed_by(stm::retry()),
+        var.get(),
+    );
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_retry2() {
+    let var = TVar::new(0);
+    let stm = var.put(1).followed_by(Choice::new(
+        var.put(2).followed_by(stm::retry()),
+        var.get(),
+    ));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(1)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_retry3() {
+    let var = TVar::new(0);
+    let stm = Choice::new(
+        var.get()
+            .and_then(|i| var.put(*i + 1))
+            .followed_by(stm::retry()),
+        var.get(),
+    );
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_retry4() {
+    let var = TVar::new(0);
+    let stm = var.get().and_then(|i| {
+        Choice::new(
+            var.put(*i + 1).followed_by(stm::retry()),
+            var.get(),
+        )
+    });
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn stores_rolled_back_on_retry5() {
+    let var = TVar::new(0);
+
+    let incr = var.get().and_then(|i| var.put(*i + 1));
+
+    let stm = (&incr).followed_by(Choice::new(
+        (&incr).followed_by(stm::retry()),
+        var.get(),
+    ));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(1)));
+}
+
+
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {
     T::required_stack()
 }
