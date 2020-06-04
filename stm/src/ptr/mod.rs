@@ -18,16 +18,16 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 pub trait Addressed {
-    type Referrent: ?Sized;
+    type Referent: ?Sized;
 
-    fn addr(&self) -> *const Self::Referrent;
+    fn addr(&self) -> *const Self::Referent;
 }
 
 impl<T: Deref> Addressed for T {
-    type Referrent = T::Target;
+    type Referent = T::Target;
 
-    fn addr(&self) -> *const Self::Referrent {
-        self.deref() as *const Self::Referrent
+    fn addr(&self) -> *const Self::Referent {
+        self.deref() as *const Self::Referent
     }
 }
 
@@ -40,7 +40,7 @@ impl<A: Addressed> Debug for PtrKey<A> {
 }
 
 impl<A: Addressed> Addressed for PtrKey<A> {
-    type Referrent = A::Referrent;
+    type Referent = A::Referent;
 
     fn addr(&self) -> *const Self::Referrent {
         let PtrKey(inner) = self;
