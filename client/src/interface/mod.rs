@@ -27,15 +27,13 @@ use crate::configuration::downlink::Config;
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
-use crate::downlink::any::AnyReceiver;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
-    SubscriptionError, TypedMapDownlink, TypedMapReceiver, TypedValueDownlink, TypedValueReceiver,
-    ValueReceiver,
+    SubscriptionError, TypedCommandValueDownlink, TypedMapDownlink, TypedMapReceiver,
+    TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
-use common::model::schema::StandardSchema;
 use common::warp::envelope::Envelope;
 
 #[cfg(test)]
@@ -174,6 +172,20 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new command downlink at the provided path.
+    pub async fn command_downlink<T>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<TypedCommandValueDownlink<T>, ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        self.downlinks
+            .subscribe_command(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
     /// Opens a new untyped value downlink at the provided path and initialises it with [`default`] value.
     pub async fn untyped_value_downlink(
         &mut self,
@@ -197,12 +209,13 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
-    pub async fn command_downlink(
+    /// Opens a new untyped command downlink at the provided path.
+    pub async fn untyped_command_downlink(
         &mut self,
         path: AbsolutePath,
     ) -> Result<AnyCommandDownlink, ClientError> {
         self.downlinks
-            .subscribe_command(path, StandardSchema::Anything)
+            .subscribe_command_untyped(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }

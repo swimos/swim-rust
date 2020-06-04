@@ -20,7 +20,7 @@ use crate::downlink::model::command;
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
-use crate::downlink::typed::{MapDownlink, ValueDownlink};
+use crate::downlink::typed::{CommandValueDownlink, MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
@@ -54,28 +54,29 @@ use tracing::{error, info, instrument, trace_span};
 
 use crate::downlink::model::command::CommandValue;
 use common::warp::envelope::Envelope;
-use std::num::NonZeroUsize;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
 #[cfg(test)]
 pub mod tests;
 
-pub type AnyValueDownlink = AnyDownlink<value::Action, SharedValue>;
+pub type AnyValueDownlink = AnyDownlink<Action, SharedValue>;
 pub type TypedValueDownlink<T> = ValueDownlink<AnyValueDownlink, T>;
 
 pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
 pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
+pub type AnyCommandDownlink = AnyDownlink<CommandValue, ()>;
+pub type TypedCommandValueDownlink<T> = CommandValueDownlink<AnyCommandDownlink, T>;
+
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type TypedValueReceiver<T> = UntilFailure<ValueReceiver, ApplyForm<T>>;
+
 pub type MapReceiver = AnyReceiver<ViewWithEvent>;
 pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>;
 
-type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
+type AnyWeakValueDownlink = AnyWeakDownlink<Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
-
-pub type AnyCommandDownlink = AnyDownlink<CommandValue, ()>;
 type AnyWeakCommandDownlink = AnyWeakDownlink<CommandValue, ()>;
 
 pub struct Downlinks {
@@ -241,10 +242,30 @@ impl Downlinks {
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 
-    pub async fn subscribe_command(
+    pub async fn subscribe_command_untyped(
         &mut self,
         path: AbsolutePath,
+    ) -> RequestResult<AnyCommandDownlink> {
+        self.subscribe_command_inner(StandardSchema::Anything, path)
+            .await
+    }
+
+    pub async fn subscribe_command<T>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<TypedCommandValueDownlink<T>>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        Ok(CommandValueDownlink::new(
+            self.subscribe_command_inner(T::schema(), path).await?,
+        ))
+    }
+
+    async fn subscribe_command_inner(
+        &mut self,
         schema: StandardSchema,
+        path: AbsolutePath,
     ) -> RequestResult<AnyCommandDownlink> {
         let (tx, rx) = oneshot::channel();
 
@@ -441,6 +462,7 @@ impl MapHandle {
 
 struct CommandHandle {
     ptr: AnyWeakCommandDownlink,
+    schema: StandardSchema,
 }
 
 struct DownlinkTask<R> {
@@ -687,14 +709,21 @@ where
                     }
                 }
             }
-            _ => match self.map_downlinks.get(&path) {
-                Some(_) => Err(SubscriptionError::bad_kind(
+            _ => match (
+                self.map_downlinks.get(&path),
+                self.command_downlinks.get(&path),
+            ) {
+                (None, None) => Ok(self
+                    .create_new_value_downlink(init, schema, path.clone())
+                    .await?),
+                (Some(_), _) => Err(SubscriptionError::bad_kind(
                     DownlinkKind::Value,
                     DownlinkKind::Map,
                 )),
-                _ => Ok(self
-                    .create_new_value_downlink(init, schema, path.clone())
-                    .await?),
+                (_, Some(_)) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Value,
+                    DownlinkKind::Command,
+                )),
             },
         };
         let _ = value_req.send(dl);
@@ -753,14 +782,21 @@ where
                     }
                 }
             }
-            _ => match self.value_downlinks.get(&path) {
-                Some(_) => Err(SubscriptionError::bad_kind(
+            _ => match (
+                self.value_downlinks.get(&path),
+                self.command_downlinks.get(&path),
+            ) {
+                (None, None) => Ok(self
+                    .create_new_map_downlink(path.clone(), key_schema, value_schema)
+                    .await?),
+                (Some(_), _) => Err(SubscriptionError::bad_kind(
                     DownlinkKind::Map,
                     DownlinkKind::Value,
                 )),
-                _ => Ok(self
-                    .create_new_map_downlink(path.clone(), key_schema, value_schema)
-                    .await?),
+                (_, Some(_)) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Map,
+                    DownlinkKind::Command,
+                )),
             },
         };
         let _ = map_req.send(dl);
@@ -774,14 +810,56 @@ where
         value_req: Request<RequestResult<AnyCommandDownlink>>,
     ) -> RequestResult<()> {
         let dl = match self.command_downlinks.get(&path) {
-            Some(CommandHandle { ptr: dl }) => Ok(self
-                .create_new_command_downlink(path.clone(), schema)
-                .await?),
-            _ => Ok(self
-                .create_new_command_downlink(path.clone(), schema)
-                .await?),
+            Some(CommandHandle {
+                ptr: dl,
+                schema: existing_schema,
+            }) => {
+                if !schema.eq(existing_schema) {
+                    Err(SubscriptionError::incompatibile_value(
+                        path,
+                        existing_schema.clone(),
+                        schema,
+                    ))
+                } else {
+                    let maybe_dl = dl.upgrade();
+                    match maybe_dl {
+                        Some(mut dl_clone) if dl_clone.is_running() => {
+                            match dl_clone.subscribe().await {
+                                Ok(_) => Ok(dl_clone),
+                                Err(_) => {
+                                    self.command_downlinks.remove(&path);
+                                    Ok(self
+                                        .create_new_command_downlink(path.clone(), schema)
+                                        .await?)
+                                }
+                            }
+                        }
+                        _ => {
+                            self.command_downlinks.remove(&path);
+                            Ok(self
+                                .create_new_command_downlink(path.clone(), schema)
+                                .await?)
+                        }
+                    }
+                }
+            }
+            _ => match (
+                self.value_downlinks.get(&path),
+                self.map_downlinks.get(&path),
+            ) {
+                (None, None) => Ok(self
+                    .create_new_command_downlink(path.clone(), schema)
+                    .await?),
+                (Some(_), _) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Command,
+                    DownlinkKind::Value,
+                )),
+                (_, Some(_)) => Err(SubscriptionError::bad_kind(
+                    DownlinkKind::Command,
+                    DownlinkKind::Map,
+                )),
+            },
         };
-
         let _ = value_req.send(dl);
         Ok(())
     }
@@ -811,6 +889,16 @@ where
                     let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
                     if !is_running {
                         self.map_downlinks.remove(&stop_event.path);
+                    }
+                }
+            }
+            DownlinkKind::Command => {
+                if let Some(CommandHandle { ptr: weak_dl, .. }) =
+                    self.command_downlinks.get(&stop_event.path)
+                {
+                    let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
+                    if !is_running {
+                        self.command_downlinks.remove(&stop_event.path);
                     }
                 }
             }
@@ -998,33 +1086,13 @@ where
             let dl = command::create_queue_downlink(Some(schema), dl_cmd_sink, n, &config);
             AnyDownlink::Queue(dl)
         }
-        // MuxMode::Dropping => {
-        //     let (dl, rec) = command::create_dropping_downlink(
-        //         Some(schema),
-        //         updates,
-        //         dl_cmd_sink,
-        //         &config,
-        //     );
-        //     (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
-        // }
-        // MuxMode::Buffered(n) => {
-        //     let (dl, rec) = command::create_buffered_downlink(
-        //         Some(schema),
-        //         updates,
-        //         dl_cmd_sink,
-        //         n,
-        //         &config,
-        //     );
-        //     (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
-        // }
-        _ => {
-            let dl = command::create_queue_downlink(
-                Some(schema),
-                dl_cmd_sink,
-                NonZeroUsize::new(3).unwrap(),
-                &config,
-            );
-            AnyDownlink::Queue(dl)
+        MuxMode::Dropping => {
+            let dl = command::create_dropping_downlink(Some(schema), dl_cmd_sink, &config);
+            AnyDownlink::Dropping(dl)
+        }
+        MuxMode::Buffered(n) => {
+            let dl = command::create_buffered_downlink(Some(schema), dl_cmd_sink, n, &config);
+            AnyDownlink::Buffered(dl)
         }
     }
 }

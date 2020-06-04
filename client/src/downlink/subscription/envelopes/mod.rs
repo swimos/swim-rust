@@ -157,7 +157,7 @@ pub(in crate::downlink) mod map {
 
 pub(in crate::downlink) mod command {
     use crate::downlink::model::command::CommandValue;
-    use crate::downlink::model::map::{map_body, MapModification};
+    use crate::downlink::model::map::map_body;
     use common::model::Value;
 
     pub(super) fn envelope_body(cmd: CommandValue) -> Option<Value> {

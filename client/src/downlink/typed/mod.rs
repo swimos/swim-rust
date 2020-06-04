@@ -18,6 +18,7 @@ pub mod event;
 pub mod topic;
 
 use crate::downlink::any::{AnyDownlink, TopicKind};
+use crate::downlink::model::command::CommandValue;
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::action::{MapActions, ValueActions};
@@ -246,5 +247,38 @@ where
         let topic = TryTransformTopic::new(inner_topic, ApplyFormsMap::new());
         let sink = MapActions::new(inner_sink);
         (topic, sink)
+    }
+}
+
+/// A wrapper around a command value downlink, applying a [`Form`] to the values.
+#[derive(Debug)]
+pub struct CommandValueDownlink<Inner, T> {
+    inner: Inner,
+    _value_type: PhantomData<T>,
+}
+
+impl<Inner, T> CommandValueDownlink<Inner, T>
+where
+    // Inner: Downlink<CommandValue, ()>,
+    T: Form,
+{
+    pub fn new(inner: Inner) -> Self {
+        CommandValueDownlink {
+            inner,
+            _value_type: PhantomData,
+        }
+    }
+}
+
+impl<'a, Inner, T> ItemSink<'a, CommandValue> for CommandValueDownlink<Inner, T>
+where
+    Inner: ItemSink<'a, CommandValue>,
+    T: Form + Send + 'static,
+{
+    type Error = Inner::Error;
+    type SendFuture = Inner::SendFuture;
+
+    fn send_item(&'a mut self, value: CommandValue) -> Self::SendFuture {
+        self.inner.send_item(value)
     }
 }

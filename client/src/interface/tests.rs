@@ -93,7 +93,6 @@ async fn client_test() {
 }
 
 use crate::downlink::model::command::CommandValue;
-use crate::downlink::model::value::Action;
 use common::sink::item::ItemSink;
 use utilities::trace::init_trace;
 
@@ -107,11 +106,11 @@ async fn test_foo() {
         "unit/foo",
         "publish",
     );
-    let mut command_dl = client.command_downlink(path).await.unwrap();
+    let mut command_dl = client.command_downlink::<i32>(path).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
     command_dl
-        .send_item(CommandValue::Value(Value::Int32Value(5)))
+        .send_item(CommandValue::Value("test".into()))
         .await
         .unwrap();
 

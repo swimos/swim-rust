@@ -1,20 +1,19 @@
 use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::model::map::{MapAction, MapModification};
-use crate::downlink::model::value::{Action, SharedValue, ValueModel};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver};
+use crate::downlink::buffered::BufferedDownlink;
+use crate::downlink::dropping::DroppingDownlink;
+use crate::downlink::model::map::MapModification;
+use crate::downlink::queue::QueueDownlink;
 use crate::downlink::{
-    queue, BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest, Message,
-    Operation, TransitionError,
+    buffered, dropping, queue, BasicResponse, BasicStateMachine, Command, DownlinkError, Message,
 };
 use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
 use common::sink::item::ItemSender;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use futures_util::future::ready;
 use futures_util::stream::once;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 pub enum CommandValue {
     Value(Value),
@@ -34,6 +33,48 @@ where
     let upd_stream = init.chain(futures::stream::pending());
 
     queue::make_downlink(
+        CommandStateMachine::new(schema.unwrap()),
+        upd_stream,
+        cmd_sender,
+        queue_size,
+        &config,
+    )
+    .0
+}
+
+pub fn create_dropping_downlink<Commands>(
+    schema: Option<StandardSchema>,
+    cmd_sender: Commands,
+    config: &DownlinkParams,
+) -> DroppingDownlink<CommandValue, ()>
+where
+    Commands: ItemSender<Command<CommandValue>, RoutingError> + Send + 'static,
+{
+    let init = once(ready(Ok(Message::Synced)));
+    let upd_stream = init.chain(futures::stream::pending());
+
+    dropping::make_downlink(
+        CommandStateMachine::new(schema.unwrap()),
+        upd_stream,
+        cmd_sender,
+        &config,
+    )
+    .0
+}
+
+pub fn create_buffered_downlink<Commands>(
+    schema: Option<StandardSchema>,
+    cmd_sender: Commands,
+    queue_size: NonZeroUsize,
+    config: &DownlinkParams,
+) -> BufferedDownlink<CommandValue, ()>
+where
+    Commands: ItemSender<Command<CommandValue>, RoutingError> + Send + 'static,
+{
+    let init = once(ready(Ok(Message::Synced)));
+    let upd_stream = init.chain(futures::stream::pending());
+
+    buffered::make_downlink(
         CommandStateMachine::new(schema.unwrap()),
         upd_stream,
         cmd_sender,
@@ -79,7 +120,14 @@ impl BasicStateMachine<(), (), CommandValue> for CommandStateMachine {
         action: CommandValue,
     ) -> BasicResponse<Self::Ev, Self::Cmd> {
         match action {
-            CommandValue::Value(value) => BasicResponse::of((), CommandValue::Value(value)),
+            CommandValue::Value(value) => {
+                if self.schema.matches(&value) {
+                    BasicResponse::of((), CommandValue::Value(value))
+                } else {
+                    //Todo
+                    unimplemented!();
+                }
+            }
             CommandValue::Map(value) => BasicResponse::of((), CommandValue::Map(value)),
         }
     }
