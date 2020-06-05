@@ -15,6 +15,8 @@
 #[cfg(test)]
 mod tests;
 
+/// Flags indicating whether a transaction variable was read or written in a single frame of a
+/// transaction.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadWrite {
     Read,
@@ -24,6 +26,7 @@ pub enum ReadWrite {
 
 const MAX_SIZE: usize = 64;
 
+/// Mask that tracks the variables that were read and written in a single frame of a transaction.
 #[derive(Debug, Default)]
 pub struct FrameMask(u128);
 
@@ -35,6 +38,7 @@ impl FrameMask {
         Default::default()
     }
 
+    /// Record that a variable was read in this frame.
     pub fn read(&mut self, n: usize) {
         assert!(
             n < MAX_SIZE,
@@ -42,11 +46,13 @@ impl FrameMask {
             MAX_SIZE
         );
         if !self.writes(n) {
+            // If a value is read after it was written, no read to the underlying variable occurs.
             let FrameMask(m) = self;
             *m |= 1 << (2 * n);
         }
     }
 
+    /// Record that a variable was written in this frame.
     pub fn write(&mut self, n: usize) {
         assert!(
             n < MAX_SIZE,
@@ -66,6 +72,7 @@ impl FrameMask {
         self.extract(n) > 1
     }
 
+    /// Get the flags for a specific variable.
     pub fn get(&self, n: usize) -> Option<ReadWrite> {
         match self.extract(n) {
             3 => Some(ReadWrite::ReadWrite),
@@ -75,6 +82,7 @@ impl FrameMask {
         }
     }
 
+    /// Iterate over the variables that have flags set.
     pub fn iter(&self) -> FrameMaskIter<'_> {
         FrameMaskIter(self, 2 * MAX_SIZE - self.0.leading_zeros() as usize, 0)
     }

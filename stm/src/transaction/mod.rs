@@ -21,7 +21,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ptr::PtrKey;
-use crate::stm::{ExecResult, Stm, StmError};
+use crate::stm::error::StmError;
+use crate::stm::{ExecResult, Stm};
 use crate::transaction::frame_mask::{FrameMask, ReadWrite};
 use crate::var::{Contents, TVarInner};
 use futures::stream::FusedStream;
@@ -33,9 +34,13 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::macros::support::Pin;
 
+// Default capacity of the transaction log.
 const DEFAULT_LOG_CAP: usize = 32;
+// Default initial stack size for Stm instances for which the maximum stack depth cannot be
+// determined.
 const DEFAULT_STACK_SIZE: usize = 8;
 
+/// A stack of masks indicating which variables were read from/written two in each frame.
 #[derive(Debug)]
 struct MaskStack(Vec<FrameMask>);
 
@@ -44,16 +49,19 @@ impl MaskStack {
         MaskStack(Vec::with_capacity(capacity))
     }
 
+    // Enter a new frame.
     fn enter(&mut self) {
         let MaskStack(stack) = self;
         stack.push(FrameMask::new());
     }
 
+    // Pop the top frame.
     fn pop(&mut self) -> Option<FrameMask> {
         let MaskStack(stack) = self;
         stack.pop()
     }
 
+    // Returns true if the stack is empty or a variable was written in this frame.
     fn root_or_set_in_frame(&self, i: usize) -> bool {
         let MaskStack(stack) = self;
         if let Some(mask) = stack.last() {
@@ -66,6 +74,7 @@ impl MaskStack {
         }
     }
 
+    // If the stack is non-empty, record that a variable was read in this frame.
     fn set_read(&mut self, i: usize) {
         let MaskStack(stack) = self;
         if let Some(mask) = stack.last_mut() {
@@ -73,6 +82,7 @@ impl MaskStack {
         }
     }
 
+    // If the stack is non-empty, record that a variable was written in this frame.
     fn set_written(&mut self, i: usize) {
         let MaskStack(stack) = self;
         if let Some(mask) = stack.last_mut() {
@@ -80,17 +90,26 @@ impl MaskStack {
         }
     }
 
+    // Dump all frames.
     fn clear(&mut self) {
         let MaskStack(stack) = self;
         stack.clear();
     }
 }
 
+/// State of an entry in the transaction log. If the state contains a value, this is the value
+/// that was originally read from the variable.
 #[derive(Debug, Clone)]
 enum LogState {
-    UnconditionalGet(Contents),
-    ReadInFailedPath(Contents),
+    /// The value of the variable was read in this transaction.
+    Get(Contents),
+    /// The values of the variable was read in this transaction in a branch that did not
+    /// complete.
+    GetInFailedPath(Contents),
+    /// A variable was written to in this transaction before its value was read and so there is
+    /// no dependency on the original value.
     UnconditionalSet,
+    /// A variable was written to in this transaction after its value had been read.
     ConditionalSet(Contents),
 }
 
@@ -106,25 +125,30 @@ impl LogState {
     }
 }
 
+/// A transaction log entry for a single variable.
 #[derive(Debug)]
 struct LogEntry {
+    /// Current state of the variable in the transaction.
     state: LogState,
+    /// Stack of values that have been set into the value for each stack frame.
     stack: Vec<Contents>,
 }
 
+// Panic message for when an inconsistent transaction log is detected.
 const INCONSISTENT_STATE: &str = "Stack must be non-empty when a value has been set.";
 
 impl LogEntry {
     fn is_active(&self) -> bool {
-        !matches!(self.state, LogState::ReadInFailedPath(_))
+        !matches!(self.state, LogState::GetInFailedPath(_))
     }
 
+    // Get the current value (within the transaction) associated with this log entry.
     fn get_value<T: Any + Send + Sync>(&mut self) -> Arc<T> {
         let LogEntry { state, stack, .. } = self;
         let old_state = std::mem::take(state);
         let (current, new_state) = match old_state {
-            LogState::UnconditionalGet(original) | LogState::ReadInFailedPath(original) => {
-                (original.clone(), LogState::UnconditionalGet(original))
+            LogState::Get(original) | LogState::GetInFailedPath(original) => {
+                (original.clone(), LogState::Get(original))
             }
             s @ LogState::UnconditionalSet | s @ LogState::ConditionalSet(_) => {
                 (stack.last().expect(INCONSISTENT_STATE).clone(), s)
@@ -141,16 +165,18 @@ impl LogEntry {
         }
     }
 
+    // Update the state of the entry in preparation for setting new value.
     fn update_state_for_set(&mut self) {
         let old_state = std::mem::take(&mut self.state);
         self.state = match old_state {
-            LogState::UnconditionalGet(original) | LogState::ConditionalSet(original) => {
+            LogState::Get(original) | LogState::ConditionalSet(original) => {
                 LogState::ConditionalSet(original)
             }
             ow => ow,
         };
     }
 
+    // Set the value of a variable (within the transaction).
     fn set<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
         assert_eq!(value.as_ref().type_id(), self.get_type_id());
         self.update_state_for_set();
@@ -160,17 +186,19 @@ impl LogEntry {
         }
     }
 
+    // Set the value of a variable (within the transaction), entering a new stack frame.
     fn enter<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
         assert_eq!(value.as_ref().type_id(), self.get_type_id());
         self.update_state_for_set();
         self.stack.push(value);
     }
 
+    // Get the type ID of the values in this entry.
     fn get_type_id(&self) -> TypeId {
         match &self.state {
-            LogState::UnconditionalGet(original)
+            LogState::Get(original)
             | LogState::ConditionalSet(original)
-            | LogState::ReadInFailedPath(original) => original.as_ref().type_id(),
+            | LogState::GetInFailedPath(original) => original.as_ref().type_id(),
             LogState::UnconditionalSet => self
                 .stack
                 .last()
@@ -180,13 +208,14 @@ impl LogEntry {
         }
     }
 
+    // Pop the for this entry. Returns true if the entry should be removed entirely.
     fn pop(&mut self, rw: ReadWrite) -> bool {
         let LogEntry { state, stack } = self;
         let old_state = std::mem::take(state);
         let new_state = match old_state {
-            LogState::UnconditionalGet(original) => {
+            LogState::Get(original) => {
                 debug_assert!(rw == ReadWrite::Read);
-                Some(LogState::ReadInFailedPath(original))
+                Some(LogState::GetInFailedPath(original))
             }
             LogState::UnconditionalSet => {
                 debug_assert!(rw == ReadWrite::Write);
@@ -202,9 +231,9 @@ impl LogEntry {
                 stack.pop().expect(INCONSISTENT_STATE);
                 if stack.is_empty() {
                     if rw == ReadWrite::Write {
-                        Some(LogState::UnconditionalGet(original))
+                        Some(LogState::Get(original))
                     } else {
-                        Some(LogState::ReadInFailedPath(original))
+                        Some(LogState::GetInFailedPath(original))
                     }
                 } else {
                     Some(LogState::ConditionalSet(original))
@@ -222,14 +251,20 @@ impl LogEntry {
     }
 }
 
+/// A transaction within which an [`Stm`] can be executed.
 #[derive(Debug)]
 pub struct Transaction {
+    // Mapping from variables to entries in the log.
     log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
+    // State of each variable that are referred to in the transaction.
     log: Slab<LogEntry>,
+    // Records which variables have been accessed in each frame of the transaction stack.
     masks: MaskStack,
+    // Estimated maximum depth of the transaction stack.
     stack_size: usize,
 }
 
+//Get the log entry associated with a variable, if it exists.
 fn get_entry<'a>(
     log_assoc: &HashMap<PtrKey<Arc<TVarInner>>, usize>,
     log: &'a mut Slab<LogEntry>,
@@ -243,6 +278,8 @@ fn get_entry<'a>(
 }
 
 impl Transaction {
+    /// Create a new transaction with an estimate of the maximum possible depth of the
+    /// execution stack.
     pub fn new(stack_size: usize) -> Self {
         Transaction {
             log_assoc: HashMap::new(),
@@ -252,10 +289,12 @@ impl Transaction {
         }
     }
 
+    /// The number of variables that have been accessed by the transaction.
     fn num_dependencies(&self) -> usize {
         self.log.len()
     }
 
+    /// Execute a "get" on variable, within the context of the transaction.
     pub(crate) async fn apply_get<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>) -> Arc<T> {
         let Transaction {
             log_assoc,
@@ -275,7 +314,7 @@ impl Transaction {
                 let value = var.read().await;
                 let result = value.clone().downcast().unwrap();
                 let entry = LogEntry {
-                    state: LogState::UnconditionalGet(value),
+                    state: LogState::Get(value),
                     stack: Vec::with_capacity(*stack_size),
                 };
                 let i = log.insert(entry);
@@ -298,6 +337,7 @@ impl Transaction {
         self.log_assoc.insert(k, i);
     }
 
+    /// Execute a "set" on a variable within the context of the transaction.
     pub(crate) fn apply_set<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>, value: Arc<T>) {
         let Transaction {
             log_assoc,
@@ -318,6 +358,7 @@ impl Transaction {
         }
     }
 
+    // Attempt to commit the transaction, returning true of the commit succeeded.
     async fn try_commit(&mut self) -> bool {
         let mut reads = FuturesUnordered::new();
         let mut writes = FuturesUnordered::new();
@@ -328,7 +369,7 @@ impl Transaction {
             let PtrKey(var) = key;
 
             match state {
-                LogState::UnconditionalGet(original) => {
+                LogState::Get(original) => {
                     reads.push(var.validate_read(original));
                 }
                 LogState::UnconditionalSet => {
@@ -376,12 +417,13 @@ impl Transaction {
         true
     }
 
+    // Check the consistency of the transaction log.
     fn reads_changed_or_locked(&self) -> bool {
         self.log_assoc
             .iter()
             .any(|(PtrKey(var), i)| match self.log.get(*i) {
                 Some(LogEntry { state, .. }) => match state {
-                    LogState::UnconditionalGet(original) | LogState::ConditionalSet(original) => {
+                    LogState::Get(original) | LogState::ConditionalSet(original) => {
                         var.has_changed(original)
                     }
                     _ => false,
@@ -390,16 +432,19 @@ impl Transaction {
             })
     }
 
+    // Reset the transaction after a failed execution/commit.
     fn reset(&mut self) {
         self.log_assoc.clear();
         self.log.clear();
         self.masks.clear();
     }
 
+    /// Push a new frame onto the execution stack.
     pub(crate) fn enter_frame(&mut self) {
         self.masks.enter();
     }
 
+    /// Pop the top frame of the execution stack.
     pub(crate) fn pop_frame(&mut self) {
         let Transaction { log, masks, .. } = self;
 
@@ -421,13 +466,21 @@ impl Transaction {
     }
 }
 
+/// Errors that can occur when attempting to execute a transaction.
 #[derive(Debug)]
 pub enum TransactionError {
+    /// The transaction was aborted.
     Aborted { error: StmError },
+    /// The transaction failed to commit after some number of attempts due to contention with other
+    /// transactions.
     HighContention { num_failed: usize },
+    /// Execution of the transaction ran for too long.
     TransactionDiverged,
+    /// The execution stack became too deep (likely due to a recursive transaction).
     StackOverflow { depth: usize },
+    /// The transaction attempted to restart too many times.
     TooManyAttempts { num_attempts: usize },
+    /// The transaction attempted to restart when it had not read from any variables.
     InvalidRetry,
 }
 
@@ -469,15 +522,20 @@ impl Error for TransactionError {
     }
 }
 
+/// A strategy for retrying transactions.
 pub trait RetryManager {
     type ContentionManager: Stream<Item = ()> + Unpin;
     type RetryFut: Future<Output = bool> + Unpin;
 
+    /// A stream of (potential) delays between attempts to apply the transaction that fail
+    /// due to contention. If this stream terminates, the transaction will also.
     fn contention_manager(&self) -> Self::ContentionManager;
 
+    /// Determines whether the transaction will be retried when completing with Retry.
     fn retry(&mut self) -> Self::RetryFut;
 }
 
+/// Attempt to run an [`Stm`] instance within a transaction, using the provided retry strategy.
 pub async fn atomically<S, Retries>(
     stm: &S,
     mut retries: Retries,
@@ -526,6 +584,7 @@ where
     }
 }
 
+/// A future that awaits changes in any of the variables that were read in a transaction.
 pub struct AwaitChanged<'a>(Option<&'a mut Transaction>);
 
 impl<'a> AwaitChanged<'a> {

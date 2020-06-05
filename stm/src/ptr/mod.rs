@@ -17,6 +17,7 @@ use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
+/// Trait for dereferenceable types to get the address of the referent as a const pointer.
 pub trait Addressed {
     type Referent: ?Sized;
 
@@ -31,6 +32,7 @@ impl<T: Deref> Addressed for T {
     }
 }
 
+/// Allows comparison and pointer equality for a type for use as the key to a map.
 pub struct PtrKey<A>(pub A);
 
 impl<A: Addressed> Debug for PtrKey<A> {
@@ -42,7 +44,7 @@ impl<A: Addressed> Debug for PtrKey<A> {
 impl<A: Addressed> Addressed for PtrKey<A> {
     type Referent = A::Referent;
 
-    fn addr(&self) -> *const Self::Referrent {
+    fn addr(&self) -> *const Self::Referent {
         let PtrKey(inner) = self;
         inner.addr()
     }
