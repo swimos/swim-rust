@@ -52,7 +52,7 @@ pub enum MapModification<V> {
     Clear,
 }
 
-const INSERT_NAME: &str = "insert";
+const INSERT_NAME: &str = "update";
 const REMOVE_NAME: &str = "remove";
 const TAKE_NAME: &str = "take";
 const SKIP_NAME: &str = "drop";
