@@ -25,7 +25,8 @@ use form::ValidatedForm;
 
 use crate::configuration::downlink::Config;
 use crate::configuration::router::RouterParamBuilder;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+// use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::connections::factory::WebsocketFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedMapDownlink,
@@ -101,17 +102,15 @@ pub struct SwimClient {
 impl SwimClient {
     /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.
     /// The provided configuration is used when opening new downlinks.
-    pub async fn new<C>(configuration: C) -> Self
+    pub async fn new<C, Fac>(configuration: C, connection_factory: Fac) -> Self
     where
         C: Config + 'static,
+        Fac: WebsocketFactory + 'static,
     {
         info!("Initialising Swim Client");
 
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            config.connection_pool_params(),
-            TungsteniteWsFactory::new(config.buffer_size().get()).await,
-        );
+        let pool = SwimConnPool::new(config.connection_pool_params(), connection_factory);
         let router = SwimRouter::new(config, pool);
 
         SwimClient {

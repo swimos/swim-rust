@@ -25,7 +25,6 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use std::convert::TryFrom;
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
 
@@ -34,9 +33,9 @@ use tracing::{debug, error, span, trace, warn, Level};
 /// Tasks that the incoming task can handle.
 #[derive(Debug)]
 pub(crate) enum IncomingRequest {
-    Connection(mpsc::Receiver<Message>),
+    Connection(mpsc::Receiver<String>),
     Subscribe(SubscriberRequest),
-    Message(Message),
+    Message(String),
     Unreachable(String),
     Disconnect,
     Close(Option<CloseResponseSender>),
@@ -66,7 +65,7 @@ impl IncomingHostTask {
         let IncomingHostTask { task_rx, close_rx } = self;
 
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
-        let mut connection: Option<mpsc::Receiver<Message>> = None;
+        let mut connection: Option<mpsc::Receiver<String>> = None;
 
         let mut rx = combine_incoming_streams(task_rx, close_rx);
 
@@ -115,11 +114,7 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Message(message) => {
-                    let message = message
-                        .to_text()
-                        .map_err(|_| RoutingError::ConnectionError)?;
-
-                    let value = parse_single(message);
+                    let value = parse_single(&message);
 
                     match value {
                         Ok(val) => {

@@ -36,10 +36,10 @@ fn apply_form_value() {
     let bad = SharedValue::new(Value::text("hello"));
 
     let apply: ApplyForm<i32> = ApplyForm::new();
-    let result = apply.transform(Event(good, true));
-    assert_that!(result, eq(Ok(Event(7, true))));
+    let result = apply.transform(Event::new(good, true));
+    assert_that!(result, eq(Ok(Event::new(7, true))));
 
-    let result = apply.transform(Event(bad, true));
+    let result = apply.transform(Event::new(bad, true));
     assert_that!(result, err());
 }
 
@@ -61,9 +61,12 @@ fn apply_form_map() {
 
     let apply: ApplyFormsMap<String, i32> = ApplyFormsMap::new();
 
-    let result = apply.transform(Event(good, false));
+    let result = apply.transform(Event::new(good, false));
     assert_that!(&result, ok());
-    let Event(TypedViewWithEvent { view, event }, local) = result.unwrap();
+    let Event {
+        action: TypedViewWithEvent { view, event },
+        local,
+    } = result.unwrap();
     assert!(!local);
 
     let mut expected_view = OrdMap::new();
@@ -73,7 +76,7 @@ fn apply_form_map() {
     assert_that!(view.as_ord_map(), eq(expected_view));
     assert_that!(event, eq(MapEvent::Insert("b".to_string())));
 
-    let result = apply.transform(Event(with_bad_event, true));
+    let result = apply.transform(Event::new(with_bad_event, true));
     assert_that!(result, err());
 }
 
@@ -84,9 +87,9 @@ impl Transform<Event<String>> for ParseStringEvent {
     type Out = Result<Event<i32>, ParseIntError>;
 
     fn transform(&self, input: Event<String>) -> Self::Out {
-        let Event(s, local) = input;
+        let Event { action: s, local } = input;
         let parsed = s.parse::<i32>();
-        parsed.map(|n| Event(n, local))
+        parsed.map(|n| Event::new(n, local))
     }
 }
 
@@ -105,14 +108,18 @@ impl Topic<Event<String>> for TestTopic {
 #[tokio::test]
 async fn try_transform_topic() {
     let topic = TestTopic(vec![
-        Event("0".to_string(), true),
-        Event("1".to_string(), false),
-        Event("2".to_string(), true),
-        Event("fail".to_string(), true),
-        Event("3".to_string(), false),
+        Event::new("0".to_string(), true),
+        Event::new("1".to_string(), false),
+        Event::new("2".to_string(), true),
+        Event::new("fail".to_string(), true),
+        Event::new("3".to_string(), false),
     ]);
 
-    let expected = vec![Event(0, true), Event(1, false), Event(2, true)];
+    let expected = vec![
+        Event::new(0, true),
+        Event::new(1, false),
+        Event::new(2, true),
+    ];
 
     let mut transformed: TryTransformTopic<String, TestTopic, ParseStringEvent> =
         TryTransformTopic::new(topic, ParseStringEvent);

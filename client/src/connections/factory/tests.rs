@@ -20,7 +20,6 @@ use futures::{Sink, Stream};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use tokio::macros::support::Pin;
-use tokio_tungstenite::tungstenite::protocol::Message;
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);
@@ -29,21 +28,21 @@ struct TestSink(url::Url);
 struct TestStream(url::Url);
 
 impl Stream for TestStream {
-    type Item = Result<Message, ConnectionError>;
+    type Item = Result<String, ConnectionError>;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Poll::Ready(None)
     }
 }
 
-impl Sink<Message> for TestSink {
+impl Sink<String> for TestSink {
     type Error = ConnectionError;
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn start_send(self: Pin<&mut Self>, _item: Message) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, _item: String) -> Result<(), Self::Error> {
         Ok(())
     }
 

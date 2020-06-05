@@ -214,7 +214,25 @@ pub enum Command<A> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Event<A>(pub A, pub bool);
+pub struct Event<Action> {
+    action: Action,
+    local: bool,
+}
+
+impl<Action> Event<Action> {
+    fn new(action: Action, local: bool) -> Event<Action> {
+        Event { action, local }
+    }
+
+    pub fn action(&self) -> &Action {
+        &self.action
+    }
+
+    /// Returns whether or not the event was triggered locally.
+    pub fn is_local(&self) -> bool {
+        self.local
+    }
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Operation<M, A> {
@@ -340,7 +358,7 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
             error,
         } = basic;
         Response {
-            event: event.map(|e| Event(e, true)),
+            event: event.map(|e| Event::new(e, true)),
             command: command.map(Command::Action),
             error,
             terminate: false,
@@ -425,7 +443,7 @@ where
                     if old_state == DownlinkState::Synced {
                         Response::none()
                     } else {
-                        Response::for_event(Event(self.on_sync(data_state), false))
+                        Response::for_event(Event::new(self.on_sync(data_state), false))
                     }
                 }
                 Message::Action(msg) => match *state {
@@ -435,7 +453,7 @@ where
                         Response::none()
                     }
                     DownlinkState::Synced => match self.handle_message(data_state, msg)? {
-                        Some(ev) => Response::for_event(Event(ev, false)),
+                        Some(ev) => Response::for_event(Event::new(ev, false)),
                         _ => Response::none(),
                     },
                 },

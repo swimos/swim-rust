@@ -6,3 +6,7 @@ members = [
     "server",
     "utilities",
 ]
+
+exclude = [
+    "demos/swim-wasm"
+]

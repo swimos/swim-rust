@@ -21,6 +21,7 @@
 pub mod configuration;
 pub mod connections;
 pub mod downlink;
+#[allow(warnings)]
 pub mod interface;
 pub mod router;
 

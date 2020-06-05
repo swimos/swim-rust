@@ -12,33 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use std::time::Instant;
+
 use futures::future::ErrInto as FutErrInto;
 use futures::stream;
 use futures::{select, Future};
 use futures::{Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
-use std::collections::HashMap;
-use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
-use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio_tungstenite::tungstenite;
-use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::{instrument, trace};
+#[cfg(not(target_arch = "wasm32"))]
 use tungstenite::error::Error as TError;
 use url::Host;
 
+use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+
 use crate::configuration::router::ConnectionPoolParams;
 use crate::connections::factory::WebsocketFactory;
-use std::fmt;
-use std::fmt::{Display, Formatter};
 
 pub mod factory;
 
@@ -312,18 +315,18 @@ fn combine_connection_streams(
 
 struct SendTask<S>
 where
-    S: Sink<Message> + Send + 'static + Unpin,
+    S: Sink<String> + Send + 'static + Unpin,
 {
     stopped: Arc<AtomicBool>,
     write_sink: S,
-    rx: mpsc::Receiver<Message>,
+    rx: mpsc::Receiver<String>,
 }
 
 impl<S> SendTask<S>
 where
-    S: Sink<Message> + Send + 'static + Unpin,
+    S: Sink<String> + Send + 'static + Unpin,
 {
-    fn new(write_sink: S, rx: mpsc::Receiver<Message>, stopped: Arc<AtomicBool>) -> Self {
+    fn new(write_sink: S, rx: mpsc::Receiver<String>, stopped: Arc<AtomicBool>) -> Self {
         SendTask {
             stopped,
             write_sink,
@@ -351,18 +354,18 @@ where
 
 struct ReceiveTask<S>
 where
-    S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
+    S: Stream<Item = Result<String, ConnectionError>> + Send + Unpin + 'static,
 {
     stopped: Arc<AtomicBool>,
     read_stream: S,
-    tx: mpsc::Sender<Message>,
+    tx: mpsc::Sender<String>,
 }
 
 impl<S> ReceiveTask<S>
 where
-    S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
+    S: Stream<Item = Result<String, ConnectionError>> + Send + Unpin + 'static,
 {
-    fn new(read_stream: S, tx: mpsc::Sender<Message>, stopped: Arc<AtomicBool>) -> Self {
+    fn new(read_stream: S, tx: mpsc::Sender<String>, stopped: Arc<AtomicBool>) -> Self {
         ReceiveTask {
             stopped,
             read_stream,
@@ -408,7 +411,7 @@ impl InnerConnection {
 
     pub fn from(
         mut conn: SwimConnection,
-    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<Message>), ConnectionError> {
+    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<String>), ConnectionError> {
         let sender = ConnectionSender {
             tx: conn.tx.clone(),
         };
@@ -428,8 +431,8 @@ impl InnerConnection {
 /// Connection to a remote host.
 pub struct SwimConnection {
     stopped: Arc<AtomicBool>,
-    tx: mpsc::Sender<Message>,
-    rx: Option<mpsc::Receiver<Message>>,
+    tx: mpsc::Sender<String>,
+    rx: Option<mpsc::Receiver<String>>,
     _send_handle: JoinHandle<Result<(), ConnectionError>>,
     _receive_handle: JoinHandle<Result<(), ConnectionError>>,
 }
@@ -468,14 +471,14 @@ pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    tx: mpsc::Sender<Message>,
+    tx: mpsc::Sender<String>,
 }
 
 impl ConnectionSender {
     /// Crate-only function for creating a sender. Useful for unit testing.
     #[doc(hidden)]
     #[allow(dead_code)]
-    pub(crate) fn new(tx: mpsc::Sender<Message>) -> ConnectionSender {
+    pub(crate) fn new(tx: mpsc::Sender<String>) -> ConnectionSender {
         ConnectionSender { tx }
     }
 
@@ -489,7 +492,7 @@ impl ConnectionSender {
     ///
     /// `Ok` if the message has been sent.
     /// `SendError` if it failed.
-    pub async fn send_message(&mut self, message: Message) -> Result<(), SendError<Message>> {
+    pub async fn send_message(&mut self, message: String) -> Result<(), SendError<String>> {
         self.tx.send(message).await
     }
 
@@ -497,12 +500,12 @@ impl ConnectionSender {
         self.tx.poll_ready(cx)
     }
 
-    pub fn try_send(&mut self, message: Message) -> Result<(), TrySendError<Message>> {
+    pub fn try_send(&mut self, message: String) -> Result<(), TrySendError<String>> {
         self.tx.try_send(message)
     }
 }
 
-pub(crate) type ConnectionReceiver = mpsc::Receiver<Message>;
+pub(crate) type ConnectionReceiver = mpsc::Receiver<String>;
 
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -544,6 +547,7 @@ impl Display for ConnectionErrorKind {
 #[derive(Debug)]
 pub struct ConnectionError {
     kind: ConnectionErrorKind,
+    #[cfg(not(target_arch = "wasm32"))]
     tungstenite_error: Option<TError>,
 }
 
@@ -557,6 +561,7 @@ impl Clone for ConnectionError {
     fn clone(&self) -> Self {
         ConnectionError {
             kind: self.kind,
+            #[cfg(not(target_arch = "wasm32"))]
             tungstenite_error: None,
         }
     }
@@ -564,12 +569,20 @@ impl Clone for ConnectionError {
 
 impl Display for ConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self.tungstenite_error {
-            Some(e) => match self.kind.fmt(f) {
-                Ok(_) => write!(f, " Tungstenite error: {}", e),
-                e => e,
-            },
-            None => self.kind.fmt(f),
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            match &self.tungstenite_error {
+                Some(e) => match self.kind.fmt(f) {
+                    Ok(_) => write!(f, " Tungstenite error: {}", e),
+                    e => e,
+                },
+                None => self.kind.fmt(f),
+            }
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.kind.fmt(f)
         }
     }
 }
@@ -578,10 +591,12 @@ impl ConnectionError {
     pub fn new(kind: ConnectionErrorKind) -> Self {
         ConnectionError {
             kind,
+            #[cfg(not(target_arch = "wasm32"))]
             tungstenite_error: None,
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_tungstenite_error(kind: ConnectionErrorKind, tungstenite_error: TError) -> Self {
         ConnectionError {
             kind,
@@ -597,6 +612,7 @@ impl ConnectionError {
         self.kind
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn tungstenite_error(&mut self) -> Option<TError> {
         self.tungstenite_error.take()
     }
@@ -614,6 +630,7 @@ impl From<ConnectionErrorKind> for ConnectionError {
     fn from(kind: ConnectionErrorKind) -> Self {
         ConnectionError {
             kind,
+            #[cfg(not(target_arch = "wasm32"))]
             tungstenite_error: None,
         }
     }
@@ -623,6 +640,7 @@ impl From<RequestError> for ConnectionError {
     fn from(_: RequestError) -> Self {
         ConnectionError {
             kind: ConnectionErrorKind::ConnectError,
+            #[cfg(not(target_arch = "wasm32"))]
             tungstenite_error: None,
         }
     }
@@ -632,11 +650,13 @@ impl From<tokio::task::JoinError> for ConnectionError {
     fn from(_: tokio::task::JoinError) -> Self {
         ConnectionError {
             kind: ConnectionErrorKind::ConnectError,
+            #[cfg(not(target_arch = "wasm32"))]
             tungstenite_error: None,
         }
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<TError> for ConnectionError {
     fn from(e: TError) -> Self {
         match e {

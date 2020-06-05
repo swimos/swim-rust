@@ -21,7 +21,6 @@ use futures::Sink;
 use futures_util::stream::Stream;
 use tokio::macros::support::Pin;
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::protocol::Message;
 use url::Url;
 
 use common::request::request_future::SendAndAwait;
@@ -59,12 +58,12 @@ async fn test_connection_pool_send_single_message_single_connection() {
 
     // When
     connection_sender
-        .send_message(Message::Text(text.to_string()))
+        .send_message(text.to_string())
         .await
         .unwrap();
 
     // Then
-    assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "Hello");
+    assert_eq!(writer_rx.recv().await.unwrap(), "Hello");
 }
 
 #[tokio::test]
@@ -97,23 +96,17 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
 
     // When
     first_connection_sender
-        .send_message(Message::Text(first_text.to_string()))
+        .send_message(first_text.to_string())
         .await
         .unwrap();
     second_connection_sender
-        .send_message(Message::Text(second_text.to_string()))
+        .send_message(second_text.to_string())
         .await
         .unwrap();
 
     // Then
-    assert_eq!(
-        writer_rx.recv().await.unwrap().to_text().unwrap(),
-        "First_Text"
-    );
-    assert_eq!(
-        writer_rx.recv().await.unwrap().to_text().unwrap(),
-        "Second_Text"
-    );
+    assert_eq!(writer_rx.recv().await.unwrap(), "First_Text");
+    assert_eq!(writer_rx.recv().await.unwrap(), "Second_Text");
 }
 
 #[tokio::test]
@@ -163,31 +156,22 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
 
     // When
     first_connection_sender
-        .send_message(Message::Text(first_text.to_string()))
+        .send_message(first_text.to_string())
         .await
         .unwrap();
     second_connection_sender
-        .send_message(Message::Text(second_text.to_string()))
+        .send_message(second_text.to_string())
         .await
         .unwrap();
     third_connection_sender
-        .send_message(Message::Text(third_text.to_string()))
+        .send_message(third_text.to_string())
         .await
         .unwrap();
 
     // Then
-    assert_eq!(
-        first_writer_rx.recv().await.unwrap().to_text().unwrap(),
-        "First_Text"
-    );
-    assert_eq!(
-        second_writer_rx.recv().await.unwrap().to_text().unwrap(),
-        "Second_Text"
-    );
-    assert_eq!(
-        third_writer_rx.recv().await.unwrap().to_text().unwrap(),
-        "Third_Text"
-    );
+    assert_eq!(first_writer_rx.recv().await.unwrap(), "First_Text");
+    assert_eq!(second_writer_rx.recv().await.unwrap(), "Second_Text");
+    assert_eq!(third_writer_rx.recv().await.unwrap(), "Third_Text");
 }
 
 #[tokio::test]
@@ -195,7 +179,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
-    items.push(Message::text("new_message"));
+    items.push("new_message".to_string());
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
@@ -213,7 +197,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
 
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
-    assert_eq!(pool_message.to_text().unwrap(), "new_message");
+    assert_eq!(pool_message, "new_message");
 }
 
 #[tokio::test]
@@ -221,9 +205,9 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
-    items.push(Message::text("first_message"));
-    items.push(Message::text("second_message"));
-    items.push(Message::text("third_message"));
+    items.push("first_message".to_string());
+    items.push("second_message".to_string());
+    items.push("third_message".to_string());
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
@@ -246,9 +230,9 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
     let second_pool_message = connection_receiver.recv().await.unwrap();
     let third_pool_message = connection_receiver.recv().await.unwrap();
 
-    assert_eq!(first_pool_message.to_text().unwrap(), "first_message");
-    assert_eq!(second_pool_message.to_text().unwrap(), "second_message");
-    assert_eq!(third_pool_message.to_text().unwrap(), "third_message");
+    assert_eq!(first_pool_message, "first_message");
+    assert_eq!(second_pool_message, "second_message");
+    assert_eq!(third_pool_message, "third_message");
 }
 
 #[tokio::test]
@@ -278,9 +262,9 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     let mut second_items = Vec::new();
     let mut third_items = Vec::new();
 
-    first_items.push(Message::text("first_message"));
-    second_items.push(Message::text("second_message"));
-    third_items.push(Message::text("third_message"));
+    first_items.push("first_message".to_string());
+    second_items.push("second_message".to_string());
+    third_items.push("third_message".to_string());
 
     let first_host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let second_host_url = url::Url::parse("ws://127.0.0.2/").unwrap();
@@ -325,9 +309,9 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     let second_pool_message = second_receiver.take().unwrap().recv().await.unwrap();
     let third_pool_message = third_receiver.take().unwrap().recv().await.unwrap();
 
-    assert_eq!(first_pool_message.to_text().unwrap(), "first_message");
-    assert_eq!(second_pool_message.to_text().unwrap(), "second_message");
-    assert_eq!(third_pool_message.to_text().unwrap(), "third_message");
+    assert_eq!(first_pool_message, "first_message");
+    assert_eq!(second_pool_message, "second_message");
+    assert_eq!(third_pool_message, "third_message");
 }
 
 #[tokio::test]
@@ -335,7 +319,7 @@ async fn test_connection_pool_send_and_receive_messages() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
-    items.push(Message::text("recv_baz"));
+    items.push("recv_baz".to_string());
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
@@ -353,18 +337,15 @@ async fn test_connection_pool_send_and_receive_messages() {
 
     // When
     connection_sender
-        .send_message(Message::Text("send_bar".to_string()))
+        .send_message("send_bar".to_string())
         .await
         .unwrap();
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
 
-    assert_eq!(pool_message.to_text().unwrap(), "recv_baz");
+    assert_eq!(pool_message, "recv_baz");
 
-    assert_eq!(
-        writer_rx.recv().await.unwrap().to_text().unwrap(),
-        "send_bar"
-    );
+    assert_eq!(writer_rx.recv().await.unwrap(), "send_bar");
 }
 
 #[tokio::test]
@@ -415,16 +396,13 @@ async fn test_connection_pool_connection_error_send_message() {
         .unwrap();
 
     second_connection_sender
-        .send_message(Message::Text(text.to_string()))
+        .send_message(text.to_string())
         .await
         .unwrap();
 
     // Then
     assert!(first_connection.is_err());
-    assert_eq!(
-        writer_rx.recv().await.unwrap().into_text().unwrap(),
-        "Test_message"
-    );
+    assert_eq!(writer_rx.recv().await.unwrap(), "Test_message");
 }
 
 #[tokio::test]
@@ -462,13 +440,9 @@ async fn test_connection_send_single_message() {
         .unwrap();
 
     // When
-    connection
-        .tx
-        .send(Message::Text("foo".to_string()))
-        .await
-        .unwrap();
+    connection.tx.send("foo".to_string()).await.unwrap();
     // Then
-    assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "foo");
+    assert_eq!(writer_rx.recv().await.unwrap(), "foo");
 }
 
 #[tokio::test]
@@ -488,22 +462,13 @@ async fn test_connection_send_multiple_messages() {
 
     let connection_sender = &mut connection.tx;
     // When
-    connection_sender
-        .send(Message::Text("foo".to_string()))
-        .await
-        .unwrap();
-    connection_sender
-        .send(Message::Text("bar".to_string()))
-        .await
-        .unwrap();
-    connection_sender
-        .send(Message::Text("baz".to_string()))
-        .await
-        .unwrap();
+    connection_sender.send("foo".to_string()).await.unwrap();
+    connection_sender.send("bar".to_string()).await.unwrap();
+    connection_sender.send("baz".to_string()).await.unwrap();
     // Then
-    assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "foo");
-    assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "bar");
-    assert_eq!(writer_rx.recv().await.unwrap().to_text().unwrap(), "baz");
+    assert_eq!(writer_rx.recv().await.unwrap(), "foo");
+    assert_eq!(writer_rx.recv().await.unwrap(), "bar");
+    assert_eq!(writer_rx.recv().await.unwrap(), "baz");
 }
 
 #[tokio::test]
@@ -512,7 +477,7 @@ async fn test_connection_send_and_receive_messages() {
     let host = url::Url::parse("ws://127.0.0.1:9999/").unwrap();
     let buffer_size = 5;
     let mut items = Vec::new();
-    items.push(Message::text("message_received"));
+    items.push("message_received".to_string());
     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
 
     let test_data = TestData::new(items, writer_tx);
@@ -526,17 +491,14 @@ async fn test_connection_send_and_receive_messages() {
     // When
     connection
         .tx
-        .send(Message::Text("message_sent".to_string()))
+        .send("message_sent".to_string())
         .await
         .unwrap();
     // Then
     let pool_message = connection.rx.take().unwrap().recv().await.unwrap();
-    assert_eq!(pool_message.to_text().unwrap(), "message_received");
+    assert_eq!(pool_message, "message_received");
 
-    assert_eq!(
-        writer_rx.recv().await.unwrap().to_text().unwrap(),
-        "message_sent"
-    );
+    assert_eq!(writer_rx.recv().await.unwrap(), "message_sent");
 }
 
 #[tokio::test]
@@ -591,12 +553,12 @@ async fn test_new_connection_send_message_error() {
 
 #[derive(Clone)]
 struct TestReadStream {
-    items: Vec<Message>,
+    items: Vec<String>,
     error: bool,
 }
 
 impl Stream for TestReadStream {
-    type Item = Result<Message, ConnectionError>;
+    type Item = Result<String, ConnectionError>;
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.error {
@@ -618,11 +580,11 @@ impl Stream for TestReadStream {
 
 #[derive(Clone)]
 struct TestWriteStream {
-    tx: mpsc::Sender<Message>,
+    tx: mpsc::Sender<String>,
     error: bool,
 }
 
-impl Sink<Message> for TestWriteStream {
+impl Sink<String> for TestWriteStream {
     type Error = ();
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -633,7 +595,7 @@ impl Sink<Message> for TestWriteStream {
         }
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, item: String) -> Result<(), Self::Error> {
         if self.error {
             Err(())
         } else {
@@ -705,8 +667,8 @@ impl WebsocketFactory for TestConnectionFactory {
 }
 
 struct TestData {
-    inputs: Vec<Message>,
-    outputs: mpsc::Sender<Message>,
+    inputs: Vec<String>,
+    outputs: mpsc::Sender<String>,
     input_error: bool,
     output_error: bool,
 }
@@ -754,7 +716,7 @@ impl MultipleTestData {
 }
 
 impl TestData {
-    fn new(inputs: Vec<Message>, outputs: mpsc::Sender<Message>) -> Self {
+    fn new(inputs: Vec<String>, outputs: mpsc::Sender<String>) -> Self {
         TestData {
             inputs,
             outputs,
