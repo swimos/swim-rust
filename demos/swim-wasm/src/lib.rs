@@ -1,8 +1,13 @@
+use std::time::Duration;
+
+use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use std::time::Duration;
-use swim_client::interface::SwimClient;
-use wasm_bindgen::prelude::*;
+// use swim_client::configuration::downlink::{
+//     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+// };
+// use swim_client::connections::factory::wasm::*;
+// use swim_client::interface::SwimClient;
 
 mod stock;
 
@@ -42,29 +47,37 @@ impl Chart {
         })
     }
 }
+//
+// fn config() -> ConfigHierarchy {
+//     let client_params = ClientParams::new(2, Default::default()).unwrap();
+//     let default_params = DownlinkParams::new_queue(
+//         BackpressureMode::Propagate,
+//         5,
+//         Duration::from_secs(600),
+//         5,
+//         OnInvalidMessage::Terminate,
+//         10000,
+//     )
+//     .unwrap();
+//
+//     ConfigHierarchy::new(client_params, default_params)
+// }
 
-use swim_client::configuration::downlink::{
-    BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-};
-
-fn config() -> ConfigHierarchy {
-    let client_params = ClientParams::new(2, Default::default()).unwrap();
-    let default_params = DownlinkParams::new_queue(
-        BackpressureMode::Propagate,
-        5,
-        Duration::from_secs(600),
-        5,
-        OnInvalidMessage::Terminate,
-        10000,
-    )
-    .unwrap();
-
-    ConfigHierarchy::new(client_params, default_params)
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
 }
-use swim_client::connections::factory::wasm::*;
 
+#[tokio::main]
 #[wasm_bindgen(start)]
 pub async fn start() {
-    let factory = WasmWsFactory::new(5);
-    let client = SwimClient::new(config(), factory).await;
+    console_error_panic_hook::set_once();
+
+    tokio::spawn(async {}).await.unwrap();
+
+    // let factory = WasmWsFactory::new(5);
+    // let client = SwimClient::new(config(), factory).await;
+
+    log("Started client...");
 }
