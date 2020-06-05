@@ -16,7 +16,6 @@ package basic;
 
 import swim.api.SwimLane;
 import swim.api.agent.AbstractAgent;
-import swim.api.lane.MapLane;
 import swim.api.lane.ValueLane;
 import swim.concurrent.TimerRef;
 import java.time.ZonedDateTime;

@@ -12,23 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
-use std::fmt::{Display, Formatter};
+use futures::Future;
 
-pub mod future;
-pub mod iteratee;
-pub mod lru_cache;
-pub mod rt;
-pub mod trace;
-
-/// Error thrown by methods that required a usize to be positive.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ZeroUsize;
-
-impl Display for ZeroUsize {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Zero Usize")
-    }
+#[cfg(not(target_arch = "wasm32"))]
+pub fn spawn<F>(f: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(f)
 }
 
-impl Error for ZeroUsize {}
+#[cfg(target_arch = "wasm32")]
+pub fn spawn<F>(f: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    wasm_bindgen_futures::spawn_local(f);
+}

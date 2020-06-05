@@ -16,7 +16,7 @@ use futures::future::ErrInto as FutErrInto;
 use futures::sink::SinkErrInto;
 use futures::stream::{SplitSink, SplitStream};
 use futures::task::{Context, Poll};
-use futures::{Sink, Stream, StreamExt, TryFutureExt};
+use futures::{Future, Sink, Stream, StreamExt, TryFutureExt};
 use futures_util::SinkExt;
 use pin_project::*;
 use tokio::sync::{mpsc, oneshot};
@@ -25,18 +25,26 @@ use wasm_bindgen::__rt::core::pin::Pin;
 use wasm_bindgen_futures::spawn_local;
 use ws_stream_wasm::*;
 
-use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
-use common::request::Request;
+use crate::request::request_future::{RequestError, RequestFuture, SendAndAwait, Sequenced};
+use crate::request::Request;
+use crate::wasm::errors::FlattenErrors;
 
-use crate::connections::factory::errors::FlattenErrors;
-use crate::connections::factory::WebsocketFactory;
-use crate::connections::{ConnectionError, ConnectionErrorKind};
+#[derive(Debug)]
+pub enum ConnectionError {
+    ConnectError,
+}
 
 #[pin_project]
 #[derive(Debug)]
 pub struct WasmWsSink {
     #[pin]
     inner: SinkErrInto<SplitSink<WsStream, WsMessage>, WsMessage, ConnectionError>,
+}
+
+impl From<RequestError> for ConnectionError {
+    fn from(_: RequestError) -> Self {
+        ConnectionError::ConnectError
+    }
 }
 
 impl Sink<String> for WasmWsSink {
@@ -80,7 +88,7 @@ impl Stream for WasmWsStream {
 }
 
 pub struct WasmWsFactory {
-    pub(in crate::connections::factory) sender: mpsc::Sender<ConnReq>,
+    pub sender: mpsc::Sender<ConnReq>,
 }
 
 pub struct ConnReq {
@@ -90,7 +98,7 @@ pub struct ConnReq {
 
 impl From<WsErr> for ConnectionError {
     fn from(_: WsErr) -> Self {
-        ConnectionError::new(ConnectionErrorKind::ConnectError)
+        ConnectionError::ConnectError
     }
 }
 
@@ -106,7 +114,7 @@ impl WasmWsFactory {
         while let Some(ConnReq { request, url }) = receiver.next().await {
             let (_ws, wsio) = WsMeta::connect(url, None)
                 .await
-                .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
+                .map_err(|_| ConnectionError::ConnectError)
                 .unwrap();
 
             let (sink, stream) = wsio.split();
@@ -145,9 +153,47 @@ impl WebsocketFactory for WasmWsFactory {
     }
 }
 
-// fn a() {
-//     let factory = WasmWsFactory::new(5);
-//     let res = factory
-//         .connect(Url::parse("ws://127.0.0.1:9001/unit/foo/random"))
-//         .await;
-// }
+pub trait WebsocketFactory: Send + Sync {
+    /// Type of the stream of incoming messages.
+    type WsStream: Stream<Item = Result<String, ConnectionError>> + Unpin + Send + 'static;
+
+    /// Type of the sink for outgoing messages.
+    type WsSink: Sink<String> + Unpin + Send + 'static;
+
+    type ConnectFut: Future<Output = Result<(Self::WsSink, Self::WsStream), ConnectionError>>
+        + Send
+        + 'static;
+
+    /// Open a connection to the provided remote URL.
+    fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
+}
+
+pub mod errors {
+    use futures::task::{Context, Poll};
+    use futures::Future;
+    use tokio::macros::support::Pin;
+
+    pub struct FlattenErrors<F> {
+        inner: F,
+    }
+
+    impl<F: Unpin> Unpin for FlattenErrors<F> {}
+
+    impl<F> FlattenErrors<F> {
+        pub fn new(inner: F) -> Self {
+            FlattenErrors { inner }
+        }
+    }
+
+    impl<F, T, E> Future for FlattenErrors<F>
+    where
+        F: Future<Output = Result<Result<T, E>, E>> + Unpin,
+    {
+        type Output = Result<T, E>;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let f = &mut self.get_mut().inner;
+            Pin::new(f).poll(cx).map(|r| r.and_then(|r2| r2))
+        }
+    }
+}

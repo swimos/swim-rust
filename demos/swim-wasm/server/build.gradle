@@ -6,7 +6,9 @@ plugins {
 }
 
 repositories {
+    mavenCentral()
     jcenter()
+    maven { url 'http://packages.confluent.io/maven/' }
 }
 
 sourceCompatibility = JavaVersion.VERSION_1_8
@@ -37,10 +39,12 @@ configurations.all {
 }
 
 dependencies {
-    compile group: 'org.swimos', name: 'swim-api', version: '3.10.0'
-    compile group: 'org.swimos', name: 'swim-server', version: '3.10.0'
-    compile group: 'org.swimos', name: 'swim-client', version: '3.10.0'
-    compile group: 'org.swimos', name: 'swim-deflate', version: '3.9.1'
+    compile group: 'org.swimos', name: 'swim-api', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-server', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-client', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-deflate', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-actor', version: '3.10.2'
+
     compile files('libs/swim-ws.jar')
 }
 
