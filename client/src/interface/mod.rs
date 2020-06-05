@@ -29,7 +29,7 @@ use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
-    SubscriptionError, TypedCommandValueDownlink, TypedMapDownlink, TypedMapReceiver,
+    SubscriptionError, TypedCommandDownlink, TypedMapDownlink, TypedMapReceiver,
     TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
 use crate::downlink::DownlinkError;
@@ -176,7 +176,7 @@ impl SwimClient {
     pub async fn command_downlink<T>(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<TypedCommandValueDownlink<T>, ClientError>
+    ) -> Result<TypedCommandDownlink<T>, ClientError>
     where
         T: ValidatedForm + Send + 'static,
     {

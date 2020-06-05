@@ -18,7 +18,6 @@ pub mod event;
 pub mod topic;
 
 use crate::downlink::any::{AnyDownlink, TopicKind};
-use crate::downlink::model::command::CommandValue;
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::action::{MapActions, ValueActions};
@@ -29,6 +28,7 @@ use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
 use crate::downlink::{Downlink, Event, StoppedFuture};
+use common::model::Value;
 use common::sink::item::ItemSink;
 use common::topic::Topic;
 use form::Form;
@@ -39,7 +39,7 @@ use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 #[derive(Debug)]
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
-    _value_type: PhantomData<T>,
+    _value_type: PhantomData<fn(T) -> T>,
 }
 
 impl<Inner: Clone, T> Clone for ValueDownlink<Inner, T> {
@@ -100,7 +100,7 @@ where
 #[derive(Debug)]
 pub struct MapDownlink<Inner, K, V> {
     inner: Inner,
-    _value_type: PhantomData<(K, V)>,
+    _value_type: PhantomData<fn(K, V) -> (K, V)>,
 }
 
 impl<Inner: Clone, K, V> Clone for MapDownlink<Inner, K, V> {
@@ -252,33 +252,33 @@ where
 
 /// A wrapper around a command value downlink, applying a [`Form`] to the values.
 #[derive(Debug)]
-pub struct CommandValueDownlink<Inner, T> {
+pub struct CommandDownlink<Inner, T> {
     inner: Inner,
-    _value_type: PhantomData<T>,
+    _value_type: PhantomData<fn(T)>,
 }
 
-impl<Inner, T> CommandValueDownlink<Inner, T>
+impl<Inner, T> CommandDownlink<Inner, T>
 where
     // Inner: Downlink<CommandValue, ()>,
     T: Form,
 {
     pub fn new(inner: Inner) -> Self {
-        CommandValueDownlink {
+        CommandDownlink {
             inner,
             _value_type: PhantomData,
         }
     }
 }
 
-impl<'a, Inner, T> ItemSink<'a, CommandValue> for CommandValueDownlink<Inner, T>
+impl<'a, Inner, T> ItemSink<'a, Value> for CommandDownlink<Inner, T>
 where
-    Inner: ItemSink<'a, CommandValue>,
+    Inner: ItemSink<'a, Value>,
     T: Form + Send + 'static,
 {
     type Error = Inner::Error;
     type SendFuture = Inner::SendFuture;
 
-    fn send_item(&'a mut self, value: CommandValue) -> Self::SendFuture {
+    fn send_item(&'a mut self, value: Value) -> Self::SendFuture {
         self.inner.send_item(value)
     }
 }

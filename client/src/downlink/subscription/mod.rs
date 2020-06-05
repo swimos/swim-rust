@@ -20,7 +20,7 @@ use crate::downlink::model::command;
 use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
-use crate::downlink::typed::{CommandValueDownlink, MapDownlink, ValueDownlink};
+use crate::downlink::typed::{CommandDownlink, MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
@@ -33,6 +33,7 @@ use common::sink::item::either::EitherSink;
 use common::sink::item::ItemSender;
 use common::sink::item::ItemSink;
 use common::topic::Topic;
+use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use either::Either;
 use form::ValidatedForm;
@@ -51,9 +52,6 @@ use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{error, info, instrument, trace_span};
-
-use crate::downlink::model::command::CommandValue;
-use common::warp::envelope::Envelope;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
 pub mod envelopes;
@@ -66,8 +64,8 @@ pub type TypedValueDownlink<T> = ValueDownlink<AnyValueDownlink, T>;
 pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
 pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
-pub type AnyCommandDownlink = AnyDownlink<CommandValue, ()>;
-pub type TypedCommandValueDownlink<T> = CommandValueDownlink<AnyCommandDownlink, T>;
+pub type AnyCommandDownlink = AnyDownlink<Value, ()>;
+pub type TypedCommandDownlink<T> = CommandDownlink<AnyCommandDownlink, T>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type TypedValueReceiver<T> = UntilFailure<ValueReceiver, ApplyForm<T>>;
@@ -77,7 +75,7 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 
 type AnyWeakValueDownlink = AnyWeakDownlink<Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
-type AnyWeakCommandDownlink = AnyWeakDownlink<CommandValue, ()>;
+type AnyWeakCommandDownlink = AnyWeakDownlink<Value, ()>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
@@ -253,11 +251,11 @@ impl Downlinks {
     pub async fn subscribe_command<T>(
         &mut self,
         path: AbsolutePath,
-    ) -> RequestResult<TypedCommandValueDownlink<T>>
+    ) -> RequestResult<TypedCommandDownlink<T>>
     where
         T: ValidatedForm + Send + 'static,
     {
-        Ok(CommandValueDownlink::new(
+        Ok(CommandDownlink::new(
             self.subscribe_command_inner(T::schema(), path).await?,
         ))
     }
@@ -661,9 +659,8 @@ where
         let (sink, _) = self.router.connection_for(&path).await?;
 
         let config = self.config.config_for(&path);
-        let cmd_sink = sink.comap(move |cmd: Command<CommandValue>| {
-            envelopes::command_envelope(&path, cmd).1.into()
-        });
+        let cmd_sink =
+            sink.comap(move |cmd: Command<Value>| envelopes::command_envelope(&path, cmd).1.into());
 
         Ok(command_downlink_for_sink(cmd_sink, schema, &config))
     }
@@ -1077,22 +1074,9 @@ fn command_downlink_for_sink<Snk>(
     config: &DownlinkParams,
 ) -> AnyCommandDownlink
 where
-    Snk: ItemSender<Command<CommandValue>, RoutingError> + Send + 'static,
+    Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
     let dl_cmd_sink = cmd_sink.map_err_into();
 
-    match config.mux_mode {
-        MuxMode::Queue(n) => {
-            let dl = command::create_queue_downlink(Some(schema), dl_cmd_sink, n, &config);
-            AnyDownlink::Queue(dl)
-        }
-        MuxMode::Dropping => {
-            let dl = command::create_dropping_downlink(Some(schema), dl_cmd_sink, &config);
-            AnyDownlink::Dropping(dl)
-        }
-        MuxMode::Buffered(n) => {
-            let dl = command::create_buffered_downlink(Some(schema), dl_cmd_sink, n, &config);
-            AnyDownlink::Buffered(dl)
-        }
-    }
+    AnyDownlink::Dropping(command::create_downlink(Some(schema), dl_cmd_sink, &config))
 }

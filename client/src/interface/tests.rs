@@ -92,9 +92,10 @@ async fn client_test() {
     println!("Finished sending");
 }
 
-use crate::downlink::model::command::CommandValue;
+use crate::downlink::model::map::MapModification;
 use common::sink::item::ItemSink;
 use utilities::trace::init_trace;
+use form::Form;
 
 #[tokio::test(core_threads = 5)]
 async fn test_foo() {
@@ -109,10 +110,32 @@ async fn test_foo() {
     let mut command_dl = client.command_downlink::<i32>(path).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
-    command_dl
-        .send_item(CommandValue::Value(13.into()))
+    command_dl.send_item(13.into()).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(10)).await;
+}
+
+#[tokio::test(core_threads = 5)]
+async fn test_bar() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+    let mut command_dl = client
+        .command_downlink::<MapModification<Value>>(path)
         .await
         .unwrap();
+
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+
+    command_dl.send_item(remove).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(10)).await;
 }
