@@ -96,11 +96,13 @@ where
     }
 }
 
+type MapValueType<K, V> = PhantomData<fn(K, V) -> (K, V)>;
+
 /// A wrapper around a map downlink, applying [`Form`]s to the keys and values.
 #[derive(Debug)]
 pub struct MapDownlink<Inner, K, V> {
     inner: Inner,
-    _value_type: PhantomData<fn(K, V) -> (K, V)>,
+    _value_type: MapValueType<K, V>,
 }
 
 impl<Inner: Clone, K, V> Clone for MapDownlink<Inner, K, V> {

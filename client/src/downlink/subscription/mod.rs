@@ -23,7 +23,7 @@ use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
 use crate::downlink::typed::{CommandDownlink, MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
-use crate::downlink::{Command, DownlinkError, Message, StoppedFuture};
+use crate::downlink::{raw, Command, DownlinkError, Message, StoppedFuture};
 use crate::router::{Router, RouterEvent, RoutingError};
 use common::model::schema::StandardSchema;
 use common::model::Value;
@@ -64,7 +64,7 @@ pub type TypedValueDownlink<T> = ValueDownlink<AnyValueDownlink, T>;
 pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
 pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
-pub type AnyCommandDownlink = AnyDownlink<Value, ()>;
+pub type AnyCommandDownlink = raw::Sender<mpsc::Sender<Value>>;
 pub type TypedCommandDownlink<T> = CommandDownlink<AnyCommandDownlink, T>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
@@ -75,7 +75,6 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 
 type AnyWeakValueDownlink = AnyWeakDownlink<Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
-type AnyWeakCommandDownlink = AnyWeakDownlink<Value, ()>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
@@ -459,7 +458,7 @@ impl MapHandle {
 }
 
 struct CommandHandle {
-    ptr: AnyWeakCommandDownlink,
+    dl: AnyCommandDownlink,
     schema: StandardSchema,
 }
 
@@ -806,9 +805,9 @@ where
         schema: StandardSchema,
         value_req: Request<RequestResult<AnyCommandDownlink>>,
     ) -> RequestResult<()> {
-        let dl = match self.command_downlinks.get(&path) {
+        let downlink = match self.command_downlinks.get(&path) {
             Some(CommandHandle {
-                ptr: dl,
+                dl,
                 schema: existing_schema,
             }) => {
                 if !schema.eq(existing_schema) {
@@ -817,27 +816,13 @@ where
                         existing_schema.clone(),
                         schema,
                     ))
+                } else if dl.is_running() {
+                    Ok(dl.clone())
                 } else {
-                    let maybe_dl = dl.upgrade();
-                    match maybe_dl {
-                        Some(mut dl_clone) if dl_clone.is_running() => {
-                            match dl_clone.subscribe().await {
-                                Ok(_) => Ok(dl_clone),
-                                Err(_) => {
-                                    self.command_downlinks.remove(&path);
-                                    Ok(self
-                                        .create_new_command_downlink(path.clone(), schema)
-                                        .await?)
-                                }
-                            }
-                        }
-                        _ => {
-                            self.command_downlinks.remove(&path);
-                            Ok(self
-                                .create_new_command_downlink(path.clone(), schema)
-                                .await?)
-                        }
-                    }
+                    self.command_downlinks.remove(&path);
+                    Ok(self
+                        .create_new_command_downlink(path.clone(), schema)
+                        .await?)
                 }
             }
             _ => match (
@@ -857,7 +842,8 @@ where
                 )),
             },
         };
-        let _ = value_req.send(dl);
+
+        let _ = value_req.send(downlink);
         Ok(())
     }
 
@@ -890,11 +876,9 @@ where
                 }
             }
             DownlinkKind::Command => {
-                if let Some(CommandHandle { ptr: weak_dl, .. }) =
-                    self.command_downlinks.get(&stop_event.path)
+                if let Some(CommandHandle { dl, .. }) = self.command_downlinks.get(&stop_event.path)
                 {
-                    let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
-                    if !is_running {
+                    if !dl.is_running() {
                         self.command_downlinks.remove(&stop_event.path);
                     }
                 }
@@ -1078,5 +1062,5 @@ where
 {
     let dl_cmd_sink = cmd_sink.map_err_into();
 
-    AnyDownlink::Dropping(command::create_downlink(Some(schema), dl_cmd_sink, &config))
+    command::create_downlink(Some(schema), dl_cmd_sink, &config)
 }

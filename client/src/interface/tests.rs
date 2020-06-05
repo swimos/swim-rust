@@ -94,10 +94,11 @@ async fn client_test() {
 
 use crate::downlink::model::map::MapModification;
 use common::sink::item::ItemSink;
-use utilities::trace::init_trace;
 use form::Form;
+use utilities::trace::init_trace;
 
 #[tokio::test(core_threads = 5)]
+#[ignore]
 async fn test_foo() {
     init_trace(vec!["client::router=trace"]);
 
@@ -116,6 +117,7 @@ async fn test_foo() {
 }
 
 #[tokio::test(core_threads = 5)]
+#[ignore]
 async fn test_bar() {
     init_trace(vec!["client::router=trace"]);
 
@@ -129,7 +131,6 @@ async fn test_bar() {
         .command_downlink::<MapModification<Value>>(path)
         .await
         .unwrap();
-
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
 

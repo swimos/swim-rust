@@ -1,8 +1,5 @@
 use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::dropping::DroppingDownlink;
-use crate::downlink::{
-    dropping, BasicResponse, BasicStateMachine, Command, DownlinkError, Message,
-};
+use crate::downlink::{raw, BasicResponse, BasicStateMachine, Command, DownlinkError, Message};
 use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
@@ -10,35 +7,28 @@ use common::sink::item::ItemSender;
 use futures::StreamExt;
 use futures_util::future::ready;
 use futures_util::stream::once;
+use tokio::sync::mpsc::Sender;
 
 pub fn create_downlink<Commands>(
     schema: Option<StandardSchema>,
     cmd_sender: Commands,
     config: &DownlinkParams,
-    // ) -> RawDownlink<mpsc::Sender<Value>, mpsc::Receiver<Event<()>>>
-) -> DroppingDownlink<Value, ()>
+) -> raw::Sender<Sender<Value>>
 where
     Commands: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
     let init = once(ready(Ok(Message::Synced)));
     let upd_stream = init.chain(futures::stream::pending());
 
-    //Todo
-    // raw::create_downlink(
-    //     CommandStateMachine::new(schema.unwrap()),
-    //     upd_stream,
-    //     cmd_sender,
-    //     config.buffer_size,
-    //     config.yield_after,
-    //     config.on_invalid,
-    // )
-
-    dropping::make_downlink(
+    raw::create_downlink(
         CommandStateMachine::new(schema.unwrap()),
         upd_stream,
         cmd_sender,
-        &config,
+        config.buffer_size,
+        config.yield_after,
+        config.on_invalid,
     )
+    .split()
     .0
 }
 struct CommandStateMachine {
@@ -55,7 +45,7 @@ impl BasicStateMachine<(), (), Value> for CommandStateMachine {
     type Ev = ();
     type Cmd = Value;
 
-    fn init(&self) -> () {}
+    fn init(&self) {}
 
     fn on_sync(&self, _state: &()) -> Self::Ev {}
 
