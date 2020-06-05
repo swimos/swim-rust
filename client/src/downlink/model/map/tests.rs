@@ -1651,7 +1651,7 @@ pub fn remove_from_value() {
 
 #[test]
 pub fn simple_insert_to_value() {
-    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let body = Item::ValueItem(Value::Int32Value(2));
     let expected = Value::Record(vec![attr], vec![body]);
     assert_that!(
@@ -1672,7 +1672,7 @@ pub fn simple_insert_to_value() {
 
 #[test]
 pub fn simple_insert_from_value() {
-    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let body = Item::ValueItem(Value::Int32Value(2));
     let rep = Value::Record(vec![attr], vec![body]);
     let result1: MapModResult = Form::try_from_value(&rep);
@@ -1696,7 +1696,7 @@ pub fn simple_insert_from_value() {
 #[test]
 pub fn complex_insert_to_value() {
     let body = Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]);
-    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let expected = Value::Record(
         vec![attr, Attr::of(("complex", 0))],
         vec![Item::slot("a", true)],
@@ -1714,7 +1714,7 @@ pub fn complex_insert_to_value() {
 #[test]
 pub fn complex_insert_from_value() {
     let body = Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]);
-    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let rep = Value::Record(
         vec![attr, Attr::of(("complex", 0))],
         vec![Item::slot("a", true)],
@@ -1744,11 +1744,11 @@ pub fn map_modification_schema() {
     let skip = Value::of_attr(("drop", 5));
     let remove = Value::of_attr(("remove", Value::record(vec![Item::slot("key", "hello")])));
 
-    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let body = Item::ValueItem(Value::Int32Value(2));
     let simple_insert = Value::Record(vec![attr], vec![body]);
 
-    let attr = Attr::of(("insert", Value::record(vec![Item::slot("key", "hello")])));
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let complex_insert = Value::Record(
         vec![attr, Attr::of(("complex", 0))],
         vec![Item::slot("a", true)],
