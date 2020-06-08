@@ -43,6 +43,125 @@ use std::num::NonZeroUsize;
 #[cfg(test)]
 mod tests;
 
+pub enum TypedMapModification<K, V> {
+    Insert(K, V),
+    Remove(K),
+    Take(usize),
+    Skip(usize),
+    Clear,
+}
+
+impl<K: ValidatedForm, V: ValidatedForm> Form for TypedMapModification<K, V> {
+    fn as_value(&self) -> Value {
+        match self {
+            TypedMapModification::Insert(key, value) => insert(key.as_value(), value.as_value()),
+            TypedMapModification::Remove(key) => remove(key.as_value()),
+            TypedMapModification::Take(n) => take(*n),
+            TypedMapModification::Skip(n) => skip(*n),
+            TypedMapModification::Clear => clear(),
+        }
+    }
+
+    fn into_value(self) -> Value {
+        match self {
+            TypedMapModification::Insert(key, value) => {
+                insert(key.into_value(), value.into_value())
+            }
+            TypedMapModification::Remove(key) => remove(key.into_value()),
+            TypedMapModification::Take(n) => take(n),
+            TypedMapModification::Skip(n) => skip(n),
+            TypedMapModification::Clear => clear(),
+        }
+    }
+
+    fn try_from_value(body: &Value) -> Result<Self, FormDeserializeErr> {
+        use Value::*;
+        if let Record(attrs, items) = body {
+            let mut attr_it = attrs.iter();
+            let head = attr_it.next();
+            let has_more = attr_it.next().is_some();
+
+            match head {
+                Some(first) if !has_more && items.is_empty() => match first {
+                    Attr {
+                        name,
+                        value: Extant,
+                    } if *name == CLEAR_NAME => Ok(TypedMapModification::Clear),
+                    Attr {
+                        name,
+                        value: Int32Value(n),
+                    } => extract_take_or_skip_typed(&name, *n),
+                    Attr { name, value } if name == REMOVE_NAME => {
+                        extract_typed_key(value.clone()).map(TypedMapModification::Remove)
+                    }
+                    Attr { name, value } if name == INSERT_NAME => {
+                        let key = extract_typed_key(value.clone())?;
+                        Ok(TypedMapModification::Insert(key, V::try_convert(Extant)?))
+                    }
+                    _ => Err(FormDeserializeErr::Malformatted),
+                },
+                Some(Attr { name, value }) if *name == INSERT_NAME => {
+                    let key = extract_typed_key(value.clone())?;
+
+                    let insert_value = if !has_more && items.len() < 2 {
+                        match items.first() {
+                            Some(Item::ValueItem(single)) => single.clone(),
+                            _ => Value::record(items.clone()),
+                        }
+                    } else {
+                        Record(attrs.iter().skip(1).cloned().collect(), items.clone())
+                    };
+                    Ok(TypedMapModification::Insert(
+                        key,
+                        V::try_convert(insert_value)?,
+                    ))
+                }
+
+                _ => Err(FormDeserializeErr::Malformatted),
+            }
+        } else {
+            Err(FormDeserializeErr::IncorrectType(
+                "Invalid structure for map action.".to_string(),
+            ))
+        }
+    }
+}
+
+impl<K: ValidatedForm, V: ValidatedForm> ValidatedForm for TypedMapModification<K, V> {
+    fn schema() -> StandardSchema {
+        let clear_schema = AttrSchema::tag(CLEAR_NAME).only();
+
+        let num_schema =
+            StandardSchema::OfKind(ValueKind::Int32).and(StandardSchema::after_int(0, true));
+
+        let take_schema = AttrSchema::named(TAKE_NAME, num_schema.clone()).only();
+
+        let drop_schema = AttrSchema::named(SKIP_NAME, num_schema).only();
+
+        let key_schema = FieldSpec::default(SlotSchema::new(
+            StandardSchema::text(KEY_FIELD),
+            K::schema(),
+        ));
+
+        let key_body_schema = StandardSchema::NumAttrs(0).and(StandardSchema::HasSlots {
+            slots: vec![key_schema],
+            exhaustive: true,
+        });
+
+        let remove_schema = AttrSchema::named(REMOVE_NAME, key_body_schema.clone()).only();
+
+        let insert_schema = AttrSchema::named(INSERT_NAME, key_body_schema).and_then(V::schema());
+
+        StandardSchema::Or(vec![
+            insert_schema,
+            remove_schema,
+            clear_schema,
+            take_schema,
+            drop_schema,
+        ])
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MapModification<V> {
     Insert(Value, V),
@@ -198,6 +317,56 @@ impl ValidatedForm for MapModification<Value> {
             take_schema,
             drop_schema,
         ])
+    }
+}
+
+fn extract_typed_key<K: ValidatedForm>(attr_body: Value) -> Result<K, FormDeserializeErr> {
+    match attr_body {
+        Value::Record(attrs, items) if attrs.is_empty() && items.len() < 2 => {
+            match items.into_iter().next() {
+                Some(Item::Slot(Value::Text(name), key)) if name == KEY_FIELD => {
+                    Ok(K::try_convert(key)?)
+                }
+                _ => Err(FormDeserializeErr::Message(
+                    "Invalid key specifier.".to_string(),
+                )),
+            }
+        }
+        _ => Err(FormDeserializeErr::Message(
+            "Invalid key specifier.".to_string(),
+        )),
+    }
+}
+
+fn extract_take_or_skip_typed<K: ValidatedForm, V: ValidatedForm>(
+    name: &str,
+    n: i32,
+) -> Result<TypedMapModification<K, V>, FormDeserializeErr> {
+    match name {
+        TAKE_NAME => {
+            if n >= 0 {
+                Ok(TypedMapModification::Take(n as usize))
+            } else {
+                Err(FormDeserializeErr::Message(format!(
+                    "Invalid take size: {}",
+                    n
+                )))
+            }
+        }
+        SKIP_NAME => {
+            if n >= 0 {
+                Ok(TypedMapModification::Skip(n as usize))
+            } else {
+                Err(FormDeserializeErr::Message(format!(
+                    "Invalid drop size: {}",
+                    n
+                )))
+            }
+        }
+        _ => Err(FormDeserializeErr::Message(format!(
+            "{} is not a map action.",
+            name
+        ))),
     }
 }
 
