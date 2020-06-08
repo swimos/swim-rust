@@ -9,8 +9,11 @@ use futures_util::future::ready;
 use futures_util::stream::once;
 use tokio::sync::mpsc::Sender;
 
+#[cfg(test)]
+mod tests;
+
 pub fn create_downlink<Commands>(
-    schema: Option<StandardSchema>,
+    schema: StandardSchema,
     cmd_sender: Commands,
     config: &DownlinkParams,
 ) -> raw::Sender<Sender<Value>>
@@ -21,7 +24,7 @@ where
     let upd_stream = init.chain(futures::stream::pending());
 
     raw::create_downlink(
-        CommandStateMachine::new(schema.unwrap()),
+        CommandStateMachine::new(schema),
         upd_stream,
         cmd_sender,
         config.buffer_size,

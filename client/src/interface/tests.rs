@@ -16,14 +16,17 @@ use futures::StreamExt;
 use tokio::time::Duration;
 use tracing::info;
 
-use common::model::Value;
-use common::topic::Topic;
-use common::warp::path::AbsolutePath;
-
 use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
+use crate::downlink::model::map::MapModification;
 use crate::interface::SwimClient;
+use common::model::Value;
+use common::sink::item::ItemSink;
+use common::topic::Topic;
+use common::warp::path::AbsolutePath;
+use form::Form;
+use utilities::trace::init_trace;
 
 fn config() -> ConfigHierarchy {
     let client_params = ClientParams::new(2, Default::default()).unwrap();
@@ -92,14 +95,9 @@ async fn client_test() {
     println!("Finished sending");
 }
 
-use crate::downlink::model::map::MapModification;
-use common::sink::item::ItemSink;
-use form::Form;
-use utilities::trace::init_trace;
-
-#[tokio::test(core_threads = 5)]
+#[tokio::test]
 #[ignore]
-async fn test_foo() {
+async fn test_send_value_command() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;
@@ -116,9 +114,9 @@ async fn test_foo() {
     tokio::time::delay_for(Duration::from_secs(10)).await;
 }
 
-#[tokio::test(core_threads = 5)]
+#[tokio::test]
 #[ignore]
-async fn test_bar() {
+async fn test_send_map_command() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;

@@ -1062,5 +1062,5 @@ where
 {
     let dl_cmd_sink = cmd_sink.map_err_into();
 
-    command::create_downlink(Some(schema), dl_cmd_sink, &config)
+    command::create_downlink(schema, dl_cmd_sink, &config)
 }
