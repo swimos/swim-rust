@@ -25,5 +25,5 @@ function setupCanvas() {
 }
 
 function setupChart() {
-    chart = Chart.stock(canvas);
+    Chart.init(canvas);
 }

@@ -16,7 +16,6 @@ use crate::router::RoutingError;
 use common::sink::item::{ItemSender, ItemSink};
 use futures::future::{ready, Ready};
 use std::num::NonZeroUsize;
-use tokio::task::JoinHandle;
 use utilities::rt::{spawn, TaskHandle};
 
 #[cfg(test)]

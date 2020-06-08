@@ -19,9 +19,14 @@ use std::fmt::Debug;
 use std::pin::Pin;
 use tokio::sync::oneshot;
 
+// TODO: This doesn't currently handle panics. So if the task panics then the receiver will never be notified.
+// TODO: Remove unwraps
+
 #[derive(Debug)]
 pub struct TaskError;
 
+/// WASM futures cannot return a value. Instead, the future is chained and the return value of the
+/// provided future is sent over a Tokio oneshot channel.
 #[pin_project]
 #[derive(Debug)]
 pub struct TaskHandle<R> {
@@ -47,7 +52,6 @@ where
     F::Output: Send + Debug + 'static,
 {
     let (tx, rx) = oneshot::channel();
-    // todo: remove unwraps + debug requirement
     let _f = tokio::spawn(f.then(|r| async {
         tx.send(r).unwrap();
     }));
@@ -62,20 +66,10 @@ where
     F::Output: Send + Debug + 'static,
 {
     let (tx, rx) = oneshot::channel();
-    // todo: remove unwraps + debug requirement
     let f = f.then(|r| async {
-        tx.send(r);
+        let _r = tx.send(r);
     });
     wasm_bindgen_futures::spawn_local(f);
 
     TaskHandle { inner: rx }
-}
-
-#[tokio::test]
-async fn t() {
-    let f = async {
-        panic!("1");
-    };
-    let r = tokio::spawn(f).await;
-    println!("{:?}", r);
 }

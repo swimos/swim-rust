@@ -27,7 +27,6 @@ use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
 use utilities::lru_cache::LruCache;
 use utilities::rt::{spawn, TaskHandle};
 

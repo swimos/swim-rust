@@ -31,7 +31,6 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
 use tracing::{instrument, trace};
 use utilities::rt::{spawn, TaskHandle};
 

@@ -1,34 +1,19 @@
-#[macro_use]
-extern crate lazy_static;
-
-use std::sync::Mutex;
 use std::time::Duration;
 
-// use crate::wasm::{WasmWsFactory, WasmWsSink, WasmWsStream, WebsocketFactory};
 use futures::StreamExt;
-use futures_util::SinkExt;
-use tokio::sync::mpsc;
-use url::Url;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlCanvasElement;
-use ws_stream_wasm::{WsMessage, WsMeta};
 
 use swim_client::common::model::Value;
 use swim_client::common::warp::path::AbsolutePath;
 use swim_client::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
-use swim_client::configuration::router::RouterParamBuilder;
 use swim_client::connections::factory::wasm::*;
-use swim_client::connections::SwimConnPool;
 use swim_client::interface::SwimClient;
 
-#[allow(warnings)]
-mod request;
-mod stock;
-#[allow(warnings)]
-mod wasm;
+mod chart;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -53,17 +38,77 @@ pub struct Point {
     pub y: f64,
 }
 
+pub struct DataPoint {
+    duration: chrono::Duration,
+    data: f64,
+}
+
 #[wasm_bindgen]
 impl Chart {
     pub fn coord(&self, x: i32, y: i32) -> Option<Point> {
         (self.convert)((x, y)).map(|(x, y)| Point { x, y })
     }
 
-    pub fn stock(canvas: HtmlCanvasElement) -> Result<Chart, JsValue> {
-        let map_coord = stock::draw(canvas).map_err(|err| err.to_string())?;
-        Ok(Chart {
-            convert: Box::new(move |coord| map_coord(coord).map(|(x, y)| (x.into(), y.into()))),
-        })
+    pub fn init(canvas: HtmlCanvasElement) {
+        chart::draw(canvas.clone(), &mut Vec::new());
+
+        spawn_local(async move {
+            let fac = WasmWsFactory::new(5);
+            let mut client = SwimClient::new(config(), fac).await;
+            let path = AbsolutePath::new(
+                url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+                "/unit/foo",
+                "random",
+            );
+
+            let (_downlink, mut receiver) =
+                client.value_downlink(path, Value::Extant).await.unwrap();
+
+            log("Opened downlink");
+
+            let mut values = Vec::new();
+            let mut averages = Vec::new();
+            let window_size = 100;
+            let start_epoch = stdweb::web::Date::now();
+            let start = chrono::NaiveDateTime::from_timestamp(start_epoch as i64, 0);
+
+            while let Some(event) = receiver.next().await {
+                if let Value::Int32Value(i) = *event.action() {
+                    log(&format!("Received: {:?}", i));
+
+                    values.push(i.clone());
+
+                    if values.len() > window_size {
+                        values.remove(0);
+                        averages.remove(0);
+                    }
+
+                    if !values.is_empty() {
+                        let sum = values.iter().fold(0, |total, x| total + *x);
+                        let sum = sum as f64 / values.len() as f64;
+                        let now_epoch = stdweb::web::Date::now();
+                        let now = chrono::NaiveDateTime::from_timestamp(now_epoch as i64, 0);
+                        log(&format!("Average: {:?} @ {:?}", sum, now));
+                        let duration = start.signed_duration_since(now);
+
+                        let dp = DataPoint {
+                            duration,
+                            data: sum,
+                        };
+
+                        averages.push(dp);
+                    }
+
+                    if averages.len() > 10 {
+                        chart::draw(canvas.clone(), &mut averages);
+                    }
+                } else {
+                    panic!("Expected Int32 value");
+                }
+
+                // log(&format!("Client received: {:?}", event));
+            }
+        });
     }
 }
 
@@ -85,34 +130,10 @@ fn config() -> ConfigHierarchy {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
+    pub fn log(s: &str);
 }
 
 #[wasm_bindgen(start)]
 pub async fn start() {
     console_error_panic_hook::set_once();
-    log("start");
-
-    spawn_local(async {
-        log("spawned task");
-
-        let mut fac = WasmWsFactory::new(5);
-        let mut client = SwimClient::new(config(), fac).await;
-        let path = AbsolutePath::new(
-            url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-            "/unit/foo",
-            "random",
-        );
-
-        log("connecting");
-
-        let (_downlink, mut receiver) = client
-            .untyped_value_downlink(path, Value::Extant)
-            .await
-            .unwrap();
-
-        while let Some(event) = receiver.next().await {
-            log(&format!("Client received: {:?}", event));
-        }
-    });
 }

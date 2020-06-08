@@ -48,7 +48,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::{JoinError, JoinHandle};
 use tracing::{error, info, instrument, trace_span};
 
 use common::warp::envelope::Envelope;

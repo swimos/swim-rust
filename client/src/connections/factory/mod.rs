@@ -50,7 +50,6 @@ pub mod async_factory {
     use futures::TryFutureExt;
     use futures::{Future, Sink, Stream};
     use tokio::sync::{mpsc, oneshot};
-    use tokio::task::JoinHandle;
 
     use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
     use common::request::Request;

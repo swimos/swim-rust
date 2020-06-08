@@ -19,7 +19,6 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-use std::time::Instant;
 
 use futures::future::ErrInto as FutErrInto;
 use futures::stream;
@@ -30,7 +29,6 @@ use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};

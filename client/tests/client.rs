@@ -41,6 +41,7 @@ fn config() -> ConfigHierarchy {
 }
 
 #[tokio::test]
+#[ignore]
 async fn get_all() {
     let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let path = AbsolutePath::new(
