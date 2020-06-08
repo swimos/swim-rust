@@ -38,6 +38,7 @@ pub struct Point {
     pub y: f64,
 }
 
+#[derive(Clone)]
 pub struct DataPoint {
     duration: chrono::Duration,
     data: f64,
@@ -50,7 +51,7 @@ impl Chart {
     }
 
     pub fn init(canvas: HtmlCanvasElement) {
-        chart::draw(canvas.clone(), &mut Vec::new());
+        chart::draw(canvas.clone(), Vec::new());
 
         spawn_local(async move {
             let fac = WasmWsFactory::new(5);
@@ -99,8 +100,10 @@ impl Chart {
                         averages.push(dp);
                     }
 
-                    if averages.len() > 10 {
-                        chart::draw(canvas.clone(), &mut averages);
+                    if averages.len() > 2 {
+                        let mut avg_clone = averages.clone();
+                        avg_clone.reverse();
+                        chart::draw(canvas.clone(), avg_clone);
                     }
                 } else {
                     panic!("Expected Int32 value");
