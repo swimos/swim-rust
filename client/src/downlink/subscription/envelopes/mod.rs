@@ -76,7 +76,7 @@ pub fn command_envelope(
     path: &AbsolutePath,
     command: Command<Value>,
 ) -> (url::Url, OutgoingLinkMessage) {
-    envelope_for(command::envelope_body, path, command)
+    envelope_for(Some, path, command)
 }
 
 pub(in crate::downlink) mod value {
@@ -151,13 +151,5 @@ pub(in crate::downlink) mod map {
             },
             _ => Message::BadEnvelope("Event envelope had no body.".to_string()),
         }
-    }
-}
-
-pub(in crate::downlink) mod command {
-    use common::model::Value;
-
-    pub(super) fn envelope_body(cmd: Value) -> Option<Value> {
-        Some(cmd)
     }
 }

@@ -288,16 +288,6 @@ impl<V: Deref<Target = Value>> MapModification<V> {
     }
 }
 
-pub fn map_body(map: MapModification<Value>) -> Value {
-    match map {
-        MapModification::Insert(key, value) => insert(key, value),
-        MapModification::Remove(key) => remove(key),
-        MapModification::Take(n) => take(n),
-        MapModification::Skip(n) => skip(n),
-        MapModification::Clear => clear(),
-    }
-}
-
 pub enum MapAction {
     Insert {
         key: Value,
