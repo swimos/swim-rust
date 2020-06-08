@@ -53,6 +53,7 @@ use tracing::{error, info, instrument, trace_span};
 
 use common::warp::envelope::Envelope;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
+use utilities::rt::{spawn, TaskError, TaskHandle};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -74,7 +75,7 @@ type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
-    task: JoinHandle<RequestResult<()>>,
+    task: TaskHandle<RequestResult<()>>,
 }
 
 enum DownlinkRequest {
@@ -100,7 +101,7 @@ impl Downlinks {
         let client_params = config.client_params();
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
-        let task_handle = tokio::task::spawn(task.run(rx));
+        let task_handle = spawn(task.run(rx));
 
         Downlinks {
             sender: tx,
@@ -121,7 +122,7 @@ impl Downlinks {
         Ok(())
     }
 
-    pub async fn close(self) -> Result<RequestResult<()>, JoinError> {
+    pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
         let Downlinks { sender, task } = self;
         drop(sender);
         task.await

@@ -17,6 +17,7 @@ use common::sink::item::{ItemSender, ItemSink};
 use futures::future::{ready, Ready};
 use std::num::NonZeroUsize;
 use tokio::task::JoinHandle;
+use utilities::rt::{spawn, TaskHandle};
 
 #[cfg(test)]
 mod tests;
@@ -25,7 +26,7 @@ mod tests;
 /// two queues.
 pub struct ValuePump<T> {
     sender: super::EpochSender<Option<T>>,
-    _task: JoinHandle<()>,
+    _task: TaskHandle<()>,
 }
 
 impl<'a, T: Clone> ItemSink<'a, T> for ValuePump<T> {
@@ -53,7 +54,7 @@ where
         let task = ValuePumpTask::new(rx, sink, yield_after);
         ValuePump {
             sender: tx,
-            _task: tokio::task::spawn(task.run()),
+            _task: spawn(task.run()),
         }
     }
 }

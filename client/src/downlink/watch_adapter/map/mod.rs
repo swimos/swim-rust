@@ -29,6 +29,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use utilities::lru_cache::LruCache;
+use utilities::rt::{spawn, TaskHandle};
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe
@@ -41,8 +42,8 @@ use utilities::lru_cache::LruCache;
 /// operations to have send before being sent and will stall the internal tasks until they complete.
 pub struct KeyedWatch {
     sender: mpsc::Sender<MapModification<Arc<Value>>>,
-    _consume_task: JoinHandle<()>,
-    _produce_task: JoinHandle<()>,
+    _consume_task: TaskHandle<()>,
+    _produce_task: TaskHandle<()>,
 }
 
 impl<'a> ItemSink<'a, MapModification<Arc<Value>>> for KeyedWatch {
@@ -79,8 +80,8 @@ impl KeyedWatch {
 
         KeyedWatch {
             sender: tx,
-            _consume_task: tokio::task::spawn(consumer.run()),
-            _produce_task: tokio::task::spawn(producer.run()),
+            _consume_task: spawn(consumer.run()),
+            _produce_task: spawn(producer.run()),
         }
     }
 }

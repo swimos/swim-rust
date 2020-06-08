@@ -17,6 +17,7 @@ use clap::{App, Arg};
 use client::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
+use client::connections::factory::tungstenite::TungsteniteWsFactory;
 use client::interface::SwimClient;
 use common::model::Value;
 use common::warp::path::AbsolutePath;
@@ -58,7 +59,7 @@ struct RollingAverage {
 
 impl RollingAverage {
     async fn new(window_size: usize) -> RollingAverage {
-        let client = SwimClient::new(config()).await;
+        let client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
 
         RollingAverage {
             window_size,

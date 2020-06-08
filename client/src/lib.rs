@@ -24,5 +24,6 @@ pub mod downlink;
 #[allow(warnings)]
 pub mod interface;
 pub mod router;
+pub use common;
 
 extern crate utilities;

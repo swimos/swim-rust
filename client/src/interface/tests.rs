@@ -23,6 +23,7 @@ use common::warp::path::AbsolutePath;
 use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::interface::SwimClient;
 
 fn config() -> ConfigHierarchy {
@@ -56,7 +57,7 @@ fn init_tracing() {
 async fn client_test() {
     init_tracing();
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",

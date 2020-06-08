@@ -33,6 +33,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{instrument, trace};
+use utilities::rt::{spawn, TaskHandle};
 
 #[cfg(test)]
 pub mod tests;
@@ -180,7 +181,7 @@ where
         yield_after,
     );
 
-    let join_handle = tokio::task::spawn(lane_task);
+    let join_handle = spawn(lane_task);
 
     let dl_task = DownlinkTaskHandle {
         join_handle,
@@ -193,14 +194,14 @@ where
 
 #[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTaskHandle {
-    join_handle: JoinHandle<Result<(), DownlinkError>>,
+    join_handle: TaskHandle<Result<(), DownlinkError>>,
     stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
     completed: Arc<AtomicBool>,
 }
 
 impl DownlinkTaskHandle {
     pub(in crate::downlink) fn new(
-        join_handle: JoinHandle<Result<(), DownlinkError>>,
+        join_handle: TaskHandle<Result<(), DownlinkError>>,
         stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
         completed: Arc<AtomicBool>,
     ) -> DownlinkTaskHandle {

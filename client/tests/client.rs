@@ -18,6 +18,7 @@
 use client::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
+use client::connections::factory::tungstenite::TungsteniteWsFactory;
 use client::interface::SwimClient;
 use common::model::Value;
 use common::warp::path::AbsolutePath;
@@ -41,7 +42,7 @@ fn config() -> ConfigHierarchy {
 
 #[tokio::test]
 async fn get_all() {
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",

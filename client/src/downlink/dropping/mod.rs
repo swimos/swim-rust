@@ -30,6 +30,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
 use utilities::future::{SwimFutureExt, TransformedFuture};
+use utilities::rt::spawn;
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.
@@ -240,7 +241,7 @@ where
         config.yield_after,
     );
 
-    let join_handle = tokio::task::spawn(lane_task);
+    let join_handle = spawn(lane_task);
 
     let dl_task = raw::DownlinkTaskHandle::new(join_handle, stopped_rx, completed);
 

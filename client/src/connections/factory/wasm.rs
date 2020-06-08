@@ -144,10 +144,3 @@ impl WebsocketFactory for WasmWsFactory {
         )))
     }
 }
-
-// fn a() {
-//     let factory = WasmWsFactory::new(5);
-//     let res = factory
-//         .connect(Url::parse("ws://127.0.0.1:9001/unit/foo/random"))
-//         .await;
-// }

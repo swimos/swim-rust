@@ -1,29 +1,34 @@
-use url::Url;
-use wasm_bindgen::prelude::*;
-use web_sys::HtmlCanvasElement;
+#[macro_use]
+extern crate lazy_static;
 
-// use swim_client::configuration::downlink::{
-//     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-// };
-// use swim_client::connections::factory::wasm::*;
-// use swim_client::interface::SwimClient;
-// use swim_client::connections::factory::WebsocketFactory;
-use crate::wasm::{WasmWsFactory, WasmWsSink, WasmWsStream, WebsocketFactory};
+use std::sync::Mutex;
+use std::time::Duration;
+
+// use crate::wasm::{WasmWsFactory, WasmWsSink, WasmWsStream, WebsocketFactory};
 use futures::StreamExt;
 use futures_util::SinkExt;
-use std::sync::Mutex;
 use tokio::sync::mpsc;
+use url::Url;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::HtmlCanvasElement;
 use ws_stream_wasm::{WsMessage, WsMeta};
+
+use swim_client::common::model::Value;
+use swim_client::common::warp::path::AbsolutePath;
+use swim_client::configuration::downlink::{
+    BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+};
+use swim_client::configuration::router::RouterParamBuilder;
+use swim_client::connections::factory::wasm::*;
+use swim_client::connections::SwimConnPool;
+use swim_client::interface::SwimClient;
 
 #[allow(warnings)]
 mod request;
 mod stock;
 #[allow(warnings)]
 mod wasm;
-
-#[macro_use]
-extern crate lazy_static;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -61,21 +66,21 @@ impl Chart {
         })
     }
 }
-//
-// fn config() -> ConfigHierarchy {
-//     let client_params = ClientParams::new(2, Default::default()).unwrap();
-//     let default_params = DownlinkParams::new_queue(
-//         BackpressureMode::Propagate,
-//         5,
-//         Duration::from_secs(600),
-//         5,
-//         OnInvalidMessage::Terminate,
-//         10000,
-//     )
-//     .unwrap();
-//
-//     ConfigHierarchy::new(client_params, default_params)
-// }
+
+fn config() -> ConfigHierarchy {
+    let client_params = ClientParams::new(2, Default::default()).unwrap();
+    let default_params = DownlinkParams::new_queue(
+        BackpressureMode::Propagate,
+        5,
+        Duration::from_secs(600),
+        5,
+        OnInvalidMessage::Terminate,
+        10000,
+    )
+    .unwrap();
+
+    ConfigHierarchy::new(client_params, default_params)
+}
 
 #[wasm_bindgen]
 extern "C" {
@@ -83,68 +88,31 @@ extern "C" {
     fn log(s: &str);
 }
 
-// #[tokio::main]
 #[wasm_bindgen(start)]
 pub async fn start() {
     console_error_panic_hook::set_once();
-
     log("start");
 
-    // let (mut tx, mut rx) = mpsc::channel(5);
-    //
-    // tokio::spawn(async move {
-    //     log("spawn");
-    //
-    //     spawn_local(async move {
-    //         let url = Url::parse("ws://127.0.0.1:9001/").unwrap();
-    //
-    //         let (ws, wsio) = WsMeta::connect(url, None).await.unwrap();
-    //         let state = ws.ready_state();
-    //         log(&format!("State: {:?}", state));
-    //
-    //         let (mut sink, mut stream) = wsio.split();
-    //
-    //         sink.send(WsMessage::Text(String::from(
-    //             "@link(node: \"unit/foo\", lane: \"random\")",
-    //         )))
-    //         .await
-    //         .unwrap();
-    //
-    //         sink.send(WsMessage::Text(String::from(
-    //             "@sync(node: \"unit/foo\", lane: \"random\")",
-    //         )))
-    //         .await
-    //         .unwrap();
-    //
-    //         while let Some(e) = stream.next().await {
-    //             tx.send(e).await;
-    //         }
-    //
-    //         log("Started client...");
-    //     });
-    // })
-    // .await
-    // .unwrap();
-    //
-    // spawn_local(async move {
-    //     while let Some(m) = rx.recv().await {
-    //         log(&format!("Msg: {:?}", m));
-    //     }
-    // });
-    // log("exiting");
-
     spawn_local(async {
-        let mut rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            log("hello from tokio");
+        log("spawned task");
 
-            let url = Url::parse("ws://127.0.0.1:9001/").unwrap();
-            let (ws, wsio) = WsMeta::connect(url, None).await.unwrap();
-            // let state = ws.ready_state();
-            //
-            // log(&format!("State: {:?}", state));
-            //
-            // let (mut sink, mut stream) = wsio.split();
-        });
+        let mut fac = WasmWsFactory::new(5);
+        let mut client = SwimClient::new(config(), fac).await;
+        let path = AbsolutePath::new(
+            url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+            "/unit/foo",
+            "random",
+        );
+
+        log("connecting");
+
+        let (_downlink, mut receiver) = client
+            .untyped_value_downlink(path, Value::Extant)
+            .await
+            .unwrap();
+
+        while let Some(event) = receiver.next().await {
+            log(&format!("Client received: {:?}", event));
+        }
     });
 }

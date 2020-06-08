@@ -24,7 +24,6 @@ use tokio::stream::StreamExt;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
 use tracing::trace_span;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -34,6 +33,7 @@ use common::sink::item::map_err::SenderErrInto;
 use common::sink::item::ItemSender;
 use common::warp::envelope::{Envelope, IncomingLinkMessage};
 use common::warp::path::{AbsolutePath, RelativePath};
+use utilities::rt::*;
 
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender, SwimConnPool};
@@ -93,7 +93,7 @@ pub enum RouterEvent {
 pub struct SwimRouter<Pool: ConnectionPool> {
     router_connection_request_tx: mpsc::Sender<RouterConnRequest>,
     router_sink_tx: mpsc::Sender<RouterMessageRequest>,
-    task_manager_handle: JoinHandle<Result<(), RoutingError>>,
+    task_manager_handle: TaskHandle<Result<(), RoutingError>>,
     connection_pool: Pool,
     close_tx: CloseSender,
     configuration: RouterParams,
@@ -116,7 +116,7 @@ impl<Pool: ConnectionPool> SwimRouter<Pool> {
         let (task_manager, router_connection_request_tx, router_sink_tx) =
             TaskManager::new(connection_pool.clone(), close_rx, configuration);
 
-        let task_manager_handle = tokio::spawn(task_manager.run());
+        let task_manager_handle = spawn(task_manager.run());
 
         SwimRouter {
             router_connection_request_tx,
@@ -168,7 +168,7 @@ enum RouterTask {
 type HostManagerHandle = (
     mpsc::Sender<Envelope>,
     mpsc::Sender<SubscriberRequest>,
-    JoinHandle<Result<(), RoutingError>>,
+    TaskHandle<Result<(), RoutingError>>,
 );
 
 /// The task manager is the main task in the router. It is responsible for creating sub-tasks
@@ -310,7 +310,7 @@ where
         (
             sink,
             stream_registrator,
-            tokio::spawn(
+            spawn(
                 host_manager
                     .run()
                     .instrument(trace_span!(HOST_MANAGER_TASK_NAME)),
@@ -445,12 +445,12 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let outgoing_task =
             OutgoingHostTask::new(sink_rx, connection_request_tx, close_rx.clone(), config);
 
-        let incoming_handle = tokio::spawn(
+        let incoming_handle = spawn(
             incoming_task
                 .run()
                 .instrument(span!(Level::TRACE, INCOMING_TASK_NAME)),
         );
-        let outgoing_handle = tokio::spawn(
+        let outgoing_handle = spawn(
             outgoing_task
                 .run()
                 .instrument(span!(Level::TRACE, OUTGOING_TASK_NAME)),

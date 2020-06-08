@@ -74,7 +74,7 @@ pub trait ConnectionPool: Clone + Send + 'static {
     fn close(self) -> Result<Self::CloseFut, ConnectionError>;
 }
 
-type ConnectionPoolSharedHandle = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
+type ConnectionPoolSharedHandle = Arc<Mutex<Option<TaskHandle<Result<(), ConnectionError>>>>>;
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
 /// them. It is possible to request a connection to be recreated or to return a cached connection
@@ -110,7 +110,7 @@ impl SwimConnPool {
             stop_request_rx,
         );
 
-        let connection_requests_handler = tokio::task::spawn(task.run(config));
+        let connection_requests_handler = spawn(task.run(config));
 
         SwimConnPool {
             connection_request_tx,
@@ -129,7 +129,7 @@ type ConnectionFut = Sequenced<
 
 type CloseFut = Sequenced<
     FutErrInto<RequestFuture<()>, ConnectionError>,
-    JoinHandle<Result<(), ConnectionError>>,
+    TaskHandle<Result<(), ConnectionError>>,
 >;
 
 impl ConnectionPool for SwimConnPool {
@@ -227,7 +227,10 @@ where
             stop_request_rx,
         } = self;
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
-        let mut prune_timer = tokio::time::interval(config.conn_reaper_frequency()).fuse();
+
+        // todo: doesn't work on wasm
+
+        // let mut prune_timer = tokio::time::interval(config.conn_reaper_frequency()).fuse();
         let mut fused_requests =
             combine_connection_streams(connection_request_rx, stop_request_rx).fuse();
 
@@ -235,7 +238,7 @@ where
 
         loop {
             let request: RequestType = select! {
-                timer = prune_timer.next() => Some(RequestType::Prune),
+                // timer = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
             .ok_or(ConnectionErrorKind::ConnectError)?;
@@ -277,7 +280,7 @@ where
                         let mut inner_connection = connections
                             .get_mut(&host)
                             .ok_or(ConnectionErrorKind::ConnectError)?;
-                        inner_connection.last_accessed = Instant::now();
+                        // inner_connection.last_accessed = Instant::now();
 
                         Ok(((inner_connection.as_conenction_sender()), None))
                     };
@@ -288,11 +291,11 @@ where
                 }
 
                 RequestType::Prune => {
-                    let before_size = connections.len();
-                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
-                    let after_size = connections.len();
-
-                    trace!("Pruned {} inactive connections", (before_size - after_size));
+                    // let before_size = connections.len();
+                    // connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
+                    // let after_size = connections.len();
+                    //
+                    // trace!("Pruned {} inactive connections", (before_size - after_size));
                 }
 
                 RequestType::Close => {
@@ -399,7 +402,7 @@ where
 
 struct InnerConnection {
     conn: SwimConnection,
-    last_accessed: Instant,
+    // last_accessed: Instant,
 }
 
 impl InnerConnection {
@@ -419,7 +422,7 @@ impl InnerConnection {
 
         let inner = InnerConnection {
             conn,
-            last_accessed: Instant::now(),
+            // last_accessed: Instant::now(),
         };
         Ok((inner, sender, receiver))
     }
@@ -433,8 +436,8 @@ pub struct SwimConnection {
     stopped: Arc<AtomicBool>,
     tx: mpsc::Sender<String>,
     rx: Option<mpsc::Receiver<String>>,
-    _send_handle: JoinHandle<Result<(), ConnectionError>>,
-    _receive_handle: JoinHandle<Result<(), ConnectionError>>,
+    _send_handle: TaskHandle<Result<(), ConnectionError>>,
+    _receive_handle: TaskHandle<Result<(), ConnectionError>>,
 }
 
 impl SwimConnection {
@@ -453,8 +456,8 @@ impl SwimConnection {
         let receive = ReceiveTask::new(read_stream, receiver_tx, stopped.clone());
         let send = SendTask::new(write_sink, sender_rx, stopped.clone());
 
-        let send_handler = tokio::spawn(send.run());
-        let receive_handler = tokio::spawn(receive.run());
+        let send_handler = spawn(send.run());
+        let receive_handler = spawn(receive.run());
 
         Ok(SwimConnection {
             stopped,
@@ -465,7 +468,7 @@ impl SwimConnection {
         })
     }
 }
-
+use utilities::rt::*;
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
 /// Wrapper for the transmitting end of a channel to an open connection.
@@ -638,6 +641,16 @@ impl From<ConnectionErrorKind> for ConnectionError {
 
 impl From<RequestError> for ConnectionError {
     fn from(_: RequestError) -> Self {
+        ConnectionError {
+            kind: ConnectionErrorKind::ConnectError,
+            #[cfg(not(target_arch = "wasm32"))]
+            tungstenite_error: None,
+        }
+    }
+}
+
+impl From<TaskError> for ConnectionError {
+    fn from(_: TaskError) -> Self {
         ConnectionError {
             kind: ConnectionErrorKind::ConnectError,
             #[cfg(not(target_arch = "wasm32"))]

@@ -32,6 +32,7 @@ use std::num::NonZeroUsize;
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
+use utilities::rt::{spawn, TaskHandle};
 
 #[cfg(test)]
 mod tests;
@@ -231,7 +232,7 @@ impl<T: Clone + Send> Stream for MpscTopicReceiver<T> {
 #[derive(Debug)]
 pub struct MpscTopic<T> {
     sub_sender: mpsc::Sender<SubRequest<T>>,
-    task: Arc<JoinHandle<()>>,
+    task: Arc<TaskHandle<()>>,
 }
 
 impl<T> Clone for MpscTopic<T> {
@@ -253,7 +254,7 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
         let (tx, rx) = mpsc::channel(buffer_size.get());
 
         let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size, yield_after);
-        let task = tokio::task::spawn(task_fut);
+        let task = spawn(task_fut);
         (
             MpscTopic {
                 sub_sender: sub_tx,

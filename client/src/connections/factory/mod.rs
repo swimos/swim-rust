@@ -58,6 +58,7 @@ pub mod async_factory {
     use crate::connections::factory::errors::FlattenErrors;
     use crate::connections::factory::WebsocketFactory;
     use crate::connections::ConnectionError;
+    use utilities::rt::{spawn, TaskHandle};
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {
@@ -68,7 +69,7 @@ pub mod async_factory {
     /// Abstract asynchronous factory where requests are serviced by an independent task.
     pub struct AsyncFactory<Snk, Str> {
         pub(in crate::connections::factory) sender: mpsc::Sender<ConnReq<Snk, Str>>,
-        _task: JoinHandle<()>,
+        _task: TaskHandle<()>,
     }
 
     impl<Snk, Str> AsyncFactory<Snk, Str>
@@ -87,7 +88,7 @@ pub mod async_factory {
             Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
         {
             let (tx, rx) = mpsc::channel(buffer_size);
-            let task = tokio::task::spawn(factory_task(rx, connect_async));
+            let task = spawn(factory_task(rx, connect_async));
             AsyncFactory {
                 sender: tx,
                 _task: task,
