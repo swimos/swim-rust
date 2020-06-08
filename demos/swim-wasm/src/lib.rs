@@ -51,8 +51,6 @@ impl Chart {
     }
 
     pub fn init(canvas: HtmlCanvasElement) {
-        chart::draw(canvas.clone(), Vec::new());
-
         spawn_local(async move {
             let fac = WasmWsFactory::new(5);
             let mut client = SwimClient::new(config(), fac).await;
@@ -108,8 +106,6 @@ impl Chart {
                 } else {
                     panic!("Expected Int32 value");
                 }
-
-                // log(&format!("Client received: {:?}", event));
             }
         });
     }
