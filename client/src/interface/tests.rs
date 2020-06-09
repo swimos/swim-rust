@@ -19,7 +19,7 @@ use tracing::info;
 use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
-use crate::downlink::model::map::MapModification;
+use crate::downlink::model::map::{MapModification, TypedMapModification};
 use crate::interface::SwimClient;
 use common::model::Value;
 use common::sink::item::ItemSink;
@@ -97,7 +97,26 @@ async fn client_test() {
 
 #[tokio::test]
 #[ignore]
-async fn test_send_value_command() {
+async fn test_send_untyped_value_command() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "publish",
+    );
+    let mut command_dl = client.untyped_command_downlink(path).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+    command_dl.send_item(13.into()).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_send_typed_value_command_valid() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;
@@ -111,12 +130,53 @@ async fn test_send_value_command() {
     tokio::time::delay_for(Duration::from_secs(1)).await;
     command_dl.send_item(13.into()).await.unwrap();
 
-    tokio::time::delay_for(Duration::from_secs(10)).await;
+    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
 #[ignore]
-async fn test_send_map_command() {
+async fn test_send_typed_value_command_invalid() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "publish",
+    );
+    let mut command_dl = client.command_downlink::<String>(path).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+    command_dl.send_item(13.into()).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_send_untyped_map_command() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+    let mut command_dl = client.untyped_command_downlink(path).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+
+    command_dl.send_item(remove).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_send_typed_map_command_valid() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;
@@ -126,7 +186,7 @@ async fn test_send_map_command() {
         "shoppingCart",
     );
     let mut command_dl = client
-        .command_downlink::<MapModification<Value>>(path)
+        .command_downlink::<TypedMapModification<String, i32>>(path)
         .await
         .unwrap();
 
@@ -136,5 +196,55 @@ async fn test_send_map_command() {
 
     command_dl.send_item(remove).await.unwrap();
 
-    tokio::time::delay_for(Duration::from_secs(10)).await;
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_send_typed_map_command_invalid_key() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+    let mut command_dl = client
+        .command_downlink::<TypedMapModification<i32, i32>>(path)
+        .await
+        .unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+
+    command_dl.send_item(remove).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_send_typed_map_command_invalid_value() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+    let mut command_dl = client
+        .command_downlink::<TypedMapModification<String, String>>(path)
+        .await
+        .unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+
+    command_dl.send_item(remove).await.unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
