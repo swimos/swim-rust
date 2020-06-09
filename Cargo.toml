@@ -8,5 +8,6 @@ members = [
 ]
 
 exclude = [
-    "demos/swim-wasm"
+    "demos/swim-wasm",
+    "demos/swim-wasm-chat"
 ]

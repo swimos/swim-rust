@@ -1,29 +1,27 @@
 [package]
-name = "swim-wasm"
+name = "swim-wasm-chat"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
-description = "SWIM.AI Rust Client WASM demo"
+description = "SWIM.AI Rust Client WASM chat demo"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+wasm-bindgen = "0.2.63"
+console_error_panic_hook = "0.1.6"
 swim_client = { package = "client", path = "../../client", default-features = false, features = ["wasm"] }
-wasm-bindgen = "0.2"
-console_error_panic_hook = "0.1.1"
-plotters = { version = "0.2.15", features = ["datetime"] }
-web-sys = { version = "0.3.39", features = ["HtmlCanvasElement"] }
-wasm-bindgen-futures = "0.4.13"
 tokio = { version = "=0.2.21", features = ["sync", "stream", "macros"] }
 url = "2.1.1"
 futures = "0.3.4"
 futures-util = "0.3.4"
 stdweb = "0.4.20"
 chrono = "0.4.11"
+wasm-bindgen-futures = "0.4.13"
 
 [dev-dependencies]
-wasm-bindgen-test = "0.2"
+wasm-bindgen-test = "0.3.13"
 
 [profile.release]
 opt-level = "s"

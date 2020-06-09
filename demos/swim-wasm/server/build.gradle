@@ -2,7 +2,6 @@ plugins {
     id 'java'
     id 'application'
     id 'idea'
-    id 'com.bmuschko.docker-java-application' version '6.4.0'
 }
 
 repositories {
@@ -19,8 +18,6 @@ mainClassName = 'basic.BasicPlane'
 
 group = 'org.swimos'
 idea.module.outputDir file("out/production/classes")
-
-apply from: 'gradle/docker.gradle'
 
 afterEvaluate {
     compileJava {
@@ -46,14 +43,4 @@ dependencies {
     compile group: 'org.swimos', name: 'swim-actor', version: '3.10.2'
 
     compile files('libs/swim-ws.jar')
-}
-
-
-docker {
-    javaApplication {
-        baseImage = 'openjdk:12-jdk-alpine'
-        ports = [9001]
-        jvmArgs = ['-Xms256m', '-Xmx2048m']
-        mainClassName = 'basic.BasicPlane'
-    }
 }

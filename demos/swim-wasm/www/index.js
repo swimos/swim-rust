@@ -15,6 +15,7 @@ function setupCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const aspectRatio = canvas.width / canvas.height;
     const size = Math.min(canvas.width, canvas.parentNode.offsetWidth);
+
     canvas.style.width = size + "px";
     canvas.style.height = size / aspectRatio + "px";
     canvas.width = size * dpr;

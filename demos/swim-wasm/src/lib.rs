@@ -7,36 +7,13 @@ use web_sys::HtmlCanvasElement;
 
 use swim_client::common::model::Value;
 use swim_client::common::warp::path::AbsolutePath;
-use swim_client::configuration::downlink::{
-    BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-};
 use swim_client::connections::factory::wasm::*;
 use swim_client::interface::SwimClient;
 
 mod chart;
 
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-/// Type alias for the result of a drawing function.
-pub type DrawResult<T> = Result<T, Box<dyn std::error::Error>>;
-
-/// Type used on the JS side to convert screen coordinates to chart
-/// coordinates.
 #[wasm_bindgen]
-pub struct Chart {
-    convert: Box<dyn Fn((i32, i32)) -> Option<(f64, f64)>>,
-}
-
-/// Result of screen to chart coordinates conversion.
-#[wasm_bindgen]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-}
+pub struct Chart {}
 
 #[derive(Clone)]
 pub struct DataPoint {
@@ -46,14 +23,10 @@ pub struct DataPoint {
 
 #[wasm_bindgen]
 impl Chart {
-    pub fn coord(&self, x: i32, y: i32) -> Option<Point> {
-        (self.convert)((x, y)).map(|(x, y)| Point { x, y })
-    }
-
     pub fn init(canvas: HtmlCanvasElement) {
         spawn_local(async move {
             let fac = WasmWsFactory::new(5);
-            let mut client = SwimClient::new(config(), fac).await;
+            let mut client = SwimClient::new_default(fac).await;
             let path = AbsolutePath::new(
                 url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
                 "/unit/foo",
@@ -109,21 +82,6 @@ impl Chart {
             }
         });
     }
-}
-
-fn config() -> ConfigHierarchy {
-    let client_params = ClientParams::new(2, Default::default()).unwrap();
-    let default_params = DownlinkParams::new_queue(
-        BackpressureMode::Propagate,
-        5,
-        Duration::from_secs(600),
-        5,
-        OnInvalidMessage::Terminate,
-        10000,
-    )
-    .unwrap();
-
-    ConfigHierarchy::new(client_params, default_params)
 }
 
 #[wasm_bindgen]

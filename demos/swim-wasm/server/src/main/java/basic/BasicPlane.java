@@ -13,10 +13,10 @@
 // limitations under the License.
 
 package basic;
+
 import swim.actor.ActorSpace;
 import swim.api.SwimRoute;
 import swim.api.agent.AgentRoute;
-import swim.api.downlink.MapDownlink;
 import swim.api.plane.AbstractPlane;
 import swim.kernel.Kernel;
 import swim.server.ServerLoader;
