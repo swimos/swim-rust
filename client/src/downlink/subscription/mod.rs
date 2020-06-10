@@ -17,7 +17,7 @@ use crate::configuration::downlink::{
 };
 use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
 use crate::downlink::model::command;
-use crate::downlink::model::map::{MapAction, MapModification, ViewWithEvent};
+use crate::downlink::model::map::{MapAction, UntypedMapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
 use crate::downlink::typed::{CommandDownlink, MapDownlink, ValueDownlink};
@@ -597,9 +597,10 @@ where
 
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                let cmd_sink = sink.comap(move |cmd: Command<MapModification<Arc<Value>>>| {
-                    envelopes::map_envelope(&sink_path, cmd).1.into()
-                });
+                let cmd_sink =
+                    sink.comap(move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
+                        envelopes::map_envelope(&sink_path, cmd).1.into()
+                    });
                 map_downlink_for_sink(key_schema, value_schema, cmd_sink, updates, &config)
             }
             BackpressureMode::Release {
@@ -611,10 +612,10 @@ where
                 let sink_path_duplicate = sink_path.clone();
                 let direct_sink =
                     sink.clone()
-                        .comap(move |cmd: Command<MapModification<Arc<Value>>>| {
+                        .comap(move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
                             envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
                         });
-                let action_sink = sink.comap(move |act: MapModification<Arc<Value>>| {
+                let action_sink = sink.comap(move |act: UntypedMapModification<Arc<Value>>| {
                     envelopes::map_envelope(&sink_path, Command::Action(act))
                         .1
                         .into()
@@ -630,7 +631,7 @@ where
                 .await;
 
                 let either_sink = EitherSink::new(direct_sink, pressure_release).comap(
-                    move |cmd: Command<MapModification<Arc<Value>>>| match cmd {
+                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
                         Command::Action(act) => Either::Right(act),
                         ow => Either::Left(ow),
                     },
@@ -969,7 +970,7 @@ where
     }
 }
 
-type MapItemResult = Result<Message<MapModification<Value>>, RoutingError>;
+type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;
 
 fn map_downlink_for_sink<Updates, Snk>(
     key_schema: StandardSchema,
@@ -983,7 +984,7 @@ fn map_downlink_for_sink<Updates, Snk>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Snk: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+    Snk: ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     use crate::downlink::model::map::*;
     let dl_cmd_sink = cmd_sink.map_err_into();
