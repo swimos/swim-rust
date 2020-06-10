@@ -40,7 +40,7 @@ impl Chart {
 
             let mut values = Vec::new();
             let mut averages = Vec::new();
-            let window_size = 100;
+            let window_size = 1000;
             let start_epoch = stdweb::web::Date::now();
             let start = chrono::NaiveDateTime::from_timestamp(start_epoch as i64, 0);
 

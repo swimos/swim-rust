@@ -23,9 +23,11 @@ use common::model::Value;
 use common::warp::path::AbsolutePath;
 use form::ValidatedForm;
 
-use crate::configuration::downlink::Config;
 use crate::configuration::router::RouterParamBuilder;
 // use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::configuration::downlink::{
+    BackpressureMode, ClientParams, Config, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+};
 use crate::connections::factory::WebsocketFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
@@ -35,6 +37,7 @@ use crate::downlink::subscription::{
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::warp::envelope::Envelope;
+use std::time::Duration;
 
 #[cfg(test)]
 mod tests;
@@ -94,12 +97,21 @@ impl Error for ClientError {
 /// conform to a contract that is imposed by a form implementation and all actions are verified
 /// against the provided schema to ensure that its views are consistent.
 ///
+#[derive(Clone)]
 pub struct SwimClient {
     /// The downlink manager attached to this Swim Client.
     downlinks: Downlinks,
 }
 
 impl SwimClient {
+    /// Creates a new SWIM Client using the default configuration.
+    pub async fn new_default<Fac>(connection_factory: Fac) -> Self
+    where
+        Fac: WebsocketFactory + 'static,
+    {
+        SwimClient::new(config(), connection_factory).await
+    }
+
     /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.
     /// The provided configuration is used when opening new downlinks.
     pub async fn new<C, Fac>(configuration: C, connection_factory: Fac) -> Self
@@ -192,4 +204,19 @@ impl SwimClient {
             .await
             .map_err(ClientError::SubscriptionError)
     }
+}
+
+fn config() -> ConfigHierarchy {
+    let client_params = ClientParams::new(2, Default::default()).unwrap();
+    let default_params = DownlinkParams::new_queue(
+        BackpressureMode::Propagate,
+        5,
+        Duration::from_secs(600),
+        5,
+        OnInvalidMessage::Terminate,
+        10000,
+    )
+    .unwrap();
+
+    ConfigHierarchy::new(client_params, default_params)
 }

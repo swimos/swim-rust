@@ -47,10 +47,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tracing::{error, info, instrument, trace_span};
 
 use common::warp::envelope::Envelope;
+use std::borrow::Borrow;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 use utilities::rt::{spawn, TaskError, TaskHandle};
 
@@ -72,9 +73,10 @@ pub type TypedMapReceiver<K, V> = UntilFailure<MapReceiver, ApplyFormsMap<K, V>>
 type AnyWeakValueDownlink = AnyWeakDownlink<value::Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 
+#[derive(Clone)]
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
-    task: TaskHandle<RequestResult<()>>,
+    task: Arc<Mutex<TaskHandle<RequestResult<()>>>>,
 }
 
 enum DownlinkRequest {
@@ -104,7 +106,7 @@ impl Downlinks {
 
         Downlinks {
             sender: tx,
-            task: task_handle,
+            task: Arc::new(Mutex::new(task_handle)),
         }
     }
 
@@ -124,7 +126,9 @@ impl Downlinks {
     pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
         let Downlinks { sender, task } = self;
         drop(sender);
-        task.await
+
+        let inner = &mut *task.lock().await;
+        inner.await
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active

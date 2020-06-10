@@ -57,7 +57,7 @@ pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
         use serde::Serialize as #ser;
         use serde::Deserialize as #de;
 
-        #[derive(Form, #ser, #de)]
+        #[derive(form::Form, #ser, #de)]
         #input
     };
 

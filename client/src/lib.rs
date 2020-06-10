@@ -26,4 +26,8 @@ pub mod interface;
 pub mod router;
 pub use common;
 
+#[allow(unused_imports, unused_attributes)]
+#[macro_use]
+pub use form;
+
 extern crate utilities;
