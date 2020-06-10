@@ -1,7 +1,7 @@
 use crate::configuration::downlink::{BackpressureMode, DownlinkParams, OnInvalidMessage};
 use crate::downlink::model::command;
 use crate::downlink::model::command::CommandStateMachine;
-use crate::downlink::{BasicResponse, BasicStateMachine, Command};
+use crate::downlink::{Command, DownlinkState, Operation, Response, StateMachine};
 use crate::router::RoutingError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
@@ -35,14 +35,32 @@ async fn test_create_command_downlink() {
 #[test]
 fn test_handle_action_valid() {
     let machine = CommandStateMachine::new(i32::schema());
-    let response = machine.handle_action(&mut (), Value::Int32Value(3));
-    assert_eq!(BasicResponse::of((), Value::Int32Value(3)), response);
+
+    let response = machine
+        .handle_operation(
+            &mut DownlinkState::Synced,
+            &mut (),
+            Operation::Action(Value::Int32Value(3)),
+        )
+        .unwrap();
+
+    assert_eq!(
+        Response::for_command(Command::Action(Value::Int32Value(3))),
+        response
+    );
 }
 
 #[test]
 fn test_handle_action_invalid() {
     let machine = CommandStateMachine::new(String::schema());
-    let response = machine.handle_action(&mut (), Value::Int32Value(3));
 
-    assert_eq!(BasicResponse::none(), response);
+    let response = machine
+        .handle_operation(
+            &mut DownlinkState::Synced,
+            &mut (),
+            Operation::Action(Value::Int32Value(3)),
+        )
+        .unwrap();
+
+    assert_eq!(Response::none(), response);
 }

@@ -1,12 +1,11 @@
 use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::{raw, BasicResponse, BasicStateMachine, Command, DownlinkError, Message};
+use crate::downlink::{
+    raw, Command, DownlinkError, DownlinkState, Operation, Response, StateMachine,
+};
 use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
 use common::sink::item::ItemSender;
-use futures::StreamExt;
-use futures_util::future::ready;
-use futures_util::stream::once;
 use tokio::sync::mpsc::Sender;
 
 #[cfg(test)]
@@ -20,8 +19,7 @@ pub fn create_downlink<Commands>(
 where
     Commands: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
-    let init = once(ready(Ok(Message::Synced)));
-    let upd_stream = init.chain(futures::stream::pending());
+    let upd_stream = futures::stream::pending();
 
     raw::create_downlink(
         CommandStateMachine::new(schema),
@@ -44,31 +42,33 @@ impl CommandStateMachine {
     }
 }
 
-impl BasicStateMachine<(), (), Value> for CommandStateMachine {
+impl StateMachine<(), (), Value> for CommandStateMachine {
     type Ev = ();
     type Cmd = Value;
 
-    fn init(&self) {}
+    fn init_state(&self) {}
 
-    fn on_sync(&self, _state: &()) -> Self::Ev {}
-
-    fn handle_message_unsynced(&self, _state: &mut (), _message: ()) -> Result<(), DownlinkError> {
-        Ok(())
-    }
-
-    fn handle_message(
+    fn handle_operation(
         &self,
+        downlink_state: &mut DownlinkState,
         _state: &mut (),
-        _message: (),
-    ) -> Result<Option<Self::Ev>, DownlinkError> {
-        Ok(Some(()))
-    }
+        op: Operation<(), Value>,
+    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
+        match op {
+            Operation::Start => {
+                *downlink_state = DownlinkState::Synced;
+                Ok(Response::none())
+            }
 
-    fn handle_action(&self, _state: &mut (), action: Value) -> BasicResponse<Self::Ev, Self::Cmd> {
-        if self.schema.matches(&action) {
-            BasicResponse::of((), action)
-        } else {
-            BasicResponse::none()
+            Operation::Action(value) => {
+                if self.schema.matches(&value) {
+                    Ok(Response::for_command(Command::Action(value)))
+                } else {
+                    Ok(Response::none())
+                }
+            }
+
+            _ => Ok(Response::none()),
         }
     }
 }
