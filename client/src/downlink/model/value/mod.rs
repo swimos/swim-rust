@@ -24,8 +24,8 @@ use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
-    create_downlink, BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest,
-    Event, Message, TransitionError, UpdateFailure,
+    create_downlink, BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message,
+    SyncStateMachine, TransitionError, UpdateFailure,
 };
 use crate::router::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
@@ -251,7 +251,7 @@ impl ValueStateMachine {
     }
 }
 
-impl BasicStateMachine<ValueModel, Value, Action> for ValueStateMachine {
+impl SyncStateMachine<ValueModel, Value, Action> for ValueStateMachine {
     type Ev = SharedValue;
     type Cmd = SharedValue;
 

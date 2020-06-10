@@ -59,7 +59,16 @@ fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) ->
     response
 }
 
-struct TestStateMachine;
+//TODO add more unit tests for different starting states.
+struct TestStateMachine {
+    dl_start_state: DownlinkState,
+}
+
+impl TestStateMachine {
+    fn new(dl_start_state: DownlinkState) -> Self {
+        TestStateMachine { dl_start_state }
+    }
+}
 
 impl StateMachine<State, Msg, AddTo> for TestStateMachine {
     type Ev = i32;
@@ -67,6 +76,10 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
 
     fn init_state(&self) -> State {
         State(0)
+    }
+
+    fn dl_start_state(&self) -> DownlinkState {
+        self.dl_start_state
     }
 
     fn handle_operation(
@@ -101,7 +114,7 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                     if *dl_state != DownlinkState::Unlinked {
                         model.0 = n;
                     }
-                    Ok(if *dl_state == DownlinkState::Synced {
+                    Ok(if *dl_state == self.dl_start_state() {
                         Response::for_event(Event(model.0, false))
                     } else {
                         Response::none()
@@ -166,6 +179,7 @@ type Snk<T> = mpsc::Sender<T>;
 
 async fn make_test_dl_custom_on_invalid(
     on_invalid: OnInvalidMessage,
+    dl_start_state: DownlinkState,
 ) -> (
     RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
     Snk<Result<Message<Msg>, RoutingError>>,
@@ -174,7 +188,7 @@ async fn make_test_dl_custom_on_invalid(
     let (tx_in, rx_in) = mpsc::channel(10);
     let (tx_out, rx_out) = mpsc::channel::<Command<i32>>(10);
     let downlink = create_downlink(
-        TestStateMachine,
+        TestStateMachine::new(dl_start_state),
         rx_in,
         for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
         NonZeroUsize::new(10).unwrap(),
@@ -184,17 +198,17 @@ async fn make_test_dl_custom_on_invalid(
     (downlink, tx_in, rx_out)
 }
 
-async fn make_test_dl() -> (
+async fn make_test_sync_dl() -> (
     RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
     Snk<Result<Message<Msg>, RoutingError>>,
     Str<Command<i32>>,
 ) {
-    make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate).await
+    make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate, DownlinkState::Synced).await
 }
 
 #[tokio::test]
 async fn sync_on_startup() {
-    let (_dl, _messages, mut commands) = make_test_dl().await;
+    let (_dl, _messages, mut commands) = make_test_sync_dl().await;
 
     let first_cmd = commands.next().await;
     assert_that!(first_cmd, eq(Some(Command::Sync)));
@@ -202,7 +216,7 @@ async fn sync_on_startup() {
 
 #[tokio::test]
 async fn event_on_sync() {
-    let (dl, mut messages, _commands) = make_test_dl().await;
+    let (dl, mut messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Ok(Message::Linked)).await, ok());
@@ -214,7 +228,7 @@ async fn event_on_sync() {
 
 #[tokio::test]
 async fn ignore_update_before_link() {
-    let (dl, mut messages, _commands) = make_test_dl().await;
+    let (dl, mut messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Ok(Message::Action(Msg::of(12)))).await, ok());
@@ -227,7 +241,7 @@ async fn ignore_update_before_link() {
 
 #[tokio::test]
 async fn apply_updates_between_link_and_sync() {
-    let (dl, mut messages, _commands) = make_test_dl().await;
+    let (dl, mut messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     assert_that!(messages.send(Ok(Message::Linked)).await, ok());
@@ -259,7 +273,7 @@ async fn sync_dl(
 
 #[tokio::test]
 async fn updates_processed_when_synced() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (_dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -277,7 +291,7 @@ async fn updates_processed_when_synced() {
 
 #[tokio::test]
 async fn actions_processed_when_synced() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -292,7 +306,7 @@ async fn actions_processed_when_synced() {
 
 #[tokio::test]
 async fn actions_paused_when_not_synced() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -320,7 +334,7 @@ async fn actions_paused_when_not_synced() {
 
 #[tokio::test]
 async fn actions_paused_when_unlinked() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -360,7 +374,7 @@ async fn actions_paused_when_unlinked() {
 
 #[tokio::test]
 async fn errors_propagate() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -386,7 +400,7 @@ async fn errors_propagate() {
 #[tokio::test]
 async fn terminates_on_invalid() {
     let (dl, mut messages, _commands) =
-        make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate).await;
+        make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate, DownlinkState::Synced).await;
     let (dl_tx, dl_rx) = dl.split();
 
     let _events = dl_rx.event_stream;
@@ -408,7 +422,7 @@ async fn terminates_on_invalid() {
 #[tokio::test]
 async fn continues_on_invalid() {
     let (dl, mut messages, mut commands) =
-        make_test_dl_custom_on_invalid(OnInvalidMessage::Ignore).await;
+        make_test_dl_custom_on_invalid(OnInvalidMessage::Ignore, DownlinkState::Synced).await;
     let (_dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -426,7 +440,7 @@ async fn continues_on_invalid() {
 
 #[tokio::test]
 async fn unlinks_on_unreachable_host() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     let first_cmd = commands.next().await;
@@ -448,7 +462,7 @@ async fn unlinks_on_unreachable_host() {
 
 #[tokio::test]
 async fn queues_on_unreachable_host() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
     let mut events = dl_rx.event_stream;
 
@@ -484,7 +498,7 @@ async fn queues_on_unreachable_host() {
 
 #[tokio::test]
 async fn terminates_when_router_dropped() {
-    let (dl, mut messages, mut commands) = make_test_dl().await;
+    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
     let (dl_tx, _dl_rx) = dl.split();
     let first_cmd = commands.next().await;
 
