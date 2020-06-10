@@ -19,7 +19,7 @@ use tracing::info;
 use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
-use crate::downlink::model::map::{MapModification, TypedMapModification};
+use crate::downlink::model::map::{MapModification, UntypedMapModification};
 use crate::interface::SwimClient;
 use common::model::Value;
 use common::sink::item::ItemSink;
@@ -167,9 +167,10 @@ async fn test_send_untyped_map_command() {
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
-    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+    let insert =
+        UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value()).as_value();
 
-    command_dl.send_item(remove).await.unwrap();
+    command_dl.send_item(insert).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
@@ -186,15 +187,15 @@ async fn test_send_typed_map_command_valid() {
         "shoppingCart",
     );
     let mut command_dl = client
-        .command_downlink::<TypedMapModification<String, i32>>(path)
+        .command_downlink::<MapModification<String, i32>>(path)
         .await
         .unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
-    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+    let insert = MapModification::Insert("milk".to_string(), 6).as_value();
 
-    command_dl.send_item(remove).await.unwrap();
+    command_dl.send_item(insert).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
@@ -211,15 +212,15 @@ async fn test_send_typed_map_command_invalid_key() {
         "shoppingCart",
     );
     let mut command_dl = client
-        .command_downlink::<TypedMapModification<i32, i32>>(path)
+        .command_downlink::<MapModification<i32, i32>>(path)
         .await
         .unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
-    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+    let insert = MapModification::Insert("milk".to_string(), 6).as_value();
 
-    command_dl.send_item(remove).await.unwrap();
+    command_dl.send_item(insert).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
@@ -236,15 +237,15 @@ async fn test_send_typed_map_command_invalid_value() {
         "shoppingCart",
     );
     let mut command_dl = client
-        .command_downlink::<TypedMapModification<String, String>>(path)
+        .command_downlink::<MapModification<String, String>>(path)
         .await
         .unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
-    let remove = MapModification::Insert("milk".into(), 6.into()).as_value();
+    let insert = MapModification::Insert("milk".to_string(), 6).as_value();
 
-    command_dl.send_item(remove).await.unwrap();
+    command_dl.send_item(insert).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }

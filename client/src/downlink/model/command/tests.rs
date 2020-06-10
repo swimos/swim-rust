@@ -1,5 +1,5 @@
 use crate::downlink::model::command::CommandStateMachine;
-use crate::downlink::model::map::TypedMapModification;
+use crate::downlink::model::map::MapModification;
 use crate::downlink::{Command, DownlinkState, Operation, Response, StateMachine};
 use common::model::{Attr, Item, Value};
 use form::{Form, ValidatedForm};
@@ -38,9 +38,9 @@ fn test_handle_value_action_invalid() {
 
 #[test]
 fn test_handle_map_action_valid() {
-    let action = TypedMapModification::Insert("Foo".to_string(), 3).into_value();
+    let action = MapModification::Insert("Foo".to_string(), 3).into_value();
 
-    let machine = CommandStateMachine::new(TypedMapModification::<String, i32>::schema());
+    let machine = CommandStateMachine::new(MapModification::<String, i32>::schema());
     let response = machine
         .handle_operation(
             &mut DownlinkState::Synced,
@@ -58,9 +58,9 @@ fn test_handle_map_action_valid() {
 
 #[test]
 fn test_handle_map_action_invalid_key() {
-    let action = TypedMapModification::Insert("Foo".to_string(), 3).into_value();
+    let action = MapModification::Insert("Foo".to_string(), 3).into_value();
 
-    let machine = CommandStateMachine::new(TypedMapModification::<i32, i32>::schema());
+    let machine = CommandStateMachine::new(MapModification::<i32, i32>::schema());
     let response = machine
         .handle_operation(
             &mut DownlinkState::Synced,
@@ -74,9 +74,9 @@ fn test_handle_map_action_invalid_key() {
 
 #[test]
 fn test_handle_map_action_invalid_value() {
-    let action = TypedMapModification::Insert("Foo".to_string(), 3).into_value();
+    let action = MapModification::Insert("Foo".to_string(), 3).into_value();
 
-    let machine = CommandStateMachine::new(TypedMapModification::<String, String>::schema());
+    let machine = CommandStateMachine::new(MapModification::<String, String>::schema());
     let response = machine
         .handle_operation(
             &mut DownlinkState::Synced,
