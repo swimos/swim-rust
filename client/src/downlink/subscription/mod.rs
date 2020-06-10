@@ -705,21 +705,14 @@ where
                     }
                 }
             }
-            _ => match (
-                self.map_downlinks.get(&path),
-                self.command_downlinks.get(&path),
-            ) {
-                (None, None) => Ok(self
-                    .create_new_value_downlink(init, schema, path.clone())
-                    .await?),
-                (Some(_), _) => Err(SubscriptionError::bad_kind(
+            _ => match self.map_downlinks.get(&path) {
+                Some(_) => Err(SubscriptionError::bad_kind(
                     DownlinkKind::Value,
                     DownlinkKind::Map,
                 )),
-                (_, Some(_)) => Err(SubscriptionError::bad_kind(
-                    DownlinkKind::Value,
-                    DownlinkKind::Command,
-                )),
+                _ => Ok(self
+                    .create_new_value_downlink(init, schema, path.clone())
+                    .await?),
             },
         };
         let _ = value_req.send(dl);
@@ -778,21 +771,14 @@ where
                     }
                 }
             }
-            _ => match (
-                self.value_downlinks.get(&path),
-                self.command_downlinks.get(&path),
-            ) {
-                (None, None) => Ok(self
-                    .create_new_map_downlink(path.clone(), key_schema, value_schema)
-                    .await?),
-                (Some(_), _) => Err(SubscriptionError::bad_kind(
+            _ => match self.value_downlinks.get(&path) {
+                Some(_) => Err(SubscriptionError::bad_kind(
                     DownlinkKind::Map,
                     DownlinkKind::Value,
                 )),
-                (_, Some(_)) => Err(SubscriptionError::bad_kind(
-                    DownlinkKind::Map,
-                    DownlinkKind::Command,
-                )),
+                _ => Ok(self
+                    .create_new_map_downlink(path.clone(), key_schema, value_schema)
+                    .await?),
             },
         };
         let _ = map_req.send(dl);
@@ -825,22 +811,7 @@ where
                         .await?)
                 }
             }
-            _ => match (
-                self.value_downlinks.get(&path),
-                self.map_downlinks.get(&path),
-            ) {
-                (None, None) => Ok(self
-                    .create_new_command_downlink(path.clone(), schema)
-                    .await?),
-                (Some(_), _) => Err(SubscriptionError::bad_kind(
-                    DownlinkKind::Command,
-                    DownlinkKind::Value,
-                )),
-                (_, Some(_)) => Err(SubscriptionError::bad_kind(
-                    DownlinkKind::Command,
-                    DownlinkKind::Map,
-                )),
-            },
+            _ => self.create_new_command_downlink(path.clone(), schema).await,
         };
 
         let _ = value_req.send(downlink);
