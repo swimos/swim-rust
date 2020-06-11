@@ -59,14 +59,17 @@ fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) ->
     response
 }
 
-//TODO add more unit tests for different starting states.
 struct TestStateMachine {
     dl_start_state: DownlinkState,
+    start_response: Response<i32, i32>,
 }
 
 impl TestStateMachine {
-    fn new(dl_start_state: DownlinkState) -> Self {
-        TestStateMachine { dl_start_state }
+    fn new(dl_start_state: DownlinkState, start_response: Response<i32, i32>) -> Self {
+        TestStateMachine {
+            dl_start_state,
+            start_response,
+        }
     }
 }
 
@@ -89,7 +92,7 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
         op: Operation<Msg, AddTo>,
     ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
         match op {
-            Operation::Start => Ok(Response::for_command(Command::Sync)),
+            Operation::Start => Ok(self.start_response.clone()),
             Operation::Message(Message::Linked) => {
                 *dl_state = DownlinkState::Linked;
                 Ok(Response::none())
@@ -180,6 +183,7 @@ type Snk<T> = mpsc::Sender<T>;
 async fn make_test_dl_custom_on_invalid(
     on_invalid: OnInvalidMessage,
     dl_start_state: DownlinkState,
+    start_response: Response<i32, i32>,
 ) -> (
     RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
     Snk<Result<Message<Msg>, RoutingError>>,
@@ -188,7 +192,7 @@ async fn make_test_dl_custom_on_invalid(
     let (tx_in, rx_in) = mpsc::channel(10);
     let (tx_out, rx_out) = mpsc::channel::<Command<i32>>(10);
     let downlink = create_downlink(
-        TestStateMachine::new(dl_start_state),
+        TestStateMachine::new(dl_start_state, start_response),
         rx_in,
         for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
         NonZeroUsize::new(10).unwrap(),
@@ -203,7 +207,12 @@ async fn make_test_sync_dl() -> (
     Snk<Result<Message<Msg>, RoutingError>>,
     Str<Command<i32>>,
 ) {
-    make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate, DownlinkState::Synced).await
+    make_test_dl_custom_on_invalid(
+        OnInvalidMessage::Terminate,
+        DownlinkState::Synced,
+        Response::for_command(Command::Sync),
+    )
+    .await
 }
 
 #[tokio::test]
@@ -399,8 +408,12 @@ async fn errors_propagate() {
 
 #[tokio::test]
 async fn terminates_on_invalid() {
-    let (dl, mut messages, _commands) =
-        make_test_dl_custom_on_invalid(OnInvalidMessage::Terminate, DownlinkState::Synced).await;
+    let (dl, mut messages, _commands) = make_test_dl_custom_on_invalid(
+        OnInvalidMessage::Terminate,
+        DownlinkState::Synced,
+        Response::for_command(Command::Sync),
+    )
+    .await;
     let (dl_tx, dl_rx) = dl.split();
 
     let _events = dl_rx.event_stream;
@@ -421,8 +434,12 @@ async fn terminates_on_invalid() {
 
 #[tokio::test]
 async fn continues_on_invalid() {
-    let (dl, mut messages, mut commands) =
-        make_test_dl_custom_on_invalid(OnInvalidMessage::Ignore, DownlinkState::Synced).await;
+    let (dl, mut messages, mut commands) = make_test_dl_custom_on_invalid(
+        OnInvalidMessage::Ignore,
+        DownlinkState::Synced,
+        Response::for_command(Command::Sync),
+    )
+    .await;
     let (_dl_tx, dl_rx) = dl.split();
 
     let mut events = dl_rx.event_stream;
@@ -508,4 +525,41 @@ async fn terminates_when_router_dropped() {
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
     assert_that!(stop_res.err().unwrap(), eq(DownlinkError::DroppedChannel));
+}
+
+#[tokio::test]
+async fn action_received_before_synced() {
+    let (dl, mut messages, mut commands) = make_test_dl_custom_on_invalid(
+        OnInvalidMessage::Terminate,
+        DownlinkState::Linked,
+        Response::for_command(Command::Link),
+    )
+    .await;
+
+    let (mut dl_tx, _dl_rx) = dl.split();
+    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+
+    dl_tx.send(AddTo::of(4)).await.unwrap();
+
+    let first_cmd = commands.next().await;
+    let second_cmd = commands.next().await;
+    assert_that!(first_cmd, eq(Some(Command::Link)));
+    assert_that!(second_cmd, eq(Some(Command::Action(4))));
+}
+
+#[tokio::test]
+async fn action_received_before_linked() {
+    let (dl, _messages, mut commands) = make_test_dl_custom_on_invalid(
+        OnInvalidMessage::Terminate,
+        DownlinkState::Unlinked,
+        Response::none(),
+    )
+    .await;
+
+    let (mut dl_tx, _dl_rx) = dl.split();
+
+    dl_tx.send(AddTo::of(4)).await.unwrap();
+
+    let first_cmd = commands.next().await;
+    assert_that!(first_cmd, eq(Some(Command::Action(4))));
 }

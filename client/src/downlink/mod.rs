@@ -209,6 +209,7 @@ pub enum Message<M> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Command<A> {
     Sync,
+    Link,
     Action(A),
     Unlink,
 }
