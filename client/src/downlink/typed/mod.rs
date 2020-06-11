@@ -28,6 +28,7 @@ use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
 use crate::downlink::{Downlink, Event, StoppedFuture};
+use common::model::Value;
 use common::sink::item::ItemSink;
 use common::topic::Topic;
 use form::Form;
@@ -38,7 +39,7 @@ use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 #[derive(Debug)]
 pub struct ValueDownlink<Inner, T> {
     inner: Inner,
-    _value_type: PhantomData<T>,
+    _value_type: PhantomData<fn(T) -> T>,
 }
 
 impl<Inner: Clone, T> Clone for ValueDownlink<Inner, T> {
@@ -95,11 +96,13 @@ where
     }
 }
 
+type MapValueType<K, V> = PhantomData<fn(K, V) -> (K, V)>;
+
 /// A wrapper around a map downlink, applying [`Form`]s to the keys and values.
 #[derive(Debug)]
 pub struct MapDownlink<Inner, K, V> {
     inner: Inner,
-    _value_type: PhantomData<(K, V)>,
+    _value_type: MapValueType<K, V>,
 }
 
 impl<Inner: Clone, K, V> Clone for MapDownlink<Inner, K, V> {
@@ -246,5 +249,38 @@ where
         let topic = TryTransformTopic::new(inner_topic, ApplyFormsMap::new());
         let sink = MapActions::new(inner_sink);
         (topic, sink)
+    }
+}
+
+/// A wrapper around a command value downlink, applying a [`Form`] to the values.
+#[derive(Debug)]
+pub struct CommandDownlink<Inner, T> {
+    inner: Inner,
+    _value_type: PhantomData<fn(T)>,
+}
+
+impl<Inner, T> CommandDownlink<Inner, T>
+where
+    // Inner: Downlink<CommandValue, ()>,
+    T: Form,
+{
+    pub fn new(inner: Inner) -> Self {
+        CommandDownlink {
+            inner,
+            _value_type: PhantomData,
+        }
+    }
+}
+
+impl<'a, Inner, T> ItemSink<'a, Value> for CommandDownlink<Inner, T>
+where
+    Inner: ItemSink<'a, Value>,
+    T: Form + Send + 'static,
+{
+    type Error = Inner::Error;
+    type SendFuture = Inner::SendFuture;
+
+    fn send_item(&'a mut self, value: Value) -> Self::SendFuture {
+        self.inner.send_item(value)
     }
 }

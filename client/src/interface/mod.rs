@@ -28,8 +28,9 @@ use crate::configuration::router::RouterParamBuilder;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
-    AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedMapDownlink,
-    TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
+    AnyCommandDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
+    SubscriptionError, TypedCommandDownlink, TypedMapDownlink, TypedMapReceiver,
+    TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
@@ -171,6 +172,20 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new command downlink at the provided path.
+    pub async fn command_downlink<T>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<TypedCommandDownlink<T>, ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        self.downlinks
+            .subscribe_command(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
     /// Opens a new untyped value downlink at the provided path and initialises it with [`default`] value.
     pub async fn untyped_value_downlink(
         &mut self,
@@ -190,6 +205,17 @@ impl SwimClient {
     ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
         self.downlinks
             .subscribe_map_untyped(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    /// Opens a new untyped command downlink at the provided path.
+    pub async fn untyped_command_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<AnyCommandDownlink, ClientError> {
+        self.downlinks
+            .subscribe_command_untyped(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }

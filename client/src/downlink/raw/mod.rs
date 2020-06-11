@@ -53,6 +53,10 @@ impl<S> Sender<S> {
     pub fn same_sender(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.task, &other.task)
     }
+
+    pub fn is_running(&self) -> bool {
+        !self.task.task_handle().is_complete()
+    }
 }
 
 impl<T> Sender<mpsc::Sender<T>> {
