@@ -23,6 +23,9 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
+use crate::stm::stm_futures::MapStmFuture;
+
+pub mod stm_futures;
 
 pub mod error {
     use std::any::{Any, TypeId};
@@ -112,6 +115,17 @@ macro_rules! done {
             ExecResult::Abort(err) => return ExecResult::Abort(err),
         }
     };
+}
+
+impl<T> ExecResult<T> {
+
+    pub fn map<T2, F>(self, f: F) -> ExecResult<T2>
+    where
+        F: FnOnce(T) -> T2,
+    {
+        ExecResult::Done(f(done!(self)))
+    }
+
 }
 
 /// A dynamically typed, boxed [`Stm`] instance. This loses information about the concrete type of
@@ -495,7 +509,7 @@ where
 
 impl<S, T, F> StmBase for MapStm<S, F>
     where
-        S: Stm,
+        S: StmBase,
         T: Send + Sync,
         F: Fn(S::Result) -> T + Send + Sync,
 {
@@ -504,18 +518,15 @@ impl<S, T, F> StmBase for MapStm<S, F>
 
 impl<'a, S, T, F> DynamicStm<'a> for MapStm<S, F>
 where
-    S: Stm,
+    S: DynamicStm<'a>,
     T: Send + Sync + 'a,
-    F: Fn(S::Result) -> T + Send + Sync,
+    F: Fn(S::Result) -> T + Send + Sync + 'a,
 {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type TransFuture = MapStmFuture<S::TransFuture, &'a F>;
 
     fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
         let MapStm { input, f } = self;
-        Box::pin(async move {
-            let in_value = done!(input.run_in(transaction).await);
-            ExecResult::Done(f(in_value))
-        })
+        MapStmFuture::new(input.run_in(transaction), f)
     }
 }
 
@@ -523,7 +534,7 @@ impl<S, T, F> Stm for MapStm<S, F>
 where
     S: Stm,
     T: Send + Sync + 'static,
-    F: Fn(S::Result) -> T + Send + Sync,
+    F: Fn(S::Result) -> T + Send + Sync + 'static,
 {
     fn required_stack() -> Option<usize> {
         S::required_stack()
