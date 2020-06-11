@@ -362,12 +362,12 @@ impl<T: Any + Send + Sync> StmBase for TVarWrite<T> {
 }
 
 impl<'a, T: Any + Send + Sync> DynamicStm<'a> for TVarWrite<T> {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type TransFuture = Ready<ExecResult<()>>;
 
     fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
         let TVarWrite { inner, value, .. } = self;
         transaction.apply_set(inner, value.clone());
-        Box::pin(ready(ExecResult::Done(())))
+        ready(ExecResult::Done(()))
     }
 }
 
@@ -392,11 +392,11 @@ impl<T: Send + Sync + Clone> StmBase for Constant<T> {
 }
 
 impl<'a, T: Send + Sync + Clone + 'a> DynamicStm<'a> for Constant<T> {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type TransFuture = Ready<ExecResult<T>>;
 
     fn run_in(&'a self, _: &'a mut Transaction) -> Self::TransFuture {
         let Constant(c) = self;
-        Box::pin(ready(ExecResult::Done(c.clone())))
+        ready(ExecResult::Done(c.clone()))
     }
 }
 
@@ -582,13 +582,13 @@ where
     E: Any + Error + Send + Sync + Clone,
     T: Send + Sync + 'a,
 {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type TransFuture = Ready<ExecResult<T>>;
 
     fn run_in(&'a self, _: &'a mut Transaction) -> Self::TransFuture {
         let Abort { error, .. } = self;
-        Box::pin(ready(ExecResult::Abort(error::StmError::new(
+        ready(ExecResult::Abort(error::StmError::new(
             error.clone(),
-        ))))
+        )))
     }
 }
 
