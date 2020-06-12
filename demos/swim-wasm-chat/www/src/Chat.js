@@ -42,9 +42,7 @@ class Chat extends Component {
                 });
             }, 
             // On insert
-            (msg) => {
-                console.log("Insert: %O", msg);
-                
+            (msg) => {                
                 var messages = this.state.messages.concat(msg);
                 this.setState({ messages: messages })                
             }
