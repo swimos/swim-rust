@@ -134,9 +134,7 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                     _ => result,
                 }
             }
-            Operation::Message(Message::BadEnvelope(_)) => {
-                return Err(DownlinkError::MalformedMessage);
-            }
+            Operation::Message(Message::BadEnvelope(_)) => Err(DownlinkError::MalformedMessage),
             Operation::Action(AddTo(n, maybe_cb)) => {
                 let next = model.0 + n;
                 let resp = if next < 0 {

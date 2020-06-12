@@ -27,7 +27,11 @@ use crate::configuration::downlink::Config;
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
-use crate::downlink::subscription::{AnyCommandDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedCommandDownlink, TypedMapDownlink, TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver, AnyEventDownlink};
+use crate::downlink::subscription::{
+    AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
+    SubscriptionError, TypedCommandDownlink, TypedMapDownlink, TypedMapReceiver,
+    TypedValueDownlink, TypedValueReceiver, ValueReceiver,
+};
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::warp::envelope::Envelope;

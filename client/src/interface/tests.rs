@@ -20,6 +20,7 @@ use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
 use crate::downlink::model::map::{MapModification, UntypedMapModification};
+use crate::downlink::Event;
 use crate::interface::SwimClient;
 use common::model::Value;
 use common::sink::item::ItemSink;
@@ -27,7 +28,6 @@ use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 use form::Form;
 use utilities::trace::init_trace;
-use crate::downlink::Event;
 
 fn config() -> ConfigHierarchy {
     let client_params = ClientParams::new(2, Default::default()).unwrap();
@@ -280,6 +280,9 @@ async fn test_send_untyped_value_event() {
 
     let incoming_event = event_dl.next().await.unwrap();
 
-    assert_eq!(incoming_event, Event(Value::Text("Hello, from Rust!".to_string()), true));
+    assert_eq!(
+        incoming_event,
+        Event(Value::Text("Hello, from Rust!".to_string()), true)
+    );
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }

@@ -59,11 +59,6 @@ impl<Inner> DownlinkReceiver<Inner> {
             _task: task,
         }
     }
-
-    //Todo
-    // pub fn is_running(&self) -> bool {
-    //     !self.task.task_handle().is_complete()
-    // }
 }
 
 impl<Inner> Stream for DownlinkReceiver<Inner>

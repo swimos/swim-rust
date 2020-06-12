@@ -1,7 +1,7 @@
 use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::buffered::BufferedReceiver;
-use crate::downlink::dropping::DroppingReceiver;
-use crate::downlink::queue::QueueReceiver;
+use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
+use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
+use crate::downlink::queue::{QueueDownlink, QueueReceiver};
 use crate::downlink::{
     buffered, dropping, queue, Command, DownlinkError, DownlinkState, Event, Message, Operation,
     Response, StateMachine,
@@ -12,7 +12,7 @@ use common::model::Value;
 use common::sink::item::ItemSender;
 use futures::Stream;
 use std::num::NonZeroUsize;
-use tracing::{trace};
+use tracing::{instrument, trace};
 
 /// Create an event downlink with a queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Snk>(
@@ -21,13 +21,11 @@ pub fn create_queue_downlink<Updates, Snk>(
     cmd_sink: Snk,
     queue_size: NonZeroUsize,
     config: &DownlinkParams,
-) -> QueueReceiver<Value>
+) -> (QueueDownlink<Value, Value>, QueueReceiver<Value>)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
-    // let cmd_sink = item::drop_all::drop_all();
-
     queue::make_downlink(
         EventStateMachine::new(schema),
         update_stream,
@@ -35,7 +33,6 @@ where
         queue_size,
         &config,
     )
-    .1
 }
 
 /// Create an event downlink with a dropping multiplexing topic.
@@ -44,20 +41,17 @@ pub fn create_dropping_downlink<Updates, Snk>(
     update_stream: Updates,
     cmd_sink: Snk,
     config: &DownlinkParams,
-) -> DroppingReceiver<Value>
+) -> (DroppingDownlink<Value, Value>, DroppingReceiver<Value>)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
-    // let cmd_sink = item::drop_all::drop_all();
-
     dropping::make_downlink(
         EventStateMachine::new(schema),
         update_stream,
         cmd_sink,
         &config,
     )
-    .1
 }
 
 /// Create an event downlink with an buffering multiplexing topic.
@@ -67,13 +61,11 @@ pub fn create_buffered_downlink<Updates, Snk>(
     cmd_sink: Snk,
     queue_size: NonZeroUsize,
     config: &DownlinkParams,
-) -> BufferedReceiver<Value>
+) -> (BufferedDownlink<Value, Value>, BufferedReceiver<Value>)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
-    // let cmd_sink = item::drop_all::drop_all();
-
     buffered::make_downlink(
         EventStateMachine::new(schema),
         update_stream,
@@ -81,7 +73,6 @@ where
         queue_size,
         &config,
     )
-    .1
 }
 
 struct EventStateMachine {
@@ -94,27 +85,26 @@ impl EventStateMachine {
     }
 }
 
-impl StateMachine<DownlinkState, Value, Value> for EventStateMachine {
+impl StateMachine<(), Value, Value> for EventStateMachine {
     type Ev = Value;
     type Cmd = Value;
 
-    fn init_state(&self) -> DownlinkState {
-        DownlinkState::Unlinked
-    }
+    fn init_state(&self) {}
 
     fn dl_start_state(&self) -> DownlinkState {
         DownlinkState::Linked
     }
 
+    #[instrument(skip(self, downlink_state, _state, op))]
     fn handle_operation(
         &self,
-        _downlink_state: &mut DownlinkState,
-        state: &mut DownlinkState,
+        downlink_state: &mut DownlinkState,
+        _state: &mut (),
         op: Operation<Value, Value>,
     ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
         match op {
             Operation::Start => {
-                if *state == DownlinkState::Linked {
+                if *downlink_state == DownlinkState::Linked {
                     trace!("Downlink linked");
                     Ok(Response::none())
                 } else {
@@ -124,8 +114,11 @@ impl StateMachine<DownlinkState, Value, Value> for EventStateMachine {
             }
 
             Operation::Message(message) => match message {
-                Message::Linked => Ok(Response::none()),
-                Message::Synced => Ok(Response::none()),
+                Message::Linked => {
+                    trace!("Downlink linked");
+                    Ok(Response::none())
+                }
+
                 Message::Action(value) => {
                     if self.schema.matches(&value) {
                         Ok(Response::for_event(Event(value, true)))
@@ -133,8 +126,15 @@ impl StateMachine<DownlinkState, Value, Value> for EventStateMachine {
                         Ok(Response::none())
                     }
                 }
-                Message::Unlinked => Ok(Response::none()),
-                Message::BadEnvelope(_) => Ok(Response::none()),
+
+                Message::Unlinked => {
+                    trace!("Downlink unlinked");
+                    Ok(Response::none().then_terminate())
+                }
+
+                Message::BadEnvelope(_) => Err(DownlinkError::MalformedMessage),
+
+                _ => Ok(Response::none()),
             },
 
             _ => Ok(Response::none()),
