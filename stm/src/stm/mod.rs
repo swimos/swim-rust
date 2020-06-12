@@ -23,7 +23,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
-use crate::stm::stm_futures::MapStmFuture;
+use pin_project::pin_project;
 
 pub mod stm_futures;
 
@@ -107,6 +107,7 @@ pub enum ExecResult<T> {
     Abort(error::StmError),
 }
 
+#[macro_export]
 macro_rules! done {
     ($e:expr $(,)?) => {
         match $e {
@@ -139,6 +140,8 @@ pub trait StmBase: Send + Sync + private::Sealed {
     type Result: Send + Sync;
 }
 
+type PassThroughFut<'a, T> = Pin<Box<dyn Future<Output = (ExecResult<T>, &'a mut Transaction)> + Send + 'a>>;
+
 /// Minimum required contract for executing an [`Stm`] instance through a dyn reference.
 pub trait DynamicStm<'a>: StmBase {
 
@@ -146,6 +149,11 @@ pub trait DynamicStm<'a>: StmBase {
 
     /// Execute this operation in a transaction.
     fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture;
+
+    fn run_in_pass_through(&'a self,
+                           _transaction: &'a mut Transaction) -> PassThroughFut<'a, Self::Result> {
+        unimplemented!()
+    }
 }
 
 pub trait Stm: for<'a> DynamicStm<'a> {
@@ -339,9 +347,10 @@ impl<E: Sized + 'static, S1, S2, F: Fn(E) -> S2> Catch<E, S1, S2, F> {
 }
 
 /// Unifies two [`Stm`] types with the same result type.
+#[pin_project(project = StmEitherProj)]
 pub enum StmEither<S1, S2> {
-    Left(S1),
-    Right(S2),
+    Left(#[pin] S1),
+    Right(#[pin] S2),
 }
 
 pub fn left<S1: Stm, S2: Stm>(stm: S1) -> StmEither<S1, S2> {
@@ -411,6 +420,12 @@ impl<'a, T: Send + Sync + Clone + 'a> DynamicStm<'a> for Constant<T> {
     fn run_in(&'a self, _: &'a mut Transaction) -> Self::TransFuture {
         let Constant(c) = self;
         ready(ExecResult::Done(c.clone()))
+    }
+
+    fn run_in_pass_through(&'a self,
+                           transaction: &'a mut Transaction) -> PassThroughFut<'a, Self::Result> {
+        let Constant(c) = self;
+        Box::pin(ready((ExecResult::Done(c.clone()), transaction)))
     }
 }
 
@@ -522,11 +537,10 @@ where
     T: Send + Sync + 'a,
     F: Fn(S::Result) -> T + Send + Sync + 'a,
 {
-    type TransFuture = MapStmFuture<S::TransFuture, &'a F>;
+    type TransFuture = ResultFuture<'a, Self::Result>;
 
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
-        let MapStm { input, f } = self;
-        MapStmFuture::new(input.run_in(transaction), f)
+    fn run_in(&'a self, _transaction: &'a mut Transaction) -> Self::TransFuture {
+        unimplemented!()
     }
 }
 

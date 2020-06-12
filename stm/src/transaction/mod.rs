@@ -24,15 +24,17 @@ use crate::ptr::PtrKey;
 use crate::stm::error::StmError;
 use crate::stm::{ExecResult, Stm};
 use crate::transaction::frame_mask::{FrameMask, ReadWrite};
-use crate::var::{Contents, TVarInner};
+use crate::var::{Contents, TVarInner, TVarRead};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{Future, Stream, StreamExt};
+use futures::{Future, Stream, StreamExt, ready};
 use futures_util::stream::FuturesUnordered;
 use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::macros::support::Pin;
+use crate::stm::stm_futures::TransactionFuture;
+use self::rent_future::RentalFuture;
 
 // Default capacity of the transaction log.
 const DEFAULT_LOG_CAP: usize = 32;
@@ -616,6 +618,113 @@ impl<'a> Future for AwaitChanged<'a> {
             }
         } else {
             Poll::Ready(())
+        }
+    }
+}
+
+pub struct AwaitRead(RentalFuture<TVarInner, Contents>);
+
+impl AwaitRead {
+
+    fn new(var: Arc<TVarInner>) -> Self {
+        AwaitRead(RentalFuture::new(var, |var_ref| Box::pin(var_ref.read())))
+    }
+
+    fn into_key(self) -> PtrKey<Arc<TVarInner>> {
+        PtrKey(self.0.into_head())
+    }
+
+}
+
+impl Future for AwaitRead {
+    type Output = Contents;
+
+    fn poll(self: Pin<&mut Self>,
+            cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let AwaitRead(rental) = self.get_mut();
+        RentalFuture::rent_mut(rental, |fut| fut.as_mut().poll(cx))
+    }
+
+}
+
+pub enum ReadFuture<T> {
+    Start(TVarRead<T>),
+    Wait(Option<AwaitRead>),
+}
+
+impl<T> ReadFuture<T> {
+
+    pub(crate) fn new(read: TVarRead<T>) -> Self {
+        ReadFuture::Start(read)
+    }
+
+}
+
+
+impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
+    type Output = Arc<T>;
+
+    fn poll_in(mut self: Pin<&mut Self>,
+               mut transaction: Pin<&mut Transaction>,
+               cx: &mut Context<'_>) -> Poll<ExecResult<Self::Output>> {
+
+        let Transaction {
+            log_assoc,
+            log,
+            masks,
+            stack_size,
+        } = transaction.get_mut();
+
+        let this = self.get_mut();
+        loop {
+            let next = match this {
+                ReadFuture::Start(read) => {
+                    let k = PtrKey(read.inner().clone());
+                    match get_entry(log_assoc, log, &k) {
+                        Some((i, entry)) => {
+                            if !entry.is_active() {
+                                masks.set_read(i);
+                            }
+                            return Poll::Ready(ExecResult::Done(entry.get_value()));
+                        }
+                        _ => {
+                            let PtrKey(inner) = k;
+                            AwaitRead::new(inner)
+                        }
+                    }
+                },
+                ReadFuture::Wait(maybe_wait) => {
+                    let value = if let Some(wait) = maybe_wait.as_mut() {
+                        ready!(Pin::new(wait).poll(cx))
+                    } else {
+                        panic!("Read future polled twice.");
+                    };
+                    let result = value.clone().downcast().unwrap();
+                    let k = maybe_wait.take().unwrap().into_key();
+                    let entry = LogEntry {
+                        state: LogState::Get(value),
+                        stack: Vec::with_capacity(*stack_size),
+                    };
+                    let i = log.insert(entry);
+                    log_assoc.insert(k, i);
+                    masks.set_read(i);
+                    return Poll::Ready(ExecResult::Done(result))
+                }
+            };
+            *this = ReadFuture::Wait(Some(next));
+        }
+    }
+}
+
+rental! {
+    mod rent_future {
+
+        use super::*;
+
+        #[rental]
+        pub(super) struct RentalFuture<Owner: 'static, Result: 'static> {
+            inner: Arc<Owner>,
+            fut: Pin<Box<dyn Future<Output = Result> + Send + 'inner>>,
         }
     }
 }
