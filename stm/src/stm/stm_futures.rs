@@ -26,6 +26,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 
+/// A future that is executed within the context of a [`Transaction`].
 pub trait TransactionFuture {
     type Output: Send + Sync;
 
@@ -51,6 +52,39 @@ impl<T: Send + Sync> TransactionFuture for BoxedTransactionFuture<T> {
     }
 }
 
+/// A [`Future`] that executes a [`TransactionFuture`] within a [`Transaction`].
+#[pin_project(project = RunInProj)]
+pub struct RunIn<'a, F> {
+    transaction: Pin<&'a mut Transaction>,
+    #[pin]
+    future: F,
+}
+
+impl<'a, F> RunIn<'a, F> {
+    pub fn new(transaction: &'a mut Transaction, future: F) -> Self {
+        RunIn {
+            transaction: Pin::new(transaction),
+            future,
+        }
+    }
+}
+
+impl<'a, F> Future for RunIn<'a, F>
+where
+    F: TransactionFuture,
+{
+    type Output = ExecResult<F::Output>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let RunInProj {
+            transaction,
+            future,
+        } = self.project();
+        future.poll_in(transaction.as_mut(), cx)
+    }
+}
+
+/// A transaction future for executing a [`MapStm`] STM instance.
 #[pin_project]
 pub struct MapStmFuture<Fut, F> {
     #[pin]
@@ -84,37 +118,6 @@ where
     }
 }
 
-#[pin_project(project = RunInProj)]
-pub struct RunIn<'a, F> {
-    transaction: Pin<&'a mut Transaction>,
-    #[pin]
-    future: F,
-}
-
-impl<'a, F> RunIn<'a, F> {
-    pub fn new(transaction: &'a mut Transaction, future: F) -> Self {
-        RunIn {
-            transaction: Pin::new(transaction),
-            future,
-        }
-    }
-}
-
-impl<'a, F> Future for RunIn<'a, F>
-where
-    F: TransactionFuture,
-{
-    type Output = ExecResult<F::Output>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let RunInProj {
-            transaction,
-            future,
-        } = self.project();
-        future.poll_in(transaction.as_mut(), cx)
-    }
-}
-
 impl<T: Send + Sync> TransactionFuture for Ready<ExecResult<T>> {
     type Output = T;
 
@@ -127,6 +130,7 @@ impl<T: Send + Sync> TransactionFuture for Ready<ExecResult<T>> {
     }
 }
 
+/// A transaction future for executing an [`AndThen`] STM instance.
 #[pin_project(project = AndThenProject)]
 pub enum AndThenTransFuture<Fut1, Fut2, F> {
     First {
@@ -180,6 +184,7 @@ where
     }
 }
 
+/// A transaction future for executing a [`Sequence`] STM instance.
 #[pin_project(project = SequenceProject)]
 pub enum SequenceTransFuture<Fut1, Fut2> {
     First {
@@ -237,6 +242,7 @@ where
     }
 }
 
+/// A transaction future for executing a [`TVarWrite`] STM instance.
 pub struct WriteFuture<T> {
     inner: Arc<TVarInner>,
     value: Option<Arc<T>>,
@@ -288,6 +294,7 @@ where
     }
 }
 
+/// A transaction future for executing a [`Choice`] STM instance.
 #[pin_project(project = ChoiceProject)]
 pub enum ChoiceTransFuture<Fut1, Fut2> {
     First {
@@ -363,6 +370,7 @@ where
     }
 }
 
+/// A transaction future for executing a [`Catch`] STM instance.
 #[pin_project(project = CatchProject)]
 pub enum CatchTransFuture<E, Fut1, Fut2, F> {
     First {

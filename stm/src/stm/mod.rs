@@ -606,6 +606,7 @@ impl<R> Stm for dyn DynamicStm<Result = R, TransFuture = BoxedTransactionFuture<
     }
 }
 
+/// Boxes the type of future returned by an [`Stm`] instance, hiding its concrete type.
 pub struct BoxedStm<S: ?Sized>(S);
 
 impl<S> DynamicStm for BoxedStm<S>

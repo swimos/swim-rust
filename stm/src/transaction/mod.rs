@@ -591,6 +591,7 @@ impl<'a> Future for AwaitChanged<'a> {
     }
 }
 
+/// Future to await reading the value from a transactional variable.
 pub struct AwaitRead(RentalFuture<TVarInner, Contents>);
 
 impl AwaitRead {
@@ -598,6 +599,7 @@ impl AwaitRead {
         AwaitRead(RentalFuture::new(var, |var_ref| Box::pin(var_ref.read())))
     }
 
+    /// Convert the future into a key into the transaction log.
     fn into_key(self) -> PtrKey<Arc<TVarInner>> {
         PtrKey(self.0.into_head())
     }
@@ -612,6 +614,7 @@ impl Future for AwaitRead {
     }
 }
 
+/// Transaction future for performing a read on a transactionak variable.
 pub enum ReadFuture<T> {
     Start(TVarRead<T>),
     Wait(Option<AwaitRead>),
@@ -684,9 +687,11 @@ rental! {
 
         use super::*;
 
+        /// Encapsulates a value and a future that was borrowed from it.
         #[rental]
         pub(super) struct RentalFuture<Owner: 'static, Result: 'static> {
             inner: Arc<Owner>,
+            //TODO Change the RwLock implementation so this boxing can be avoided.
             fut: Pin<Box<dyn Future<Output = Result> + Send + 'inner>>,
         }
     }
