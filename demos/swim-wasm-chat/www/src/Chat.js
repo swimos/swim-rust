@@ -1,22 +1,22 @@
-import React, { Component, useEffect } from 'react'
-import { withRouter } from 'react-router-dom'
-import { Layout } from 'antd'
-import { LoadingOutlined } from '@ant-design/icons';
+import React, {Component} from 'react'
+import {withRouter} from 'react-router-dom'
+import {Layout} from 'antd'
+import {LoadingOutlined} from '@ant-design/icons';
 import './App.css'
-import { Form } from '@ant-design/compatible';
+import {Form} from '@ant-design/compatible';
 import MessageList from './components/message-list/MessageList';
 import MessageForm from './components/message-form/MessageForm';
-import { USER_NAME } from './components/common/Constants';
+import {USER_NAME} from './components/common/Constants';
 import * as swim from "swim-wasm-chat";
-import { v4 as uuidv4 } from 'uuid';
+import {v4 as uuidv4} from 'uuid';
 
 class Chat extends Component {
 
     constructor(props) {
         super(props)
-        
+
         this.state = {
-            isLoading:false
+            isLoading: false
         };
 
         this.handleFinish = this.handleFinish.bind(this);
@@ -27,7 +27,7 @@ class Chat extends Component {
             isLoading: true
         });
 
-       await this.loadChats();
+        await this.loadChats();
     }
 
     async loadChats() {
@@ -35,16 +35,16 @@ class Chat extends Component {
 
         chat_client.set_callbacks(
             // On initial sync
-            (msgs) => {                
+            (msgs) => {
                 this.setState({
-                    messages:msgs,
-                    isLoading:false
+                    messages: msgs,
+                    isLoading: false
                 });
-            }, 
+            },
             // On insert
-            (msg) => {                
+            (msg) => {
                 var messages = this.state.messages.concat(msg);
-                this.setState({ messages: messages })                
+                this.setState({messages: messages})
             }
         );
 
@@ -65,7 +65,7 @@ class Chat extends Component {
 
     render() {
         if (this.state.isLoading) {
-            return <LoadingOutlined />
+            return <LoadingOutlined/>
         }
 
         const messages = this.state.messages;

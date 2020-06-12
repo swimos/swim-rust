@@ -1,27 +1,27 @@
 import React from 'react';
-import { Form, Input, Button, Layout } from 'antd';
+import {Button, Form, Input, Layout} from 'antd';
 
-const { Content } = Layout;
+const {Content} = Layout;
 
-export default function MessageForm({ onFinish }) {
+export default function MessageForm({onFinish}) {
     const [form] = Form.useForm();
-  
-    const submitForm = ({ message }) => {
+
+    const submitForm = ({message}) => {
         onFinish(message);
         form.resetFields();
     };
-  
+
     return (
         <Layout className="layout">
-            <Content style={{ padding: '50px 100px' }}>
+            <Content style={{padding: '50px 100px'}}>
                 <Form form={form} onFinish={submitForm}>
-                    <Form.Item 
+                    <Form.Item
                         name="message"
                         rules={[{
                             required: true,
                             message: 'Please write a message',
-                    }]}>
-                        <Input />
+                        }]}>
+                        <Input/>
                     </Form.Item>
 
                     <div style={{

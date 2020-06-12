@@ -1,7 +1,7 @@
 import React, {Component} from 'react';
 import {Link, withRouter} from 'react-router-dom';
 import './Header.css';
-import {Dropdown, Icon, Layout, Menu, notification} from 'antd';
+import {Layout} from 'antd';
 
 const Header = Layout.Header;
 
@@ -10,7 +10,7 @@ class AppHeader extends Component {
         super(props);
     }
 
-    render() {        
+    render() {
         return (
             <Header className="app-header">
                 <div className="container">

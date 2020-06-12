@@ -1,16 +1,12 @@
 import React, {Component} from 'react'
 import './App.css';
-import {
-    Switch,
-    Route,
-    withRouter
-} from "react-router-dom";
+import {Route, Switch, withRouter} from "react-router-dom";
 import {Layout} from 'antd';
 import Home from './Home';
 import AppHeader from './components/common/Header';
 import Chat from './Chat';
 import NotFound from './components/common/NotFound';
-import { USER_NAME } from './components/common/Constants';
+import {USER_NAME} from './components/common/Constants';
 
 const {Content} = Layout;
 
@@ -37,10 +33,11 @@ class App extends Component {
         return (
             <Layout className="app-container">
                 <AppHeader/>
-                
+
                 <Content className="app-content">
                     <Switch>
-                        <Route exact path="/" render={(props) => <Home onLogin={this.handleLogin} {...props} />}></Route>
+                        <Route exact path="/"
+                               render={(props) => <Home onLogin={this.handleLogin} {...props} />}></Route>
                         <Route path="/chat">
                             <Chat username={this.state.username}></Chat>
                         </Route>
