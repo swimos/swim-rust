@@ -1,26 +1,28 @@
 package basic;
 
-import swim.api.downlink.ValueDownlink;
+import swim.api.downlink.MapDownlink;
 import swim.client.ClientRuntime;
-import swim.structure.Num;
+import swim.structure.Form;
+import swim.structure.Item;
 import swim.structure.Value;
+import java.util.UUID;
 
-class CustomClient {
+class Client {
+
   public static void main(String[] args) throws InterruptedException {
     ClientRuntime swimClient = new ClientRuntime();
     swimClient.start();
-    final String hostUri = "warp://localhost:9001";
-    final String nodeUri = "/unit/foo";
+    final String hostUri = "ws://localhost:9001";
+    final String nodeUri = "/rooms/post";
 
-    swimClient.command(hostUri, nodeUri, "WAKEUP", Value.absent());
+    Message message = new Message("v", "un");
+    Form<Message> form = Form.forClass(Message.class);
+    Item item = form.mold(message);
 
-    final ValueDownlink<Value> link = swimClient.downlinkValue()
-        .hostUri(hostUri).nodeUri(nodeUri).laneUri("info")
-        .open();
-
-    link.set(Num.from(1000));
+    swimClient.command(hostUri, "rooms", "post", (Value) item);
 
     Thread.sleep(2000);
     swimClient.stop();
   }
+
 }

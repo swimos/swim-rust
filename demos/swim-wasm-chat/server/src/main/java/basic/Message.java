@@ -1,23 +1,17 @@
 package basic;
 
+import java.util.UUID;
+
 public class Message {
 
   private String value;
   private String userName;
-  private String userUuid;
+  private String uuid;
 
-  public Message(String value, String userName, String userUuid) {
+  public Message(String value, String userName) {
     this.value = value;
     this.userName = userName;
-    this.userUuid = userUuid;
-  }
-
-  public String getUserUuid() {
-    return userUuid;
-  }
-
-  public void setUserUuid(String userUuid) {
-    this.userUuid = userUuid;
+    this.uuid = UUID.randomUUID().toString();
   }
 
   @Override
@@ -25,7 +19,6 @@ public class Message {
     return "Message{" +
         "value='" + value + '\'' +
         ", userName='" + userName + '\'' +
-        ", userUuid='" + userUuid + '\'' +
         '}';
   }
 

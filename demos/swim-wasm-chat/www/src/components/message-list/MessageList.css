@@ -1,0 +1,24 @@
+.messageListContainer {
+    padding-bottom: 62px;
+    padding-top: 41px;
+    padding-left: 35px;
+    width: calc(100% - 13.75rem);
+    height: 100vh;
+    overflow-y: scroll;
+    float: right;
+}
+
+.messageList {
+    overflow: auto;
+    width: 100%;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    padding-right: 35px;
+    margin-bottom: 40px;
+    max-width: 100% !important;
+    height: calc(100vh - 104px);
+}
+
+.loadMoreButton {
+    cursor: pointer;
+}

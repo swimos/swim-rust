@@ -9,7 +9,7 @@ description = "SWIM.AI Rust Client WASM chat demo"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-wasm-bindgen = "0.2.63"
+wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
 console_error_panic_hook = "0.1.6"
 swim_client = { package = "client", path = "../../client", default-features = false, features = ["wasm"] }
 swim_form = { path = "../../swim_form" }

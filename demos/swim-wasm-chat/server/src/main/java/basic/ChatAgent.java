@@ -20,6 +20,7 @@ import swim.api.lane.CommandLane;
 import swim.api.lane.MapLane;
 import swim.structure.Value;
 import java.time.ZonedDateTime;
+import java.util.UUID;
 
 public class ChatAgent extends AbstractAgent {
 

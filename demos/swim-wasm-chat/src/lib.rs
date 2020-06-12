@@ -39,17 +39,16 @@ pub struct Message {
     value: String,
     #[serde(rename = "userName")]
     user_name: String,
-    #[serde(rename = "userUuid")]
-    user_uuid: String,
+    uuid: String,
 }
 
 #[wasm_bindgen]
 impl Message {
-    pub fn new(value: String, user_name: String, user_uuid: String) -> Message {
+    pub fn new(value: String, user_name: String, uuid: String) -> Message {
         Message {
             value,
             user_name,
-            user_uuid,
+            uuid,
         }
     }
 }
@@ -67,7 +66,11 @@ impl ChatClient {
     }
 
     #[wasm_bindgen]
-    pub fn on_message(&self, f: js_sys::Function) {
+    pub fn set_callbacks(
+        &self,
+        on_load_callback: js_sys::Function,
+        on_message_callback: js_sys::Function,
+    ) {
         let mut client = self.swim_client.clone();
 
         spawn_local(async move {
@@ -77,19 +80,27 @@ impl ChatClient {
 
             while let Some(msg) = receiver.next().await {
                 match &msg.action().event {
+                    MapEvent::Initial => {
+                        let records: js_sys::Array = msg.action().view.iter().fold(
+                            js_sys::Array::new(),
+                            |vec, (_key, value)| {
+                                let message = Message::try_from_value(&*value).unwrap();
+                                let message = JsValue::from_serde(&message).unwrap();
+
+                                vec.push(&message);
+                                vec
+                            },
+                        );
+
+                        let _r = on_load_callback.call1(&this, &records).unwrap();
+                    }
+
                     MapEvent::Insert(key) => {
                         let record = msg.action().view.get(key);
                         let message = Message::try_from_value(&*record.unwrap()).unwrap();
+                        let message = JsValue::from_serde(&message).unwrap();
 
-                        let user_name = JsValue::from(&message.user_name);
-                        // let time = if let Value::Int64Value(time) = key {
-                        //     JsValue::from(time)
-                        // } else {
-                        //     unreachable!()
-                        // };
-
-                        let message = JsValue::from(&message.value);
-                        let _r = f.call2(&this, &user_name, &message).unwrap();
+                        let _r = on_message_callback.call1(&this, &message).unwrap();
                     }
                     _ => {}
                 }

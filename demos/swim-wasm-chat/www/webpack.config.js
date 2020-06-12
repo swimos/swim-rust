@@ -1,14 +1,19 @@
 const path = require('path');
 const autoprefixer = require('autoprefixer');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const fs  = require('fs');
+const lessToJs = require('less-vars-to-js');
+const themeVariables = lessToJs(fs.readFileSync(path.join(__dirname, './ant-theme-vars.less'), 'utf8'));
 
 module.exports = {
+    devServer: {
+        historyApiFallback: true,
+    },
     entry: "./src/bootstrap.js",
     output: {
         path: path.resolve(__dirname, 'dist'),
         filename: 'bundle.js',
         chunkFilename: '[id].js',
-        publicPath: ''
     },
     resolve: {
         extensions: ['.js', '.jsx']
@@ -21,34 +26,25 @@ module.exports = {
                 exclude: /node_modules/
             },
             {
-                test: /\.css$/,
-                exclude: /node_modules/,
-                use: [
-                    { loader: 'style-loader' },
-                    { 
-                        loader: 'css-loader',
-                        options: {
-                            modules: {
-                                localIdentName: "[name]__[local]___[hash:base64:5]",
-                            },														
-                            sourceMap: true
-                        }
-                     },
-                     { 
-                         loader: 'postcss-loader',
-                         options: {
-                             ident: 'postcss',
-                             plugins: () => [
-                                 autoprefixer({})
-                             ]
-                         }
-                      }
-                ]
+                test: /\.css$/i,
+                use: ['style-loader', 'css-loader'],
             },
             {
                 test: /\.(png|jpe?g|gif)$/,
                 loader: 'url-loader?limit=10000&name=img/[name].[ext]'
-            }
+            },{
+                test: /\.less$/,
+                use: [
+                  {loader: "style-loader"},
+                  {loader: "css-loader"},
+                  {loader: "less-loader",
+                    options: {
+                      modifyVars: themeVariables,
+                      javascriptEnabled: true
+                    }
+                  }
+                ]
+              }
         ]
     },
     plugins: [
