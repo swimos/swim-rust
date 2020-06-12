@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::transaction::Transaction;
+use crate::stm::stm_futures::{
+    AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture, MapStmFuture,
+    SequenceTransFuture, TransactionFuture, WriteFuture,
+};
+use crate::transaction::ReadFuture;
 use crate::var::{TVarRead, TVarWrite};
-use futures::future::{ready, Either, Ready};
-use futures::Future;
+use futures::future::{ready, Ready};
+use pin_project::pin_project;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::pin::Pin;
 use std::sync::Arc;
-use pin_project::pin_project;
 
 pub mod stm_futures;
 
@@ -92,10 +94,6 @@ pub mod error {
     }
 }
 
-/// Boxed future type for the result of executing an [`Stm`] instance in a transaction..
-/// TODO This is a stopgap and should be replaced with concrete future types.
-pub type ResultFuture<'a, T> = Pin<Box<dyn Future<Output = ExecResult<T>> + Send + 'a>>;
-
 /// The result of executing an [`Stm`] instance in a transaction.
 #[derive(Debug)]
 pub enum ExecResult<T> {
@@ -119,44 +117,31 @@ macro_rules! done {
 }
 
 impl<T> ExecResult<T> {
-
     pub fn map<T2, F>(self, f: F) -> ExecResult<T2>
     where
         F: FnOnce(T) -> T2,
     {
         ExecResult::Done(f(done!(self)))
     }
-
 }
 
 /// A dynamically typed, boxed [`Stm`] instance. This loses information about the concrete type of
 /// the instance and will mean that execution will involve dynamic dispatch and some allocation
 /// optimizations will not be possible. However, it may be preferable to using nested [`StmEither`]s
 /// where branches have many different types.
-pub type BoxStm<R> = Box<dyn for<'a> DynamicStm<'a, Result = R, TransFuture = ResultFuture<'a, R>>>;
-
-pub trait StmBase: Send + Sync + private::Sealed {
-    /// The result type of the transaction.
-    type Result: Send + Sync;
-}
-
-type PassThroughFut<'a, T> = Pin<Box<dyn Future<Output = (ExecResult<T>, &'a mut Transaction)> + Send + 'a>>;
+pub type BoxStm<R> = Box<dyn DynamicStm<Result = R, TransFuture = BoxedTransactionFuture<R>>>;
 
 /// Minimum required contract for executing an [`Stm`] instance through a dyn reference.
-pub trait DynamicStm<'a>: StmBase {
-
-    type TransFuture: Future<Output = ExecResult<Self::Result>> + Send + 'a;
+pub trait DynamicStm: Send + Sync + private::Sealed {
+    /// The result type of the transaction.
+    type Result: Send + Sync;
+    type TransFuture: TransactionFuture<Output = Self::Result> + Send;
 
     /// Execute this operation in a transaction.
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture;
-
-    fn run_in_pass_through(&'a self,
-                           _transaction: &'a mut Transaction) -> PassThroughFut<'a, Self::Result> {
-        unimplemented!()
-    }
+    fn runner(&self) -> Self::TransFuture;
 }
 
-pub trait Stm: for<'a> DynamicStm<'a> {
+pub trait Stm: DynamicStm {
     /// Transform the output value of this [`Stm`]. This function could be executed any number of
     /// times and so should be side-effect free. Particularly, two executions of the function
     /// with identical inputs should always produce the same result to preserve consistency
@@ -361,100 +346,64 @@ pub fn right<S1: Stm, S2: Stm>(stm: S2) -> StmEither<S1, S2> {
     StmEither::Right(stm)
 }
 
-impl<T: Any + Send + Sync> StmBase for TVarRead<T> {
+impl<T: Any + Send + Sync> DynamicStm for TVarRead<T> {
     type Result = Arc<T>;
-}
+    type TransFuture = ReadFuture<T>;
 
-impl<'a, T: Any + Send + Sync> DynamicStm<'a> for TVarRead<T> {
-
-    type TransFuture = ResultFuture<'a, Self::Result>;
-
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
-        let inner = self.inner();
-        Box::pin(async move {
-            let value = transaction.apply_get(inner).await;
-            ExecResult::Done(value)
-        })
+    fn runner(&self) -> Self::TransFuture {
+        ReadFuture::new(self.clone())
     }
 }
 
 impl<T: Any + Send + Sync> Stm for TVarRead<T> {}
 
-impl<T: Any + Send + Sync> StmBase for TVarWrite<T> {
+impl<T: Any + Send + Sync> DynamicStm for TVarWrite<T> {
     type Result = ();
-}
+    type TransFuture = WriteFuture<T>;
 
-impl<'a, T: Any + Send + Sync> DynamicStm<'a> for TVarWrite<T> {
-    type TransFuture = Ready<ExecResult<()>>;
-
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         let TVarWrite { inner, value, .. } = self;
-        transaction.apply_set(inner, value.clone());
-        ready(ExecResult::Done(()))
+        WriteFuture::new(inner.clone(), value.clone())
     }
 }
 
 impl<T: Any + Send + Sync> Stm for TVarWrite<T> {}
 
-impl<T: Send + Sync> StmBase for Retry<T> {
+impl<T: Send + Sync> DynamicStm for Retry<T> {
     type Result = T;
-}
-
-impl<'a, T: Send + Sync + 'a> DynamicStm<'a> for Retry<T> {
     type TransFuture = Ready<ExecResult<T>>;
 
-    fn run_in(&'a self, _: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         ready(ExecResult::Retry)
     }
 }
 
-impl<T: Send + Sync + 'static> Stm for Retry<T> {}
+impl<T: Send + Sync> Stm for Retry<T> {}
 
-impl<T: Send + Sync + Clone> StmBase for Constant<T> {
+impl<T: Send + Sync + Clone> DynamicStm for Constant<T> {
     type Result = T;
-}
-
-impl<'a, T: Send + Sync + Clone + 'a> DynamicStm<'a> for Constant<T> {
     type TransFuture = Ready<ExecResult<T>>;
 
-    fn run_in(&'a self, _: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         let Constant(c) = self;
         ready(ExecResult::Done(c.clone()))
     }
-
-    fn run_in_pass_through(&'a self,
-                           transaction: &'a mut Transaction) -> PassThroughFut<'a, Self::Result> {
-        let Constant(c) = self;
-        Box::pin(ready((ExecResult::Done(c.clone()), transaction)))
-    }
 }
 
-impl<T: Send + Sync + Clone + 'static> Stm for Constant<T> {}
+impl<T: Send + Sync + Clone> Stm for Constant<T> {}
 
-impl<S1, S2, F> StmBase for AndThen<S1, F>
-    where
-        S1: Stm,
-        S2: Stm,
-        F: Fn(S1::Result) -> S2 + Send + Sync,
-{
-    type Result = S2::Result;
-}
-
-impl<'a, S1, S2, F> DynamicStm<'a> for AndThen<S1, F>
+impl<S1, S2, F> DynamicStm for AndThen<S1, F>
 where
     S1: Stm,
     S2: Stm,
-    S2::Result: 'a,
-    F: Fn(S1::Result) -> S2 + Send + Sync,
+    F: Fn(S1::Result) -> S2 + Send + Sync + Clone,
 {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type Result = S2::Result;
+    type TransFuture = AndThenTransFuture<S1::TransFuture, S2::TransFuture, F>;
 
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         let AndThen { input, f } = self;
-        Box::pin(async move {
-            let in_value = done!(input.run_in(transaction).await);
-            f(in_value).run_in(transaction).await
-        })
+        AndThenTransFuture::new(input.runner(), f.clone())
     }
 }
 
@@ -462,8 +411,7 @@ impl<S1, S2, F> Stm for AndThen<S1, F>
 where
     S1: Stm,
     S2: Stm,
-    S2::Result: 'static,
-    F: Fn(S1::Result) -> S2 + Send + Sync,
+    F: Fn(S1::Result) -> S2 + Send + Sync + Clone,
 {
     fn required_stack() -> Option<usize> {
         match (S1::required_stack(), S2::required_stack()) {
@@ -473,45 +421,23 @@ where
     }
 }
 
-impl<S1, S2> StmBase for Choice<S1, S2>
-    where
-        S1: Stm,
-        S2: Stm<Result = S1::Result>,
-{
-    type Result = S1::Result;
-}
-
-impl<'a, S1, S2> DynamicStm<'a> for Choice<S1, S2>
+impl<S1, S2> DynamicStm for Choice<S1, S2>
 where
     S1: Stm,
-    S1::Result: 'a,
     S2: Stm<Result = S1::Result>,
 {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type Result = S1::Result;
+    type TransFuture = ChoiceTransFuture<S1::TransFuture, S2::TransFuture>;
 
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
-        Box::pin(async move {
-            let Choice { first, second } = self;
-            transaction.enter_frame();
-            match first.run_in(transaction).await {
-                ExecResult::Retry => {
-                    transaction.pop_frame();
-                    second.run_in(transaction).await
-                }
-                r @ ExecResult::Done(_) => r,
-                ab @ ExecResult::Abort(_) => {
-                    transaction.pop_frame();
-                    ab
-                }
-            }
-        })
+    fn runner(&self) -> Self::TransFuture {
+        let Choice { first, second } = self;
+        ChoiceTransFuture::new(first.runner(), second.runner())
     }
 }
 
 impl<S1, S2> Stm for Choice<S1, S2>
 where
     S1: Stm,
-    S1::Result: 'static,
     S2: Stm<Result = S1::Result>,
 {
     fn required_stack() -> Option<usize> {
@@ -522,61 +448,43 @@ where
     }
 }
 
-impl<S, T, F> StmBase for MapStm<S, F>
-    where
-        S: StmBase,
-        T: Send + Sync,
-        F: Fn(S::Result) -> T + Send + Sync,
+impl<S, T, F> DynamicStm for MapStm<S, F>
+where
+    S: Stm,
+    T: Send + Sync,
+    F: Fn(S::Result) -> T + Send + Sync + Clone,
 {
     type Result = T;
-}
+    type TransFuture = MapStmFuture<S::TransFuture, F>;
 
-impl<'a, S, T, F> DynamicStm<'a> for MapStm<S, F>
-where
-    S: DynamicStm<'a>,
-    T: Send + Sync + 'a,
-    F: Fn(S::Result) -> T + Send + Sync + 'a,
-{
-    type TransFuture = ResultFuture<'a, Self::Result>;
-
-    fn run_in(&'a self, _transaction: &'a mut Transaction) -> Self::TransFuture {
-        unimplemented!()
+    fn runner(&self) -> Self::TransFuture {
+        let MapStm { input, f } = self;
+        MapStmFuture::new(input.runner(), f.clone())
     }
 }
 
 impl<S, T, F> Stm for MapStm<S, F>
 where
     S: Stm,
-    T: Send + Sync + 'static,
-    F: Fn(S::Result) -> T + Send + Sync + 'static,
+    T: Send + Sync,
+    F: Fn(S::Result) -> T + Send + Sync + Clone,
 {
     fn required_stack() -> Option<usize> {
         S::required_stack()
     }
 }
 
-impl<S1, S2> StmBase for Sequence<S1, S2>
-    where
-        S1: Stm,
-        S2: Stm,
-{
-    type Result = S2::Result;
-}
-
-impl<'a, S1, S2> DynamicStm<'a> for Sequence<S1, S2>
+impl<S1, S2> DynamicStm for Sequence<S1, S2>
 where
     S1: Stm,
     S2: Stm,
-    S2::Result: 'a,
 {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type Result = S2::Result;
+    type TransFuture = SequenceTransFuture<S1::TransFuture, S2::TransFuture>;
 
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         let Sequence { first, second } = self;
-        Box::pin(async move {
-            let _ = done!(first.run_in(transaction).await);
-            second.run_in(transaction).await
-        })
+        SequenceTransFuture::new(first.runner(), second.runner())
     }
 }
 
@@ -584,7 +492,6 @@ impl<S1, S2> Stm for Sequence<S1, S2>
 where
     S1: Stm,
     S2: Stm,
-    S2::Result: 'static,
 {
     fn required_stack() -> Option<usize> {
         match (S1::required_stack(), S2::required_stack()) {
@@ -594,85 +501,49 @@ where
     }
 }
 
-impl< E, T> StmBase for Abort<E, T>
-    where
-        E: Any + Error + Send + Sync + Clone,
-        T: Send + Sync,
-{
-    type Result = T;
-}
-
-impl<'a, E, T> DynamicStm<'a> for Abort<E, T>
+impl<E, T> DynamicStm for Abort<E, T>
 where
     E: Any + Error + Send + Sync + Clone,
-    T: Send + Sync + 'a,
+    T: Send + Sync,
 {
+    type Result = T;
     type TransFuture = Ready<ExecResult<T>>;
 
-    fn run_in(&'a self, _: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         let Abort { error, .. } = self;
-        ready(ExecResult::Abort(error::StmError::new(
-            error.clone(),
-        )))
+        ready(ExecResult::Abort(error::StmError::new(error.clone())))
     }
 }
 
 impl<E, T> Stm for Abort<E, T>
 where
     E: Any + Error + Send + Sync + Clone,
-    T: Send + Sync + 'static,
+    T: Send + Sync,
 {
 }
 
-impl<E, S1, S2, F> StmBase for Catch<E, S1, S2, F>
-    where
-        S1: Stm,
-        S2: Stm<Result = S1::Result>,
-        E: Any + Error + Send + Sync,
-        F: Fn(E) -> S2 + Send + Sync,
-{
-    type Result = S1::Result;
-}
-
-impl<'a, E, S1, S2, F> DynamicStm<'a> for Catch<E, S1, S2, F>
+impl<E, S1, S2, F> DynamicStm for Catch<E, S1, S2, F>
 where
     S1: Stm,
-    S1::Result: 'a,
     S2: Stm<Result = S1::Result>,
     E: Any + Error + Send + Sync,
-    F: Fn(E) -> S2 + Send + Sync,
+    F: Fn(E) -> S2 + Send + Sync + Clone,
 {
-    type TransFuture = ResultFuture<'a, Self::Result>;
+    type Result = S1::Result;
+    type TransFuture = CatchTransFuture<E, S1::TransFuture, S2::TransFuture, F>;
 
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
-        Box::pin(async move {
-            let Catch { input, handler, .. } = self;
-            transaction.enter_frame();
-            match input.run_in(transaction).await {
-                ExecResult::Retry => {
-                    transaction.pop_frame();
-                    ExecResult::Retry
-                }
-                r @ ExecResult::Done(_) => r,
-                ExecResult::Abort(stm_err) => {
-                    transaction.pop_frame();
-                    match stm_err.into_specific::<E>() {
-                        Ok(err) => handler(err).run_in(transaction).await,
-                        Err(stm_err) => ExecResult::Abort(stm_err),
-                    }
-                }
-            }
-        })
+    fn runner(&self) -> Self::TransFuture {
+        let Catch { input, handler, .. } = self;
+        CatchTransFuture::new(input.runner(), handler.clone())
     }
 }
 
 impl<E, S1, S2, F> Stm for Catch<E, S1, S2, F>
 where
     S1: Stm,
-    S1::Result: 'static,
     S2: Stm<Result = S1::Result>,
     E: Any + Error + Send + Sync,
-    F: Fn(E) -> S2 + Send + Sync,
+    F: Fn(E) -> S2 + Send + Sync + Clone,
 {
     fn required_stack() -> Option<usize> {
         match (S1::required_stack(), S2::required_stack()) {
@@ -682,28 +553,18 @@ where
     }
 }
 
-impl<S1, S2> StmBase for StmEither<S1, S2>
+impl<S1, S2> DynamicStm for StmEither<S1, S2>
 where
     S1: Stm,
     S2: Stm<Result = S1::Result>,
 {
     type Result = S1::Result;
-}
+    type TransFuture = StmEither<S1::TransFuture, S2::TransFuture>;
 
-impl<'a, S1, S2> DynamicStm<'a> for StmEither<S1, S2>
-where
-    S1: Stm,
-    S2: Stm<Result = S1::Result>,
-{
-    type TransFuture = Either<
-        <S1 as DynamicStm<'a>>::TransFuture,
-        <S2 as DynamicStm<'a>>::TransFuture
-    >;
-
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         match self {
-            StmEither::Left(l) => Either::Left(l.run_in(transaction)),
-            StmEither::Right(r) => Either::Right(r.run_in(transaction)),
+            StmEither::Left(l) => StmEither::Left(l.runner()),
+            StmEither::Right(r) => StmEither::Right(r.runner()),
         }
     }
 }
@@ -716,23 +577,16 @@ impl<S1: Stm, S2: Stm<Result = S1::Result>> Stm for StmEither<S1, S2> {
     }
 }
 
-impl<SRef> StmBase for SRef
-    where
-        SRef: Deref + Send + Sync,
-        SRef::Target: Stm,
-{
-    type Result = <<SRef as Deref>::Target as StmBase>::Result;
-}
-
-impl<'a, SRef> DynamicStm<'a> for SRef
+impl<SRef> DynamicStm for SRef
 where
     SRef: Deref + Send + Sync,
     SRef::Target: Stm,
 {
-    type TransFuture = <<SRef as Deref>::Target as DynamicStm<'a>>::TransFuture;
+    type Result = <<SRef as Deref>::Target as DynamicStm>::Result;
+    type TransFuture = <<SRef as Deref>::Target as DynamicStm>::TransFuture;
 
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
-        (**self).run_in(transaction)
+    fn runner(&self) -> Self::TransFuture {
+        (**self).runner()
     }
 }
 
@@ -746,7 +600,7 @@ where
     }
 }
 
-impl<R> Stm for dyn for<'a> DynamicStm<'a, Result = R, TransFuture = ResultFuture<'a, R>> {
+impl<R> Stm for dyn DynamicStm<Result = R, TransFuture = BoxedTransactionFuture<R>> {
     fn required_stack() -> Option<usize> {
         None
     }
@@ -754,32 +608,24 @@ impl<R> Stm for dyn for<'a> DynamicStm<'a, Result = R, TransFuture = ResultFutur
 
 pub struct BoxedStm<S: ?Sized>(S);
 
-impl<S> StmBase for BoxedStm<S>
+impl<S> DynamicStm for BoxedStm<S>
 where
-    S: StmBase + ?Sized,
+    S: DynamicStm + ?Sized,
+    S::TransFuture: 'static,
 {
     type Result = S::Result;
-}
+    type TransFuture = BoxedTransactionFuture<S::Result>;
 
-impl<'a, S> DynamicStm<'a> for BoxedStm<S>
-    where
-        S: DynamicStm<'a> + ?Sized,
-        S::Result: 'a,
-{
-    type TransFuture = ResultFuture<'a, Self::Result>;
-
-    fn run_in(&'a self, transaction: &'a mut Transaction) -> Self::TransFuture {
+    fn runner(&self) -> Self::TransFuture {
         let BoxedStm(inner) = self;
-        Box::pin(
-            inner.run_in(transaction)
-        )
+        Box::pin(inner.runner())
     }
 }
 
 impl<S> Stm for BoxedStm<S>
-    where
-        S: Stm,
-        S::Result: 'static,
+where
+    S: Stm,
+    S::TransFuture: 'static,
 {
     fn required_stack() -> Option<usize> {
         S::required_stack()
@@ -788,7 +634,9 @@ impl<S> Stm for BoxedStm<S>
 
 mod private {
     use super::Retry;
-    use crate::stm::{Abort, AndThen, Catch, Choice, Constant, MapStm, Sequence, StmEither, BoxedStm};
+    use crate::stm::{
+        Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither,
+    };
     use crate::var::{TVarRead, TVarWrite};
     use std::ops::Deref;
 

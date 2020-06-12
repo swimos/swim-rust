@@ -20,21 +20,21 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use self::rent_future::RentalFuture;
 use crate::ptr::PtrKey;
 use crate::stm::error::StmError;
+use crate::stm::stm_futures::{RunIn, TransactionFuture};
 use crate::stm::{ExecResult, Stm};
 use crate::transaction::frame_mask::{FrameMask, ReadWrite};
 use crate::var::{Contents, TVarInner, TVarRead};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{Future, Stream, StreamExt, ready};
+use futures::{ready, Future, Stream, StreamExt};
 use futures_util::stream::FuturesUnordered;
 use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::macros::support::Pin;
-use crate::stm::stm_futures::TransactionFuture;
-use self::rent_future::RentalFuture;
 
 // Default capacity of the transaction log.
 const DEFAULT_LOG_CAP: usize = 32;
@@ -296,37 +296,6 @@ impl Transaction {
         self.log.len()
     }
 
-    /// Execute a "get" on variable, within the context of the transaction.
-    pub(crate) async fn apply_get<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>) -> Arc<T> {
-        let Transaction {
-            log_assoc,
-            log,
-            masks,
-            stack_size,
-        } = self;
-        let k = PtrKey(var.clone());
-        match get_entry(log_assoc, log, &k) {
-            Some((i, entry)) => {
-                if !entry.is_active() {
-                    masks.set_read(i);
-                }
-                entry.get_value()
-            }
-            _ => {
-                let value = var.read().await;
-                let result = value.clone().downcast().unwrap();
-                let entry = LogEntry {
-                    state: LogState::Get(value),
-                    stack: Vec::with_capacity(*stack_size),
-                };
-                let i = log.insert(entry);
-                log_assoc.insert(k, i);
-                masks.set_read(i);
-                result
-            }
-        }
-    }
-
     fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<Arc<TVarInner>>, value: Arc<T>) {
         let mut stack: Vec<Contents> = Vec::with_capacity(self.stack_size);
         stack.push(value);
@@ -553,7 +522,7 @@ where
 
     loop {
         num_attempts = num_attempts.saturating_add(1);
-        let exec_result = stm.run_in(&mut transaction).await;
+        let exec_result = RunIn::new(&mut transaction, stm.runner()).await;
         match exec_result {
             ExecResult::Done(t) => {
                 if transaction.try_commit().await {
@@ -625,7 +594,6 @@ impl<'a> Future for AwaitChanged<'a> {
 pub struct AwaitRead(RentalFuture<TVarInner, Contents>);
 
 impl AwaitRead {
-
     fn new(var: Arc<TVarInner>) -> Self {
         AwaitRead(RentalFuture::new(var, |var_ref| Box::pin(var_ref.read())))
     }
@@ -633,18 +601,15 @@ impl AwaitRead {
     fn into_key(self) -> PtrKey<Arc<TVarInner>> {
         PtrKey(self.0.into_head())
     }
-
 }
 
 impl Future for AwaitRead {
     type Output = Contents;
 
-    fn poll(self: Pin<&mut Self>,
-            cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let AwaitRead(rental) = self.get_mut();
         RentalFuture::rent_mut(rental, |fut| fut.as_mut().poll(cx))
     }
-
 }
 
 pub enum ReadFuture<T> {
@@ -653,21 +618,19 @@ pub enum ReadFuture<T> {
 }
 
 impl<T> ReadFuture<T> {
-
     pub(crate) fn new(read: TVarRead<T>) -> Self {
         ReadFuture::Start(read)
     }
-
 }
-
 
 impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
     type Output = Arc<T>;
 
-    fn poll_in(mut self: Pin<&mut Self>,
-               mut transaction: Pin<&mut Transaction>,
-               cx: &mut Context<'_>) -> Poll<ExecResult<Self::Output>> {
-
+    fn poll_in(
+        self: Pin<&mut Self>,
+        transaction: Pin<&mut Transaction>,
+        cx: &mut Context<'_>,
+    ) -> Poll<ExecResult<Self::Output>> {
         let Transaction {
             log_assoc,
             log,
@@ -692,7 +655,7 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
                             AwaitRead::new(inner)
                         }
                     }
-                },
+                }
                 ReadFuture::Wait(maybe_wait) => {
                     let value = if let Some(wait) = maybe_wait.as_mut() {
                         ready!(Pin::new(wait).poll(cx))
@@ -708,7 +671,7 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
                     let i = log.insert(entry);
                     log_assoc.insert(k, i);
                     masks.set_read(i);
-                    return Poll::Ready(ExecResult::Done(result))
+                    return Poll::Ready(ExecResult::Done(result));
                 }
             };
             *this = ReadFuture::Wait(Some(next));

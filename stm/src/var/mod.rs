@@ -118,6 +118,12 @@ impl<T: Default + Send + Sync + 'static> Default for TVar<T> {
 /// Representation of a transactional read from a variable.
 pub struct TVarRead<T>(Arc<TVarInner>, PhantomData<fn() -> Arc<T>>);
 
+impl<T> Clone for TVarRead<T> {
+    fn clone(&self) -> Self {
+        TVarRead(self.0.clone(), PhantomData)
+    }
+}
+
 impl<T> TVarRead<T> {
     pub(crate) fn inner(&self) -> &Arc<TVarInner> {
         &self.0
