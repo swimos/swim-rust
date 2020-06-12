@@ -30,8 +30,8 @@ use crate::downlink::typed::topic::{
 use crate::downlink::{Downlink, Event, StoppedFuture};
 use common::sink::item::ItemSink;
 use common::topic::Topic;
-use form::Form;
 use std::marker::PhantomData;
+use swim_form::Form;
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.

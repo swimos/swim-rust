@@ -31,7 +31,7 @@ use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio_tungstenite::tungstenite;
-use tracing::{instrument, trace};
+use tracing::instrument;
 #[cfg(not(target_arch = "wasm32"))]
 use tungstenite::error::Error as TError;
 use url::Host;
@@ -226,13 +226,12 @@ where
         } = self;
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
 
-        // todo: doesn't work on wasm
-
+        // TODO: doesn't work on wasm
         // let mut prune_timer = tokio::time::interval(config.conn_reaper_frequency()).fuse();
         let mut fused_requests =
             combine_connection_streams(connection_request_rx, stop_request_rx).fuse();
 
-        let conn_timeout = config.idle_timeout();
+        let _conn_timeout = config.idle_timeout();
 
         loop {
             let request: RequestType = select! {
@@ -275,7 +274,7 @@ where
                             Ok((sender, Some(receiver)))
                         })
                     } else {
-                        let mut inner_connection = connections
+                        let inner_connection = connections
                             .get_mut(&host)
                             .ok_or(ConnectionErrorKind::ConnectError)?;
                         // inner_connection.last_accessed = Instant::now();

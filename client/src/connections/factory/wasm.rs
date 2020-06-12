@@ -21,7 +21,6 @@ use futures_util::SinkExt;
 use pin_project::*;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
-use wasm_bindgen::__rt::core::pin::Pin;
 use wasm_bindgen_futures::spawn_local;
 use ws_stream_wasm::*;
 
@@ -31,6 +30,7 @@ use common::request::Request;
 use crate::connections::factory::errors::FlattenErrors;
 use crate::connections::factory::WebsocketFactory;
 use crate::connections::{ConnectionError, ConnectionErrorKind};
+use std::pin::Pin;
 
 #[pin_project]
 #[derive(Debug)]

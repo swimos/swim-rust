@@ -34,7 +34,6 @@ use common::sink::item::ItemSink;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 use either::Either;
-use form::ValidatedForm;
 use futures::stream::Fuse;
 use futures::Stream;
 use futures_util::future::TryFutureExt;
@@ -45,13 +44,13 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
+use swim_form::ValidatedForm;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tracing::{error, info, instrument, trace_span};
 
 use common::warp::envelope::Envelope;
-use std::borrow::Borrow;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 use utilities::rt::{spawn, TaskError, TaskHandle};
 

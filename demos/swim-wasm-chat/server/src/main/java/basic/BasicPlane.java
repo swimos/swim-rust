@@ -20,7 +20,6 @@ import swim.api.agent.AgentRoute;
 import swim.api.plane.AbstractPlane;
 import swim.kernel.Kernel;
 import swim.server.ServerLoader;
-import swim.structure.Value;
 
 public class BasicPlane extends AbstractPlane {
 
@@ -33,8 +32,6 @@ public class BasicPlane extends AbstractPlane {
 
     kernel.start();
     kernel.run();
-
-    space.command("/rooms", "chats", Value.absent());
 
     System.out.println("Running Basic server...");
   }

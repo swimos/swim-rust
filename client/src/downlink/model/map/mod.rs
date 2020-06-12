@@ -24,8 +24,8 @@ use tokio::sync::mpsc;
 use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
 use common::model::{Attr, Item, Value, ValueKind};
 use common::sink::item::ItemSender;
-use form::FormDeserializeErr;
-use form::{Form, ValidatedForm};
+use swim_form::FormDeserializeErr;
+use swim_form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};

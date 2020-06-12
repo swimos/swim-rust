@@ -45,7 +45,7 @@ tracing-subscriber = "0.2.3"
 tracing-futures = "0.2.3"
 common = { path = "../common" }
 utilities = { path = "../utilities" }
-form = { path = "../form" }
+swim_form = { path = "../swim_form" }
 tokio-tls = { version = "=0.3.1", optional = true }
 tokio-tungstenite = { version = "0.10.1", features = ["tls"], optional = true }
 

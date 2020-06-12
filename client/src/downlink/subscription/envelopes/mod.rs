@@ -110,8 +110,8 @@ pub(in crate::downlink) mod map {
     use crate::downlink::Message;
     use common::model::Value;
     use common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
-    use form::Form;
     use std::sync::Arc;
+    use swim_form::Form;
     use tracing::warn;
 
     pub(super) fn envelope_body(cmd: MapModification<Arc<Value>>) -> Option<Value> {
