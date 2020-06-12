@@ -7,7 +7,6 @@ export default function MessageForm({ onFinish }) {
     const [form] = Form.useForm();
   
     const submitForm = ({ message }) => {
-        console.log(message);
         onFinish(message);
         form.resetFields();
     };

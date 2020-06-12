@@ -34,17 +34,19 @@ class Chat extends Component {
         const chat_client = await new swim.ChatClient();
 
         chat_client.set_callbacks(
+            // On initial sync
             (msgs) => {                
                 this.setState({
                     messages:msgs,
                     isLoading:false
                 });
             }, 
+            // On insert
             (msg) => {
-                var messages = this.state.messages.concat(msg);
-                this.setState({ messages: messages })
+                console.log("Insert: %O", msg);
                 
-                console.log("Received message: %O", msg);
+                var messages = this.state.messages.concat(msg);
+                this.setState({ messages: messages })                
             }
         );
 
@@ -53,11 +55,11 @@ class Chat extends Component {
 
     async handleFinish(message) {
         let username = localStorage.getItem(USER_NAME);
-        let chat_client = this.state.client;
         let msg = swim.Message.new(message, username, uuidv4());
+        let chat_client = this.state.client;
 
         await chat_client.send_message(msg).then((r) => {
-            if (r !== true) {
+            if (!r) {
                 alert("Failed to send message");
             }
         });
