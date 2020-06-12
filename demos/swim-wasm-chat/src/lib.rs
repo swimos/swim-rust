@@ -60,8 +60,6 @@ impl ChatClient {
         let fac = WasmWsFactory::new(5);
         let swim_client = SwimClient::new_default(fac).await;
 
-        log("Opened client to the server");
-
         ChatClient { swim_client }
     }
 
