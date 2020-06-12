@@ -8,6 +8,7 @@ import MessageList from './components/message-list/MessageList';
 import MessageForm from './components/message-form/MessageForm';
 import { USER_NAME } from './components/common/Constants';
 import * as swim from "swim-wasm-chat";
+import { v4 as uuidv4 } from 'uuid';
 
 class Chat extends Component {
 
@@ -40,7 +41,9 @@ class Chat extends Component {
                 });
             }, 
             (msg) => {
-                this.state.messages.push(msg);
+                var messages = this.state.messages.concat(msg);
+                this.setState({ messages: messages })
+                
                 console.log("Received message: %O", msg);
             }
         );
@@ -53,7 +56,7 @@ class Chat extends Component {
         console.log("Sending message. Username: %O, message: %O", username, form.message);
 
         let chat_client = this.state.client;
-        let msg = swim.Message.new(form.message, username, "a", "b");
+        let msg = swim.Message.new(form.message, username, uuidv4());
 
         await chat_client.send_message(msg).then((r) => {
             if (r !== true) {

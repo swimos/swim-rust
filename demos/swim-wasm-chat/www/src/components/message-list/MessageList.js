@@ -1,28 +1,57 @@
 import React, { Component } from 'react';
-import Message from '../message/Message';
 import './MessageList.css';
-import { Layout } from 'antd';
-const { Content } = Layout;
+import { List } from 'antd';
+import { animateScroll } from "react-scroll";
 
 export default class MessageList extends Component {
+
+    constructor(props) {
+        super(props)
+
+        this.state = {
+            loading: false,
+            hasMore: true,
+        };
+
+        this.onChange = this.onChange.bind(this);
+    }
+
+    onChange() {
+        alert("Changed")
+    }
+
+    scrollToBottom() {
+        animateScroll.scrollToBottom({
+          containerId: "container"
+        });
+    }
+
+    componentDidMount() {
+        this.scrollToBottom();
+    }
+
+    componentDidUpdate() {
+        this.scrollToBottom();
+    }
 
     render () {
         const { messages } = this.props;
 
         return ( 
-            <Layout>
-                <Content style={{ padding: '20px 50px' }}>
-                    {messages.reverse().map((message) => {
-                        console.log("msg: %O", message);
-
-                        return (
-                            <div key={message.uuid}>
-                                <Message message={message} />
-                            </div>
-                        );
-                    })}
-                </Content>
-            </Layout>
+            <div id="container" className="messageListContainer">
+               <List
+                itemLayout="horizontal"
+                dataSource={messages}
+                renderItem={message => (
+                    <List.Item>
+                        <List.Item.Meta
+                        title={message.userName}
+                        description={message.value}
+                        />
+                    </List.Item>)}
+                />
+            </div>
+            
       )
     }
 
