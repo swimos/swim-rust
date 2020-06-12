@@ -32,6 +32,7 @@ where
     .split()
     .0
 }
+
 struct CommandStateMachine {
     schema: StandardSchema,
 }

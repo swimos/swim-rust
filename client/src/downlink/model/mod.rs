@@ -13,5 +13,6 @@
 // limitations under the License.
 
 pub mod command;
+pub mod event;
 pub mod map;
 pub mod value;

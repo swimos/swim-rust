@@ -17,6 +17,7 @@ use crate::configuration::downlink::{
 };
 use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
 use crate::downlink::model::command;
+use crate::downlink::model::event;
 use crate::downlink::model::map::{MapAction, UntypedMapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
@@ -66,6 +67,8 @@ pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
 pub type AnyCommandDownlink = raw::Sender<mpsc::Sender<Value>>;
 pub type TypedCommandDownlink<T> = CommandDownlink<AnyCommandDownlink, T>;
+
+pub type AnyEventDownlink = AnyReceiver<Value>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type TypedValueReceiver<T> = UntilFailure<ValueReceiver, ApplyForm<T>>;
@@ -277,6 +280,33 @@ impl Downlinks {
 
         rx.await.map_err(Into::into).and_then(|r| r)
     }
+
+    pub async fn subscribe_event_untyped(
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<AnyEventDownlink> {
+        self.subscribe_event_inner(StandardSchema::Anything, path)
+            .await
+    }
+
+    async fn subscribe_event_inner(
+        &mut self,
+        schema: StandardSchema,
+        path: AbsolutePath,
+    ) -> RequestResult<AnyEventDownlink> {
+        let (tx, rx) = oneshot::channel();
+
+        self.sender
+            .send(DownlinkRequest::Subscription(DownlinkSpecifier::Event {
+                schema,
+                path,
+                request: Request::new(tx),
+            }))
+            .err_into::<SubscriptionError>()
+            .await?;
+
+        rx.await.map_err(Into::into).and_then(|r| r)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -422,6 +452,11 @@ pub enum DownlinkSpecifier {
         schema: StandardSchema,
         request: Request<RequestResult<AnyCommandDownlink>>,
     },
+    Event {
+        path: AbsolutePath,
+        schema: StandardSchema,
+        request: Request<RequestResult<AnyEventDownlink>>,
+    },
 }
 
 type StopEvents = FuturesUnordered<TransformedFuture<StoppedFuture, MakeStopEvent>>;
@@ -462,11 +497,18 @@ struct CommandHandle {
     schema: StandardSchema,
 }
 
+//Todo
+struct EventHandle {
+    dl: AnyEventDownlink,
+    schema: StandardSchema,
+}
+
 struct DownlinkTask<R> {
     config: Arc<dyn Config>,
     value_downlinks: HashMap<AbsolutePath, ValueHandle>,
     map_downlinks: HashMap<AbsolutePath, MapHandle>,
     command_downlinks: HashMap<AbsolutePath, CommandHandle>,
+    event_downlinks: HashMap<AbsolutePath, EventHandle>,
     stopped_watch: StopEvents,
     router: R,
 }
@@ -515,6 +557,7 @@ where
             value_downlinks: HashMap::new(),
             map_downlinks: HashMap::new(),
             command_downlinks: HashMap::new(),
+            event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
             router,
         }
@@ -659,10 +702,56 @@ where
         let (sink, _) = self.router.connection_for(&path).await?;
 
         let config = self.config.config_for(&path);
-        let cmd_sink =
-            sink.comap(move |cmd: Command<Value>| envelopes::command_envelope(&path, cmd).1.into());
 
-        Ok(command_downlink_for_sink(cmd_sink, schema, &config))
+        let path_cpy = path.clone();
+        let cmd_sink = sink
+            .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
+
+        let dl = command_downlink_for_sink(cmd_sink, schema.clone(), &config);
+
+        self.command_downlinks.insert(
+            path,
+            CommandHandle {
+                dl: dl.clone(),
+                schema,
+            },
+        );
+
+        Ok(dl)
+    }
+
+    //TODO
+    async fn create_new_event_downlink(
+        &mut self,
+        path: AbsolutePath,
+        schema: StandardSchema,
+    ) -> RequestResult<AnyEventDownlink> {
+        let (sink, incoming) = self.router.connection_for(&path).await?;
+
+        let updates = incoming.map(|e| match e {
+            RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
+            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
+        });
+
+        let config = self.config.config_for(&path);
+
+        let path_cpy = path.clone();
+        let cmd_sink = sink
+            .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
+
+        let dl = event_downlink_for_sink(updates, cmd_sink, schema.clone(), &config);
+
+        // self.event_downlinks.insert(
+        //     path.clone(),
+        //     EventHandle {
+        //         dl: dl.clone(),
+        //         schema,
+        //     },
+        // );
+
+        Ok(dl)
     }
 
     async fn handle_value_request(
@@ -819,6 +908,42 @@ where
         Ok(())
     }
 
+    async fn handle_event_request(
+        &mut self,
+        path: AbsolutePath,
+        schema: StandardSchema,
+        value_req: Request<RequestResult<AnyEventDownlink>>,
+    ) -> RequestResult<()> {
+        let rec = Ok(self.create_new_event_downlink(path.clone(), schema).await?);
+        let _ = value_req.send(rec);
+        Ok(())
+
+        //Todo
+        // let downlink = match self.event_downlinks.get(&path) {
+        //     Some(EventHandle {
+        //         dl,
+        //         schema: existing_schema,
+        //     }) => {
+        //         if !schema.eq(existing_schema) {
+        //             Err(SubscriptionError::incompatibile_value(
+        //                 path,
+        //                 existing_schema.clone(),
+        //                 schema,
+        //             ))
+        //         } else if dl.is_running() {
+        //             Ok(dl.clone())
+        //         } else {
+        //             self.event_downlinks.remove(&path);
+        //             Ok(self.create_new_event_downlink(path.clone(), schema).await?)
+        //         }
+        //     }
+        //     _ => self.create_new_event_downlink(path.clone(), schema).await,
+        // };
+        //
+        // let _ = value_req.send(downlink);
+        // Ok(())
+    }
+
     #[instrument(skip(self, stop_event))]
     async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
         match &stop_event.error {
@@ -905,6 +1030,14 @@ where
                         request,
                     }) => {
                         self.handle_command_request(path, schema, request).await?;
+                    }
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Event {
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_event_request(path, schema, request).await?;
                     }
 
                     DownlinkRequest::DirectCommand { path, envelope } => {
@@ -1035,4 +1168,30 @@ where
     let dl_cmd_sink = cmd_sink.map_err_into();
 
     command::create_downlink(schema, dl_cmd_sink, &config)
+}
+
+fn event_downlink_for_sink<Updates, Snk>(
+    updates: Updates,
+    cmd_sink: Snk,
+    schema: StandardSchema,
+    config: &DownlinkParams,
+) -> AnyEventDownlink
+where
+    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
+    Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
+{
+    match config.mux_mode {
+        MuxMode::Queue(n) => {
+            let rec = event::create_queue_downlink(schema, updates, cmd_sink, n, &config);
+            AnyReceiver::Queue(rec)
+        }
+        MuxMode::Dropping => {
+            let rec = event::create_dropping_downlink(schema, updates, cmd_sink, &config);
+            AnyReceiver::Dropping(rec)
+        }
+        MuxMode::Buffered(n) => {
+            let rec = event::create_buffered_downlink(schema, updates, cmd_sink, n, &config);
+            AnyReceiver::Buffered(rec)
+        }
+    }
 }

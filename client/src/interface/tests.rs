@@ -27,6 +27,7 @@ use common::topic::Topic;
 use common::warp::path::AbsolutePath;
 use form::Form;
 use utilities::trace::init_trace;
+use crate::downlink::Event;
 
 fn config() -> ConfigHierarchy {
     let client_params = ClientParams::new(2, Default::default()).unwrap();
@@ -247,5 +248,38 @@ async fn test_send_typed_map_command_invalid_value() {
 
     command_dl.send_item(insert).await.unwrap();
 
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_send_untyped_value_event() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let event_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "info",
+    );
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "info",
+    );
+
+    let mut event_dl = client.untyped_event_downlink(event_path).await.unwrap();
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item("Hello, from Rust!".into())
+        .await
+        .unwrap();
+
+    let incoming_event = event_dl.next().await.unwrap();
+
+    assert_eq!(incoming_event, Event(Value::Text("Hello, from Rust!".to_string()), true));
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }

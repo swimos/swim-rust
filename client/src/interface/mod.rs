@@ -27,11 +27,7 @@ use crate::configuration::downlink::Config;
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
-use crate::downlink::subscription::{
-    AnyCommandDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
-    SubscriptionError, TypedCommandDownlink, TypedMapDownlink, TypedMapReceiver,
-    TypedValueDownlink, TypedValueReceiver, ValueReceiver,
-};
+use crate::downlink::subscription::{AnyCommandDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedCommandDownlink, TypedMapDownlink, TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver, AnyEventDownlink};
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::warp::envelope::Envelope;
@@ -216,6 +212,17 @@ impl SwimClient {
     ) -> Result<AnyCommandDownlink, ClientError> {
         self.downlinks
             .subscribe_command_untyped(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    /// Opens a new untyped event downlink at the provided path.
+    pub async fn untyped_event_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<AnyEventDownlink, ClientError> {
+        self.downlinks
+            .subscribe_event_untyped(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }

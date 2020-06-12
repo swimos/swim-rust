@@ -148,6 +148,26 @@ pub enum AnyReceiver<Upd> {
     Buffered(#[pin] BufferedReceiver<Upd>),
 }
 
+//Todo
+/// A weak handle on a receiver. Holding this will not keep the task running.
+// #[derive(Debug)]
+// pub enum AnyWeakReceiver<Upd> {
+//     Queue(WeakQueueDownlink<Act, Upd>),
+//     Dropping(WeakDroppingDownlink<Act, Upd>),
+//     Buffered(WeakBufferedDownlink<Act, Upd>),
+// }
+
+//Todo
+// impl<Upd> AnyReceiver<Upd> {
+//     pub fn is_running(&self) -> bool {
+//         match self {
+//             AnyReceiver::Queue(rec) => rec.is_running(),
+//             AnyReceiver::Dropping(rec) => rec.is_running(),
+//             AnyReceiver::Buffered(rec) => rec.is_running(),
+//         }
+//     }
+// }
+
 impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
     type Item = Event<Upd>;
 
