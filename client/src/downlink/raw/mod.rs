@@ -317,25 +317,26 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         trace!("Running downlink task");
 
         let result: Result<(), DownlinkError> = loop {
-            let next_op: TaskInput<M, A> = if dl_state == DownlinkState::Synced && !act_terminated {
-                if read_act {
-                    read_act = false;
-                    let input = select_biased! {
-                        act_op = act_str.next() => TaskInput::from_action(act_op),
-                        upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
-                    };
-                    input
+            let next_op: TaskInput<M, A> =
+                if dl_state == state_machine.dl_start_state() && !act_terminated {
+                    if read_act {
+                        read_act = false;
+                        let input = select_biased! {
+                            act_op = act_str.next() => TaskInput::from_action(act_op),
+                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                        };
+                        input
+                    } else {
+                        read_act = true;
+                        let input = select_biased! {
+                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                            act_op = act_str.next() => TaskInput::from_action(act_op),
+                        };
+                        input
+                    }
                 } else {
-                    read_act = true;
-                    let input = select_biased! {
-                        upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
-                        act_op = act_str.next() => TaskInput::from_action(act_op),
-                    };
-                    input
-                }
-            } else {
-                TaskInput::from_operation(ops_str.next().await)
-            };
+                    TaskInput::from_operation(ops_str.next().await)
+                };
 
             match next_op {
                 TaskInput::Op(op) => {

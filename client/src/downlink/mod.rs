@@ -209,6 +209,7 @@ pub enum Message<M> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Command<A> {
     Sync,
+    Link,
     Action(A),
     Unlink,
 }
@@ -293,6 +294,10 @@ trait StateMachine<State, Message, Action>: Sized {
     /// The initial value for the state.
     fn init_state(&self) -> State;
 
+    // The downlink state at which the machine should start
+    // to process updates and actions.
+    fn dl_start_state(&self) -> DownlinkState;
+
     /// For an operation on the downlink, generate output messages.
     fn handle_operation(
         &self,
@@ -349,7 +354,7 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
 }
 
 /// This trait is for simple, stateful downlinks that follow the standard synchronization model.
-trait BasicStateMachine<State, Message, Action> {
+trait SyncStateMachine<State, Message, Action> {
     /// Type of events that will be issued to the owner of the downlink.
     type Ev;
     /// Type of commands that will be sent out to the Warp connection.
@@ -384,16 +389,20 @@ trait BasicStateMachine<State, Message, Action> {
     ) -> BasicResponse<Self::Ev, Self::Cmd>;
 }
 
-//Adapter to make a BasicStateMachine into a StateMachine.
+//Adapter to make a SyncStateMachine into a StateMachine.
 impl<State, M, A, Basic> StateMachine<State, M, A> for Basic
 where
-    Basic: BasicStateMachine<State, M, A>,
+    Basic: SyncStateMachine<State, M, A>,
 {
-    type Ev = <Basic as BasicStateMachine<State, M, A>>::Ev;
-    type Cmd = <Basic as BasicStateMachine<State, M, A>>::Cmd;
+    type Ev = <Basic as SyncStateMachine<State, M, A>>::Ev;
+    type Cmd = <Basic as SyncStateMachine<State, M, A>>::Cmd;
 
     fn init_state(&self) -> State {
         self.init()
+    }
+
+    fn dl_start_state(&self) -> DownlinkState {
+        DownlinkState::Synced
     }
 
     #[instrument(skip(self, state, data_state, op))]

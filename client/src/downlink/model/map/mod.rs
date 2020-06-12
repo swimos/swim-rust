@@ -34,7 +34,7 @@ use crate::downlink::model::value::UpdateResult;
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
-    BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest, Event, Message,
+    BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message, SyncStateMachine,
     TransitionError,
 };
 use crate::router::RoutingError;
@@ -719,7 +719,7 @@ impl MapStateMachine {
     }
 }
 
-impl BasicStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for MapStateMachine {
+impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for MapStateMachine {
     type Ev = ViewWithEvent;
     type Cmd = UntypedMapModification<Arc<Value>>;
 

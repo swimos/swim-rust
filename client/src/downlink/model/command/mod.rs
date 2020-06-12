@@ -48,18 +48,17 @@ impl StateMachine<(), (), Value> for CommandStateMachine {
 
     fn init_state(&self) {}
 
+    fn dl_start_state(&self) -> DownlinkState {
+        DownlinkState::Unlinked
+    }
+
     fn handle_operation(
         &self,
-        downlink_state: &mut DownlinkState,
+        _downlink_state: &mut DownlinkState,
         _state: &mut (),
         op: Operation<(), Value>,
     ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
         match op {
-            Operation::Start => {
-                *downlink_state = DownlinkState::Synced;
-                Ok(Response::none())
-            }
-
             Operation::Action(value) => {
                 if self.schema.matches(&value) {
                     Ok(Response::for_command(Command::Action(value)))

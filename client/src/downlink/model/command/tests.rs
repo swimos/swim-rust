@@ -11,7 +11,7 @@ fn test_handle_value_action_valid() {
     let machine = CommandStateMachine::new(i32::schema());
     let response = machine
         .handle_operation(
-            &mut DownlinkState::Synced,
+            &mut DownlinkState::Unlinked,
             &mut (),
             Operation::Action(action.clone()),
         )
@@ -27,7 +27,7 @@ fn test_handle_value_action_invalid() {
     let machine = CommandStateMachine::new(String::schema());
     let response = machine
         .handle_operation(
-            &mut DownlinkState::Synced,
+            &mut DownlinkState::Unlinked,
             &mut (),
             Operation::Action(action.clone()),
         )
@@ -43,7 +43,7 @@ fn test_handle_map_action_valid() {
     let machine = CommandStateMachine::new(MapModification::<String, i32>::schema());
     let response = machine
         .handle_operation(
-            &mut DownlinkState::Synced,
+            &mut DownlinkState::Unlinked,
             &mut (),
             Operation::Action(action.clone()),
         )
@@ -63,7 +63,7 @@ fn test_handle_map_action_invalid_key() {
     let machine = CommandStateMachine::new(MapModification::<i32, i32>::schema());
     let response = machine
         .handle_operation(
-            &mut DownlinkState::Synced,
+            &mut DownlinkState::Unlinked,
             &mut (),
             Operation::Action(action.clone()),
         )
@@ -79,7 +79,7 @@ fn test_handle_map_action_invalid_value() {
     let machine = CommandStateMachine::new(MapModification::<String, String>::schema());
     let response = machine
         .handle_operation(
-            &mut DownlinkState::Synced,
+            &mut DownlinkState::Unlinked,
             &mut (),
             Operation::Action(action.clone()),
         )

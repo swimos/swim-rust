@@ -41,6 +41,11 @@ where
                 path,
                 body: None,
             },
+            Command::Link => OutgoingLinkMessage {
+                header: OutgoingHeader::Link(Default::default()),
+                path,
+                body: None,
+            },
             Command::Action(v) => OutgoingLinkMessage {
                 header: OutgoingHeader::Command,
                 path,
