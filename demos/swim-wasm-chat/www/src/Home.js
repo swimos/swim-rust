@@ -4,7 +4,6 @@ import _default from 'antd/lib/time-picker';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 
 const { Content } = Layout;
-const FormItem = Form.Item;
 
 export default class Home extends Component {
 

@@ -19,7 +19,7 @@ class Chat extends Component {
             isLoading:false
         };
 
-        this.sendMessage = this.sendMessage.bind(this);
+        this.handleFinish = this.handleFinish.bind(this);
     }
 
     async componentWillMount() {
@@ -51,12 +51,10 @@ class Chat extends Component {
         this.setState({client: chat_client})
     }
 
-    async sendMessage(form) {
+    async handleFinish(message) {
         let username = localStorage.getItem(USER_NAME);
-        console.log("Sending message. Username: %O, message: %O", username, form.message);
-
         let chat_client = this.state.client;
-        let msg = swim.Message.new(form.message, username, uuidv4());
+        let msg = swim.Message.new(message, username, uuidv4());
 
         await chat_client.send_message(msg).then((r) => {
             if (r !== true) {
@@ -75,7 +73,7 @@ class Chat extends Component {
         return (
             <Layout className="layout">
                 <MessageList messages={messages}/>
-                <MessageForm onFinish={this.sendMessage}/>
+                <MessageForm onFinish={this.handleFinish}/>
             </Layout>
         );
     }

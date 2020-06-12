@@ -1,29 +1,43 @@
 import React from 'react';
-import { Form, Input, Button } from 'antd';
+import { Form, Input, Button, Layout } from 'antd';
 
-const FormItem = Form.Item;
+const { Content } = Layout;
 
-const MessageForm = ( { onFinish }) => {
+export default function MessageForm({ onFinish }) {
+    const [form] = Form.useForm();
+  
+    const submitForm = ({ message }) => {
+        console.log(message);
+        onFinish(message);
+        form.resetFields();
+    };
+  
     return (
-        <Form onFinish={onFinish} className="messageBox">
-            <FormItem
-                name="message"
-                rules={[
-                {
-                    required: true,
-                    message: 'Please input your message!',
-                },
-                ]}>
-                <Input placeholder="Message..." />
-            </FormItem>
+        <Layout className="layout">
+            <Content style={{ padding: '50px 100px' }}>
+                <Form form={form} onFinish={submitForm}>
+                    <Form.Item 
+                        name="message"
+                        rules={[{
+                            required: true,
+                            message: 'Please write a message',
+                    }]}>
+                        <Input />
+                    </Form.Item>
 
-            <FormItem>
-                <Button type="primary" htmlType="submit" className="messagebox">
-                    Send Message
-                </Button>
-            </FormItem>
-        </Form>
-    )
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}>
+                        <Form.Item>
+                            <Button type="primary" htmlType="submit">
+                                Send
+                            </Button>
+                        </Form.Item>
+                    </div>
+                </Form>
+            </Content>
+        </Layout>
+    );
 }
-
-export default MessageForm;

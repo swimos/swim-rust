@@ -45,8 +45,10 @@ export default class MessageList extends Component {
                 renderItem={message => (
                     <List.Item>
                         <List.Item.Meta
-                        title={message.userName}
-                        description={message.value}
+                            title={<b>{message.userName}</b>}
+                            description={
+                                <div style={{ padding: '0 10px' }}>{message.value}</div>
+                            }
                         />
                     </List.Item>)}
                 />
