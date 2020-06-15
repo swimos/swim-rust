@@ -465,7 +465,7 @@ impl SwimConnection {
         })
     }
 }
-use utilities::rt::*;
+use utilities::rt::task::*;
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
 /// Wrapper for the transmitting end of a channel to an open connection.

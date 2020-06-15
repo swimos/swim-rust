@@ -16,7 +16,7 @@ use crate::router::RoutingError;
 use common::sink::item::{ItemSender, ItemSink};
 use futures::future::{ready, Ready};
 use std::num::NonZeroUsize;
-use utilities::rt::{spawn, TaskHandle};
+use utilities::rt::task::{spawn, TaskHandle};
 
 #[cfg(test)]
 mod tests;

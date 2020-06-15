@@ -31,7 +31,7 @@ use pin_project::pin_project;
 use std::num::NonZeroUsize;
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
-use utilities::rt::{spawn, TaskHandle};
+use utilities::rt::task::{spawn, TaskHandle};
 
 #[cfg(test)]
 mod tests;

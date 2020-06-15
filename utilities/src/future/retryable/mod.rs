@@ -17,7 +17,6 @@ use std::pin::Pin;
 use futures::task::{Context, Poll};
 use futures::{ready, TryFuture};
 use futures::{Future, FutureExt};
-use tokio::time::{delay_for, Delay};
 
 use crate::future::retryable::strategy::RetryStrategy;
 
@@ -27,6 +26,7 @@ mod tests;
 pub mod factory;
 pub mod request;
 pub mod strategy;
+use crate::rt::time::delay::{delay_for, Delay};
 use pin_project::{pin_project, project};
 
 /// A future that can be reset back to its initial state and retried once again.

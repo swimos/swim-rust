@@ -34,7 +34,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, watch};
 use utilities::future::TransformedFuture;
-use utilities::rt::spawn;
+use utilities::rt::task::spawn;
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.

@@ -57,7 +57,7 @@ pub mod async_factory {
     use crate::connections::factory::errors::FlattenErrors;
     use crate::connections::factory::WebsocketFactory;
     use crate::connections::ConnectionError;
-    use utilities::rt::{spawn, TaskHandle};
+    use utilities::rt::task::{spawn, TaskHandle};
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {

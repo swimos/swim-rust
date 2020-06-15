@@ -32,7 +32,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tracing::{instrument, trace};
-use utilities::rt::{spawn, TaskHandle};
+use utilities::rt::task::{spawn, TaskHandle};
 
 #[cfg(test)]
 pub mod tests;

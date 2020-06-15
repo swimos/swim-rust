@@ -52,7 +52,7 @@ use tracing::{error, info, instrument, trace_span};
 
 use common::warp::envelope::Envelope;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
-use utilities::rt::{spawn, TaskError, TaskHandle};
+use utilities::rt::task::{spawn, TaskError, TaskHandle};
 
 pub mod envelopes;
 #[cfg(test)]

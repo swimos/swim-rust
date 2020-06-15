@@ -34,7 +34,7 @@ use tokio::sync::{mpsc, watch};
 use tracing::trace_span;
 use tracing_futures::Instrument;
 use utilities::future::{SwimFutureExt, TransformedFuture};
-use utilities::rt::spawn;
+use utilities::rt::task::spawn;
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
