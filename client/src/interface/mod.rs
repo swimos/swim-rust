@@ -32,6 +32,7 @@ use crate::downlink::subscription::{
     SubscriptionError, TypedCommandDownlink, TypedEventDownlink, TypedMapDownlink,
     TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
+use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::warp::envelope::Envelope;
@@ -190,12 +191,13 @@ impl SwimClient {
     pub async fn event_downlink<T>(
         &mut self,
         path: AbsolutePath,
+        violations: SchemaViolations,
     ) -> Result<TypedEventDownlink<T>, ClientError>
     where
         T: ValidatedForm + Send + 'static,
     {
         self.downlinks
-            .subscribe_event(path)
+            .subscribe_event(path, violations)
             .await
             .map_err(ClientError::SubscriptionError)
     }

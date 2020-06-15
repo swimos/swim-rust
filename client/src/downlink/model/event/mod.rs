@@ -2,6 +2,7 @@ use crate::configuration::downlink::DownlinkParams;
 use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
 use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
 use crate::downlink::queue::{QueueDownlink, QueueReceiver};
+use crate::downlink::typed::SchemaViolations;
 use crate::downlink::{
     buffered, dropping, queue, Command, DownlinkError, DownlinkState, Event, Message, Operation,
     Response, StateMachine,
@@ -20,6 +21,7 @@ mod tests;
 /// Create an event downlink with a queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Snk>(
     schema: StandardSchema,
+    violations: SchemaViolations,
     update_stream: Updates,
     cmd_sink: Snk,
     queue_size: NonZeroUsize,
@@ -30,7 +32,7 @@ where
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
-        EventStateMachine::new(schema),
+        EventStateMachine::new(schema, violations),
         update_stream,
         cmd_sink,
         queue_size,
@@ -41,6 +43,7 @@ where
 /// Create an event downlink with a dropping multiplexing topic.
 pub fn create_dropping_downlink<Updates, Snk>(
     schema: StandardSchema,
+    violations: SchemaViolations,
     update_stream: Updates,
     cmd_sink: Snk,
     config: &DownlinkParams,
@@ -50,7 +53,7 @@ where
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
-        EventStateMachine::new(schema),
+        EventStateMachine::new(schema, violations),
         update_stream,
         cmd_sink,
         &config,
@@ -60,6 +63,7 @@ where
 /// Create an event downlink with an buffering multiplexing topic.
 pub fn create_buffered_downlink<Updates, Snk>(
     schema: StandardSchema,
+    violations: SchemaViolations,
     update_stream: Updates,
     cmd_sink: Snk,
     queue_size: NonZeroUsize,
@@ -70,7 +74,7 @@ where
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
-        EventStateMachine::new(schema),
+        EventStateMachine::new(schema, violations),
         update_stream,
         cmd_sink,
         queue_size,
@@ -80,11 +84,12 @@ where
 
 struct EventStateMachine {
     schema: StandardSchema,
+    violations: SchemaViolations,
 }
 
 impl EventStateMachine {
-    fn new(schema: StandardSchema) -> Self {
-        EventStateMachine { schema }
+    fn new(schema: StandardSchema, violations: SchemaViolations) -> Self {
+        EventStateMachine { schema, violations }
     }
 }
 
@@ -126,7 +131,12 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
                     if self.schema.matches(&value) {
                         Ok(Response::for_event(Event::Remote(value)))
                     } else {
-                        Ok(Response::none())
+                        match self.violations {
+                            SchemaViolations::Ignore => Ok(Response::none()),
+                            SchemaViolations::Report => {
+                                Err(DownlinkError::SchemaViolation(value, self.schema.clone()))
+                            }
+                        }
                     }
                 }
 

@@ -21,7 +21,9 @@ use crate::downlink::model::map::{MapAction, UntypedMapModification, ViewWithEve
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::model::{command, map};
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
-use crate::downlink::typed::{CommandDownlink, EventDownlink, MapDownlink, ValueDownlink};
+use crate::downlink::typed::{
+    CommandDownlink, EventDownlink, MapDownlink, SchemaViolations, ValueDownlink,
+};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{raw, Command, DownlinkError, Message, StoppedFuture};
@@ -287,19 +289,21 @@ impl Downlinks {
         &mut self,
         path: AbsolutePath,
     ) -> RequestResult<AnyEventDownlink> {
-        self.subscribe_event_inner(StandardSchema::Anything, path)
+        self.subscribe_event_inner(StandardSchema::Anything, path, SchemaViolations::Ignore)
             .await
     }
 
     pub async fn subscribe_event<T>(
         &mut self,
         path: AbsolutePath,
+        violations: SchemaViolations,
     ) -> RequestResult<TypedEventDownlink<T>>
     where
         T: ValidatedForm + Send + 'static,
     {
         Ok(EventDownlink::new(
-            self.subscribe_event_inner(T::schema(), path).await?,
+            self.subscribe_event_inner(T::schema(), path, violations)
+                .await?,
         ))
     }
 
@@ -307,6 +311,7 @@ impl Downlinks {
         &mut self,
         schema: StandardSchema,
         path: AbsolutePath,
+        violations: SchemaViolations,
     ) -> RequestResult<AnyEventDownlink> {
         let (tx, rx) = oneshot::channel();
 
@@ -315,6 +320,7 @@ impl Downlinks {
                 schema,
                 path,
                 request: Request::new(tx),
+                violations,
             }))
             .err_into::<SubscriptionError>()
             .await?;
@@ -470,6 +476,7 @@ pub enum DownlinkSpecifier {
         path: AbsolutePath,
         schema: StandardSchema,
         request: Request<RequestResult<AnyEventDownlink>>,
+        violations: SchemaViolations,
     },
 }
 
@@ -521,7 +528,7 @@ struct DownlinkTask<R> {
     value_downlinks: HashMap<AbsolutePath, ValueHandle>,
     map_downlinks: HashMap<AbsolutePath, MapHandle>,
     command_downlinks: HashMap<AbsolutePath, CommandHandle>,
-    event_downlinks: HashMap<AbsolutePath, EventHandle>,
+    event_downlinks: HashMap<(AbsolutePath, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents,
     router: R,
 }
@@ -750,6 +757,7 @@ where
         &mut self,
         path: AbsolutePath,
         schema: StandardSchema,
+        violations: SchemaViolations,
     ) -> RequestResult<AnyEventDownlink> {
         let (sink, incoming) = self.router.connection_for(&path).await?;
 
@@ -761,10 +769,11 @@ where
         let cmd_sink = sink
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
 
-        let (dl, rec) = event_downlink_for_sink(updates, cmd_sink, schema.clone(), &config);
+        let (dl, rec) =
+            event_downlink_for_sink(updates, cmd_sink, schema.clone(), violations, &config);
 
         self.event_downlinks.insert(
-            path,
+            (path, violations),
             EventHandle {
                 dl: dl.downgrade(),
                 schema,
@@ -933,8 +942,9 @@ where
         path: AbsolutePath,
         schema: StandardSchema,
         value_req: Request<RequestResult<AnyEventDownlink>>,
+        violations: SchemaViolations,
     ) -> RequestResult<()> {
-        let dl = match self.event_downlinks.get(&path) {
+        let dl = match self.event_downlinks.get(&(path.clone(), violations)) {
             Some(EventHandle {
                 dl,
                 schema: existing_schema,
@@ -946,8 +956,10 @@ where
                             match dl_clone.subscribe().await {
                                 Ok(rec) => Ok(AnyEventReceiver::new(rec)),
                                 Err(_) => {
-                                    self.event_downlinks.remove(&path);
-                                    Ok(self.create_new_event_downlink(path.clone(), schema).await?)
+                                    self.event_downlinks.remove(&(path.clone(), violations));
+                                    Ok(self
+                                        .create_new_event_downlink(path, schema, violations)
+                                        .await?)
                                 }
                             }
                         } else {
@@ -959,12 +971,17 @@ where
                         }
                     }
                     _ => {
-                        self.event_downlinks.remove(&path);
-                        Ok(self.create_new_event_downlink(path.clone(), schema).await?)
+                        self.event_downlinks.remove(&(path.clone(), violations));
+                        Ok(self
+                            .create_new_event_downlink(path, schema, violations)
+                            .await?)
                     }
                 }
             }
-            _ => self.create_new_event_downlink(path.clone(), schema).await,
+            _ => {
+                self.create_new_event_downlink(path.clone(), schema, violations)
+                    .await
+            }
         };
         let _ = value_req.send(dl);
         Ok(())
@@ -1062,8 +1079,10 @@ where
                         path,
                         schema,
                         request,
+                        violations,
                     }) => {
-                        self.handle_event_request(path, schema, request).await?;
+                        self.handle_event_request(path, schema, request, violations)
+                            .await?;
                     }
 
                     DownlinkRequest::DirectCommand { path, envelope } => {
@@ -1199,6 +1218,7 @@ fn event_downlink_for_sink<Updates, Snk>(
     updates: Updates,
     cmd_sink: Snk,
     schema: StandardSchema,
+    violations: SchemaViolations,
     config: &DownlinkParams,
 ) -> (AnyDownlink<Value, Value>, AnyEventReceiver<Value>)
 where
@@ -1207,21 +1227,24 @@ where
 {
     match config.mux_mode {
         MuxMode::Queue(n) => {
-            let (dl, rec) = event::create_queue_downlink(schema, updates, cmd_sink, n, &config);
+            let (dl, rec) =
+                event::create_queue_downlink(schema, violations, updates, cmd_sink, n, &config);
             (
                 AnyDownlink::Queue(dl),
                 AnyEventReceiver::new(AnyReceiver::Queue(rec)),
             )
         }
         MuxMode::Dropping => {
-            let (dl, rec) = event::create_dropping_downlink(schema, updates, cmd_sink, &config);
+            let (dl, rec) =
+                event::create_dropping_downlink(schema, violations, updates, cmd_sink, &config);
             (
                 AnyDownlink::Dropping(dl),
                 AnyEventReceiver::new(AnyReceiver::Dropping(rec)),
             )
         }
         MuxMode::Buffered(n) => {
-            let (dl, rec) = event::create_buffered_downlink(schema, updates, cmd_sink, n, &config);
+            let (dl, rec) =
+                event::create_buffered_downlink(schema, violations, updates, cmd_sink, n, &config);
             (
                 AnyDownlink::Buffered(dl),
                 AnyEventReceiver::new(AnyReceiver::Buffered(rec)),

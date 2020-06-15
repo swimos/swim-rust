@@ -232,7 +232,10 @@ async fn test_recv_typed_value_event_valid() {
         "info",
     );
 
-    let mut event_dl = client.event_downlink::<String>(event_path).await.unwrap();
+    let mut event_dl = client
+        .event_downlink::<String>(event_path, Default::default())
+        .await
+        .unwrap();
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
     let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
@@ -266,7 +269,10 @@ async fn test_recv_typed_value_event_invalid() {
         "info",
     );
 
-    let mut event_dl = client.event_downlink::<i32>(event_path).await.unwrap();
+    let mut event_dl = client
+        .event_downlink::<i32>(event_path, Default::default())
+        .await
+        .unwrap();
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
     let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
@@ -341,7 +347,7 @@ async fn test_recv_typed_map_event_valid() {
     );
 
     let mut event_dl = client
-        .event_downlink::<MapModification<String, i32>>(event_path)
+        .event_downlink::<MapModification<String, i32>>(event_path, Default::default())
         .await
         .unwrap();
 
@@ -382,7 +388,7 @@ async fn test_recv_typed_map_event_invalid_key() {
     );
 
     let mut event_dl = client
-        .event_downlink::<MapModification<i32, i32>>(event_path)
+        .event_downlink::<MapModification<i32, i32>>(event_path, Default::default())
         .await
         .unwrap();
 
@@ -423,7 +429,7 @@ async fn test_recv_typed_map_event_invalid_value() {
     );
 
     let mut event_dl = client
-        .event_downlink::<MapModification<String, String>>(event_path)
+        .event_downlink::<MapModification<String, String>>(event_path, Default::default())
         .await
         .unwrap();
 

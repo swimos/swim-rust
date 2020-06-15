@@ -312,3 +312,15 @@ where
         T::try_from_value(&value).ok()
     }
 }
+
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
+pub enum SchemaViolations {
+    Ignore,
+    Report,
+}
+
+impl Default for SchemaViolations {
+    fn default() -> Self {
+        SchemaViolations::Report
+    }
+}
