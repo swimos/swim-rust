@@ -52,7 +52,11 @@ impl TVarInner {
 
     /// Notify any futures waiting for the variable to change.
     pub fn notify(&self) {
-        self.wakers.lock().unwrap().drain(..).for_each(|w| w.wake());
+        self.wakers
+            .lock()
+            .expect("Locked twice by the same thread.")
+            .drain(..)
+            .for_each(|w| w.wake());
     }
 
     /// Determine if the contents of the variable have changed as compared to a previous value.
@@ -66,7 +70,10 @@ impl TVarInner {
 
     /// Register an interest in the next change to the variable.
     pub fn subscribe(&self, waker: Waker) {
-        self.wakers.lock().unwrap().push(waker);
+        self.wakers
+            .lock()
+            .expect("Locked twice by the same thread.")
+            .push(waker);
     }
 
     /// Determine if the contents of the variable have changed as compared to a previous value and,
@@ -182,7 +189,11 @@ impl<T: Any + Send + Sync> TVar<T> {
     pub async fn load(&self) -> Arc<T> {
         let TVar(inner, ..) = self;
         let lock = inner.content.read().await;
-        let content_ref: Arc<T> = lock.deref().clone().downcast().unwrap();
+        let content_ref: Arc<T> = if let Ok(content) = lock.deref().clone().downcast() {
+            content
+        } else {
+            unreachable!()
+        };
         content_ref
     }
 
@@ -205,7 +216,11 @@ impl<T: Any + Clone> TVar<T> {
     pub async fn snapshot(&self) -> T {
         let TVar(inner, ..) = self;
         let lock = inner.content.read().await;
-        let content_ref: &T = lock.deref().downcast_ref().unwrap();
+        let content_ref: &T = if let Some(content) = lock.deref().downcast_ref() {
+            content
+        } else {
+            unreachable!()
+        };
         content_ref.clone()
     }
 }
