@@ -13,20 +13,15 @@
 // limitations under the License.
 
 use futures::task::{Context, Poll};
-use futures::{Future, FutureExt};
+use futures::Future;
 use pin_project::*;
 use std::fmt::Debug;
-use std::pin::Pin;
+use tokio::macros::support::Pin;
 use tokio::sync::oneshot;
-
-// TODO: This doesn't currently handle panics. So if the task panics then the receiver will never be notified.
-// TODO: Remove unwraps
 
 #[derive(Debug)]
 pub struct TaskError;
 
-/// WASM futures cannot return a value. Instead, the future is chained and the return value of the
-/// provided future is sent over a Tokio oneshot channel.
 #[pin_project]
 #[derive(Debug)]
 pub struct TaskHandle<R> {
@@ -45,31 +40,102 @@ impl<R> Future for TaskHandle<R> {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn spawn<F>(f: F) -> TaskHandle<F::Output>
+#[pin_project]
+struct Task<F>
 where
-    F: Future + Send + 'static,
-    F::Output: Send + Debug + 'static,
+    F: Future,
 {
-    let (tx, rx) = oneshot::channel();
-    let _f = tokio::spawn(f.then(|r| async {
-        tx.send(r).unwrap();
-    }));
-
-    TaskHandle { inner: rx }
+    #[pin]
+    tx: Option<oneshot::Sender<F::Output>>,
+    #[pin]
+    f: F,
 }
 
-#[cfg(target_arch = "wasm32")]
+impl<F> Task<F>
+where
+    F: Future,
+{
+    fn new(f: F) -> (Task<F>, TaskHandle<F::Output>) {
+        let (tx, rx) = oneshot::channel();
+        let task = Task { tx: Some(tx), f };
+        let task_handle = TaskHandle { inner: rx };
+
+        (task, task_handle)
+    }
+}
+
+impl<F> Future for Task<F>
+where
+    F: Future,
+{
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut this = self.project();
+
+        match this.f.poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(r) => match this.tx.take() {
+                Some(sender) => {
+                    let _ = sender.send(r);
+                    Poll::Ready(())
+                }
+                None => panic!("Future used twice"),
+            },
+        }
+    }
+}
+
 pub fn spawn<F>(f: F) -> TaskHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + Debug + 'static,
 {
-    let (tx, rx) = oneshot::channel();
-    let f = f.then(|r| async {
-        let _r = tx.send(r);
-    });
-    wasm_bindgen_futures::spawn_local(f);
+    #[cfg(target_arch = "wasm32")]
+    {
+        let (task, task_handle) = Task::new(f);
+        wasm_bindgen_futures::spawn_local(task);
+        task_handle
+    }
 
-    TaskHandle { inner: rx }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let (task, task_handle) = Task::new(f);
+        let _jh = tokio::spawn(task);
+        task_handle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn panic_ok() {
+        let f = async { panic!() };
+        let handle = spawn(f);
+        let r = handle.await;
+
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn ok() {
+        let f = async { 5 };
+        let handle = spawn(f);
+        let r = handle.await;
+
+        assert_eq!(r.unwrap(), 5);
+    }
+
+    #[tokio::test]
+    async fn ok_dropped_handle() {
+        let (tx, rx) = oneshot::channel();
+        {
+            let f = async { tx.send(5) };
+            let _ = spawn(f);
+        }
+
+        assert_eq!(rx.await.unwrap(), 5);
+    }
 }
