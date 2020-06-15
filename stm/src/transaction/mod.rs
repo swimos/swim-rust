@@ -20,7 +20,6 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use self::rent_future::RentalFuture;
 use crate::ptr::PtrKey;
 use crate::stm::error::StmError;
 use crate::stm::stm_futures::{RunIn, TransactionFuture};
@@ -591,33 +590,17 @@ impl<'a> Future for AwaitChanged<'a> {
     }
 }
 
-/// Future to await reading the value from a transactional variable.
-pub struct AwaitRead(RentalFuture<TVarInner, Contents>);
-
-impl AwaitRead {
-    fn new(var: Arc<TVarInner>) -> Self {
-        AwaitRead(RentalFuture::new(var, |var_ref| Box::pin(var_ref.read())))
-    }
-
-    /// Convert the future into a key into the transaction log.
-    fn into_key(self) -> PtrKey<Arc<TVarInner>> {
-        PtrKey(self.0.into_head())
-    }
+async fn await_read(inner: Arc<TVarInner>) -> (Arc<TVarInner>, Contents) {
+    let contents = inner.read().await;
+    (inner, contents)
 }
 
-impl Future for AwaitRead {
-    type Output = Contents;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let AwaitRead(rental) = self.get_mut();
-        RentalFuture::rent_mut(rental, |fut| fut.as_mut().poll(cx))
-    }
-}
+pub struct AwaitRead(Pin<Box<dyn Future<Output = (Arc<TVarInner>, Contents)> + Send + 'static>>);
 
 /// Transaction future for performing a read on a transactionak variable.
 pub enum ReadFuture<T> {
     Start(TVarRead<T>),
-    Wait(Option<AwaitRead>),
+    Wait(AwaitRead),
 }
 
 impl<T> ReadFuture<T> {
@@ -655,18 +638,14 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
                         }
                         _ => {
                             let PtrKey(inner) = k;
-                            AwaitRead::new(inner)
+                            await_read(inner)
                         }
                     }
                 }
-                ReadFuture::Wait(maybe_wait) => {
-                    let value = if let Some(wait) = maybe_wait.as_mut() {
-                        ready!(Pin::new(wait).poll(cx))
-                    } else {
-                        panic!("Read future polled twice.");
-                    };
+                ReadFuture::Wait(AwaitRead(wait)) => {
+                    let (inner, value) = ready!(wait.as_mut().poll(cx));
                     let result = value.clone().downcast().unwrap();
-                    let k = maybe_wait.take().unwrap().into_key();
+                    let k = PtrKey(inner);
                     let entry = LogEntry {
                         state: LogState::Get(value),
                         stack: Vec::with_capacity(*stack_size),
@@ -677,22 +656,7 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
                     return Poll::Ready(ExecResult::Done(result));
                 }
             };
-            *this = ReadFuture::Wait(Some(next));
-        }
-    }
-}
-
-rental! {
-    mod rent_future {
-
-        use super::*;
-
-        /// Encapsulates a value and a future that was borrowed from it.
-        #[rental]
-        pub(super) struct RentalFuture<Owner: 'static, Result: 'static> {
-            inner: Arc<Owner>,
-            //TODO Change the RwLock implementation so this boxing can be avoided.
-            fut: Pin<Box<dyn Future<Output = Result> + Send + 'inner>>,
+            *this = ReadFuture::Wait(AwaitRead(Box::pin(next)));
         }
     }
 }

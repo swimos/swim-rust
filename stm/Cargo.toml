@@ -8,7 +8,6 @@ edition = "2018"
 futures = "0.3.4"
 futures-util = "0.3.4"
 pin-project = "0.4.20"
-rental = "0.5.5"
 tokio = { version = "=0.2.21", features = ["sync"] }
 slab = "0.4.2"
 

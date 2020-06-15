@@ -14,9 +14,6 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
-#[macro_use]
-extern crate rental;
-
 pub(crate) mod ptr;
 pub mod stm;
 pub mod transaction;
