@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::{ErrInto, Ready};
-use futures::task::{Context, Poll};
-use futures::{Future, Stream};
-use tokio::macros::support::Pin;
-
-use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
-use pin_project::{pin_project, project};
-
 use crate::downlink::buffered::{
     BufferedDownlink, BufferedReceiver, BufferedTopicReceiver, WeakBufferedDownlink,
 };
@@ -33,7 +25,14 @@ use crate::downlink::{Downlink, DownlinkError, Event};
 use common::request::request_future::{RequestFuture, Sequenced};
 use common::request::Request;
 use common::sink::item::{ItemSink, MpscSend};
+use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
+use futures::future::{ErrInto, Ready};
+use futures::task::{Context, Poll};
+use futures::{Future, Stream};
+use futures_util::StreamExt;
+use pin_project::{pin_project, project};
 use std::fmt::{Display, Formatter};
+use tokio::macros::support::Pin;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::TransformedFuture;
 
@@ -137,6 +136,19 @@ impl<Act, Upd> Clone for AnyDownlink<Act, Upd> {
             AnyDownlink::Dropping(dl) => AnyDownlink::Dropping((*dl).clone()),
             AnyDownlink::Buffered(dl) => AnyDownlink::Buffered((*dl).clone()),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct AnyEventReceiver<Upd: Clone + Send>(AnyReceiver<Upd>);
+
+impl<Upd: Clone + Send> AnyEventReceiver<Upd> {
+    pub fn new(recv: AnyReceiver<Upd>) -> Self {
+        AnyEventReceiver(recv)
+    }
+
+    pub async fn recv(&mut self) -> Option<Upd> {
+        self.0.next().await.map(|event| event.get_inner())
     }
 }
 

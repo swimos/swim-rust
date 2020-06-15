@@ -29,8 +29,8 @@ use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
-    SubscriptionError, TypedCommandDownlink, TypedMapDownlink, TypedMapReceiver,
-    TypedValueDownlink, TypedValueReceiver, ValueReceiver,
+    SubscriptionError, TypedCommandDownlink, TypedEventDownlink, TypedMapDownlink,
+    TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
@@ -182,6 +182,20 @@ impl SwimClient {
     {
         self.downlinks
             .subscribe_command(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    /// Opens a new event downlink at the provided path.
+    pub async fn event_downlink<T>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<TypedEventDownlink<T>, ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        self.downlinks
+            .subscribe_event(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }

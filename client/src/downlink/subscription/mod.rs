@@ -15,13 +15,13 @@
 use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind, DownlinkParams, MuxMode,
 };
-use crate::downlink::any::{AnyDownlink, AnyReceiver, AnyWeakDownlink};
+use crate::downlink::any::{AnyDownlink, AnyEventReceiver, AnyReceiver, AnyWeakDownlink};
 use crate::downlink::model::event;
 use crate::downlink::model::map::{MapAction, UntypedMapModification, ViewWithEvent};
 use crate::downlink::model::value::{self, Action, SharedValue};
 use crate::downlink::model::{command, map};
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap};
-use crate::downlink::typed::{CommandDownlink, MapDownlink, ValueDownlink};
+use crate::downlink::typed::{CommandDownlink, EventDownlink, MapDownlink, ValueDownlink};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{raw, Command, DownlinkError, Message, StoppedFuture};
@@ -68,7 +68,8 @@ pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 pub type AnyCommandDownlink = raw::Sender<mpsc::Sender<Value>>;
 pub type TypedCommandDownlink<T> = CommandDownlink<AnyCommandDownlink, T>;
 
-pub type AnyEventDownlink = AnyReceiver<Value>;
+pub type AnyEventDownlink = AnyEventReceiver<Value>;
+pub type TypedEventDownlink<T> = EventDownlink<T>;
 
 pub type ValueReceiver = AnyReceiver<SharedValue>;
 pub type TypedValueReceiver<T> = UntilFailure<ValueReceiver, ApplyForm<T>>;
@@ -288,6 +289,18 @@ impl Downlinks {
     ) -> RequestResult<AnyEventDownlink> {
         self.subscribe_event_inner(StandardSchema::Anything, path)
             .await
+    }
+
+    pub async fn subscribe_event<T>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<TypedEventDownlink<T>>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        Ok(EventDownlink::new(
+            self.subscribe_event_inner(T::schema(), path).await?,
+        ))
     }
 
     async fn subscribe_event_inner(
@@ -931,7 +944,7 @@ where
                     Some(mut dl_clone) if dl_clone.is_running() => {
                         if schema.eq(existing_schema) {
                             match dl_clone.subscribe().await {
-                                Ok(rec) => Ok(rec),
+                                Ok(rec) => Ok(AnyEventReceiver::new(rec)),
                                 Err(_) => {
                                     self.event_downlinks.remove(&path);
                                     Ok(self.create_new_event_downlink(path.clone(), schema).await?)
@@ -1187,7 +1200,7 @@ fn event_downlink_for_sink<Updates, Snk>(
     cmd_sink: Snk,
     schema: StandardSchema,
     config: &DownlinkParams,
-) -> (AnyDownlink<Value, Value>, AnyReceiver<Value>)
+) -> (AnyDownlink<Value, Value>, AnyEventReceiver<Value>)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
@@ -1195,15 +1208,24 @@ where
     match config.mux_mode {
         MuxMode::Queue(n) => {
             let (dl, rec) = event::create_queue_downlink(schema, updates, cmd_sink, n, &config);
-            (AnyDownlink::Queue(dl), AnyReceiver::Queue(rec))
+            (
+                AnyDownlink::Queue(dl),
+                AnyEventReceiver::new(AnyReceiver::Queue(rec)),
+            )
         }
         MuxMode::Dropping => {
             let (dl, rec) = event::create_dropping_downlink(schema, updates, cmd_sink, &config);
-            (AnyDownlink::Dropping(dl), AnyReceiver::Dropping(rec))
+            (
+                AnyDownlink::Dropping(dl),
+                AnyEventReceiver::new(AnyReceiver::Dropping(rec)),
+            )
         }
         MuxMode::Buffered(n) => {
             let (dl, rec) = event::create_buffered_downlink(schema, updates, cmd_sink, n, &config);
-            (AnyDownlink::Buffered(dl), AnyReceiver::Buffered(rec))
+            (
+                AnyDownlink::Buffered(dl),
+                AnyEventReceiver::new(AnyReceiver::Buffered(rec)),
+            )
         }
     }
 }

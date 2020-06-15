@@ -87,7 +87,7 @@ fn linked_message() {
 fn only_event(response: &Response<Arc<Value>, Arc<Value>>) -> &Arc<Value> {
     match response {
         Response {
-            event: Some(Event(ev, false)),
+            event: Some(Event::Remote(ev)),
             command: None,
             error: None,
             terminate: false,
@@ -278,7 +278,7 @@ fn event_and_cmd(
 ) -> (Arc<Value>, Arc<Value>, Option<TransitionError>) {
     match response {
         Response {
-            event: Some(Event(ev, true)),
+            event: Some(Event::Local(ev)),
             command: Some(Command::Action(cmd)),
             error,
             terminate: false,

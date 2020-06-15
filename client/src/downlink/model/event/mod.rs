@@ -14,6 +14,9 @@ use futures::Stream;
 use std::num::NonZeroUsize;
 use tracing::{instrument, trace};
 
+#[cfg(test)]
+mod tests;
+
 /// Create an event downlink with a queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Snk>(
     schema: StandardSchema,
@@ -121,7 +124,7 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
 
                 Message::Action(value) => {
                     if self.schema.matches(&value) {
-                        Ok(Response::for_event(Event(value, true)))
+                        Ok(Response::for_event(Event::Remote(value)))
                     } else {
                         Ok(Response::none())
                     }

@@ -101,7 +101,7 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                 let prev = *dl_state;
                 *dl_state = DownlinkState::Synced;
                 Ok(if prev != DownlinkState::Synced {
-                    Response::for_event(Event(model.0, false))
+                    Response::for_event(Event::Remote(model.0))
                 } else {
                     Response::none()
                 })
@@ -118,7 +118,7 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                         model.0 = n;
                     }
                     Ok(if *dl_state == self.dl_start_state() {
-                        Response::for_event(Event(model.0, false))
+                        Response::for_event(Event::Remote(model.0))
                     } else {
                         Response::none()
                     })
@@ -144,7 +144,7 @@ impl StateMachine<State, Msg, AddTo> for TestStateMachine {
                     )
                 } else {
                     model.0 = next;
-                    response_of(Event(next, true), Command::Action(next))
+                    response_of(Event::Local(next), Command::Action(next))
                 };
                 Ok(match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
@@ -230,7 +230,7 @@ async fn event_on_sync() {
     assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event(0, false))));
+    assert_that!(first_ev, eq(Some(Event::Remote(0))));
 }
 
 #[tokio::test]
@@ -243,7 +243,7 @@ async fn ignore_update_before_link() {
     assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event(0, false))));
+    assert_that!(first_ev, eq(Some(Event::Remote(0))));
 }
 
 #[tokio::test]
@@ -256,7 +256,7 @@ async fn apply_updates_between_link_and_sync() {
     assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event(12, false))));
+    assert_that!(first_ev, eq(Some(Event::Remote(12))));
 }
 
 /// Pre-synchronizes a downlink for tests that require the ['DownlinkState::Synced'] state.
@@ -275,7 +275,7 @@ async fn sync_dl(
     assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = events.recv().await;
-    assert_that!(first_ev, eq(Some(Event(n, false))));
+    assert_that!(first_ev, eq(Some(Event::Remote(n))));
 }
 
 #[tokio::test]
@@ -291,9 +291,9 @@ async fn updates_processed_when_synced() {
     assert_that!(messages.send(Ok(Message::Action(Msg::of(20)))).await, ok());
     assert_that!(messages.send(Ok(Message::Action(Msg::of(30)))).await, ok());
 
-    assert_that!(events.recv().await, eq(Some(Event(10, false))));
-    assert_that!(events.recv().await, eq(Some(Event(20, false))));
-    assert_that!(events.recv().await, eq(Some(Event(30, false))));
+    assert_that!(events.recv().await, eq(Some(Event::Remote(10))));
+    assert_that!(events.recv().await, eq(Some(Event::Remote(20))));
+    assert_that!(events.recv().await, eq(Some(Event::Remote(30))));
 }
 
 #[tokio::test]
@@ -307,7 +307,7 @@ async fn actions_processed_when_synced() {
 
     assert_that!(dl_tx.send(AddTo::of(4)).await, ok());
 
-    assert_that!(events.recv().await, eq(Some(Event(5, true))));
+    assert_that!(events.recv().await, eq(Some(Event::Local(5))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(5))));
 }
 
@@ -335,7 +335,7 @@ async fn actions_paused_when_not_synced() {
     assert_that!(&msg_at, ok());
     assert_that!(msg_at.unwrap(), less_than_or_equal_to(action_at.unwrap()));
 
-    assert_that!(events.recv().await, eq(Some(Event(17, true))));
+    assert_that!(events.recv().await, eq(Some(Event::Local(17))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
 }
 
@@ -373,9 +373,9 @@ async fn actions_paused_when_unlinked() {
     assert_that!(msg_at.unwrap(), less_than_or_equal_to(action_at.unwrap()));
 
     //Event generated when we re-sync.
-    assert_that!(events.recv().await, eq(Some(Event(5, false))));
+    assert_that!(events.recv().await, eq(Some(Event::Remote(5))));
     //Event and command generated after the action is applied.
-    assert_that!(events.recv().await, eq(Some(Event(17, true))));
+    assert_that!(events.recv().await, eq(Some(Event::Local(17))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
 }
 
@@ -472,7 +472,7 @@ async fn unlinks_on_unreachable_host() {
     assert_that!(messages.send(Ok(Message::Synced)).await, ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event(0, false))));
+    assert_that!(first_ev, eq(Some(Event::Remote(0))));
 }
 
 #[tokio::test]
@@ -504,11 +504,11 @@ async fn queues_on_unreachable_host() {
     assert_that!(commands.recv().await, eq(Some(Command::Action(6))));
     assert_that!(commands.recv().await, eq(Some(Command::Action(10))));
 
-    assert_that!(events.recv().await, eq(Some(Event(0, false))));
-    assert_that!(events.recv().await, eq(Some(Event(1, true))));
-    assert_that!(events.recv().await, eq(Some(Event(3, true))));
-    assert_that!(events.recv().await, eq(Some(Event(6, true))));
-    assert_that!(events.recv().await, eq(Some(Event(10, true))));
+    assert_that!(events.recv().await, eq(Some(Event::Remote(0))));
+    assert_that!(events.recv().await, eq(Some(Event::Local(1))));
+    assert_that!(events.recv().await, eq(Some(Event::Local(3))));
+    assert_that!(events.recv().await, eq(Some(Event::Local(6))));
+    assert_that!(events.recv().await, eq(Some(Event::Local(10))));
 }
 
 #[tokio::test]

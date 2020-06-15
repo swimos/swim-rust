@@ -17,7 +17,7 @@ pub mod any;
 pub mod event;
 pub mod topic;
 
-use crate::downlink::any::{AnyDownlink, TopicKind};
+use crate::downlink::any::{AnyDownlink, AnyEventReceiver, TopicKind};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::action::{MapActions, ValueActions};
@@ -252,7 +252,7 @@ where
     }
 }
 
-/// A wrapper around a command value downlink, applying a [`Form`] to the values.
+/// A wrapper around a command downlink, applying a [`Form`] to the values.
 #[derive(Debug)]
 pub struct CommandDownlink<Inner, T> {
     inner: Inner,
@@ -261,7 +261,6 @@ pub struct CommandDownlink<Inner, T> {
 
 impl<Inner, T> CommandDownlink<Inner, T>
 where
-    // Inner: Downlink<CommandValue, ()>,
     T: Form,
 {
     pub fn new(inner: Inner) -> Self {
@@ -272,7 +271,7 @@ where
     }
 }
 
-impl<'a, Inner, T> ItemSink<'a, Value> for CommandDownlink<Inner, T>
+impl<'a, Inner, T> ItemSink<'a, T> for CommandDownlink<Inner, T>
 where
     Inner: ItemSink<'a, Value>,
     T: Form + Send + 'static,
@@ -280,7 +279,36 @@ where
     type Error = Inner::Error;
     type SendFuture = Inner::SendFuture;
 
-    fn send_item(&'a mut self, value: Value) -> Self::SendFuture {
-        self.inner.send_item(value)
+    fn send_item(&'a mut self, item: T) -> Self::SendFuture {
+        self.inner.send_item(item.into_value())
+    }
+}
+
+/// A wrapper around an event downlink, applying a [`Form`] to the values.
+#[derive(Debug)]
+pub struct EventDownlink<T> {
+    inner: AnyEventReceiver<Value>,
+    _value_type: PhantomData<fn(T)>,
+}
+
+impl<T> EventDownlink<T>
+where
+    T: Form,
+{
+    pub fn new(inner: AnyEventReceiver<Value>) -> Self {
+        EventDownlink {
+            inner,
+            _value_type: PhantomData,
+        }
+    }
+}
+
+impl<T> EventDownlink<T>
+where
+    T: Form,
+{
+    pub async fn recv(&mut self) -> Option<T> {
+        let value = self.inner.recv().await?;
+        T::try_from_value(&value).ok()
     }
 }
