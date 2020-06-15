@@ -13,10 +13,11 @@
 // limitations under the License.
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use futures::future::FutureExt;
 
+use crate::var::observer::{DynObserver, RawWrapper, StaticObserver};
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
@@ -24,6 +25,8 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::task::Waker;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+pub mod observer;
 
 // The type of the contents of a transactional variable.
 // TODO: It would be better if the contents were allocated within the variable itself.
@@ -33,14 +36,33 @@ pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 pub(in crate) struct TVarInner {
     content: RwLock<Contents>,
     wakers: Mutex<Vec<Waker>>,
+    observer: Option<DynObserver>,
 }
 
 impl TVarInner {
     /// Erase the type of a value to store it inside a transactional variable.
-    pub fn new<T: Send + Sync + 'static>(value: T) -> Self {
+    pub fn new<T>(value: T) -> Self
+    where
+        T: Any + Send + Sync,
+    {
         TVarInner {
             content: RwLock::new(Arc::new(value)),
             wakers: Mutex::new(vec![]),
+            observer: None,
+        }
+    }
+
+    /// Create a transactional variable with an observer than will be notified
+    /// each time the value changes.
+    pub fn new_with_observer<T, Obs>(value: T, observer: Obs) -> Self
+    where
+        T: Any + Send + Sync,
+        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
+    {
+        TVarInner {
+            content: RwLock::new(Arc::new(value)),
+            wakers: Mutex::new(vec![]),
+            observer: Some(Box::new(RawWrapper::new(observer))),
         }
     }
 
@@ -50,6 +72,10 @@ impl TVarInner {
         lock.clone()
     }
 
+    fn notify_takes_value(&self) -> bool {
+        self.observer.is_some()
+    }
+
     /// Notify any futures waiting for the variable to change.
     pub fn notify(&self) {
         self.wakers
@@ -57,6 +83,14 @@ impl TVarInner {
             .expect("Locked twice by the same thread.")
             .drain(..)
             .for_each(|w| w.wake());
+    }
+
+    /// Notify any futures waiting for the variable to change.
+    async fn notify_with(&self, contents: Contents) {
+        self.notify();
+        if let Some(observer) = &self.observer {
+            observer.notify_raw(contents).await;
+        }
     }
 
     /// Determine if the contents of the variable have changed as compared to a previous value.
@@ -161,9 +195,19 @@ impl<T: Debug> Debug for TVarWrite<T> {
     }
 }
 
-impl<T: Send + Sync + 'static> TVar<T> {
+impl<T: Any + Send + Sync> TVar<T> {
     pub fn new(initial: T) -> Self {
         TVar(Arc::new(TVarInner::new(initial)), PhantomData)
+    }
+
+    pub fn new_with_observer<Obs>(initial: T, observer: Obs) -> Self
+    where
+        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
+    {
+        TVar(
+            Arc::new(TVarInner::new_with_observer(initial, observer)),
+            PhantomData,
+        )
     }
 }
 
@@ -206,7 +250,17 @@ impl<T: Any + Send + Sync> TVar<T> {
     async fn store_arc(&self, value: Arc<T>) {
         let TVar(inner, ..) = self;
         let mut lock = inner.content.write().await;
+        let duplicate = if inner.notify_takes_value() {
+            Some(value.clone())
+        } else {
+            None
+        };
         *lock = value;
+        if let Some(value) = duplicate {
+            inner.notify_with(value).await;
+        } else {
+            inner.notify();
+        }
         drop(lock);
         self.0.notify();
     }
@@ -241,14 +295,23 @@ pub(crate) struct ApplyWrite<'a> {
 
 impl<'a> ApplyWrite<'a> {
     /// Apply the pending write and release the lock.
-    pub fn apply(self) {
+    pub async fn apply(self) {
         let ApplyWrite {
             var,
             mut guard,
             value,
         } = self;
+        let duplicate = if var.notify_takes_value() {
+            Some(value.clone())
+        } else {
+            None
+        };
         *guard = value;
+        if let Some(value) = duplicate {
+            var.notify_with(value).await;
+        } else {
+            var.notify();
+        }
         drop(guard);
-        var.notify();
     }
 }

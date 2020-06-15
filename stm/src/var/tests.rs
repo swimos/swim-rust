@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::var::observer::Observer;
 use crate::var::TVar;
-use std::sync::Arc;
+use futures::future::{ready, Ready};
+use std::any::Any;
+use std::sync::{Arc, Mutex};
 
 #[tokio::test]
 async fn var_get() {
@@ -44,4 +47,51 @@ async fn var_store_arc() {
     var.store_arc(replacement.clone()).await;
     let n = var.load().await;
     assert!(Arc::ptr_eq(&replacement, &n));
+}
+
+#[derive(Clone)]
+pub struct TestObserver<T>(Arc<Mutex<Option<Arc<T>>>>);
+
+impl<T: Any + Send + Sync> TestObserver<T> {
+    pub fn new(init: Option<Arc<T>>) -> Self {
+        TestObserver(Arc::new(Mutex::new(init)))
+    }
+
+    pub fn get(&self) -> Option<Arc<T>> {
+        let TestObserver(inner) = self;
+        inner.lock().unwrap().clone()
+    }
+}
+
+impl<'a, T> Observer<'a, Arc<T>> for TestObserver<T>
+where
+    T: Any + Send + Sync,
+{
+    type RecFuture = Ready<()>;
+
+    fn notify(&'a self, value: Arc<T>) -> Self::RecFuture {
+        let TestObserver(inner) = self;
+        let mut lock = inner.lock().unwrap();
+        *lock = Some(value);
+        ready(())
+    }
+}
+
+#[tokio::test]
+async fn observe_var_store() {
+    let observer = TestObserver::new(None);
+
+    let var = TVar::new_with_observer(0, observer.clone());
+
+    var.store(17).await;
+
+    let observed = observer.get();
+
+    assert_eq!(observed, Some(Arc::new(17)));
+
+    var.store(-34).await;
+
+    let observed = observer.get();
+
+    assert_eq!(observed, Some(Arc::new(-34)));
 }
