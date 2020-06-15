@@ -34,36 +34,57 @@ pub mod error {
     use std::error::Error;
     use std::fmt::{Debug, Display, Formatter};
 
-    /// A wrapper around an arbitrary error type (extending both [`Any`] and [`Error`]).
-    pub struct StmError {
-        as_any: Box<dyn Any>,
-        //This should always point to the same value as as_any.
-        as_err: *const (dyn Error + Send + Sync + 'static),
+    type DynFormat = Box<
+        dyn for<'a> Fn(&Box<dyn Any + Send>, &mut Formatter<'a>) -> std::fmt::Result
+            + Send
+            + 'static,
+    >;
+    type DynAsErr = Box<dyn Fn(&Box<dyn Any + Send>) -> &(dyn Error + 'static) + Send + 'static>;
+
+    fn debug<E: Any + Error + Send>() -> DynFormat {
+        Box::new(|any, formatter| Debug::fmt(any.downcast_ref::<E>().unwrap(), formatter))
     }
 
-    unsafe impl Send for StmError {}
-    unsafe impl Sync for StmError {}
-    impl Unpin for StmError {}
+    fn display<E: Any + Error + Send>() -> DynFormat {
+        Box::new(|any, formatter| Display::fmt(any.downcast_ref::<E>().unwrap(), formatter))
+    }
+
+    fn any_as_err<E: Any + Error + Send>() -> DynAsErr {
+        Box::new(|any| any.downcast_ref::<E>().unwrap())
+    }
+
+    /// A wrapper around an arbitrary error type (extending both [`Any`] and [`Error`]).
+    pub struct StmError {
+        as_any: Box<dyn Any + Send>,
+        debug: DynFormat,
+        display: DynFormat,
+        as_err: DynAsErr,
+    }
 
     impl Debug for StmError {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            unsafe { write!(f, "StmError({:?})", &*self.as_err) }
+            let StmError { as_any, debug, .. } = self;
+            debug(as_any, f)
         }
     }
 
     impl Display for StmError {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            unsafe { write!(f, "StmError({})", &*self.as_err) }
+            let StmError {
+                as_any, display, ..
+            } = self;
+            display(as_any, f)
         }
     }
 
     impl StmError {
-        pub fn new<E: Any + Error + Send + Sync>(err: E) -> Self {
+        pub fn new<E: Any + Error + Send>(err: E) -> Self {
             let original = Box::new(err);
-            let as_err = original.as_ref() as *const (dyn Error + Send + Sync + 'static);
             StmError {
                 as_any: original,
-                as_err,
+                debug: debug::<E>(),
+                display: display::<E>(),
+                as_err: any_as_err::<E>(),
             }
         }
 
@@ -75,11 +96,18 @@ pub mod error {
         /// Move out of this as a specific error type, where possible, otherwise reconstruct
         /// this instance, unchanged.
         pub fn into_specific<T: Any>(self) -> Result<T, Self> {
-            let StmError { as_err, as_any } = self;
-            as_any
-                .downcast()
-                .map(|b| *b)
-                .map_err(|as_any| StmError { as_any, as_err })
+            let StmError {
+                as_any,
+                debug,
+                display,
+                as_err,
+            } = self;
+            as_any.downcast().map(|b| *b).map_err(|as_any| StmError {
+                as_any,
+                debug,
+                display,
+                as_err,
+            })
         }
 
         /// Get the type ID of the contained value.
@@ -89,7 +117,8 @@ pub mod error {
 
         /// View the contents as an [`Error`].
         pub fn as_error(&self) -> &(dyn Error + 'static) {
-            unsafe { &*self.as_err }
+            let StmError { as_any, as_err, .. } = self;
+            as_err(as_any)
         }
     }
 }
