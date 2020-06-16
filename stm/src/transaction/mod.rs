@@ -33,7 +33,7 @@ use futures_util::stream::FuturesUnordered;
 use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use tokio::macros::support::Pin;
+use std::pin::Pin;
 
 // Default capacity of the transaction log.
 const DEFAULT_LOG_CAP: usize = 32;
@@ -209,7 +209,7 @@ impl LogEntry {
         }
     }
 
-    // Pop the for this entry. Returns true if the entry should be removed entirely.
+    // Pop the stack for this entry. Returns true if the entry should be removed entirely.
     fn pop(&mut self, rw: ReadWrite) -> bool {
         let LogEntry { state, stack } = self;
         let old_state = std::mem::take(state);
