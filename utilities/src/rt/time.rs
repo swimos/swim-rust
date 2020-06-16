@@ -77,3 +77,88 @@ pub mod delay {
         }
     }
 }
+
+pub mod interval {
+    use futures::task::{Context, Poll};
+    use futures::Stream;
+    use pin_project::*;
+    use std::time::Duration;
+    use tokio::macros::support::Pin;
+
+    #[pin_project]
+    pub enum Interval {
+        #[cfg(not(target_arch = "wasm32"))]
+        Tokio(#[pin] tokio::time::Interval),
+        #[cfg(target_arch = "wasm32")]
+        Wasm(#[pin] wasm_timer::Interval),
+    }
+
+    impl Stream for Interval {
+        type Item = ();
+
+        #[project]
+        fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            #[project]
+            match self.project() {
+                #[cfg(not(target_arch = "wasm32"))]
+                Interval::Tokio(interval) => match interval.poll_next(cx) {
+                    Poll::Pending => Poll::Pending,
+                    Poll::Ready(_) => Poll::Ready(Some(())),
+                },
+                #[cfg(target_arch = "wasm32")]
+                Interval::Wasm(interval) => interval.poll_next(cx),
+            }
+        }
+    }
+
+    pub fn interval(period: Duration) -> Interval {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let interval = tokio::time::interval(period);
+            Interval::Tokio(interval)
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let interval = wasm_timer::Interval::new(period);
+            Interval::Wasm(interval)
+        }
+    }
+}
+
+pub mod instant {
+    use std::time::Duration;
+
+    #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+    pub enum Instant {
+        #[cfg(not(target_arch = "wasm32"))]
+        Tokio(tokio::time::Instant),
+        #[cfg(target_arch = "wasm32")]
+        Wasm(wasm_timer::Instant),
+    }
+
+    impl Instant {
+        pub fn now() -> Instant {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let instant = tokio::time::Instant::now();
+                Instant::Tokio(instant)
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                let instant = wasm_timer::Instant::now();
+                Instant::Wasm(instant)
+            }
+        }
+
+        pub fn elapsed(&self) -> Duration {
+            match &self {
+                #[cfg(not(target_arch = "wasm32"))]
+                Instant::Tokio(instant) => instant.elapsed(),
+                #[cfg(target_arch = "wasm32")]
+                Instant::Wasm(instant) => instant.elapsed(),
+            }
+        }
+    }
+}

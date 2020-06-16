@@ -31,7 +31,7 @@ use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio_tungstenite::tungstenite;
-use tracing::instrument;
+use tracing::{instrument, trace};
 #[cfg(not(target_arch = "wasm32"))]
 use tungstenite::error::Error as TError;
 use url::Host;
@@ -226,16 +226,14 @@ where
         } = self;
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
 
-        // TODO: doesn't work on wasm
-        // let mut prune_timer = tokio::time::interval(config.conn_reaper_frequency()).fuse();
+        let mut prune_timer = interval(config.conn_reaper_frequency()).fuse();
         let mut fused_requests =
             combine_connection_streams(connection_request_rx, stop_request_rx).fuse();
-
-        let _conn_timeout = config.idle_timeout();
+        let conn_timeout = config.idle_timeout();
 
         loop {
             let request: RequestType = select! {
-                // timer = prune_timer.next() => Some(RequestType::Prune),
+                timer = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
             .ok_or(ConnectionErrorKind::ConnectError)?;
@@ -277,7 +275,7 @@ where
                         let inner_connection = connections
                             .get_mut(&host)
                             .ok_or(ConnectionErrorKind::ConnectError)?;
-                        // inner_connection.last_accessed = Instant::now();
+                        inner_connection.last_accessed = Instant::now();
 
                         Ok(((inner_connection.as_conenction_sender()), None))
                     };
@@ -288,11 +286,11 @@ where
                 }
 
                 RequestType::Prune => {
-                    // let before_size = connections.len();
-                    // connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
-                    // let after_size = connections.len();
-                    //
-                    // trace!("Pruned {} inactive connections", (before_size - after_size));
+                    let before_size = connections.len();
+                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
+                    let after_size = connections.len();
+
+                    trace!("Pruned {} inactive connections", (before_size - after_size));
                 }
 
                 RequestType::Close => {
@@ -399,7 +397,7 @@ where
 
 struct InnerConnection {
     conn: SwimConnection,
-    // last_accessed: Instant,
+    last_accessed: Instant,
 }
 
 impl InnerConnection {
@@ -419,7 +417,7 @@ impl InnerConnection {
 
         let inner = InnerConnection {
             conn,
-            // last_accessed: Instant::now(),
+            last_accessed: Instant::now(),
         };
         Ok((inner, sender, receiver))
     }
@@ -465,7 +463,11 @@ impl SwimConnection {
         })
     }
 }
+
 use utilities::rt::task::*;
+use utilities::rt::time::instant::Instant;
+use utilities::rt::time::interval::interval;
+
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
 /// Wrapper for the transmitting end of a channel to an open connection.

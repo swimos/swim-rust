@@ -13,7 +13,7 @@ wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
 console_error_panic_hook = "0.1.6"
 swim_client = { package = "client", path = "../../client", default-features = false, features = ["wasm"] }
 swim_form = { path = "../../swim_form" }
-tokio = { version = "=0.2.21", features = ["sync", "stream", "macros"] }
+tokio = { version = "0.2.21", features = ["sync", "stream", "macros"] }
 url = "2.1.1"
 futures = "0.3.4"
 futures-util = "0.3.4"

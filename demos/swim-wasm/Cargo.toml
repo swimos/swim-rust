@@ -15,7 +15,7 @@ console_error_panic_hook = "0.1.1"
 plotters = { version = "0.2.15", features = ["datetime"] }
 web-sys = { version = "0.3.39", features = ["HtmlCanvasElement"] }
 wasm-bindgen-futures = "0.4.13"
-tokio = { version = "=0.2.21", features = ["sync", "stream", "macros"] }
+tokio = { version = "0.2.21", features = ["sync", "stream", "macros"] }
 url = "2.1.1"
 futures = "0.3.4"
 futures-util = "0.3.4"

@@ -17,14 +17,14 @@ features = ["enabled"]
 optional = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "=0.2.21", features = ["sync", "stream", "macros", "time"] }
+tokio = { version = "0.2.21", features = ["sync", "stream", "macros", "time"] }
 web-sys = { version = "0.3.39", features = ["WebSocket", "ErrorEvent"] }
 wasm-bindgen-futures = "0.4.13"
 ws_stream_wasm = "0.6.0"
 wasm-bindgen = "0.2.63"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "=0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
+tokio = { version = "0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -51,7 +51,7 @@ tokio-tungstenite = { version = "0.10.1", features = ["tls"], optional = true }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-tokio = { version = "=0.2.21", features = ["rt-threaded"] }
+tokio = { version = "0.2.21", features = ["rt-threaded"] }
 clap = "2.33.1"
 
 [[example]]
