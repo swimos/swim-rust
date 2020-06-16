@@ -14,16 +14,7 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
-//! ## Feature flags
-//!
-//! - `debug`: Enables all debug features listed below.
-//! - `log_verbose`: Sets the global tracing level to the highest.
-//!
-
-pub mod configuration;
-pub mod connections;
-pub mod downlink;
-pub mod interface;
-pub mod router;
-
-extern crate utilities;
+pub(crate) mod ptr;
+pub mod stm;
+pub mod transaction;
+pub mod var;

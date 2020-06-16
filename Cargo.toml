@@ -4,5 +4,6 @@ members = [
     "form",
     "common",
     "server",
+    "stm",
     "utilities",
 ]
