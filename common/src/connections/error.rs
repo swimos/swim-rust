@@ -16,7 +16,7 @@ use crate::request::request_future::RequestError;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use utilities::rt::task::TaskError;
+use swim_runtime::task::TaskError;
 
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

@@ -3,6 +3,7 @@ members = [
     "client",
     "swim_form",
     "swim_wasm",
+    "swim_runtime",
     "common",
     "server",
     "utilities",

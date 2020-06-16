@@ -462,9 +462,9 @@ impl SwimConnection {
 
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
 use common::connections::WebsocketFactory;
-use utilities::rt::task::*;
-use utilities::rt::time::instant::Instant;
-use utilities::rt::time::interval::interval;
+use swim_runtime::task::*;
+use swim_runtime::time::instant::Instant;
+use swim_runtime::time::interval::interval;
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 

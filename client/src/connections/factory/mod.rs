@@ -31,8 +31,8 @@ pub mod async_factory {
 
     use common::connections::error::ConnectionError;
     use common::connections::WebsocketFactory;
+    use swim_runtime::task::{spawn, TaskHandle};
     use utilities::errors::FlattenErrors;
-    use utilities::rt::task::{spawn, TaskHandle};
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {

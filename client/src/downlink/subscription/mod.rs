@@ -51,8 +51,8 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use tracing::{error, info, instrument, trace_span};
 
 use common::warp::envelope::Envelope;
+use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
-use utilities::rt::task::{spawn, TaskError, TaskHandle};
 
 pub mod envelopes;
 #[cfg(test)]

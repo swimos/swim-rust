@@ -26,9 +26,9 @@ use futures::{select_biased, Stream};
 use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
 use utilities::lru_cache::LruCache;
-use utilities::rt::task::{spawn, TaskHandle};
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe

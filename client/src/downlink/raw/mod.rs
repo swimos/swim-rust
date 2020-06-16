@@ -30,9 +30,9 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, watch};
 use tracing::{instrument, trace};
-use utilities::rt::task::{spawn, TaskHandle};
 
 #[cfg(test)]
 pub mod tests;

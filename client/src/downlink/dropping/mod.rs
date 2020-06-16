@@ -28,9 +28,9 @@ use futures::{Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
+use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
 use utilities::future::{SwimFutureExt, TransformedFuture};
-use utilities::rt::task::spawn;
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.

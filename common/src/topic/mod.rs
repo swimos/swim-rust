@@ -29,9 +29,9 @@ use futures::{future, ready, Future, FutureExt, Stream, StreamExt, TryFutureExt}
 use futures_util::select_biased;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
+use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
-use utilities::rt::task::{spawn, TaskHandle};
 
 #[cfg(test)]
 mod tests;

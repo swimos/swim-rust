@@ -32,6 +32,11 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.13"
 
 [dependencies]
+common = { path = "../common" }
+utilities = { path = "../utilities" }
+swim_form = { path = "../swim_form" }
+swim_runtime = { path = "../swim_runtime" }
+
 pin-utils = "0.1.0-alpha.4"
 pin-project = "0.4.8"
 either = "1.5.3"
@@ -42,9 +47,6 @@ url = "2.1.1"
 rand = "0.7.3"
 tracing-subscriber = "0.2.3"
 tracing-futures = "0.2.3"
-common = { path = "../common" }
-utilities = { path = "../utilities" }
-swim_form = { path = "../swim_form" }
 tokio = { version = "0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
 
 [dev-dependencies]

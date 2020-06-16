@@ -26,8 +26,8 @@ mod tests;
 pub mod factory;
 pub mod request;
 pub mod strategy;
-use crate::rt::time::delay::{delay_for, Delay};
 use pin_project::{pin_project, project};
+use swim_runtime::time::delay::{delay_for, Delay};
 
 /// A future that can be reset back to its initial state and retried once again.
 pub trait ResettableFuture: Future {

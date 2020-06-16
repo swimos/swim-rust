@@ -32,9 +32,9 @@ use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
+use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
 use utilities::future::TransformedFuture;
-use utilities::rt::task::spawn;
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.

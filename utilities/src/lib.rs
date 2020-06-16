@@ -19,7 +19,6 @@ pub mod errors;
 pub mod future;
 pub mod iteratee;
 pub mod lru_cache;
-pub mod rt;
 pub mod trace;
 
 /// Error thrown by methods that required a usize to be positive.
