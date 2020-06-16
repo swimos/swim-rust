@@ -215,7 +215,31 @@ pub enum Command<A> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Event<A>(pub A, pub bool);
+pub enum Event<A> {
+    Local(A),
+    Remote(A),
+}
+
+impl<A> Event<A> {
+    pub fn get_inner(self) -> A {
+        match self {
+            Event::Local(inner) => inner,
+            Event::Remote(inner) => inner,
+        }
+    }
+
+    /// Maps [`Event<A>`] to [`Result<Event<B>, Err>`]
+    /// by applying a transformation function [`Func`].
+    pub fn try_transform<B, Err, Func>(self, mut func: Func) -> Result<Event<B>, Err>
+    where
+        Func: FnMut(A) -> Result<B, Err>,
+    {
+        match self {
+            Event::Local(value) => Ok(Event::Local(func(value)?)),
+            Event::Remote(value) => Ok(Event::Remote(func(value)?)),
+        }
+    }
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Operation<M, A> {
@@ -345,7 +369,7 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
             error,
         } = basic;
         Response {
-            event: event.map(|e| Event(e, true)),
+            event: event.map(Event::Local),
             command: command.map(Command::Action),
             error,
             terminate: false,
@@ -434,7 +458,7 @@ where
                     if old_state == DownlinkState::Synced {
                         Response::none()
                     } else {
-                        Response::for_event(Event(self.on_sync(data_state), false))
+                        Response::for_event(Event::Remote(self.on_sync(data_state)))
                     }
                 }
                 Message::Action(msg) => match *state {
@@ -444,7 +468,7 @@ where
                         Response::none()
                     }
                     DownlinkState::Synced => match self.handle_message(data_state, msg)? {
-                        Some(ev) => Response::for_event(Event(ev, false)),
+                        Some(ev) => Response::for_event(Event::Remote(ev)),
                         _ => Response::none(),
                     },
                 },

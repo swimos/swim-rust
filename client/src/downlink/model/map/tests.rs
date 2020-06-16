@@ -96,7 +96,7 @@ fn only_event(
 ) -> &ViewWithEvent {
     match response {
         Response {
-            event: Some(Event(ev, false)),
+            event: Some(Event::Remote(ev)),
             command: None,
             error: None,
             terminate: false,
@@ -728,7 +728,7 @@ fn event_and_cmd(
 ) {
     match response {
         Response {
-            event: Some(Event(ev, true)),
+            event: Some(Event::Local(ev)),
             command: Some(Command::Action(cmd)),
             error,
             terminate: false,

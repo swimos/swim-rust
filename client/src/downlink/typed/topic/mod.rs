@@ -79,8 +79,7 @@ impl<T: Form> Transform<Event<SharedValue>> for ApplyForm<T> {
     type Out = Result<Event<T>, FormDeserializeErr>;
 
     fn transform(&self, value: Event<SharedValue>) -> Self::Out {
-        let Event(value, local) = value;
-        T::try_from_value(value.as_ref()).map(|t| Event(t, local))
+        value.try_transform(|val| T::try_from_value(val.as_ref()))
     }
 }
 
@@ -88,8 +87,7 @@ impl<K: Form, V: Form> Transform<Event<ViewWithEvent>> for ApplyFormsMap<K, V> {
     type Out = Result<Event<TypedViewWithEvent<K, V>>, FormDeserializeErr>;
 
     fn transform(&self, input: Event<ViewWithEvent>) -> Self::Out {
-        let Event(value, local) = input;
-        value.try_into().map(|v| Event(v, local))
+        input.try_transform(|val| val.try_into())
     }
 }
 

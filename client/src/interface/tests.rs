@@ -21,7 +21,7 @@ use crate::configuration::downlink::{
 };
 use crate::downlink::model::map::{MapModification, UntypedMapModification};
 use crate::interface::SwimClient;
-use common::model::Value;
+use common::model::{Attr, Item, Value};
 use common::sink::item::ItemSink;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
@@ -128,26 +128,7 @@ async fn test_send_typed_value_command_valid() {
     let mut command_dl = client.command_downlink::<i32>(path).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
-    command_dl.send_item(13.into()).await.unwrap();
-
-    tokio::time::delay_for(Duration::from_secs(3)).await;
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_send_typed_value_command_invalid() {
-    init_trace(vec!["client::router=trace"]);
-
-    let mut client = SwimClient::new(config()).await;
-    let path = AbsolutePath::new(
-        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-        "unit/foo",
-        "publish",
-    );
-    let mut command_dl = client.command_downlink::<String>(path).await.unwrap();
-
-    tokio::time::delay_for(Duration::from_secs(1)).await;
-    command_dl.send_item(13.into()).await.unwrap();
+    command_dl.send_item(13).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
@@ -177,7 +158,7 @@ async fn test_send_untyped_map_command() {
 
 #[tokio::test]
 #[ignore]
-async fn test_send_typed_map_command_valid() {
+async fn test_send_typed_map_command() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;
@@ -193,7 +174,7 @@ async fn test_send_typed_map_command_valid() {
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
-    let insert = MapModification::Insert("milk".to_string(), 6).as_value();
+    let insert = MapModification::Insert("milk".to_string(), 6);
 
     command_dl.send_item(insert).await.unwrap();
 
@@ -202,50 +183,270 @@ async fn test_send_typed_map_command_valid() {
 
 #[tokio::test]
 #[ignore]
-async fn test_send_typed_map_command_invalid_key() {
+async fn test_recv_untyped_value_event() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;
-    let path = AbsolutePath::new(
+    let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
-        "shoppingCart",
+        "info",
     );
-    let mut command_dl = client
-        .command_downlink::<MapModification<i32, i32>>(path)
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "info",
+    );
+
+    let mut event_dl = client.untyped_event_downlink(event_path).await.unwrap();
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item("Hello, from Rust!".into())
         .await
         .unwrap();
 
+    let incoming = event_dl.recv().await.unwrap();
+
+    assert_eq!(incoming, Value::Text("Hello, from Rust!".to_string()));
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_recv_typed_value_event_valid() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let event_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "info",
+    );
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "info",
+    );
+
+    let mut event_dl = client
+        .event_downlink::<String>(event_path, Default::default())
+        .await
+        .unwrap();
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
-    let insert = MapModification::Insert("milk".to_string(), 6).as_value();
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item("Hello, from Rust!".into())
+        .await
+        .unwrap();
 
-    command_dl.send_item(insert).await.unwrap();
+    let incoming = event_dl.recv().await.unwrap();
+
+    assert_eq!(incoming, "Hello, from Rust!");
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
 #[ignore]
-async fn test_send_typed_map_command_invalid_value() {
+async fn test_recv_typed_value_event_invalid() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;
-    let path = AbsolutePath::new(
+    let event_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "info",
+    );
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "info",
+    );
+
+    let mut event_dl = client
+        .event_downlink::<i32>(event_path, Default::default())
+        .await
+        .unwrap();
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item("Hello, from Rust!".into())
+        .await
+        .unwrap();
+
+    let incoming = event_dl.recv().await;
+
+    assert_eq!(incoming, None);
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_recv_untyped_map_event() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
         "shoppingCart",
     );
-    let mut command_dl = client
-        .command_downlink::<MapModification<String, String>>(path)
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+
+    let mut event_dl = client.untyped_event_downlink(event_path).await.unwrap();
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item(
+            UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
+                .as_value(),
+        )
+        .await
+        .unwrap();
+
+    let incoming = event_dl.recv().await.unwrap();
+
+    let header = Attr::of(("update", Value::record(vec![Item::slot("key", "milk")])));
+    let body = Item::of(6);
+    let expected = Value::Record(vec![header], vec![body]);
+
+    assert_eq!(incoming, expected);
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_recv_typed_map_event_valid() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let event_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+
+    let mut event_dl = client
+        .event_downlink::<MapModification<String, i32>>(event_path, Default::default())
         .await
         .unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
 
-    let insert = MapModification::Insert("milk".to_string(), 6).as_value();
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item(
+            UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
+                .as_value(),
+        )
+        .await
+        .unwrap();
 
-    command_dl.send_item(insert).await.unwrap();
+    let incoming = event_dl.recv().await.unwrap();
+
+    assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6));
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_recv_typed_map_event_invalid_key() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let event_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+
+    let mut event_dl = client
+        .event_downlink::<MapModification<i32, i32>>(event_path, Default::default())
+        .await
+        .unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item(
+            UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
+                .as_value(),
+        )
+        .await
+        .unwrap();
+
+    let incoming = event_dl.recv().await;
+
+    assert_eq!(incoming, None);
+
+    tokio::time::delay_for(Duration::from_secs(3)).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_recv_typed_map_event_invalid_value() {
+    init_trace(vec!["client::router=trace"]);
+
+    let mut client = SwimClient::new(config()).await;
+    let event_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+
+    let command_path = AbsolutePath::new(
+        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+        "unit/foo",
+        "shoppingCart",
+    );
+
+    let mut event_dl = client
+        .event_downlink::<MapModification<String, String>>(event_path, Default::default())
+        .await
+        .unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+    command_dl
+        .send_item(
+            UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
+                .as_value(),
+        )
+        .await
+        .unwrap();
+
+    let incoming = event_dl.recv().await;
+
+    assert_eq!(incoming, None);
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
