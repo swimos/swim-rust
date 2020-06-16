@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub extern crate common as _common;
 pub extern crate deserialize as _deserialize;
 #[macro_use]
 #[allow(unused_imports)]
 pub extern crate form_derive;
 pub extern crate serialize as _serialize;
 
-use common::model::schema::StandardSchema;
+use _common::model::schema::StandardSchema;
 use common::model::Value;
 pub use deserialize::FormDeserializeErr;
 pub use form_derive::*;

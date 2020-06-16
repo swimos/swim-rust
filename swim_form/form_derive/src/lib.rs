@@ -93,7 +93,7 @@ fn expand_derive_form(
         #[allow(unused_qualifications)]
         impl Form for #ident {
             #[inline]
-            fn as_value(&self) -> common::model::Value {
+            fn as_value(&self) -> _common::model::Value {
                 let mut serializer = _serialize::ValueSerializer::default();
                 match self.serialize(&mut serializer) {
                     Ok(_) => serializer.output(),
@@ -102,9 +102,9 @@ fn expand_derive_form(
             }
 
             #[inline]
-            fn try_from_value(value: &common::model::Value) -> Result<Self, _deserialize::FormDeserializeErr> {
+            fn try_from_value(value: &_common::model::Value) -> Result<Self, _deserialize::FormDeserializeErr> {
                 let mut deserializer = match value {
-                    common::model::Value::Record(_, _) => _deserialize::ValueDeserializer::for_values(value),
+                    _common::model::Value::Record(_, _) => _deserialize::ValueDeserializer::for_values(value),
                     _ => _deserialize::ValueDeserializer::for_single_value(value),
                 };
 
@@ -116,7 +116,7 @@ fn expand_derive_form(
 
     let res = quote! {
         const #const_name: () = {
-            use swim_form::common;
+            use swim_form::_common;
             use swim_form::_serialize;
             use swim_form::_deserialize;
             use swim_form::Form;

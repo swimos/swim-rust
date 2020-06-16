@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-// #[cfg(vendored)]
+#[cfg(feature = "vendored")]
 pub mod tungstenite;
 
 #[cfg(not(target_arch = "wasm32"))]

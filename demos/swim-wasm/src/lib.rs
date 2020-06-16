@@ -5,8 +5,8 @@ use web_sys::HtmlCanvasElement;
 
 use swim_client::common::model::Value;
 use swim_client::common::warp::path::AbsolutePath;
-use swim_client::connections::factory::wasm::*;
 use swim_client::interface::SwimClient;
+use swim_wasm::connection::WasmWsFactory;
 
 mod chart;
 

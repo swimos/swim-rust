@@ -9,7 +9,8 @@ description = "SWIM.AI Rust Client WASM demo"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-swim_client = { package = "client", path = "../../client", default-features = false, features = ["wasm"] }
+swim_client = { package = "client", path = "../../client", default-features = false }
+swim_wasm = { path = "../../swim_wasm" }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1.1"
 plotters = { version = "0.2.15", features = ["datetime"] }

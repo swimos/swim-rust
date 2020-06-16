@@ -43,6 +43,7 @@ pub struct TungWsSink {
     inner: SplitSink<WsConnection, Message>,
 }
 
+// todo: extract duplicated code from this sink and the tungstenite sink and wrap with err_into
 impl Sink<String> for TungWsSink {
     type Error = ConnectionError;
 

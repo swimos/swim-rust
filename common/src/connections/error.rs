@@ -67,7 +67,7 @@ impl Clone for ConnectionError {
     fn clone(&self) -> Self {
         ConnectionError {
             kind: self.kind.clone(),
-            // todo
+            // todo. Tungstenite errors don't implement clone
             cause: None,
         }
     }

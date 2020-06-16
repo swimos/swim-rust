@@ -1,12 +1,13 @@
 use futures::StreamExt;
 use js_sys::Promise;
 use serde::{Deserialize, Serialize};
+
 use swim_client::common::warp::envelope::Envelope;
 use swim_client::common::warp::path::AbsolutePath;
-use swim_client::connections::factory::wasm::*;
 use swim_client::downlink::model::map::MapEvent;
 use swim_client::interface::SwimClient;
 use swim_form::*;
+use swim_wasm::connection::WasmWsFactory;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{future_to_promise, spawn_local};
