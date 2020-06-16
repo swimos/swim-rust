@@ -1828,3 +1828,106 @@ fn nothing_to_value() {
         eq(Value::of_attr("nothing"))
     );
 }
+
+fn assert_less_than(schema: StandardSchema, cmp_schemas: HashMap<&str, StandardSchema>) {
+    for (_, s) in cmp_schemas {
+        assert!(schema > s);
+        assert!(s < schema);
+    }
+}
+fn assert_greater_than(schema: StandardSchema, cmp_schemas: HashMap<&str, StandardSchema>) {
+    for (_, s) in cmp_schemas {
+        assert!(schema < s);
+        assert!(s > schema);
+    }
+}
+
+fn all_schemas() -> HashMap<&'static str, StandardSchema> {
+    let mut map = HashMap::new();
+
+    map.insert("of_kind", StandardSchema::OfKind(ValueKind::Extant));
+    map.insert("equal", StandardSchema::Equal(Value::Extant));
+    map.insert(
+        "in_range_int",
+        StandardSchema::InRangeInt {
+            min: Some((0, true)),
+            max: Some((10, true)),
+        },
+    );
+    map.insert(
+        "in_range_float",
+        StandardSchema::InRangeFloat {
+            min: Some((0.5, true)),
+            max: Some((10.5, true)),
+        },
+    );
+    map.insert("non_nan", StandardSchema::NonNan);
+    map.insert("finite", StandardSchema::Finite);
+    map.insert("text", StandardSchema::Text(TextSchema::NonEmpty));
+    map.insert(
+        "not",
+        StandardSchema::Not(Box::from(StandardSchema::Anything)),
+    );
+    map.insert("and", StandardSchema::And(vec![]));
+    map.insert("or", StandardSchema::Or(vec![]));
+    map.insert(
+        "all_items",
+        StandardSchema::AllItems(Box::from(ItemSchema::ValueItem(StandardSchema::Anything))),
+    );
+    map.insert("num_attrs", StandardSchema::NumAttrs(5));
+    map.insert("num_items", StandardSchema::NumItems(3));
+    map.insert(
+        "head_attribute",
+        StandardSchema::HeadAttribute {
+            schema: Box::from(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Anything,
+            )),
+            required: true,
+            remainder: Box::from(StandardSchema::Anything),
+        },
+    );
+    map.insert(
+        "has_attributes",
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: true,
+        },
+    );
+    map.insert(
+        "has_slots",
+        StandardSchema::HasSlots {
+            slots: vec![],
+            exhaustive: true,
+        },
+    );
+    map.insert(
+        "layout",
+        StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        },
+    );
+    map.insert("nothing", StandardSchema::Nothing);
+    map.insert("anything", StandardSchema::Anything);
+
+    map
+}
+
+#[test]
+fn compare_anything() {
+    let schema = StandardSchema::Anything;
+    let mut cmp_schemas = all_schemas();
+    cmp_schemas.remove("anything");
+
+    assert_less_than(schema, cmp_schemas);
+}
+
+#[test]
+fn compare_nothing() {
+    let schema = StandardSchema::Nothing;
+    let mut cmp_schemas = all_schemas();
+    cmp_schemas.remove("nothing");
+
+    assert_greater_than(schema, cmp_schemas);
+}
