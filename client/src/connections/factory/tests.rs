@@ -13,13 +13,13 @@
 // limitations under the License.
 
 use super::async_factory::*;
-use super::WebsocketFactory;
-use crate::connections::{ConnectionError, ConnectionErrorKind};
+use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::WebsocketFactory;
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
-use tokio::macros::support::Pin;
+use std::pin::Pin;
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);
@@ -93,5 +93,5 @@ async fn fail_to_open() {
     let result = fac.connect(url.clone()).await;
     assert_that!(&result, err());
     let err = result.err().unwrap();
-    assert_that!(err.kind, eq(ConnectionErrorKind::ConnectError));
+    assert_that!(err.kind(), eq(ConnectionErrorKind::ConnectError));
 }

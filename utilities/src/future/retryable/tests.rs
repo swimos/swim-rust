@@ -14,7 +14,7 @@
 
 use futures::task::{Context, Poll};
 use futures::Future;
-use tokio::macros::support::Pin;
+use std::pin::Pin;
 use tokio::sync::mpsc;
 
 use crate::future::retryable::strategy::RetryStrategy;

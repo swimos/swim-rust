@@ -12,36 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{Future, Sink, Stream};
-
-use crate::connections::ConnectionError;
-
 #[cfg(test)]
 mod tests;
 
-#[cfg(not(target_arch = "wasm32"))]
+// #[cfg(vendored)]
 pub mod tungstenite;
-
-#[allow(dead_code)]
-#[cfg(target_arch = "wasm32")]
-pub mod wasm;
-
-/// Trait for factories that asynchronously create web socket connections. This exists primarily
-/// to allow for alternative implementations to be provided during testing.
-pub trait WebsocketFactory: Send + Sync {
-    /// Type of the stream of incoming messages.
-    type WsStream: Stream<Item = Result<String, ConnectionError>> + Unpin + Send + 'static;
-
-    /// Type of the sink for outgoing messages.
-    type WsSink: Sink<String> + Unpin + Send + 'static;
-
-    type ConnectFut: Future<Output = Result<(Self::WsSink, Self::WsStream), ConnectionError>>
-        + Send
-        + 'static;
-
-    /// Open a connection to the provided remote URL.
-    fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod async_factory {
@@ -54,14 +29,14 @@ pub mod async_factory {
     use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
     use common::request::Request;
 
-    use crate::connections::factory::errors::FlattenErrors;
-    use crate::connections::factory::WebsocketFactory;
-    use crate::connections::ConnectionError;
+    use common::connections::error::ConnectionError;
+    use common::connections::WebsocketFactory;
+    use utilities::errors::FlattenErrors;
     use utilities::rt::task::{spawn, TaskHandle};
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {
-        request: Request<Result<(Snk, Str), ConnectionError>>,
+        pub request: Request<Result<(Snk, Str), ConnectionError>>,
         url: url::Url,
     }
 
@@ -132,36 +107,6 @@ pub mod async_factory {
             FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(
                 req_fut, rx,
             )))
-        }
-    }
-}
-
-pub mod errors {
-    use futures::task::{Context, Poll};
-    use futures::Future;
-    use tokio::macros::support::Pin;
-
-    pub struct FlattenErrors<F> {
-        inner: F,
-    }
-
-    impl<F: Unpin> Unpin for FlattenErrors<F> {}
-
-    impl<F> FlattenErrors<F> {
-        pub fn new(inner: F) -> Self {
-            FlattenErrors { inner }
-        }
-    }
-
-    impl<F, T, E> Future for FlattenErrors<F>
-    where
-        F: Future<Output = Result<Result<T, E>, E>> + Unpin,
-    {
-        type Output = Result<T, E>;
-
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            let f = &mut self.get_mut().inner;
-            Pin::new(f).poll(cx).map(|r| r.and_then(|r2| r2))
         }
     }
 }

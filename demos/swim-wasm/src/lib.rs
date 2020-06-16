@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use futures::StreamExt;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -40,7 +38,7 @@ impl Chart {
 
             let mut values = Vec::new();
             let mut averages = Vec::new();
-            let window_size = 1000;
+            let window_size = 200;
             let start_epoch = stdweb::web::Date::now();
             let start = chrono::NaiveDateTime::from_timestamp(start_epoch as i64, 0);
 

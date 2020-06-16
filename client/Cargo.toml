@@ -5,8 +5,8 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = ["tokio-tungstenite", "tokio-tls"]
-wasm = []
+default = ["vendored"]
+vendored = ["tokio-tungstenite", "tokio-tls"]
 debug = ["log_verbose"]
 log_verbose = []
 test-server = ["test_server"]
@@ -16,15 +16,14 @@ path = "test_server"
 features = ["enabled"]
 optional = true
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "0.2.21", features = ["sync", "stream", "macros", "time"] }
-web-sys = { version = "0.3.39", features = ["WebSocket", "ErrorEvent"] }
-wasm-bindgen-futures = "0.4.13"
-ws_stream_wasm = "0.6.0"
-wasm-bindgen = "0.2.63"
+[dependencies.tokio-tungstenite]
+version = "0.10.1"
+features = ["tls"]
+optional = true
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
+[dependencies.tokio-tls]
+version = "=0.3.1"
+optional = true
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -46,13 +45,9 @@ tracing-futures = "0.2.3"
 common = { path = "../common" }
 utilities = { path = "../utilities" }
 swim_form = { path = "../swim_form" }
-tokio-tls = { version = "=0.3.1", optional = true }
-tokio-tungstenite = { version = "0.10.1", features = ["tls"], optional = true }
+tokio = { version = "0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
 tokio = { version = "0.2.21", features = ["rt-threaded"] }
-clap = "2.33.1"
 
-[[example]]
-name = "rolling_average"

@@ -1,7 +1,6 @@
-use crate::connections::{
-    ConnectionError, ConnectionErrorKind, ConnectionPool, ConnectionReceiver, ConnectionSender,
-};
+use crate::connections::{ConnectionPool, ConnectionReceiver, ConnectionSender};
 use crate::router::{Router, RouterEvent, SwimRouter};
+use common::connections::error::{ConnectionError, ConnectionErrorKind};
 use common::model::Value;
 use common::request::request_future::RequestError;
 use common::sink::item::ItemSink;

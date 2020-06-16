@@ -36,9 +36,10 @@ use common::warp::path::{AbsolutePath, RelativePath};
 use utilities::rt::task::*;
 
 use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender, SwimConnPool};
+use crate::connections::{ConnectionPool, ConnectionSender, SwimConnPool};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
+use common::connections::error::ConnectionError;
 
 pub mod incoming;
 pub mod outgoing;

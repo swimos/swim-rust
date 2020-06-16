@@ -23,12 +23,10 @@ use common::model::Value;
 use common::warp::path::AbsolutePath;
 use swim_form::ValidatedForm;
 
-use crate::configuration::router::RouterParamBuilder;
-// use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::configuration::downlink::{
     BackpressureMode, ClientParams, Config, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
-use crate::connections::factory::WebsocketFactory;
+use crate::configuration::router::RouterParamBuilder;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedMapDownlink,
@@ -36,6 +34,7 @@ use crate::downlink::subscription::{
 };
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
+use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
 use std::time::Duration;
 

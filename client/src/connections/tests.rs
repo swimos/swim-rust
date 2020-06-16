@@ -19,20 +19,17 @@ use futures::future::ErrInto as FutErrInto;
 use futures::task::{Context, Poll};
 use futures::Sink;
 use futures_util::stream::Stream;
-use tokio::macros::support::Pin;
+use std::pin::Pin;
 use tokio::sync::mpsc;
 use url::Url;
 
 use common::request::request_future::SendAndAwait;
 
+use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;
-use crate::connections::factory::errors::FlattenErrors;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::connections::factory::{async_factory, WebsocketFactory};
 
 use super::*;
-
-type TError = tungstenite::error::Error;
+use utilities::errors::FlattenErrors;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -233,26 +230,6 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
     assert_eq!(first_pool_message, "first_message");
     assert_eq!(second_pool_message, "second_message");
     assert_eq!(third_pool_message, "third_message");
-}
-
-#[tokio::test]
-async fn invalid_protocol() {
-    let buffer_size = 5;
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TungsteniteWsFactory::new(buffer_size).await,
-    );
-
-    let url = url::Url::parse("xyz://swim.ai").unwrap();
-    let rx = connection_pool
-        .request_connection(url, false)
-        .await
-        .unwrap();
-
-    assert!(matches!(
-        rx.err().unwrap().tungstenite_error.unwrap(),
-        TError::Url(_)
-    ));
 }
 
 #[tokio::test]

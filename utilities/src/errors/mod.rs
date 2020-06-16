@@ -12,24 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
-use std::fmt::{Display, Formatter};
+use futures::task::{Context, Poll};
+use futures::Future;
+use std::pin::Pin;
 
-pub mod errors;
-pub mod future;
-pub mod iteratee;
-pub mod lru_cache;
-pub mod rt;
-pub mod trace;
+pub struct FlattenErrors<F> {
+    inner: F,
+}
 
-/// Error thrown by methods that required a usize to be positive.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ZeroUsize;
+impl<F: Unpin> Unpin for FlattenErrors<F> {}
 
-impl Display for ZeroUsize {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Zero Usize")
+impl<F> FlattenErrors<F> {
+    pub fn new(inner: F) -> Self {
+        FlattenErrors { inner }
     }
 }
 
-impl Error for ZeroUsize {}
+impl<F, T, E> Future for FlattenErrors<F>
+where
+    F: Future<Output = Result<Result<T, E>, E>> + Unpin,
+{
+    type Output = Result<T, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let f = &mut self.get_mut().inner;
+        Pin::new(f).poll(cx).map(|r| r.and_then(|r2| r2))
+    }
+}

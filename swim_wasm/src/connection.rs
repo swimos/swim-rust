@@ -13,11 +13,9 @@
 // limitations under the License.
 
 use futures::future::ErrInto as FutErrInto;
-use futures::sink::SinkErrInto;
 use futures::stream::{SplitSink, SplitStream};
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream, StreamExt, TryFutureExt};
-use futures_util::SinkExt;
 use pin_project::*;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
@@ -27,35 +25,48 @@ use ws_stream_wasm::*;
 use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
 use common::request::Request;
 
-use crate::connections::factory::errors::FlattenErrors;
-use crate::connections::factory::WebsocketFactory;
-use crate::connections::{ConnectionError, ConnectionErrorKind};
+use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::WebsocketFactory;
 use std::pin::Pin;
+use utilities::errors::FlattenErrors;
 
 #[pin_project]
 #[derive(Debug)]
 pub struct WasmWsSink {
     #[pin]
-    inner: SinkErrInto<SplitSink<WsStream, WsMessage>, WsMessage, ConnectionError>,
+    // inner: SinkErrInto<SplitSink<WsStream, WsMessage>, WsMessage, ConnectionError>,
+    inner: SplitSink<WsStream, WsMessage>,
 }
 
 impl Sink<String> for WasmWsSink {
     type Error = ConnectionError;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project().inner.poll_ready(cx)
+        self.project()
+            .inner
+            .poll_ready(cx)
+            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
     }
 
     fn start_send(self: Pin<&mut Self>, item: String) -> Result<(), Self::Error> {
-        self.project().inner.start_send(WsMessage::Text(item))
+        self.project()
+            .inner
+            .start_send(WsMessage::Text(item))
+            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project().inner.poll_flush(cx)
+        self.project()
+            .inner
+            .poll_flush(cx)
+            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project().inner.poll_close(cx)
+        self.project()
+            .inner
+            .poll_close(cx)
+            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
     }
 }
 
@@ -80,7 +91,7 @@ impl Stream for WasmWsStream {
 }
 
 pub struct WasmWsFactory {
-    pub(in crate::connections::factory) sender: mpsc::Sender<ConnReq>,
+    pub sender: mpsc::Sender<ConnReq>,
 }
 
 pub struct ConnReq {
@@ -88,11 +99,11 @@ pub struct ConnReq {
     url: url::Url,
 }
 
-impl From<WsErr> for ConnectionError {
-    fn from(_: WsErr) -> Self {
-        ConnectionError::new(ConnectionErrorKind::ConnectError)
-    }
-}
+// impl From<WsErr> for ConnectionError {
+//     fn from(_: WsErr) -> Self {
+//         ConnectionError::new(ConnectionErrorKind::ConnectError)
+//     }
+// }
 
 impl WasmWsFactory {
     pub fn new(buffer_size: usize) -> Self {
@@ -110,12 +121,7 @@ impl WasmWsFactory {
                 .unwrap();
 
             let (sink, stream) = wsio.split();
-            let res = (
-                WasmWsSink {
-                    inner: sink.sink_err_into(),
-                },
-                WasmWsStream { inner: stream },
-            );
+            let res = (WasmWsSink { inner: sink }, WasmWsStream { inner: stream });
 
             let _ = request.send(Ok(res));
         }

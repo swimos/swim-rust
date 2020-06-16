@@ -13,8 +13,6 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-use std::fmt;
-use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -29,17 +27,14 @@ use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(vendored)]
 use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
-#[cfg(not(target_arch = "wasm32"))]
-use tungstenite::error::Error as TError;
 use url::Host;
 
 use common::request::request_future::{RequestError, RequestFuture, Sequenced};
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::connections::factory::WebsocketFactory;
 
 pub mod factory;
 
@@ -464,6 +459,8 @@ impl SwimConnection {
     }
 }
 
+use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::WebsocketFactory;
 use utilities::rt::task::*;
 use utilities::rt::time::instant::Instant;
 use utilities::rt::time::interval::interval;
@@ -509,185 +506,185 @@ impl ConnectionSender {
 
 pub(crate) type ConnectionReceiver = mpsc::Receiver<String>;
 
-/// Connection error types returned by the connection pool and the connections.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ConnectionErrorKind {
-    /// Error that occurred when connecting to a remote host.
-    ConnectError,
-    /// A WebSocket error.  
-    SocketError,
-    /// Error that occurred when sending messages.
-    SendMessageError,
-    /// Error that occurred when receiving messages.
-    ReceiveMessageError,
-    /// Error that occurred when closing down connections.
-    ClosedError,
-}
-
-impl Display for ConnectionErrorKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self {
-            ConnectionErrorKind::ConnectError => {
-                write!(f, "An error was produced during a connection.")
-            }
-            ConnectionErrorKind::SocketError => {
-                write!(f, "An error was produced by the web socket.")
-            }
-            ConnectionErrorKind::SendMessageError => {
-                write!(f, "An error occured when sending a message.")
-            }
-            ConnectionErrorKind::ReceiveMessageError => {
-                write!(f, "An error occured when receiving a message.")
-            }
-            ConnectionErrorKind::ClosedError => {
-                write!(f, "An error occured when closing down connections.")
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ConnectionError {
-    kind: ConnectionErrorKind,
-    #[cfg(not(target_arch = "wasm32"))]
-    tungstenite_error: Option<TError>,
-}
-
-impl PartialEq for ConnectionError {
-    fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
-    }
-}
-
-impl Clone for ConnectionError {
-    fn clone(&self) -> Self {
-        ConnectionError {
-            kind: self.kind,
-            #[cfg(not(target_arch = "wasm32"))]
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl Display for ConnectionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            match &self.tungstenite_error {
-                Some(e) => match self.kind.fmt(f) {
-                    Ok(_) => write!(f, " Tungstenite error: {}", e),
-                    e => e,
-                },
-                None => self.kind.fmt(f),
-            }
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            self.kind.fmt(f)
-        }
-    }
-}
-
-impl ConnectionError {
-    pub fn new(kind: ConnectionErrorKind) -> Self {
-        ConnectionError {
-            kind,
-            #[cfg(not(target_arch = "wasm32"))]
-            tungstenite_error: None,
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn new_tungstenite_error(kind: ConnectionErrorKind, tungstenite_error: TError) -> Self {
-        ConnectionError {
-            kind,
-            tungstenite_error: Some(tungstenite_error),
-        }
-    }
-
-    pub fn kind(&self) -> ConnectionErrorKind {
-        self.kind
-    }
-
-    pub fn into_kind(self) -> ConnectionErrorKind {
-        self.kind
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn tungstenite_error(&mut self) -> Option<TError> {
-        self.tungstenite_error.take()
-    }
-
-    /// Returns whether or not the error kind is deemed to be transient.
-    pub fn is_transient(&self) -> bool {
-        match &self.kind() {
-            ConnectionErrorKind::SocketError => false,
-            _ => true,
-        }
-    }
-}
-
-impl From<ConnectionErrorKind> for ConnectionError {
-    fn from(kind: ConnectionErrorKind) -> Self {
-        ConnectionError {
-            kind,
-            #[cfg(not(target_arch = "wasm32"))]
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl From<RequestError> for ConnectionError {
-    fn from(_: RequestError) -> Self {
-        ConnectionError {
-            kind: ConnectionErrorKind::ConnectError,
-            #[cfg(not(target_arch = "wasm32"))]
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl From<TaskError> for ConnectionError {
-    fn from(_: TaskError) -> Self {
-        ConnectionError {
-            kind: ConnectionErrorKind::ConnectError,
-            #[cfg(not(target_arch = "wasm32"))]
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl From<tokio::task::JoinError> for ConnectionError {
-    fn from(_: tokio::task::JoinError) -> Self {
-        ConnectionError {
-            kind: ConnectionErrorKind::ConnectError,
-            #[cfg(not(target_arch = "wasm32"))]
-            tungstenite_error: None,
-        }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl From<TError> for ConnectionError {
-    fn from(e: TError) -> Self {
-        match e {
-            TError::ConnectionClosed | TError::AlreadyClosed => {
-                ConnectionError::from(ConnectionErrorKind::ClosedError)
-            }
-            e @ TError::Http(_)
-            | e @ TError::HttpFormat(_)
-            | e @ TError::Tls(_)
-            | e @ TError::Protocol(_)
-            | e @ TError::Io(_)
-            | e @ TError::Url(_) => ConnectionError {
-                kind: ConnectionErrorKind::SocketError,
-                tungstenite_error: Some(e),
-            },
-            _ => ConnectionError {
-                kind: ConnectionErrorKind::ConnectError,
-                tungstenite_error: Some(e),
-            },
-        }
-    }
-}
+// /// Connection error types returned by the connection pool and the connections.
+// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+// pub enum ConnectionErrorKind {
+//     /// Error that occurred when connecting to a remote host.
+//     ConnectError,
+//     /// A WebSocket error.
+//     SocketError,
+//     /// Error that occurred when sending messages.
+//     SendMessageError,
+//     /// Error that occurred when receiving messages.
+//     ReceiveMessageError,
+//     /// Error that occurred when closing down connections.
+//     ClosedError,
+// }
+//
+// impl Display for ConnectionErrorKind {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         match &self {
+//             ConnectionErrorKind::ConnectError => {
+//                 write!(f, "An error was produced during a connection.")
+//             }
+//             ConnectionErrorKind::SocketError => {
+//                 write!(f, "An error was produced by the web socket.")
+//             }
+//             ConnectionErrorKind::SendMessageError => {
+//                 write!(f, "An error occured when sending a message.")
+//             }
+//             ConnectionErrorKind::ReceiveMessageError => {
+//                 write!(f, "An error occured when receiving a message.")
+//             }
+//             ConnectionErrorKind::ClosedError => {
+//                 write!(f, "An error occured when closing down connections.")
+//             }
+//         }
+//     }
+// }
+//
+// #[derive(Debug)]
+// pub struct ConnectionError {
+//     kind: ConnectionErrorKind,
+//     #[cfg(not(target_arch = "wasm32"))]
+//     tungstenite_error: Option<TError>,
+// }
+//
+// impl PartialEq for ConnectionError {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.kind == other.kind
+//     }
+// }
+//
+// impl Clone for ConnectionError {
+//     fn clone(&self) -> Self {
+//         ConnectionError {
+//             kind: self.kind,
+//             #[cfg(not(target_arch = "wasm32"))]
+//             tungstenite_error: None,
+//         }
+//     }
+// }
+//
+// impl Display for ConnectionError {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         #[cfg(not(target_arch = "wasm32"))]
+//         {
+//             match &self.tungstenite_error {
+//                 Some(e) => match self.kind.fmt(f) {
+//                     Ok(_) => write!(f, " Tungstenite error: {}", e),
+//                     e => e,
+//                 },
+//                 None => self.kind.fmt(f),
+//             }
+//         }
+//
+//         #[cfg(target_arch = "wasm32")]
+//         {
+//             self.kind.fmt(f)
+//         }
+//     }
+// }
+//
+// impl ConnectionError {
+//     pub fn new(kind: ConnectionErrorKind) -> Self {
+//         ConnectionError {
+//             kind,
+//             #[cfg(not(target_arch = "wasm32"))]
+//             tungstenite_error: None,
+//         }
+//     }
+//
+//     #[cfg(not(target_arch = "wasm32"))]
+//     pub fn new_tungstenite_error(kind: ConnectionErrorKind, tungstenite_error: TError) -> Self {
+//         ConnectionError {
+//             kind,
+//             tungstenite_error: Some(tungstenite_error),
+//         }
+//     }
+//
+//     pub fn kind(&self) -> ConnectionErrorKind {
+//         self.kind
+//     }
+//
+//     pub fn into_kind(self) -> ConnectionErrorKind {
+//         self.kind
+//     }
+//
+//     #[cfg(not(target_arch = "wasm32"))]
+//     pub fn tungstenite_error(&mut self) -> Option<TError> {
+//         self.tungstenite_error.take()
+//     }
+//
+//     /// Returns whether or not the error kind is deemed to be transient.
+//     pub fn is_transient(&self) -> bool {
+//         match &self.kind() {
+//             ConnectionErrorKind::SocketError => false,
+//             _ => true,
+//         }
+//     }
+// }
+//
+// impl From<ConnectionErrorKind> for ConnectionError {
+//     fn from(kind: ConnectionErrorKind) -> Self {
+//         ConnectionError {
+//             kind,
+//             #[cfg(not(target_arch = "wasm32"))]
+//             tungstenite_error: None,
+//         }
+//     }
+// }
+//
+// impl From<RequestError> for ConnectionError {
+//     fn from(_: RequestError) -> Self {
+//         ConnectionError {
+//             kind: ConnectionErrorKind::ConnectError,
+//             #[cfg(not(target_arch = "wasm32"))]
+//             tungstenite_error: None,
+//         }
+//     }
+// }
+//
+// impl From<TaskError> for ConnectionError {
+//     fn from(_: TaskError) -> Self {
+//         ConnectionError {
+//             kind: ConnectionErrorKind::ConnectError,
+//             #[cfg(not(target_arch = "wasm32"))]
+//             tungstenite_error: None,
+//         }
+//     }
+// }
+//
+// impl From<tokio::task::JoinError> for ConnectionError {
+//     fn from(_: tokio::task::JoinError) -> Self {
+//         ConnectionError {
+//             kind: ConnectionErrorKind::ConnectError,
+//             #[cfg(not(target_arch = "wasm32"))]
+//             tungstenite_error: None,
+//         }
+//     }
+// }
+//
+// #[cfg(not(target_arch = "wasm32"))]
+// impl From<TError> for ConnectionError {
+//     fn from(e: TError) -> Self {
+//         match e {
+//             TError::ConnectionClosed | TError::AlreadyClosed => {
+//                 ConnectionError::from(ConnectionErrorKind::ClosedError)
+//             }
+//             e @ TError::Http(_)
+//             | e @ TError::HttpFormat(_)
+//             | e @ TError::Tls(_)
+//             | e @ TError::Protocol(_)
+//             | e @ TError::Io(_)
+//             | e @ TError::Url(_) => ConnectionError {
+//                 kind: ConnectionErrorKind::SocketError,
+//                 tungstenite_error: Some(e),
+//             },
+//             _ => ConnectionError {
+//                 kind: ConnectionErrorKind::ConnectError,
+//                 tungstenite_error: Some(e),
+//             },
+//         }
+//     }
+// }

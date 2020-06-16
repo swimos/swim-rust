@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use futures::future::ErrInto as FutErrInto;
-use futures::stream::{ErrInto as StrErrInto, SplitSink, SplitStream, StreamExt, TryStreamExt};
+use futures::stream::{MapErr, SplitSink, SplitStream, StreamExt, TryStreamExt};
 use tokio::net::TcpStream;
 use tokio_tls::TlsStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
@@ -24,15 +24,14 @@ use url::Url;
 
 use common::request::request_future::SendAndAwait;
 
-use crate::connections::factory::errors::FlattenErrors;
-use crate::connections::factory::WebsocketFactory;
-use crate::connections::{ConnectionError, ConnectionErrorKind};
-
 use super::async_factory;
+use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::WebsocketFactory;
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use pin_project::pin_project;
 use std::pin::Pin;
+use utilities::errors::FlattenErrors;
 
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -79,7 +78,7 @@ impl Sink<String> for TungWsSink {
 #[pin_project]
 pub struct TungWsStream {
     #[pin]
-    inner: StrErrInto<SplitStream<WsConnection>, ConnectionError>,
+    inner: MapErr<SplitStream<WsConnection>, fn(Error) -> ConnectionError>,
 }
 
 impl Stream for TungWsStream {
@@ -106,53 +105,71 @@ async fn open_conn(url: url::Url) -> Result<(TungWsSink, TungWsStream), Connecti
     match connect_async(url).await {
         Ok((ws_str, _)) => {
             let (tx, rx) = ws_str.split();
-            Ok((
-                TungWsSink { inner: tx },
-                TungWsStream {
-                    inner: rx.err_into::<ConnectionError>(),
-                },
-            ))
+            let map_fn: fn(Error) -> ConnectionError = tung_err_to_conn_err;
+            let mapped = rx.map_err(map_fn);
+
+            Ok((TungWsSink { inner: tx }, TungWsStream { inner: mapped }))
         }
         Err(e) => {
             match &e {
                 Error::Url(m) => {
                     // Malformatted URL, permanent error
                     tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
-                    Err(e.into())
+                    Err(tung_err_to_conn_err(e))
                 }
                 Error::Io(io_err) => {
-                    // This should be considered a fatal error. How should it be handled?
+                    // todo: This should be considered a fatal error. How should it be handled?
                     tracing::error!(cause = %io_err, "IO error when attempting to connect to host");
-                    Err(e.into())
+                    Err(tung_err_to_conn_err(e))
                 }
                 Error::Tls(tls_err) => {
                     // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
                     tracing::error!(cause = %tls_err, "IO error when attempting to connect to host");
-                    Err(e.into())
+                    Err(tung_err_to_conn_err(e))
                 }
                 Error::Protocol(m) => {
                     tracing::error!(cause = %m, "A protocol error occured when connecting to host");
-                    Err(e.into())
+                    Err(tung_err_to_conn_err(e))
                 }
                 Error::Http(code) => {
-                    // This should be expanded and determined if it is possibly a transient error
+                    // todo: This should be expanded and determined if it is possibly a transient error
                     // but for now it will suffice
                     tracing::error!(status_code = %code, "HTTP error when connecting to host");
-                    Err(e.into())
+                    Err(tung_err_to_conn_err(e))
                 }
                 Error::HttpFormat(http_err) => {
                     // This should be expanded and determined if it is possibly a transient error
                     // but for now it will suffice
                     tracing::error!(cause = %http_err, "HTTP error when connecting to host");
-                    Err(e.into())
+                    Err(tung_err_to_conn_err(e))
                 }
                 e => {
                     // Transient or unreachable errors
                     tracing::error!(cause = %e, "Failed to connect to URL");
-                    Err(ConnectionError::new(ConnectionErrorKind::ConnectError))
+                    // Err(e.into())
+                    unimplemented!()
                 }
             }
         }
+    }
+}
+
+type TError = tungstenite::error::Error;
+
+fn tung_err_to_conn_err(e: TError) -> ConnectionError {
+    match e {
+        TError::ConnectionClosed | TError::AlreadyClosed => {
+            ConnectionError::from(ConnectionErrorKind::ClosedError)
+        }
+        e @ TError::Http(_)
+        | e @ TError::HttpFormat(_)
+        | e @ TError::Tls(_)
+        | e @ TError::Protocol(_)
+        | e @ TError::Io(_)
+        | e @ TError::Url(_) => {
+            ConnectionError::with_cause(ConnectionErrorKind::SocketError, Box::new(e))
+        }
+        _ => ConnectionError::with_cause(ConnectionErrorKind::ConnectError, Box::new(e)),
     }
 }
 
@@ -174,5 +191,35 @@ impl WebsocketFactory for TungsteniteWsFactory {
 
     fn connect(&mut self, url: Url) -> Self::ConnectFut {
         self.inner.connect(url)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio_tungstenite::tungstenite;
+
+    type TError = tungstenite::error::Error;
+
+    use crate::configuration::router::ConnectionPoolParams;
+    use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+    use crate::connections::{ConnectionPool, SwimConnPool};
+
+    #[tokio::test]
+    async fn invalid_protocol() {
+        let buffer_size = 5;
+        let mut connection_pool = SwimConnPool::new(
+            ConnectionPoolParams::default(),
+            TungsteniteWsFactory::new(buffer_size).await,
+        );
+
+        let url = url::Url::parse("xyz://swim.ai").unwrap();
+        let rx = connection_pool
+            .request_connection(url, false)
+            .await
+            .unwrap();
+
+        let result = rx.err().unwrap().cause().unwrap().downcast::<TError>();
+
+        assert!(matches!(*result.unwrap(), TError::Url(_)));
     }
 }

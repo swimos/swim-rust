@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod configuration;
+pub mod connections;
 pub mod model;
 pub mod request;
 pub mod sink;

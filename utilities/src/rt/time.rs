@@ -82,10 +82,11 @@ pub mod interval {
     use futures::task::{Context, Poll};
     use futures::Stream;
     use pin_project::*;
+    use std::pin::Pin;
     use std::time::Duration;
-    use tokio::macros::support::Pin;
 
     #[pin_project]
+    #[derive(Debug)]
     pub enum Interval {
         #[cfg(not(target_arch = "wasm32"))]
         Tokio(#[pin] tokio::time::Interval),

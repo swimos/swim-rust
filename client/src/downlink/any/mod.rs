@@ -15,7 +15,7 @@
 use futures::future::{ErrInto, Ready};
 use futures::task::{Context, Poll};
 use futures::{Future, Stream};
-use tokio::macros::support::Pin;
+use std::pin::Pin;
 
 use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use pin_project::{pin_project, project};

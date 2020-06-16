@@ -15,9 +15,9 @@
 use common::model::Value;
 use deserialize::FormDeserializeErr;
 
-use crate::_common::model::schema::StandardSchema;
-use crate::_common::model::ValueKind;
 use crate::{Form, ValidatedForm};
+use common::model::schema::StandardSchema;
+use common::model::ValueKind;
 
 impl Form for f64 {
     fn as_value(&self) -> Value {
