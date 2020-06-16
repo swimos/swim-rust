@@ -69,7 +69,7 @@ where
 {
     type RecFuture = Ready<()>;
 
-    fn notify(&'a self, value: Arc<T>) -> Self::RecFuture {
+    fn notify(&'a mut self, value: Arc<T>) -> Self::RecFuture {
         let TestObserver(inner) = self;
         let mut lock = inner.lock().unwrap();
         *lock = Some(value);
