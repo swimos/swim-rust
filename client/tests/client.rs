@@ -57,7 +57,7 @@ async fn get_all() {
 
     let jh2 = tokio::spawn(async move {
         while let Some(r) = rcv.next().await {
-            println!("RandomLane received: {:?}", r.action());
+            println!("RandomLane received: {:?}", r.get_inner());
         }
     });
 

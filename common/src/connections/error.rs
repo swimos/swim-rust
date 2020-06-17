@@ -66,7 +66,7 @@ pub struct ConnectionError {
 impl Clone for ConnectionError {
     fn clone(&self) -> Self {
         ConnectionError {
-            kind: self.kind.clone(),
+            kind: self.kind,
             // todo. Tungstenite errors don't implement clone
             cause: None,
         }

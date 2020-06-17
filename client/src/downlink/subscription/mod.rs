@@ -39,7 +39,6 @@ use common::topic::Topic;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use either::Either;
-use form::ValidatedForm;
 use futures::stream::Fuse;
 use futures::Stream;
 use futures_util::future::TryFutureExt;
@@ -50,10 +49,11 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
+use swim_form::ValidatedForm;
+use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::{JoinError, JoinHandle};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
@@ -83,9 +83,10 @@ type AnyWeakValueDownlink = AnyWeakDownlink<Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 pub type AnyWeakEventDownlink = AnyWeakDownlink<Value, Value>;
 
+#[derive(Clone)]
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
-    task: JoinHandle<RequestResult<()>>,
+    task: Arc<Mutex<TaskHandle<RequestResult<()>>>>,
 }
 
 enum DownlinkRequest {
@@ -111,11 +112,11 @@ impl Downlinks {
         let client_params = config.client_params();
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
-        let task_handle = tokio::task::spawn(task.run(rx));
+        let task_handle = spawn(task.run(rx));
 
         Downlinks {
             sender: tx,
-            task: task_handle,
+            task: Arc::new(Mutex::new(task_handle)),
         }
     }
 
@@ -132,10 +133,12 @@ impl Downlinks {
         Ok(())
     }
 
-    pub async fn close(self) -> Result<RequestResult<()>, JoinError> {
+    pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
         let Downlinks { sender, task } = self;
         drop(sender);
-        task.await
+
+        let inner = &mut *task.lock().await;
+        inner.await
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active

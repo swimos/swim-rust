@@ -28,7 +28,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
 use utilities::lru_cache::LruCache;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If

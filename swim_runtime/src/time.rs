@@ -85,7 +85,7 @@ pub mod interval {
     use std::pin::Pin;
     use std::time::Duration;
 
-    #[pin_project]
+    #[pin_project(project = IntervalProject)]
     #[derive(Debug)]
     pub enum Interval {
         #[cfg(not(target_arch = "wasm32"))]
@@ -97,17 +97,15 @@ pub mod interval {
     impl Stream for Interval {
         type Item = ();
 
-        #[project]
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-            #[project]
             match self.project() {
                 #[cfg(not(target_arch = "wasm32"))]
-                Interval::Tokio(interval) => match interval.poll_next(cx) {
+                IntervalProject::Tokio(interval) => match interval.poll_next(cx) {
                     Poll::Pending => Poll::Pending,
                     Poll::Ready(_) => Poll::Ready(Some(())),
                 },
                 #[cfg(target_arch = "wasm32")]
-                Interval::Wasm(interval) => interval.poll_next(cx),
+                IntervalProject::Wasm(interval) => interval.poll_next(cx),
             }
         }
     }

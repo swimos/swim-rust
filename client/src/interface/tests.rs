@@ -21,12 +21,13 @@ use crate::configuration::downlink::{
 };
 
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::downlink::model::map::{MapModification, UntypedMapModification};
 use crate::interface::SwimClient;
 use common::model::{Attr, Item, Value};
 use common::sink::item::ItemSink;
 use common::topic::Topic;
 use common::warp::path::AbsolutePath;
-use form::Form;
+use swim_form::Form;
 use utilities::trace::init_trace;
 
 fn config() -> ConfigHierarchy {
@@ -101,7 +102,7 @@ async fn client_test() {
 async fn test_send_untyped_value_command() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -120,7 +121,7 @@ async fn test_send_untyped_value_command() {
 async fn test_send_typed_value_command_valid() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -139,7 +140,7 @@ async fn test_send_typed_value_command_valid() {
 async fn test_send_untyped_map_command() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -162,7 +163,7 @@ async fn test_send_untyped_map_command() {
 async fn test_send_typed_map_command() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -187,7 +188,7 @@ async fn test_send_typed_map_command() {
 async fn test_recv_untyped_value_event() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -220,7 +221,7 @@ async fn test_recv_untyped_value_event() {
 async fn test_recv_typed_value_event_valid() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -257,7 +258,7 @@ async fn test_recv_typed_value_event_valid() {
 async fn test_recv_typed_value_event_invalid() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -294,7 +295,7 @@ async fn test_recv_typed_value_event_invalid() {
 async fn test_recv_untyped_map_event() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -334,7 +335,7 @@ async fn test_recv_untyped_map_event() {
 async fn test_recv_typed_map_event_valid() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -375,7 +376,7 @@ async fn test_recv_typed_map_event_valid() {
 async fn test_recv_typed_map_event_invalid_key() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
@@ -416,7 +417,7 @@ async fn test_recv_typed_map_event_invalid_key() {
 async fn test_recv_typed_map_event_invalid_value() {
     init_trace(vec!["client::router=trace"]);
 
-    let mut client = SwimClient::new(config()).await;
+    let mut client = SwimClient::new(config(), TungsteniteWsFactory::new(5).await).await;
     let event_path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
