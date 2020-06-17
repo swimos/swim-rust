@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use futures::future::ErrInto as FutErrInto;
-use futures::stream::{MapErr, SplitSink, SplitStream, StreamExt, TryStreamExt};
+use futures::stream::{SplitSink, SplitStream, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tls::TlsStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
@@ -27,89 +27,75 @@ use common::request::request_future::SendAndAwait;
 use super::async_factory;
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
 use common::connections::WebsocketFactory;
-use futures::task::{Context, Poll};
-use futures::{Sink, Stream};
-use pin_project::pin_project;
-use std::pin::Pin;
 use utilities::errors::FlattenErrors;
+use utilities::future::{TransformMut, TransformedSink, TransformedStream};
+
+type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
+type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
+type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungSink, TungStream), ConnectionError>>;
 
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>>;
-pub type ConnReq = async_factory::ConnReq<TungWsSink, TungWsStream>;
+pub type ConnReq = async_factory::ConnReq<TungSink, TungStream>;
 
-#[pin_project]
-pub struct TungWsSink {
-    #[pin]
-    inner: SplitSink<WsConnection, Message>,
-}
-
-// todo: extract duplicated code from this sink and the tungstenite sink and wrap with err_into
-impl Sink<String> for TungWsSink {
-    type Error = ConnectionError;
-
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project()
-            .inner
-            .poll_ready(cx)
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: String) -> Result<(), Self::Error> {
-        self.project()
-            .inner
-            .start_send(Message::Text(item))
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project()
-            .inner
-            .poll_flush(cx)
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
-    }
-
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project()
-            .inner
-            .poll_close(cx)
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
+impl TungsteniteWsFactory {
+    /// Create a tungstenite-tokio connection factory where the internal task uses the provided
+    /// buffer size.
+    pub async fn new(buffer_size: usize) -> TungsteniteWsFactory {
+        let inner = async_factory::AsyncFactory::new(buffer_size, open_conn).await;
+        TungsteniteWsFactory { inner }
     }
 }
 
-#[pin_project]
-pub struct TungWsStream {
-    #[pin]
-    inner: MapErr<SplitStream<WsConnection>, fn(Error) -> ConnectionError>,
+impl WebsocketFactory for TungsteniteWsFactory {
+    type WsStream = TungStream;
+    type WsSink = TungSink;
+    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
+
+    fn connect(&mut self, url: Url) -> Self::ConnectFut {
+        self.inner.connect(url)
+    }
 }
 
-impl Stream for TungWsStream {
-    type Item = Result<String, ConnectionError>;
+pub struct SinkTransformer;
+impl TransformMut<String> for SinkTransformer {
+    type Out = Message;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.project().inner.poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(Ok(m))) => Poll::Ready(Some(Ok(m.to_string()))),
-            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+    fn transform(&mut self, input: String) -> Self::Out {
+        Message::Text(input)
+    }
+}
+
+pub struct StreamTransformer;
+impl TransformMut<Result<Message, TError>> for StreamTransformer {
+    type Out = Result<String, ConnectionError>;
+
+    fn transform(&mut self, input: Result<Message, TError>) -> Self::Out {
+        match input {
+            Ok(i) => Ok(i.to_string()),
+            Err(e) => Err(ConnectionError::with_cause(
+                ConnectionErrorKind::ConnectError,
+                Box::new(e),
+            )),
         }
     }
 }
 
 /// Specialized [`AsyncFactory`] that creates tungstenite-tokio connections.
 pub struct TungsteniteWsFactory {
-    inner: async_factory::AsyncFactory<TungWsSink, TungWsStream>,
+    inner: async_factory::AsyncFactory<TungSink, TungStream>,
 }
 
-async fn open_conn(url: url::Url) -> Result<(TungWsSink, TungWsStream), ConnectionError> {
+async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionError> {
     tracing::info!("Connecting to URL {:?}", &url);
 
     match connect_async(url).await {
         Ok((ws_str, _)) => {
             let (tx, rx) = ws_str.split();
-            let map_fn: fn(Error) -> ConnectionError = tung_err_to_conn_err;
-            let mapped = rx.map_err(map_fn);
+            let transformed_sink = TransformedSink::new(tx, SinkTransformer);
+            let transformed_stream = TransformedStream::new(rx, StreamTransformer);
 
-            Ok((TungWsSink { inner: tx }, TungWsStream { inner: mapped }))
+            Ok((transformed_sink, transformed_stream))
         }
         Err(e) => {
             match &e {
@@ -171,27 +157,6 @@ fn tung_err_to_conn_err(e: TError) -> ConnectionError {
             ConnectionError::with_cause(ConnectionErrorKind::SocketError, Box::new(e))
         }
         _ => ConnectionError::with_cause(ConnectionErrorKind::ConnectError, Box::new(e)),
-    }
-}
-
-impl TungsteniteWsFactory {
-    /// Create a tungstenite-tokio connection factory where the internal task uses the provided
-    /// buffer size.
-    pub async fn new(buffer_size: usize) -> TungsteniteWsFactory {
-        let inner = async_factory::AsyncFactory::new(buffer_size, open_conn).await;
-        TungsteniteWsFactory { inner }
-    }
-}
-
-type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungWsSink, TungWsStream), ConnectionError>>;
-
-impl WebsocketFactory for TungsteniteWsFactory {
-    type WsStream = TungWsStream;
-    type WsSink = TungWsSink;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
-
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        self.inner.connect(url)
     }
 }
 
