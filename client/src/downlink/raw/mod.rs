@@ -50,6 +50,10 @@ impl<S> Sender<S> {
         Sender { set_sink, task }
     }
 
+    pub fn same_sender(&self, other: &Self) -> bool {
+        trait_eq!(&*self.task, &*other.task, DownlinkInternals)
+    }
+
     pub fn is_running(&self) -> bool {
         !self.task.task_handle().is_complete()
     }
