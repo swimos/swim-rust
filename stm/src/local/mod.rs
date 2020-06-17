@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::{Debug, Formatter};
+use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::marker::PhantomData;
-use std::hash::{Hash, Hasher};
-use std::fmt::{Debug, Formatter};
 
 static COUNT: AtomicU64 = AtomicU64::new(0);
 
@@ -31,7 +31,6 @@ pub struct TLocal<T> {
 }
 
 impl<T> TLocal<T> {
-
     /// The default value will be the value held by the variable at the start of every transaction
     /// that refers to it.
     pub fn new(default: T) -> Self {
@@ -55,7 +54,6 @@ impl<T> TLocal<T> {
     pub fn put(&self, value: T) -> TLocalWrite<T> {
         TLocalWrite(self.clone(), Arc::new(value))
     }
-
 }
 
 impl<T> Clone for TLocal<T> {

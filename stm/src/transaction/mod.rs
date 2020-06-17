@@ -48,14 +48,12 @@ struct Frame {
 }
 
 impl Frame {
-
     fn new() -> Self {
         Frame {
             vars: FrameMask::new(),
             locals: FrameMask::new(),
         }
     }
-
 }
 
 /// A stack of masks indicating which variables were read from/written two in each frame.
@@ -104,7 +102,7 @@ impl MaskStack {
     // If the stack is non-empty, record that a variable was read in this frame.
     fn set_read(&mut self, i: usize) {
         let MaskStack(stack) = self;
-        if let Some(Frame { vars: mask, ..}) = stack.last_mut() {
+        if let Some(Frame { vars: mask, .. }) = stack.last_mut() {
             mask.read(i);
         }
     }
@@ -112,7 +110,7 @@ impl MaskStack {
     // If the stack is non-empty, record that a variable was written in this frame.
     fn set_written(&mut self, i: usize) {
         let MaskStack(stack) = self;
-        if let Some(Frame { vars: mask, ..}) = stack.last_mut() {
+        if let Some(Frame { vars: mask, .. }) = stack.last_mut() {
             mask.write(i);
         }
     }
@@ -120,7 +118,7 @@ impl MaskStack {
     // If the stack is non-empty, record that a variable was written in this frame.
     fn set_local_written(&mut self, i: usize) {
         let MaskStack(stack) = self;
-        if let Some(Frame { locals: mask, ..}) = stack.last_mut() {
+        if let Some(Frame { locals: mask, .. }) = stack.last_mut() {
             mask.write(i);
         }
     }
@@ -176,13 +174,12 @@ struct LocalEntry {
 }
 
 impl LocalEntry {
-
     fn pop(&mut self) {
         self.stack.pop();
     }
 
     fn set<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
-        if let Some(top) =  self.stack.last_mut() {
+        if let Some(top) = self.stack.last_mut() {
             assert_eq!(value.as_ref().type_id(), top.as_ref().type_id());
             *top = value;
         } else {
@@ -199,18 +196,17 @@ impl LocalEntry {
     }
 
     fn get<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
-        self.stack.last().map(|current| {
-            match current.clone().downcast() {
+        self.stack
+            .last()
+            .map(|current| match current.clone().downcast() {
                 Err(_) => panic!(
                     "Inconsistent transaction local variable. Expected {:?} but was {:?}.",
                     TypeId::of::<T>(),
                     current.type_id()
                 ),
                 Ok(t) => t,
-            }
-        })
+            })
     }
-
 }
 
 // Panic message for when an inconsistent transaction log is detected.
@@ -444,9 +440,7 @@ impl Transaction {
             locals_log,
             ..
         } = self;
-        get_local_entry(local_assoc, locals_log, index).and_then(|entry| {
-            entry.get()
-        })
+        get_local_entry(local_assoc, locals_log, index).and_then(|entry| entry.get())
     }
 
     pub(crate) fn set_local<T: Any + Send + Sync>(&mut self, index: u64, value: Arc<T>) {
@@ -467,9 +461,7 @@ impl Transaction {
         } else {
             let mut stack: Vec<Contents> = Vec::with_capacity(*stack_size);
             stack.push(value);
-            let entry = LocalEntry {
-                stack,
-            };
+            let entry = LocalEntry { stack };
             let i = locals_log.insert(entry);
             masks.set_local_written(i);
             local_assoc.insert(index, i);
@@ -564,10 +556,15 @@ impl Transaction {
 
     /// Pop the top frame of the execution stack.
     pub(crate) fn pop_frame(&mut self) {
-        let Transaction { log, locals_log, masks, .. } = self;
+        let Transaction {
+            log,
+            locals_log,
+            masks,
+            ..
+        } = self;
 
         match masks.pop() {
-            Some(Frame { vars , locals}) => {
+            Some(Frame { vars, locals }) => {
                 for (index, rw) in vars.iter() {
                     let remove_entry = if let Some(entry) = log.get_mut(index) {
                         entry.pop(rw)

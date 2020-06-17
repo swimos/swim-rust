@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::local::{TLocal, TLocalRead, TLocalWrite};
 use crate::stm::{ExecResult, Stm, StmEither, StmEitherProj};
 use crate::transaction::Transaction;
 use crate::var::TVarInner;
@@ -25,7 +26,6 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use crate::local::{TLocalRead, TLocal, TLocalWrite};
 
 /// A future that is executed within the context of a [`Transaction`].
 pub trait TransactionFuture {
@@ -454,43 +454,49 @@ where
     }
 }
 
+/// A transaction future reading the value of a transaction-local variable.
 pub struct LocalReadFuture<T>(TLocalRead<T>);
 
 impl<T> LocalReadFuture<T> {
-
     pub fn new(read: TLocalRead<T>) -> Self {
         LocalReadFuture(read)
     }
-
 }
 
 impl<T: Any + Send + Sync> TransactionFuture for LocalReadFuture<T> {
     type Output = Arc<T>;
 
-    fn poll_in(self: Pin<&mut Self>,
-               transaction: Pin<&mut Transaction>,
-               _cx: &mut Context<'_>) -> Poll<ExecResult<Self::Output>> {
+    fn poll_in(
+        self: Pin<&mut Self>,
+        transaction: Pin<&mut Transaction>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<ExecResult<Self::Output>> {
         let TLocal { index, default, .. } = &(self.0).0;
-        Poll::Ready(ExecResult::Done(transaction.get_local(*index).unwrap_or_else(|| default.clone())))
+        Poll::Ready(ExecResult::Done(
+            transaction
+                .get_local(*index)
+                .unwrap_or_else(|| default.clone()),
+        ))
     }
 }
 
+/// A transaction future writing a value to a transaction-local variable.
 pub struct LocalWriteFuture<T>(TLocalWrite<T>);
 
 impl<T> LocalWriteFuture<T> {
-
     pub fn new(write: TLocalWrite<T>) -> Self {
         LocalWriteFuture(write)
     }
-
 }
 
 impl<T: Any + Send + Sync> TransactionFuture for LocalWriteFuture<T> {
     type Output = ();
 
-    fn poll_in(self: Pin<&mut Self>,
-               mut transaction: Pin<&mut Transaction>,
-               _cx: &mut Context<'_>) -> Poll<ExecResult<Self::Output>> {
+    fn poll_in(
+        self: Pin<&mut Self>,
+        mut transaction: Pin<&mut Transaction>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<ExecResult<Self::Output>> {
         let TLocalWrite(TLocal { index, .. }, value) = &self.0;
         transaction.set_local(*index, value.clone());
         Poll::Ready(ExecResult::Done(()))

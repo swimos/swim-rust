@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stm::stm_futures::{AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture, MapStmFuture, SequenceTransFuture, TransactionFuture, WriteFuture, LocalReadFuture, LocalWriteFuture};
+use crate::local::{TLocalRead, TLocalWrite};
+use crate::stm::stm_futures::{
+    AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture,
+    LocalReadFuture, LocalWriteFuture, MapStmFuture, SequenceTransFuture, TransactionFuture,
+    WriteFuture,
+};
 use crate::transaction::ReadFuture;
 use crate::var::{TVarRead, TVarWrite};
 use futures::future::{ready, Ready};
@@ -23,7 +28,6 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
-use crate::local::{TLocalRead, TLocalWrite};
 
 pub mod stm_futures;
 
@@ -662,12 +666,12 @@ impl<T: Any + Send + Sync> Stm for TLocalWrite<T> {}
 
 mod private {
     use super::Retry;
+    use crate::local::{TLocalRead, TLocalWrite};
     use crate::stm::{
         Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither,
     };
     use crate::var::{TVarRead, TVarWrite};
     use std::ops::Deref;
-    use crate::local::{TLocalRead, TLocalWrite};
 
     pub trait Sealed {}
 

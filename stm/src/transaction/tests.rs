@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::atomically;
+use crate::local::TLocal;
 use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither};
 use crate::transaction::{RetryManager, TransactionError};
 use crate::var::tests::TestObserver;
@@ -30,7 +31,6 @@ use std::task::Context;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
-use crate::local::TLocal;
 
 struct ExactlyOnce;
 
@@ -736,39 +736,33 @@ async fn wait_on_var_choice_second() {
 
 #[tokio::test(threaded_scheduler)]
 async fn read_default_from_local() {
-
     let local = TLocal::new(3);
     let stm = local.get();
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(3)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn write_to_local() {
-
     let local = TLocal::new(0);
     let stm = local.put(2).followed_by(local.get());
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(2)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn modify_local() {
-
     let local = TLocal::new(0);
-    let stm = local.get()
+    let stm = local
+        .get()
         .and_then(|i| local.put(*i + 1))
         .followed_by(local.get());
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn changes_to_locals_not_persisted() {
-
     let local = TLocal::new(0);
     let put_stm = local.put(7);
     let result = atomically(&put_stm, ExactlyOnce).await;
@@ -777,16 +771,12 @@ async fn changes_to_locals_not_persisted() {
     let get_stm = local.get();
     let after = atomically(&get_stm, ExactlyOnce).await;
     assert!(matches!(after, Ok(v) if v == Arc::new(0)));
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn locals_rolled_back_on_retry() {
     let local = TLocal::new(0);
-    let branching = Choice::new(
-        local.put(2).followed_by(stm::retry()),
-        local.get()
-    );
+    let branching = Choice::new(local.put(2).followed_by(stm::retry()), local.get());
     let stm = local.put(1).followed_by(branching);
 
     let result = atomically(&stm, ExactlyOnce).await;
@@ -797,8 +787,10 @@ async fn locals_rolled_back_on_retry() {
 async fn locals_rolled_back_on_abort() {
     let local = TLocal::new(0);
     let recovering = Catch::new(
-        local.put(2).followed_by(stm::abort(TestError::new("Boom".to_string()))),
-        |_: TestError| local.get()
+        local
+            .put(2)
+            .followed_by(stm::abort(TestError::new("Boom".to_string()))),
+        |_: TestError| local.get(),
     );
     let stm = local.put(1).followed_by(recovering);
 
