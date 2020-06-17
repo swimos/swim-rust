@@ -14,9 +14,7 @@
 
 use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
-use futures::task::{Context, Poll};
-use futures::{Sink, Stream, StreamExt, TryFutureExt};
-use pin_project::*;
+use futures::{StreamExt, TryFutureExt};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
@@ -27,65 +25,29 @@ use common::request::Request;
 
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
 use common::connections::WebsocketFactory;
-use std::pin::Pin;
 use utilities::errors::FlattenErrors;
+use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-#[pin_project]
-#[derive(Debug)]
-pub struct WasmWsSink {
-    #[pin]
-    // inner: SinkErrInto<SplitSink<WsStream, WsMessage>, WsMessage, ConnectionError>,
-    inner: SplitSink<WsStream, WsMessage>,
-}
+type WasmWsSink = TransformedSink<SplitSink<WsStream, WsMessage>, SinkTransformer>;
+type WasmWsStream = TransformedStream<SplitStream<WsStream>, StreamTransformer>;
 
-impl Sink<String> for WasmWsSink {
-    type Error = ConnectionError;
+pub struct SinkTransformer;
+impl TransformMut<String> for SinkTransformer {
+    type Out = WsMessage;
 
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project()
-            .inner
-            .poll_ready(cx)
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: String) -> Result<(), Self::Error> {
-        self.project()
-            .inner
-            .start_send(WsMessage::Text(item))
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project()
-            .inner
-            .poll_flush(cx)
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
-    }
-
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project()
-            .inner
-            .poll_close(cx)
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
+    fn transform(&mut self, input: String) -> Self::Out {
+        WsMessage::Text(input)
     }
 }
 
-#[pin_project]
-#[derive(Debug)]
-pub struct WasmWsStream {
-    #[pin]
-    inner: SplitStream<WsStream>,
-}
+pub struct StreamTransformer;
+impl TransformMut<WsMessage> for StreamTransformer {
+    type Out = Result<String, ConnectionError>;
 
-impl Stream for WasmWsStream {
-    type Item = Result<String, ConnectionError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.project().inner.poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Some(WsMessage::Text(s))) => Poll::Ready(Some(Ok(s))),
-            Poll::Ready(Some(WsMessage::Binary(_))) => unimplemented!(),
-            Poll::Ready(None) => Poll::Ready(None),
+    fn transform(&mut self, input: WsMessage) -> Self::Out {
+        match input {
+            WsMessage::Text(s) => Ok(s.to_string()),
+            WsMessage::Binary(_) => panic!("Unsupported message type"),
         }
     }
 }
@@ -115,7 +77,10 @@ impl WasmWsFactory {
                 .unwrap();
 
             let (sink, stream) = wsio.split();
-            let res = (WasmWsSink { inner: sink }, WasmWsStream { inner: stream });
+            let transformed_sink = TransformedSink::new(sink, SinkTransformer);
+            let transformed_stream = TransformedStream::new(stream, StreamTransformer);
+
+            let res = (transformed_sink, transformed_stream);
 
             let _ = request.send(Ok(res));
         }
