@@ -151,7 +151,7 @@ pub mod instant {
             }
         }
 
-        pub fn elapsed(&self) -> Duration {
+        pub fn elapsed(self) -> Duration {
             match &self {
                 #[cfg(not(target_arch = "wasm32"))]
                 Instant::Tokio(instant) => instant.elapsed(),
