@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stm::stm_futures::{
-    AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture, MapStmFuture,
-    SequenceTransFuture, TransactionFuture, WriteFuture,
-};
+use crate::stm::stm_futures::{AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture, MapStmFuture, SequenceTransFuture, TransactionFuture, WriteFuture, LocalReadFuture, LocalWriteFuture};
 use crate::transaction::ReadFuture;
 use crate::var::{TVarRead, TVarWrite};
 use futures::future::{ready, Ready};
@@ -26,6 +23,7 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
+use crate::local::{TLocalRead, TLocalWrite};
 
 pub mod stm_futures;
 
@@ -640,6 +638,28 @@ where
     }
 }
 
+impl<T: Any + Send + Sync> DynamicStm for TLocalRead<T> {
+    type Result = Arc<T>;
+    type TransFuture = LocalReadFuture<T>;
+
+    fn runner(&self) -> Self::TransFuture {
+        LocalReadFuture::new(self.clone())
+    }
+}
+
+impl<T: Any + Send + Sync> Stm for TLocalRead<T> {}
+
+impl<T: Any + Send + Sync> DynamicStm for TLocalWrite<T> {
+    type Result = ();
+    type TransFuture = LocalWriteFuture<T>;
+
+    fn runner(&self) -> Self::TransFuture {
+        LocalWriteFuture::new(self.clone())
+    }
+}
+
+impl<T: Any + Send + Sync> Stm for TLocalWrite<T> {}
+
 mod private {
     use super::Retry;
     use crate::stm::{
@@ -647,6 +667,7 @@ mod private {
     };
     use crate::var::{TVarRead, TVarWrite};
     use std::ops::Deref;
+    use crate::local::{TLocalRead, TLocalWrite};
 
     pub trait Sealed {}
 
@@ -661,6 +682,8 @@ mod private {
     impl<E, T> Sealed for Abort<E, T> {}
     impl<E, S1, S2, F: Fn(E) -> S2> Sealed for Catch<E, S1, S2, F> {}
     impl<S1, S2> Sealed for StmEither<S1, S2> {}
+    impl<T> Sealed for TLocalRead<T> {}
+    impl<T> Sealed for TLocalWrite<T> {}
     impl<S: ?Sized> Sealed for BoxedStm<S> {}
     impl<SRef> Sealed for SRef
     where

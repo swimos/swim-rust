@@ -25,8 +25,8 @@ static COUNT: AtomicU64 = AtomicU64::new(0);
 /// Values set within a branch of a transaction that fails (by retry or abort) will be reset to
 /// their state before that branch started.
 pub struct TLocal<T> {
-    index: u64,
-    default: Arc<T>,
+    pub(crate) index: u64,
+    pub(crate) default: Arc<T>,
     _data_type: PhantomData<T>,
 }
 
@@ -89,9 +89,23 @@ impl<T: Debug> Debug for TLocal<T> {
 }
 
 /// [`Stm`] instance reading from a [`TLocal`].
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TLocalRead<T>(pub(crate) TLocal<T>);
 
+impl<T> Clone for TLocalRead<T> {
+    fn clone(&self) -> Self {
+        let TLocalRead(inner) = self;
+        TLocalRead(inner.clone())
+    }
+}
+
 /// [`Stm`] instance writing to a [`TLocal`].
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TLocalWrite<T>(pub(crate) TLocal<T>, pub(crate) Arc<T>);
+
+impl<T> Clone for TLocalWrite<T> {
+    fn clone(&self) -> Self {
+        let TLocalWrite(inner, value) = self;
+        TLocalWrite(inner.clone(), value.clone())
+    }
+}
