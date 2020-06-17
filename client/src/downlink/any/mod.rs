@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::{ErrInto, Ready};
-use futures::task::{Context, Poll};
-use futures::{Future, Stream};
-use std::pin::Pin;
-
-use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
-use pin_project::{pin_project, project};
-
 use crate::downlink::buffered::{
     BufferedDownlink, BufferedReceiver, BufferedTopicReceiver, WeakBufferedDownlink,
 };
@@ -33,7 +25,14 @@ use crate::downlink::{Downlink, DownlinkError, Event};
 use common::request::request_future::{RequestFuture, Sequenced};
 use common::request::Request;
 use common::sink::item::{ItemSink, MpscSend};
+use common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
+use futures::future::{ErrInto, Ready};
+use futures::task::{Context, Poll};
+use futures::{Future, Stream};
+use futures_util::StreamExt;
+use pin_project::pin_project;
 use std::fmt::{Display, Formatter};
+use tokio::macros::support::Pin;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::TransformedFuture;
 
@@ -140,7 +139,20 @@ impl<Act, Upd> Clone for AnyDownlink<Act, Upd> {
     }
 }
 
-#[pin_project]
+#[derive(Debug)]
+pub struct AnyEventReceiver<Upd: Clone + Send>(AnyReceiver<Upd>);
+
+impl<Upd: Clone + Send> AnyEventReceiver<Upd> {
+    pub fn new(recv: AnyReceiver<Upd>) -> Self {
+        AnyEventReceiver(recv)
+    }
+
+    pub async fn recv(&mut self) -> Option<Upd> {
+        self.0.next().await.map(|event| event.get_inner())
+    }
+}
+
+#[pin_project(project = AnyReceiverProj)]
 #[derive(Debug)]
 pub enum AnyReceiver<Upd> {
     Queue(#[pin] QueueReceiver<Upd>),
@@ -154,9 +166,9 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let projected = self.project();
         match projected {
-            __AnyReceiverProjection::Queue(rec) => rec.poll_next(cx),
-            __AnyReceiverProjection::Dropping(rec) => rec.poll_next(cx),
-            __AnyReceiverProjection::Buffered(rec) => rec.poll_next(cx),
+            AnyReceiverProj::Queue(rec) => rec.poll_next(cx),
+            AnyReceiverProj::Dropping(rec) => rec.poll_next(cx),
+            AnyReceiverProj::Buffered(rec) => rec.poll_next(cx),
         }
     }
 }
@@ -176,7 +188,7 @@ pub type DroppingSubFuture<Upd> =
 pub type BufferedSubFuture<Upd> =
     TransformedFuture<Ready<Result<BufferedTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
-#[pin_project]
+#[pin_project(project = AnySubFutureProj)]
 pub enum AnySubFuture<Upd: Send + 'static> {
     Queue(#[pin] QueueSubFuture<Upd>),
     Dropping(#[pin] DroppingSubFuture<Upd>),
@@ -186,13 +198,11 @@ pub enum AnySubFuture<Upd: Send + 'static> {
 impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
     type Output = Result<AnyReceiver<Upd>, TopicError>;
 
-    #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        #[project]
         match self.project() {
-            AnySubFuture::Queue(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Queue)),
-            AnySubFuture::Dropping(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Dropping)),
-            AnySubFuture::Buffered(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Buffered)),
+            AnySubFutureProj::Queue(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Queue)),
+            AnySubFutureProj::Dropping(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Dropping)),
+            AnySubFutureProj::Buffered(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Buffered)),
         }
     }
 }

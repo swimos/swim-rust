@@ -36,10 +36,10 @@ fn apply_form_value() {
     let bad = SharedValue::new(Value::text("hello"));
 
     let apply: ApplyForm<i32> = ApplyForm::new();
-    let result = apply.transform(Event::new(good, true));
-    assert_that!(result, eq(Ok(Event::new(7, true))));
+    let result = apply.transform(Event::Local(good));
+    assert_that!(result, eq(Ok(Event::Local(7))));
 
-    let result = apply.transform(Event::new(bad, true));
+    let result = apply.transform(Event::Local(bad));
     assert_that!(result, err());
 }
 
@@ -61,23 +61,22 @@ fn apply_form_map() {
 
     let apply: ApplyFormsMap<String, i32> = ApplyFormsMap::new();
 
-    let result = apply.transform(Event::new(good, false));
+    let result = apply.transform(Event::Remote(good));
     assert_that!(&result, ok());
-    let Event {
-        action: TypedViewWithEvent { view, event },
-        local,
-    } = result.unwrap();
-    assert!(!local);
 
-    let mut expected_view = OrdMap::new();
-    expected_view.insert("a".to_string(), 1);
-    expected_view.insert("b".to_string(), 2);
+    if let Event::Remote(TypedViewWithEvent { view, event }) = result.unwrap() {
+        let mut expected_view = OrdMap::new();
+        expected_view.insert("a".to_string(), 1);
+        expected_view.insert("b".to_string(), 2);
 
-    assert_that!(view.as_ord_map(), eq(expected_view));
-    assert_that!(event, eq(MapEvent::Insert("b".to_string())));
+        assert_that!(view.as_ord_map(), eq(expected_view));
+        assert_that!(event, eq(MapEvent::Insert("b".to_string())));
 
-    let result = apply.transform(Event::new(with_bad_event, true));
-    assert_that!(result, err());
+        let result = apply.transform(Event::Local(with_bad_event));
+        assert_that!(result, err());
+    } else {
+        panic!("Expected remote event!")
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -87,9 +86,7 @@ impl Transform<Event<String>> for ParseStringEvent {
     type Out = Result<Event<i32>, ParseIntError>;
 
     fn transform(&self, input: Event<String>) -> Self::Out {
-        let Event { action: s, local } = input;
-        let parsed = s.parse::<i32>();
-        parsed.map(|n| Event::new(n, local))
+        input.try_transform(|s| s.parse::<i32>())
     }
 }
 
@@ -108,18 +105,14 @@ impl Topic<Event<String>> for TestTopic {
 #[tokio::test]
 async fn try_transform_topic() {
     let topic = TestTopic(vec![
-        Event::new("0".to_string(), true),
-        Event::new("1".to_string(), false),
-        Event::new("2".to_string(), true),
-        Event::new("fail".to_string(), true),
-        Event::new("3".to_string(), false),
+        Event::Local("0".to_string()),
+        Event::Remote("1".to_string()),
+        Event::Local("2".to_string()),
+        Event::Local("fail".to_string()),
+        Event::Remote("3".to_string()),
     ]);
 
-    let expected = vec![
-        Event::new(0, true),
-        Event::new(1, false),
-        Event::new(2, true),
-    ];
+    let expected = vec![Event::Local(0), Event::Remote(1), Event::Local(2)];
 
     let mut transformed: TryTransformTopic<String, TestTopic, ParseStringEvent> =
         TryTransformTopic::new(topic, ParseStringEvent);

@@ -209,28 +209,35 @@ pub enum Message<M> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Command<A> {
     Sync,
+    Link,
     Action(A),
     Unlink,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Event<Action> {
-    action: Action,
-    local: bool,
+pub enum Event<A> {
+    Local(A),
+    Remote(A),
 }
 
-impl<Action> Event<Action> {
-    fn new(action: Action, local: bool) -> Event<Action> {
-        Event { action, local }
+impl<A> Event<A> {
+    pub fn get_inner(self) -> A {
+        match self {
+            Event::Local(inner) => inner,
+            Event::Remote(inner) => inner,
+        }
     }
 
-    pub fn action(&self) -> &Action {
-        &self.action
-    }
-
-    /// Returns whether or not the event was triggered locally.
-    pub fn is_local(&self) -> bool {
-        self.local
+    /// Maps [`Event<A>`] to [`Result<Event<B>, Err>`]
+    /// by applying a transformation function [`Func`].
+    pub fn try_transform<B, Err, Func>(self, mut func: Func) -> Result<Event<B>, Err>
+    where
+        Func: FnMut(A) -> Result<B, Err>,
+    {
+        match self {
+            Event::Local(value) => Ok(Event::Local(func(value)?)),
+            Event::Remote(value) => Ok(Event::Remote(func(value)?)),
+        }
     }
 }
 
@@ -311,6 +318,10 @@ trait StateMachine<State, Message, Action>: Sized {
     /// The initial value for the state.
     fn init_state(&self) -> State;
 
+    // The downlink state at which the machine should start
+    // to process updates and actions.
+    fn dl_start_state(&self) -> DownlinkState;
+
     /// For an operation on the downlink, generate output messages.
     fn handle_operation(
         &self,
@@ -358,7 +369,7 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
             error,
         } = basic;
         Response {
-            event: event.map(|e| Event::new(e, true)),
+            event: event.map(Event::Local),
             command: command.map(Command::Action),
             error,
             terminate: false,
@@ -367,7 +378,7 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
 }
 
 /// This trait is for simple, stateful downlinks that follow the standard synchronization model.
-trait BasicStateMachine<State, Message, Action> {
+trait SyncStateMachine<State, Message, Action> {
     /// Type of events that will be issued to the owner of the downlink.
     type Ev;
     /// Type of commands that will be sent out to the Warp connection.
@@ -402,16 +413,20 @@ trait BasicStateMachine<State, Message, Action> {
     ) -> BasicResponse<Self::Ev, Self::Cmd>;
 }
 
-//Adapter to make a BasicStateMachine into a StateMachine.
+//Adapter to make a SyncStateMachine into a StateMachine.
 impl<State, M, A, Basic> StateMachine<State, M, A> for Basic
 where
-    Basic: BasicStateMachine<State, M, A>,
+    Basic: SyncStateMachine<State, M, A>,
 {
-    type Ev = <Basic as BasicStateMachine<State, M, A>>::Ev;
-    type Cmd = <Basic as BasicStateMachine<State, M, A>>::Cmd;
+    type Ev = <Basic as SyncStateMachine<State, M, A>>::Ev;
+    type Cmd = <Basic as SyncStateMachine<State, M, A>>::Cmd;
 
     fn init_state(&self) -> State {
         self.init()
+    }
+
+    fn dl_start_state(&self) -> DownlinkState {
+        DownlinkState::Synced
     }
 
     #[instrument(skip(self, state, data_state, op))]
@@ -443,7 +458,7 @@ where
                     if old_state == DownlinkState::Synced {
                         Response::none()
                     } else {
-                        Response::for_event(Event::new(self.on_sync(data_state), false))
+                        Response::for_event(Event::Remote(self.on_sync(data_state)))
                     }
                 }
                 Message::Action(msg) => match *state {
@@ -453,7 +468,7 @@ where
                         Response::none()
                     }
                     DownlinkState::Synced => match self.handle_message(data_state, msg)? {
-                        Some(ev) => Response::for_event(Event::new(ev, false)),
+                        Some(ev) => Response::for_event(Event::Remote(ev)),
                         _ => Response::none(),
                     },
                 },
@@ -462,10 +477,7 @@ where
                     *state = DownlinkState::Unlinked;
                     Response::none().then_terminate()
                 }
-                Message::BadEnvelope(e) => {
-                    error!("Bad envelope: {}", e);
-                    return Err(DownlinkError::MalformedMessage);
-                }
+                Message::BadEnvelope(_) => return Err(DownlinkError::MalformedMessage),
             },
             Operation::Action(action) => self.handle_action(data_state, action).into(),
             Operation::Error(e) => {

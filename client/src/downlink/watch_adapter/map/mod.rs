@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::downlink::model::map::MapModification;
+use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
 use crate::router::RoutingError;
 use common::model::Value;
@@ -28,6 +28,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 use utilities::lru_cache::LruCache;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
@@ -40,16 +41,16 @@ use utilities::lru_cache::LruCache;
 /// For the same reason, compound operations (like clear, take, etc) will wait for all previous
 /// operations to have send before being sent and will stall the internal tasks until they complete.
 pub struct KeyedWatch {
-    sender: mpsc::Sender<MapModification<Arc<Value>>>,
+    sender: mpsc::Sender<UntypedMapModification<Arc<Value>>>,
     _consume_task: TaskHandle<()>,
     _produce_task: TaskHandle<()>,
 }
 
-impl<'a> ItemSink<'a, MapModification<Arc<Value>>> for KeyedWatch {
+impl<'a> ItemSink<'a, UntypedMapModification<Arc<Value>>> for KeyedWatch {
     type Error = RoutingError;
-    type SendFuture = MpscSend<'a, MapModification<Arc<Value>>, RoutingError>;
+    type SendFuture = MpscSend<'a, UntypedMapModification<Arc<Value>>, RoutingError>;
 
-    fn send_item(&'a mut self, value: MapModification<Arc<Value>>) -> Self::SendFuture {
+    fn send_item(&'a mut self, value: UntypedMapModification<Arc<Value>>) -> Self::SendFuture {
         MpscSend::new(&mut self.sender, value)
     }
 }
@@ -70,7 +71,7 @@ impl KeyedWatch {
         yield_after: NonZeroUsize,
     ) -> KeyedWatch
     where
-        Snk: ItemSender<MapModification<Arc<Value>>, RoutingError> + Send + 'static,
+        Snk: ItemSender<UntypedMapModification<Arc<Value>>, RoutingError> + Send + 'static,
     {
         let (tx, rx) = mpsc::channel(input_buffer_size.get());
         let (bridge_tx, bridge_rx) = mpsc::channel(bridge_buffer_size.get());
@@ -85,7 +86,7 @@ impl KeyedWatch {
     }
 }
 
-type Mod = MapModification<Arc<Value>>;
+type Mod = UntypedMapModification<Arc<Value>>;
 
 #[derive(Clone, Debug)]
 struct KeyedAction(Value, Mod);
@@ -204,16 +205,17 @@ impl ConsumerTask {
 
 fn classify(action: Mod) -> Either<KeyedAction, SpecialAction> {
     match action {
-        MapModification::Insert(key, value) => Either::Left(KeyedAction(
+        UntypedMapModification::Insert(key, value) => Either::Left(KeyedAction(
             key.clone(),
-            MapModification::Insert(key, value),
+            UntypedMapModification::Insert(key, value),
         )),
-        MapModification::Remove(key) => {
-            Either::Left(KeyedAction(key.clone(), MapModification::Remove(key)))
-        }
-        MapModification::Take(n) => Either::Right(SpecialAction::Take(n)),
-        MapModification::Skip(n) => Either::Right(SpecialAction::Skip(n)),
-        MapModification::Clear => Either::Right(SpecialAction::Clear),
+        UntypedMapModification::Remove(key) => Either::Left(KeyedAction(
+            key.clone(),
+            UntypedMapModification::Remove(key),
+        )),
+        UntypedMapModification::Take(n) => Either::Right(SpecialAction::Take(n)),
+        UntypedMapModification::Skip(n) => Either::Right(SpecialAction::Skip(n)),
+        UntypedMapModification::Clear => Either::Right(SpecialAction::Clear),
     }
 }
 
@@ -330,9 +332,9 @@ where
     }
     //Dispatch the special event.
     let special = match action {
-        SpecialAction::Take(n) => MapModification::Take(n),
-        SpecialAction::Skip(n) => MapModification::Skip(n),
-        SpecialAction::Clear => MapModification::Clear,
+        SpecialAction::Take(n) => UntypedMapModification::Take(n),
+        SpecialAction::Skip(n) => UntypedMapModification::Skip(n),
+        SpecialAction::Clear => UntypedMapModification::Clear,
     };
     if let Err(RoutingError::RouterDropped) = sink.send_item(special).await {
         //Router was dropped.

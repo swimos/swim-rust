@@ -26,6 +26,7 @@ pub mod downlink {
     pub enum DownlinkKind {
         Value,
         Map,
+        Command,
     }
 
     impl Display for DownlinkKind {
@@ -33,6 +34,7 @@ pub mod downlink {
             match self {
                 DownlinkKind::Value => write!(f, "Value"),
                 DownlinkKind::Map => write!(f, "Map"),
+                DownlinkKind::Command => write!(f, "Command"),
             }
         }
     }

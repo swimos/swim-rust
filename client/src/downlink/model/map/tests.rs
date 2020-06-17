@@ -91,14 +91,12 @@ fn linked_message() {
     }
 }
 
-fn only_event(response: &Response<ViewWithEvent, MapModification<Arc<Value>>>) -> &ViewWithEvent {
+fn only_event(
+    response: &Response<ViewWithEvent, UntypedMapModification<Arc<Value>>>,
+) -> &ViewWithEvent {
     match response {
         Response {
-            event:
-                Some(Event {
-                    action: ev,
-                    local: false,
-                }),
+            event: Some(Event::Remote(ev)),
             command: None,
             error: None,
             terminate: false,
@@ -169,7 +167,7 @@ fn insert_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -191,7 +189,7 @@ fn remove_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
+        Operation::Message(Message::Action(UntypedMapModification::Remove(k.clone()))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -223,7 +221,7 @@ fn take_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Take(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Take(1))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -259,7 +257,7 @@ fn skip_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Skip(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Skip(1))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -294,7 +292,7 @@ fn clear_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Clear)),
+        Operation::Message(Message::Action(UntypedMapModification::Clear)),
     );
 
     assert_that!(&maybe_response, ok());
@@ -321,7 +319,7 @@ fn insert_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(
+        Operation::Message(Message::Action(UntypedMapModification::Insert(
             k.clone(),
             v.clone(),
         ))),
@@ -347,7 +345,7 @@ fn remove_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
+        Operation::Message(Message::Action(UntypedMapModification::Remove(k.clone()))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -376,7 +374,7 @@ fn take_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Take(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Take(1))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -407,7 +405,7 @@ fn skip_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Skip(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Skip(1))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -438,7 +436,7 @@ fn clear_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Clear)),
+        Operation::Message(Message::Action(UntypedMapModification::Clear)),
     );
 
     assert_that!(&maybe_response, ok());
@@ -460,7 +458,7 @@ fn insert_message_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(
+        Operation::Message(Message::Action(UntypedMapModification::Insert(
             k.clone(),
             v.clone(),
         ))),
@@ -490,7 +488,7 @@ fn remove_message_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Remove(k.clone()))),
+        Operation::Message(Message::Action(UntypedMapModification::Remove(k.clone()))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -523,7 +521,7 @@ fn take_message_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Take(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Take(1))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -558,7 +556,7 @@ fn skip_message_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Skip(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Skip(1))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -594,7 +592,7 @@ fn clear_message_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Clear)),
+        Operation::Message(Message::Action(UntypedMapModification::Clear)),
     );
 
     assert_that!(&maybe_response, ok());
@@ -722,19 +720,15 @@ fn make_insert(
 }
 
 fn event_and_cmd(
-    response: Response<ViewWithEvent, MapModification<Arc<Value>>>,
+    response: Response<ViewWithEvent, UntypedMapModification<Arc<Value>>>,
 ) -> (
     ViewWithEvent,
-    MapModification<Arc<Value>>,
+    UntypedMapModification<Arc<Value>>,
     Option<TransitionError>,
 ) {
     match response {
         Response {
-            event:
-                Some(Event {
-                    action: ev,
-                    local: true,
-                }),
+            event: Some(Event::Local(ev)),
             command: Some(Command::Action(cmd)),
             error,
             terminate: false,
@@ -767,7 +761,7 @@ fn insert_to_undefined_action() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
-        MapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -809,7 +803,7 @@ fn insert_action_dropped_listener() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
-        MapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -847,7 +841,7 @@ fn insert_to_defined_action() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
-        MapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -1033,7 +1027,7 @@ fn remove_defined_action() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Remove(k.clone())));
     match cmd {
-        MapModification::Remove(cmd_k) => {
+        UntypedMapModification::Remove(cmd_k) => {
             assert_that!(&cmd_k, eq(&k));
         }
         ow => {
@@ -1138,7 +1132,7 @@ fn take_action() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
-    assert_that!(cmd, eq(MapModification::Take(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Take(1)));
     assert_that!(err, none());
 
     let result_before = rx_before.try_recv();
@@ -1191,7 +1185,7 @@ fn take_action_dropped_before() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
-    assert_that!(cmd, eq(MapModification::Take(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 
     let result_after = rx_after.try_recv();
@@ -1239,7 +1233,7 @@ fn take_action_dropped_after() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
-    assert_that!(cmd, eq(MapModification::Take(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 
     let result_before = rx_before.try_recv();
@@ -1286,7 +1280,7 @@ fn take_action_both_dropped() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Take(1)));
-    assert_that!(cmd, eq(MapModification::Take(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Take(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 }
 
@@ -1341,7 +1335,7 @@ fn skip_action() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
-    assert_that!(cmd, eq(MapModification::Skip(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Skip(1)));
     assert_that!(err, none());
 
     let result_before = rx_before.try_recv();
@@ -1394,7 +1388,7 @@ fn skip_action_dropped_before() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
-    assert_that!(cmd, eq(MapModification::Skip(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 
     let result_after = rx_after.try_recv();
@@ -1442,7 +1436,7 @@ fn skip_action_dropped_after() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
-    assert_that!(cmd, eq(MapModification::Skip(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 
     let result_before = rx_before.try_recv();
@@ -1489,7 +1483,7 @@ fn skip_action_dropped_both() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Skip(1)));
-    assert_that!(cmd, eq(MapModification::Skip(1)));
+    assert_that!(cmd, eq(UntypedMapModification::Skip(1)));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 }
 
@@ -1531,7 +1525,7 @@ fn clear_action() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Clear));
-    assert_that!(cmd, eq(MapModification::Clear));
+    assert_that!(cmd, eq(UntypedMapModification::Clear));
     assert_that!(err, none());
 
     let result_before = rx_before.try_recv();
@@ -1575,69 +1569,91 @@ fn clear_action_dropped_receiver() {
 
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Clear));
-    assert_that!(cmd, eq(MapModification::Clear));
+    assert_that!(cmd, eq(UntypedMapModification::Clear));
     assert_that!(err, eq(Some(TransitionError::ReceiverDropped)));
 }
 
 #[test]
 pub fn clear_to_value() {
     let expected = Value::of_attr("clear");
-    assert_that!(&Form::into_value(MapModification::Clear), eq(&expected));
-    assert_that!(&Form::as_value(&MapModification::Clear), eq(&expected));
+    assert_that!(
+        &Form::into_value(UntypedMapModification::<Value>::Clear),
+        eq(&expected)
+    );
+    assert_that!(
+        &Form::as_value(&UntypedMapModification::<Value>::Clear),
+        eq(&expected)
+    );
 }
 
-type MapModResult = Result<MapModification<Value>, FormDeserializeErr>;
+type MapModResult = Result<UntypedMapModification<Value>, FormDeserializeErr>;
 
 #[test]
 pub fn clear_from_value() {
     let rep = Value::of_attr("clear");
     let result1: MapModResult = Form::try_from_value(&rep);
-    assert_that!(result1, eq(Ok(MapModification::Clear)));
+    assert_that!(result1, eq(Ok(UntypedMapModification::<Value>::Clear)));
     let result2: MapModResult = Form::try_convert(rep);
-    assert_that!(result2, eq(Ok(MapModification::Clear)));
+    assert_that!(result2, eq(Ok(UntypedMapModification::<Value>::Clear)));
 }
 
 #[test]
 pub fn take_to_value() {
     let expected = Value::of_attr(("take", 3));
-    assert_that!(&Form::into_value(MapModification::Take(3)), eq(&expected));
-    assert_that!(&Form::as_value(&MapModification::Take(3)), eq(&expected));
+    assert_that!(
+        &Form::into_value(UntypedMapModification::<Value>::Take(3)),
+        eq(&expected)
+    );
+    assert_that!(
+        &Form::as_value(&UntypedMapModification::<Value>::Take(3)),
+        eq(&expected)
+    );
 }
 
 #[test]
 pub fn take_from_value() {
     let rep = Value::of_attr(("take", 3));
     let result1: MapModResult = Form::try_from_value(&rep);
-    assert_that!(result1, eq(Ok(MapModification::Take(3))));
+    assert_that!(result1, eq(Ok(UntypedMapModification::Take(3))));
     let result2: MapModResult = Form::try_convert(rep);
-    assert_that!(result2, eq(Ok(MapModification::Take(3))));
+    assert_that!(result2, eq(Ok(UntypedMapModification::Take(3))));
 }
 
 #[test]
 pub fn skip_to_value() {
     let expected = Value::of_attr(("drop", 5));
-    assert_that!(&Form::into_value(MapModification::Skip(5)), eq(&expected));
-    assert_that!(&Form::as_value(&MapModification::Skip(5)), eq(&expected));
+    assert_that!(
+        &Form::into_value(UntypedMapModification::<Value>::Skip(5)),
+        eq(&expected)
+    );
+    assert_that!(
+        &Form::as_value(&UntypedMapModification::<Value>::Skip(5)),
+        eq(&expected)
+    );
 }
 
 #[test]
 pub fn skip_from_value() {
     let rep = Value::of_attr(("drop", 5));
     let result1: MapModResult = Form::try_from_value(&rep);
-    assert_that!(result1, eq(Ok(MapModification::Skip(5))));
+    assert_that!(result1, eq(Ok(UntypedMapModification::Skip(5))));
     let result2: MapModResult = Form::try_convert(rep);
-    assert_that!(result2, eq(Ok(MapModification::Skip(5))));
+    assert_that!(result2, eq(Ok(UntypedMapModification::Skip(5))));
 }
 
 #[test]
 pub fn remove_to_value() {
     let expected = Value::of_attr(("remove", Value::record(vec![Item::slot("key", "hello")])));
     assert_that!(
-        &Form::into_value(MapModification::Remove(Value::text("hello"))),
+        &Form::into_value(UntypedMapModification::<Value>::Remove(Value::text(
+            "hello"
+        ))),
         eq(&expected)
     );
     assert_that!(
-        &Form::as_value(&MapModification::Remove(Value::text("hello"))),
+        &Form::as_value(&UntypedMapModification::<Value>::Remove(Value::text(
+            "hello"
+        ))),
         eq(&expected)
     );
 }
@@ -1648,12 +1664,14 @@ pub fn remove_from_value() {
     let result1: MapModResult = Form::try_from_value(&rep);
     assert_that!(
         result1,
-        eq(Ok(MapModification::Remove(Value::text("hello"))))
+        eq(Ok(UntypedMapModification::<Value>::Remove(Value::text(
+            "hello"
+        ))))
     );
     let result2: MapModResult = Form::try_convert(rep);
     assert_that!(
         result2,
-        eq(Ok(MapModification::Remove(Value::text("hello"))))
+        eq(Ok(UntypedMapModification::Remove(Value::text("hello"))))
     );
 }
 
@@ -1663,14 +1681,14 @@ pub fn simple_insert_to_value() {
     let body = Item::ValueItem(Value::Int32Value(2));
     let expected = Value::Record(vec![attr], vec![body]);
     assert_that!(
-        &Form::into_value(MapModification::Insert(
+        &Form::into_value(UntypedMapModification::Insert(
             Value::text("hello"),
             Value::Int32Value(2)
         )),
         eq(&expected)
     );
     assert_that!(
-        &Form::as_value(&MapModification::Insert(
+        &Form::as_value(&UntypedMapModification::Insert(
             Value::text("hello"),
             Value::Int32Value(2)
         )),
@@ -1686,7 +1704,7 @@ pub fn simple_insert_from_value() {
     let result1: MapModResult = Form::try_from_value(&rep);
     assert_that!(
         result1,
-        eq(Ok(MapModification::Insert(
+        eq(Ok(UntypedMapModification::Insert(
             Value::text("hello"),
             Value::Int32Value(2)
         )))
@@ -1694,7 +1712,7 @@ pub fn simple_insert_from_value() {
     let result2: MapModResult = Form::try_convert(rep);
     assert_that!(
         result2,
-        eq(Ok(MapModification::Insert(
+        eq(Ok(UntypedMapModification::Insert(
             Value::text("hello"),
             Value::Int32Value(2)
         )))
@@ -1710,11 +1728,17 @@ pub fn complex_insert_to_value() {
         vec![Item::slot("a", true)],
     );
     assert_that!(
-        &Form::into_value(MapModification::Insert(Value::text("hello"), body.clone())),
+        &Form::into_value(UntypedMapModification::Insert(
+            Value::text("hello"),
+            body.clone()
+        )),
         eq(&expected)
     );
     assert_that!(
-        &Form::as_value(&MapModification::Insert(Value::text("hello"), body.clone())),
+        &Form::as_value(&UntypedMapModification::Insert(
+            Value::text("hello"),
+            body.clone()
+        )),
         eq(&expected)
     );
 }
@@ -1730,7 +1754,7 @@ pub fn complex_insert_from_value() {
     let result1: MapModResult = Form::try_from_value(&rep);
     assert_that!(
         result1,
-        eq(Ok(MapModification::Insert(
+        eq(Ok(UntypedMapModification::Insert(
             Value::text("hello"),
             body.clone()
         )))
@@ -1738,7 +1762,7 @@ pub fn complex_insert_from_value() {
     let result2: MapModResult = Form::try_convert(rep);
     assert_that!(
         result2,
-        eq(Ok(MapModification::Insert(
+        eq(Ok(UntypedMapModification::Insert(
             Value::text("hello"),
             body.clone()
         )))
@@ -1762,7 +1786,7 @@ pub fn map_modification_schema() {
         vec![Item::slot("a", true)],
     );
 
-    let schema = <MapModification<Value> as ValidatedForm>::schema();
+    let schema = <UntypedMapModification<Value> as ValidatedForm>::schema();
 
     assert!(schema.matches(&clear));
     assert!(schema.matches(&take));
@@ -1786,7 +1810,7 @@ fn invalid_insert_key_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -1811,7 +1835,7 @@ fn invalid_insert_value_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -1835,7 +1859,7 @@ fn invalid_remove_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Remove(k))),
+        Operation::Message(Message::Action(UntypedMapModification::Remove(k))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -1860,7 +1884,7 @@ fn invalid_insert_key_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -1891,7 +1915,7 @@ fn invalid_insert_value_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -1921,7 +1945,7 @@ fn invalid_remove_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Remove(k))),
+        Operation::Message(Message::Action(UntypedMapModification::Remove(k))),
     );
 
     assert_that!(&maybe_response, err());
@@ -1952,7 +1976,7 @@ fn invalid_insert_key_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -1983,7 +2007,7 @@ fn invalid_insert_value_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -2013,7 +2037,7 @@ fn invalid_remove_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(MapModification::Remove(k))),
+        Operation::Message(Message::Action(UntypedMapModification::Remove(k))),
     );
 
     assert_that!(&maybe_response, err());
@@ -2173,7 +2197,7 @@ fn update_to_defined_action() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
-        MapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -2228,7 +2252,7 @@ fn update_to_undefined_action() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Remove(k.clone())));
     match cmd {
-        MapModification::Remove(cmd_k) => {
+        UntypedMapModification::Remove(cmd_k) => {
             assert_that!(&cmd_k, eq(&k));
         }
         ow => {
@@ -2369,7 +2393,7 @@ fn update_action_dropped_receiver() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
-        MapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -2416,7 +2440,7 @@ fn try_update_to_successful_defined_action() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
-        MapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -2475,7 +2499,7 @@ fn try_update_to_undefined_action() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Remove(k.clone())));
     match cmd {
-        MapModification::Remove(cmd_k) => {
+        UntypedMapModification::Remove(cmd_k) => {
             assert_that!(&cmd_k, eq(&k));
         }
         ow => {
@@ -2658,7 +2682,7 @@ fn try_update_action_with_dropped_receiver() {
     assert!(view.ptr_eq(&model.state));
     assert_that!(event, eq(MapEvent::Insert(k.clone())));
     match cmd {
-        MapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Insert(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }

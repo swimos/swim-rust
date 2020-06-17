@@ -21,7 +21,7 @@ use crate::connections::ConnectionSender;
 use crate::router::{ConnectionRequest, RoutingError};
 use futures::task::{Context, Poll};
 use futures::Future;
-use pin_project::{pin_project, project};
+use pin_project::pin_project;
 use std::pin::Pin;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
@@ -39,7 +39,6 @@ where
 {
     type Output = F::Output;
 
-    #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.project().f.poll(cx)
     }
