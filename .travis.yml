@@ -19,7 +19,7 @@ matrix:
         - SWIM_CRATES="client form common server utilities deserialize serialize"
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace --exclude client
         - cd client
         #       Features aren't allowed in the root of a virtual workspace
@@ -31,7 +31,7 @@ matrix:
       env: ARCH=arm64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace
 
     - os: osx
@@ -39,7 +39,7 @@ matrix:
       env: ARCH=amd64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace
 
     - os: windows
@@ -47,7 +47,7 @@ matrix:
       env: ARCH=amd64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace
 
 rust:
