@@ -48,8 +48,8 @@ impl TransformMut<WasmMessage> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
 
     fn transform(&mut self, input: WasmMessage) -> Self::Out {
-        match &input {
-            WasmMessage::Text(s) => Ok(WsMessage::String(s.clone())),
+        match input {
+            WasmMessage::Text(s) => Ok(WsMessage::String(s)),
             WasmMessage::Binary(_) => panic!("Unsupported message type"),
         }
     }
