@@ -30,7 +30,7 @@ pub mod async_factory {
     use common::request::Request;
 
     use common::connections::error::ConnectionError;
-    use common::connections::WebsocketFactory;
+    use common::connections::{WebsocketFactory, WsMessage};
     use swim_runtime::task::{spawn, TaskHandle};
     use utilities::errors::FlattenErrors;
 
@@ -90,8 +90,8 @@ pub mod async_factory {
 
     impl<Snk, Str> WebsocketFactory for AsyncFactory<Snk, Str>
     where
-        Str: Stream<Item = Result<String, ConnectionError>> + Unpin + Send + 'static,
-        Snk: Sink<String> + Unpin + Send + 'static,
+        Str: Stream<Item = Result<WsMessage, ConnectionError>> + Unpin + Send + 'static,
+        Snk: Sink<WsMessage> + Unpin + Send + 'static,
     {
         type WsStream = Str;
         type WsSink = Snk;

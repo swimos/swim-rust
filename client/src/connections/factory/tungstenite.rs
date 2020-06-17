@@ -26,7 +26,7 @@ use common::request::request_future::SendAndAwait;
 
 use super::async_factory;
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
-use common::connections::WebsocketFactory;
+use common::connections::{WebsocketFactory, WsMessage};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
@@ -58,21 +58,30 @@ impl WebsocketFactory for TungsteniteWsFactory {
 }
 
 pub struct SinkTransformer;
-impl TransformMut<String> for SinkTransformer {
+impl TransformMut<WsMessage> for SinkTransformer {
     type Out = Message;
 
-    fn transform(&mut self, input: String) -> Self::Out {
-        Message::Text(input)
+    fn transform(&mut self, input: WsMessage) -> Self::Out {
+        match input {
+            WsMessage::String(s) => Message::Text(s),
+            WsMessage::Binary(v) => Message::Binary(v),
+        }
     }
 }
 
 pub struct StreamTransformer;
 impl TransformMut<Result<Message, TError>> for StreamTransformer {
-    type Out = Result<String, ConnectionError>;
+    type Out = Result<WsMessage, ConnectionError>;
 
     fn transform(&mut self, input: Result<Message, TError>) -> Self::Out {
         match input {
-            Ok(i) => Ok(i.to_string()),
+            Ok(i) => match i {
+                Message::Text(s) => Ok(WsMessage::String(s)),
+                Message::Binary(v) => Ok(WsMessage::Binary(v)),
+                _ => Err(ConnectionError::new(
+                    ConnectionErrorKind::ReceiveMessageError,
+                )),
+            },
             Err(e) => Err(ConnectionError::with_cause(
                 ConnectionErrorKind::ConnectError,
                 Box::new(e),

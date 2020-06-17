@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use crate::router::{
     CloseReceiver, CloseResponseSender, RouterEvent, RoutingError, SubscriberRequest,
 };
+use common::connections::WsMessage;
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
 use common::warp::path::RelativePath;
@@ -33,9 +34,9 @@ use tracing::{debug, error, span, trace, warn, Level};
 /// Tasks that the incoming task can handle.
 #[derive(Debug)]
 pub(crate) enum IncomingRequest {
-    Connection(mpsc::Receiver<String>),
+    Connection(mpsc::Receiver<WsMessage>),
     Subscribe(SubscriberRequest),
-    Message(String),
+    Message(WsMessage),
     Unreachable(String),
     Disconnect,
     Close(Option<CloseResponseSender>),
@@ -65,7 +66,7 @@ impl IncomingHostTask {
         let IncomingHostTask { task_rx, close_rx } = self;
 
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
-        let mut connection: Option<mpsc::Receiver<String>> = None;
+        let mut connection: Option<mpsc::Receiver<WsMessage>> = None;
 
         let mut rx = combine_incoming_streams(task_rx, close_rx);
 
@@ -114,7 +115,12 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Message(message) => {
-                    let value = parse_single(&message);
+                    let value = {
+                        match &message {
+                            WsMessage::String(s) => parse_single(&s),
+                            WsMessage::Binary(_) => unimplemented!("Binary not supported yet"),
+                        }
+                    };
 
                     match value {
                         Ok(val) => {

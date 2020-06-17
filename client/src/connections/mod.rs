@@ -309,18 +309,18 @@ fn combine_connection_streams(
 
 struct SendTask<S>
 where
-    S: Sink<String> + Send + 'static + Unpin,
+    S: Sink<WsMessage> + Send + 'static + Unpin,
 {
     stopped: Arc<AtomicBool>,
     write_sink: S,
-    rx: mpsc::Receiver<String>,
+    rx: mpsc::Receiver<WsMessage>,
 }
 
 impl<S> SendTask<S>
 where
-    S: Sink<String> + Send + 'static + Unpin,
+    S: Sink<WsMessage> + Send + 'static + Unpin,
 {
-    fn new(write_sink: S, rx: mpsc::Receiver<String>, stopped: Arc<AtomicBool>) -> Self {
+    fn new(write_sink: S, rx: mpsc::Receiver<WsMessage>, stopped: Arc<AtomicBool>) -> Self {
         SendTask {
             stopped,
             write_sink,
@@ -348,18 +348,18 @@ where
 
 struct ReceiveTask<S>
 where
-    S: Stream<Item = Result<String, ConnectionError>> + Send + Unpin + 'static,
+    S: Stream<Item = Result<WsMessage, ConnectionError>> + Send + Unpin + 'static,
 {
     stopped: Arc<AtomicBool>,
     read_stream: S,
-    tx: mpsc::Sender<String>,
+    tx: mpsc::Sender<WsMessage>,
 }
 
 impl<S> ReceiveTask<S>
 where
-    S: Stream<Item = Result<String, ConnectionError>> + Send + Unpin + 'static,
+    S: Stream<Item = Result<WsMessage, ConnectionError>> + Send + Unpin + 'static,
 {
-    fn new(read_stream: S, tx: mpsc::Sender<String>, stopped: Arc<AtomicBool>) -> Self {
+    fn new(read_stream: S, tx: mpsc::Sender<WsMessage>, stopped: Arc<AtomicBool>) -> Self {
         ReceiveTask {
             stopped,
             read_stream,
@@ -405,7 +405,8 @@ impl InnerConnection {
 
     pub fn from(
         mut conn: SwimConnection,
-    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<String>), ConnectionError> {
+    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<WsMessage>), ConnectionError>
+    {
         let sender = ConnectionSender {
             tx: conn.tx.clone(),
         };
@@ -425,8 +426,8 @@ impl InnerConnection {
 /// Connection to a remote host.
 pub struct SwimConnection {
     stopped: Arc<AtomicBool>,
-    tx: mpsc::Sender<String>,
-    rx: Option<mpsc::Receiver<String>>,
+    tx: mpsc::Sender<WsMessage>,
+    rx: Option<mpsc::Receiver<WsMessage>>,
     _send_handle: TaskHandle<Result<(), ConnectionError>>,
     _receive_handle: TaskHandle<Result<(), ConnectionError>>,
 }
@@ -461,7 +462,7 @@ impl SwimConnection {
 }
 
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
-use common::connections::WebsocketFactory;
+use common::connections::{WebsocketFactory, WsMessage};
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
@@ -471,14 +472,14 @@ pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    tx: mpsc::Sender<String>,
+    tx: mpsc::Sender<WsMessage>,
 }
 
 impl ConnectionSender {
     /// Crate-only function for creating a sender. Useful for unit testing.
     #[doc(hidden)]
     #[allow(dead_code)]
-    pub(crate) fn new(tx: mpsc::Sender<String>) -> ConnectionSender {
+    pub(crate) fn new(tx: mpsc::Sender<WsMessage>) -> ConnectionSender {
         ConnectionSender { tx }
     }
 
@@ -492,7 +493,7 @@ impl ConnectionSender {
     ///
     /// `Ok` if the message has been sent.
     /// `SendError` if it failed.
-    pub async fn send_message(&mut self, message: String) -> Result<(), SendError<String>> {
+    pub async fn send_message(&mut self, message: WsMessage) -> Result<(), SendError<WsMessage>> {
         self.tx.send(message).await
     }
 
@@ -500,9 +501,9 @@ impl ConnectionSender {
         self.tx.poll_ready(cx)
     }
 
-    pub fn try_send(&mut self, message: String) -> Result<(), TrySendError<String>> {
+    pub fn try_send(&mut self, message: WsMessage) -> Result<(), TrySendError<WsMessage>> {
         self.tx.try_send(message)
     }
 }
 
-pub(crate) type ConnectionReceiver = mpsc::Receiver<String>;
+pub(crate) type ConnectionReceiver = mpsc::Receiver<WsMessage>;

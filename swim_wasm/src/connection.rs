@@ -18,36 +18,39 @@ use futures::{StreamExt, TryFutureExt};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
-use ws_stream_wasm::*;
+use ws_stream_wasm::{WsMessage as WasmMessage, WsMeta, WsStream};
 
 use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
 use common::request::Request;
 
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
-use common::connections::WebsocketFactory;
+use common::connections::{WebsocketFactory, WsMessage};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-type WasmWsSink = TransformedSink<SplitSink<WsStream, WsMessage>, SinkTransformer>;
+type WasmWsSink = TransformedSink<SplitSink<WsStream, WasmMessage>, SinkTransformer>;
 type WasmWsStream = TransformedStream<SplitStream<WsStream>, StreamTransformer>;
 
 pub struct SinkTransformer;
-impl TransformMut<String> for SinkTransformer {
-    type Out = WsMessage;
+impl TransformMut<WsMessage> for SinkTransformer {
+    type Out = WasmMessage;
 
-    fn transform(&mut self, input: String) -> Self::Out {
-        WsMessage::Text(input)
+    fn transform(&mut self, input: WsMessage) -> Self::Out {
+        match input {
+            WsMessage::Binary(v) => WasmMessage::Binary(v),
+            WsMessage::String(v) => WasmMessage::Text(v),
+        }
     }
 }
 
 pub struct StreamTransformer;
-impl TransformMut<WsMessage> for StreamTransformer {
-    type Out = Result<String, ConnectionError>;
+impl TransformMut<WasmMessage> for StreamTransformer {
+    type Out = Result<WsMessage, ConnectionError>;
 
-    fn transform(&mut self, input: WsMessage) -> Self::Out {
-        match input {
-            WsMessage::Text(s) => Ok(s),
-            WsMessage::Binary(_) => panic!("Unsupported message type"),
+    fn transform(&mut self, input: WasmMessage) -> Self::Out {
+        match &input {
+            WasmMessage::Text(s) => Ok(WsMessage::String(s.clone())),
+            WasmMessage::Binary(_) => panic!("Unsupported message type"),
         }
     }
 }
