@@ -25,6 +25,7 @@ use pin_project::pin_project;
 use std::pin::Pin;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
+use common::connections::WsMessage;
 use tracing::trace;
 
 #[pin_project]
@@ -62,7 +63,7 @@ where
 
 pub(crate) fn new_request(
     sender: mpsc::Sender<ConnectionRequest>,
-    payload: String,
+    payload: WsMessage,
 ) -> impl ResettableFuture<Output = Result<(), RoutingError>> {
     let retryable = RetryableRequest::new(
         sender,
@@ -135,14 +136,14 @@ async fn acquire_sender(
 struct MpscRetryErr {
     kind: RoutingError,
     transient: bool,
-    payload: Option<String>,
+    payload: Option<WsMessage>,
 }
 
 impl MpscRetryErr {
     fn from(
         kind: RoutingError,
         sender: Option<mpsc::Sender<ConnectionRequest>>,
-        payload: Option<String>,
+        payload: Option<WsMessage>,
     ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
         let transient = kind.is_transient();
 
@@ -178,6 +179,7 @@ mod tests {
 
     use crate::router::retry::MpscRetryErr;
     use crate::router::RoutingError;
+    use common::connections::WsMessage;
     use futures::Future;
     use tokio::sync::mpsc;
     use utilities::future::retryable::request::{RetryableRequest, SendResult};
@@ -185,11 +187,11 @@ mod tests {
     #[tokio::test]
     async fn send_ok() {
         let (tx, mut rx) = mpsc::channel(5);
-        let payload = String::from("Text");
+        let payload = WsMessage::String(String::from("Text"));
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |mut sender: mpsc::Sender<String>, payload, _is_retry| async move {
+            |mut sender: mpsc::Sender<WsMessage>, payload, _is_retry| async move {
                 let _ = sender.send(payload.clone()).await;
                 Ok(((), Some(sender)))
             },
@@ -202,13 +204,13 @@ mod tests {
     #[tokio::test]
     async fn recovers() {
         let (tx, mut rx) = mpsc::channel(5);
-        let payload = String::from("Text");
+        let payload = WsMessage::String(String::from("Text"));
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |mut sender: mpsc::Sender<String>, payload, is_retry| async move {
+            |mut sender: mpsc::Sender<WsMessage>, payload, is_retry| async move {
                 if is_retry {
-                    let _ = sender.send(payload.clone()).await;
+                    let _ = sender.send(payload.clone().into()).await;
                     Ok(((), Some(sender)))
                 } else {
                     Err((
@@ -230,11 +232,11 @@ mod tests {
     #[tokio::test]
     async fn errors() {
         let (tx, _rx) = mpsc::channel(5);
-        let message = String::from("Text");
+        let message = WsMessage::String(String::from("Text"));
         let retryable = new_retryable(
             message.clone(),
             tx,
-            |sender: mpsc::Sender<String>, payload, _is_retry| async {
+            |sender: mpsc::Sender<WsMessage>, payload, _is_retry| async {
                 Err((
                     MpscRetryErr {
                         kind: RoutingError::ConnectionError,
@@ -250,13 +252,13 @@ mod tests {
     }
 
     async fn new_retryable<Fac, F>(
-        payload: String,
-        tx: mpsc::Sender<String>,
+        payload: WsMessage,
+        tx: mpsc::Sender<WsMessage>,
         fac: Fac,
     ) -> Result<(), RoutingError>
     where
-        Fac: FnMut(mpsc::Sender<String>, String, bool) -> F,
-        F: Future<Output = SendResult<mpsc::Sender<String>, (), MpscRetryErr>>,
+        Fac: FnMut(mpsc::Sender<WsMessage>, WsMessage, bool) -> F,
+        F: Future<Output = SendResult<mpsc::Sender<WsMessage>, (), MpscRetryErr>>,
     {
         let retryable =
             RetryableRequest::new(tx, payload, fac, |e| e.payload.expect("Missing payload"));

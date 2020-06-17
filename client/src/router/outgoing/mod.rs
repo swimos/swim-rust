@@ -83,7 +83,7 @@ impl OutgoingHostTask {
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let message = envelope.into_value().to_string();
-                    let request = new_request(connection_request_tx.clone(), message);
+                    let request = new_request(connection_request_tx.clone(), message.into());
 
                     RetryableFuture::new(request, config.retry_strategy())
                         .await

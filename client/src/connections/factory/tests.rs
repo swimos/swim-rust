@@ -14,7 +14,7 @@
 
 use super::async_factory::*;
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
-use common::connections::WebsocketFactory;
+use common::connections::{WebsocketFactory, WsMessage};
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use hamcrest2::assert_that;
@@ -28,21 +28,21 @@ struct TestSink(url::Url);
 struct TestStream(url::Url);
 
 impl Stream for TestStream {
-    type Item = Result<String, ConnectionError>;
+    type Item = Result<WsMessage, ConnectionError>;
 
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         Poll::Ready(None)
     }
 }
 
-impl Sink<String> for TestSink {
+impl Sink<WsMessage> for TestSink {
     type Error = ConnectionError;
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn start_send(self: Pin<&mut Self>, _item: String) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, _item: WsMessage) -> Result<(), Self::Error> {
         Ok(())
     }
 

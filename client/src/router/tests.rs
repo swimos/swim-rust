@@ -1,6 +1,7 @@
 use crate::connections::{ConnectionPool, ConnectionReceiver, ConnectionSender};
 use crate::router::{Router, RouterEvent, SwimRouter};
 use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::WsMessage;
 use common::model::Value;
 use common::request::request_future::RequestError;
 use common::sink::item::ItemSink;
@@ -17,7 +18,7 @@ use tokio::time::timeout;
 async fn get_message(
     pool_handlers: &mut HashMap<url::Url, PoolHandler>,
     host_url: &url::Url,
-) -> Option<String> {
+) -> Option<WsMessage> {
     if let Some((_, receiver)) = pool_handlers.get_mut(host_url) {
         Some(
             timeout(Duration::from_secs(1), receiver.recv())
@@ -35,7 +36,7 @@ async fn send_message(
     host_url: &url::Url,
     message: &str,
 ) {
-    let message = message.to_string();
+    let message = message.into();
 
     if let Some((sender, _)) = pool_handlers.get_mut(host_url) {
         timeout(Duration::from_secs(1), sender.send(message))
@@ -109,7 +110,7 @@ async fn test_route_single_outgoing_message_to_single_downlink() {
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@sync(node:foo,lane:bar)"
+        "@sync(node:foo,lane:bar)".into()
     );
 }
 
@@ -144,11 +145,11 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:oof,lane:rab){bye}"
+        "@event(node:oof,lane:rab){bye}".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:oof,lane:rab){bye}"
+        "@event(node:oof,lane:rab){bye}".into()
     );
 }
 
@@ -187,11 +188,11 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
     assert_eq!(pool.connections.lock().unwrap().len(), 2);
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:foo,lane:bar){hello}"
+        "@event(node:foo,lane:bar){hello}".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &second_url).await.unwrap(),
-        "@event(node:foo,lane:bar){hello}"
+        "@event(node:foo,lane:bar){hello}".into()
     );
 }
 
@@ -231,11 +232,11 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:foo,lane:bar){First_Downlink}"
+        "@event(node:foo,lane:bar){First_Downlink}".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:foo,lane:bar){Second_Downlink}"
+        "@event(node:foo,lane:bar){Second_Downlink}".into()
     );
 }
 
@@ -284,15 +285,15 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:first_foo,lane:first_bar){first_body}"
+        "@event(node:first_foo,lane:first_bar){first_body}".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:second_foo,lane:second_bar){second_body}"
+        "@event(node:second_foo,lane:second_bar){second_body}".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:third_foo,lane:third_bar){third_body}"
+        "@event(node:third_foo,lane:third_bar){third_body}".into()
     );
 }
 
@@ -345,15 +346,15 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_h
     assert_eq!(pool.connections.lock().unwrap().len(), 2);
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:first_foo,lane:first_bar){first_body}"
+        "@event(node:first_foo,lane:first_bar){first_body}".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:second_foo,lane:second_bar){second_body}"
+        "@event(node:second_foo,lane:second_bar){second_body}".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &second_url).await.unwrap(),
-        "@event(node:third_foo,lane:third_bar){third_body}"
+        "@event(node:third_foo,lane:third_bar){third_body}".into()
     );
 }
 
@@ -1272,12 +1273,12 @@ async fn test_single_direct_message_existing_connection() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@sync(node:room,lane:seven)"
+        "@sync(node:room,lane:seven)".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:room,lane:seven){\"Test Command\"}"
+        "@event(node:room,lane:seven){\"Test Command\"}".into()
     );
 }
 
@@ -1312,7 +1313,7 @@ async fn test_single_direct_message_new_connection() {
     assert_eq!(get_requests(&pool), expected_requests);
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:room,lane:seven){\"Test Command\"}"
+        "@event(node:room,lane:seven){\"Test Command\"}".into()
     );
 }
 
@@ -1364,17 +1365,17 @@ async fn test_multiple_direct_messages_existing_connection() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@sync(node:building,lane:swim)"
+        "@sync(node:building,lane:swim)".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){First}"
+        "@event(node:building,lane:swim){First}".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){Second}"
+        "@event(node:building,lane:swim){Second}".into()
     );
 }
 
@@ -1432,17 +1433,17 @@ async fn test_multiple_direct_messages_new_connection() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){First}"
+        "@event(node:building,lane:swim){First}".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){Second}"
+        "@event(node:building,lane:swim){Second}".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){Third}"
+        "@event(node:building,lane:swim){Third}".into()
     );
 }
 
@@ -1502,17 +1503,17 @@ async fn test_multiple_direct_messages_different_connections() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:building,lane:swim){First}"
+        "@event(node:building,lane:swim){First}".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &second_url).await.unwrap(),
-        "@event(node:building,lane:swim){Second}"
+        "@event(node:building,lane:swim){Second}".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &&first_url).await.unwrap(),
-        "@event(node:building,lane:swim){Third}"
+        "@event(node:building,lane:swim){Third}".into()
     );
 }
 
@@ -1767,13 +1768,13 @@ async fn test_route_incoming_connection_closed_multiple_different_hosts() {
     assert_eq!(second_stream.recv().await.unwrap(), RouterEvent::Stopping);
 }
 
-type PoolHandler = (mpsc::Sender<String>, mpsc::Receiver<String>);
+type PoolHandler = (mpsc::Sender<WsMessage>, mpsc::Receiver<WsMessage>);
 
 #[derive(Clone)]
 struct TestPool {
     connection_handlers_tx: mpsc::Sender<(url::Url, PoolHandler)>,
     connection_requests: Arc<Mutex<HashMap<(url::Url, bool), usize>>>,
-    connections: Arc<Mutex<HashMap<url::Url, mpsc::Sender<String>>>>,
+    connections: Arc<Mutex<HashMap<url::Url, mpsc::Sender<WsMessage>>>>,
     permanent_error_url: url::Url,
 }
 
@@ -1796,7 +1797,7 @@ impl TestPool {
         &mut self,
         host_url: url::Url,
         recreate: bool,
-    ) -> (mpsc::Sender<String>, mpsc::Receiver<String>) {
+    ) -> (mpsc::Sender<WsMessage>, mpsc::Receiver<WsMessage>) {
         let (sender_tx, sender_rx) = mpsc::channel(5);
         let (receiver_tx, receiver_rx) = mpsc::channel(5);
 

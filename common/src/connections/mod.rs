@@ -17,14 +17,38 @@ use futures::{Future, Sink, Stream};
 
 pub mod error;
 
+#[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
+pub enum WsMessage {
+    String(String),
+    Binary(Vec<u8>),
+}
+
+impl From<String> for WsMessage {
+    fn from(s: String) -> Self {
+        WsMessage::String(s)
+    }
+}
+
+impl From<&str> for WsMessage {
+    fn from(s: &str) -> Self {
+        WsMessage::String(s.to_string())
+    }
+}
+
+impl From<Vec<u8>> for WsMessage {
+    fn from(v: Vec<u8>) -> Self {
+        WsMessage::Binary(v)
+    }
+}
+
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
 /// to allow for alternative implementations to be provided during testing.
 pub trait WebsocketFactory: Send + Sync {
     /// Type of the stream of incoming messages.
-    type WsStream: Stream<Item = Result<String, ConnectionError>> + Unpin + Send + 'static;
+    type WsStream: Stream<Item = Result<WsMessage, ConnectionError>> + Unpin + Send + 'static;
 
     /// Type of the sink for outgoing messages.
-    type WsSink: Sink<String> + Unpin + Send + 'static;
+    type WsSink: Sink<WsMessage> + Unpin + Send + 'static;
 
     type ConnectFut: Future<Output = Result<(Self::WsSink, Self::WsStream), ConnectionError>>
         + Send
