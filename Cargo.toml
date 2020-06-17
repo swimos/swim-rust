@@ -8,3 +8,9 @@ members = [
     "server",
     "utilities",
 ]
+
+exclude = [
+    "demos/swim-console",
+    "demos/swim-wasm",
+    "demos/swim-wasm-chat",
+]

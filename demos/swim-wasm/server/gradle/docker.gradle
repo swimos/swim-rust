@@ -1,0 +1,12 @@
+import com.bmuschko.gradle.docker.DockerRemoteApiPlugin
+
+buildscript {
+    repositories {
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath 'com.bmuschko:gradle-docker-plugin:6.4.0'
+    }
+}
+
+apply plugin: DockerRemoteApiPlugin
