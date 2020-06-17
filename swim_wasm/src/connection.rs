@@ -46,7 +46,7 @@ impl TransformMut<WsMessage> for StreamTransformer {
 
     fn transform(&mut self, input: WsMessage) -> Self::Out {
         match input {
-            WsMessage::Text(s) => Ok(s.to_string()),
+            WsMessage::Text(s) => Ok(s),
             WsMessage::Binary(_) => panic!("Unsupported message type"),
         }
     }
