@@ -1829,16 +1829,30 @@ fn nothing_to_value() {
     );
 }
 
-fn assert_less_than(schema: StandardSchema, cmp_schemas: HashMap<&str, StandardSchema>) {
-    for (_, s) in cmp_schemas {
+fn assert_greater_than(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
         assert!(schema > s);
         assert!(s < schema);
     }
 }
-fn assert_greater_than(schema: StandardSchema, cmp_schemas: HashMap<&str, StandardSchema>) {
-    for (_, s) in cmp_schemas {
+fn assert_less_than(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
         assert!(schema < s);
         assert!(s > schema);
+    }
+}
+
+fn assert_equal(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
+        assert_eq!(schema.partial_cmp(&s).unwrap(), Ordering::Equal);
+        assert_eq!(s.partial_cmp(&schema).unwrap(), Ordering::Equal);
+    }
+}
+
+fn assert_not_related(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
+        assert!(schema.partial_cmp(&s).is_none());
+        assert!(s.partial_cmp(&schema).is_none());
     }
 }
 
@@ -1920,7 +1934,10 @@ fn compare_anything() {
     let mut cmp_schemas = all_schemas();
     cmp_schemas.remove("anything");
 
-    assert_less_than(schema, cmp_schemas);
+    assert_greater_than(
+        schema,
+        cmp_schemas.into_iter().map(|(_, schema)| schema).collect(),
+    );
 }
 
 #[test]
@@ -1929,5 +1946,89 @@ fn compare_nothing() {
     let mut cmp_schemas = all_schemas();
     cmp_schemas.remove("nothing");
 
-    assert_greater_than(schema, cmp_schemas);
+    assert_less_than(
+        schema,
+        cmp_schemas.into_iter().map(|(_, schema)| schema).collect(),
+    );
+}
+
+#[test]
+fn compare_of_kind_i32() {
+    let schema = StandardSchema::OfKind(ValueKind::Int32);
+    let greater_schemas = vec![StandardSchema::OfKind(ValueKind::Int64)];
+    let lesser_schemas = vec![StandardSchema::Equal(Value::Int32Value(10))];
+    let not_related_schemas = vec![StandardSchema::Equal(Value::Int64Value(20))];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_of_kind_i64() {
+    let schema = StandardSchema::OfKind(ValueKind::Int64);
+    let lesser_schemas = vec![
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::InRangeInt {
+            min: Some((0, true)),
+            max: Some((10, true)),
+        },
+    ];
+
+    assert_greater_than(schema, lesser_schemas)
+}
+
+#[test]
+fn compare_of_kind_f64() {
+    let schema = StandardSchema::OfKind(ValueKind::Float64);
+    let lesser_schemas = vec![
+        StandardSchema::Finite,
+        StandardSchema::NonNan,
+        StandardSchema::InRangeFloat {
+            min: Some((0.0, true)),
+            max: Some((10.0, true)),
+        },
+        StandardSchema::Equal(Value::Float64Value(10.0)),
+    ];
+
+    assert_greater_than(schema, lesser_schemas)
+}
+
+#[test]
+fn compare_of_kind_text() {
+    let schema = StandardSchema::OfKind(ValueKind::Text);
+    let lesser_schemas = vec![
+        StandardSchema::Text(TextSchema::NonEmpty),
+        StandardSchema::Text(TextSchema::Exact("foo".to_string())),
+        StandardSchema::Text(TextSchema::regex("^ab*a$").unwrap()),
+        StandardSchema::Equal(Value::Text("qux".to_string())),
+    ];
+
+    assert_greater_than(schema, lesser_schemas)
+}
+
+#[test]
+fn compare_of_kind_boolean() {
+    let schema = StandardSchema::OfKind(ValueKind::Boolean);
+    let lesser_schemas = vec![StandardSchema::Equal(Value::BooleanValue(true))];
+
+    assert_greater_than(schema, lesser_schemas)
+}
+
+#[test]
+fn compare_of_kind_record() {
+    let schema = StandardSchema::OfKind(ValueKind::Record);
+    let lesser_schemas = vec![StandardSchema::Equal(Value::Record(vec![], vec![]))];
+
+    assert_greater_than(schema, lesser_schemas)
+}
+
+#[test]
+fn compare_of_kind_extant() {
+    let schema = StandardSchema::OfKind(ValueKind::Extant);
+    let equal_schemas = vec![StandardSchema::Equal(Value::Extant)];
+
+    assert_equal(schema, equal_schemas)
 }

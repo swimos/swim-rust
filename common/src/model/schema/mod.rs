@@ -485,13 +485,42 @@ impl PartialOrd for StandardSchema {
             Some(Ordering::Equal)
         } else {
             match (self, other) {
+                (StandardSchema::Anything, _) => Some(Ordering::Greater),
                 (_, StandardSchema::Anything) => Some(Ordering::Less),
                 (_, StandardSchema::Nothing) => Some(Ordering::Greater),
-                (StandardSchema::Anything, _) => Some(Ordering::Greater),
                 (StandardSchema::Nothing, _) => Some(Ordering::Less),
+                (StandardSchema::OfKind(kind), _) => Some(of_kind_cmp(kind, other)?),
+                (_, StandardSchema::OfKind(kind)) => Some(of_kind_cmp(kind, self)?.reverse()),
+
                 _ => None,
             }
         }
+    }
+}
+
+fn of_kind_cmp(this_kind: &ValueKind, other: &StandardSchema) -> Option<Ordering> {
+    match (this_kind, other) {
+        (ValueKind::Text, StandardSchema::Text(_)) => Some(Ordering::Greater),
+        (ValueKind::Float64, StandardSchema::InRangeFloat { .. }) => Some(Ordering::Greater),
+        (ValueKind::Float64, StandardSchema::NonNan) => Some(Ordering::Greater),
+        (ValueKind::Float64, StandardSchema::Finite) => Some(Ordering::Greater),
+        (ValueKind::Int64, StandardSchema::InRangeInt { .. }) => Some(Ordering::Greater),
+        (_, StandardSchema::OfKind(other_kind)) => this_kind.partial_cmp(other_kind),
+        (_, StandardSchema::Equal(value)) => {
+            let other_kind = value.kind();
+            if this_kind.eq(&other_kind) {
+                if this_kind.eq(&ValueKind::Extant) {
+                    Some(Ordering::Equal)
+                } else {
+                    Some(Ordering::Greater)
+                }
+            } else if this_kind > &other_kind {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
