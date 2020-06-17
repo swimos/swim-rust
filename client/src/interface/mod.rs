@@ -104,7 +104,7 @@ pub struct SwimClient {
 
 impl SwimClient {
     /// Creates a new SWIM Client using the default configuration.
-    pub async fn new_default<Fac>(connection_factory: Fac) -> Self
+    pub async fn new_with_default<Fac>(connection_factory: Fac) -> Self
     where
         Fac: WebsocketFactory + 'static,
     {

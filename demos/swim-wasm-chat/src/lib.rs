@@ -59,7 +59,7 @@ impl ChatClient {
     #[wasm_bindgen(constructor)]
     pub async fn new() -> ChatClient {
         let fac = WasmWsFactory::new(5);
-        let swim_client = SwimClient::new_default(fac).await;
+        let swim_client = SwimClient::new_with_default(fac).await;
 
         ChatClient { swim_client }
     }

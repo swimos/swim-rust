@@ -24,7 +24,7 @@ impl Chart {
     pub fn init(canvas: HtmlCanvasElement) {
         spawn_local(async move {
             let fac = WasmWsFactory::new(5);
-            let mut client = SwimClient::new_default(fac).await;
+            let mut client = SwimClient::new_with_default(fac).await;
             let path = AbsolutePath::new(
                 url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
                 "/unit/foo",
