@@ -99,16 +99,10 @@ pub struct ConnReq {
     url: url::Url,
 }
 
-// impl From<WsErr> for ConnectionError {
-//     fn from(_: WsErr) -> Self {
-//         ConnectionError::new(ConnectionErrorKind::ConnectError)
-//     }
-// }
-
 impl WasmWsFactory {
     pub fn new(buffer_size: usize) -> Self {
         let (tx, rx) = mpsc::channel(buffer_size);
-        let _task = spawn_local(Self::factory_task(rx));
+        spawn_local(Self::factory_task(rx));
 
         WasmWsFactory { sender: tx }
     }

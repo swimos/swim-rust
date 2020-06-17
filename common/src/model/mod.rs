@@ -1155,22 +1155,22 @@ impl ReconString for Value {
                     let mut first = true;
                     for a in attrs {
                         if !first {
-                            let _r = write!(&mut res, ",").unwrap();
+                            write!(&mut res, ",").unwrap();
                         }
 
-                        let _r = write!(&mut res, "{}", a.to_recon_string());
+                        let _ = write!(&mut res, "{}", a.to_recon_string());
                         first = false;
                     }
                 }
 
                 {
                     if !items.is_empty() {
-                        let _r = write!(res, ", ").unwrap();
+                        write!(res, ", ").unwrap();
 
                         let mut first = true;
                         for i in items {
                             if !first {
-                                let _r = write!(&mut res, ",").unwrap();
+                                write!(&mut res, ",").unwrap();
                             }
 
                             let _r = write!(&mut res, "{}", i.to_recon_string());
