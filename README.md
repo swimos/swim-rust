@@ -5,9 +5,9 @@
 ## Development
 
 ### Dependencies
-[Formatting](https://github.com/rust-lang/rustfmt): `rustup component add rustfmt`
-[Clippy](https://github.com/rust-lang/rust-clippy): `rustup component add clippy`
-[Tarpaulin](https://github.com/xd009642/tarpaulin) `cargo install cargo-tarpaulin`
+[Formatting](https://github.com/rust-lang/rustfmt): `rustup component add rustfmt`<br>
+[Clippy](https://github.com/rust-lang/rust-clippy): `rustup component add clippy`<br>
+[Tarpaulin](https://github.com/xd009642/tarpaulin) `cargo install cargo-tarpaulin`<br>
 
 ### Unit tests
 ##### Basic: `cargo test`
