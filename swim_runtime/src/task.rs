@@ -14,7 +14,6 @@
 
 use futures::task::{Context, Poll};
 use futures::Future;
-use pin_project::__private::PhantomData;
 use pin_project::*;
 use std::fmt::Debug;
 use std::pin::Pin;
@@ -28,7 +27,6 @@ pub struct TaskError;
 pub struct TaskHandle<R> {
     #[pin]
     inner: oneshot::Receiver<R>,
-    _pd: PhantomData<R>,
 }
 
 impl<R> Future for TaskHandle<R> {
@@ -60,10 +58,7 @@ where
     fn new(f: F) -> (Task<F>, TaskHandle<F::Output>) {
         let (tx, rx) = oneshot::channel();
         let task = Task { tx: Some(tx), f };
-        let task_handle = TaskHandle {
-            inner: rx,
-            _pd: PhantomData,
-        };
+        let task_handle = TaskHandle { inner: rx };
 
         (task, task_handle)
     }
