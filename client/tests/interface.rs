@@ -44,102 +44,8 @@ mod tests {
         ConfigHierarchy::new(client_params, default_params)
     }
 
-    fn init_trace() {
-        trace::init_trace(vec!["client::router=trace"]);
-    }
-
-    #[tokio::test]
-    async fn test_send_untyped_value_command() {
-        init_trace();
-
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
-
-        let mut client = SwimClient::new(config()).await;
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "publish");
-        let mut command_dl = client.untyped_command_downlink(path).await.unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(1)).await;
-        command_dl.send_item(13.into()).await.unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
-    }
-
-    #[tokio::test]
-    async fn test_send_typed_value_command_valid() {
-        init_trace();
-
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
-
-        let mut client = SwimClient::new(config()).await;
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "publish");
-        let mut command_dl = client.command_downlink::<i32>(path).await.unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(1)).await;
-        command_dl.send_item(13).await.unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
-    }
-
-    #[tokio::test]
-    async fn test_send_untyped_map_command() {
-        init_trace();
-
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
-
-        let mut client = SwimClient::new(config()).await;
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
-        let mut command_dl = client.untyped_command_downlink(path).await.unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(1)).await;
-
-        let insert =
-            UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
-                .as_value();
-
-        command_dl.send_item(insert).await.unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
-    }
-
-    #[tokio::test]
-    async fn test_send_typed_map_command() {
-        init_trace();
-
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
-
-        let mut client = SwimClient::new(config()).await;
-
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
-        let mut command_dl = client
-            .command_downlink::<MapModification<String, i32>>(path)
-            .await
-            .unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(1)).await;
-
-        let insert = MapModification::Insert("milk".to_string(), 6);
-
-        command_dl.send_item(insert).await.unwrap();
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
-    }
-
     #[tokio::test]
     async fn test_recv_untyped_value_event() {
-        init_trace();
-
         let docker = Cli::default();
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
@@ -163,13 +69,10 @@ mod tests {
         let incoming = event_dl.recv().await.unwrap();
 
         assert_eq!(incoming, Value::Text("Hello, from Rust!".to_string()));
-        tokio::time::delay_for(Duration::from_secs(3)).await;
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_valid() {
-        init_trace();
-
         let docker = Cli::default();
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
@@ -196,14 +99,10 @@ mod tests {
         let incoming = event_dl.recv().await.unwrap();
 
         assert_eq!(incoming, "Hello, from Rust!");
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_invalid() {
-        init_trace();
-
         let docker = Cli::default();
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
@@ -230,14 +129,10 @@ mod tests {
         let incoming = event_dl.recv().await;
 
         assert_eq!(incoming, None);
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
     }
 
     #[tokio::test]
     async fn test_recv_untyped_map_event() {
-        init_trace();
-
         let docker = Cli::default();
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
@@ -270,13 +165,10 @@ mod tests {
         let expected = Value::Record(vec![header], vec![body]);
 
         assert_eq!(incoming, expected);
-        tokio::time::delay_for(Duration::from_secs(3)).await;
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_valid() {
-        init_trace();
-
         let docker = Cli::default();
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
@@ -309,14 +201,10 @@ mod tests {
         let incoming = event_dl.recv().await.unwrap();
 
         assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6));
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_key() {
-        init_trace();
-
         let docker = Cli::default();
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
@@ -349,14 +237,10 @@ mod tests {
         let incoming = event_dl.recv().await;
 
         assert_eq!(incoming, None);
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_value() {
-        init_trace();
-
         let docker = Cli::default();
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
@@ -389,7 +273,5 @@ mod tests {
         let incoming = event_dl.recv().await;
 
         assert_eq!(incoming, None);
-
-        tokio::time::delay_for(Duration::from_secs(3)).await;
     }
 }
