@@ -150,6 +150,7 @@ pub trait DynamicStm: Send + Sync + private::Sealed {
     fn runner(&self) -> Self::TransFuture;
 }
 
+#[must_use = "Transactions do nothing if not executed."]
 pub trait Stm: DynamicStm {
     /// Transform the output value of this [`Stm`]. This function could be executed any number of
     /// times and so should be side-effect free. Particularly, two executions of the function

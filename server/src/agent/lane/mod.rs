@@ -14,3 +14,4 @@
 
 pub mod strategy;
 pub mod value;
+pub mod map;
