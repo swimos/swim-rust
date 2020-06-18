@@ -8,6 +8,7 @@ branches:
 matrix:
   include:
     - os: linux
+      dist: bionic
       arch: amd64
       services:
         - docker
@@ -16,7 +17,6 @@ matrix:
         - TEST_SERVER_VERSION=v1.0
         - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.0"
         - REPO_URL="https://github.com/swimos/swim-docker-example/"
-        - SWIM_CRATES="client form common server utilities deserialize serialize"
       script:
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
@@ -51,7 +51,7 @@ matrix:
         - cargo test --workspace
 
 rust:
-  - 1.43.0
+  - 1.44.0
 
 cache:
   directories:
@@ -64,32 +64,19 @@ before_cache:
 before_script:
   - rustup component add clippy
   - rustup component add rustfmt
+  - |
+    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
+      cargo install cargo-tarpaulin
+    fi
 
 addons:
   apt:
     packages:
-      - libcurl4-openssl-dev
-      - libelf-dev
-      - libdw-dev
-      - cmake
-      - gcc
-      - binutils-dev
-      - libiberty-dev
+      - libssl-dev
 
 after_success:
   - |
     if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
-    wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
-    tar xzf master.tar.gz &&
-    cd kcov-master &&
-    mkdir build &&
-    cd build &&
-    cmake .. &&
-    make &&
-    sudo make install &&
-    cd ../.. &&
-    rm -rf kcov-master &&
-    for crate in $SWIM_CRATES; do for file in target/debug/$crate-*[^\.d]; do mkdir -p "target/cov/$(basename $file)"; kcov --exclude-pattern=/.cargo,/usr/lib --verify "target/cov/$(basename $file)" "$file"; done; done &&
-    bash <(curl -s https://codecov.io/bash) &&
-    echo "Uploaded code coverage"
+      cargo tarpaulin --out Xml -t 300
+      bash <(curl -s https://codecov.io/bash)
     fi
