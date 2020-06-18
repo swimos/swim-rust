@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
 #[allow(unused_imports)]
-#[cfg(feature = "vendored")]
+#[cfg(feature = "websocket")]
 use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;

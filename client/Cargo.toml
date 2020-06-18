@@ -5,8 +5,8 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = ["vendored"]
-vendored = ["tokio-tungstenite", "tokio-tls"]
+default = ["websocket"]
+websocket = ["tokio-tungstenite", "tokio-tls"]
 debug = ["log_verbose"]
 log_verbose = []
 test-server = ["test_server"]
