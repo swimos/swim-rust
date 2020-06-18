@@ -104,31 +104,31 @@ async fn test_send_untyped_value_command() {
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
-        "publish",
+        "publishInfo",
     );
     let mut command_dl = client.untyped_command_downlink(path).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
-    command_dl.send_item(13.into()).await.unwrap();
+    command_dl.send_item("Hello".into()).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
 #[ignore]
-async fn test_send_typed_value_command_valid() {
+async fn test_send_typed_value_command() {
     init_trace(vec!["client::router=trace"]);
 
     let mut client = SwimClient::new(config()).await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "unit/foo",
-        "publish",
+        "publishInfo",
     );
-    let mut command_dl = client.command_downlink::<i32>(path).await.unwrap();
+    let mut command_dl = client.command_downlink::<String>(path).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(1)).await;
-    command_dl.send_item(13).await.unwrap();
+    command_dl.send_item("Bye".to_string()).await.unwrap();
 
     tokio::time::delay_for(Duration::from_secs(3)).await;
 }
@@ -211,7 +211,6 @@ async fn test_recv_untyped_value_event() {
     let incoming = event_dl.recv().await.unwrap();
 
     assert_eq!(incoming, Value::Text("Hello, from Rust!".to_string()));
-    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
@@ -247,8 +246,6 @@ async fn test_recv_typed_value_event_valid() {
     let incoming = event_dl.recv().await.unwrap();
 
     assert_eq!(incoming, "Hello, from Rust!");
-
-    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
@@ -284,8 +281,6 @@ async fn test_recv_typed_value_event_invalid() {
     let incoming = event_dl.recv().await;
 
     assert_eq!(incoming, None);
-
-    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
@@ -325,7 +320,6 @@ async fn test_recv_untyped_map_event() {
     let expected = Value::Record(vec![header], vec![body]);
 
     assert_eq!(incoming, expected);
-    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
@@ -365,8 +359,6 @@ async fn test_recv_typed_map_event_valid() {
     let incoming = event_dl.recv().await.unwrap();
 
     assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6));
-
-    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
@@ -406,8 +398,6 @@ async fn test_recv_typed_map_event_invalid_key() {
     let incoming = event_dl.recv().await;
 
     assert_eq!(incoming, None);
-
-    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
 
 #[tokio::test]
@@ -447,6 +437,4 @@ async fn test_recv_typed_map_event_invalid_value() {
     let incoming = event_dl.recv().await;
 
     assert_eq!(incoming, None);
-
-    tokio::time::delay_for(Duration::from_secs(3)).await;
 }
