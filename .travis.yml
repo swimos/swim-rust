@@ -7,7 +7,7 @@ branches:
 
 jobs:
   include:
-    - if: "$TRAVIS_EVENT_TYPE" != "cron"
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
       os: linux
       arch: amd64
       services:
@@ -27,7 +27,7 @@ jobs:
         - cargo test --package client --features test-server
         - cd ..
 
-    - if: "$TRAVIS_EVENT_TYPE" != "cron"
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
       os: linux
       arch: arm64
       env: ARCH=arm64
@@ -36,7 +36,7 @@ jobs:
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace
 
-    - if: "$TRAVIS_EVENT_TYPE" != "cron"
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
       os: osx
       arch: amd64
       env: ARCH=amd64
@@ -45,7 +45,7 @@ jobs:
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace
 
-    - if: "$TRAVIS_EVENT_TYPE" != "cron"
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
       os: windows
       arch: amd64
       env: ARCH=amd64
