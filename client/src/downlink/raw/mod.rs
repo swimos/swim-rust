@@ -33,6 +33,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{instrument, trace};
+use utilities::ptr::data_ptr_eq;
 
 #[cfg(test)]
 pub mod tests;
@@ -51,7 +52,7 @@ impl<S> Sender<S> {
     }
 
     pub fn same_sender(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.task, &other.task)
+        data_ptr_eq::<dyn DownlinkInternals>(&*self.task, &*other.task)
     }
 
     pub fn is_running(&self) -> bool {
