@@ -27,7 +27,6 @@ mod tests {
     use test_server::Docker;
     use test_server::SwimTestServer;
     use tokio::time::Duration;
-    use utilities::trace;
 
     fn config() -> ConfigHierarchy {
         let client_params = ClientParams::new(2, Default::default()).unwrap();
