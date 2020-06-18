@@ -40,9 +40,6 @@ use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
 use std::time::Duration;
 
-#[cfg(test)]
-mod tests;
-
 /// Respresents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
