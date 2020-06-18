@@ -20,6 +20,8 @@ use std::fmt::{Display, Formatter};
 pub mod future;
 pub mod iteratee;
 pub mod lru_cache;
+#[macro_use]
+pub mod ptr;
 pub mod trace;
 
 /// Error thrown by methods that required a usize to be positive.
