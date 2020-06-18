@@ -14,7 +14,7 @@ matrix:
       env:
         - ARCH=amd64
         - TEST_SERVER_VERSION=v1.1
-        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.1"
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.0"
         - REPO_URL="https://github.com/swimos/swim-docker-example/"
         - SWIM_CRATES="client form common server utilities deserialize serialize"
       script:
