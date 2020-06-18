@@ -98,7 +98,6 @@ impl Error for ClientError {
 /// conform to a contract that is imposed by a form implementation and all actions are verified
 /// against the provided schema to ensure that its views are consistent.
 ///
-#[derive(Clone)]
 pub struct SwimClient {
     /// The downlink manager attached to this Swim Client.
     downlinks: Downlinks,

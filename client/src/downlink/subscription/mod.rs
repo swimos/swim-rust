@@ -53,7 +53,7 @@ use swim_form::ValidatedForm;
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
@@ -83,10 +83,9 @@ type AnyWeakValueDownlink = AnyWeakDownlink<Action, SharedValue>;
 type AnyWeakMapDownlink = AnyWeakDownlink<MapAction, ViewWithEvent>;
 pub type AnyWeakEventDownlink = AnyWeakDownlink<Value, Value>;
 
-#[derive(Clone)]
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
-    task: Arc<Mutex<TaskHandle<RequestResult<()>>>>,
+    task: TaskHandle<RequestResult<()>>,
 }
 
 enum DownlinkRequest {
@@ -116,7 +115,7 @@ impl Downlinks {
 
         Downlinks {
             sender: tx,
-            task: Arc::new(Mutex::new(task_handle)),
+            task: task_handle,
         }
     }
 
@@ -137,8 +136,7 @@ impl Downlinks {
         let Downlinks { sender, task } = self;
         drop(sender);
 
-        let inner = &mut *task.lock().await;
-        inner.await
+        task.await
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
