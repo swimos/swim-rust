@@ -18,7 +18,7 @@
 /// Example:
 /// ```
 /// use std::sync::Arc;
-/// use self::utilities::trait_eq;
+/// use utilities::ptr::data_ptr_eq;
 ///
 /// trait TestTrait {}
 ///
@@ -33,20 +33,18 @@
 /// let s1 = Sender { task: Arc::new(S) };
 /// let s2 = s1.clone();
 ///
-/// assert!(trait_eq!(&*s1.task, &*s2.task, TestTrait));
+/// assert!(data_ptr_eq(&*s1.task, &*s2.task));
 /// ```
-#[macro_export]
-macro_rules! trait_eq {
-    ($left:expr, $right:expr, $tr:ident) => {{
-        let l = $left as &dyn $tr as *const dyn $tr as *const u8;
-        let r = $right as &dyn $tr as *const dyn $tr as *const u8;
+pub fn data_ptr_eq<T: ?Sized>(p1: &T, p2: &T) -> bool {
+    let l = p1 as *const T as *const u8;
+    let r = p2 as *const T as *const u8;
 
-        std::ptr::eq(l, r)
-    }};
+    std::ptr::eq(l, r)
 }
 
 #[cfg(test)]
 mod trait_eq_tests {
+    use crate::ptr::data_ptr_eq;
     use std::sync::Arc;
 
     trait TestTrait {}
@@ -65,20 +63,18 @@ mod trait_eq_tests {
         let s1 = Sender { task: Arc::new(S) };
         let s2 = s1.clone();
 
-        assert!(trait_eq!(&*s1.task, &*s2.task, TestTrait));
+        assert!(data_ptr_eq(&*s1.task, &*s2.task));
     }
 
     #[test]
     fn not_eq() {
         struct A;
-        struct B;
 
         impl TestTrait for A {}
-        impl TestTrait for B {}
 
         let a = A;
-        let b = B;
+        let b = A;
 
-        assert!(!trait_eq!(&a, &b, TestTrait));
+        assert!(!data_ptr_eq(&a, &b));
     }
 }
