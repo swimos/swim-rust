@@ -14,15 +14,15 @@ matrix:
       env:
         - ARCH=amd64
         - TEST_SERVER_VERSION=v1.1
-        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
-        - REPO_URL="https://github.com/SirCipher/swim-test-server/"
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.1"
+        - REPO_URL="https://github.com/swimos/swim-docker-example/"
         - SWIM_CRATES="client form common server utilities deserialize serialize"
       script:
         - cargo fmt -- --check
         - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace --exclude client
         - cd client
-        #       Features aren't allowed in the root of a virtual workspace
+        # Features aren't allowed in the root of a virtual workspace
         - cargo test --package client --features test-server
         - cd ..
 
