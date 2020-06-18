@@ -53,14 +53,22 @@ pub(in crate) struct TVarInner {
 }
 
 impl TVarInner {
+
     /// Erase the type of a value to store it inside a transactional variable.
     pub fn new<T>(value: T) -> Self
     where
         T: Any + Send + Sync,
     {
+        Self::from_arc(Arc::new(value))
+    }
+
+    /// Erase the type of a value, stored in an Arc, to store it inside a transactional variable.
+    pub fn from_arc<T>(value: Arc<T>) -> Self
+        where
+            T: Any + Send + Sync,{
         TVarInner {
             guarded: RwLock::new(TVarGuarded {
-                content: Arc::new(value),
+                content: value,
                 observer: None,
             }),
             wakers: Mutex::new(vec![]),
@@ -149,8 +157,14 @@ impl TVarInner {
 }
 
 /// A transactional variable that can be read and written by [`crate::stm::Stm`] transactions.
-#[derive(Clone)]
 pub struct TVar<T>(Arc<TVarInner>, PhantomData<Arc<T>>);
+
+impl<T> Clone for TVar<T> {
+    fn clone(&self) -> Self {
+        let TVar(inner, _) = self;
+        TVar(inner.clone(), PhantomData)
+    }
+}
 
 impl<T> Debug for TVar<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -208,6 +222,10 @@ impl<T: Any + Send + Sync> TVar<T> {
         TVar(Arc::new(TVarInner::new(initial)), PhantomData)
     }
 
+    pub fn from_arc(initial: Arc<T>) -> Self {
+        TVar(Arc::new(TVarInner::from_arc(initial)), PhantomData)
+    }
+
     pub fn new_with_observer<Obs>(initial: T, observer: Obs) -> Self
     where
         Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
@@ -232,6 +250,16 @@ impl<T> TVar<T> {
         TVarWrite {
             inner: inner.clone(),
             value: Arc::new(value),
+            _op_t_: PhantomData,
+        }
+    }
+
+    /// Write to the variable as part of a transaction.
+    pub fn put_arc(&self, value: Arc<T>) -> TVarWrite<T> {
+        let TVar(inner, ..) = self;
+        TVarWrite {
+            inner: inner.clone(),
+            value,
             _op_t_: PhantomData,
         }
     }

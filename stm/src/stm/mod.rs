@@ -356,6 +356,8 @@ pub fn right<S1: Stm, S2: Stm>(stm: S2) -> StmEither<S1, S2> {
     StmEither::Right(stm)
 }
 
+pub const UNIT: Constant<()> = Constant(());
+
 impl<T: Any + Send + Sync> DynamicStm for TVarRead<T> {
     type Result = Arc<T>;
     type TransFuture = ReadFuture<T>;

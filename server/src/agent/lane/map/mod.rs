@@ -12,24 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
-use form::Form;
-use im::OrdMap;
 use std::any::Any;
 use std::marker::PhantomData;
 use std::sync::Arc;
+
+use im::OrdMap;
+
+use common::model::Value;
+use form::Form;
 use stm::local::TLocal;
-use stm::stm::{left, right, Stm};
+use stm::stm::{Constant, left, right, Stm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError};
 use stm::var::TVar;
+use summary::{clear_summary, remove_summary, update_summary};
+
 use crate::agent::lane::map::summary::TransactionSummary;
 
 mod summary;
 
-use summary::{clear_summary, remove_summary, update_summary};
-
 pub struct MapLane<K, V> {
-    map_state: TVar<OrdMap<Value, Arc<V>>>,
+    map_state: TVar<OrdMap<Value, TVar<V>>>,
     summary: TVar<TransactionSummary<V>>,
     transaction_started: TLocal<bool>,
     _key_type: PhantomData<K>,
@@ -51,6 +53,59 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
             key,
         }
     }
+
+    pub fn get(&self, key: K) -> impl Stm<Result=Option<Arc<V>>> + '_ {
+        let k = key.into_value();
+        self.map_state.get().and_then(move |map| {
+            match map.get(&k) {
+                Some(var) => {
+                    left(var.get().map(Option::Some))
+                },
+                _ => {
+                    right(Constant(None))
+                }
+            }
+        })
+    }
+
+    pub fn contains(&self, key: K) -> impl Stm<Result=bool> + '_ {
+        let k = key.into_value();
+        self.map_state.get().map(move |map| map.contains_key(&k))
+    }
+
+    pub fn len(&self) -> impl Stm<Result=usize> + '_ {
+        self.map_state.get().map(move |map| map.len())
+    }
+
+    pub fn first(&self) -> impl Stm<Result=Option<Arc<V>>> + '_ {
+        self.map_state.get().and_then(move |map| {
+            match map.get_min() {
+                Some((_, var)) => {
+                    left(var.get().map(Option::Some))
+                },
+                _ => {
+                    right(Constant(None))
+                }
+            }
+        })
+    }
+
+    pub fn last(&self) -> impl Stm<Result=Option<Arc<V>>> + '_ {
+        self.map_state.get().and_then(move |map| {
+            match map.get_max() {
+                Some((_, var)) => {
+                    left(var.get().map(Option::Some))
+                },
+                _ => {
+                    right(Constant(None))
+                }
+            }
+        })
+    }
+
+    //pub fn snapshot(&self) -> impl Stm<Result = OrdMap<K, Arc<V>>> + '_ {
+    //    unimplemented!()
+    //}
 
     pub fn clear_direct(&self) -> DirectClear<'_, K, V> {
         DirectClear(self)
@@ -127,22 +182,41 @@ fn clear_lane<V: Any + Send + Sync>(content: &TVar<OrdMap<Value, V>>) -> impl St
 }
 
 fn update_lane<'a, V: Any + Send + Sync>(
-    content: &'a TVar<OrdMap<Value, Arc<V>>>,
+    content: &'a TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
     value: Arc<V>,
 ) -> impl Stm<Result = ()> + 'a {
     content
         .get()
-        .and_then(move |sum| content.put(sum.update(key.clone(), value.clone())))
+        .and_then(move |map| {
+
+            match map.get(&key) {
+                Some(var) => {
+                    left(var.put_arc(value.clone()))
+                },
+                _ => {
+                    let var = TVar::from_arc(value.clone());
+                    let new_map = map.update(key.clone(), var);
+                    right(content.put(new_map))
+                },
+            }
+        })
 }
 
 fn remove_lane<'a, V: Any + Send + Sync>(
-    content: &'a TVar<OrdMap<Value, Arc<V>>>,
+    content: &'a TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
 ) -> impl Stm<Result = ()> + 'a {
     content
         .get()
-        .and_then(move |sum| content.put(sum.without(&key)))
+        .and_then(move |map| {
+            if map.contains_key(&key) {
+                let new_map = map.without(&key);
+                left(content.put(new_map))
+            } else {
+                right(UNIT)
+            }
+        })
 }
 
 #[must_use = "Transactions do nothing if not executed."]
