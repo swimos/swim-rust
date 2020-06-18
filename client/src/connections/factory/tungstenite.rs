@@ -63,7 +63,7 @@ impl TransformMut<WsMessage> for SinkTransformer {
 
     fn transform(&mut self, input: WsMessage) -> Self::Out {
         match input {
-            WsMessage::String(s) => Message::Text(s),
+            WsMessage::Text(s) => Message::Text(s),
             WsMessage::Binary(v) => Message::Binary(v),
         }
     }
@@ -76,7 +76,7 @@ impl TransformMut<Result<Message, TError>> for StreamTransformer {
     fn transform(&mut self, input: Result<Message, TError>) -> Self::Out {
         match input {
             Ok(i) => match i {
-                Message::Text(s) => Ok(WsMessage::String(s)),
+                Message::Text(s) => Ok(WsMessage::Text(s)),
                 Message::Binary(v) => Ok(WsMessage::Binary(v)),
                 _ => Err(ConnectionError::new(
                     ConnectionErrorKind::ReceiveMessageError,

@@ -38,7 +38,7 @@ impl TransformMut<WsMessage> for SinkTransformer {
     fn transform(&mut self, input: WsMessage) -> Self::Out {
         match input {
             WsMessage::Binary(v) => WasmMessage::Binary(v),
-            WsMessage::String(v) => WasmMessage::Text(v),
+            WsMessage::Text(v) => WasmMessage::Text(v),
         }
     }
 }
@@ -49,7 +49,7 @@ impl TransformMut<WasmMessage> for StreamTransformer {
 
     fn transform(&mut self, input: WasmMessage) -> Self::Out {
         match input {
-            WasmMessage::Text(s) => Ok(WsMessage::String(s)),
+            WasmMessage::Text(s) => Ok(WsMessage::Text(s)),
             WasmMessage::Binary(_) => panic!("Unsupported message type"),
         }
     }

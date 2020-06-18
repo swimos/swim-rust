@@ -117,7 +117,7 @@ impl IncomingHostTask {
                 IncomingRequest::Message(message) => {
                     let value = {
                         match &message {
-                            WsMessage::String(s) => parse_single(&s),
+                            WsMessage::Text(s) => parse_single(&s),
                             WsMessage::Binary(_) => unimplemented!("Binary not supported yet"),
                         }
                     };

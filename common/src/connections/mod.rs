@@ -19,19 +19,19 @@ pub mod error;
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
 pub enum WsMessage {
-    String(String),
+    Text(String),
     Binary(Vec<u8>),
 }
 
 impl From<String> for WsMessage {
     fn from(s: String) -> Self {
-        WsMessage::String(s)
+        WsMessage::Text(s)
     }
 }
 
 impl From<&str> for WsMessage {
     fn from(s: &str) -> Self {
-        WsMessage::String(s.to_string())
+        WsMessage::Text(s.to_string())
     }
 }
 
