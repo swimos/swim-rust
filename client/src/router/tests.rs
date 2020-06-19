@@ -1,6 +1,6 @@
 use crate::connections::{ConnectionPool, ConnectionReceiver, ConnectionSender};
 use crate::router::{Router, RouterEvent, SwimRouter};
-use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::error::{ConnectionError, WebSocketError};
 use common::connections::WsMessage;
 use common::model::Value;
 use common::request::request_future::RequestError;
@@ -1646,7 +1646,7 @@ async fn test_route_incoming_unreachable_host() {
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Unreachable("An error was produced by the web socket.".to_string())
+        RouterEvent::Unreachable("An error was produced by the web socket: An invalid URL (ws://unreachable/) was supplied".to_string())
     );
 
     assert_eq!(get_request_count(&pool), 1);
@@ -1836,11 +1836,12 @@ impl ConnectionPool for TestPool {
     type CloseFut = Ready<Result<Result<(), ConnectionError>, ConnectionError>>;
 
     fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut {
+        let host_url_string = host_url.to_string();
         if host_url == self.permanent_error_url {
             self.log_request(host_url, recreate);
-            return ready(Ok(Err(ConnectionError::new(
-                ConnectionErrorKind::SocketError,
-            ))));
+            return ready(Ok(Err(ConnectionError::SocketError(WebSocketError::Url(
+                host_url_string,
+            )))));
         }
 
         if !recreate && self.connections.lock().unwrap().get(&host_url).is_some() {

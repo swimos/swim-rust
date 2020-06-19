@@ -18,13 +18,14 @@ use futures::{StreamExt, TryFutureExt};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
-use ws_stream_wasm::{WsMessage as WasmMessage, WsMeta, WsStream};
+use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 
 use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
 use common::request::Request;
 
-use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::error::{ConnectionError, WebSocketError};
 use common::connections::{WebsocketFactory, WsMessage};
+use std::ops::Deref;
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
@@ -76,7 +77,7 @@ impl WasmWsFactory {
         while let Some(ConnReq { request, url }) = receiver.next().await {
             let (_ws, wsio) = WsMeta::connect(url, None)
                 .await
-                .map_err(|_| ConnectionError::new(ConnectionErrorKind::ConnectError))
+                .map_err(|_| ConnectionError::ConnectError)
                 .unwrap();
 
             let (sink, stream) = wsio.split();
@@ -110,5 +111,30 @@ impl WebsocketFactory for WasmWsFactory {
         FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(
             req_fut, rx,
         )))
+    }
+}
+
+struct WsError(WsErr);
+
+impl Deref for WsError {
+    type Target = WsErr;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<WsError> for ConnectionError {
+    fn from(e: WsError) -> Self {
+        match &*e {
+            WsErr::InvalidUrl { supplied } => {
+                ConnectionError::SocketError(WebSocketError::Url(supplied.clone()))
+            }
+            WsErr::ConnectionFailed { .. } => ConnectionError::ConnectError,
+            WsErr::InvalidCloseCode { .. } => ConnectionError::AlreadyClosedError,
+            WsErr::ForbiddenPort => ConnectionError::SocketError(WebSocketError::Protocol),
+            WsErr::ConnectionNotOpen => ConnectionError::AlreadyClosedError,
+            _ => ConnectionError::ConnectError,
+        }
     }
 }

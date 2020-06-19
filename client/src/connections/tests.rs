@@ -566,10 +566,7 @@ async fn test_connection_receive_message_error() {
     let result = connection._receive_handle.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(
-        result.err().unwrap().kind(),
-        ConnectionErrorKind::ReceiveMessageError
-    );
+    assert_eq!(result.err().unwrap(), ConnectionError::ReceiveMessageError);
 }
 
 #[tokio::test]
@@ -591,10 +588,7 @@ async fn test_new_connection_send_message_error() {
     let result = connection._send_handle.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(
-        result.err().unwrap().kind(),
-        ConnectionErrorKind::SendMessageError
-    );
+    assert_eq!(result.err().unwrap(), ConnectionError::SendMessageError);
 }
 
 #[derive(Clone)]
@@ -609,16 +603,16 @@ impl Stream for TestReadStream {
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.error {
             Poll::Ready(Some(Err(ConnectionError::from(
-                ConnectionErrorKind::ReceiveMessageError,
+                ConnectionError::ReceiveMessageError,
             ))))
         } else {
             if self.items.is_empty() {
                 Poll::Ready(None)
             } else {
                 let message = self.items.drain(0..1).next();
-                Poll::Ready(Some(message.ok_or(ConnectionError::from(
-                    ConnectionErrorKind::SendMessageError,
-                ))))
+                Poll::Ready(Some(
+                    message.ok_or(ConnectionError::from(ConnectionError::SendMessageError)),
+                ))
             }
         }
     }
@@ -738,7 +732,7 @@ impl MultipleTestData {
     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
         let i = self.n.fetch_add(1, Ordering::AcqRel);
         if i >= self.connections.len() {
-            Err(ConnectionError::from(ConnectionErrorKind::ConnectError))
+            Err(ConnectionError::from(ConnectionError::ConnectError))
         } else {
             let maybe_conn = &self.connections[i];
             match maybe_conn {
@@ -755,7 +749,7 @@ impl MultipleTestData {
                     };
                     Ok((output, input))
                 }
-                _ => Err(ConnectionError::from(ConnectionErrorKind::ConnectError)),
+                _ => Err(ConnectionError::from(ConnectionError::ConnectError)),
             }
         }
     }

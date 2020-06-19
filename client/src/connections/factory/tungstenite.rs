@@ -25,8 +25,9 @@ use url::Url;
 use common::request::request_future::SendAndAwait;
 
 use super::async_factory;
-use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::error::{ConnectionError, WebSocketError};
 use common::connections::{WebsocketFactory, WsMessage};
+use std::ops::Deref;
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
@@ -78,14 +79,9 @@ impl TransformMut<Result<Message, TError>> for StreamTransformer {
             Ok(i) => match i {
                 Message::Text(s) => Ok(WsMessage::Text(s)),
                 Message::Binary(v) => Ok(WsMessage::Binary(v)),
-                _ => Err(ConnectionError::new(
-                    ConnectionErrorKind::ReceiveMessageError,
-                )),
+                _ => Err(ConnectionError::ReceiveMessageError),
             },
-            Err(e) => Err(ConnectionError::with_cause(
-                ConnectionErrorKind::ConnectError,
-                Box::new(e),
-            )),
+            Err(_) => Err(ConnectionError::ConnectError),
         }
     }
 }
@@ -98,7 +94,7 @@ pub struct TungsteniteWsFactory {
 async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionError> {
     tracing::info!("Connecting to URL {:?}", &url);
 
-    match connect_async(url).await {
+    match connect_async(url).await.map_err(TungsteniteError) {
         Ok((ws_str, _)) => {
             let (tx, rx) = ws_str.split();
             let transformed_sink = TransformedSink::new(tx, SinkTransformer);
@@ -107,37 +103,37 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
             Ok((transformed_sink, transformed_stream))
         }
         Err(e) => {
-            match &e {
+            match &*e {
                 Error::Url(m) => {
                     // Malformatted URL, permanent error
                     tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
-                    Err(tung_err_to_conn_err(e))
+                    Err(e.into())
                 }
                 Error::Io(io_err) => {
                     // todo: This should be considered a fatal error. How should it be handled?
                     tracing::error!(cause = %io_err, "IO error when attempting to connect to host");
-                    Err(tung_err_to_conn_err(e))
+                    Err(e.into())
                 }
                 Error::Tls(tls_err) => {
                     // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
                     tracing::error!(cause = %tls_err, "IO error when attempting to connect to host");
-                    Err(tung_err_to_conn_err(e))
+                    Err(e.into())
                 }
                 Error::Protocol(m) => {
                     tracing::error!(cause = %m, "A protocol error occured when connecting to host");
-                    Err(tung_err_to_conn_err(e))
+                    Err(e.into())
                 }
                 Error::Http(code) => {
                     // todo: This should be expanded and determined if it is possibly a transient error
                     // but for now it will suffice
                     tracing::error!(status_code = %code, "HTTP error when connecting to host");
-                    Err(tung_err_to_conn_err(e))
+                    Err(e.into())
                 }
                 Error::HttpFormat(http_err) => {
                     // This should be expanded and determined if it is possibly a transient error
                     // but for now it will suffice
                     tracing::error!(cause = %http_err, "HTTP error when connecting to host");
-                    Err(tung_err_to_conn_err(e))
+                    Err(e.into())
                 }
                 e => {
                     // Transient or unreachable errors
@@ -151,33 +147,36 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
 }
 
 type TError = tungstenite::error::Error;
+struct TungsteniteError(tungstenite::error::Error);
 
-fn tung_err_to_conn_err(e: TError) -> ConnectionError {
-    match e {
-        TError::ConnectionClosed | TError::AlreadyClosed => {
-            ConnectionError::from(ConnectionErrorKind::ClosedError)
+impl Deref for TungsteniteError {
+    type Target = TError;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<TungsteniteError> for ConnectionError {
+    fn from(e: TungsteniteError) -> Self {
+        match e.deref() {
+            TError::ConnectionClosed => ConnectionError::Closed,
+            TError::Url(url) => ConnectionError::SocketError(WebSocketError::Url(url.to_string())),
+            TError::HttpFormat(_) | TError::Http(_) => {
+                ConnectionError::SocketError(WebSocketError::Protocol)
+            }
+            _ => ConnectionError::ConnectError,
         }
-        e @ TError::Http(_)
-        | e @ TError::HttpFormat(_)
-        | e @ TError::Tls(_)
-        | e @ TError::Protocol(_)
-        | e @ TError::Io(_)
-        | e @ TError::Url(_) => {
-            ConnectionError::with_cause(ConnectionErrorKind::SocketError, Box::new(e))
-        }
-        _ => ConnectionError::with_cause(ConnectionErrorKind::ConnectError, Box::new(e)),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tokio_tungstenite::tungstenite;
-
-    type TError = tungstenite::error::Error;
-
     use crate::configuration::router::ConnectionPoolParams;
     use crate::connections::factory::tungstenite::TungsteniteWsFactory;
     use crate::connections::{ConnectionPool, SwimConnPool};
+
+    use common::connections::error::ConnectionError;
 
     #[tokio::test]
     async fn invalid_protocol() {
@@ -193,8 +192,6 @@ mod tests {
             .await
             .unwrap();
 
-        let result = rx.err().unwrap().cause().unwrap().downcast::<TError>();
-
-        assert!(matches!(*result.unwrap(), TError::Url(_)));
+        assert!(matches!(rx.err().unwrap(), ConnectionError::SocketError(_)));
     }
 }
