@@ -5,53 +5,67 @@ branches:
     - master
     - router
 
-matrix:
+jobs:
   include:
-    - os: linux
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
       dist: bionic
+      os: linux
       arch: amd64
       services:
         - docker
       env:
         - ARCH=amd64
         - TEST_SERVER_VERSION=v1.1
-        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
-        - REPO_URL="https://github.com/SirCipher/swim-test-server/"
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.1"
+        - REPO_URL="https://github.com/swimos/swim-docker-example/"
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace --exclude client
         - cd client
-        #       Features aren't allowed in the root of a virtual workspace
+        # Features aren't allowed in the root of a virtual workspace
         - cargo test --package client --features test-server
         - cd ..
 
-    - os: linux
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
+      os: linux
       arch: arm64
       env: ARCH=arm64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace
 
-    - os: osx
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
+      os: osx
       arch: amd64
       env: ARCH=amd64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace
 
-    - os: windows
+    - if: env(TRAVIS_EVENT_TYPE) != "cron"
+      os: windows
       arch: amd64
       env: ARCH=amd64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings
+        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace
+
+    - if: env(TRAVIS_EVENT_TYPE) = "cron"
+      os: windows
+      arch: amd64
+      env: ARCH=amd64
+      before_script:
+        - rustup target add wasm32-unknown-unknown
+        - cargo install wasm-pack
+      script:
+        - wasm-pack build
 
 rust:
-  - 1.43.0
+  - 1.44.0
 
 cache:
   directories:
