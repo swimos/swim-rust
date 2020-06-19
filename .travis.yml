@@ -15,8 +15,8 @@ jobs:
         - docker
       env:
         - ARCH=amd64
-        - TEST_SERVER_VERSION=v1.0
-        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.0"
+        - TEST_SERVER_VERSION=v1.1
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.1"
         - REPO_URL="https://github.com/swimos/swim-docker-example/"
       script:
         - cargo fmt -- --check
