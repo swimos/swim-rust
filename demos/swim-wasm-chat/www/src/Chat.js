@@ -31,9 +31,7 @@ class Chat extends Component {
     }
 
     async loadChats() {
-        const chat_client = await new swim.ChatClient();
-
-        chat_client.set_callbacks(
+        const chat_client = await new swim.ChatClient(
             // On initial sync
             (msgs) => {
                 this.setState({

@@ -93,7 +93,7 @@ pub mod interval {
         inner: tokio::time::Interval,
         #[cfg(target_arch = "wasm32")]
         #[pin]
-        inner: tokio::time::Interval,
+        inner: wasm_timer::Interval,
     }
 
     impl Stream for Interval {
@@ -134,7 +134,7 @@ pub mod instant {
         #[cfg(not(target_arch = "wasm32"))]
         inner: tokio::time::Instant,
         #[cfg(target_arch = "wasm32")]
-        inner: tokio::time::Instant,
+        inner: wasm_timer::Instant,
     }
 
     impl Instant {
