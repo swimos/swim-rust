@@ -102,10 +102,7 @@ pub mod interval {
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             #[cfg(not(target_arch = "wasm32"))]
             {
-                match self.project().inner.poll_next(cx) {
-                    Poll::Pending => Poll::Pending,
-                    Poll::Ready(_) => Poll::Ready(Some(())),
-                }
+                self.project().inner.poll_next(cx).map(|_| Some(()))
             }
             #[cfg(target_arch = "wasm32")]
             {

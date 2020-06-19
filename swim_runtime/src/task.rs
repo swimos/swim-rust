@@ -23,6 +23,9 @@ pub use self::wasm::TaskHandle;
 #[derive(Debug)]
 pub struct TaskError;
 
+/// Spawns a new asynchronous task on the current runtime. a [`JoinHandle`] is returned
+/// that corresponds to the current runtime. See the documentation for the underlying executor for
+/// guarantees that are made about the executing of the task.
 pub fn spawn<F>(f: F) -> TaskHandle<F::Output>
 where
     F: Future + Send + 'static,
@@ -50,9 +53,13 @@ mod wasm {
     use tokio::sync::oneshot;
     use tokio::task::JoinHandle;
 
+    /// A handle to a returned task by the current runtime.
     #[pin_project]
     #[derive(Debug)]
     pub struct TaskHandle<R> {
+        /// As WASM futures may not return a value, when a future is spawned on the WASM runtime it
+        /// the returned value is sent over a channel to this [`TaskHandle`] and awaiting its
+        /// termination awaits the value on the channel.
         #[pin]
         inner: oneshot::Receiver<R>,
     }
@@ -73,6 +80,7 @@ mod wasm {
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             match self.project().inner.poll(cx) {
                 Poll::Pending => Poll::Pending,
+                // If the sender has been dropped then the task has panicked.
                 Poll::Ready(r) => Poll::Ready(r.map_err(|_| TaskError)),
             }
         }
