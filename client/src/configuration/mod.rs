@@ -291,6 +291,23 @@ pub mod downlink {
         }
     }
 
+    impl Default for ConfigHierarchy {
+        fn default() -> Self {
+            let client_params = ClientParams::new(2, Default::default()).unwrap();
+            let timeout = Duration::from_secs(60000);
+            let default_params = DownlinkParams::new_queue(
+                BackpressureMode::Propagate,
+                5,
+                timeout,
+                5,
+                OnInvalidMessage::Terminate,
+                256,
+            )
+            .unwrap();
+            ConfigHierarchy::new(client_params, default_params)
+        }
+    }
+
     impl<'a> Config for Box<dyn Config + 'a> {
         fn config_for(&self, path: &AbsolutePath) -> DownlinkParams {
             (**self).config_for(path)

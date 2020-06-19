@@ -187,7 +187,7 @@ mod tests {
     #[tokio::test]
     async fn send_ok() {
         let (tx, mut rx) = mpsc::channel(5);
-        let payload = WsMessage::String(String::from("Text"));
+        let payload = WsMessage::Text(String::from("Text"));
         let retryable = new_retryable(
             payload.clone(),
             tx,
@@ -204,7 +204,7 @@ mod tests {
     #[tokio::test]
     async fn recovers() {
         let (tx, mut rx) = mpsc::channel(5);
-        let payload = WsMessage::String(String::from("Text"));
+        let payload = WsMessage::Text(String::from("Text"));
         let retryable = new_retryable(
             payload.clone(),
             tx,
@@ -232,7 +232,7 @@ mod tests {
     #[tokio::test]
     async fn errors() {
         let (tx, _rx) = mpsc::channel(5);
-        let message = WsMessage::String(String::from("Text"));
+        let message = WsMessage::Text(String::from("Text"));
         let retryable = new_retryable(
             message.clone(),
             tx,

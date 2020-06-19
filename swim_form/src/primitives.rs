@@ -116,9 +116,9 @@ impl Form for String {
     }
 }
 
-impl<O> Form for Option<O>
+impl<V> Form for Option<V>
 where
-    O: Form,
+    V: Form,
 {
     fn as_value(&self) -> Value {
         match &self {
@@ -130,11 +130,20 @@ where
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Extant => Ok(None),
-            _ => match O::try_from_value(value) {
+            _ => match V::try_from_value(value) {
                 Ok(r) => Ok(Some(r)),
                 Err(e) => Err(e),
             },
         }
+    }
+}
+
+impl<V> ValidatedForm for Option<V>
+where
+    V: ValidatedForm,
+{
+    fn schema() -> StandardSchema {
+        V::schema()
     }
 }
 

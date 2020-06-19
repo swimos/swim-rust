@@ -40,9 +40,6 @@ use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
 use std::time::Duration;
 
-#[cfg(test)]
-mod tests;
-
 /// Respresents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
@@ -98,7 +95,6 @@ impl Error for ClientError {
 /// conform to a contract that is imposed by a form implementation and all actions are verified
 /// against the provided schema to ensure that its views are consistent.
 ///
-#[derive(Clone)]
 pub struct SwimClient {
     /// The downlink manager attached to this Swim Client.
     downlinks: Downlinks,

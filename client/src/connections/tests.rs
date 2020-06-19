@@ -62,7 +62,7 @@ async fn test_connection_pool_send_single_message_single_connection() {
     // Then
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("Hello".to_string())
+        WsMessage::Text("Hello".to_string())
     );
 }
 
@@ -107,11 +107,11 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     // Then
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("First_Text".to_string())
+        WsMessage::Text("First_Text".to_string())
     );
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("Second_Text".to_string())
+        WsMessage::Text("Second_Text".to_string())
     );
 }
 
@@ -177,15 +177,15 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     // Then
     assert_eq!(
         first_writer_rx.recv().await.unwrap(),
-        WsMessage::String("First_Text".to_string())
+        WsMessage::Text("First_Text".to_string())
     );
     assert_eq!(
         second_writer_rx.recv().await.unwrap(),
-        WsMessage::String("Second_Text".to_string())
+        WsMessage::Text("Second_Text".to_string())
     );
     assert_eq!(
         third_writer_rx.recv().await.unwrap(),
-        WsMessage::String("Third_Text".to_string())
+        WsMessage::Text("Third_Text".to_string())
     );
 }
 
@@ -212,7 +212,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
 
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
-    assert_eq!(pool_message, WsMessage::String("new_message".to_string()));
+    assert_eq!(pool_message, WsMessage::Text("new_message".to_string()));
 }
 
 #[tokio::test]
@@ -247,15 +247,15 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
 
     assert_eq!(
         first_pool_message,
-        WsMessage::String("first_message".to_string())
+        WsMessage::Text("first_message".to_string())
     );
     assert_eq!(
         second_pool_message,
-        WsMessage::String("second_message".to_string())
+        WsMessage::Text("second_message".to_string())
     );
     assert_eq!(
         third_pool_message,
-        WsMessage::String("third_message".to_string())
+        WsMessage::Text("third_message".to_string())
     );
 }
 
@@ -315,15 +315,15 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
 
     assert_eq!(
         first_pool_message,
-        WsMessage::String("first_message".to_string())
+        WsMessage::Text("first_message".to_string())
     );
     assert_eq!(
         second_pool_message,
-        WsMessage::String("second_message".to_string())
+        WsMessage::Text("second_message".to_string())
     );
     assert_eq!(
         third_pool_message,
-        WsMessage::String("third_message".to_string())
+        WsMessage::Text("third_message".to_string())
     );
 }
 
@@ -356,11 +356,11 @@ async fn test_connection_pool_send_and_receive_messages() {
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
 
-    assert_eq!(pool_message, WsMessage::String("recv_baz".to_string()));
+    assert_eq!(pool_message, WsMessage::Text("recv_baz".to_string()));
 
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("send_bar".to_string())
+        WsMessage::Text("send_bar".to_string())
     );
 }
 
@@ -420,7 +420,7 @@ async fn test_connection_pool_connection_error_send_message() {
     assert!(first_connection.is_err());
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("Test_message".to_string())
+        WsMessage::Text("Test_message".to_string())
     );
 }
 
@@ -463,7 +463,7 @@ async fn test_connection_send_single_message() {
     // Then
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("foo".to_string())
+        WsMessage::Text("foo".to_string())
     );
 }
 
@@ -499,15 +499,15 @@ async fn test_connection_send_multiple_messages() {
     // Then
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("foo".to_string())
+        WsMessage::Text("foo".to_string())
     );
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("bar".to_string())
+        WsMessage::Text("bar".to_string())
     );
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("baz".to_string())
+        WsMessage::Text("baz".to_string())
     );
 }
 
@@ -538,12 +538,12 @@ async fn test_connection_send_and_receive_messages() {
     let pool_message = connection.rx.take().unwrap().recv().await.unwrap();
     assert_eq!(
         pool_message,
-        WsMessage::String("message_received".to_string())
+        WsMessage::Text("message_received".to_string())
     );
 
     assert_eq!(
         writer_rx.recv().await.unwrap(),
-        WsMessage::String("message_sent".to_string())
+        WsMessage::Text("message_sent".to_string())
     );
 }
 
@@ -566,10 +566,7 @@ async fn test_connection_receive_message_error() {
     let result = connection._receive_handle.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(
-        result.err().unwrap().kind(),
-        ConnectionErrorKind::ReceiveMessageError
-    );
+    assert_eq!(result.err().unwrap(), ConnectionError::ReceiveMessageError);
 }
 
 #[tokio::test]
@@ -591,10 +588,7 @@ async fn test_new_connection_send_message_error() {
     let result = connection._send_handle.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(
-        result.err().unwrap().kind(),
-        ConnectionErrorKind::SendMessageError
-    );
+    assert_eq!(result.err().unwrap(), ConnectionError::SendMessageError);
 }
 
 #[derive(Clone)]
@@ -609,16 +603,16 @@ impl Stream for TestReadStream {
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.error {
             Poll::Ready(Some(Err(ConnectionError::from(
-                ConnectionErrorKind::ReceiveMessageError,
+                ConnectionError::ReceiveMessageError,
             ))))
         } else {
             if self.items.is_empty() {
                 Poll::Ready(None)
             } else {
                 let message = self.items.drain(0..1).next();
-                Poll::Ready(Some(message.ok_or(ConnectionError::from(
-                    ConnectionErrorKind::SendMessageError,
-                ))))
+                Poll::Ready(Some(
+                    message.ok_or(ConnectionError::from(ConnectionError::SendMessageError)),
+                ))
             }
         }
     }
@@ -738,7 +732,7 @@ impl MultipleTestData {
     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
         let i = self.n.fetch_add(1, Ordering::AcqRel);
         if i >= self.connections.len() {
-            Err(ConnectionError::from(ConnectionErrorKind::ConnectError))
+            Err(ConnectionError::from(ConnectionError::ConnectError))
         } else {
             let maybe_conn = &self.connections[i];
             match maybe_conn {
@@ -755,7 +749,7 @@ impl MultipleTestData {
                     };
                     Ok((output, input))
                 }
-                _ => Err(ConnectionError::from(ConnectionErrorKind::ConnectError)),
+                _ => Err(ConnectionError::from(ConnectionError::ConnectError)),
             }
         }
     }

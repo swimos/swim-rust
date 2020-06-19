@@ -17,21 +17,25 @@ use futures::{Future, Sink, Stream};
 
 pub mod error;
 
+/// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
+/// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
 pub enum WsMessage {
-    String(String),
+    /// The payload data is text encoded as UTF-8.
+    Text(String),
+    /// The payload data is arbitrary binary data.
     Binary(Vec<u8>),
 }
 
 impl From<String> for WsMessage {
     fn from(s: String) -> Self {
-        WsMessage::String(s)
+        WsMessage::Text(s)
     }
 }
 
 impl From<&str> for WsMessage {
     fn from(s: &str) -> Self {
-        WsMessage::String(s.to_string())
+        WsMessage::Text(s.to_string())
     }
 }
 

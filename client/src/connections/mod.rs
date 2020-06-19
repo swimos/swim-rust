@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
 #[allow(unused_imports)]
-#[cfg(feature = "vendored")]
+#[cfg(feature = "websocket")]
 use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
@@ -170,9 +170,9 @@ impl ConnectionPool for SwimConnPool {
         let handle = self
             .connection_requests_handle
             .lock()
-            .map_err(|_| ConnectionErrorKind::ClosedError)?
+            .map_err(|_| ConnectionError::AlreadyClosedError)?
             .take()
-            .ok_or(ConnectionErrorKind::ClosedError)?;
+            .ok_or(ConnectionError::AlreadyClosedError)?;
 
         Ok(Sequenced::new(close_request, handle))
     }
@@ -232,7 +232,7 @@ where
                 timer = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
-            .ok_or(ConnectionErrorKind::ConnectError)?;
+            .ok_or(ConnectionError::ConnectError)?;
 
             match request {
                 RequestType::NewConnection(conn_req) => {
@@ -270,7 +270,7 @@ where
                     } else {
                         let inner_connection = connections
                             .get_mut(&host)
-                            .ok_or(ConnectionErrorKind::ConnectError)?;
+                            .ok_or(ConnectionError::ConnectError)?;
                         inner_connection.last_accessed = Instant::now();
 
                         Ok(((inner_connection.as_conenction_sender()), None))
@@ -278,7 +278,7 @@ where
 
                     request_tx
                         .send(connection_channel)
-                        .map_err(|_| ConnectionErrorKind::ConnectError)?;
+                        .map_err(|_| ConnectionError::ConnectError)?;
                 }
 
                 RequestType::Prune => {
@@ -339,10 +339,10 @@ where
             .forward(write_sink)
             .map_err(|_| {
                 stopped.store(true, Ordering::Release);
-                ConnectionErrorKind::SendMessageError
+                ConnectionError::SendMessageError
             })
             .await
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::SendMessageError))
+            .map_err(|_| ConnectionError::SendMessageError)
     }
 }
 
@@ -380,13 +380,13 @@ where
                 .await
                 .map_err(|_| {
                     stopped.store(true, Ordering::Release);
-                    ConnectionErrorKind::ReceiveMessageError
+                    ConnectionError::ReceiveMessageError
                 })?
-                .ok_or(ConnectionErrorKind::ReceiveMessageError)?;
+                .ok_or(ConnectionError::ReceiveMessageError)?;
 
             tx.send(message)
                 .await
-                .map_err(|_| ConnectionErrorKind::ReceiveMessageError)?;
+                .map_err(|_| ConnectionError::ReceiveMessageError)?;
         }
     }
 }
@@ -410,7 +410,7 @@ impl InnerConnection {
         let sender = ConnectionSender {
             tx: conn.tx.clone(),
         };
-        let receiver = conn.rx.take().ok_or(ConnectionErrorKind::ConnectError)?;
+        let receiver = conn.rx.take().ok_or(ConnectionError::ConnectError)?;
 
         let inner = InnerConnection {
             conn,
@@ -461,7 +461,7 @@ impl SwimConnection {
     }
 }
 
-use common::connections::error::{ConnectionError, ConnectionErrorKind};
+use common::connections::error::ConnectionError;
 use common::connections::{WebsocketFactory, WsMessage};
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
