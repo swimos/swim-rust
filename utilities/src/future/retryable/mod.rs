@@ -27,7 +27,7 @@ mod tests;
 pub mod factory;
 pub mod request;
 pub mod strategy;
-use pin_project::{pin_project, project};
+use pin_project::pin_project;
 
 /// A future that can be reset back to its initial state and retried once again.
 pub trait ResettableFuture: Future {
@@ -70,7 +70,6 @@ where
 {
     type Output = Result<Fut::Ok, Fut::Error>;
 
-    #[project]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
 
