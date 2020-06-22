@@ -67,6 +67,10 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         self.map_state.get().map(move |map| map.len())
     }
 
+    pub fn is_empty(&self) -> impl Stm<Result = bool> + '_ {
+        self.map_state.get().map(move |map| map.is_empty())
+    }
+
     pub fn first(&self) -> impl Stm<Result = Option<Arc<V>>> + '_ {
         self.map_state
             .get()
