@@ -37,9 +37,6 @@ use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::warp::envelope::Envelope;
 
-#[cfg(test)]
-mod tests;
-
 /// Respresents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
