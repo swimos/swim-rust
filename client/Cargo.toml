@@ -27,8 +27,8 @@ pin-project = "0.4.20"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
-tokio = { version = "=0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
-tokio-tls = "=0.3.1"
+tokio = { version = "0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
+tokio-tls = "0.3.1"
 im = "15.0.0"
 tokio-tungstenite = { version = "0.10.1", features = ["tls"] }
 url = "2.1.1"
@@ -42,4 +42,4 @@ form = { path = "../form" }
 
 [dev-dependencies]
 hamcrest2 = "0.3"
-tokio = { version = "=0.2.21", features = ["rt-threaded"] }
+tokio = { version = "0.2.21", features = ["rt-threaded"] }
