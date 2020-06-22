@@ -518,37 +518,33 @@ pub enum VecStmFuture<R, Fut> {
 
 impl<Fut> VecStmFuture<Fut::Output, Fut>
 where
-    Fut: TransactionFuture
+    Fut: TransactionFuture,
 {
-
     pub fn new(mut runners: Vec<Fut>) -> Self {
         let len = runners.len();
         runners.reverse();
         match runners.pop() {
-            Some(first) => {
-                VecStmFuture::NonEmpty {
-                    current: first,
-                    runners,
-                    results: Some(Vec::with_capacity(len)),
-                }
-            }
-            _ => {
-                VecStmFuture::Empty
-            }
+            Some(first) => VecStmFuture::NonEmpty {
+                current: first,
+                runners,
+                results: Some(Vec::with_capacity(len)),
+            },
+            _ => VecStmFuture::Empty,
         }
     }
-
 }
 
 impl<Fut> TransactionFuture for VecStmFuture<Fut::Output, Fut>
 where
-    Fut: TransactionFuture
+    Fut: TransactionFuture,
 {
     type Output = Vec<Fut::Output>;
 
-    fn poll_in(self: Pin<&mut Self>,
-               mut transaction: Pin<&mut Transaction>,
-               cx: &mut Context<'_>) -> Poll<ExecResult<Self::Output>> {
+    fn poll_in(
+        self: Pin<&mut Self>,
+        mut transaction: Pin<&mut Transaction>,
+        cx: &mut Context<'_>,
+    ) -> Poll<ExecResult<Self::Output>> {
         let projected = self.project();
         match projected {
             VecStmProject::NonEmpty {
@@ -556,7 +552,8 @@ where
                 runners,
                 results,
             } => {
-                let res: &mut Vec<Fut::Output> = results.as_mut()
+                let res: &mut Vec<Fut::Output> = results
+                    .as_mut()
                     .expect("Vector transaction future polled twice.");
                 loop {
                     let result = match ready!(current.as_mut().poll_in(transaction.as_mut(), cx)) {
@@ -572,17 +569,11 @@ where
                     }
                 }
                 match results.take() {
-                    Some(r) => {
-                        Poll::Ready(ExecResult::Done(r))
-                    }
-                    _=> {
-                        unreachable!()
-                    }
+                    Some(r) => Poll::Ready(ExecResult::Done(r)),
+                    _ => unreachable!(),
                 }
             }
-            _ => {
-                Poll::Ready(ExecResult::Done(Vec::new()))
-            }
+            _ => Poll::Ready(ExecResult::Done(Vec::new())),
         }
     }
 }

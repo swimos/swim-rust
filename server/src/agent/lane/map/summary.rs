@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
 use common::model::Value;
 use im::HashMap;
-use stm::var::TVar;
-use stm::stm::Stm;
 use std::any::Any;
+use std::sync::Arc;
+use stm::stm::Stm;
+use stm::var::TVar;
 
 #[derive(Debug)]
 pub enum EntryModification<V> {
@@ -64,7 +64,6 @@ pub fn remove_summary<'a, V: Any + Send + Sync>(
         .get()
         .and_then(move |sum| summary.put(sum.remove(key.clone())))
 }
-
 
 impl<V> TransactionSummary<V> {
     pub fn clear() -> Self {

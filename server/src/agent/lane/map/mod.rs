@@ -21,7 +21,7 @@ use im::OrdMap;
 use common::model::Value;
 use form::Form;
 use stm::local::TLocal;
-use stm::stm::{Constant, left, right, Stm, UNIT};
+use stm::stm::{left, right, Constant, Stm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
@@ -38,7 +38,6 @@ pub struct MapLane<K, V> {
 }
 
 impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
-
     pub fn update_direct(&self, key: K, value: Arc<V>) -> DirectUpdate<'_, K, V> {
         DirectUpdate {
             lane: self,
@@ -48,59 +47,42 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     }
 
     pub fn remove_direct(&self, key: K) -> DirectRemove<'_, K, V> {
-        DirectRemove {
-            lane: self,
-            key,
-        }
+        DirectRemove { lane: self, key }
     }
 
-    pub fn get(&self, key: K) -> impl Stm<Result=Option<Arc<V>>> + '_ {
+    pub fn get(&self, key: K) -> impl Stm<Result = Option<Arc<V>>> + '_ {
         let k = key.into_value();
-        self.map_state.get().and_then(move |map| {
-            match map.get(&k) {
-                Some(var) => {
-                    left(var.get().map(Option::Some))
-                },
-                _ => {
-                    right(Constant(None))
-                }
-            }
+        self.map_state.get().and_then(move |map| match map.get(&k) {
+            Some(var) => left(var.get().map(Option::Some)),
+            _ => right(Constant(None)),
         })
     }
 
-    pub fn contains(&self, key: K) -> impl Stm<Result=bool> + '_ {
+    pub fn contains(&self, key: K) -> impl Stm<Result = bool> + '_ {
         let k = key.into_value();
         self.map_state.get().map(move |map| map.contains_key(&k))
     }
 
-    pub fn len(&self) -> impl Stm<Result=usize> + '_ {
+    pub fn len(&self) -> impl Stm<Result = usize> + '_ {
         self.map_state.get().map(move |map| map.len())
     }
 
-    pub fn first(&self) -> impl Stm<Result=Option<Arc<V>>> + '_ {
-        self.map_state.get().and_then(move |map| {
-            match map.get_min() {
-                Some((_, var)) => {
-                    left(var.get().map(Option::Some))
-                },
-                _ => {
-                    right(Constant(None))
-                }
-            }
-        })
+    pub fn first(&self) -> impl Stm<Result = Option<Arc<V>>> + '_ {
+        self.map_state
+            .get()
+            .and_then(move |map| match map.get_min() {
+                Some((_, var)) => left(var.get().map(Option::Some)),
+                _ => right(Constant(None)),
+            })
     }
 
-    pub fn last(&self) -> impl Stm<Result=Option<Arc<V>>> + '_ {
-        self.map_state.get().and_then(move |map| {
-            match map.get_max() {
-                Some((_, var)) => {
-                    left(var.get().map(Option::Some))
-                },
-                _ => {
-                    right(Constant(None))
-                }
-            }
-        })
+    pub fn last(&self) -> impl Stm<Result = Option<Arc<V>>> + '_ {
+        self.map_state
+            .get()
+            .and_then(move |map| match map.get_max() {
+                Some((_, var)) => left(var.get().map(Option::Some)),
+                _ => right(Constant(None)),
+            })
     }
 
     //pub fn snapshot(&self) -> impl Stm<Result = OrdMap<K, Arc<V>>> + '_ {
@@ -154,7 +136,6 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
 
         compound_map_transaction(transaction_started, summary, action)
     }
-
 }
 
 fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
@@ -176,7 +157,6 @@ fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
     })
 }
 
-
 fn clear_lane<V: Any + Send + Sync>(content: &TVar<OrdMap<Value, V>>) -> impl Stm<Result = ()> {
     content.put(OrdMap::default())
 }
@@ -186,37 +166,28 @@ fn update_lane<'a, V: Any + Send + Sync>(
     key: Value,
     value: Arc<V>,
 ) -> impl Stm<Result = ()> + 'a {
-    content
-        .get()
-        .and_then(move |map| {
-
-            match map.get(&key) {
-                Some(var) => {
-                    left(var.put_arc(value.clone()))
-                },
-                _ => {
-                    let var = TVar::from_arc(value.clone());
-                    let new_map = map.update(key.clone(), var);
-                    right(content.put(new_map))
-                },
-            }
-        })
+    content.get().and_then(move |map| match map.get(&key) {
+        Some(var) => left(var.put_arc(value.clone())),
+        _ => {
+            let var = TVar::from_arc(value.clone());
+            let new_map = map.update(key.clone(), var);
+            right(content.put(new_map))
+        }
+    })
 }
 
 fn remove_lane<'a, V: Any + Send + Sync>(
     content: &'a TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
 ) -> impl Stm<Result = ()> + 'a {
-    content
-        .get()
-        .and_then(move |map| {
-            if map.contains_key(&key) {
-                let new_map = map.without(&key);
-                left(content.put(new_map))
-            } else {
-                right(UNIT)
-            }
-        })
+    content.get().and_then(move |map| {
+        if map.contains_key(&key) {
+            let new_map = map.without(&key);
+            left(content.put(new_map))
+        } else {
+            right(UNIT)
+        }
+    })
 }
 
 #[must_use = "Transactions do nothing if not executed."]
@@ -254,9 +225,9 @@ pub struct DirectRemove<'a, K, V> {
 }
 
 impl<'a, K, V> DirectRemove<'a, K, V>
-    where
-        K: Form + Send + Sync + 'a,
-        V: Any + Send + Sync + 'a,
+where
+    K: Form + Send + Sync + 'a,
+    V: Any + Send + Sync + 'a,
 {
     fn into_stm(self) -> impl Stm<Result = ()> + 'a {
         let DirectRemove { lane, key } = self;
@@ -278,16 +249,15 @@ impl<'a, K, V> DirectRemove<'a, K, V>
 pub struct DirectClear<'a, K, V>(&'a MapLane<K, V>);
 
 impl<'a, K, V> DirectClear<'a, K, V>
-    where
-        K: Form + Send + Sync + 'a,
-        V: Any + Send + Sync + 'a,
+where
+    K: Form + Send + Sync + 'a,
+    V: Any + Send + Sync + 'a,
 {
     fn into_stm(self) -> impl Stm<Result = ()> + 'a {
         let DirectClear(lane) = self;
 
         let state_update = clear_lane(&lane.map_state);
-        let set_summary = lane
-            .summary.put(TransactionSummary::clear());
+        let set_summary = lane.summary.put(TransactionSummary::clear());
         state_update.followed_by(set_summary)
     }
 

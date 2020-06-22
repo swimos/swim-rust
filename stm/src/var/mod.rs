@@ -53,7 +53,6 @@ pub(in crate) struct TVarInner {
 }
 
 impl TVarInner {
-
     /// Erase the type of a value to store it inside a transactional variable.
     pub fn new<T>(value: T) -> Self
     where
@@ -64,8 +63,9 @@ impl TVarInner {
 
     /// Erase the type of a value, stored in an Arc, to store it inside a transactional variable.
     pub fn from_arc<T>(value: Arc<T>) -> Self
-        where
-            T: Any + Send + Sync,{
+    where
+        T: Any + Send + Sync,
+    {
         TVarInner {
             guarded: RwLock::new(TVarGuarded {
                 content: value,

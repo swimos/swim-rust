@@ -13,7 +13,11 @@
 // limitations under the License.
 
 use crate::local::{TLocalRead, TLocalWrite};
-use crate::stm::stm_futures::{AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture, LocalReadFuture, LocalWriteFuture, MapStmFuture, SequenceTransFuture, TransactionFuture, WriteFuture, VecStmFuture};
+use crate::stm::stm_futures::{
+    AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture,
+    LocalReadFuture, LocalWriteFuture, MapStmFuture, SequenceTransFuture, TransactionFuture,
+    VecStmFuture, WriteFuture,
+};
 use crate::transaction::ReadFuture;
 use crate::var::{TVarRead, TVarWrite};
 use futures::future::{ready, Ready};
@@ -356,11 +360,9 @@ pub fn right<S1: Stm, S2: Stm>(stm: S2) -> StmEither<S1, S2> {
 pub struct VecStm<S>(Vec<S>);
 
 impl<S> VecStm<S> {
-
     pub fn new(stms: Vec<S>) -> Self {
         VecStm(stms)
     }
-
 }
 
 pub const UNIT: Constant<()> = Constant(());
@@ -702,7 +704,9 @@ impl<T: Any + Send + Sync> Stm for TLocalWrite<T> {}
 mod private {
     use super::Retry;
     use crate::local::{TLocalRead, TLocalWrite};
-    use crate::stm::{Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither, VecStm};
+    use crate::stm::{
+        Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither, VecStm,
+    };
     use crate::var::{TVarRead, TVarWrite};
     use std::ops::Deref;
 
