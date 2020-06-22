@@ -29,9 +29,8 @@ use std::ops::Deref;
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-type WasmWsSink = TransformedSink<SplitSink<WsStream, WasmMessage>, SinkTransformer>;
-type WasmWsStream = TransformedStream<SplitStream<WsStream>, StreamTransformer>;
 
+/// A transformer that converts from a [`common::connections::WsMessage`] to [`ws_stream_wasm::WsMessage`].
 pub struct SinkTransformer;
 impl TransformMut<WsMessage> for SinkTransformer {
     type Out = WasmMessage;
@@ -44,6 +43,7 @@ impl TransformMut<WsMessage> for SinkTransformer {
     }
 }
 
+/// A transformer that converts from a [`ws_stream_wasm::WsMessage`] to [`common::connections::WsMessage`].
 pub struct StreamTransformer;
 impl TransformMut<WasmMessage> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
@@ -56,6 +56,9 @@ impl TransformMut<WasmMessage> for StreamTransformer {
     }
 }
 
+/// A WASM WebSocket connection factory implementation. Each connection request returns a result where
+/// the successful variant is a sink and stream for the provided URL, or an appropriate
+/// [`ConnectionError`].
 pub struct WasmWsFactory {
     pub sender: mpsc::Sender<ConnReq>,
 }
@@ -66,6 +69,7 @@ pub struct ConnReq {
 }
 
 impl WasmWsFactory {
+    /// Creates a new WASM WebSocket connection factory using the provided [`buffer_size`] for message requests.
     pub fn new(buffer_size: usize) -> Self {
         let (tx, rx) = mpsc::channel(buffer_size);
         spawn_local(Self::factory_task(rx));
@@ -93,6 +97,8 @@ impl WasmWsFactory {
 
 pub type ConnectionFuture =
     SendAndAwait<ConnReq, Result<(WasmWsSink, WasmWsStream), ConnectionError>>;
+type WasmWsSink = TransformedSink<SplitSink<WsStream, WasmMessage>, SinkTransformer>;
+type WasmWsStream = TransformedStream<SplitStream<WsStream>, StreamTransformer>;
 
 impl WebsocketFactory for WasmWsFactory {
     type WsStream = WasmWsStream;
@@ -114,6 +120,8 @@ impl WebsocketFactory for WasmWsFactory {
     }
 }
 
+// A wrappper around the [`ws_stream_wasm::WsErr`] used to implement [`From`] for converting to
+// [`ConnectionError`]s.
 struct WsError(WsErr);
 
 impl Deref for WsError {
