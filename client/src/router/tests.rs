@@ -87,35 +87,6 @@ async fn test_create_downlinks() {
 }
 
 #[tokio::test]
-#[should_panic]
-async fn unsupported_message_type() {
-    let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-
-    let (pool, pool_handlers_rx) = TestPool::new();
-    let mut router = SwimRouter::new(Default::default(), pool.clone());
-
-    let (mut sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
-
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
-    let _ = sink.send_item(envelope).await.unwrap();
-
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
-
-    assert!(router.close().await.is_ok());
-    assert_eq!(get_request_count(&pool), 1);
-
-    let mut expected_requests = HashMap::new();
-    expected_requests.insert((url.clone(), false), 1);
-
-    assert_eq!(get_requests(&pool), expected_requests);
-    assert_eq!(pool.connections.lock().unwrap().len(), 1);
-    assert_eq!(
-        get_message(&mut pool_handlers, &url).await.unwrap(),
-        WsMessage::Binary(vec![])
-    );
-}
-
-#[tokio::test]
 async fn test_route_single_outgoing_message_to_single_downlink() {
     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
 
