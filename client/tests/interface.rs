@@ -51,7 +51,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5)).await;
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -78,7 +78,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5)).await;
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -108,7 +108,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5)).await;
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -138,7 +138,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5)).await;
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -174,7 +174,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5)).await;
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -210,7 +210,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5)).await;
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -246,7 +246,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5)).await;
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
