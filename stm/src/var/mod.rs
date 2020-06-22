@@ -25,6 +25,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::task::Waker;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use utilities::ptr::data_ptr_eq;
 
 pub mod observer;
 
@@ -101,7 +102,7 @@ impl TVarInner {
     /// Determine if the contents of the variable have changed as compared to a previous value.
     pub fn has_changed(&self, ptr: &Contents) -> bool {
         if let Some(guard) = self.guarded.read().now_or_never() {
-            !Arc::ptr_eq(&guard.deref().content, ptr)
+            !data_ptr_eq(guard.deref().content.as_ref(), ptr.as_ref())
         } else {
             false
         }
@@ -122,7 +123,7 @@ impl TVarInner {
         expected: Contents,
     ) -> Option<RwLockReadGuard<'_, TVarGuarded>> {
         let guard = self.guarded.read().await;
-        if Arc::ptr_eq(&guard.deref().content, &expected) {
+        if data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) {
             Some(guard)
         } else {
             None
@@ -138,7 +139,9 @@ impl TVarInner {
     ) -> Option<ApplyWrite<'_>> {
         let guard = self.guarded.write().await;
         match expected {
-            Some(expected) if !Arc::ptr_eq(&guard.deref().content, &expected) => None,
+            Some(expected) if !data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) => {
+                None
+            }
             _ => Some(ApplyWrite {
                 var: self,
                 guard,

@@ -22,12 +22,11 @@ mod tests {
     use common::sink::item::ItemSink;
     use common::warp::envelope::Envelope;
     use common::warp::path::AbsolutePath;
-    use utilities::trace;
-
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;
     use tokio::time::Duration;
+    use utilities::trace;
 
     fn init_trace() {
         trace::init_trace(vec!["client::router=trace"]);
