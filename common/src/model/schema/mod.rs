@@ -417,42 +417,76 @@ fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustiv
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RangeBound<T: Copy + PartialOrd> {
+pub struct Bound<T: Copy + PartialOrd> {
     value: T,
     inclusive: bool,
 }
 
-impl<T: Copy + PartialOrd> RangeBound<T> {
+impl<T: Copy + PartialOrd> Bound<T> {
     fn new(value: T, inclusive: bool) -> Self {
-        RangeBound { value, inclusive }
+        Bound { value, inclusive }
     }
 
     fn inclusive(value: T) -> Self {
-        RangeBound {
+        Bound {
             value,
             inclusive: true,
         }
     }
 
     fn exclusive(value: T) -> Self {
-        RangeBound {
+        Bound {
             value,
             inclusive: false,
         }
     }
 }
 
-//Todo
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum RangeBound<T: Copy + PartialOrd> {
+    Upper(Bound<T>),
+    Lower(Bound<T>),
+}
+
+impl<T: Copy + PartialOrd> RangeBound<T> {
+    fn get_bound(&self) -> &Bound<T> {
+        match self {
+            RangeBound::Upper(bound) => bound,
+            RangeBound::Lower(bound) => bound,
+        }
+    }
+}
+
 impl<T: Copy + PartialOrd> PartialOrd for RangeBound<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.inclusive == other.inclusive {
-            self.value.partial_cmp(&other.value)
-        } else if self.value == other.value {
-            if self.inclusive {
-                Some(Ordering::Greater)
-            } else {
-                Some(Ordering::Less)
+        match (self, other) {
+            (RangeBound::Lower(this), RangeBound::Lower(other)) => {
+                if this.inclusive == other.inclusive {
+                    Some(this.value.partial_cmp(&other.value)?.reverse())
+                } else if this.value == other.value {
+                    if this.inclusive {
+                        Some(Ordering::Greater)
+                    } else {
+                        Some(Ordering::Less)
+                    }
+                } else {
+                    Some(this.value.partial_cmp(&other.value)?.reverse())
+                }
             }
+            (RangeBound::Upper(this), RangeBound::Upper(other)) => {
+                if this.inclusive == other.inclusive {
+                    this.value.partial_cmp(&other.value)
+                } else if this.value == other.value {
+                    if this.inclusive {
+                        Some(Ordering::Greater)
+                    } else {
+                        Some(Ordering::Less)
+                    }
+                } else {
+                    this.value.partial_cmp(&other.value)
+                }
+            }
+            _ => None,
         }
     }
 }
@@ -464,17 +498,73 @@ pub struct Range<T: Copy + PartialOrd> {
 }
 
 impl<T: Copy + PartialOrd> Range<T> {
-    fn new(min: Option<RangeBound<T>>, max: Option<RangeBound<T>>) -> Self {
+    fn new(min: Option<Bound<T>>, max: Option<Bound<T>>) -> Self {
+        let min = min.map(|bound| RangeBound::Lower(bound));
+        let max = max.map(|bound| RangeBound::Upper(bound));
         Range { min, max }
+    }
+
+    fn is_upper_bounded(&self) -> bool {
+        self.min.is_none() && self.max.is_some()
+    }
+
+    fn is_lower_bounded(&self) -> bool {
+        self.min.is_some() && self.max.is_none()
+    }
+
+    fn is_bounded(&self) -> bool {
+        self.min.is_some() && self.max.is_some()
+    }
+
+    fn is_unbounded(&self) -> bool {
+        self.min.is_none() && self.max.is_none()
     }
 }
 
-//Todo
-// impl<T: Copy + PartialOrd> PartialOrd for Range<T> {
-//     fn partial_cmp(&self, _other: &Self) -> Option<Ordering> {
-//         unimplemented!()
-//     }
-// }
+impl<T: Copy + PartialOrd> PartialOrd for Range<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.is_unbounded() && other.is_unbounded() {
+            Some(Ordering::Equal)
+        } else if self.is_unbounded() {
+            Some(Ordering::Greater)
+        } else if other.is_unbounded() {
+            Some(Ordering::Less)
+        } else if self.is_bounded() && other.is_bounded() {
+            if self.min == other.min && self.max == other.max {
+                Some(Ordering::Equal)
+            } else if self.min >= other.min && self.max >= other.max {
+                Some(Ordering::Greater)
+            } else if self.min <= other.min && self.max <= other.max {
+                Some(Ordering::Less)
+            } else {
+                None
+            }
+        } else if other.is_bounded() {
+            cmp_bounded_and_half_bounded_range(self, other)
+        } else if self.is_bounded() {
+            Some(cmp_bounded_and_half_bounded_range(other, self)?.reverse())
+        } else if self.is_lower_bounded() && other.is_lower_bounded() {
+            self.min.partial_cmp(&other.min)
+        } else if self.is_upper_bounded() && other.is_upper_bounded() {
+            self.max.partial_cmp(&other.max)
+        } else {
+            None
+        }
+    }
+}
+
+fn cmp_bounded_and_half_bounded_range<T: Copy + PartialOrd>(
+    half_bounded: &Range<T>,
+    bounded: &Range<T>,
+) -> Option<Ordering> {
+    if half_bounded.is_upper_bounded() && half_bounded.max >= bounded.max {
+        Some(Ordering::Greater)
+    } else if half_bounded.is_lower_bounded() && half_bounded.min >= bounded.min {
+        Some(Ordering::Greater)
+    } else {
+        None
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StandardSchema {
@@ -754,8 +844,8 @@ impl Schema<Value> for StandardSchema {
     fn matches(&self, value: &Value) -> bool {
         match self {
             StandardSchema::OfKind(kind) => &value.kind() == kind,
-            StandardSchema::InRangeInt(Range { min, max }) => in_int_range(value, min, max),
-            StandardSchema::InRangeFloat(Range { min, max }) => in_float_range(value, min, max),
+            StandardSchema::InRangeInt(range) => in_int_range(value, range),
+            StandardSchema::InRangeFloat(range) => in_float_range(value, range),
             StandardSchema::NonNan => as_f64(value).map(|x| !f64::is_nan(x)).unwrap_or(false),
             StandardSchema::Finite => as_f64(value).map(f64::is_finite).unwrap_or(false),
             StandardSchema::Not(p) => !p.matches(value),
@@ -811,69 +901,69 @@ impl StandardSchema {
     /// Matches integer values in an inclusive range.
     pub fn inclusive_int_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt(Range::new(
-            Some(RangeBound::inclusive(min)),
-            Some(RangeBound::inclusive(max)),
+            Some(Bound::inclusive(min)),
+            Some(Bound::inclusive(max)),
         ))
     }
 
     /// Matches integer values in an exclusive range.
     pub fn exclusive_int_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt(Range::new(
-            Some(RangeBound::exclusive(min)),
-            Some(RangeBound::exclusive(max)),
+            Some(Bound::exclusive(min)),
+            Some(Bound::exclusive(max)),
         ))
     }
 
     /// Matches integer values, inclusive below and exclusive above.
     pub fn int_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt(Range::new(
-            Some(RangeBound::inclusive(min)),
-            Some(RangeBound::new(max, false)),
+            Some(Bound::inclusive(min)),
+            Some(Bound::new(max, false)),
         ))
     }
 
     /// Matches integer values less than (or less than or equal to) a value.
     pub fn until_int(n: i64, inclusive: bool) -> Self {
-        StandardSchema::InRangeInt(Range::new(None, Some(RangeBound::new(n, inclusive))))
+        StandardSchema::InRangeInt(Range::new(None, Some(Bound::new(n, inclusive))))
     }
 
     /// Matches integer values greater than (or greater than or equal to) a value.
     pub fn after_int(n: i64, inclusive: bool) -> Self {
-        StandardSchema::InRangeInt(Range::new(Some(RangeBound::new(n, inclusive)), None))
+        StandardSchema::InRangeInt(Range::new(Some(Bound::new(n, inclusive)), None))
     }
 
     /// Matches floating point values in an inclusive range.
     pub fn inclusive_float_range(min: f64, max: f64) -> Self {
         StandardSchema::InRangeFloat(Range::new(
-            Some(RangeBound::inclusive(min)),
-            Some(RangeBound::inclusive(max)),
+            Some(Bound::inclusive(min)),
+            Some(Bound::inclusive(max)),
         ))
     }
 
     /// Matches floating point values in an exclusive range.
     pub fn exclusive_float_range(min: f64, max: f64) -> Self {
         StandardSchema::InRangeFloat(Range::new(
-            Some(RangeBound::exclusive(min)),
-            Some(RangeBound::exclusive(max)),
+            Some(Bound::exclusive(min)),
+            Some(Bound::exclusive(max)),
         ))
     }
 
     /// Matches floating point values, inclusive below and exclusive above.
     pub fn float_range(min: f64, max: f64) -> Self {
         StandardSchema::InRangeFloat(Range::new(
-            Some(RangeBound::inclusive(min)),
-            Some(RangeBound::exclusive(max)),
+            Some(Bound::inclusive(min)),
+            Some(Bound::exclusive(max)),
         ))
     }
 
     /// Matches floating point values less than (or less than or equal to) a value.
     pub fn until_float(x: f64, inclusive: bool) -> Self {
-        StandardSchema::InRangeFloat(Range::new(None, Some(RangeBound::new(x, inclusive))))
+        StandardSchema::InRangeFloat(Range::new(None, Some(Bound::new(x, inclusive))))
     }
 
     /// Matches floating point values greater than (or greater than or equal to) a value.
     pub fn after_float(x: f64, inclusive: bool) -> Self {
-        StandardSchema::InRangeFloat(Range::new(Some(RangeBound::new(x, inclusive)), None))
+        StandardSchema::InRangeFloat(Range::new(Some(Bound::new(x, inclusive)), None))
     }
 
     /// Negate this schema.
@@ -916,12 +1006,8 @@ impl ToValue for StandardSchema {
         match self {
             StandardSchema::OfKind(kind) => Value::of_attr(("kind", kind_to_str(*kind))),
             StandardSchema::Equal(v) => Value::of_attr(("equal", v.clone())),
-            StandardSchema::InRangeInt(Range { min, max }) => {
-                range_to_value("in_range_int", *min, *max)
-            }
-            StandardSchema::InRangeFloat(Range { min, max }) => {
-                range_to_value("in_range_float", *min, *max)
-            }
+            StandardSchema::InRangeInt(range) => range_to_value("in_range_int", *range),
+            StandardSchema::InRangeFloat(range) => range_to_value("in_range_float", *range),
             StandardSchema::NonNan => Value::of_attr("non_nan"),
             StandardSchema::Finite => Value::of_attr("finite"),
             StandardSchema::Text(text_schema) => text_schema.to_value().prepend(Attr::of("text")),
@@ -991,16 +1077,14 @@ fn endpoint_to_slot<N: Into<Value>>(tag: &str, value: N, inclusive: bool) -> Ite
 }
 
 // Create a Value from a numeric range schema.
-fn range_to_value<N: Into<Value> + Copy + PartialOrd>(
-    tag: &str,
-    min: Option<RangeBound<N>>,
-    max: Option<RangeBound<N>>,
-) -> Value {
+fn range_to_value<N: Into<Value> + Copy + PartialOrd>(tag: &str, range: Range<N>) -> Value {
     let mut slots = vec![];
-    if let Some(RangeBound { value, inclusive }) = min {
+    let Range { min, max } = range;
+
+    if let Some(RangeBound::Lower(Bound { value, inclusive })) = min {
         slots.push(endpoint_to_slot("min", value, inclusive))
     }
-    if let Some(RangeBound { value, inclusive }) = max {
+    if let Some(RangeBound::Upper(Bound { value, inclusive })) = max {
         slots.push(endpoint_to_slot("max", value, inclusive))
     }
     Attr::with_items(tag, slots).into()
@@ -1041,48 +1125,50 @@ fn as_record(value: &Value) -> Option<(&[Attr], &[Item])> {
     }
 }
 
-fn in_int_range(
-    value: &Value,
-    min: &Option<RangeBound<i64>>,
-    max: &Option<RangeBound<i64>>,
-) -> bool {
+fn in_int_range(value: &Value, range: &Range<i64>) -> bool {
     match as_i64(&value) {
-        Some(n) => in_range(n, min, max),
+        Some(n) => in_range(n, range),
         _ => false,
     }
 }
 
-fn in_float_range(
-    value: &Value,
-    min: &Option<RangeBound<f64>>,
-    max: &Option<RangeBound<f64>>,
-) -> bool {
+fn in_float_range(value: &Value, range: &Range<f64>) -> bool {
     match as_f64(&value) {
-        Some(x) => in_range(x, min, max),
+        Some(x) => in_range(x, range),
         _ => false,
     }
 }
 
-fn in_range<T: Copy + PartialOrd>(
-    value: T,
-    min: &Option<RangeBound<T>>,
-    max: &Option<RangeBound<T>>,
-) -> bool {
-    let lower = min
-        .map(
-            |RangeBound {
-                 value: lb,
-                 inclusive: incl,
-             }| if incl { lb <= value } else { lb < value },
-        )
+fn in_range<T: Copy + PartialOrd>(value: T, range: &Range<T>) -> bool {
+    let lower = range
+        .min
+        .map(|bound| {
+            let Bound {
+                value: lb,
+                inclusive: incl,
+            } = bound.get_bound();
+
+            if *incl {
+                lb <= &value
+            } else {
+                lb < &value
+            }
+        })
         .unwrap_or(true);
-    let upper = max
-        .map(
-            |RangeBound {
-                 value: ub,
-                 inclusive: incl,
-             }| if incl { ub >= value } else { ub > value },
-        )
+
+    let upper = range
+        .max
+        .map(|bound| {
+            let Bound {
+                value: ub,
+                inclusive: incl,
+            } = bound.get_bound();
+            if *incl {
+                ub >= &value
+            } else {
+                ub > &value
+            }
+        })
         .unwrap_or(true);
     lower && upper
 }
