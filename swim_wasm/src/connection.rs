@@ -29,7 +29,6 @@ use std::ops::Deref;
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-
 /// A transformer that converts from a [`common::connections::WsMessage`] to [`ws_stream_wasm::WsMessage`].
 pub struct SinkTransformer;
 impl TransformMut<WsMessage> for SinkTransformer {

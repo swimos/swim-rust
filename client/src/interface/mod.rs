@@ -23,7 +23,7 @@ use common::model::Value;
 use common::warp::path::AbsolutePath;
 use swim_form::ValidatedForm;
 
-use crate::configuration::downlink::{    Config, ConfigHierarchy};
+use crate::configuration::downlink::{Config, ConfigHierarchy};
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
