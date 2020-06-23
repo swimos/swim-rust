@@ -25,6 +25,9 @@ use std::task::{Context, Poll};
 use stm::var::observer::Observer;
 use tokio::sync::{broadcast, mpsc, watch};
 
+#[cfg(test)]
+mod tests;
+
 //Strategies for watching events from a lane.
 
 /// Push lane events into a bounded queue.
