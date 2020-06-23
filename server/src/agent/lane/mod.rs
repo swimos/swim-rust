@@ -23,6 +23,8 @@ use tokio::sync::broadcast;
 
 pub mod map;
 pub mod strategy;
+#[cfg(test)]
+pub mod tests;
 pub mod value;
 
 #[derive(Clone, PartialEq, Eq, Debug)]

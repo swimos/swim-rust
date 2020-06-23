@@ -22,6 +22,9 @@ use stm::var::observer::StaticObserver;
 use stm::var::TVar;
 use tokio::sync::{broadcast, mpsc, watch};
 
+#[cfg(test)]
+mod tests;
+
 /// A lane containing a single value.
 pub struct ValueLane<T> {
     value: TVar<T>,
