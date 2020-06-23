@@ -1,94 +1,133 @@
-// use futures::StreamExt;
-// use wasm_bindgen::prelude::*;
-// use wasm_bindgen_futures::spawn_local;
-// use web_sys::HtmlCanvasElement;
+// Copyright 2015-2020 SWIM.AI inc.
 //
-// use swim_client::common::model::Value;
-// use swim_client::common::warp::path::AbsolutePath;
-// use swim_client::interface::SwimClient;
-// use swim_wasm::connection::WasmWsFactory;
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-mod lib2;
-//
-// #[wasm_bindgen]
-// pub struct Chart {}
-//
-// #[derive(Clone)]
-// pub struct DataPoint {
-//     duration: chrono::Duration,
-//     data: f64,
-// }
-//
-// #[wasm_bindgen]
-// impl Chart {
-//     pub fn init(canvas: HtmlCanvasElement) {
-//         spawn_local(async move {
-//             let fac = WasmWsFactory::new(5);
-//             let mut client = SwimClient::new_with_default(fac).await;
-//             let path = AbsolutePath::new(
-//                 url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
-//                 "/unit/foo",
-//                 "random",
-//             );
-//
-//             let (_downlink, mut receiver) =
-//                 client.value_downlink(path, Value::Extant).await.unwrap();
-//
-//             log("Opened downlink");
-//
-//             let mut values = Vec::new();
-//             let mut averages = Vec::new();
-//             let window_size = 200;
-//             let start_epoch = stdweb::web::Date::now();
-//             let start = chrono::NaiveDateTime::from_timestamp(start_epoch as i64, 0);
-//
-//             while let Some(event) = receiver.next().await {
-//                 if let Value::Int32Value(i) = event.get_inner() {
-//                     log(&format!("Received: {:?}", i));
-//
-//                     values.push(i.clone());
-//
-//                     if values.len() > window_size {
-//                         values.remove(0);
-//                         averages.remove(0);
-//                     }
-//
-//                     if !values.is_empty() {
-//                         let sum = values.iter().fold(0, |total, x| total + *x);
-//                         let sum = sum as f64 / values.len() as f64;
-//                         let now_epoch = stdweb::web::Date::now();
-//                         let now = chrono::NaiveDateTime::from_timestamp(now_epoch as i64, 0);
-//                         log(&format!("Average: {:?} @ {:?}", sum, now));
-//                         let duration = start.signed_duration_since(now);
-//
-//                         let dp = DataPoint {
-//                             duration,
-//                             data: sum,
-//                         };
-//
-//                         averages.push(dp);
-//                     }
-//
-//                     if averages.len() > 2 {
-//                         let mut avg_clone = averages.clone();
-//                         avg_clone.reverse();
-//                         chart::draw(canvas.clone(), avg_clone);
-//                     }
-//                 } else {
-//                     panic!("Expected Int32 value");
-//                 }
-//             }
-//         });
-//     }
-// }
-//
-// #[wasm_bindgen]
-// extern "C" {
-//     #[wasm_bindgen(js_namespace = console)]
-//     pub fn log(s: &str);
-// }
-//
-// #[wasm_bindgen(start)]
-// pub async fn start() {
-//     console_error_panic_hook::set_once();
-// }
+use futures::StreamExt;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
+
+use serde::{Deserialize, Serialize};
+use swim_client::common::model::Value;
+use swim_client::common::warp::path::AbsolutePath;
+use swim_client::downlink::model::map::MapEvent;
+use swim_client::interface::SwimClient;
+use swim_wasm::connection::WasmWsFactory;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn log(s: &str);
+}
+
+#[wasm_bindgen(start)]
+pub async fn start() {
+    console_error_panic_hook::set_once();
+}
+
+#[derive(Serialize, Deserialize)]
+struct Entry {
+    key: i64,
+    value: i32,
+}
+
+impl Entry {
+    fn of(key: &Value, value: &Value) -> Entry {
+        let key = if let Value::Int64Value(i) = *key {
+            i
+        } else {
+            panic!("Expected Int64Value. Got: {:?}", key);
+        };
+
+        let value = if let Value::Int32Value(i) = *value {
+            i
+        } else {
+            panic!("Expected Int32Value. Got: {:?}", value);
+        };
+
+        Entry { key, value }
+    }
+}
+
+#[wasm_bindgen]
+pub struct RustClient;
+
+#[wasm_bindgen]
+impl RustClient {
+    #[wasm_bindgen(constructor)]
+    pub fn run(
+        on_sync_callback: js_sys::Function,
+        on_update_callback: js_sys::Function,
+        on_remove_callback: js_sys::Function,
+    ) -> RustClient {
+        spawn_local(async move {
+            let fac = WasmWsFactory::new(5);
+            let mut swim_client = SwimClient::new_with_default(fac).await;
+
+            let (_downlink, mut receiver) = swim_client
+                .untyped_map_downlink(Self::path())
+                .await
+                .unwrap();
+            let this = JsValue::NULL;
+
+            while let Some(event) = receiver.next().await {
+                let inner = event.get_inner();
+                match &inner.event {
+                    MapEvent::Initial => {
+                        let records: js_sys::Array =
+                            inner
+                                .view
+                                .iter()
+                                .fold(js_sys::Array::new(), |vec, (key, value)| {
+                                    let entry = Entry::of(key, &*value.as_ref());
+                                    let message = JsValue::from_serde(&entry).unwrap();
+
+                                    vec.push(&message);
+                                    vec
+                                });
+
+                        let _r = on_sync_callback.call1(&this, &records).unwrap();
+                    }
+                    MapEvent::Insert(key) => {
+                        let value = inner.view.get(&key).expect("Missing value");
+                        let entry = Entry::of(key, &*value.as_ref());
+                        let message = JsValue::from_serde(&entry).unwrap();
+
+                        let _r = on_update_callback.call1(&this, &message).unwrap();
+                    }
+                    MapEvent::Remove(key) => {
+                        let key = if let Value::Int64Value(i) = key {
+                            JsValue::from(i.to_string())
+                        } else {
+                            panic!("Incorrect value type received. {:?}", key);
+                        };
+
+                        let _r = on_remove_callback.call1(&this, &key).unwrap();
+                    }
+                    _ => {
+                        // not interested in other events
+                    }
+                }
+            }
+        });
+
+        RustClient {}
+    }
+
+    fn path() -> AbsolutePath {
+        AbsolutePath::new(
+            url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+            "/unit/foo",
+            "random",
+        )
+    }
+}

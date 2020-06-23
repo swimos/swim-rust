@@ -20,7 +20,7 @@ jobs:
         - REPO_URL="https://github.com/swimos/swim-docker-example/"
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace --exclude client
         - cd client
         # Features aren't allowed in the root of a virtual workspace
@@ -33,7 +33,7 @@ jobs:
       env: ARCH=arm64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace
 
     - if: env(TRAVIS_EVENT_TYPE) != "cron"
@@ -42,7 +42,7 @@ jobs:
       env: ARCH=amd64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace
 
     - if: env(TRAVIS_EVENT_TYPE) != "cron"
@@ -51,7 +51,7 @@ jobs:
       env: ARCH=amd64
       script:
         - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
+        - cargo clippy --all-features -- -D warnings
         - cargo test --workspace
 
     - if: env(TRAVIS_EVENT_TYPE) = "cron"

@@ -29,7 +29,6 @@
   "dependencies": {
     "@swim/chart": "^3.10.2",
     "@swim/color": "^3.10.2",
-    "@swim/mesh": "^3.10.2",
     "@swim/view": "^3.10.2",
     "mapbox-gl": "^1.11.0",
     "swim-wasm": "file:../pkg"
