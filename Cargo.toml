@@ -11,6 +11,6 @@ members = [
 
 exclude = [
     "demos/swim-console",
-    "demos/swim-wasm",
+    "demos/swim-chart",
     "demos/swim-wasm-chat",
 ]

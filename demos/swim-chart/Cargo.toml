@@ -11,9 +11,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 swim_client = { package = "client", path = "../../client", default-features = false }
 swim_wasm = { path = "../../swim_wasm" }
-wasm-bindgen = "0.2"
+wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
 console_error_panic_hook = "0.1.1"
-plotters = { version = "0.2.15", features = ["datetime"] }
 web-sys = { version = "0.3.39", features = ["HtmlCanvasElement"] }
 wasm-bindgen-futures = "0.4.13"
 tokio = { version = "0.2.21", features = ["sync", "stream", "macros"] }
@@ -22,6 +21,8 @@ futures = "0.3.4"
 futures-util = "0.3.4"
 stdweb = "0.4.20"
 chrono = "0.4.11"
+js-sys = "0.3.40"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.2"

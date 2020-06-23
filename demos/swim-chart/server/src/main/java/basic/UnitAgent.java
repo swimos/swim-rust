@@ -16,7 +16,7 @@ package basic;
 
 import swim.api.SwimLane;
 import swim.api.agent.AbstractAgent;
-import swim.api.lane.ValueLane;
+import swim.api.lane.MapLane;
 import swim.concurrent.TimerRef;
 import java.time.ZonedDateTime;
 import java.util.Random;
@@ -24,10 +24,17 @@ import java.util.Random;
 public class UnitAgent extends AbstractAgent {
 
   private TimerRef timer;
+  private static final int MAX_SIZE = 300;
 
   @SwimLane("random")
-  ValueLane<Integer> randomLane = this.<Integer>valueLane()
-      .didSet((newValue, oldValue) -> logMessage("`randomLane` set to {" + newValue + "} from {" + oldValue + "}"));
+  MapLane<Long, Integer> randomMap = this.<Long, Integer>mapLane()
+      .didUpdate((key, newValue, oldValue) -> {
+        if (this.randomMap.size() > UnitAgent.MAX_SIZE) {
+          this.randomMap.remove(this.randomMap.getIndex(0).getKey());
+        }
+
+        logMessage("`randomLane` set to {" + newValue + "} from {" + oldValue + "}");
+      });
 
   private void logMessage(Object msg) {
     System.out.println(ZonedDateTime.now() + ": " + nodeUri() + ": " + msg);
@@ -37,12 +44,14 @@ public class UnitAgent extends AbstractAgent {
   public void didStart() {
     super.didStart();
     Random random = new Random();
-    int interval = 10;
+
+    int interval = 5;
 
     this.timer = setTimer(interval, () -> {
       this.timer.reschedule(interval);
+      final long now = System.currentTimeMillis();
 
-      randomLane.set(random.nextInt(10000));
+      randomMap.put(now, random.nextInt(10000));
     });
   }
 
