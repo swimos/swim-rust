@@ -21,7 +21,6 @@ use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
-use tokio_tungstenite::tungstenite::protocol::Message;
 use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
@@ -83,8 +82,8 @@ impl OutgoingHostTask {
 
             match task {
                 OutgoingRequest::Message(envelope) => {
-                    let message = Message::Text(envelope.into_value().to_string());
-                    let request = new_request(connection_request_tx.clone(), message);
+                    let message = envelope.into_value().to_string();
+                    let request = new_request(connection_request_tx.clone(), message.into());
 
                     RetryableFuture::new(request, config.retry_strategy())
                         .await

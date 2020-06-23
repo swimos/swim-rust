@@ -21,11 +21,10 @@ use tracing::info;
 
 use common::model::Value;
 use common::warp::path::AbsolutePath;
-use form::ValidatedForm;
+use swim_form::ValidatedForm;
 
-use crate::configuration::downlink::Config;
+use crate::configuration::downlink::{Config, ConfigHierarchy};
 use crate::configuration::router::RouterParamBuilder;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
@@ -35,6 +34,7 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
+use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
 
 /// Respresents errors that can occur in the client.
@@ -98,19 +98,25 @@ pub struct SwimClient {
 }
 
 impl SwimClient {
+    /// Creates a new SWIM Client using the default configuration.
+    pub async fn new_with_default<Fac>(connection_factory: Fac) -> Self
+    where
+        Fac: WebsocketFactory + 'static,
+    {
+        SwimClient::new(ConfigHierarchy::default(), connection_factory).await
+    }
+
     /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.
     /// The provided configuration is used when opening new downlinks.
-    pub async fn new<C>(configuration: C) -> Self
+    pub async fn new<C, Fac>(configuration: C, connection_factory: Fac) -> Self
     where
         C: Config + 'static,
+        Fac: WebsocketFactory + 'static,
     {
         info!("Initialising Swim Client");
 
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            config.connection_pool_params(),
-            TungsteniteWsFactory::new(config.buffer_size().get()).await,
-        );
+        let pool = SwimConnPool::new(config.connection_pool_params(), connection_factory);
         let router = SwimRouter::new(config, pool);
 
         SwimClient {

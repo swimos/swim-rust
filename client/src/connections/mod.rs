@@ -12,33 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+
 use futures::future::ErrInto as FutErrInto;
 use futures::stream;
 use futures::{select, Future};
 use futures::{Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
-use std::collections::HashMap;
-use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
-use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
+#[allow(unused_imports)]
+#[cfg(feature = "websocket")]
 use tokio_tungstenite::tungstenite;
-use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::{instrument, trace};
-use tungstenite::error::Error as TError;
 use url::Host;
 
+use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+
 use crate::configuration::router::ConnectionPoolParams;
-use crate::connections::factory::WebsocketFactory;
-use std::fmt;
-use std::fmt::{Display, Formatter};
 
 pub mod factory;
 
@@ -71,7 +68,7 @@ pub trait ConnectionPool: Clone + Send + 'static {
     fn close(self) -> Result<Self::CloseFut, ConnectionError>;
 }
 
-type ConnectionPoolSharedHandle = Arc<Mutex<Option<JoinHandle<Result<(), ConnectionError>>>>>;
+type ConnectionPoolSharedHandle = Arc<Mutex<Option<TaskHandle<Result<(), ConnectionError>>>>>;
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
 /// them. It is possible to request a connection to be recreated or to return a cached connection
@@ -107,7 +104,7 @@ impl SwimConnPool {
             stop_request_rx,
         );
 
-        let connection_requests_handler = tokio::task::spawn(task.run(config));
+        let connection_requests_handler = spawn(task.run(config));
 
         SwimConnPool {
             connection_request_tx,
@@ -126,7 +123,7 @@ type ConnectionFut = Sequenced<
 
 type CloseFut = Sequenced<
     FutErrInto<RequestFuture<()>, ConnectionError>,
-    JoinHandle<Result<(), ConnectionError>>,
+    TaskHandle<Result<(), ConnectionError>>,
 >;
 
 impl ConnectionPool for SwimConnPool {
@@ -173,9 +170,9 @@ impl ConnectionPool for SwimConnPool {
         let handle = self
             .connection_requests_handle
             .lock()
-            .map_err(|_| ConnectionErrorKind::ClosedError)?
+            .map_err(|_| ConnectionError::AlreadyClosedError)?
             .take()
-            .ok_or(ConnectionErrorKind::ClosedError)?;
+            .ok_or(ConnectionError::AlreadyClosedError)?;
 
         Ok(Sequenced::new(close_request, handle))
     }
@@ -224,10 +221,10 @@ where
             stop_request_rx,
         } = self;
         let mut connections: HashMap<String, InnerConnection> = HashMap::new();
-        let mut prune_timer = tokio::time::interval(config.conn_reaper_frequency()).fuse();
+
+        let mut prune_timer = interval(config.conn_reaper_frequency()).fuse();
         let mut fused_requests =
             combine_connection_streams(connection_request_rx, stop_request_rx).fuse();
-
         let conn_timeout = config.idle_timeout();
 
         loop {
@@ -235,7 +232,7 @@ where
                 timer = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
-            .ok_or(ConnectionErrorKind::ConnectError)?;
+            .ok_or(ConnectionError::ConnectError)?;
 
             match request {
                 RequestType::NewConnection(conn_req) => {
@@ -271,9 +268,9 @@ where
                             Ok((sender, Some(receiver)))
                         })
                     } else {
-                        let mut inner_connection = connections
+                        let inner_connection = connections
                             .get_mut(&host)
-                            .ok_or(ConnectionErrorKind::ConnectError)?;
+                            .ok_or(ConnectionError::ConnectError)?;
                         inner_connection.last_accessed = Instant::now();
 
                         Ok(((inner_connection.as_conenction_sender()), None))
@@ -281,7 +278,7 @@ where
 
                     request_tx
                         .send(connection_channel)
-                        .map_err(|_| ConnectionErrorKind::ConnectError)?;
+                        .map_err(|_| ConnectionError::ConnectError)?;
                 }
 
                 RequestType::Prune => {
@@ -312,18 +309,18 @@ fn combine_connection_streams(
 
 struct SendTask<S>
 where
-    S: Sink<Message> + Send + 'static + Unpin,
+    S: Sink<WsMessage> + Send + 'static + Unpin,
 {
     stopped: Arc<AtomicBool>,
     write_sink: S,
-    rx: mpsc::Receiver<Message>,
+    rx: mpsc::Receiver<WsMessage>,
 }
 
 impl<S> SendTask<S>
 where
-    S: Sink<Message> + Send + 'static + Unpin,
+    S: Sink<WsMessage> + Send + 'static + Unpin,
 {
-    fn new(write_sink: S, rx: mpsc::Receiver<Message>, stopped: Arc<AtomicBool>) -> Self {
+    fn new(write_sink: S, rx: mpsc::Receiver<WsMessage>, stopped: Arc<AtomicBool>) -> Self {
         SendTask {
             stopped,
             write_sink,
@@ -342,27 +339,27 @@ where
             .forward(write_sink)
             .map_err(|_| {
                 stopped.store(true, Ordering::Release);
-                ConnectionErrorKind::SendMessageError
+                ConnectionError::SendMessageError
             })
             .await
-            .map_err(|_| ConnectionError::new(ConnectionErrorKind::SendMessageError))
+            .map_err(|_| ConnectionError::SendMessageError)
     }
 }
 
 struct ReceiveTask<S>
 where
-    S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
+    S: Stream<Item = Result<WsMessage, ConnectionError>> + Send + Unpin + 'static,
 {
     stopped: Arc<AtomicBool>,
     read_stream: S,
-    tx: mpsc::Sender<Message>,
+    tx: mpsc::Sender<WsMessage>,
 }
 
 impl<S> ReceiveTask<S>
 where
-    S: Stream<Item = Result<Message, ConnectionError>> + Send + Unpin + 'static,
+    S: Stream<Item = Result<WsMessage, ConnectionError>> + Send + Unpin + 'static,
 {
-    fn new(read_stream: S, tx: mpsc::Sender<Message>, stopped: Arc<AtomicBool>) -> Self {
+    fn new(read_stream: S, tx: mpsc::Sender<WsMessage>, stopped: Arc<AtomicBool>) -> Self {
         ReceiveTask {
             stopped,
             read_stream,
@@ -383,13 +380,13 @@ where
                 .await
                 .map_err(|_| {
                     stopped.store(true, Ordering::Release);
-                    ConnectionErrorKind::ReceiveMessageError
+                    ConnectionError::ReceiveMessageError
                 })?
-                .ok_or(ConnectionErrorKind::ReceiveMessageError)?;
+                .ok_or(ConnectionError::ReceiveMessageError)?;
 
             tx.send(message)
                 .await
-                .map_err(|_| ConnectionErrorKind::ReceiveMessageError)?;
+                .map_err(|_| ConnectionError::ReceiveMessageError)?;
         }
     }
 }
@@ -408,11 +405,12 @@ impl InnerConnection {
 
     pub fn from(
         mut conn: SwimConnection,
-    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<Message>), ConnectionError> {
+    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<WsMessage>), ConnectionError>
+    {
         let sender = ConnectionSender {
             tx: conn.tx.clone(),
         };
-        let receiver = conn.rx.take().ok_or(ConnectionErrorKind::ConnectError)?;
+        let receiver = conn.rx.take().ok_or(ConnectionError::ConnectError)?;
 
         let inner = InnerConnection {
             conn,
@@ -428,10 +426,10 @@ impl InnerConnection {
 /// Connection to a remote host.
 pub struct SwimConnection {
     stopped: Arc<AtomicBool>,
-    tx: mpsc::Sender<Message>,
-    rx: Option<mpsc::Receiver<Message>>,
-    _send_handle: JoinHandle<Result<(), ConnectionError>>,
-    _receive_handle: JoinHandle<Result<(), ConnectionError>>,
+    tx: mpsc::Sender<WsMessage>,
+    rx: Option<mpsc::Receiver<WsMessage>>,
+    _send_handle: TaskHandle<Result<(), ConnectionError>>,
+    _receive_handle: TaskHandle<Result<(), ConnectionError>>,
 }
 
 impl SwimConnection {
@@ -450,8 +448,8 @@ impl SwimConnection {
         let receive = ReceiveTask::new(read_stream, receiver_tx, stopped.clone());
         let send = SendTask::new(write_sink, sender_rx, stopped.clone());
 
-        let send_handler = tokio::spawn(send.run());
-        let receive_handler = tokio::spawn(receive.run());
+        let send_handler = spawn(send.run());
+        let receive_handler = spawn(receive.run());
 
         Ok(SwimConnection {
             stopped,
@@ -463,19 +461,25 @@ impl SwimConnection {
     }
 }
 
+use common::connections::error::ConnectionError;
+use common::connections::{WebsocketFactory, WsMessage};
+use swim_runtime::task::*;
+use swim_runtime::time::instant::Instant;
+use swim_runtime::time::interval::interval;
+
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    tx: mpsc::Sender<Message>,
+    tx: mpsc::Sender<WsMessage>,
 }
 
 impl ConnectionSender {
     /// Crate-only function for creating a sender. Useful for unit testing.
     #[doc(hidden)]
     #[allow(dead_code)]
-    pub(crate) fn new(tx: mpsc::Sender<Message>) -> ConnectionSender {
+    pub(crate) fn new(tx: mpsc::Sender<WsMessage>) -> ConnectionSender {
         ConnectionSender { tx }
     }
 
@@ -489,7 +493,7 @@ impl ConnectionSender {
     ///
     /// `Ok` if the message has been sent.
     /// `SendError` if it failed.
-    pub async fn send_message(&mut self, message: Message) -> Result<(), SendError<Message>> {
+    pub async fn send_message(&mut self, message: WsMessage) -> Result<(), SendError<WsMessage>> {
         self.tx.send(message).await
     }
 
@@ -497,165 +501,9 @@ impl ConnectionSender {
         self.tx.poll_ready(cx)
     }
 
-    pub fn try_send(&mut self, message: Message) -> Result<(), TrySendError<Message>> {
+    pub fn try_send(&mut self, message: WsMessage) -> Result<(), TrySendError<WsMessage>> {
         self.tx.try_send(message)
     }
 }
 
-pub(crate) type ConnectionReceiver = mpsc::Receiver<Message>;
-
-/// Connection error types returned by the connection pool and the connections.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ConnectionErrorKind {
-    /// Error that occurred when connecting to a remote host.
-    ConnectError,
-    /// A WebSocket error.  
-    SocketError,
-    /// Error that occurred when sending messages.
-    SendMessageError,
-    /// Error that occurred when receiving messages.
-    ReceiveMessageError,
-    /// Error that occurred when closing down connections.
-    ClosedError,
-}
-
-impl Display for ConnectionErrorKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self {
-            ConnectionErrorKind::ConnectError => {
-                write!(f, "An error was produced during a connection.")
-            }
-            ConnectionErrorKind::SocketError => {
-                write!(f, "An error was produced by the web socket.")
-            }
-            ConnectionErrorKind::SendMessageError => {
-                write!(f, "An error occured when sending a message.")
-            }
-            ConnectionErrorKind::ReceiveMessageError => {
-                write!(f, "An error occured when receiving a message.")
-            }
-            ConnectionErrorKind::ClosedError => {
-                write!(f, "An error occured when closing down connections.")
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ConnectionError {
-    kind: ConnectionErrorKind,
-    tungstenite_error: Option<TError>,
-}
-
-impl PartialEq for ConnectionError {
-    fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
-    }
-}
-
-impl Clone for ConnectionError {
-    fn clone(&self) -> Self {
-        ConnectionError {
-            kind: self.kind,
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl Display for ConnectionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self.tungstenite_error {
-            Some(e) => match self.kind.fmt(f) {
-                Ok(_) => write!(f, " Tungstenite error: {}", e),
-                e => e,
-            },
-            None => self.kind.fmt(f),
-        }
-    }
-}
-
-impl ConnectionError {
-    pub fn new(kind: ConnectionErrorKind) -> Self {
-        ConnectionError {
-            kind,
-            tungstenite_error: None,
-        }
-    }
-
-    pub fn new_tungstenite_error(kind: ConnectionErrorKind, tungstenite_error: TError) -> Self {
-        ConnectionError {
-            kind,
-            tungstenite_error: Some(tungstenite_error),
-        }
-    }
-
-    pub fn kind(&self) -> ConnectionErrorKind {
-        self.kind
-    }
-
-    pub fn into_kind(self) -> ConnectionErrorKind {
-        self.kind
-    }
-
-    pub fn tungstenite_error(&mut self) -> Option<TError> {
-        self.tungstenite_error.take()
-    }
-
-    /// Returns whether or not the error kind is deemed to be transient.
-    pub fn is_transient(&self) -> bool {
-        match &self.kind() {
-            ConnectionErrorKind::SocketError => false,
-            _ => true,
-        }
-    }
-}
-
-impl From<ConnectionErrorKind> for ConnectionError {
-    fn from(kind: ConnectionErrorKind) -> Self {
-        ConnectionError {
-            kind,
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl From<RequestError> for ConnectionError {
-    fn from(_: RequestError) -> Self {
-        ConnectionError {
-            kind: ConnectionErrorKind::ConnectError,
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl From<tokio::task::JoinError> for ConnectionError {
-    fn from(_: tokio::task::JoinError) -> Self {
-        ConnectionError {
-            kind: ConnectionErrorKind::ConnectError,
-            tungstenite_error: None,
-        }
-    }
-}
-
-impl From<TError> for ConnectionError {
-    fn from(e: TError) -> Self {
-        match e {
-            TError::ConnectionClosed | TError::AlreadyClosed => {
-                ConnectionError::from(ConnectionErrorKind::ClosedError)
-            }
-            e @ TError::Http(_)
-            | e @ TError::HttpFormat(_)
-            | e @ TError::Tls(_)
-            | e @ TError::Protocol(_)
-            | e @ TError::Io(_)
-            | e @ TError::Url(_) => ConnectionError {
-                kind: ConnectionErrorKind::SocketError,
-                tungstenite_error: Some(e),
-            },
-            _ => ConnectionError {
-                kind: ConnectionErrorKind::ConnectError,
-                tungstenite_error: Some(e),
-            },
-        }
-    }
-}
+pub(crate) type ConnectionReceiver = mpsc::Receiver<WsMessage>;
