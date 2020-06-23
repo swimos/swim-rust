@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use form::Form;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use swim_form::Form;
 
 use super::*;
 use crate::downlink::Message;
