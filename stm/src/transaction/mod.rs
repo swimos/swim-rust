@@ -22,12 +22,13 @@ use std::sync::Arc;
 
 use crate::ptr::PtrKey;
 use crate::stm::error::StmError;
+use crate::stm::stm_futures::{RunIn, TransactionFuture};
 use crate::stm::{ExecResult, Stm};
 use crate::transaction::frame_mask::{FrameMask, ReadWrite};
-use crate::var::{Contents, TVarInner};
+use crate::var::{Contents, TVarInner, TVarRead};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{Future, Stream, StreamExt};
+use futures::{ready, Future, Stream, StreamExt};
 use futures_util::stream::FuturesUnordered;
 use slab::Slab;
 use std::error::Error;
@@ -294,37 +295,6 @@ impl Transaction {
         self.log.len()
     }
 
-    /// Execute a "get" on variable, within the context of the transaction.
-    pub(crate) async fn apply_get<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>) -> Arc<T> {
-        let Transaction {
-            log_assoc,
-            log,
-            masks,
-            stack_size,
-        } = self;
-        let k = PtrKey(var.clone());
-        match get_entry(log_assoc, log, &k) {
-            Some((i, entry)) => {
-                if !entry.is_active() {
-                    masks.set_read(i);
-                }
-                entry.get_value()
-            }
-            _ => {
-                let value = var.read().await;
-                let result = value.clone().downcast().unwrap();
-                let entry = LogEntry {
-                    state: LogState::Get(value),
-                    stack: Vec::with_capacity(*stack_size),
-                };
-                let i = log.insert(entry);
-                log_assoc.insert(k, i);
-                masks.set_read(i);
-                result
-            }
-        }
-    }
-
     fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<Arc<TVarInner>>, value: Arc<T>) {
         let mut stack: Vec<Contents> = Vec::with_capacity(self.stack_size);
         stack.push(value);
@@ -551,7 +521,7 @@ where
 
     loop {
         num_attempts = num_attempts.saturating_add(1);
-        let exec_result = stm.run_in(&mut transaction).await;
+        let exec_result = RunIn::new(&mut transaction, stm.runner()).await;
         match exec_result {
             ExecResult::Done(t) => {
                 if transaction.try_commit().await {
@@ -616,6 +586,77 @@ impl<'a> Future for AwaitChanged<'a> {
             }
         } else {
             Poll::Ready(())
+        }
+    }
+}
+
+async fn await_read(inner: Arc<TVarInner>) -> (Arc<TVarInner>, Contents) {
+    let contents = inner.read().await;
+    (inner, contents)
+}
+
+pub struct AwaitRead(Pin<Box<dyn Future<Output = (Arc<TVarInner>, Contents)> + Send + 'static>>);
+
+/// Transaction future for performing a read on a transactionak variable.
+pub enum ReadFuture<T> {
+    Start(TVarRead<T>),
+    Wait(AwaitRead),
+}
+
+impl<T> ReadFuture<T> {
+    pub(crate) fn new(read: TVarRead<T>) -> Self {
+        ReadFuture::Start(read)
+    }
+}
+
+impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
+    type Output = Arc<T>;
+
+    fn poll_in(
+        self: Pin<&mut Self>,
+        transaction: Pin<&mut Transaction>,
+        cx: &mut Context<'_>,
+    ) -> Poll<ExecResult<Self::Output>> {
+        let Transaction {
+            log_assoc,
+            log,
+            masks,
+            stack_size,
+        } = transaction.get_mut();
+
+        let this = self.get_mut();
+        loop {
+            let next = match this {
+                ReadFuture::Start(read) => {
+                    let k = PtrKey(read.inner().clone());
+                    match get_entry(log_assoc, log, &k) {
+                        Some((i, entry)) => {
+                            if !entry.is_active() {
+                                masks.set_read(i);
+                            }
+                            return Poll::Ready(ExecResult::Done(entry.get_value()));
+                        }
+                        _ => {
+                            let PtrKey(inner) = k;
+                            await_read(inner)
+                        }
+                    }
+                }
+                ReadFuture::Wait(AwaitRead(wait)) => {
+                    let (inner, value) = ready!(wait.as_mut().poll(cx));
+                    let result = value.clone().downcast().unwrap();
+                    let k = PtrKey(inner);
+                    let entry = LogEntry {
+                        state: LogState::Get(value),
+                        stack: Vec::with_capacity(*stack_size),
+                    };
+                    let i = log.insert(entry);
+                    log_assoc.insert(k, i);
+                    masks.set_read(i);
+                    return Poll::Ready(ExecResult::Done(result));
+                }
+            };
+            *this = ReadFuture::Wait(AwaitRead(Box::pin(next)));
         }
     }
 }
