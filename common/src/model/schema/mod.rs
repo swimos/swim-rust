@@ -635,10 +635,18 @@ impl PartialOrd for StandardSchema {
                 (StandardSchema::Nothing, _) => Some(Ordering::Less),
                 (StandardSchema::OfKind(kind), _) => Some(of_kind_cmp(kind, other)?),
                 (_, StandardSchema::OfKind(kind)) => Some(of_kind_cmp(kind, self)?.reverse()),
-                // (StandardSchema::Equal(value), _) => Some(equal_cmp(value, other)?),
-                // (_, StandardSchema::Equal(value)) => Some(equal_cmp(value, self)?.reverse()),
-                // (StandardSchema::NonNan, _) => Some(non_nan_cmp(other)?),
-                // (_, StandardSchema::NonNan) => Some(non_nan_cmp(self)?.reverse()),
+                (StandardSchema::Equal(value), _) => Some(equal_cmp(value, other)?),
+                (_, StandardSchema::Equal(value)) => Some(equal_cmp(value, self)?.reverse()),
+                (StandardSchema::InRangeInt(range), _) => Some(in_range_int_cmp(range, other)?),
+                (_, StandardSchema::InRangeInt(range)) => {
+                    Some(in_range_int_cmp(range, self)?.reverse())
+                }
+                (StandardSchema::InRangeFloat(range), _) => Some(in_range_float_cmp(range, other)?),
+                (_, StandardSchema::InRangeFloat(range)) => {
+                    Some(in_range_float_cmp(range, self)?.reverse())
+                }
+                (StandardSchema::NonNan, _) => Some(non_nan_cmp(other)?),
+                (_, StandardSchema::NonNan) => Some(non_nan_cmp(self)?.reverse()),
                 _ => None,
             }
         }
@@ -688,20 +696,88 @@ fn of_kind_cmp(this_kind: &ValueKind, other: &StandardSchema) -> Option<Ordering
     }
 }
 
-//Todo
-// fn equal_cmp(this_value: &Value, other: &StandardSchema) -> Option<Ordering> {
-//     match (this_value, other) {
-//         (Value::Text(_), StandardSchema::Text(TextSchema::Exact(_))) => Some(Ordering::Equal),
-//         _ => None,
-//     }
-// }
-//
-// fn non_nan_cmp(other: &StandardSchema) -> Option<Ordering> {
-//     match other {
-//         StandardSchema::Finite => Some(Ordering::Greater),
-//         _ => None,
-//     }
-// }
+fn equal_cmp(this: &Value, other: &StandardSchema) -> Option<Ordering> {
+    match (this, other) {
+        (Value::Int32Value(this_val), StandardSchema::Equal(Value::Int64Value(other_val)))
+            if *this_val as i64 == *other_val =>
+        {
+            Some(Ordering::Equal)
+        }
+        (Value::Int32Value(this_val), StandardSchema::InRangeInt(range))
+            if in_range(*this_val as i64, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::Int64Value(this_val), StandardSchema::Equal(Value::Int32Value(other_val)))
+            if *this_val == *other_val as i64 =>
+        {
+            Some(Ordering::Equal)
+        }
+        (Value::Int64Value(this_val), StandardSchema::InRangeInt(range))
+            if in_range(*this_val, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::Float64Value(this_val), StandardSchema::InRangeFloat(range))
+            if in_range(*this_val, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::Float64Value(this_val), StandardSchema::NonNan) if !this_val.is_nan() => {
+            Some(Ordering::Less)
+        }
+        (Value::Float64Value(this_val), StandardSchema::Finite) if this_val.is_finite() => {
+            Some(Ordering::Less)
+        }
+        (Value::Text(this_val), StandardSchema::Text(TextSchema::NonEmpty))
+            if !this_val.is_empty() =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::Text(this_val), StandardSchema::Text(TextSchema::Exact(other_val)))
+            if this_val.eq(other_val) =>
+        {
+            Some(Ordering::Equal)
+        }
+        (Value::Text(this_val), StandardSchema::Text(TextSchema::Matches(regex)))
+            if regex.is_match(this_val) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::Record(attr, items), schema) => {
+            if schema.matches_ref(&RefRecord::new(attr, items)) {
+                Some(Ordering::Less)
+            } else {
+                None
+            }
+        }
+
+        _ => None,
+    }
+}
+
+fn in_range_int_cmp(this: &Range<i64>, other: &StandardSchema) -> Option<Ordering> {
+    match other {
+        StandardSchema::InRangeInt(other_range) => this.partial_cmp(&other_range),
+        _ => None,
+    }
+}
+
+fn in_range_float_cmp(this: &Range<f64>, other: &StandardSchema) -> Option<Ordering> {
+    match other {
+        StandardSchema::InRangeFloat(other_range) => this.partial_cmp(&other_range),
+        StandardSchema::Finite if this.is_bounded() => Some(Ordering::Less),
+        StandardSchema::NonNan if !this.is_unbounded() => Some(Ordering::Less),
+        _ => None,
+    }
+}
+
+fn non_nan_cmp(other: &StandardSchema) -> Option<Ordering> {
+    match other {
+        StandardSchema::Finite => Some(Ordering::Greater),
+        _ => None,
+    }
+}
 
 fn int_32_range() -> Range<i64> {
     Range::new(
