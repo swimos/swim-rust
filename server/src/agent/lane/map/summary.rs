@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use common::model::Value;
-use form::{Form, FormDeserializeErr};
+use swim_form::{Form, FormDeserializeErr};
 use im::HashMap;
 use std::any::Any;
 use std::hash::Hash;

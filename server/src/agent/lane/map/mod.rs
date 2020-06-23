@@ -19,7 +19,7 @@ use std::sync::Arc;
 use im::OrdMap;
 
 use common::model::Value;
-use form::Form;
+use swim_form::Form;
 use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError};

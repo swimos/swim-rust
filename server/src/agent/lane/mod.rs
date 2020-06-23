@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use form::FormDeserializeErr;
+use swim_form::FormDeserializeErr;
 use futures::{ready, Stream};
 use pin_project::pin_project;
 use std::error::Error;
