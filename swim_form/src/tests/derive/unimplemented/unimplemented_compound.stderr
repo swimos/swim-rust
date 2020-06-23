@@ -1,0 +1,8 @@
+error[E0277]: the trait bound `Child: swim_form::Form` is not satisfied
+  --> $DIR/unimplemented_compound.rs:17:1
+   |
+17 | #[form]
+   | ^^^^^^^ the trait `swim_form::Form` is not implemented for `Child`
+   |
+   = help: see issue #48214
+   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)

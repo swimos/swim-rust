@@ -33,6 +33,35 @@ mod tests {
     }
 
     #[tokio::test(core_threads = 2)]
+    async fn secure() {
+        init_trace();
+
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("wss://127.0.0.1:{}", port);
+
+        let config = RouterParamBuilder::default().build();
+        let pool = SwimConnPool::new(
+            ConnectionPoolParams::default(),
+            TungsteniteWsFactory::new(5).await,
+        );
+
+        let mut router = SwimRouter::new(config, pool);
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
+        let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
+
+        let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
+
+        sink.send_item(sync).await.unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(5)).await;
+        let _ = router.close().await;
+        tokio::time::delay_for(Duration::from_secs(5)).await;
+    }
+
+    #[tokio::test(core_threads = 2)]
     async fn normal_receive() {
         init_trace();
 
