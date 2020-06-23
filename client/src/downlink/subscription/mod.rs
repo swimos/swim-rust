@@ -39,7 +39,6 @@ use common::topic::Topic;
 use common::warp::envelope::Envelope;
 use common::warp::path::AbsolutePath;
 use either::Either;
-use form::ValidatedForm;
 use futures::stream::Fuse;
 use futures::Stream;
 use futures_util::future::TryFutureExt;
@@ -50,10 +49,11 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
+use swim_form::ValidatedForm;
+use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::{JoinError, JoinHandle};
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 
@@ -85,7 +85,7 @@ pub type AnyWeakEventDownlink = AnyWeakDownlink<Value, Value>;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
-    task: JoinHandle<RequestResult<()>>,
+    task: TaskHandle<RequestResult<()>>,
 }
 
 enum DownlinkRequest {
@@ -111,7 +111,7 @@ impl Downlinks {
         let client_params = config.client_params();
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
-        let task_handle = tokio::task::spawn(task.run(rx));
+        let task_handle = spawn(task.run(rx));
 
         Downlinks {
             sender: tx,
@@ -132,9 +132,10 @@ impl Downlinks {
         Ok(())
     }
 
-    pub async fn close(self) -> Result<RequestResult<()>, JoinError> {
+    pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
         let Downlinks { sender, task } = self;
         drop(sender);
+
         task.await
     }
 
