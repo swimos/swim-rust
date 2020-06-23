@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/// [`Delay`] is a future that will complete at a specific time.
 pub mod delay {
     use futures::task::{Context, Poll};
     use futures::Future;
@@ -34,6 +35,8 @@ pub mod delay {
         }
     }
 
+    /// Creates a new [`Delay`] instance that will complete at the current time + the provided
+    /// [`Duration`].
     pub fn delay_for(duration: Duration) -> Delay {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -78,6 +81,7 @@ pub mod delay {
     }
 }
 
+/// [`Interval`] is a stream that yields a value when the provided [`period`] elapses.
 pub mod interval {
     use futures::task::{Context, Poll};
     use futures::Stream;
@@ -111,6 +115,7 @@ pub mod interval {
         }
     }
 
+    /// Create a new [`Interval`] that will yield a value each time the provided [`period`] elapses.
     pub fn interval(period: Duration) -> Interval {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -126,6 +131,7 @@ pub mod interval {
     }
 }
 
+/// An [`Instant`] is a measurement of the system clock.
 pub mod instant {
     use std::time::Duration;
 
@@ -138,6 +144,7 @@ pub mod instant {
     }
 
     impl Instant {
+        /// Construct a new [`Instant`] corresponding to "now".
         pub fn now() -> Instant {
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -152,6 +159,8 @@ pub mod instant {
             }
         }
 
+        /// Returns the amount of time (as a [`Duration`] that has passed since this [`Instant`]
+        /// was created.  
         pub fn elapsed(self) -> Duration {
             self.inner.elapsed()
         }

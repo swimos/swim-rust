@@ -36,7 +36,7 @@ pub mod async_factory {
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {
-        pub request: Request<Result<(Snk, Str), ConnectionError>>,
+        pub(crate) request: Request<Result<(Snk, Str), ConnectionError>>,
         url: url::Url,
     }
 

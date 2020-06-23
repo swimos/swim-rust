@@ -143,7 +143,7 @@ where
     V: ValidatedForm,
 {
     fn schema() -> StandardSchema {
-        V::schema()
+        StandardSchema::Or(vec![V::schema(), StandardSchema::OfKind(ValueKind::Extant)])
     }
 }
 

@@ -23,9 +23,7 @@ use common::model::Value;
 use common::warp::path::AbsolutePath;
 use swim_form::ValidatedForm;
 
-use crate::configuration::downlink::{
-    BackpressureMode, ClientParams, Config, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-};
+use crate::configuration::downlink::{Config, ConfigHierarchy};
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
@@ -38,7 +36,6 @@ use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
-use std::time::Duration;
 
 /// Respresents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
@@ -106,7 +103,7 @@ impl SwimClient {
     where
         Fac: WebsocketFactory + 'static,
     {
-        SwimClient::new(config(), connection_factory).await
+        SwimClient::new(ConfigHierarchy::default(), connection_factory).await
     }
 
     /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.
@@ -252,19 +249,4 @@ impl SwimClient {
             .await
             .map_err(ClientError::SubscriptionError)
     }
-}
-
-fn config() -> ConfigHierarchy {
-    let client_params = ClientParams::new(2, Default::default()).unwrap();
-    let default_params = DownlinkParams::new_queue(
-        BackpressureMode::Propagate,
-        5,
-        Duration::from_secs(600),
-        5,
-        OnInvalidMessage::Terminate,
-        10000,
-    )
-    .unwrap();
-
-    ConfigHierarchy::new(client_params, default_params)
 }
