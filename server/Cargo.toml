@@ -25,7 +25,7 @@ tokio = { version = "=0.2.21", features = ["stream", "rt-core", "macros"] }
 url = "2.1.1"
 common = { path = "../common" }
 utilities = { path = "../utilities" }
-form = { path = "../form" }
+form = { path = "../swim_form" }
 stm = { path = "../stm" }
 
 [dev-dependencies]

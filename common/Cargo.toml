@@ -5,6 +5,7 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
+swim_runtime = { path = "../swim_runtime" }
 pin-utils = "0.1.0-alpha.4"
 bytes = "0.5.3"
 either = "1.5.3"

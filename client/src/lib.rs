@@ -18,6 +18,7 @@
 //!
 //! - `debug`: Enables all debug features listed below.
 //! - `log_verbose`: Sets the global tracing level to the highest.
+//! - `websocket`: Provides a WebSocket connector that works on non-WASM platforms.
 //!
 
 pub mod configuration;
@@ -25,5 +26,7 @@ pub mod connections;
 pub mod downlink;
 pub mod interface;
 pub mod router;
+pub use common;
+pub use swim_runtime::{self};
 
 extern crate utilities;

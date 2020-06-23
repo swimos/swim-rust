@@ -22,8 +22,8 @@ use crate::downlink::{DownlinkError, UpdateFailure};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::{ItemSender, ItemSink};
-use form::{Form, ValidatedForm};
 use std::marker::PhantomData;
+use swim_form::{Form, ValidatedForm};
 use tokio::sync::oneshot;
 
 /// Wraps a sender of updates to a value downlink, providing typed, asynchronous operations

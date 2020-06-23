@@ -32,6 +32,7 @@ use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
+use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
 use utilities::future::TransformedFuture;
 
@@ -248,7 +249,7 @@ where
         config.yield_after,
     );
 
-    let join_handle = tokio::task::spawn(lane_task);
+    let join_handle = spawn(lane_task);
 
     let dl_task = raw::DownlinkTaskHandle::new(join_handle, stopped_rx, completed);
 

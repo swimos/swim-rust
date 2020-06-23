@@ -26,8 +26,8 @@ use futures::{select_biased, Stream};
 use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
 use utilities::lru_cache::LruCache;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
@@ -41,8 +41,8 @@ use utilities::lru_cache::LruCache;
 /// operations to have send before being sent and will stall the internal tasks until they complete.
 pub struct KeyedWatch {
     sender: mpsc::Sender<UntypedMapModification<Arc<Value>>>,
-    _consume_task: JoinHandle<()>,
-    _produce_task: JoinHandle<()>,
+    _consume_task: TaskHandle<()>,
+    _produce_task: TaskHandle<()>,
 }
 
 impl<'a> ItemSink<'a, UntypedMapModification<Arc<Value>>> for KeyedWatch {
@@ -79,8 +79,8 @@ impl KeyedWatch {
 
         KeyedWatch {
             sender: tx,
-            _consume_task: tokio::task::spawn(consumer.run()),
-            _produce_task: tokio::task::spawn(producer.run()),
+            _consume_task: spawn(consumer.run()),
+            _produce_task: spawn(producer.run()),
         }
     }
 }

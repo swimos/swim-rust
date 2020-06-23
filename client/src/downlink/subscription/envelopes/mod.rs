@@ -123,8 +123,9 @@ pub(in crate::downlink) mod map {
     use crate::downlink::Message;
     use common::model::Value;
     use common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
-    use form::Form;
     use std::sync::Arc;
+    use swim_form::Form;
+    use tracing::warn;
 
     pub(super) fn envelope_body(cmd: UntypedMapModification<Arc<Value>>) -> Option<Value> {
         Some(cmd.envelope_body())
@@ -154,7 +155,10 @@ pub(in crate::downlink) mod map {
                 Ok(modification) => Message::Action(modification),
                 Err(e) => Message::BadEnvelope(format!("{}", e)),
             },
-            _ => Message::BadEnvelope("Event envelope had no body.".to_string()),
+            _ => {
+                warn!("Bad envelope: {:?}", incoming);
+                Message::BadEnvelope("Event envelope had no body.".to_string())
+            }
         }
     }
 }
