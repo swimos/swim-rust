@@ -15,9 +15,10 @@
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use stm::transaction::RetryManager;
-use crate::agent::lane::BroadcastStream;
+use crate::agent::lane::{BroadcastStream, InvalidForm};
 use tokio::sync::broadcast;
 use futures::StreamExt;
+use swim_form::FormDeserializeErr;
 
 pub struct ExactlyOnce;
 
@@ -32,6 +33,13 @@ impl RetryManager for ExactlyOnce {
     fn retry(&mut self) -> Self::RetryFut {
         ready(false)
     }
+}
+
+#[test]
+fn format_invalid_form() {
+    let err = InvalidForm(FormDeserializeErr::Malformatted);
+    let str = format!("{}", err);
+    assert_eq!(str, "Lane form implementation is inconsistent: Malformatted");
 }
 
 #[tokio::test]
