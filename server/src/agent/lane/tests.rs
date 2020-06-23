@@ -12,7 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod strategy;
-#[cfg(test)]
-pub mod tests;
-pub mod value;
+use futures::future::{ready, Ready};
+use futures::stream::{empty, Empty};
+use stm::transaction::RetryManager;
+
+pub struct ExactlyOnce;
+
+impl RetryManager for ExactlyOnce {
+    type ContentionManager = Empty<()>;
+    type RetryFut = Ready<bool>;
+
+    fn contention_manager(&self) -> Self::ContentionManager {
+        empty()
+    }
+
+    fn retry(&mut self) -> Self::RetryFut {
+        ready(false)
+    }
+}
