@@ -15,6 +15,9 @@
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use stm::transaction::RetryManager;
+use crate::agent::lane::BroadcastStream;
+use tokio::sync::broadcast;
+use futures::StreamExt;
 
 pub struct ExactlyOnce;
 
@@ -29,4 +32,23 @@ impl RetryManager for ExactlyOnce {
     fn retry(&mut self) -> Self::RetryFut {
         ready(false)
     }
+}
+
+#[tokio::test]
+async fn broadcast_stream_send() {
+    let (tx, rx) = broadcast::channel(1);
+    let mut stream = BroadcastStream(rx);
+    assert!(tx.send(2).is_ok());
+    let received = stream.next().await;
+    assert_eq!(received, Some(2));
+}
+
+#[tokio::test]
+async fn broadcast_stream_lag() {
+    let (tx, rx) = broadcast::channel(1);
+    let mut stream = BroadcastStream(rx);
+    assert!(tx.send(2).is_ok());
+    assert!(tx.send(3).is_ok());
+    let received = stream.next().await;
+    assert_eq!(received, Some(3));
 }
