@@ -1817,105 +1817,6 @@ fn nothing_to_value() {
     );
 }
 
-fn assert_greater_than(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
-    for s in cmp_schemas {
-        assert!(schema > s);
-        assert!(s < schema);
-    }
-}
-fn assert_less_than(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
-    for s in cmp_schemas {
-        assert!(schema < s);
-        assert!(s > schema);
-    }
-}
-
-fn assert_equal(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
-    for s in cmp_schemas {
-        assert_eq!(schema.partial_cmp(&s).unwrap(), Ordering::Equal);
-        assert_eq!(s.partial_cmp(&schema).unwrap(), Ordering::Equal);
-    }
-}
-
-fn assert_not_related(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
-    for s in cmp_schemas {
-        assert!(schema.partial_cmp(&s).is_none());
-        assert!(s.partial_cmp(&schema).is_none());
-    }
-}
-
-fn all_schemas() -> HashMap<&'static str, StandardSchema> {
-    let mut map = HashMap::new();
-
-    map.insert("of_kind", StandardSchema::OfKind(ValueKind::Extant));
-    map.insert("equal", StandardSchema::Equal(Value::Extant));
-    map.insert(
-        "in_range_int",
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(0)),
-            Some(Bound::inclusive(10)),
-        )),
-    );
-    map.insert(
-        "in_range_float",
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::inclusive(0.5)),
-            Some(Bound::inclusive(10.5)),
-        )),
-    );
-    map.insert("non_nan", StandardSchema::NonNan);
-    map.insert("finite", StandardSchema::Finite);
-    map.insert("text", StandardSchema::Text(TextSchema::NonEmpty));
-    map.insert(
-        "not",
-        StandardSchema::Not(Box::from(StandardSchema::Anything)),
-    );
-    map.insert("and", StandardSchema::And(vec![]));
-    map.insert("or", StandardSchema::Or(vec![]));
-    map.insert(
-        "all_items",
-        StandardSchema::AllItems(Box::from(ItemSchema::ValueItem(StandardSchema::Anything))),
-    );
-    map.insert("num_attrs", StandardSchema::NumAttrs(5));
-    map.insert("num_items", StandardSchema::NumItems(3));
-    map.insert(
-        "head_attribute",
-        StandardSchema::HeadAttribute {
-            schema: Box::from(AttrSchema::new(
-                TextSchema::NonEmpty,
-                StandardSchema::Anything,
-            )),
-            required: true,
-            remainder: Box::from(StandardSchema::Anything),
-        },
-    );
-    map.insert(
-        "has_attributes",
-        StandardSchema::HasAttributes {
-            attributes: vec![],
-            exhaustive: true,
-        },
-    );
-    map.insert(
-        "has_slots",
-        StandardSchema::HasSlots {
-            slots: vec![],
-            exhaustive: true,
-        },
-    );
-    map.insert(
-        "layout",
-        StandardSchema::Layout {
-            items: vec![],
-            exhaustive: true,
-        },
-    );
-    map.insert("nothing", StandardSchema::Nothing);
-    map.insert("anything", StandardSchema::Anything);
-
-    map
-}
-
 #[test]
 fn compare_upper_range_bounds_inclusive_same_value() {
     assert_eq!(
@@ -2356,7 +2257,6 @@ fn compare_lower_bounded_and_bounded_not_related() {
         .is_none());
 }
 
-//TODO
 #[test]
 fn compare_upper_bounded() {
     assert_eq!(
@@ -2364,16 +2264,164 @@ fn compare_upper_bounded() {
         Range::new(None, Some(Bound::exclusive(10.10)))
     );
 
+    assert!(
+        Range::new(None, Some(Bound::exclusive(15.15)))
+            > Range::new(None, Some(Bound::exclusive(10.10)))
+    );
+
+    assert!(
+        Range::new(None, Some(Bound::exclusive(-15.15)))
+            < Range::new(None, Some(Bound::exclusive(-10.10)))
+    );
+
+    assert!(
+        Range::new(None, Some(Bound::inclusive(10.10)))
+            > Range::new(None, Some(Bound::exclusive(10.10)))
+    );
+
+    assert!(
+        Range::new(None, Some(Bound::exclusive(-10.10)))
+            < Range::new(None, Some(Bound::inclusive(-10.10)))
+    );
+}
+
+#[test]
+fn compare_lower_bounded() {
+    assert_eq!(
+        Range::new(Some(Bound::exclusive(3.14)), None),
+        Range::new(Some(Bound::exclusive(3.14)), None)
+    );
+
+    assert!(
+        Range::new(Some(Bound::exclusive(15.15)), None)
+            < Range::new(Some(Bound::exclusive(10.10)), None)
+    );
+
+    assert!(
+        Range::new(Some(Bound::exclusive(-15.15)), None)
+            > Range::new(Some(Bound::exclusive(-10.10)), None)
+    );
+
+    assert!(
+        Range::new(Some(Bound::exclusive(10.10)), None)
+            < Range::new(Some(Bound::inclusive(10.10)), None)
+    );
+
+    assert!(
+        Range::new(Some(Bound::inclusive(-10.10)), None)
+            > Range::new(Some(Bound::exclusive(-10.10)), None)
+    );
+}
+
+#[test]
+fn compare_upper_and_lower_bounded() {
     assert!(Range::new(None, Some(Bound::exclusive(10.10)))
+        .partial_cmp(&Range::new(Some(Bound::exclusive(10.10)), None))
+        .is_none());
+
+    assert!(Range::new(Some(Bound::exclusive(-10.10)), None)
         .partial_cmp(&Range::new(None, Some(Bound::exclusive(10.10))))
         .is_none());
 }
 
-#[test]
-fn compare_lower_bounded() {}
+fn assert_greater_than(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
+        assert!(schema > s);
+        assert!(s < schema);
+    }
+}
+fn assert_less_than(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
+        assert!(schema < s);
+        assert!(s > schema);
+    }
+}
 
-#[test]
-fn compare_upper_and_lower_bounded() {}
+fn assert_equal(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
+        assert_eq!(schema.partial_cmp(&s).unwrap(), Ordering::Equal);
+        assert_eq!(s.partial_cmp(&schema).unwrap(), Ordering::Equal);
+    }
+}
+
+fn assert_not_related(schema: StandardSchema, cmp_schemas: Vec<StandardSchema>) {
+    for s in cmp_schemas {
+        assert!(schema.partial_cmp(&s).is_none());
+        assert!(s.partial_cmp(&schema).is_none());
+    }
+}
+
+fn all_schemas() -> HashMap<&'static str, StandardSchema> {
+    let mut map = HashMap::new();
+
+    map.insert("of_kind", StandardSchema::OfKind(ValueKind::Extant));
+    map.insert("equal", StandardSchema::Equal(Value::Extant));
+    map.insert(
+        "in_range_int",
+        StandardSchema::InRangeInt(Range::new(
+            Some(Bound::inclusive(0)),
+            Some(Bound::inclusive(10)),
+        )),
+    );
+    map.insert(
+        "in_range_float",
+        StandardSchema::InRangeFloat(Range::new(
+            Some(Bound::inclusive(0.5)),
+            Some(Bound::inclusive(10.5)),
+        )),
+    );
+    map.insert("non_nan", StandardSchema::NonNan);
+    map.insert("finite", StandardSchema::Finite);
+    map.insert("text", StandardSchema::Text(TextSchema::NonEmpty));
+    map.insert(
+        "not",
+        StandardSchema::Not(Box::from(StandardSchema::Anything)),
+    );
+    map.insert("and", StandardSchema::And(vec![]));
+    map.insert("or", StandardSchema::Or(vec![]));
+    map.insert(
+        "all_items",
+        StandardSchema::AllItems(Box::from(ItemSchema::ValueItem(StandardSchema::Anything))),
+    );
+    map.insert("num_attrs", StandardSchema::NumAttrs(5));
+    map.insert("num_items", StandardSchema::NumItems(3));
+    map.insert(
+        "head_attribute",
+        StandardSchema::HeadAttribute {
+            schema: Box::from(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Anything,
+            )),
+            required: true,
+            remainder: Box::from(StandardSchema::Anything),
+        },
+    );
+    map.insert(
+        "has_attributes",
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: true,
+        },
+    );
+    map.insert(
+        "has_slots",
+        StandardSchema::HasSlots {
+            slots: vec![],
+            exhaustive: true,
+        },
+    );
+    map.insert(
+        "layout",
+        StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        },
+    );
+    map.insert("nothing", StandardSchema::Nothing);
+    map.insert("anything", StandardSchema::Anything);
+
+    map
+}
 
 #[test]
 fn compare_anything() {
@@ -2399,83 +2447,170 @@ fn compare_nothing() {
     );
 }
 
-// #[test]
-// fn compare_of_kind_i32() {
-//     let schema = StandardSchema::OfKind(ValueKind::Int32);
-//     let greater_schemas = vec![StandardSchema::OfKind(ValueKind::Int64)];
-//     let lesser_schemas = vec![StandardSchema::Equal(Value::Int32Value(10))];
-//     let not_related_schemas = vec![StandardSchema::Equal(Value::Int64Value(20))];
-//
-//     assert_less_than(schema.clone(), greater_schemas);
-//     assert_greater_than(schema.clone(), lesser_schemas);
-//     assert_not_related(schema, not_related_schemas);
-// }
-//
-// #[test]
-// fn compare_of_kind_i64() {
-//     let schema = StandardSchema::OfKind(ValueKind::Int64);
-//     let lesser_schemas = vec![
-//         StandardSchema::OfKind(ValueKind::Int32),
-//         StandardSchema::Equal(Value::Int32Value(10)),
-//         StandardSchema::Equal(Value::Int64Value(20)),
-//         StandardSchema::InRangeInt(Range::new(
-//             Some(RangeBound::inclusive(0)),
-//             Some(RangeBound::inclusive(10)),
-//         )),
-//     ];
-//
-//     assert_greater_than(schema, lesser_schemas)
-// }
-//
-// #[test]
-// fn compare_of_kind_f64() {
-//     let schema = StandardSchema::OfKind(ValueKind::Float64);
-//     let lesser_schemas = vec![
-//         StandardSchema::Finite,
-//         StandardSchema::NonNan,
-//         StandardSchema::InRangeFloat(Range::new(
-//             Some(RangeBound::inclusive(0.0)),
-//             Some(RangeBound::inclusive(10.0)),
-//         )),
-//         StandardSchema::Equal(Value::Float64Value(10.0)),
-//     ];
-//
-//     assert_greater_than(schema, lesser_schemas)
-// }
-//
-// #[test]
-// fn compare_of_kind_text() {
-//     let schema = StandardSchema::OfKind(ValueKind::Text);
-//     let lesser_schemas = vec![
-//         StandardSchema::Text(TextSchema::NonEmpty),
-//         StandardSchema::Text(TextSchema::Exact("foo".to_string())),
-//         StandardSchema::Text(TextSchema::regex("^ab*a$").unwrap()),
-//         StandardSchema::Equal(Value::Text("qux".to_string())),
-//     ];
-//
-//     assert_greater_than(schema, lesser_schemas)
-// }
-//
-// #[test]
-// fn compare_of_kind_boolean() {
-//     let schema = StandardSchema::OfKind(ValueKind::Boolean);
-//     let lesser_schemas = vec![StandardSchema::Equal(Value::BooleanValue(true))];
-//
-//     assert_greater_than(schema, lesser_schemas)
-// }
-//
-// #[test]
-// fn compare_of_kind_record() {
-//     let schema = StandardSchema::OfKind(ValueKind::Record);
-//     let lesser_schemas = vec![StandardSchema::Equal(Value::Record(vec![], vec![]))];
-//
-//     assert_greater_than(schema, lesser_schemas)
-// }
-//
-// #[test]
-// fn compare_of_kind_extant() {
-//     let schema = StandardSchema::OfKind(ValueKind::Extant);
-//     let equal_schemas = vec![StandardSchema::Equal(Value::Extant)];
-//
-//     assert_equal(schema, equal_schemas)
-// }
+#[test]
+fn compare_of_kind_extant() {
+    let schema = StandardSchema::OfKind(ValueKind::Extant);
+    let equal_schemas = vec![StandardSchema::Equal(Value::Extant)];
+
+    assert_equal(schema, equal_schemas)
+}
+
+#[test]
+fn compare_of_kind_i32() {
+    let schema = StandardSchema::OfKind(ValueKind::Int32);
+    let greater_schemas = vec![
+        StandardSchema::OfKind(ValueKind::Int64),
+        StandardSchema::InRangeInt(Range::new(
+            Some(Bound::exclusive(i32::MIN as i64 - 1)),
+            Some(Bound::exclusive(i32::MAX as i64 + 1)),
+        )),
+    ];
+
+    let lesser_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::InRangeInt(Range::new(
+            Some(Bound::inclusive(10)),
+            Some(Bound::inclusive(20)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::InRangeInt(Range::new(
+            Some(Bound::inclusive(i32::MIN as i64)),
+            Some(Bound::inclusive(i32::MAX as i64)),
+        )),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Equal(Value::Int64Value(i32::MAX as i64 + 1)),
+        StandardSchema::InRangeInt(Range::new(
+            Some(Bound::inclusive(i32::MIN as i64 - 1)),
+            Some(Bound::inclusive(20)),
+        )),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema.clone(), equal_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_of_kind_i64() {
+    let schema = StandardSchema::OfKind(ValueKind::Int64);
+
+    let lesser_schemas = vec![
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::InRangeInt(Range::new(
+            Some(Bound::inclusive(0)),
+            Some(Bound::inclusive(10)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::OfKind(ValueKind::Int64),
+        StandardSchema::InRangeInt(Range::new(
+            Some(Bound::inclusive(i64::MIN)),
+            Some(Bound::inclusive(i64::MAX)),
+        )),
+    ];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_of_kind_f64() {
+    let schema = StandardSchema::OfKind(ValueKind::Float64);
+    let lesser_schemas = vec![
+        StandardSchema::Finite,
+        StandardSchema::NonNan,
+        StandardSchema::InRangeFloat(Range::new(
+            Some(Bound::inclusive(0.0)),
+            Some(Bound::inclusive(10.0)),
+        )),
+        StandardSchema::Equal(Value::Float64Value(10.0)),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::OfKind(ValueKind::Float64),
+        StandardSchema::InRangeFloat(Range::new(
+            Some(Bound::inclusive(f64::MIN)),
+            Some(Bound::inclusive(f64::MAX)),
+        )),
+    ];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_of_kind_boolean() {
+    let schema = StandardSchema::OfKind(ValueKind::Boolean);
+
+    let lesser_schemas = vec![
+        StandardSchema::Equal(Value::BooleanValue(true)),
+        StandardSchema::Equal(Value::BooleanValue(false)),
+    ];
+
+    let equal_schemas = vec![StandardSchema::OfKind(ValueKind::Boolean)];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_of_kind_text() {
+    let schema = StandardSchema::OfKind(ValueKind::Text);
+    let lesser_schemas = vec![
+        StandardSchema::Text(TextSchema::NonEmpty),
+        StandardSchema::Text(TextSchema::Exact("foo".to_string())),
+        StandardSchema::Text(TextSchema::regex("^ab*a$").unwrap()),
+        StandardSchema::Equal(Value::Text("qux".to_string())),
+    ];
+
+    let equal_schemas = vec![StandardSchema::OfKind(ValueKind::Text)];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_of_kind_record() {
+    let schema = StandardSchema::OfKind(ValueKind::Record);
+
+    let lesser_schemas = vec![
+        StandardSchema::Equal(Value::Record(vec![], vec![])),
+        StandardSchema::AllItems(Box::from(ItemSchema::ValueItem(StandardSchema::Anything))),
+        StandardSchema::NumItems(5),
+        StandardSchema::NumAttrs(10),
+        StandardSchema::HeadAttribute {
+            schema: Box::from(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Anything,
+            )),
+            required: true,
+            remainder: Box::from(StandardSchema::Anything),
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        },
+    ];
+    let equal_schemas = vec![StandardSchema::OfKind(ValueKind::Record)];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema, equal_schemas);
+}
