@@ -47,7 +47,7 @@ async fn value_lane_set_dropping() {
     let (lane, mut events) = make_lane(3, Dropping);
 
     let init_event = events.recv().await;
-    assert!(matches!(init_event, Some(v) if *v == 0));
+    assert!(matches!(init_event, Some(v) if *v == 3));
 
     let result = atomically(&lane.set(7), ExactlyOnce).await;
 
@@ -93,7 +93,7 @@ async fn value_lane_compound_transaction_dropping() {
     let (lane, mut events) = make_lane(5, Dropping);
 
     let init_event = events.recv().await;
-    assert!(matches!(init_event, Some(v) if *v == 0));
+    assert!(matches!(init_event, Some(v) if *v == 5));
 
     let stm = lane
         .get()

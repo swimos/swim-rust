@@ -78,18 +78,28 @@ impl TVarInner {
 
     /// Create a transactional variable with an observer than will be notified
     /// each time the value changes.
-    pub fn new_with_observer<T, Obs>(value: T, observer: Obs) -> Self
+    pub fn from_arc_with_observer<T, Obs>(value: Arc<T>, observer: Obs) -> Self
     where
         T: Any + Send + Sync,
         Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
     {
         TVarInner {
             guarded: RwLock::new(TVarGuarded {
-                content: Arc::new(value),
+                content: value,
                 observer: Some(Box::new(RawWrapper::new(observer))),
             }),
             wakers: Mutex::new(vec![]),
         }
+    }
+
+    /// Create a transactional variable with an observer than will be notified
+    /// each time the value changes.
+    pub fn new_with_observer<T, Obs>(value: T, observer: Obs) -> Self
+    where
+        T: Any + Send + Sync,
+        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
+    {
+        Self::from_arc_with_observer(Arc::new(value), observer)
     }
 
     /// Read the contents of the variable.
@@ -235,6 +245,16 @@ impl<T: Any + Send + Sync> TVar<T> {
     {
         TVar(
             Arc::new(TVarInner::new_with_observer(initial, observer)),
+            PhantomData,
+        )
+    }
+
+    pub fn from_arc_with_observer<Obs>(initial: Arc<T>, observer: Obs) -> Self
+    where
+        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
+    {
+        TVar(
+            Arc::new(TVarInner::from_arc_with_observer(initial, observer)),
             PhantomData,
         )
     }
