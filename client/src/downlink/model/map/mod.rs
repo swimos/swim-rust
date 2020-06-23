@@ -24,8 +24,8 @@ use tokio::sync::mpsc;
 use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
 use common::model::{Attr, Item, Value, ValueKind};
 use common::sink::item::ItemSender;
-use form::FormDeserializeErr;
-use form::{Form, ValidatedForm};
+use swim_form::FormDeserializeErr;
+use swim_form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
@@ -34,7 +34,7 @@ use crate::downlink::model::value::UpdateResult;
 use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
 use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
-    BasicResponse, BasicStateMachine, Command, DownlinkError, DownlinkRequest, Event, Message,
+    BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message, SyncStateMachine,
     TransitionError,
 };
 use crate::router::RoutingError;
@@ -43,27 +43,27 @@ use std::num::NonZeroUsize;
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum MapModification<V> {
-    Insert(Value, V),
-    Remove(Value),
-    Take(usize),
-    Skip(usize),
-    Clear,
-}
-
-const INSERT_NAME: &str = "insert";
+const INSERT_NAME: &str = "update";
 const REMOVE_NAME: &str = "remove";
 const TAKE_NAME: &str = "take";
 const SKIP_NAME: &str = "drop";
 const CLEAR_NAME: &str = "clear";
 const KEY_FIELD: &str = "key";
 
-impl Form for MapModification<Value> {
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum MapModification<K, V> {
+    Insert(K, V),
+    Remove(K),
+    Take(usize),
+    Skip(usize),
+    Clear,
+}
+
+impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
     fn as_value(&self) -> Value {
         match self {
-            MapModification::Insert(key, value) => insert(key.clone(), value.clone()),
-            MapModification::Remove(key) => remove(key.clone()),
+            MapModification::Insert(key, value) => insert(key.as_value(), value.as_value()),
+            MapModification::Remove(key) => remove(key.as_value()),
             MapModification::Take(n) => take(*n),
             MapModification::Skip(n) => skip(*n),
             MapModification::Clear => clear(),
@@ -72,8 +72,8 @@ impl Form for MapModification<Value> {
 
     fn into_value(self) -> Value {
         match self {
-            MapModification::Insert(key, value) => insert(key, value),
-            MapModification::Remove(key) => remove(key),
+            MapModification::Insert(key, value) => insert(key.into_value(), value.into_value()),
+            MapModification::Remove(key) => remove(key.into_value()),
             MapModification::Take(n) => take(n),
             MapModification::Skip(n) => skip(n),
             MapModification::Clear => clear(),
@@ -86,6 +86,7 @@ impl Form for MapModification<Value> {
             let mut attr_it = attrs.iter();
             let head = attr_it.next();
             let has_more = attr_it.next().is_some();
+
             match head {
                 Some(first) if !has_more && items.is_empty() => match first {
                     Attr {
@@ -100,22 +101,25 @@ impl Form for MapModification<Value> {
                         extract_key(value.clone()).map(MapModification::Remove)
                     }
                     Attr { name, value } if name == INSERT_NAME => {
-                        extract_key(value.clone()).map(|key| MapModification::Insert(key, Extant))
+                        let key = extract_key(value.clone())?;
+                        Ok(MapModification::Insert(key, V::try_convert(Extant)?))
                     }
                     _ => Err(FormDeserializeErr::Malformatted),
                 },
-                Some(Attr { name, value }) if *name == INSERT_NAME => extract_key(value.clone())
-                    .map(|key| {
-                        let insert_value = if !has_more && items.len() < 2 {
-                            match items.first() {
-                                Some(Item::ValueItem(single)) => single.clone(),
-                                _ => Value::record(items.clone()),
-                            }
-                        } else {
-                            Record(attrs.iter().skip(1).cloned().collect(), items.clone())
-                        };
-                        MapModification::Insert(key, insert_value)
-                    }),
+                Some(Attr { name, value }) if *name == INSERT_NAME => {
+                    let key = extract_key(value.clone())?;
+
+                    let insert_value = if !has_more && items.len() < 2 {
+                        match items.first() {
+                            Some(Item::ValueItem(single)) => single.clone(),
+                            _ => Value::record(items.clone()),
+                        }
+                    } else {
+                        Record(attrs.iter().skip(1).cloned().collect(), items.clone())
+                    };
+                    Ok(MapModification::Insert(key, V::try_convert(insert_value)?))
+                }
+
                 _ => Err(FormDeserializeErr::Malformatted),
             }
         } else {
@@ -124,48 +128,9 @@ impl Form for MapModification<Value> {
             ))
         }
     }
-
-    fn try_convert(body: Value) -> Result<Self, FormDeserializeErr> {
-        use Value::*;
-        if let Record(attrs, items) = body {
-            let single_attr = items.is_empty() && attrs.len() < 2;
-            let mut attr_it = attrs.into_iter().fuse();
-            let head = attr_it.next();
-
-            match head {
-                Some(Attr {
-                    name,
-                    value: Extant,
-                }) if name == CLEAR_NAME && single_attr => Ok(MapModification::Clear),
-                Some(Attr {
-                    name,
-                    value: Int32Value(n),
-                }) if single_attr => extract_take_or_skip(&name, n),
-                Some(Attr { name, value }) if name == REMOVE_NAME && single_attr => {
-                    extract_key(value).map(MapModification::Remove)
-                }
-                Some(Attr { name, value }) if name == INSERT_NAME => {
-                    let attr_tail = attr_it.collect::<Vec<_>>();
-                    let insert_value = if attr_tail.is_empty() && items.len() < 2 {
-                        match items.into_iter().next() {
-                            Some(Item::ValueItem(single)) => single,
-                            Some(ow) => Value::singleton(ow),
-                            _ => Extant,
-                        }
-                    } else {
-                        Record(attr_tail, items)
-                    };
-                    extract_key(value).map(|key| MapModification::Insert(key, insert_value))
-                }
-                _ => Err(FormDeserializeErr::Malformatted),
-            }
-        } else {
-            Err(FormDeserializeErr::Malformatted)
-        }
-    }
 }
 
-impl ValidatedForm for MapModification<Value> {
+impl<K: ValidatedForm, V: ValidatedForm> ValidatedForm for MapModification<K, V> {
     fn schema() -> StandardSchema {
         let clear_schema = AttrSchema::tag(CLEAR_NAME).only();
 
@@ -178,7 +143,7 @@ impl ValidatedForm for MapModification<Value> {
 
         let key_schema = FieldSpec::default(SlotSchema::new(
             StandardSchema::text(KEY_FIELD),
-            StandardSchema::Anything,
+            K::schema(),
         ));
 
         let key_body_schema = StandardSchema::NumAttrs(0).and(StandardSchema::HasSlots {
@@ -188,8 +153,7 @@ impl ValidatedForm for MapModification<Value> {
 
         let remove_schema = AttrSchema::named(REMOVE_NAME, key_body_schema.clone()).only();
 
-        let insert_schema =
-            AttrSchema::named(INSERT_NAME, key_body_schema).and_then(StandardSchema::Anything);
+        let insert_schema = AttrSchema::named(INSERT_NAME, key_body_schema).and_then(V::schema());
 
         StandardSchema::Or(vec![
             insert_schema,
@@ -201,11 +165,15 @@ impl ValidatedForm for MapModification<Value> {
     }
 }
 
-fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
+pub type UntypedMapModification<V> = MapModification<Value, V>;
+
+fn extract_key<K: ValidatedForm>(attr_body: Value) -> Result<K, FormDeserializeErr> {
     match attr_body {
         Value::Record(attrs, items) if attrs.is_empty() && items.len() < 2 => {
             match items.into_iter().next() {
-                Some(Item::Slot(Value::Text(name), key)) if name == KEY_FIELD => Ok(key),
+                Some(Item::Slot(Value::Text(name), key)) if name == KEY_FIELD => {
+                    Ok(K::try_convert(key)?)
+                }
                 _ => Err(FormDeserializeErr::Message(
                     "Invalid key specifier.".to_string(),
                 )),
@@ -217,7 +185,10 @@ fn extract_key(attr_body: Value) -> Result<Value, FormDeserializeErr> {
     }
 }
 
-fn extract_take_or_skip(name: &str, n: i32) -> Result<MapModification<Value>, FormDeserializeErr> {
+fn extract_take_or_skip<K: ValidatedForm, V: ValidatedForm>(
+    name: &str,
+    n: i32,
+) -> Result<MapModification<K, V>, FormDeserializeErr> {
     match name {
         TAKE_NAME => {
             if n >= 0 {
@@ -276,14 +247,14 @@ fn insert(key: Value, value: Value) -> Value {
     }
 }
 
-impl<V: Deref<Target = Value>> MapModification<V> {
+impl<V: Deref<Target = Value>> UntypedMapModification<V> {
     pub fn envelope_body(self) -> Value {
         match self {
-            MapModification::Insert(key, value) => insert(key, (*value).clone()),
-            MapModification::Remove(key) => remove(key),
-            MapModification::Take(n) => take(n),
-            MapModification::Skip(n) => skip(n),
-            MapModification::Clear => clear(),
+            UntypedMapModification::Insert(key, value) => insert(key, (*value).clone()),
+            UntypedMapModification::Remove(key) => remove(key),
+            UntypedMapModification::Take(n) => take(n),
+            UntypedMapModification::Skip(n) => skip(n),
+            UntypedMapModification::Clear => clear(),
         }
     }
 }
@@ -600,7 +571,7 @@ impl ViewWithEvent {
 }
 
 /// Typedef for map downlink stream item.
-type MapItemResult = Result<Message<MapModification<Value>>, RoutingError>;
+type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;
 
 /// Create a map downlink.
 pub fn create_raw_downlink<Updates, Commands>(
@@ -614,7 +585,8 @@ pub fn create_raw_downlink<Updates, Commands>(
 ) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+    Commands:
+        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     crate::downlink::create_downlink(
         MapStateMachine::new(
@@ -643,7 +615,8 @@ pub fn create_queue_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+    Commands:
+        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
         MapStateMachine::new(
@@ -670,7 +643,8 @@ pub fn create_dropping_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+    Commands:
+        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
         MapStateMachine::new(
@@ -697,7 +671,8 @@ pub fn create_buffered_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands: ItemSender<Command<MapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+    Commands:
+        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
         MapStateMachine::new(
@@ -744,9 +719,9 @@ impl MapStateMachine {
     }
 }
 
-impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapStateMachine {
+impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for MapStateMachine {
     type Ev = ViewWithEvent;
-    type Cmd = MapModification<Arc<Value>>;
+    type Cmd = UntypedMapModification<Arc<Value>>;
 
     fn init(&self) -> MapModel {
         MapModel::new()
@@ -759,10 +734,10 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
     fn handle_message_unsynced(
         &self,
         state: &mut MapModel,
-        message: MapModification<Value>,
+        message: UntypedMapModification<Value>,
     ) -> Result<(), DownlinkError> {
         match message {
-            MapModification::Insert(k, v) => {
+            UntypedMapModification::Insert(k, v) => {
                 if self.key_schema.matches(&k) {
                     if self.value_schema.matches(&v) {
                         state.state.insert(k, Arc::new(v));
@@ -774,7 +749,7 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
                 }
             }
-            MapModification::Remove(k) => {
+            UntypedMapModification::Remove(k) => {
                 if self.key_schema.matches(&k) {
                     state.state.remove(&k);
                     Ok(())
@@ -782,15 +757,15 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
                 }
             }
-            MapModification::Take(n) => {
+            UntypedMapModification::Take(n) => {
                 state.state = state.state.take(n);
                 Ok(())
             }
-            MapModification::Skip(n) => {
+            UntypedMapModification::Skip(n) => {
                 state.state = state.state.skip(n);
                 Ok(())
             }
-            MapModification::Clear => {
+            UntypedMapModification::Clear => {
                 state.state.clear();
                 Ok(())
             }
@@ -800,10 +775,10 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
     fn handle_message(
         &self,
         state: &mut MapModel,
-        message: MapModification<Value>,
+        message: UntypedMapModification<Value>,
     ) -> Result<Option<Self::Ev>, DownlinkError> {
         match message {
-            MapModification::Insert(k, v) => {
+            UntypedMapModification::Insert(k, v) => {
                 if self.key_schema.matches(&k) {
                     if self.value_schema.matches(&v) {
                         state.state.insert(k.clone(), Arc::new(v));
@@ -815,7 +790,7 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
                 }
             }
-            MapModification::Remove(k) => {
+            UntypedMapModification::Remove(k) => {
                 if self.key_schema.matches(&k) {
                     state.state.remove(&k);
                     Ok(Some(ViewWithEvent::remove(&state.state, k)))
@@ -823,15 +798,15 @@ impl BasicStateMachine<MapModel, MapModification<Value>, MapAction> for MapState
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
                 }
             }
-            MapModification::Take(n) => {
+            UntypedMapModification::Take(n) => {
                 state.state = state.state.take(n);
                 Ok(Some(ViewWithEvent::take(&state.state, n)))
             }
-            MapModification::Skip(n) => {
+            UntypedMapModification::Skip(n) => {
                 state.state = state.state.skip(n);
                 Ok(Some(ViewWithEvent::skip(&state.state, n)))
             }
-            MapModification::Clear => {
+            UntypedMapModification::Clear => {
                 state.state.clear();
                 Ok(Some(ViewWithEvent::clear(&state.state)))
             }
@@ -900,7 +875,7 @@ fn process_action(
     val_schema: &StandardSchema,
     data_state: &mut ValMap,
     action: MapAction,
-) -> BasicResponse<ViewWithEvent, MapModification<Arc<Value>>> {
+) -> BasicResponse<ViewWithEvent, UntypedMapModification<Arc<Value>>> {
     let (resp, err) = match action {
         MapAction::Insert { key, value, old } => {
             if !key_schema.matches(&key) {
@@ -926,7 +901,7 @@ fn process_action(
                 (
                     BasicResponse::of(
                         ViewWithEvent::insert(data_state, key.clone()),
-                        MapModification::Insert(key, v_arc),
+                        UntypedMapModification::Insert(key, v_arc),
                     ),
                     err.is_err(),
                 )
@@ -951,7 +926,7 @@ fn process_action(
                     (
                         BasicResponse::of(
                             ViewWithEvent::remove(data_state, key.clone()),
-                            MapModification::Remove(key),
+                            UntypedMapModification::Remove(key),
                         ),
                         err.is_err(),
                     )
@@ -973,7 +948,10 @@ fn process_action(
                 Some(req) => req.send_ok(data_state.clone()),
             };
             (
-                BasicResponse::of(ViewWithEvent::take(data_state, n), MapModification::Take(n)),
+                BasicResponse::of(
+                    ViewWithEvent::take(data_state, n),
+                    UntypedMapModification::Take(n),
+                ),
                 err1.is_err() || err2.is_err(),
             )
         }
@@ -990,7 +968,10 @@ fn process_action(
                 Some(req) => req.send_ok(data_state.clone()),
             };
             (
-                BasicResponse::of(ViewWithEvent::skip(data_state, n), MapModification::Skip(n)),
+                BasicResponse::of(
+                    ViewWithEvent::skip(data_state, n),
+                    UntypedMapModification::Skip(n),
+                ),
                 err1.is_err() || err2.is_err(),
             )
         }
@@ -1003,7 +984,10 @@ fn process_action(
                 Ok(())
             };
             (
-                BasicResponse::of(ViewWithEvent::clear(data_state), MapModification::Clear),
+                BasicResponse::of(
+                    ViewWithEvent::clear(data_state),
+                    UntypedMapModification::Clear,
+                ),
                 err.is_err(),
             )
         }
@@ -1106,7 +1090,7 @@ fn handle_update<F, T>(
     replacement: Option<DownlinkRequest<T>>,
     to_event: F,
 ) -> (
-    BasicResponse<ViewWithEvent, MapModification<Arc<Value>>>,
+    BasicResponse<ViewWithEvent, UntypedMapModification<Arc<Value>>>,
     bool,
 )
 where
@@ -1125,7 +1109,7 @@ where
             (
                 BasicResponse::of(
                     ViewWithEvent::insert(data_state, key.clone()),
-                    MapModification::Insert(key, v_arc),
+                    UntypedMapModification::Insert(key, v_arc),
                 ),
                 err1 || err2,
             )
@@ -1141,7 +1125,7 @@ where
             (
                 BasicResponse::of(
                     ViewWithEvent::remove(data_state, key.clone()),
-                    MapModification::Remove(key),
+                    UntypedMapModification::Remove(key),
                 ),
                 err1 || err2,
             )

@@ -30,9 +30,10 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
 use tracing::{instrument, trace};
+use utilities::ptr::data_ptr_eq;
 
 #[cfg(test)]
 pub mod tests;
@@ -51,7 +52,11 @@ impl<S> Sender<S> {
     }
 
     pub fn same_sender(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.task, &other.task)
+        data_ptr_eq::<dyn DownlinkInternals>(&*self.task, &*other.task)
+    }
+
+    pub fn is_running(&self) -> bool {
+        !self.task.task_handle().is_complete()
     }
 }
 
@@ -180,7 +185,7 @@ where
         yield_after,
     );
 
-    let join_handle = tokio::task::spawn(lane_task);
+    let join_handle = spawn(lane_task);
 
     let dl_task = DownlinkTaskHandle {
         join_handle,
@@ -193,14 +198,14 @@ where
 
 #[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTaskHandle {
-    join_handle: JoinHandle<Result<(), DownlinkError>>,
+    join_handle: TaskHandle<Result<(), DownlinkError>>,
     stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
     completed: Arc<AtomicBool>,
 }
 
 impl DownlinkTaskHandle {
     pub(in crate::downlink) fn new(
-        join_handle: JoinHandle<Result<(), DownlinkError>>,
+        join_handle: TaskHandle<Result<(), DownlinkError>>,
         stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
         completed: Arc<AtomicBool>,
     ) -> DownlinkTaskHandle {
@@ -313,25 +318,26 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         trace!("Running downlink task");
 
         let result: Result<(), DownlinkError> = loop {
-            let next_op: TaskInput<M, A> = if dl_state == DownlinkState::Synced && !act_terminated {
-                if read_act {
-                    read_act = false;
-                    let input = select_biased! {
-                        act_op = act_str.next() => TaskInput::from_action(act_op),
-                        upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
-                    };
-                    input
+            let next_op: TaskInput<M, A> =
+                if dl_state == state_machine.dl_start_state() && !act_terminated {
+                    if read_act {
+                        read_act = false;
+                        let input = select_biased! {
+                            act_op = act_str.next() => TaskInput::from_action(act_op),
+                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                        };
+                        input
+                    } else {
+                        read_act = true;
+                        let input = select_biased! {
+                            upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
+                            act_op = act_str.next() => TaskInput::from_action(act_op),
+                        };
+                        input
+                    }
                 } else {
-                    read_act = true;
-                    let input = select_biased! {
-                        upd_op = ops_str.next() => TaskInput::from_operation(upd_op),
-                        act_op = act_str.next() => TaskInput::from_action(act_op),
-                    };
-                    input
-                }
-            } else {
-                TaskInput::from_operation(ops_str.next().await)
-            };
+                    TaskInput::from_operation(ops_str.next().await)
+                };
 
             match next_op {
                 TaskInput::Op(op) => {

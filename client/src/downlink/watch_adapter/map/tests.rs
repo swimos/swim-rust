@@ -25,14 +25,14 @@ use tokio::time::timeout;
 const TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
 
-type Modification = MapModification<Arc<Value>>;
+type Modification = UntypedMapModification<Arc<Value>>;
 
 fn insert(key: i32, value: i32) -> Modification {
-    MapModification::Insert(Value::Int32Value(key), Arc::new(Value::Int32Value(value)))
+    UntypedMapModification::Insert(Value::Int32Value(key), Arc::new(Value::Int32Value(value)))
 }
 
 fn remove(key: i32) -> Modification {
-    MapModification::Remove(Value::Int32Value(key))
+    UntypedMapModification::Remove(Value::Int32Value(key))
 }
 
 async fn validate_receive(
@@ -46,19 +46,19 @@ async fn validate_receive(
     let mut map = BTreeMap::new();
     while let Ok(Some(modification)) = timeout(SHORT_TIMEOUT, rx.recv()).await {
         match modification {
-            MapModification::Insert(k, v) => {
+            UntypedMapModification::Insert(k, v) => {
                 map.insert(k, (*v).clone());
             }
-            MapModification::Remove(k) => {
+            UntypedMapModification::Remove(k) => {
                 map.remove(&k);
             }
-            MapModification::Take(n) => {
+            UntypedMapModification::Take(n) => {
                 map = map.into_iter().take(n).collect();
             }
-            MapModification::Skip(n) => {
+            UntypedMapModification::Skip(n) => {
                 map = map.into_iter().skip(n).collect();
             }
-            MapModification::Clear => {
+            UntypedMapModification::Clear => {
                 map.clear();
             }
         }
@@ -217,13 +217,13 @@ async fn single_clear() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(MapModification::Clear).await;
+    let result = watcher.send_item(UntypedMapModification::Clear).await;
     assert_that!(result, ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
     assert_that!(&output, ok());
 
-    assert_that!(output.unwrap(), eq(Some(MapModification::Clear)));
+    assert_that!(output.unwrap(), eq(Some(UntypedMapModification::Clear)));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -241,13 +241,13 @@ async fn single_take() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(MapModification::Take(4)).await;
+    let result = watcher.send_item(UntypedMapModification::Take(4)).await;
     assert_that!(result, ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
     assert_that!(&output, ok());
 
-    assert_that!(output.unwrap(), eq(Some(MapModification::Take(4))));
+    assert_that!(output.unwrap(), eq(Some(UntypedMapModification::Take(4))));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -265,13 +265,13 @@ async fn single_skip() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(MapModification::Skip(4)).await;
+    let result = watcher.send_item(UntypedMapModification::Skip(4)).await;
     assert_that!(result, ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
     assert_that!(&output, ok());
 
-    assert_that!(output.unwrap(), eq(Some(MapModification::Skip(4))));
+    assert_that!(output.unwrap(), eq(Some(UntypedMapModification::Skip(4))));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -291,7 +291,7 @@ async fn special_action_ordering() {
         insert(1, 5),
         insert(2, 8),
         insert(3, 21),
-        MapModification::Skip(2),
+        UntypedMapModification::Skip(2),
         insert(1, 42),
     ];
 

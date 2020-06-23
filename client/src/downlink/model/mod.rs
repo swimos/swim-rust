@@ -12,5 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod command;
+pub mod event;
 pub mod map;
 pub mod value;

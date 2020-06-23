@@ -21,22 +21,21 @@ use tracing::info;
 
 use common::model::Value;
 use common::warp::path::AbsolutePath;
-use form::ValidatedForm;
+use swim_form::ValidatedForm;
 
-use crate::configuration::downlink::Config;
+use crate::configuration::downlink::{Config, ConfigHierarchy};
 use crate::configuration::router::RouterParamBuilder;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
-    AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver, SubscriptionError, TypedMapDownlink,
+    AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
+    SubscriptionError, TypedCommandDownlink, TypedEventDownlink, TypedMapDownlink,
     TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
 };
+use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
+use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
-
-#[cfg(test)]
-mod tests;
 
 /// Respresents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
@@ -99,19 +98,25 @@ pub struct SwimClient {
 }
 
 impl SwimClient {
+    /// Creates a new SWIM Client using the default configuration.
+    pub async fn new_with_default<Fac>(connection_factory: Fac) -> Self
+    where
+        Fac: WebsocketFactory + 'static,
+    {
+        SwimClient::new(ConfigHierarchy::default(), connection_factory).await
+    }
+
     /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.
     /// The provided configuration is used when opening new downlinks.
-    pub async fn new<C>(configuration: C) -> Self
+    pub async fn new<C, Fac>(configuration: C, connection_factory: Fac) -> Self
     where
         C: Config + 'static,
+        Fac: WebsocketFactory + 'static,
     {
         info!("Initialising Swim Client");
 
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            config.connection_pool_params(),
-            TungsteniteWsFactory::new(config.buffer_size().get()).await,
-        );
+        let pool = SwimConnPool::new(config.connection_pool_params(), connection_factory);
         let router = SwimRouter::new(config, pool);
 
         SwimClient {
@@ -171,6 +176,35 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new command downlink at the provided path.
+    pub async fn command_downlink<T>(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<TypedCommandDownlink<T>, ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        self.downlinks
+            .subscribe_command(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    /// Opens a new event downlink at the provided path.
+    pub async fn event_downlink<T>(
+        &mut self,
+        path: AbsolutePath,
+        violations: SchemaViolations,
+    ) -> Result<TypedEventDownlink<T>, ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        self.downlinks
+            .subscribe_event(path, violations)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
     /// Opens a new untyped value downlink at the provided path and initialises it with [`default`] value.
     pub async fn untyped_value_downlink(
         &mut self,
@@ -190,6 +224,28 @@ impl SwimClient {
     ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
         self.downlinks
             .subscribe_map_untyped(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    /// Opens a new untyped command downlink at the provided path.
+    pub async fn untyped_command_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<AnyCommandDownlink, ClientError> {
+        self.downlinks
+            .subscribe_command_untyped(path)
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    /// Opens a new untyped event downlink at the provided path.
+    pub async fn untyped_event_downlink(
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<AnyEventDownlink, ClientError> {
+        self.downlinks
+            .subscribe_event_untyped(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }
