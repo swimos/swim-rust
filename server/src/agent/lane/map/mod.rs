@@ -21,20 +21,161 @@ use im::OrdMap;
 use common::model::Value;
 use form::Form;
 use stm::local::TLocal;
-use stm::stm::{left, right, Constant, Stm, UNIT};
+use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 
-use crate::agent::lane::map::summary::TransactionSummary;
+use crate::agent::lane::map::summary::{MapLaneEvent, TransactionSummary};
+use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
+use crate::agent::lane::{BroadcastStream, InvalidForm};
+use futures::stream::{iter, Flatten, Iter, StreamExt};
+use futures::Stream;
+use std::collections::HashMap;
+use std::hash::Hash;
+use stm::var::observer::StaticObserver;
+use tokio::sync::{broadcast, mpsc, watch};
+use utilities::future::{SwimStreamExt, Transform, TransformedStream};
 
 mod summary;
 
 pub struct MapLane<K, V> {
     map_state: TVar<OrdMap<Value, TVar<V>>>,
-    summary: TVar<TransactionSummary<V>>,
+    summary: TVar<TransactionSummary<Value, V>>,
     transaction_started: TLocal<bool>,
     _key_type: PhantomData<K>,
+}
+
+/// Create a new map lane with the specified watch strategy.
+pub fn make_lane<K, V, W>(watch: W) -> (MapLane<K, V>, W::View)
+where
+    K: Any + Send + Sync + Form,
+    V: Any + Send + Sync,
+    W: MapLaneWatch<K, V>,
+{
+    let (observer, view) = watch.make_watch();
+    let summary = TVar::new_with_observer(Default::default(), observer);
+    let transaction_started = TLocal::new(false);
+    let lane = MapLane {
+        map_state: Default::default(),
+        summary,
+        transaction_started,
+        _key_type: PhantomData,
+    };
+    (lane, view)
+}
+
+/// Adapts a watch strategy for use with a [`ValueLane`].
+pub trait MapLaneWatch<K, V> {
+    /// The type of the observer to watch the value of the lane.
+    type Obs: StaticObserver<Arc<TransactionSummary<Value, V>>> + Send + Sync + 'static;
+    /// The type of the stream of values produced by the lane.
+    type View: Stream<Item = MapLaneEvent<K, V>> + Send + Sync + 'static;
+
+    /// Create a linked observer and view stream.
+    fn make_watch(&self) -> (Self::Obs, Self::View);
+}
+
+type MpscEventStream<V> = Flatten<
+    TransformedStream<mpsc::Receiver<Arc<TransactionSummary<Value, V>>>, SummaryToEvents<V>>,
+>;
+
+type WatchEventStream<V> = Flatten<
+    TransformedStream<watch::Receiver<Arc<TransactionSummary<Value, V>>>, SummaryToEvents<V>>,
+>;
+
+type BroadcastEventStream<V> = Flatten<
+    TransformedStream<BroadcastStream<Arc<TransactionSummary<Value, V>>>, SummaryToEvents<V>>,
+>;
+
+impl<K, V> MapLaneWatch<K, V> for Dropping
+where
+    K: Any + Send + Sync + Form,
+    V: Any + Send + Sync,
+{
+    type Obs = ChannelObserver<watch::Sender<Arc<TransactionSummary<Value, V>>>>;
+    type View = TransformedStream<WatchEventStream<V>, TypeEvents<K>>;
+
+    fn make_watch(&self) -> (Self::Obs, Self::View) {
+        let (tx, rx) = watch::channel(Default::default());
+        let observer = ChannelObserver::new(tx);
+        let str = rx
+            .transform(SummaryToEvents::default())
+            .flatten()
+            .transform(TypeEvents::default());
+        (observer, str)
+    }
+}
+
+impl<K, V> MapLaneWatch<K, V> for Queue
+where
+    K: Any + Send + Sync + Form,
+    V: Any + Send + Sync,
+{
+    type Obs = ChannelObserver<mpsc::Sender<Arc<TransactionSummary<Value, V>>>>;
+    type View = TransformedStream<MpscEventStream<V>, TypeEvents<K>>;
+
+    fn make_watch(&self) -> (Self::Obs, Self::View) {
+        let Queue(n) = self;
+        let (tx, rx) = mpsc::channel(n.get());
+        let observer = ChannelObserver::new(tx);
+        let str = rx
+            .transform(SummaryToEvents::default())
+            .flatten()
+            .transform(TypeEvents::default());
+        (observer, str)
+    }
+}
+
+impl<K, V> MapLaneWatch<K, V> for Buffered
+where
+    K: Any + Send + Sync + Form,
+    V: Any + Send + Sync,
+{
+    type Obs = ChannelObserver<broadcast::Sender<Arc<TransactionSummary<Value, V>>>>;
+    type View = TransformedStream<BroadcastEventStream<V>, TypeEvents<K>>;
+
+    fn make_watch(&self) -> (Self::Obs, Self::View) {
+        let (tx, rx) = broadcast::channel(Default::default());
+        let observer = ChannelObserver::new(tx);
+        let str = BroadcastStream(rx)
+            .transform(SummaryToEvents::default())
+            .flatten()
+            .transform(TypeEvents::default());
+        (observer, str)
+    }
+}
+
+pub struct SummaryToEvents<V>(PhantomData<fn(V) -> V>);
+
+impl<V> Default for SummaryToEvents<V> {
+    fn default() -> Self {
+        SummaryToEvents(PhantomData)
+    }
+}
+
+pub struct TypeEvents<K>(PhantomData<fn(Value) -> K>);
+
+impl<K> Default for TypeEvents<K> {
+    fn default() -> Self {
+        TypeEvents(PhantomData)
+    }
+}
+
+impl<V> Transform<Arc<TransactionSummary<Value, V>>> for SummaryToEvents<V> {
+    type Out = Iter<std::vec::IntoIter<MapLaneEvent<Value, V>>>;
+
+    fn transform(&self, input: Arc<TransactionSummary<Value, V>>) -> Self::Out {
+        iter(input.to_events().into_iter())
+    }
+}
+
+impl<K: Form, V> Transform<MapLaneEvent<Value, V>> for TypeEvents<K> {
+    type Out = MapLaneEvent<K, V>;
+
+    fn transform(&self, input: MapLaneEvent<Value, V>) -> Self::Out {
+        input.try_into_typed().expect("Key form is inconsistent.")
+    }
 }
 
 impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
@@ -89,10 +230,6 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
             })
     }
 
-    //pub fn snapshot(&self) -> impl Stm<Result = OrdMap<K, Arc<V>>> + '_ {
-    //    unimplemented!()
-    //}
-
     pub fn clear_direct(&self) -> DirectClear<'_, K, V> {
         DirectClear(self)
     }
@@ -142,9 +279,42 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     }
 }
 
+impl<K, V> MapLane<K, V>
+where
+    K: Form + Hash + Eq + Clone + Send + Sync,
+    V: Any + Send + Sync,
+{
+    pub fn snapshot(&self) -> impl Stm<Result = HashMap<K, Arc<V>>> + '_ {
+        self.map_state.get().and_then(|map| {
+            let entry_stms = map
+                .iter()
+                .map(|(key, var)| {
+                    let key_copy = key.clone();
+                    var.get().map(move |value| (key_copy.clone(), value))
+                })
+                .collect::<Vec<_>>();
+            let all = VecStm::new(entry_stms);
+            all.and_then(|entries| {
+                let map = entries
+                    .into_iter()
+                    .try_fold(HashMap::new(), |mut state, (k, v)| {
+                        K::try_convert(k).map(move |key| {
+                            state.insert(key, v);
+                            state
+                        })
+                    });
+                match map {
+                    Ok(m) => left(Constant(m)),
+                    Err(e) => right(abort(InvalidForm(e))),
+                }
+            })
+        })
+    }
+}
+
 fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
     flag: &'a TLocal<bool>,
-    summary: &'a TVar<TransactionSummary<V>>,
+    summary: &'a TVar<TransactionSummary<Value, V>>,
     then: S,
 ) -> impl Stm<Result = S::Result> + 'a {
     let action = Arc::new(then);

@@ -13,15 +13,13 @@
 // limitations under the License.
 
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
-use futures::task::{Context, Poll};
-use futures::{ready, Stream};
-use pin_project::pin_project;
+use crate::agent::lane::BroadcastStream;
+use futures::Stream;
 use std::any::Any;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::observer::StaticObserver;
 use stm::var::TVar;
-use tokio::macros::support::Pin;
 use tokio::sync::{broadcast, mpsc, watch};
 
 /// A lane containing a single value.
@@ -90,25 +88,6 @@ where
         let (tx, rx) = watch::channel(Default::default());
         let observer = ChannelObserver::new(tx);
         (observer, rx)
-    }
-}
-
-#[pin_project]
-pub struct BroadcastStream<T>(#[pin] broadcast::Receiver<T>);
-
-impl<T: Clone> Stream for BroadcastStream<T> {
-    type Item = T;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut projected = self.project();
-        loop {
-            match ready!(projected.0.as_mut().poll_next(cx)) {
-                Some(Err(broadcast::RecvError::Closed)) => break Poll::Ready(None),
-                Some(Err(broadcast::RecvError::Lagged(_))) => {}
-                Some(Ok(t)) => break Poll::Ready(Some(t)),
-                _ => break Poll::Ready(None),
-            }
-        }
     }
 }
 

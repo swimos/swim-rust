@@ -13,8 +13,10 @@
 // limitations under the License.
 
 use common::model::Value;
+use form::{Form, FormDeserializeErr};
 use im::HashMap;
 use std::any::Any;
+use std::hash::Hash;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::TVar;
@@ -35,19 +37,58 @@ impl<V> Clone for EntryModification<V> {
 }
 
 #[derive(Debug)]
-pub struct TransactionSummary<V> {
+pub struct TransactionSummary<K: Hash + Eq, V> {
     clear: bool,
-    changes: HashMap<Value, EntryModification<V>>,
+    changes: HashMap<K, EntryModification<V>>,
+}
+
+pub enum MapLaneEvent<K, V> {
+    Clear,
+    Update(K, Arc<V>),
+    Remove(K),
+}
+
+impl<V> MapLaneEvent<Value, V> {
+    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormDeserializeErr> {
+        match self {
+            MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),
+            MapLaneEvent::Update(k, v) => Ok(MapLaneEvent::Update(K::try_convert(k)?, v)),
+            MapLaneEvent::Remove(k) => Ok(MapLaneEvent::Remove(K::try_convert(k)?)),
+        }
+    }
+}
+
+impl<K: Hash + Eq + Clone, V> TransactionSummary<K, V> {
+    pub fn to_events(&self) -> Vec<MapLaneEvent<K, V>> {
+        let TransactionSummary { clear, changes } = self;
+        let mut n = changes.len();
+        if *clear {
+            n += 1;
+        }
+        let mut events = Vec::with_capacity(n);
+        if *clear {
+            events.push(MapLaneEvent::Clear);
+        }
+        for (k, modification) in changes.iter() {
+            let key = k.clone();
+            let event = match modification {
+                EntryModification::Update(v) => MapLaneEvent::Update(key, v.clone()),
+                EntryModification::Remove => MapLaneEvent::Remove(key),
+            };
+            events.push(event);
+        }
+        events
+    }
 }
 
 pub fn clear_summary<V: Any + Send + Sync>(
-    summary: &TVar<TransactionSummary<V>>,
+    summary: &TVar<TransactionSummary<Value, V>>,
 ) -> impl Stm<Result = ()> {
     summary.put(TransactionSummary::clear())
 }
 
 pub fn update_summary<'a, V: Any + Send + Sync>(
-    summary: &'a TVar<TransactionSummary<V>>,
+    summary: &'a TVar<TransactionSummary<Value, V>>,
     key: Value,
     value: Arc<V>,
 ) -> impl Stm<Result = ()> + 'a {
@@ -57,7 +98,7 @@ pub fn update_summary<'a, V: Any + Send + Sync>(
 }
 
 pub fn remove_summary<'a, V: Any + Send + Sync>(
-    summary: &'a TVar<TransactionSummary<V>>,
+    summary: &'a TVar<TransactionSummary<Value, V>>,
     key: Value,
 ) -> impl Stm<Result = ()> + 'a {
     summary
@@ -65,7 +106,7 @@ pub fn remove_summary<'a, V: Any + Send + Sync>(
         .and_then(move |sum| summary.put(sum.remove(key.clone())))
 }
 
-impl<V> TransactionSummary<V> {
+impl<V> TransactionSummary<Value, V> {
     pub fn clear() -> Self {
         TransactionSummary {
             clear: true,
@@ -108,7 +149,7 @@ impl<V> TransactionSummary<V> {
     }
 }
 
-impl<V> Default for TransactionSummary<V> {
+impl<K: Hash + Eq, V> Default for TransactionSummary<K, V> {
     fn default() -> Self {
         TransactionSummary {
             clear: false,
