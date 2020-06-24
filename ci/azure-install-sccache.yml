@@ -29,16 +29,3 @@ steps:
       Invoke-WebRequest https://github.com/mozilla/sccache/releases/download/0.2.10/sccache-0.2.10-x86_64-pc-windows-msvc.tar.gz -OutFile sccache.tar.gz
       tar xzf sccache.tar.gz
       Write-Host "##vso[task.setvariable variable=RUSTC_WRAPPER;]$pwd/sccache-0.2.10-x86_64-pc-windows-msvc/sccache.exe"
-    displayName: Install sccache - Windows
-    condition: eq( variables['Agent.OS'], 'Windows_NT' )
-  - bash: |
-      set -ex
-      env
-      SCCACHE_ERROR_LOG=`pwd`/sccache.log RUST_LOG=debug $RUSTC_WRAPPER --start-server
-      $RUSTC_WRAPPER -s
-      cat sccache.log
-    displayName: "start sccache"
-    condition: not(eq( variables['Agent.OS'], 'Windows_NT' ))
-    env:
-      SCCACHE_AZURE_CONNECTION_STRING: $(SCCACHE_AZURE_CONNECTION_STRING)
-      SCCACHE_AZURE_BLOB_CONTAINER: $(SCCACHE_AZURE_BLOB_CONTAINER)

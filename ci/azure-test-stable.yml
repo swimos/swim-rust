@@ -15,6 +15,9 @@ jobs:
       vmImage: $(vmImage)
 
     steps:
+      - template: azure-install-rust.yml
+        parameters:
+          rust_version: ${{ parameters.rust }}
       - template: azure-install-sccache.yml
       - script: cargo test --verbose
         env:

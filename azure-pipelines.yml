@@ -12,29 +12,12 @@ jobs:
       displayName: Test all crates
       cross: eq(variables['Build.SourceBranch'], 'refs/heads/master')
 
-  - job: Docs
-    displayName: Check docs
-    pool:
-      vmImage: ubuntu-16.04
-    steps:
-      - parameters:
-          rust_version: ${{ parameters.rust }}
+  - template: ci/azure-clippy.yml
+    parameters:
+      rust: 1.44.0
+      name: clippy
 
-      - script: |
-          RUSTDOCFLAGS="--cfg docsrs" cargo doc --lib --no-deps --all-features
-        displayName: Check docs
-
-  - job: Clippy
-    displayName: Clippy
-    pool:
-      vmImage: ubuntu-16.04
-    steps:
-      - parameters:
-          rust_version: ${{ parameters.rust }}
-      - script: |
-          rustup component add clippy
-          cargo clippy --version
-        displayName: Install clippy
-      - script: |
-          cargo clippy --all --all-features
-        displayName: cargo clippy --all
+  - template: ci/azure-check-docs.yml
+    parameters:
+      rust: 1.44.0
+      name: docs
