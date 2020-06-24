@@ -12,11 +12,6 @@ jobs:
       displayName: Test all crates
       cross: eq(variables['Build.SourceBranch'], 'refs/heads/master')
 
-  - template: ci/azure-clippy.yml
-    parameters:
-      rust: stable
-      name: clippy
-
   - job: Docs
     displayName: Check docs
     pool:
