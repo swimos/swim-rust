@@ -21,7 +21,11 @@ use hamcrest2::prelude::*;
 #[test]
 fn error_on_zero_capacity() {
     let maybe_cache: Result<LruCache<(), ()>, ZeroUsize> = LruCache::with_capacity(0);
-    assert_that!(maybe_cache, err());
+    if let Err(e) = maybe_cache {
+        assert_eq!(e.to_string(), "Zero Usize")
+    } else {
+        panic!("Expected error!")
+    }
 }
 
 #[test]

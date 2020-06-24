@@ -91,6 +91,6 @@ addons:
 after_success:
   - |
     if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
-      cargo tarpaulin --out Xml -t 300
+      cargo tarpaulin --ignore-tests --out Xml -t 300
       bash <(curl -s https://codecov.io/bash)
     fi
