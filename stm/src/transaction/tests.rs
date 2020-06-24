@@ -15,6 +15,7 @@
 use super::atomically;
 use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither};
 use crate::transaction::{RetryManager, TransactionError};
+use crate::var::tests::TestObserver;
 use crate::var::TVar;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
@@ -804,4 +805,15 @@ fn dyn_stm_erases_stack_size() {
     assert!(stack_size(&Constant(1).boxed().and_then(|_| Constant(1))).is_none());
     assert!(stack_size(&Constant(1).and_then(|_| Constant(1).boxed())).is_none());
     assert!(stack_size(&Constant(1).boxed().map(|i| i * 2)).is_none());
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn observe_transaction_outcome() {
+    let observer = TestObserver::new(None);
+    let var = TVar::new_with_observer(12, observer.clone());
+
+    let stm = var.get().and_then(|i| var.put(*i + 1));
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(result.is_ok());
+    assert_eq!(observer.get(), Some(Arc::new(13)));
 }

@@ -382,7 +382,7 @@ impl Transaction {
             }
         }
         for write in write_locks.into_iter() {
-            write.apply();
+            write.apply().await;
         }
         true
     }

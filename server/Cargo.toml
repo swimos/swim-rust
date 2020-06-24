@@ -4,6 +4,28 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = []
+debug = ["log_verbose"]
+log_verbose = []
+
+[target.'cfg(log_verbose)'.dependencies]
+tracing = { version = "0.1.13", features = ["max_level_debug"] }
+
+[target.'cfg(not(log_verbose))'.dependencies]
+tracing = "0.1.13"
+
 [dependencies]
 
+futures = "0.3.4"
+futures-util = "0.3.4"
+tokio = { version = "0.2.21", features = ["stream", "rt-core"] }
+url = "2.1.1"
+common = { path = "../common" }
+utilities = { path = "../utilities" }
+swim_form = { path = "../swim_form" }
+stm = { path = "../stm" }
+
 [dev-dependencies]
+
+tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }
