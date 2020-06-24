@@ -32,10 +32,6 @@ jobs:
       vmImage: ubuntu-18.04
 
     steps:
-      - template: azure-install-rust.yml
-        parameters:
-          rust_version: ${{ parameters.rust }}
-      - template: azure-install-sccache.yml
       - script: |
           rustup target add wasm32-unknown-unknown
           cargo build --no-default-features --target wasm32-unknown-unknown --verbose
