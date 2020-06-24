@@ -3,28 +3,14 @@
 
 variables:
   RUSTFLAGS: -Dwarnings
-  TEST_SERVER_VERSION: v1.1
-  TEST_SERVER_IMAGE_NAME: "org.swimos/swim-test-server:1.1"
 
 jobs:
   - template: ci/azure-test-stable.yml
     parameters:
       name: test_crates
-      rust: 1.43.0
-      displayName: Test all crates except client
-      cross: true
-      crates:
-        - common
-        - form
-        - server
-        - utilities
-
-  - template: ci/azure-test-client.yml
-    parameters:
-      name: test_client
-      rust: 1.43.0
-      cross: true
-      displayName: Test client
+      rust: 1.44.0
+      displayName: Test all crates
+      cross: eq(variables['Build.SourceBranch'], 'refs/heads/master')
 
   - template: ci/azure-clippy.yml
     parameters:

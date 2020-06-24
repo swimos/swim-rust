@@ -1,4 +1,3 @@
-
 jobs:
   - job: ${{ parameters.name }}
     displayName: ${{ parameters.displayName }}
@@ -16,15 +15,8 @@ jobs:
       vmImage: $(vmImage)
 
     steps:
-      - template: azure-install-rust.yml
-        parameters:
-          rust_version: ${{ parameters.rust }}
-
-      - ${{ each crate in parameters.crates }}:
-          # Run with all crate features
-          - script: cargo test --all-features
-            env:
-              RUST_BACKTRACE: 1
-              CI: 'True'
-            displayName: ${{ crate }} - cargo test --all-features
-            workingDirectory: $(Build.SourcesDirectory)/${{ crate }}
+      - script: cargo test
+        env:
+          RUST_BACKTRACE: 1
+        displayName: cargo test
+        workingDirectory: $(Build.SourcesDirectory)
