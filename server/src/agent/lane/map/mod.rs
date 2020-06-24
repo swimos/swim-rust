@@ -139,7 +139,8 @@ where
     type View = TransformedStream<BroadcastEventStream<V>, TypeEvents<K>>;
 
     fn make_watch(&self) -> (Self::Obs, Self::View) {
-        let (tx, rx) = broadcast::channel(Default::default());
+        let Buffered(n) = self;
+        let (tx, rx) = broadcast::channel(n.get());
         let observer = ChannelObserver::new(tx);
         let str = BroadcastStream(rx)
             .transform(SummaryToEvents::default())
@@ -334,8 +335,14 @@ fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
     })
 }
 
-fn clear_lane<V: Any + Send + Sync>(content: &TVar<OrdMap<Value, V>>) -> impl Stm<Result = ()> {
-    content.put(OrdMap::default())
+fn clear_lane<'a, V: Any + Send + Sync>(content: &'a TVar<OrdMap<Value, V>>) -> impl Stm<Result = bool> + 'a {
+    content.get().and_then(move |map| {
+        if map.is_empty() {
+            left(Constant(false))
+        } else {
+            right(content.put(OrdMap::default()).followed_by(Constant(true)))
+        }
+    })
 }
 
 fn update_lane<'a, V: Any + Send + Sync>(
@@ -356,13 +363,13 @@ fn update_lane<'a, V: Any + Send + Sync>(
 fn remove_lane<'a, V: Any + Send + Sync>(
     content: &'a TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
-) -> impl Stm<Result = ()> + 'a {
+) -> impl Stm<Result = bool> + 'a {
     content.get().and_then(move |map| {
         if map.contains_key(&key) {
             let new_map = map.without(&key);
-            left(content.put(new_map))
+            left(content.put(new_map).followed_by(Constant(true)))
         } else {
-            right(UNIT)
+            right(Constant(false))
         }
     })
 }
@@ -410,10 +417,16 @@ where
         let DirectRemove { lane, key } = self;
         let key_value = key.into_value();
         let state_update = remove_lane(&lane.map_state, key_value.clone());
-        let set_summary = lane
-            .summary
-            .put(TransactionSummary::make_removal(key_value));
-        state_update.followed_by(set_summary)
+        state_update.and_then(move |did_remove| {
+            if did_remove {
+                let set_summary = lane
+                    .summary
+                    .put(TransactionSummary::make_removal(key_value.clone()));
+                left(set_summary)
+            } else {
+                right(UNIT)
+            }
+        })
     }
 
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
@@ -434,8 +447,14 @@ where
         let DirectClear(lane) = self;
 
         let state_update = clear_lane(&lane.map_state);
-        let set_summary = lane.summary.put(TransactionSummary::clear());
-        state_update.followed_by(set_summary)
+        state_update.and_then(move |did_clear| {
+           if did_clear {
+               let set_summary = lane.summary.put(TransactionSummary::clear());
+               left(set_summary)
+           } else {
+               right(UNIT)
+           }
+        })
     }
 
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
