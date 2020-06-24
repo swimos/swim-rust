@@ -27,7 +27,6 @@ use common::request::request_future::SendAndAwait;
 use super::async_factory;
 use common::connections::error::{ConnectionError, WebSocketError};
 use common::connections::{WebsocketFactory, WsMessage};
-use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use utilities::errors::FlattenErrors;

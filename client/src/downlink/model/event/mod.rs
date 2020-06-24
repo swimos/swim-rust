@@ -153,7 +153,7 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
                 if e.is_fatal() {
                     error!("Fatal operation error occured: {:?}", e);
 
-                    return Err(e.into());
+                    Err(e.into())
                 } else {
                     *downlink_state = DownlinkState::Unlinked;
                     Ok(Response::for_command(Command::Sync))
