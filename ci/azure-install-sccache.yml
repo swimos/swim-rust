@@ -25,7 +25,3 @@ steps:
       echo "##vso[task.setvariable variable=RUSTC_WRAPPER;]$sccache"
     displayName: Install sccache - Darwin
     condition: eq( variables['Agent.OS'], 'Darwin' )
-  - powershell: |
-      Invoke-WebRequest https://github.com/mozilla/sccache/releases/download/0.2.10/sccache-0.2.10-x86_64-pc-windows-msvc.tar.gz -OutFile sccache.tar.gz
-      tar xzf sccache.tar.gz
-      Write-Host "##vso[task.setvariable variable=RUSTC_WRAPPER;]$pwd/sccache-0.2.10-x86_64-pc-windows-msvc/sccache.exe"
