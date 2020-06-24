@@ -21,7 +21,7 @@ futures = "0.3.4"
 futures-util = "0.3.4"
 im = "15.0.0"
 pin-project = "0.4.20"
-tokio = { version = "=0.2.21", features = ["stream", "rt-core", "macros"] }
+tokio = { version = "0.2.21", features = ["stream", "rt-core"] }
 url = "2.1.1"
 common = { path = "../common" }
 utilities = { path = "../utilities" }
@@ -30,4 +30,4 @@ stm = { path = "../stm" }
 
 [dev-dependencies]
 
-tokio = { version = "=0.2.21", features = ["rt-threaded"] }
+tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }
