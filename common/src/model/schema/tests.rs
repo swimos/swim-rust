@@ -2614,3 +2614,176 @@ fn compare_of_kind_record() {
     assert_greater_than(schema.clone(), lesser_schemas);
     assert_equal(schema, equal_schemas);
 }
+
+#[test]
+fn compare_equal_i32() {
+    let schema = StandardSchema::Equal(Value::Int32Value(42));
+
+    let greater_schemas = vec![StandardSchema::InRangeInt(Range::new(
+        Some(Bound::inclusive(10)),
+        Some(Bound::exclusive(55)),
+    ))];
+    let equal_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(42)),
+        StandardSchema::Equal(Value::Int64Value(42)),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_equal_i64() {
+    let schema = StandardSchema::Equal(Value::Int64Value(24));
+
+    let greater_schemas = vec![StandardSchema::InRangeInt(Range::new(
+        Some(Bound::inclusive(24)),
+        Some(Bound::exclusive(30)),
+    ))];
+    let equal_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(24)),
+        StandardSchema::Equal(Value::Int64Value(24)),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_equal_f64() {
+    let schema = StandardSchema::Equal(Value::Float64Value(15.15));
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeFloat(Range::new(
+            Some(Bound::inclusive(-10.10)),
+            Some(Bound::exclusive(30.30)),
+        )),
+        StandardSchema::NonNan,
+        StandardSchema::Finite,
+    ];
+
+    let equal_schemas = vec![StandardSchema::Equal(Value::Float64Value(15.15))];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema.clone(), equal_schemas);
+}
+
+#[test]
+fn compare_equal_text() {
+    let schema = StandardSchema::Equal(Value::Text("this_is_a_test".to_string()));
+
+    let greater_schemas = vec![
+        StandardSchema::Text(TextSchema::NonEmpty),
+        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w+").unwrap())),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::Equal(Value::Text("this_is_a_test".to_string())),
+        StandardSchema::Text(TextSchema::Exact("this_is_a_test".to_string())),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema.clone(), equal_schemas);
+}
+
+#[test]
+fn compare_equal_record() {
+    let schema = StandardSchema::Equal(Value::Record(
+        vec![Attr::of(("foo", 1)), Attr::of("1235"), Attr::of("1234")],
+        vec![
+            Item::Slot(Value::Int32Value(12), Value::Int32Value(23)),
+            Item::Slot(Value::Int32Value(34), Value::Int32Value(45)),
+        ],
+    ));
+
+    let greater_schemas = vec![
+        StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(
+            StandardSchema::OfKind(ValueKind::Int32),
+            StandardSchema::OfKind(ValueKind::Int32),
+        )))),
+        StandardSchema::NumAttrs(3),
+        StandardSchema::NumItems(2),
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::InRangeInt(Range::new(
+                    Some(Bound::inclusive(0)),
+                    Some(Bound::inclusive(15)),
+                )),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::NumAttrs(2)),
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(TextSchema::NonEmpty, StandardSchema::Anything),
+                    true,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Matches(Regex::new("1234").unwrap()),
+                        StandardSchema::Anything,
+                    ),
+                    true,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Matches(Regex::new("123.").unwrap()),
+                        StandardSchema::Anything,
+                    ),
+                    true,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(12)),
+                        StandardSchema::OfKind(ValueKind::Int32),
+                    ),
+                    true,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(34)),
+                        StandardSchema::OfKind(ValueKind::Int32),
+                    ),
+                    true,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(12)),
+                        StandardSchema::Equal(Value::Int32Value(23)),
+                    )),
+                    true,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(34)),
+                        StandardSchema::Equal(Value::Int32Value(45)),
+                    )),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    let equal_schemas = vec![schema.clone()];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema.clone(), equal_schemas);
+}
