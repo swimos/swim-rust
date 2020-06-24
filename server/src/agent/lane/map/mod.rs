@@ -262,8 +262,15 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         } = self;
         let key_value = key.into_value();
         let state_update = remove_lane(map_state, key_value.clone());
-        let apply_to_summary = remove_summary(summary, key_value);
-        let action = state_update.followed_by(apply_to_summary);
+
+        let action = state_update.and_then(move |did_remove| {
+            if did_remove {
+                let apply_to_summary = remove_summary(summary, key_value.clone());
+                left(apply_to_summary)
+            } else {
+                right(UNIT)
+            }
+        });
 
         compound_map_transaction(transaction_started, summary, action)
     }
@@ -276,8 +283,14 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
             ..
         } = self;
         let state_update = clear_lane(map_state);
-        let apply_to_summary = clear_summary(summary);
-        let action = state_update.followed_by(apply_to_summary);
+        let action = state_update.and_then(move |did_clear| {
+            if did_clear {
+                let apply_to_summary = clear_summary(summary);
+                left(apply_to_summary)
+            } else {
+                right(UNIT)
+            }
+        });
 
         compound_map_transaction(transaction_started, summary, action)
     }
@@ -335,7 +348,9 @@ fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
     })
 }
 
-fn clear_lane<'a, V: Any + Send + Sync>(content: &'a TVar<OrdMap<Value, V>>) -> impl Stm<Result = bool> + 'a {
+fn clear_lane<'a, V: Any + Send + Sync>(
+    content: &'a TVar<OrdMap<Value, V>>,
+) -> impl Stm<Result = bool> + 'a {
     content.get().and_then(move |map| {
         if map.is_empty() {
             left(Constant(false))
@@ -448,12 +463,12 @@ where
 
         let state_update = clear_lane(&lane.map_state);
         state_update.and_then(move |did_clear| {
-           if did_clear {
-               let set_summary = lane.summary.put(TransactionSummary::clear());
-               left(set_summary)
-           } else {
-               right(UNIT)
-           }
+            if did_clear {
+                let set_summary = lane.summary.put(TransactionSummary::clear());
+                left(set_summary)
+            } else {
+                right(UNIT)
+            }
         })
     }
 

@@ -13,20 +13,23 @@
 // limitations under the License.
 
 use crate::agent::lane::map::summary::MapLaneEvent;
-use futures::{Stream, StreamExt, FutureExt};
-use crate::agent::lane::map::{MapLane, make_lane};
+use crate::agent::lane::map::{make_lane, MapLane};
+use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
+use futures::{FutureExt, Stream, StreamExt};
 use std::sync::Arc;
-use crate::agent::lane::strategy::{Queue, Dropping, Buffered};
+use stm::stm::Stm;
 use stm::transaction::atomically;
 
-async fn update_direct<Str>(lane: &MapLane<i32, i32>,
-                            events: &mut Str)
+async fn update_direct<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
     let value = Arc::new(5);
-    let result = lane.update_direct(1, value.clone()).apply(ExactlyOnce).await;
+    let result = lane
+        .update_direct(1, value.clone())
+        .apply(ExactlyOnce)
+        .await;
     assert!(result.is_ok());
 
     let event = events.next().await;
@@ -51,10 +54,9 @@ async fn update_direct_buffered() {
     update_direct(&lane, &mut events).await;
 }
 
-async fn remove_direct_not_contained<Str>(lane: MapLane<i32, i32>,
-                            mut events: Str)
-    where
-        Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+async fn remove_direct_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
     let result = lane.remove_direct(1).apply(ExactlyOnce).await;
     assert!(result.is_ok());
@@ -81,10 +83,9 @@ async fn remove_direct_not_contained_buffered() {
     remove_direct_not_contained(lane, events).await;
 }
 
-async fn remove_direct_contained<Str>(lane: MapLane<i32, i32>,
-                                          mut events: Str)
-    where
-        Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+async fn remove_direct_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
     update_direct(&lane, &mut events).await;
     let result = lane.remove_direct(1).apply(ExactlyOnce).await;
@@ -112,10 +113,9 @@ async fn remove_direct_contained_buffered() {
     remove_direct_contained(lane, events).await;
 }
 
-async fn clear_direct_empty<Str>(lane: MapLane<i32, i32>,
-                          mut events: Str)
-    where
-        Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+async fn clear_direct_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
     let result = lane.clear_direct().apply(ExactlyOnce).await;
     assert!(result.is_ok());
@@ -142,10 +142,9 @@ async fn clear_direct_empty_buffered() {
     clear_direct_empty(lane, events).await;
 }
 
-async fn clear_direct_nonempty<Str>(lane: MapLane<i32, i32>,
-                                 mut events: Str)
-    where
-        Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+async fn clear_direct_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
     update_direct(&lane, &mut events).await;
     let result = lane.clear_direct().apply(ExactlyOnce).await;
@@ -231,17 +230,16 @@ async fn map_is_empty() {
     assert!(matches!(result2, Ok(false)));
 }
 
-async fn populate<Str>(lane: &MapLane<i32, i32>,
-                            events: &mut Str)
-    where
-        Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+async fn populate<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
-
     let result = lane.update_direct(1, Arc::new(7)).apply(ExactlyOnce).await;
     assert!(result.is_ok());
     let result = lane.update_direct(8, Arc::new(13)).apply(ExactlyOnce).await;
     assert!(result.is_ok());
-    events.take(2).collect::<Vec<_>>().await;
+    let _ = events.next().await;
+    while events.next().now_or_never().is_some() {}
 }
 
 #[tokio::test]
@@ -264,4 +262,238 @@ async fn map_last() {
     let result = atomically(&lane.last(), ExactlyOnce).await;
 
     assert!(matches!(result, Ok(Some(v)) if *v == 13));
+}
+
+async fn update_compound<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    let value = Arc::new(5);
+    let result = atomically(&lane.update(1, value.clone()), ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Update(1, v)) if Arc::ptr_eq(&v, &value)));
+}
+
+#[tokio::test]
+async fn update_compound_queue() {
+    let (lane, mut events) = make_lane(Queue::default());
+    update_compound(&lane, &mut events).await;
+}
+
+#[tokio::test]
+async fn update_compound_dropping() {
+    let (lane, mut events) = make_lane(Dropping);
+    update_compound(&lane, &mut events).await;
+}
+
+#[tokio::test]
+async fn update_compound_buffered() {
+    let (lane, mut events) = make_lane(Buffered::default());
+    update_direct(&lane, &mut events).await;
+}
+
+async fn remove_compound_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    let result = atomically(&lane.remove(1), ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let event = events.next().now_or_never();
+    assert!(event.is_none());
+}
+
+#[tokio::test]
+async fn remove_compound_not_contained_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    remove_compound_not_contained(lane, events).await;
+}
+
+#[tokio::test]
+async fn remove_compound_not_contained_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    remove_compound_not_contained(lane, events).await;
+}
+
+#[tokio::test]
+async fn remove_compound_not_contained_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    remove_compound_not_contained(lane, events).await;
+}
+
+async fn remove_compound_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    update_direct(&lane, &mut events).await;
+    let result = atomically(&lane.remove(1), ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Remove(1))));
+}
+
+#[tokio::test]
+async fn remove_compound_contained_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    remove_compound_contained(lane, events).await;
+}
+
+#[tokio::test]
+async fn remove_compound_contained_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    remove_compound_contained(lane, events).await;
+}
+
+#[tokio::test]
+async fn remove_compound_contained_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    remove_compound_contained(lane, events).await;
+}
+
+async fn clear_compound_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    let result = atomically(&lane.clear(), ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let event = events.next().now_or_never();
+    assert!(event.is_none());
+}
+
+#[tokio::test]
+async fn clear_compound_empty_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    clear_compound_empty(lane, events).await;
+}
+
+#[tokio::test]
+async fn clear_compound_empty_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    clear_compound_empty(lane, events).await;
+}
+
+#[tokio::test]
+async fn clear_compound_empty_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    clear_compound_empty(lane, events).await;
+}
+
+async fn clear_compound_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    update_direct(&lane, &mut events).await;
+    let result = atomically(&lane.clear(), ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Clear)));
+}
+
+#[tokio::test]
+async fn clear_compound_nonempty_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    clear_compound_nonempty(lane, events).await;
+}
+
+#[tokio::test]
+async fn clear_compound_nonempty_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    clear_compound_nonempty(lane, events).await;
+}
+
+#[tokio::test]
+async fn clear_compound_nonempty_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    clear_compound_nonempty(lane, events).await;
+}
+
+async fn double_set<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    populate(&lane, &mut events).await;
+
+    let upd = lane.get(1).and_then(|maybe| match maybe {
+        Some(i) => lane.update(8, Arc::new(*i + 1)),
+        _ => lane.update(8, Arc::new(-1)),
+    });
+
+    let stm = lane.update(8, Arc::new(17)).followed_by(upd);
+
+    let result = atomically(&stm, ExactlyOnce).await;
+
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Update(8, v)) if *v == 8));
+
+    let next_event = events.next().now_or_never();
+    assert!(next_event.is_none());
+}
+
+#[tokio::test]
+async fn double_set_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    double_set(lane, events).await;
+}
+
+#[tokio::test]
+async fn double_set_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    double_set(lane, events).await;
+}
+
+#[tokio::test]
+async fn double_set_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    double_set(lane, events).await;
+}
+
+async fn transaction_with_clear<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    populate(&lane, &mut events).await;
+
+    let insert = lane.update(42, Arc::new(-4));
+    let clear = lane.clear();
+    let upd = lane.update(8, Arc::new(123));
+    let rem = lane.remove(1);
+    let stm = insert.followed_by(clear.followed_by(upd.followed_by(rem)));
+
+    let result = atomically(&stm, ExactlyOnce).await;
+
+    assert!(result.is_ok());
+
+    let received = (&mut events).take(2).collect::<Vec<_>>().await;
+
+    assert!(
+        matches!(received.as_slice(), [MapLaneEvent::Clear, MapLaneEvent::Update(8, v)] if **v == 123)
+    );
+
+    let another = events.next().now_or_never();
+    assert!(another.is_none());
+}
+
+#[tokio::test]
+async fn transaction_with_clear_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    transaction_with_clear(lane, events).await;
+}
+
+#[tokio::test]
+async fn transaction_with_clear_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    transaction_with_clear(lane, events).await;
+}
+
+#[tokio::test]
+async fn transaction_with_clear_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    transaction_with_clear(lane, events).await;
 }
