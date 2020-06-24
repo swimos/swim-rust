@@ -17,6 +17,11 @@ jobs:
       rust: 1.44.0
       name: clippy
 
+  - template: ci/azure-fmt.yml
+    parameters:
+      rust: 1.44.0
+      name: rustfmt
+
   - template: ci/azure-check-docs.yml
     parameters:
       rust: 1.44.0
