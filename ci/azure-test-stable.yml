@@ -22,7 +22,7 @@ jobs:
       - script: cargo test --verbose
         env:
           RUST_BACKTRACE: 1
-        displayName: cargo test
+        displayName: cargo test --all-targets
         workingDirectory: $(Build.SourcesDirectory)
 
   - job: WASM_client_build
