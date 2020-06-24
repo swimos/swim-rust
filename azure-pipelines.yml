@@ -1,5 +1,5 @@
-trigger: ["master"]
-pr: ["master"]
+trigger: ["master", "server-prototype"]
+pr: ["master", "server-prototype"]
 
 variables:
   RUSTFLAGS: -Dwarnings
