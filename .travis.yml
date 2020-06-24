@@ -22,9 +22,9 @@ jobs:
         - cargo test --all-targets --package client --features test-server
         - cd ..
 
-    - os: windows
-      arch: amd64
-      env: ARCH=amd64
+    - os: linux
+      arch: arm64
+      env: ARCH=arm64
       script:
         - cargo test --workspace
 
