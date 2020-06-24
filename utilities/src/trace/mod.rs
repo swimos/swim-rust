@@ -9,6 +9,7 @@ static INIT: Once = Once::new();
 /// # Arguments
 ///
 /// * `directives`             - The trace spans that you want to see messages from.
+#[cfg_attr(tarpaulin, skip)]
 pub fn init_trace(directives: Vec<&str>) {
     INIT.call_once(|| {
         let mut filter = EnvFilter::from_default_env();
