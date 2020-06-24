@@ -18,21 +18,29 @@ use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
 use tokio::sync::mpsc;
-use tracing::{span, trace, Level};
+use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
-use tokio_tungstenite::tungstenite::protocol::Message;
 use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
+/// Tasks that the outgoing task can handle.
 #[derive(Debug)]
 enum OutgoingRequest {
     Message(Envelope),
     Close(Option<CloseResponseSender>),
 }
 
-pub struct OutgoingHostTask {
+/// The outgoing task is responsible for routing messages coming from the
+/// subscribers (typically downlinks) or direct messages, to remote hosts.
+/// A single outgoing task is responsible for a single remote host.
+/// Depending on the retry strategy, the outgoing task may try multiple times to send a message
+/// if a non-fatal connection error is encountered.
+///
+/// Note: The outgoing task *DOES NOT* open connections by default when created.
+/// It will only open connections when required.
+pub(crate) struct OutgoingHostTask {
     envelope_rx: mpsc::Receiver<Envelope>,
     connection_request_tx: mpsc::Sender<ConnectionRequest>,
     close_rx: CloseReceiver,
@@ -69,24 +77,33 @@ impl OutgoingHostTask {
 
             let span = span!(Level::TRACE, "outgoing_event");
             let _enter = span.enter();
+
             trace!("Received request {:?}", task);
 
             match task {
                 OutgoingRequest::Message(envelope) => {
-                    let message = Message::Text(envelope.into_value().to_string());
-                    let request = new_request(connection_request_tx.clone(), message);
-                    RetryableFuture::new(request, config.retry_strategy()).await?;
-                }
-                OutgoingRequest::Close(Some(_)) => {
-                    drop(rx);
-                    break;
-                }
-                OutgoingRequest::Close(None) => {}
-            }
+                    let message = envelope.into_value().to_string();
+                    let request = new_request(connection_request_tx.clone(), message.into());
 
+                    RetryableFuture::new(request, config.retry_strategy())
+                        .await
+                        .map_err(|e| {
+                            error!(cause = %e, "Failed to send envelope");
+                            e
+                        })?;
+
+                    trace!("Completed request");
+                }
+                OutgoingRequest::Close(close_rx) => {
+                    if close_rx.is_some() {
+                        info!("Closing");
+                        drop(rx);
+                        break Ok(());
+                    }
+                }
+            }
             trace!("Completed outgoing request");
         }
-        Ok(())
     }
 }
 

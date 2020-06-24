@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::match_wild_err_arm)]
+
 use std::collections::HashMap;
 
 use std::env;
@@ -25,7 +27,6 @@ impl Image for SwimTestServer {
     type EnvVars = HashMap<String, String>;
     type Volumes = HashMap<String, String>;
 
-    #[allow(clippy::match_wild_err_arm)]
     fn descriptor(&self) -> String {
         match env::var("TEST_SERVER_IMAGE_NAME") {
             Ok(descriptor) => descriptor,

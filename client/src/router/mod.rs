@@ -17,15 +17,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
-use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender, SwimConnPool};
-use crate::router::incoming::{IncomingHostTask, IncomingRequest};
-use crate::router::outgoing::OutgoingHostTask;
-use common::request::request_future::{RequestError, RequestFuture, Sequenced};
-use common::sink::item::map_err::SenderErrInto;
-use common::sink::item::ItemSender;
-use common::warp::envelope::{Envelope, IncomingLinkMessage};
-use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::{Future, Stream};
@@ -33,7 +24,22 @@ use tokio::stream::StreamExt;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
+use tracing::trace_span;
+use tracing::{span, Level};
+use tracing_futures::Instrument;
+
+use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use common::sink::item::map_err::SenderErrInto;
+use common::sink::item::ItemSender;
+use common::warp::envelope::{Envelope, IncomingLinkMessage};
+use common::warp::path::{AbsolutePath, RelativePath};
+use swim_runtime::task::*;
+
+use crate::configuration::router::RouterParams;
+use crate::connections::{ConnectionPool, ConnectionSender, SwimConnPool};
+use crate::router::incoming::{IncomingHostTask, IncomingRequest};
+use crate::router::outgoing::OutgoingHostTask;
+use common::connections::error::ConnectionError;
 
 pub mod incoming;
 pub mod outgoing;
@@ -42,20 +48,23 @@ mod retry;
 #[cfg(test)]
 mod tests;
 
+/// The Router is responsible for routing messages between the downlinks and the connections from the
+/// connection pool. It can be used to obtain a connection for a downlink or to send direct messages.
 pub trait Router: Send {
     type ConnectionStream: Stream<Item = RouterEvent> + Send + 'static;
     type ConnectionSink: ItemSender<Envelope, RoutingError> + Send + Clone + Sync + 'static;
     type GeneralSink: ItemSender<(url::Url, Envelope), RoutingError> + Send + 'static;
-
     type ConnectionFut: Future<Output = Result<(Self::ConnectionSink, Self::ConnectionStream), RequestError>>
         + Send;
 
+    /// For full duplex connections
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut;
 
+    /// For sending direct messages
     fn general_sink(&mut self) -> Self::GeneralSink;
 }
 
-pub type RouterConnRequest = (
+type RouterConnRequest = (
     AbsolutePath,
     oneshot::Sender<(
         <SwimRouter<SwimConnPool> as Router>::ConnectionSink,
@@ -63,32 +72,42 @@ pub type RouterConnRequest = (
     )>,
 );
 
-pub type RouterMessageRequest = (url::Url, Envelope);
+type RouterMessageRequest = (url::Url, Envelope);
+type CloseSender = watch::Sender<Option<CloseResponseSender>>;
+type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
+type CloseReceiver = watch::Receiver<Option<CloseResponseSender>>;
 
-pub type CloseSender = watch::Sender<Option<CloseResponseSender>>;
-pub type CloseReceiver = watch::Receiver<Option<CloseResponseSender>>;
-pub type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
-
+/// The Router events are emitted by the connection streams of the router and indicate
+/// messages or errors from the remote host.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
+    // Incoming message from a remote host.
     Message(IncomingLinkMessage),
+    // There was an error in the connection. If a retry strategy exists this will trigger it.
     ConnectionClosed,
-    /// The requested host is unreachable. Field contains the error message returned from the
-    /// connection pool.
+    /// The remote host is unreachable. This will not trigger the retry system.
     Unreachable(String),
+    // The router is stopping.
     Stopping,
 }
 
 pub struct SwimRouter<Pool: ConnectionPool> {
     router_connection_request_tx: mpsc::Sender<RouterConnRequest>,
     router_sink_tx: mpsc::Sender<RouterMessageRequest>,
-    task_manager_handle: JoinHandle<Result<(), RoutingError>>,
+    task_manager_handle: TaskHandle<Result<(), RoutingError>>,
     connection_pool: Pool,
     close_tx: CloseSender,
     configuration: RouterParams,
 }
 
 impl<Pool: ConnectionPool> SwimRouter<Pool> {
+    /// Creates a new connection router for routing messages between the downlinks and the
+    /// connection pool.
+    ///
+    /// # Arguments
+    ///
+    /// * `configuration`             - The configuration parameters of the router.
+    /// * `connection_pool`           - A connection pool for obtaining connections to remote hosts.
     pub fn new(configuration: RouterParams, connection_pool: Pool) -> SwimRouter<Pool>
     where
         Pool: ConnectionPool,
@@ -98,7 +117,7 @@ impl<Pool: ConnectionPool> SwimRouter<Pool> {
         let (task_manager, router_connection_request_tx, router_sink_tx) =
             TaskManager::new(connection_pool.clone(), close_rx, configuration);
 
-        let task_manager_handle = tokio::spawn(task_manager.run());
+        let task_manager_handle = spawn(task_manager.run());
 
         SwimRouter {
             router_connection_request_tx,
@@ -110,6 +129,8 @@ impl<Pool: ConnectionPool> SwimRouter<Pool> {
         }
     }
 
+    /// Closes the router and all of its sub-tasks, logging any errors that have been encountered.
+    /// Returns a [`RoutingError::CloseError`] if the closing fails.
     pub async fn close(self) -> Result<(), RoutingError> {
         let (result_tx, mut result_rx) = mpsc::channel(self.configuration.buffer_size().get());
 
@@ -138,6 +159,7 @@ impl<Pool: ConnectionPool> SwimRouter<Pool> {
     }
 }
 
+/// Tasks that the router can handle.
 enum RouterTask {
     Connect(RouterConnRequest),
     SendMessage(Box<RouterMessageRequest>),
@@ -147,9 +169,12 @@ enum RouterTask {
 type HostManagerHandle = (
     mpsc::Sender<Envelope>,
     mpsc::Sender<SubscriberRequest>,
-    JoinHandle<Result<(), RoutingError>>,
+    TaskHandle<Result<(), RoutingError>>,
 );
 
+/// The task manager is the main task in the router. It is responsible for creating sub-tasks
+/// for each unique remote host. It can also handle direct messages by sending them directly
+/// to the appropriate sub-task.
 struct TaskManager<Pool: ConnectionPool> {
     conn_request_rx: mpsc::Receiver<RouterConnRequest>,
     message_request_rx: mpsc::Receiver<RouterMessageRequest>,
@@ -245,26 +270,26 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
-                RouterTask::Close(Some(mut close_tx)) => {
-                    drop(rx);
+                RouterTask::Close(close_rx) => {
+                    if let Some(mut close_response_tx) = close_rx {
+                        drop(rx);
 
-                    let futures = FuturesUnordered::new();
+                        let futures = FuturesUnordered::new();
 
-                    host_managers
-                        .iter_mut()
-                        .for_each(|(_, (_, _, handle))| futures.push(handle));
+                        host_managers
+                            .iter_mut()
+                            .for_each(|(_, (_, _, handle))| futures.push(handle));
 
-                    for result in futures.collect::<Vec<_>>().await {
-                        close_tx
-                            .send(result.unwrap_or(Err(RoutingError::CloseError)))
-                            .await
-                            .map_err(|_| RoutingError::CloseError)?;
+                        for result in futures.collect::<Vec<_>>().await {
+                            close_response_tx
+                                .send(result.unwrap_or(Err(RoutingError::CloseError)))
+                                .await
+                                .map_err(|_| RoutingError::CloseError)?;
+                        }
+
+                        break Ok(());
                     }
-
-                    break Ok(());
                 }
-
-                RouterTask::Close(None) => { /*NO OP*/ }
             }
         }
     }
@@ -283,7 +308,15 @@ where
     host_managers.entry(host.clone()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
             HostManager::new(host, connection_pool, close_rx, config);
-        (sink, stream_registrator, tokio::spawn(host_manager.run()))
+        (
+            sink,
+            stream_registrator,
+            spawn(
+                host_manager
+                    .run()
+                    .instrument(trace_span!(HOST_MANAGER_TASK_NAME)),
+            ),
+        )
     })
 }
 
@@ -302,8 +335,11 @@ fn combine_router_task(
     )
 }
 
-pub struct ConnectionRequest {
+/// A connection request is used by the [`OutgoingHostTask`] to request a connection when
+/// it is trying to send a message.
+pub(crate) struct ConnectionRequest {
     request_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
+    //If the connection should be recreated or returned from cache.
     recreate: bool,
 }
 
@@ -319,8 +355,10 @@ impl ConnectionRequest {
     }
 }
 
+/// A subscriber request is sent to the [`IncomingHostTask`] to request for a new subscriber
+/// to receive all new messages for the given path.
 #[derive(Debug)]
-pub struct SubscriberRequest {
+pub(crate) struct SubscriberRequest {
     path: RelativePath,
     subscriber_tx: mpsc::Sender<RouterEvent>,
 }
@@ -334,12 +372,24 @@ impl SubscriberRequest {
     }
 }
 
+const INCOMING_TASK_NAME: &str = "incoming";
+const OUTGOING_TASK_NAME: &str = "outgoing";
+const HOST_MANAGER_TASK_NAME: &str = "host manager";
+
+/// Tasks that the host manager can handle.
 enum HostTask {
     Connect(ConnectionRequest),
     Subscribe(SubscriberRequest),
     Close(Option<CloseResponseSender>),
 }
 
+/// The host manager is responsible for routing messages to a single host only.
+/// All host managers are sub-tasks of the task manager. The host manager is responsible for
+/// obtaining connections from the connection pool when needed and for registering new subscribers
+/// for the given host.
+///
+/// Note: The host manager *DOES NOT* open connections by default when created.
+/// It will only open connections when required.
 struct HostManager<Pool: ConnectionPool> {
     host: url::Url,
     connection_pool: Pool,
@@ -396,8 +446,16 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let outgoing_task =
             OutgoingHostTask::new(sink_rx, connection_request_tx, close_rx.clone(), config);
 
-        let incoming_handle = tokio::spawn(incoming_task.run());
-        let outgoing_handle = tokio::spawn(outgoing_task.run());
+        let incoming_handle = spawn(
+            incoming_task
+                .run()
+                .instrument(span!(Level::TRACE, INCOMING_TASK_NAME)),
+        );
+        let outgoing_handle = spawn(
+            outgoing_task
+                .run()
+                .instrument(span!(Level::TRACE, OUTGOING_TASK_NAME)),
+        );
 
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);
 
@@ -455,24 +513,25 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
                 }
-                HostTask::Close(Some(mut close_tx)) => {
-                    drop(rx);
+                HostTask::Close(close_rx) => {
+                    if let Some(mut close_response_tx) = close_rx {
+                        drop(rx);
 
-                    let futures = FuturesUnordered::new();
+                        let futures = FuturesUnordered::new();
 
-                    futures.push(incoming_handle);
-                    futures.push(outgoing_handle);
+                        futures.push(incoming_handle);
+                        futures.push(outgoing_handle);
 
-                    for result in futures.collect::<Vec<_>>().await {
-                        close_tx
-                            .send(result.unwrap_or(Err(RoutingError::CloseError)))
-                            .await
-                            .map_err(|_| RoutingError::CloseError)?;
+                        for result in futures.collect::<Vec<_>>().await {
+                            close_response_tx
+                                .send(result.unwrap_or(Err(RoutingError::CloseError)))
+                                .await
+                                .map_err(|_| RoutingError::CloseError)?;
+                        }
+
+                        break Ok(());
                     }
-
-                    break Ok(());
                 }
-                HostTask::Close(None) => { /*NO OP*/ }
             }
         }
     }
@@ -524,30 +583,36 @@ impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
     }
 }
 
+// An error returned by the router
 #[derive(Clone, Debug, PartialEq)]
 pub enum RoutingError {
+    // The connection to the remote host has been lost.
     ConnectionError,
+    // The remote host is unreachable.
     HostUnreachable,
+    // The connection pool has encountered an error.
     PoolError(ConnectionError),
+    // The router has been stopped.
     RouterDropped,
+    // The router has encountered an error while stopping.
     CloseError,
 }
 
-//Todo this should be unified
 impl RoutingError {
+    /// Returns whether or not the router can recover from the error.
+    /// Inverse of [`is_fatal`].
     pub fn is_transient(&self) -> bool {
         match &self {
             RoutingError::ConnectionError => true,
+            RoutingError::HostUnreachable => true,
             _ => false,
         }
     }
 
+    /// Returns whether or not the error is unrecoverable.
+    /// Inverse of [`is_transient`].
     pub fn is_fatal(&self) -> bool {
-        match &self {
-            RoutingError::RouterDropped => true,
-            RoutingError::HostUnreachable => false,
-            _ => false,
-        }
+        !self.is_transient()
     }
 }
 

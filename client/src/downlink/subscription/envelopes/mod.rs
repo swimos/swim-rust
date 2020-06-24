@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::model::map::MapModification;
+use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
 use common::model::Value;
@@ -41,6 +41,11 @@ where
                 path,
                 body: None,
             },
+            Command::Link => OutgoingLinkMessage {
+                header: OutgoingHeader::Link(Default::default()),
+                path,
+                body: None,
+            },
             Command::Action(v) => OutgoingLinkMessage {
                 header: OutgoingHeader::Command,
                 path,
@@ -66,9 +71,17 @@ pub fn value_envelope(
 /// Convert a downlink [`Command`], from a map lane, into a Warp [`OutgoingLinkMessage`].
 pub fn map_envelope(
     path: &AbsolutePath,
-    command: Command<MapModification<Arc<Value>>>,
+    command: Command<UntypedMapModification<Arc<Value>>>,
 ) -> (url::Url, OutgoingLinkMessage) {
     envelope_for(map::envelope_body, path, command)
+}
+
+/// Convert a downlink [`Command`], from a command lane, into a Warp [`OutgoingLinkMessage`].
+pub fn command_envelope(
+    path: &AbsolutePath,
+    command: Command<Value>,
+) -> (url::Url, OutgoingLinkMessage) {
+    envelope_for(Some, path, command)
 }
 
 pub(in crate::downlink) mod value {
@@ -106,20 +119,21 @@ pub(in crate::downlink) mod value {
 }
 
 pub(in crate::downlink) mod map {
-    use crate::downlink::model::map::MapModification;
+    use crate::downlink::model::map::UntypedMapModification;
     use crate::downlink::Message;
     use common::model::Value;
     use common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
-    use form::Form;
     use std::sync::Arc;
+    use swim_form::Form;
+    use tracing::warn;
 
-    pub(super) fn envelope_body(cmd: MapModification<Arc<Value>>) -> Option<Value> {
+    pub(super) fn envelope_body(cmd: UntypedMapModification<Arc<Value>>) -> Option<Value> {
         Some(cmd.envelope_body())
     }
 
     pub(in crate::downlink) fn from_envelope(
         incoming: IncomingLinkMessage,
-    ) -> Message<MapModification<Value>> {
+    ) -> Message<UntypedMapModification<Value>> {
         match incoming {
             IncomingLinkMessage {
                 header: IncomingHeader::Linked(_),
@@ -141,7 +155,10 @@ pub(in crate::downlink) mod map {
                 Ok(modification) => Message::Action(modification),
                 Err(e) => Message::BadEnvelope(format!("{}", e)),
             },
-            _ => Message::BadEnvelope("Event envelope had no body.".to_string()),
+            _ => {
+                warn!("Bad envelope: {:?}", incoming);
+                Message::BadEnvelope("Event envelope had no body.".to_string())
+            }
         }
     }
 }

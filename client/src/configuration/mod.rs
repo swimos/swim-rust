@@ -26,6 +26,7 @@ pub mod downlink {
     pub enum DownlinkKind {
         Value,
         Map,
+        Command,
     }
 
     impl Display for DownlinkKind {
@@ -33,6 +34,7 @@ pub mod downlink {
             match self {
                 DownlinkKind::Value => write!(f, "Value"),
                 DownlinkKind::Map => write!(f, "Map"),
+                DownlinkKind::Command => write!(f, "Command"),
             }
         }
     }
@@ -234,7 +236,7 @@ pub mod downlink {
     pub struct ConfigHierarchy {
         client_params: ClientParams,
         default: DownlinkParams,
-        by_host: HashMap<url::Url, DownlinkParams>,
+        by_host: HashMap<String, DownlinkParams>,
         by_lane: HashMap<AbsolutePath, DownlinkParams>,
     }
 
@@ -250,7 +252,7 @@ pub mod downlink {
         }
 
         /// Add specific configuration for a host.
-        pub fn for_host(&mut self, host: url::Url, params: DownlinkParams) {
+        pub fn for_host(&mut self, host: String, params: DownlinkParams) {
             self.by_host.insert(host, params);
         }
 
@@ -271,15 +273,38 @@ pub mod downlink {
             } = self;
             match by_lane.get(path) {
                 Some(params) => *params,
-                _ => match by_host.get(&path.host) {
-                    Some(params) => *params,
-                    _ => *default,
-                },
+                _ => {
+                    if path.host.has_host() {
+                        match by_host.get(&path.host.host().unwrap().to_string()) {
+                            Some(params) => *params,
+                            _ => *default,
+                        }
+                    } else {
+                        *default
+                    }
+                }
             }
         }
 
         fn client_params(&self) -> ClientParams {
             self.client_params
+        }
+    }
+
+    impl Default for ConfigHierarchy {
+        fn default() -> Self {
+            let client_params = ClientParams::new(2, Default::default()).unwrap();
+            let timeout = Duration::from_secs(60000);
+            let default_params = DownlinkParams::new_queue(
+                BackpressureMode::Propagate,
+                5,
+                timeout,
+                5,
+                OnInvalidMessage::Terminate,
+                256,
+            )
+            .unwrap();
+            ConfigHierarchy::new(client_params, default_params)
         }
     }
 

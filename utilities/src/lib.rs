@@ -12,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::match_wild_err_arm)]
+
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+pub mod errors;
 pub mod future;
 pub mod iteratee;
 pub mod lru_cache;
-
 #[macro_use]
-pub mod macros;
+pub mod ptr;
+pub mod trace;
 
 /// Error thrown by methods that required a usize to be positive.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

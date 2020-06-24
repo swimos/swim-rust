@@ -24,6 +24,7 @@ const DEFAULT_BUFFER_SIZE: usize = 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
+    /// The retry strategy that will be used when attempting to make a request to a Web Agent.
     retry_strategy: RetryStrategy,
     /// The maximum amount of time a connection can be inactive for before it will be culled.
     idle_timeout: Duration,
@@ -83,6 +84,7 @@ impl Default for RouterParamBuilder {
 }
 
 impl RouterParamBuilder {
+    /// Returns a router parameter builder with empty parameters.
     pub fn empty() -> RouterParamBuilder {
         RouterParamBuilder {
             retry_strategy: None,
@@ -92,6 +94,7 @@ impl RouterParamBuilder {
         }
     }
 
+    /// Returns a new router paremter builder that is initialised with the default values.
     pub fn new() -> RouterParamBuilder {
         RouterParamBuilder {
             retry_strategy: Some(RetryStrategy::default()),
@@ -138,10 +141,15 @@ impl RouterParamBuilder {
     }
 }
 
+/// Connection pool parameters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ConnectionPoolParams {
+    /// How long a connection can be inactive for before it will be pruned.
     idle_timeout: Duration,
+    /// How frequently the connection pool reaper will run. Connections that have not been used for
+    /// [`idle_timeout`] will be removed.
     conn_reaper_frequency: Duration,
+    /// The size of the connection pool request buffer.
     buffer_size: NonZeroUsize,
 }
 

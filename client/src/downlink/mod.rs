@@ -34,6 +34,7 @@ pub mod watch_adapter;
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
+use common::connections::error::ConnectionError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::request::TryRequest;
@@ -42,6 +43,7 @@ use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
+use tracing::{instrument, trace};
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -96,6 +98,9 @@ pub enum DownlinkError {
     MalformedMessage,
     InvalidAction,
     SchemaViolation(Value, StandardSchema),
+    ConnectionFailure(String),
+    ConnectionPoolFailure(ConnectionError),
+    ClosingFailure,
 }
 
 /// A request to a downlink for a value.
@@ -105,10 +110,14 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::ConnectionError => DownlinkError::DroppedChannel,
-            RoutingError::CloseError => DownlinkError::DroppedChannel,
-            RoutingError::PoolError(_) => DownlinkError::DroppedChannel,
-            RoutingError::HostUnreachable => DownlinkError::DroppedChannel,
+            RoutingError::ConnectionError => {
+                DownlinkError::ConnectionFailure("The connection has been lost".to_string())
+            }
+            RoutingError::PoolError(e) => DownlinkError::ConnectionPoolFailure(e),
+            RoutingError::CloseError => DownlinkError::ClosingFailure,
+            RoutingError::HostUnreachable => {
+                DownlinkError::ConnectionFailure("The host is unreachable".to_string())
+            }
         }
     }
 }
@@ -137,6 +146,14 @@ impl Display for DownlinkError {
             DownlinkError::InvalidAction => {
                 write!(f, "An action could not be applied to the internal state.")
             }
+            DownlinkError::ConnectionFailure(error) => write!(f, "Connection failure: {}.", error),
+
+            DownlinkError::ConnectionPoolFailure(connection_error) => write!(
+                f,
+                "The connection pool has encountered a failure: {}",
+                connection_error
+            ),
+            DownlinkError::ClosingFailure => write!(f, "An error occurred while closing down."),
         }
     }
 }
@@ -192,12 +209,37 @@ pub enum Message<M> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Command<A> {
     Sync,
+    Link,
     Action(A),
     Unlink,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Event<A>(pub A, pub bool);
+pub enum Event<A> {
+    Local(A),
+    Remote(A),
+}
+
+impl<A> Event<A> {
+    pub fn get_inner(self) -> A {
+        match self {
+            Event::Local(inner) => inner,
+            Event::Remote(inner) => inner,
+        }
+    }
+
+    /// Maps [`Event<A>`] to [`Result<Event<B>, Err>`]
+    /// by applying a transformation function [`Func`].
+    pub fn try_transform<B, Err, Func>(self, mut func: Func) -> Result<Event<B>, Err>
+    where
+        Func: FnMut(A) -> Result<B, Err>,
+    {
+        match self {
+            Event::Local(value) => Ok(Event::Local(func(value)?)),
+            Event::Remote(value) => Ok(Event::Remote(func(value)?)),
+        }
+    }
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Operation<M, A> {
@@ -276,6 +318,10 @@ trait StateMachine<State, Message, Action>: Sized {
     /// The initial value for the state.
     fn init_state(&self) -> State;
 
+    // The downlink state at which the machine should start
+    // to process updates and actions.
+    fn dl_start_state(&self) -> DownlinkState;
+
     /// For an operation on the downlink, generate output messages.
     fn handle_operation(
         &self,
@@ -323,7 +369,7 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
             error,
         } = basic;
         Response {
-            event: event.map(|e| Event(e, true)),
+            event: event.map(Event::Local),
             command: command.map(Command::Action),
             error,
             terminate: false,
@@ -332,7 +378,7 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
 }
 
 /// This trait is for simple, stateful downlinks that follow the standard synchronization model.
-trait BasicStateMachine<State, Message, Action> {
+trait SyncStateMachine<State, Message, Action> {
     /// Type of events that will be issued to the owner of the downlink.
     type Ev;
     /// Type of commands that will be sent out to the Warp connection.
@@ -367,18 +413,23 @@ trait BasicStateMachine<State, Message, Action> {
     ) -> BasicResponse<Self::Ev, Self::Cmd>;
 }
 
-//Adapter to make a BasicStateMachine into a StateMachine.
+//Adapter to make a SyncStateMachine into a StateMachine.
 impl<State, M, A, Basic> StateMachine<State, M, A> for Basic
 where
-    Basic: BasicStateMachine<State, M, A>,
+    Basic: SyncStateMachine<State, M, A>,
 {
-    type Ev = <Basic as BasicStateMachine<State, M, A>>::Ev;
-    type Cmd = <Basic as BasicStateMachine<State, M, A>>::Cmd;
+    type Ev = <Basic as SyncStateMachine<State, M, A>>::Ev;
+    type Cmd = <Basic as SyncStateMachine<State, M, A>>::Cmd;
 
     fn init_state(&self) -> State {
         self.init()
     }
 
+    fn dl_start_state(&self) -> DownlinkState {
+        DownlinkState::Synced
+    }
+
+    #[instrument(skip(self, state, data_state, op))]
     fn handle_operation(
         &self,
         state: &mut DownlinkState,
@@ -388,13 +439,16 @@ where
         let response = match op {
             Operation::Start => {
                 if *state == DownlinkState::Synced {
+                    trace!("Downlink synced");
                     Response::none()
                 } else {
+                    trace!("Downlink syncing");
                     Response::for_command(Command::Sync)
                 }
             }
             Operation::Message(message) => match message {
                 Message::Linked => {
+                    trace!("Downlink linked");
                     *state = DownlinkState::Linked;
                     Response::none()
                 }
@@ -404,7 +458,7 @@ where
                     if old_state == DownlinkState::Synced {
                         Response::none()
                     } else {
-                        Response::for_event(Event(self.on_sync(data_state), false))
+                        Response::for_event(Event::Remote(self.on_sync(data_state)))
                     }
                 }
                 Message::Action(msg) => match *state {
@@ -414,11 +468,12 @@ where
                         Response::none()
                     }
                     DownlinkState::Synced => match self.handle_message(data_state, msg)? {
-                        Some(ev) => Response::for_event(Event(ev, false)),
+                        Some(ev) => Response::for_event(Event::Remote(ev)),
                         _ => Response::none(),
                     },
                 },
                 Message::Unlinked => {
+                    trace!("Downlink unlinked");
                     *state = DownlinkState::Unlinked;
                     Response::none().then_terminate()
                 }

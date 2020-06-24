@@ -29,9 +29,9 @@ use futures::{future, ready, Future, FutureExt, Stream, StreamExt, TryFutureExt}
 use futures_util::select_biased;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
+use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
-use tokio::task::JoinHandle;
 
 #[cfg(test)]
 mod tests;
@@ -231,7 +231,7 @@ impl<T: Clone + Send> Stream for MpscTopicReceiver<T> {
 #[derive(Debug)]
 pub struct MpscTopic<T> {
     sub_sender: mpsc::Sender<SubRequest<T>>,
-    task: Arc<JoinHandle<()>>,
+    task: Arc<TaskHandle<()>>,
 }
 
 impl<T> Clone for MpscTopic<T> {
@@ -253,7 +253,7 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
         let (tx, rx) = mpsc::channel(buffer_size.get());
 
         let task_fut = mpsc_topic_task(input, tx, sub_rx, buffer_size, yield_after);
-        let task = tokio::task::spawn(task_fut);
+        let task = spawn(task_fut);
         (
             MpscTopic {
                 sub_sender: sub_tx,
@@ -390,6 +390,7 @@ async fn mpsc_topic_task<T: Clone>(
                         outputs.iter_mut().map(|sender| sender.send(value.clone())),
                     )
                     .await;
+
                     let num_terminated = results.iter().filter(|r| r.is_err()).count();
                     if num_terminated > 0 {
                         outputs = remove_terminated(results, std::mem::take(&mut outputs));

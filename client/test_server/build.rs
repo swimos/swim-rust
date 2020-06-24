@@ -12,17 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::match_wild_err_arm)]
+
 #[cfg(feature = "enabled")]
 mod enabled {
     use std::env;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::str::FromStr;
 
     use git2::build::RepoBuilder;
-    use git2::{ErrorCode, Repository};
-
-    const REPO_URL: &str = "https://github.com/SirCipher/swim-test-server/";
+    use git2::{Error, ErrorCode, Repository};
+    use std::ffi::OsString;
 
     fn get_tags(repo: &Repository) -> Vec<String> {
         match repo.tag_names(None) {
@@ -37,7 +38,6 @@ mod enabled {
         }
     }
 
-    #[allow(clippy::match_wild_err_arm)]
     pub fn init_server() {
         let tag = match env::var_os("TEST_SERVER_VERSION") {
             Some(tag) => tag,
@@ -56,9 +56,42 @@ mod enabled {
         out_dir.push("tests");
         out_dir.push("server");
 
-        let clone_result = RepoBuilder::new().clone(REPO_URL, out_dir.as_path());
+        println!("Building server");
 
-        let repo = match clone_result {
+        let repo_path = match clone_repo(&out_dir, tag) {
+            Ok(p) => p,
+            Err(e) => {
+                if let ErrorCode::Exists = e.code() {
+                    println!("Repository already cloned");
+                    return;
+                } else {
+                    panic!("Error cloning server repository: {:?}", e);
+                }
+            }
+        };
+
+        let parent = repo_path.parent().expect("");
+        build_image(parent);
+
+        // Tell Cargo to rerun this script if the server directory has changed
+        println!("cargo:rerun-if-changed={:?}", out_dir);
+
+        // Enable the test server
+        println!("cargo:rustc-cfg=test_server");
+
+        // Enable the test server
+        println!("Built build server");
+    }
+
+    fn clone_repo(out_dir: &PathBuf, tag: OsString) -> Result<PathBuf, Error> {
+        let repo_url = match env::var("REPO_URL") {
+            Ok(url) => url,
+            Err(_) => panic!("REPO_URL environment variable must be set"),
+        };
+
+        let clone_result = RepoBuilder::new().clone(&repo_url, out_dir.as_path());
+
+        match clone_result {
             Ok(r) => {
                 println!("Cloned repository");
 
@@ -86,7 +119,7 @@ mod enabled {
                             );
                         }
 
-                        path
+                        Ok(path)
                     }
                     Err(_) => {
                         let tags = get_tags(&r);
@@ -98,22 +131,11 @@ mod enabled {
                     }
                 }
             }
-            Err(e) => {
-                if let ErrorCode::Exists = e.code() {
-                    println!("Repository already cloned");
-                    return;
-                } else {
-                    panic!("Error cloning server repository: {:?}", e);
-                }
-            }
-        };
+            Err(e) => Err(e),
+        }
+    }
 
-        let repo_path = repo
-            .parent()
-            .expect("Failed to find server repository path");
-
-        println!("Building server");
-
+    fn build_image(repo_path: &Path) {
         let cmd_output = if cfg!(windows) {
             Command::new("cmd")
                 .args(&["/C", "gradlew.bat dockerBuildImage --info"])
@@ -138,15 +160,6 @@ mod enabled {
         }
 
         assert!(cmd_output.status.success(), "Failed to build test server");
-
-        // Tell Cargo to rerun this script if the server directory has changed
-        println!("cargo:rerun-if-changed={:?}", out_dir);
-
-        // Enable the test server
-        println!("cargo:rustc-cfg=test_server");
-
-        // Enable the test server
-        println!("Built build server");
     }
 }
 

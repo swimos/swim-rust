@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use form::Form;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use swim_form::Form;
 
 use super::*;
 use crate::downlink::Message;
@@ -98,44 +98,44 @@ fn sync_map_command_to_envelope() {
 
 #[test]
 fn clear_map_command_to_envelope() {
-    let rep = Form::into_value(MapModification::Clear);
+    let rep = Form::into_value(UntypedMapModification::<Value>::Clear);
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
-    let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Clear));
+    let (host, envelope) = map_envelope(&path(), Command::Action(UntypedMapModification::Clear));
     assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
 #[test]
 fn take_map_command_to_envelope() {
-    let rep = Form::into_value(MapModification::Take(7));
+    let rep = Form::into_value(UntypedMapModification::<Value>::Take(7));
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
-    let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Take(7)));
+    let (host, envelope) = map_envelope(&path(), Command::Action(UntypedMapModification::Take(7)));
     assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
 #[test]
 fn skip_map_command_to_envelope() {
-    let rep = Form::into_value(MapModification::Skip(7));
+    let rep = Form::into_value(UntypedMapModification::<Value>::Skip(7));
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
-    let (host, envelope) = map_envelope(&path(), Command::Action(MapModification::Skip(7)));
+    let (host, envelope) = map_envelope(&path(), Command::Action(UntypedMapModification::Skip(7)));
     assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
 }
 
 #[test]
 fn remove_map_command_to_envelope() {
-    let action = MapModification::Remove(Value::text("key"));
+    let action = UntypedMapModification::<Value>::Remove(Value::text("key"));
 
     let rep = Form::as_value(&action);
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
     let (host, envelope) = map_envelope(
         &path(),
-        Command::Action(MapModification::Remove(Value::text("key"))),
+        Command::Action(UntypedMapModification::Remove(Value::text("key"))),
     );
     assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_that!(envelope, eq(expected));
@@ -143,13 +143,14 @@ fn remove_map_command_to_envelope() {
 
 #[test]
 fn insert_map_command_to_envelope() {
-    let action = MapModification::Insert(Value::text("key"), Value::text("value"));
+    let action = UntypedMapModification::Insert(Value::text("key"), Value::text("value"));
 
     let rep = Form::as_value(&action);
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
 
-    let arc_action = MapModification::Insert(Value::text("key"), Arc::new(Value::text("value")));
+    let arc_action =
+        UntypedMapModification::Insert(Value::text("key"), Arc::new(Value::text("value")));
 
     let (host, envelope) = map_envelope(&path(), Command::Action(arc_action));
     assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
@@ -179,31 +180,34 @@ fn synced_map_message_from_envelope() {
 
 #[test]
 fn clear_map_message_from_envelope() {
-    let rep = Form::into_value(MapModification::Clear);
+    let rep = Form::into_value(UntypedMapModification::<Value>::Clear);
     let env = LinkMessage::make_event("node", "lane", Some(rep));
     let result = map::from_envelope(env);
-    assert_that!(result, eq(Message::Action(MapModification::Clear)))
+    assert_that!(result, eq(Message::Action(UntypedMapModification::Clear)))
 }
 
 #[test]
 fn take_map_message_from_envelope() {
-    let rep = Form::into_value(MapModification::Take(14));
+    let rep = Form::into_value(UntypedMapModification::<Value>::Take(14));
     let env = LinkMessage::make_event("node", "lane", Some(rep));
     let result = map::from_envelope(env);
-    assert_that!(result, eq(Message::Action(MapModification::Take(14))))
+    assert_that!(
+        result,
+        eq(Message::Action(UntypedMapModification::Take(14)))
+    )
 }
 
 #[test]
 fn skip_map_message_from_envelope() {
-    let rep = Form::into_value(MapModification::Skip(1));
+    let rep = Form::into_value(UntypedMapModification::<Value>::Skip(1));
     let env = LinkMessage::make_event("node", "lane", Some(rep));
     let result = map::from_envelope(env);
-    assert_that!(result, eq(Message::Action(MapModification::Skip(1))))
+    assert_that!(result, eq(Message::Action(UntypedMapModification::Skip(1))))
 }
 
 #[test]
 fn remove_map_message_from_envelope() {
-    let action = MapModification::Remove(Value::text("key"));
+    let action = UntypedMapModification::Remove(Value::text("key"));
 
     let rep = Form::as_value(&action);
     let env = LinkMessage::make_event("node", "lane", Some(rep));
@@ -213,7 +217,7 @@ fn remove_map_message_from_envelope() {
 
 #[test]
 fn insert_map_message_from_envelope() {
-    let action = MapModification::Insert(Value::text("key"), Value::text("value"));
+    let action = UntypedMapModification::Insert(Value::text("key"), Value::text("value"));
 
     let rep = Form::as_value(&action);
     let env = LinkMessage::make_event("node", "lane", Some(rep));
