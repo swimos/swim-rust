@@ -18,6 +18,7 @@ use crate::agent::lane::map::{MapLane, make_lane};
 use crate::agent::lane::tests::ExactlyOnce;
 use std::sync::Arc;
 use crate::agent::lane::strategy::{Queue, Dropping, Buffered};
+use stm::transaction::atomically;
 
 async fn update_direct<Str>(lane: &MapLane<i32, i32>,
                             events: &mut Str)
@@ -170,4 +171,97 @@ async fn clear_direct_nonempty_dropping() {
 async fn clear_direct_nonempty_buffered() {
     let (lane, events) = make_lane(Buffered::default());
     clear_direct_nonempty(lane, events).await;
+}
+
+#[tokio::test]
+async fn get_value() {
+    let (lane, mut events) = make_lane(Queue::default());
+    update_direct(&lane, &mut events).await;
+
+    let result1 = atomically(&lane.get(1), ExactlyOnce).await;
+
+    assert!(matches!(result1, Ok(Some(v)) if *v == 5));
+
+    let result2 = atomically(&lane.get(2), ExactlyOnce).await;
+
+    assert!(matches!(result2, Ok(None)));
+}
+
+#[tokio::test]
+async fn contains_key() {
+    let (lane, mut events) = make_lane(Queue::default());
+    update_direct(&lane, &mut events).await;
+
+    let result1 = atomically(&lane.contains(1), ExactlyOnce).await;
+
+    assert!(matches!(result1, Ok(true)));
+
+    let result2 = atomically(&lane.contains(2), ExactlyOnce).await;
+
+    assert!(matches!(result2, Ok(false)));
+}
+
+#[tokio::test]
+async fn map_len() {
+    let (lane, mut events) = make_lane(Queue::default());
+
+    let result1 = atomically(&lane.len(), ExactlyOnce).await;
+
+    assert!(matches!(result1, Ok(0)));
+
+    update_direct(&lane, &mut events).await;
+
+    let result2 = atomically(&lane.len(), ExactlyOnce).await;
+
+    assert!(matches!(result2, Ok(1)));
+}
+
+#[tokio::test]
+async fn map_is_empty() {
+    let (lane, mut events) = make_lane(Queue::default());
+
+    let result1 = atomically(&lane.is_empty(), ExactlyOnce).await;
+
+    assert!(matches!(result1, Ok(true)));
+
+    update_direct(&lane, &mut events).await;
+
+    let result2 = atomically(&lane.is_empty(), ExactlyOnce).await;
+
+    assert!(matches!(result2, Ok(false)));
+}
+
+async fn populate<Str>(lane: &MapLane<i32, i32>,
+                            events: &mut Str)
+    where
+        Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+
+    let result = lane.update_direct(1, Arc::new(7)).apply(ExactlyOnce).await;
+    assert!(result.is_ok());
+    let result = lane.update_direct(8, Arc::new(13)).apply(ExactlyOnce).await;
+    assert!(result.is_ok());
+    events.take(2).collect::<Vec<_>>().await;
+}
+
+#[tokio::test]
+async fn map_first() {
+    let (lane, mut events) = make_lane(Queue::default());
+
+    populate(&lane, &mut events).await;
+
+    let result = atomically(&lane.first(), ExactlyOnce).await;
+
+    assert!(matches!(result, Ok(Some(v)) if *v == 7));
+}
+
+#[tokio::test]
+async fn map_last() {
+    let (lane, mut events) = make_lane(Queue::default());
+
+    populate(&lane, &mut events).await;
+
+    let result = atomically(&lane.last(), ExactlyOnce).await;
+
+    assert!(matches!(result, Ok(Some(v)) if *v == 13));
 }
