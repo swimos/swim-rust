@@ -27,6 +27,8 @@ use common::request::request_future::SendAndAwait;
 use super::async_factory;
 use common::connections::error::{ConnectionError, WebSocketError};
 use common::connections::{WebsocketFactory, WsMessage};
+use std::io;
+use std::io::ErrorKind;
 use std::ops::Deref;
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
@@ -164,6 +166,9 @@ impl From<TungsteniteError> for ConnectionError {
             TError::Url(url) => ConnectionError::SocketError(WebSocketError::Url(url.to_string())),
             TError::HttpFormat(_) | TError::Http(_) => {
                 ConnectionError::SocketError(WebSocketError::Protocol)
+            }
+            TError::Io(e) if e.kind() == ErrorKind::ConnectionRefused => {
+                ConnectionError::SendMessageError
             }
             _ => ConnectionError::ConnectError,
         }

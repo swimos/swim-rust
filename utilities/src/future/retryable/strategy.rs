@@ -60,8 +60,8 @@ impl Default for RetryStrategy {
     fn default() -> Self {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
-            max_interval: Duration::from_millis(500),
-            max_backoff: Some(Duration::from_secs(32)),
+            max_interval: Duration::from_secs(16),
+            max_backoff: None,
             retry_no: 0,
         })
     }

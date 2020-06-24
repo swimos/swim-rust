@@ -87,6 +87,7 @@ impl ConnectionError {
     pub fn is_transient(&self) -> bool {
         match &self {
             ConnectionError::SocketError(_) => false,
+            ConnectionError::SendMessageError => true,
             _ => true,
         }
     }
