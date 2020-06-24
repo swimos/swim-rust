@@ -3,7 +3,7 @@ language: rust
 branches:
   only:
     - master
-    - router
+    - server-prototype
 
 jobs:
   include:
