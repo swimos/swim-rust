@@ -15,7 +15,7 @@ jobs:
       vmImage: $(vmImage)
 
     steps:
-      - script: cargo test
+      - script: cargo test --verbose
         env:
           RUST_BACKTRACE: 1
         displayName: cargo test
@@ -30,7 +30,7 @@ jobs:
     steps:
       - script: |
           rustup target add wasm32-unknown-unknown
-          cargo build --no-default-features --target wasm32-unknown-unknown
+          cargo build --no-default-features --target wasm32-unknown-unknown --verbose
         env:
           RUST_BACKTRACE: 1
         displayName: Client WASM build
