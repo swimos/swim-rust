@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use std::any::Any;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -19,12 +22,12 @@ use std::sync::Arc;
 use im::OrdMap;
 
 use common::model::Value;
-use swim_form::Form;
 use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
+use swim_form::Form;
 
 use crate::agent::lane::map::summary::{MapLaneEvent, TransactionSummary};
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
