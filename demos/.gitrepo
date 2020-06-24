@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/swimos/swim-rust-demos
+	branch = master
+	commit = ba48bcc75e07c406d3e3fed800ac90598f18e33a
+	parent = 792c34ac8888a5fa501b07ec7f830549c1ca0309
+	method = merge
+	cmdver = 0.4.1
