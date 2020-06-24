@@ -1,5 +1,5 @@
 jobs:
-  - job: nightly-wasm
+  - job: WASM nightly client build
     displayName: WASM nightly build
 
     pool:
