@@ -15,6 +15,7 @@ jobs:
       vmImage: $(vmImage)
 
     steps:
+      - template: azure-install-sccache.yml
       - script: cargo test --verbose
         env:
           RUST_BACKTRACE: 1
