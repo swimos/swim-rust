@@ -22,16 +22,16 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
   - job: WASM_client_build
-      displayName: WASM client build
+    displayName: WASM client build
 
-      pool:
-        vmImage: ubuntu-18.04
+    pool:
+      vmImage: ubuntu-18.04
 
-      steps:
-        - script: |
-            rustup target add wasm32-unknown-unknown
-            cargo build --no-default-features --target wasm32-unknown-unknown
-          env:
-            RUST_BACKTRACE: 1
-          displayName: Client WASM build
-          workingDirectory: $(Build.SourcesDirectory)/client
+    steps:
+      - script: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --no-default-features --target wasm32-unknown-unknown
+        env:
+          RUST_BACKTRACE: 1
+        displayName: Client WASM build
+        workingDirectory: $(Build.SourcesDirectory)/client
