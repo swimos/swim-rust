@@ -1,0 +1,56 @@
+language: rust
+
+branches:
+  only:
+    - master
+
+jobs:
+  include:
+    - dist: bionic
+      os: linux
+      arch: amd64
+      services:
+        - docker
+      env:
+        - ARCH=amd64
+        - TEST_SERVER_VERSION=v1.1
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.1"
+        - REPO_URL="https://github.com/swimos/swim-docker-example/"
+      script:
+        - cargo test --workspace --exclude client
+        - cd client
+        # Features aren't allowed in the root of a virtual workspace
+        - cargo test --package client --features test-server
+        - cd ..
+
+    - os: windows
+      arch: amd64
+      env: ARCH=amd64
+      script:
+        - cargo test --workspace
+
+rust:
+  - 1.44.0
+
+cache:
+  directories:
+    - $HOME/.cargo
+    - $HOME/.rustup
+
+before_cache:
+  - rm -rf /home/travis/.cargo/registry
+
+before_script:
+  - cargo install cargo-tarpaulin
+
+addons:
+  apt:
+    packages:
+      - libssl-dev
+
+after_success:
+  - |
+    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
+      cargo tarpaulin --ignore-tests --out Xml -t 300
+      bash <(curl -s https://codecov.io/bash)
+    fi
