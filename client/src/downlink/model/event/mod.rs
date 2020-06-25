@@ -13,7 +13,7 @@ use common::model::Value;
 use common::sink::item::ItemSender;
 use futures::Stream;
 use std::num::NonZeroUsize;
-use tracing::{instrument, trace};
+use tracing::{error, instrument, trace};
 
 #[cfg(test)]
 mod tests;
@@ -149,7 +149,16 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
 
                 _ => Ok(Response::none()),
             },
+            Operation::Error(e) => {
+                if e.is_fatal() {
+                    error!("Fatal operation error occured: {:?}", e);
 
+                    Err(e.into())
+                } else {
+                    *downlink_state = DownlinkState::Unlinked;
+                    Ok(Response::for_command(Command::Link))
+                }
+            }
             _ => Ok(Response::none()),
         }
     }
