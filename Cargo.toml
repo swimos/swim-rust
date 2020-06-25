@@ -8,3 +8,7 @@ members = [
     "server",
     "utilities",
 ]
+
+exclude = [
+    "demos/"
+]
