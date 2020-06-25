@@ -108,41 +108,35 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
                 Error::Url(m) => {
                     // Malformatted URL, permanent error
                     tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
-                    Err(e.into())
                 }
                 Error::Io(io_err) => {
                     // todo: This should be considered a fatal error. How should it be handled?
                     tracing::error!(cause = %io_err, "IO error when attempting to connect to host");
-                    Err(e.into())
                 }
                 Error::Tls(tls_err) => {
                     // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
                     tracing::error!(cause = %tls_err, "IO error when attempting to connect to host");
-                    Err(e.into())
                 }
                 Error::Protocol(m) => {
                     tracing::error!(cause = %m, "A protocol error occured when connecting to host");
-                    Err(e.into())
                 }
                 Error::Http(code) => {
                     // todo: This should be expanded and determined if it is possibly a transient error
                     // but for now it will suffice
                     tracing::error!(status_code = %code, "HTTP error when connecting to host");
-                    Err(e.into())
                 }
                 Error::HttpFormat(http_err) => {
                     // This should be expanded and determined if it is possibly a transient error
                     // but for now it will suffice
                     tracing::error!(cause = %http_err, "HTTP error when connecting to host");
-                    Err(e.into())
                 }
                 e => {
                     // Transient or unreachable errors
                     tracing::error!(cause = %e, "Failed to connect to URL");
-                    // Err(e.into())
-                    unimplemented!()
                 }
             }
+
+            Err(e.into())
         }
     }
 }
@@ -167,7 +161,7 @@ impl From<TungsteniteError> for ConnectionError {
                 ConnectionError::SocketError(WebSocketError::Protocol)
             }
             TError::Io(e) if e.kind() == ErrorKind::ConnectionRefused => {
-                ConnectionError::SendMessageError
+                ConnectionError::ConnectionRefused
             }
             _ => ConnectionError::ConnectError,
         }

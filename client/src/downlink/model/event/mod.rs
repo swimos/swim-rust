@@ -156,7 +156,7 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
                     Err(e.into())
                 } else {
                     *downlink_state = DownlinkState::Unlinked;
-                    Ok(Response::for_command(Command::Sync))
+                    Ok(Response::for_command(Command::Link))
                 }
             }
             _ => Ok(Response::none()),
