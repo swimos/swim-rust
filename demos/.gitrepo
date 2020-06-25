@@ -6,7 +6,7 @@
 [subrepo]
 	remote = https://github.com/swimos/swim-rust-demos
 	branch = master
-	commit = ee1f2efaee47fe64c9218b1ddac5a4d51d289fa4
-	parent = 4e31f0e3bafadabf7e7e45455ea0963bfd43a62d
+	commit = a9e6d8d5c8eea26882ff5ba6afc70a0c5d878119
+	parent = 8c9dedb889da706662881d4fc6898be114e03bac
 	method = merge
 	cmdver = 0.4.1
