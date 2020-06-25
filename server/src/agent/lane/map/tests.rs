@@ -17,6 +17,7 @@ use crate::agent::lane::map::{make_lane, MapLane};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::{FutureExt, Stream, StreamExt};
+use std::collections::HashMap;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
@@ -496,4 +497,19 @@ async fn transaction_with_clear_dropping() {
 async fn transaction_with_clear_buffered() {
     let (lane, events) = make_lane(Buffered::default());
     transaction_with_clear(lane, events).await;
+}
+
+#[tokio::test]
+async fn snapshot_map() {
+    let (lane, mut events) = make_lane(Queue::default());
+
+    populate(&lane, &mut events).await;
+
+    let result = atomically(&lane.snapshot(), ExactlyOnce).await;
+
+    let mut expected = HashMap::new();
+    expected.insert(1, Arc::new(7));
+    expected.insert(8, Arc::new(13));
+
+    assert!(matches!(result, Ok(map) if &map == &expected));
 }
