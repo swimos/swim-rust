@@ -203,6 +203,15 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         }
     }
 
+    /// Modifies the value of an entry in the map, in a transaction. This is mor efficient than
+    /// a compound of `get`,  `update` and `remove` transactions.
+    pub fn modify_direct<'a, F>(&'a self, key: K, f: F) -> DirectModify<'a, K, V, F>
+    where
+        F: Fn(Option<&V>) -> Option<V> + Send + Sync + Clone + 'a,
+    {
+        DirectModify { lane: self, key, f }
+    }
+
     /// Removes an entry in the map, in a transaction. This is more efficient than `remove` but
     /// cannot be composed into a larger transaction.
     pub fn remove_direct(&self, key: K) -> DirectRemove<'_, K, V> {
@@ -518,6 +527,75 @@ where
     }
 
     /// Executes the clear as a transaction.
+    pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        let stm = self.into_stm();
+        atomically(&stm, retries).await
+    }
+}
+
+/// Returned by the `modify_direct` method of [`MapLane`]. This wraps the modification transaction
+/// so that it can only be executed and not combined into a larger transaction.
+#[must_use = "Transactions do nothing if not executed."]
+pub struct DirectModify<'a, K, V, F> {
+    lane: &'a MapLane<K, V>,
+    key: K,
+    f: F,
+}
+
+impl<'a, K, V, F> DirectModify<'a, K, V, F>
+where
+    K: Form + Send + Sync + 'a,
+    V: Any + Send + Sync + 'a,
+    F: Fn(Option<&V>) -> Option<V> + Send + Sync + Clone + 'a,
+{
+    fn into_stm(self) -> impl Stm<Result = ()> + 'a {
+        let DirectModify { lane, key, f } = self;
+        let key_value = key.into_value();
+
+        lane.map_state.get().and_then(move |map| {
+            let entry: Option<TVar<V>> = map.get(&key_value).map(Clone::clone);
+            match entry {
+                Some(var) => {
+                    let k = key_value.clone();
+                    let f = f.clone();
+                    let upd = var.get().and_then(move |old| match f(Some(old.as_ref())) {
+                        Some(new) => {
+                            let arc_v = Arc::new(new);
+                            let set_summary = lane
+                                .summary
+                                .put(TransactionSummary::make_update(k.clone(), arc_v.clone()));
+                            left(var.put_arc(arc_v).followed_by(set_summary))
+                        }
+                        _ => {
+                            let set_summary = lane
+                                .summary
+                                .put(TransactionSummary::make_removal(k.clone()));
+                            right(lane.map_state.put(map.without(&k)).followed_by(set_summary))
+                        }
+                    });
+                    left(upd)
+                }
+                _ => match f(None) {
+                    Some(v) => {
+                        let arc_v = Arc::new(v);
+                        let new_var = TVar::from_arc(arc_v.clone());
+                        let set_summary = lane.summary.put(TransactionSummary::make_update(
+                            key_value.clone(),
+                            arc_v,
+                        ));
+                        right(left(
+                            lane.map_state
+                                .put(map.update(key_value.clone(), new_var))
+                                .followed_by(set_summary),
+                        ))
+                    }
+                    _ => right(right(UNIT)),
+                },
+            }
+        })
+    }
+
+    /// Executes the modification as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
         let stm = self.into_stm();
         atomically(&stm, retries).await
