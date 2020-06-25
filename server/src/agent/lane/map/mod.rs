@@ -42,9 +42,17 @@ use utilities::future::{SwimStreamExt, Transform, TransformedStream};
 
 mod summary;
 
+/// A lane consisting of a map from keys to values.
 pub struct MapLane<K, V> {
+    // Transactional variable containing the current state of the map where the value of each entry
+    // is stored in its own variable. The keys are stored as recon values as the map ordering
+    // needs to be determined by the Ord implementation for the Value type, not any Ord
+    // implementation that might be defined or K.
     map_state: TVar<OrdMap<Value, TVar<V>>>,
+    // Transactional variable that records the effect that the transaction most recently executed
+    // on the lane had.
     summary: TVar<TransactionSummary<Value, V>>,
+    // A local variable to coordinate the update of the summary variable for compound transactions.
     transaction_started: TLocal<bool>,
     _key_type: PhantomData<K>,
 }
@@ -150,6 +158,7 @@ where
     }
 }
 
+/// [`Transform`] to break a transaction summary into a sequence of events.
 pub struct SummaryToEvents<V>(PhantomData<fn(V) -> V>);
 
 impl<V> Default for SummaryToEvents<V> {
@@ -158,6 +167,7 @@ impl<V> Default for SummaryToEvents<V> {
     }
 }
 
+/// [`Transform`] to apply a form implementation to the keys of an untyped event.
 pub struct TypeEvents<K>(PhantomData<fn(Value) -> K>);
 
 impl<K> Default for TypeEvents<K> {
@@ -183,6 +193,8 @@ impl<K: Form, V> Transform<MapLaneEvent<Value, V>> for TypeEvents<K> {
 }
 
 impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
+    /// Updates (or inserts) the value of an entry in the map, in a transaction. This is more
+    /// efficient than `update` but cannot be composed into a larger transaction.
     pub fn update_direct(&self, key: K, value: Arc<V>) -> DirectUpdate<'_, K, V> {
         DirectUpdate {
             lane: self,
@@ -191,10 +203,19 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         }
     }
 
+    /// Removes an entry in the map, in a transaction. This is more efficient than `remove` but
+    /// cannot be composed into a larger transaction.
     pub fn remove_direct(&self, key: K) -> DirectRemove<'_, K, V> {
         DirectRemove { lane: self, key }
     }
 
+    /// Clears the map, in a transaction. This is more efficient than `clear` but cannot be
+    /// composed into a larger transaction.
+    pub fn clear_direct(&self) -> DirectClear<'_, K, V> {
+        DirectClear(self)
+    }
+
+    /// Get the value associated with a key in the map, in a transaction.
     pub fn get(&self, key: K) -> impl Stm<Result = Option<Arc<V>>> + '_ {
         let k = key.into_value();
         self.map_state.get().and_then(move |map| match map.get(&k) {
@@ -203,19 +224,23 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         })
     }
 
+    /// Determine if a key is contained in the map, in a transaction.
     pub fn contains(&self, key: K) -> impl Stm<Result = bool> + '_ {
         let k = key.into_value();
         self.map_state.get().map(move |map| map.contains_key(&k))
     }
 
+    /// Get the number of entries in the map, in a transaction.
     pub fn len(&self) -> impl Stm<Result = usize> + '_ {
         self.map_state.get().map(move |map| map.len())
     }
 
+    /// Determine if the map is empty, in a transaction.
     pub fn is_empty(&self) -> impl Stm<Result = bool> + '_ {
         self.map_state.get().map(move |map| map.is_empty())
     }
 
+    /// Get the value associated with the first key in the map, in a transaction.
     pub fn first(&self) -> impl Stm<Result = Option<Arc<V>>> + '_ {
         self.map_state
             .get()
@@ -225,6 +250,7 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
             })
     }
 
+    /// Get the value associated with the last key in the map, in a transaction.
     pub fn last(&self) -> impl Stm<Result = Option<Arc<V>>> + '_ {
         self.map_state
             .get()
@@ -234,10 +260,8 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
             })
     }
 
-    pub fn clear_direct(&self) -> DirectClear<'_, K, V> {
-        DirectClear(self)
-    }
-
+    /// Update (or insert) the value associated with a key in the map, in a transaction. If this
+    /// does not need to be composed into a larger transaction, `update_direct` is more efficient.
     pub fn update(&self, key: K, value: Arc<V>) -> impl Stm<Result = ()> + '_ {
         let MapLane {
             map_state,
@@ -253,6 +277,8 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         compound_map_transaction(transaction_started, summary, action)
     }
 
+    /// Remove an entry from the map, in a transaction. If this does not need to be composed into a
+    /// larger transaction, `remove_direct` is more efficient.
     pub fn remove(&self, key: K) -> impl Stm<Result = ()> + '_ {
         let MapLane {
             map_state,
@@ -275,6 +301,8 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         compound_map_transaction(transaction_started, summary, action)
     }
 
+    /// Clear the map, in a transaction. If this does not need to be composed into a larger
+    /// transaction, `clear_direct` is more efficient.
     pub fn clear(&self) -> impl Stm<Result = ()> + '_ {
         let MapLane {
             map_state,
@@ -301,6 +329,7 @@ where
     K: Form + Hash + Eq + Clone + Send + Sync,
     V: Any + Send + Sync,
 {
+    /// Transactionally snapshot the state of the lane.
     pub fn snapshot(&self) -> impl Stm<Result = HashMap<K, Arc<V>>> + '_ {
         self.map_state.get().and_then(|map| {
             let entry_stms = map
@@ -329,6 +358,11 @@ where
     }
 }
 
+//Compound transactions that mutate the state of the map lane must be coordinated to ensure that
+//the value in the summary variable reflects everything that happened within the transaction but
+//nothing else. This is achieved using a single boolean flag. The flag starts as false and the
+//first mutating action sets it to true and clears the value of the summary. Then it, and all
+//subsequent mutating actions, contribute their effect into the summary.
 fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
     flag: &'a TLocal<bool>,
     summary: &'a TVar<TransactionSummary<Value, V>>,
@@ -348,6 +382,7 @@ fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
     })
 }
 
+//Clears the underlying map state.
 fn clear_lane<'a, V: Any + Send + Sync>(
     content: &'a TVar<OrdMap<Value, V>>,
 ) -> impl Stm<Result = bool> + 'a {
@@ -360,6 +395,7 @@ fn clear_lane<'a, V: Any + Send + Sync>(
     })
 }
 
+//Applies an update to the underlying map state.
 fn update_lane<'a, V: Any + Send + Sync>(
     content: &'a TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
@@ -375,6 +411,7 @@ fn update_lane<'a, V: Any + Send + Sync>(
     })
 }
 
+//Applies a removal to the underlying map state.
 fn remove_lane<'a, V: Any + Send + Sync>(
     content: &'a TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
@@ -389,6 +426,8 @@ fn remove_lane<'a, V: Any + Send + Sync>(
     })
 }
 
+/// Returned by the `update_direct` method of [`MapLane`]. This wraps the update transaction
+/// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectUpdate<'a, K, V> {
     lane: &'a MapLane<K, V>,
@@ -411,12 +450,15 @@ where
         state_update.followed_by(set_summary)
     }
 
+    /// Executes the update as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
 }
 
+/// Returned by the `rmove_direct` method of [`MapLane`]. This wraps the removal transaction
+/// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectRemove<'a, K, V> {
     lane: &'a MapLane<K, V>,
@@ -444,12 +486,15 @@ where
         })
     }
 
+    /// Executes the removal as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
 }
 
+/// Returned by the `clear_direct` method of [`MapLane`]. This wraps the clear transaction
+/// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectClear<'a, K, V>(&'a MapLane<K, V>);
 
@@ -472,6 +517,7 @@ where
         })
     }
 
+    /// Executes the clear as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
         let stm = self.into_stm();
         atomically(&stm, retries).await
