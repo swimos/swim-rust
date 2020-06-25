@@ -33,11 +33,24 @@ pub mod observer;
 // TODO: It would be better if the contents were allocated within the variable itself.
 pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 
+pub(crate) struct TVarGuarded {
+    content: Contents,
+    observer: Option<DynObserver>,
+}
+
+impl TVarGuarded {
+    /// Notify the observer, if present.
+    async fn notify(&mut self) {
+        if let Some(observer) = &mut self.observer {
+            observer.notify_raw(self.content.clone()).await;
+        }
+    }
+}
+
 // Type erased contents of a transactional cell.
 pub(in crate) struct TVarInner {
-    content: RwLock<Contents>,
+    guarded: RwLock<TVarGuarded>,
     wakers: Mutex<Vec<Waker>>,
-    observer: Option<DynObserver>,
 }
 
 impl TVarInner {
@@ -47,9 +60,11 @@ impl TVarInner {
         T: Any + Send + Sync,
     {
         TVarInner {
-            content: RwLock::new(Arc::new(value)),
+            guarded: RwLock::new(TVarGuarded {
+                content: Arc::new(value),
+                observer: None,
+            }),
             wakers: Mutex::new(vec![]),
-            observer: None,
         }
     }
 
@@ -61,20 +76,18 @@ impl TVarInner {
         Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
     {
         TVarInner {
-            content: RwLock::new(Arc::new(value)),
+            guarded: RwLock::new(TVarGuarded {
+                content: Arc::new(value),
+                observer: Some(Box::new(RawWrapper::new(observer))),
+            }),
             wakers: Mutex::new(vec![]),
-            observer: Some(Box::new(RawWrapper::new(observer))),
         }
     }
 
     /// Read the contents of the variable.
     pub async fn read(&self) -> Contents {
-        let lock = self.content.read().await;
-        lock.clone()
-    }
-
-    fn notify_takes_value(&self) -> bool {
-        self.observer.is_some()
+        let lock = self.guarded.read().await;
+        lock.content.clone()
     }
 
     /// Notify any futures waiting for the variable to change.
@@ -86,18 +99,10 @@ impl TVarInner {
             .for_each(|w| w.wake());
     }
 
-    /// Notify any futures waiting for the variable to change.
-    async fn notify_with(&self, contents: Contents) {
-        self.notify();
-        if let Some(observer) = &self.observer {
-            observer.notify_raw(contents).await;
-        }
-    }
-
     /// Determine if the contents of the variable have changed as compared to a previous value.
     pub fn has_changed(&self, ptr: &Contents) -> bool {
-        if let Some(guard) = self.content.read().now_or_never() {
-            !data_ptr_eq(guard.deref().as_ref(), ptr.as_ref())
+        if let Some(guard) = self.guarded.read().now_or_never() {
+            !data_ptr_eq(guard.deref().content.as_ref(), ptr.as_ref())
         } else {
             false
         }
@@ -113,9 +118,12 @@ impl TVarInner {
 
     /// Determine if the contents of the variable have changed as compared to a previous value and,
     /// if not, take the read lock on the variable.
-    pub async fn validate_read(&self, expected: Contents) -> Option<RwLockReadGuard<'_, Contents>> {
-        let guard = self.content.read().await;
-        if data_ptr_eq(guard.deref().as_ref(), expected.as_ref()) {
+    pub(crate) async fn validate_read(
+        &self,
+        expected: Contents,
+    ) -> Option<RwLockReadGuard<'_, TVarGuarded>> {
+        let guard = self.guarded.read().await;
+        if data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) {
             Some(guard)
         } else {
             None
@@ -129,9 +137,11 @@ impl TVarInner {
         expected: Option<Contents>,
         value: Contents,
     ) -> Option<ApplyWrite<'_>> {
-        let guard = self.content.write().await;
+        let guard = self.guarded.write().await;
         match expected {
-            Some(expected) if !data_ptr_eq(guard.deref().as_ref(), expected.as_ref()) => None,
+            Some(expected) if !data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) => {
+                None
+            }
             _ => Some(ApplyWrite {
                 var: self,
                 guard,
@@ -239,8 +249,8 @@ impl<T: Any + Send + Sync> TVar<T> {
     /// Load the value of the variable outside of a transaction.
     pub async fn load(&self) -> Arc<T> {
         let TVar(inner, ..) = self;
-        let lock = inner.content.read().await;
-        let content_ref: Arc<T> = if let Ok(content) = lock.deref().clone().downcast() {
+        let lock = inner.guarded.read().await;
+        let content_ref: Arc<T> = if let Ok(content) = lock.deref().content.clone().downcast() {
             content
         } else {
             unreachable!()
@@ -250,20 +260,11 @@ impl<T: Any + Send + Sync> TVar<T> {
 
     async fn store_arc(&self, value: Arc<T>) {
         let TVar(inner, ..) = self;
-        let mut lock = inner.content.write().await;
-        let duplicate = if inner.notify_takes_value() {
-            Some(value.clone())
-        } else {
-            None
-        };
-        *lock = value;
-        if let Some(value) = duplicate {
-            inner.notify_with(value).await;
-        } else {
-            inner.notify();
-        }
+        let mut lock = inner.guarded.write().await;
+        (*lock).content = value;
+        lock.notify().await;
         drop(lock);
-        self.0.notify();
+        inner.notify();
     }
 
     /// Store a value in the variable outside of a transaction.
@@ -276,8 +277,8 @@ impl<T: Any + Clone> TVar<T> {
     /// Clone the contents of the variable outside of a transaction.
     pub async fn snapshot(&self) -> T {
         let TVar(inner, ..) = self;
-        let lock = inner.content.read().await;
-        let content_ref: &T = if let Some(content) = lock.deref().downcast_ref() {
+        let lock = inner.guarded.read().await;
+        let content_ref: &T = if let Some(content) = lock.deref().content.downcast_ref() {
             content
         } else {
             unreachable!()
@@ -290,7 +291,7 @@ impl<T: Any + Clone> TVar<T> {
 /// applied later.
 pub(crate) struct ApplyWrite<'a> {
     var: &'a TVarInner,
-    guard: RwLockWriteGuard<'a, Contents>,
+    guard: RwLockWriteGuard<'a, TVarGuarded>,
     value: Contents,
 }
 
@@ -302,17 +303,10 @@ impl<'a> ApplyWrite<'a> {
             mut guard,
             value,
         } = self;
-        let duplicate = if var.notify_takes_value() {
-            Some(value.clone())
-        } else {
-            None
-        };
-        *guard = value;
-        if let Some(value) = duplicate {
-            var.notify_with(value).await;
-        } else {
-            var.notify();
-        }
+
+        (*guard).content = value;
+        guard.notify().await;
         drop(guard);
+        var.notify();
     }
 }

@@ -12,6 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+use futures::future::{ready, Ready};
+use futures::stream::{empty, Empty};
+use stm::transaction::RetryManager;
 
-pub mod agent;
+pub struct ExactlyOnce;
+
+impl RetryManager for ExactlyOnce {
+    type ContentionManager = Empty<()>;
+    type RetryFut = Ready<bool>;
+
+    fn contention_manager(&self) -> Self::ContentionManager {
+        empty()
+    }
+
+    fn retry(&mut self) -> Self::RetryFut {
+        ready(false)
+    }
+}

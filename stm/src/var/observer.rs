@@ -25,7 +25,7 @@ pub trait Observer<'a, T> {
     type RecFuture: Future<Output = ()> + Send + 'a;
 
     /// Called by the [`TVar`] each time the value changes.
-    fn notify(&'a self, value: T) -> Self::RecFuture;
+    fn notify(&'a mut self, value: T) -> Self::RecFuture;
 }
 
 /// An observer that can be applied over any lifetime.
@@ -35,7 +35,10 @@ impl<T, O> StaticObserver<T> for O where O: for<'a> Observer<'a, T> {}
 
 /// Type erased observer to be passed into [`TVarInner`].
 pub(super) trait RawObserver {
-    fn notify_raw<'a>(&'a self, value: Contents) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+    fn notify_raw<'a>(
+        &'a mut self,
+        value: Contents,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 }
 
 pub(super) type DynObserver = Box<dyn RawObserver + Send + Sync + 'static>;
@@ -54,7 +57,10 @@ where
     T: Any + Send + Sync,
     Obs: StaticObserver<Arc<T>>,
 {
-    fn notify_raw<'a>(&'a self, value: Contents) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+    fn notify_raw<'a>(
+        &'a mut self,
+        value: Contents,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
         let RawWrapper(observer, _) = self;
         match value.downcast::<T>() {
             Ok(t) => Box::pin(observer.notify(t)),
