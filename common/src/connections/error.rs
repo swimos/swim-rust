@@ -30,6 +30,8 @@ pub enum ConnectionError {
     ReceiveMessageError,
     /// Error that occurred when closing down connections.
     AlreadyClosedError,
+    /// The connection was refused by the host.
+    ConnectionRefused,
 
     /// Not an error. Closed event by the WebSocket
     Closed,
@@ -72,6 +74,9 @@ impl Display for ConnectionError {
                 write!(f, "An error occured when closing down connections.")
             }
             ConnectionError::Closed => write!(f, "The WebSocket closed successfully."),
+            ConnectionError::ConnectionRefused => {
+                write!(f, "The connection was refused by the host")
+            }
         }
     }
 }
@@ -87,6 +92,7 @@ impl ConnectionError {
     pub fn is_transient(&self) -> bool {
         match &self {
             ConnectionError::SocketError(_) => false,
+            ConnectionError::ConnectionRefused => true,
             _ => true,
         }
     }
