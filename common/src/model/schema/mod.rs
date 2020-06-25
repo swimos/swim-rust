@@ -423,18 +423,18 @@ pub struct Bound<T: Copy + PartialOrd> {
 }
 
 impl<T: Copy + PartialOrd> Bound<T> {
-    fn new(value: T, inclusive: bool) -> Self {
+    pub fn new(value: T, inclusive: bool) -> Self {
         Bound { value, inclusive }
     }
 
-    fn inclusive(value: T) -> Self {
+    pub fn inclusive(value: T) -> Self {
         Bound {
             value,
             inclusive: true,
         }
     }
 
-    fn exclusive(value: T) -> Self {
+    pub fn exclusive(value: T) -> Self {
         Bound {
             value,
             inclusive: false,
@@ -498,10 +498,23 @@ pub struct Range<T: Copy + PartialOrd> {
 }
 
 impl<T: Copy + PartialOrd> Range<T> {
-    fn new(min: Option<Bound<T>>, max: Option<Bound<T>>) -> Self {
-        let min = min.map(|bound| RangeBound::Lower(bound));
-        let max = max.map(|bound| RangeBound::Upper(bound));
+    pub fn new(min: Option<Bound<T>>, max: Option<Bound<T>>) -> Self {
+        let min = min.map(RangeBound::Lower);
+        let max = max.map(RangeBound::Upper);
         Range { min, max }
+    }
+
+    pub fn upper_bounded(max: Bound<T>) -> Self {
+        Range::new(None, Some(max))
+    }
+    pub fn lower_bounded(min: Bound<T>) -> Self {
+        Range::new(Some(min), None)
+    }
+    pub fn bounded(min: Bound<T>, max: Bound<T>) -> Self {
+        Range::new(Some(min), Some(max))
+    }
+    pub fn unbounded() -> Self {
+        Range::new(None, None)
     }
 
     fn is_upper_bounded(&self) -> bool {
@@ -557,9 +570,9 @@ fn cmp_bounded_and_half_bounded_range<T: Copy + PartialOrd>(
     half_bounded: &Range<T>,
     bounded: &Range<T>,
 ) -> Option<Ordering> {
-    if half_bounded.is_upper_bounded() && half_bounded.max >= bounded.max {
-        Some(Ordering::Greater)
-    } else if half_bounded.is_lower_bounded() && half_bounded.min >= bounded.min {
+    if (half_bounded.is_upper_bounded() && half_bounded.max >= bounded.max)
+        || half_bounded.is_lower_bounded() && half_bounded.min >= bounded.min
+    {
         Some(Ordering::Greater)
     } else {
         None
@@ -780,24 +793,18 @@ fn non_nan_cmp(other: &StandardSchema) -> Option<Ordering> {
 }
 
 fn int_32_range() -> Range<i64> {
-    Range::new(
-        Some(Bound::inclusive(i32::MIN as i64)),
-        Some(Bound::inclusive(i32::MAX as i64)),
+    Range::bounded(
+        Bound::inclusive(i32::MIN as i64),
+        Bound::inclusive(i32::MAX as i64),
     )
 }
 
 fn int_64_range() -> Range<i64> {
-    Range::new(
-        Some(Bound::inclusive(i64::MIN)),
-        Some(Bound::inclusive(i64::MAX)),
-    )
+    Range::bounded(Bound::inclusive(i64::MIN), Bound::inclusive(i64::MAX))
 }
 
 fn float_64_range() -> Range<f64> {
-    Range::new(
-        Some(Bound::inclusive(f64::MIN)),
-        Some(Bound::inclusive(f64::MAX)),
-    )
+    Range::bounded(Bound::inclusive(f64::MIN), Bound::inclusive(f64::MAX))
 }
 
 impl Display for StandardSchema {
@@ -942,70 +949,52 @@ impl StandardSchema {
 
     /// Matches integer values in an inclusive range.
     pub fn inclusive_int_range(min: i64, max: i64) -> Self {
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(min)),
-            Some(Bound::inclusive(max)),
-        ))
+        StandardSchema::InRangeInt(Range::bounded(Bound::inclusive(min), Bound::inclusive(max)))
     }
 
     /// Matches integer values in an exclusive range.
     pub fn exclusive_int_range(min: i64, max: i64) -> Self {
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::exclusive(min)),
-            Some(Bound::exclusive(max)),
-        ))
+        StandardSchema::InRangeInt(Range::bounded(Bound::exclusive(min), Bound::exclusive(max)))
     }
 
     /// Matches integer values, inclusive below and exclusive above.
     pub fn int_range(min: i64, max: i64) -> Self {
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(min)),
-            Some(Bound::new(max, false)),
-        ))
+        StandardSchema::InRangeInt(Range::bounded(Bound::inclusive(min), Bound::exclusive(max)))
     }
 
     /// Matches integer values less than (or less than or equal to) a value.
     pub fn until_int(n: i64, inclusive: bool) -> Self {
-        StandardSchema::InRangeInt(Range::new(None, Some(Bound::new(n, inclusive))))
+        StandardSchema::InRangeInt(Range::upper_bounded(Bound::new(n, inclusive)))
     }
 
     /// Matches integer values greater than (or greater than or equal to) a value.
     pub fn after_int(n: i64, inclusive: bool) -> Self {
-        StandardSchema::InRangeInt(Range::new(Some(Bound::new(n, inclusive)), None))
+        StandardSchema::InRangeInt(Range::lower_bounded(Bound::new(n, inclusive)))
     }
 
     /// Matches floating point values in an inclusive range.
     pub fn inclusive_float_range(min: f64, max: f64) -> Self {
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::inclusive(min)),
-            Some(Bound::inclusive(max)),
-        ))
+        StandardSchema::InRangeFloat(Range::bounded(Bound::inclusive(min), Bound::inclusive(max)))
     }
 
     /// Matches floating point values in an exclusive range.
     pub fn exclusive_float_range(min: f64, max: f64) -> Self {
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::exclusive(min)),
-            Some(Bound::exclusive(max)),
-        ))
+        StandardSchema::InRangeFloat(Range::bounded(Bound::exclusive(min), Bound::exclusive(max)))
     }
 
     /// Matches floating point values, inclusive below and exclusive above.
     pub fn float_range(min: f64, max: f64) -> Self {
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::inclusive(min)),
-            Some(Bound::exclusive(max)),
-        ))
+        StandardSchema::InRangeFloat(Range::bounded(Bound::inclusive(min), Bound::exclusive(max)))
     }
 
     /// Matches floating point values less than (or less than or equal to) a value.
     pub fn until_float(x: f64, inclusive: bool) -> Self {
-        StandardSchema::InRangeFloat(Range::new(None, Some(Bound::new(x, inclusive))))
+        StandardSchema::InRangeFloat(Range::upper_bounded(Bound::new(x, inclusive)))
     }
 
     /// Matches floating point values greater than (or greater than or equal to) a value.
     pub fn after_float(x: f64, inclusive: bool) -> Self {
-        StandardSchema::InRangeFloat(Range::new(Some(Bound::new(x, inclusive)), None))
+        StandardSchema::InRangeFloat(Range::lower_bounded(Bound::new(x, inclusive)))
     }
 
     /// Negate this schema.

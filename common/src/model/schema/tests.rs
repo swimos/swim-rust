@@ -1360,7 +1360,7 @@ fn equal_to_value() {
 
 #[test]
 fn in_int_range_to_value_min() {
-    let schema = StandardSchema::InRangeInt(Range::new(Some(Bound::inclusive(12)), None));
+    let schema = StandardSchema::InRangeInt(Range::lower_bounded(Bound::inclusive(12)));
     let value = schema.to_value();
     let expected = Value::of_attr((
         "in_range_int",
@@ -1377,7 +1377,7 @@ fn in_int_range_to_value_min() {
 
 #[test]
 fn in_int_range_to_value_max() {
-    let schema = StandardSchema::InRangeInt(Range::new(None, Some(Bound::inclusive(12))));
+    let schema = StandardSchema::InRangeInt(Range::upper_bounded(Bound::inclusive(12)));
     let value = schema.to_value();
     let expected = Value::of_attr((
         "in_range_int",
@@ -1394,10 +1394,8 @@ fn in_int_range_to_value_max() {
 
 #[test]
 fn in_int_range_to_value_both() {
-    let schema = StandardSchema::InRangeInt(Range::new(
-        Some(Bound::exclusive(-3)),
-        Some(Bound::inclusive(12)),
-    ));
+    let schema =
+        StandardSchema::InRangeInt(Range::bounded(Bound::exclusive(-3), Bound::inclusive(12)));
     let value = schema.to_value();
     let expected = Value::of_attr((
         "in_range_int",
@@ -1423,7 +1421,7 @@ fn in_int_range_to_value_both() {
 
 #[test]
 fn in_float_range_to_value_min() {
-    let schema = StandardSchema::InRangeFloat(Range::new(Some(Bound::exclusive(0.5)), None));
+    let schema = StandardSchema::InRangeFloat(Range::lower_bounded(Bound::exclusive(0.5)));
     let value = schema.to_value();
     let expected = Value::of_attr((
         "in_range_float",
@@ -1440,7 +1438,7 @@ fn in_float_range_to_value_min() {
 
 #[test]
 fn in_float_range_to_value_max() {
-    let schema = StandardSchema::InRangeFloat(Range::new(None, Some(Bound::exclusive(0.5))));
+    let schema = StandardSchema::InRangeFloat(Range::upper_bounded(Bound::exclusive(0.5)));
     let value = schema.to_value();
     let expected = Value::of_attr((
         "in_range_float",
@@ -1457,9 +1455,9 @@ fn in_float_range_to_value_max() {
 
 #[test]
 fn in_float_range_to_value_both() {
-    let schema = StandardSchema::InRangeFloat(Range::new(
-        Some(Bound::inclusive(-0.5)),
-        Some(Bound::exclusive(0.5)),
+    let schema = StandardSchema::InRangeFloat(Range::bounded(
+        Bound::inclusive(-0.5),
+        Bound::exclusive(0.5),
     ));
     let value = schema.to_value();
     let expected = Value::of_attr((
@@ -1935,324 +1933,301 @@ fn compare_lower_range_bounds_diff_types_diff_values() {
 
 #[test]
 fn compare_unbounded_ranges() {
-    let first: Range<i64> = Range::new(None, None);
-    let second: Range<i64> = Range::new(None, None);
+    let first: Range<i64> = Range::unbounded();
+    let second: Range<i64> = Range::unbounded();
 
     assert_eq!(first, second)
 }
 
 #[test]
 fn compare_unbounded_range_to_any() {
-    let first: Range<i64> = Range::new(None, None);
+    let first: Range<i64> = Range::unbounded();
 
-    assert!(first > Range::new(None, Some(Bound::exclusive(10))));
-    assert!(Range::new(None, Some(Bound::exclusive(-100))) < first);
-    assert!(first > Range::new(Some(Bound::inclusive(-100)), None));
-    assert!(Range::new(Some(Bound::exclusive(160)), None) < first);
-    assert!(first > Range::new(Some(Bound::inclusive(11)), Some(Bound::exclusive(51))));
-    assert!(Range::new(Some(Bound::exclusive(-32)), Some(Bound::inclusive(51))) < first);
+    assert!(first > Range::upper_bounded(Bound::exclusive(10)));
+    assert!(Range::upper_bounded(Bound::exclusive(-100)) < first);
+    assert!(first > Range::lower_bounded(Bound::inclusive(-100)));
+    assert!(Range::lower_bounded(Bound::exclusive(160)) < first);
+    assert!(first > Range::bounded(Bound::inclusive(11), Bound::exclusive(51)));
+    assert!(Range::bounded(Bound::exclusive(-32), Bound::inclusive(51)) < first);
 }
 
 #[test]
 fn compare_bounded_ranges_equal() {
     assert_eq!(
-        Range::new(Some(Bound::exclusive(10)), Some(Bound::exclusive(72))),
-        Range::new(Some(Bound::exclusive(10)), Some(Bound::exclusive(72)))
+        Range::bounded(Bound::exclusive(10), Bound::exclusive(72)),
+        Range::bounded(Bound::exclusive(10), Bound::exclusive(72))
     );
 
     assert_eq!(
-        Range::new(Some(Bound::inclusive(-100)), Some(Bound::exclusive(15))),
-        Range::new(Some(Bound::inclusive(-100)), Some(Bound::exclusive(15)))
+        Range::bounded(Bound::inclusive(-100), Bound::exclusive(15)),
+        Range::bounded(Bound::inclusive(-100), Bound::exclusive(15))
     );
 }
 
 #[test]
 fn compare_bounded_ranges_different() {
     assert!(
-        Range::new(Some(Bound::inclusive(-5)), Some(Bound::inclusive(5)))
-            < Range::new(Some(Bound::inclusive(-10)), Some(Bound::inclusive(10)))
+        Range::bounded(Bound::inclusive(-5), Bound::inclusive(5))
+            < Range::bounded(Bound::inclusive(-10), Bound::inclusive(10))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-3.5)), Some(Bound::inclusive(3.1)))
-            < Range::new(Some(Bound::inclusive(-4.5)), Some(Bound::inclusive(3.2)))
+        Range::bounded(Bound::inclusive(-3.5), Bound::inclusive(3.1))
+            < Range::bounded(Bound::inclusive(-4.5), Bound::inclusive(3.2))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(5)), Some(Bound::exclusive(15)))
-            > Range::new(Some(Bound::exclusive(8)), Some(Bound::inclusive(12)))
+        Range::bounded(Bound::exclusive(5), Bound::exclusive(15))
+            > Range::bounded(Bound::exclusive(8), Bound::inclusive(12))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(0.11)), Some(Bound::exclusive(0.99)))
-            > Range::new(Some(Bound::exclusive(0.12)), Some(Bound::inclusive(0.88)))
+        Range::bounded(Bound::exclusive(0.11), Bound::exclusive(0.99))
+            > Range::bounded(Bound::exclusive(0.12), Bound::inclusive(0.88))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-5.5)), Some(Bound::inclusive(5.5)))
-            < Range::new(Some(Bound::inclusive(-5.5)), Some(Bound::inclusive(15.5)))
+        Range::bounded(Bound::exclusive(-5.5), Bound::inclusive(5.5))
+            < Range::bounded(Bound::inclusive(-5.5), Bound::inclusive(15.5))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-12.2)), Some(Bound::inclusive(12.2)))
-            > Range::new(Some(Bound::exclusive(-12.2)), Some(Bound::inclusive(2.2)))
+        Range::bounded(Bound::inclusive(-12.2), Bound::inclusive(12.2))
+            > Range::bounded(Bound::exclusive(-12.2), Bound::inclusive(2.2))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-5.5)), Some(Bound::exclusive(5.5)))
-            < Range::new(Some(Bound::exclusive(-15.5)), Some(Bound::inclusive(5.5)))
+        Range::bounded(Bound::inclusive(-5.5), Bound::exclusive(5.5))
+            < Range::bounded(Bound::exclusive(-15.5), Bound::inclusive(5.5))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-12.2)), Some(Bound::inclusive(2.2)))
-            > Range::new(Some(Bound::inclusive(-12.2)), Some(Bound::exclusive(2.2)))
+        Range::bounded(Bound::inclusive(-12.2), Bound::inclusive(2.2))
+            > Range::bounded(Bound::inclusive(-12.2), Bound::exclusive(2.2))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-5.5)), Some(Bound::exclusive(5.5)))
-            < Range::new(Some(Bound::inclusive(-5.5)), Some(Bound::inclusive(5.5)))
+        Range::bounded(Bound::exclusive(-5.5), Bound::exclusive(5.5))
+            < Range::bounded(Bound::inclusive(-5.5), Bound::inclusive(5.5))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-12.2)), Some(Bound::inclusive(12.2)))
-            > Range::new(Some(Bound::exclusive(-12.2)), Some(Bound::exclusive(12.2)))
+        Range::bounded(Bound::inclusive(-12.2), Bound::inclusive(12.2))
+            > Range::bounded(Bound::exclusive(-12.2), Bound::exclusive(12.2))
     );
 }
 
 #[test]
 fn compare_bounded_ranges_not_related() {
+    assert!(Range::bounded(Bound::inclusive(2.2), Bound::inclusive(5.5))
+        .partial_cmp(&Range::bounded(
+            Bound::inclusive(-2.2),
+            Bound::inclusive(-5.5)
+        ))
+        .is_none());
+
     assert!(
-        Range::new(Some(Bound::inclusive(2.2)), Some(Bound::inclusive(5.5)))
-            .partial_cmp(&Range::new(
-                Some(Bound::inclusive(-2.2)),
-                Some(Bound::inclusive(-5.5))
+        Range::bounded(Bound::inclusive(-2.2), Bound::inclusive(5.5))
+            .partial_cmp(&Range::bounded(
+                Bound::inclusive(6.6),
+                Bound::inclusive(8.8)
             ))
             .is_none()
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-2.2)), Some(Bound::inclusive(5.5)))
-            .partial_cmp(&Range::new(
-                Some(Bound::inclusive(6.6)),
-                Some(Bound::inclusive(8.8))
+        Range::bounded(Bound::inclusive(-2.2), Bound::inclusive(5.5))
+            .partial_cmp(&Range::bounded(
+                Bound::inclusive(-1.1),
+                Bound::inclusive(6.6)
             ))
             .is_none()
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-2.2)), Some(Bound::inclusive(5.5)))
-            .partial_cmp(&Range::new(
-                Some(Bound::inclusive(-1.1)),
-                Some(Bound::inclusive(6.6))
+        Range::bounded(Bound::exclusive(-2.2), Bound::exclusive(5.5))
+            .partial_cmp(&Range::bounded(
+                Bound::exclusive(-3.3),
+                Bound::exclusive(4.4)
             ))
             .is_none()
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-2.2)), Some(Bound::exclusive(5.5)))
-            .partial_cmp(&Range::new(
-                Some(Bound::exclusive(-3.3)),
-                Some(Bound::exclusive(4.4))
+        Range::bounded(Bound::exclusive(-2.2), Bound::inclusive(5.5))
+            .partial_cmp(&Range::bounded(
+                Bound::inclusive(-2.2),
+                Bound::inclusive(4.4)
             ))
             .is_none()
     );
 
-    assert!(
-        Range::new(Some(Bound::exclusive(-2.2)), Some(Bound::inclusive(5.5)))
-            .partial_cmp(&Range::new(
-                Some(Bound::inclusive(-2.2)),
-                Some(Bound::inclusive(4.4))
-            ))
-            .is_none()
-    );
+    assert!(Range::bounded(Bound::inclusive(33), Bound::inclusive(44))
+        .partial_cmp(&Range::bounded(Bound::inclusive(22), Bound::exclusive(44)))
+        .is_none());
 
-    assert!(
-        Range::new(Some(Bound::inclusive(33)), Some(Bound::inclusive(44)))
-            .partial_cmp(&Range::new(
-                Some(Bound::inclusive(22)),
-                Some(Bound::exclusive(44))
-            ))
-            .is_none()
-    );
+    assert!(Range::bounded(Bound::exclusive(-11), Bound::inclusive(11))
+        .partial_cmp(&Range::bounded(Bound::inclusive(-11), Bound::exclusive(11)))
+        .is_none());
 
-    assert!(
-        Range::new(Some(Bound::exclusive(-11)), Some(Bound::inclusive(11)))
-            .partial_cmp(&Range::new(
-                Some(Bound::inclusive(-11)),
-                Some(Bound::exclusive(11))
-            ))
-            .is_none()
-    );
-
-    assert!(
-        Range::new(Some(Bound::inclusive(-33)), Some(Bound::exclusive(33)))
-            .partial_cmp(&Range::new(
-                Some(Bound::exclusive(-33)),
-                Some(Bound::inclusive(33))
-            ))
-            .is_none()
-    );
+    assert!(Range::bounded(Bound::inclusive(-33), Bound::exclusive(33))
+        .partial_cmp(&Range::bounded(Bound::exclusive(-33), Bound::inclusive(33)))
+        .is_none());
 }
 
 #[test]
 fn compare_upper_bounded_and_bounded_related() {
     assert!(
-        Range::new(None, Some(Bound::inclusive(15)))
-            > Range::new(Some(Bound::exclusive(-10)), Some(Bound::exclusive(10)))
+        Range::upper_bounded(Bound::inclusive(15))
+            > Range::bounded(Bound::exclusive(-10), Bound::exclusive(10))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-1)), Some(Bound::exclusive(1)))
-            < Range::new(None, Some(Bound::inclusive(11)))
+        Range::bounded(Bound::exclusive(-1), Bound::exclusive(1))
+            < Range::upper_bounded(Bound::inclusive(11))
     );
 
     assert!(
-        Range::new(None, Some(Bound::inclusive(15.5)))
-            > Range::new(Some(Bound::exclusive(-10.1)), Some(Bound::exclusive(15.5)))
+        Range::upper_bounded(Bound::inclusive(15.5))
+            > Range::bounded(Bound::exclusive(-10.1), Bound::exclusive(15.5))
     );
 
     assert!(
-        Range::new(None, Some(Bound::exclusive(15.5)))
-            > Range::new(Some(Bound::exclusive(-10.1)), Some(Bound::exclusive(15.5)))
+        Range::upper_bounded(Bound::exclusive(15.5))
+            > Range::bounded(Bound::exclusive(-10.1), Bound::exclusive(15.5))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-1.1)), Some(Bound::exclusive(11.5)))
-            < Range::new(None, Some(Bound::inclusive(11.5)))
+        Range::bounded(Bound::exclusive(-1.1), Bound::exclusive(11.5))
+            < Range::upper_bounded(Bound::inclusive(11.5))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-1.1)), Some(Bound::exclusive(-0.11)))
-            < Range::new(None, Some(Bound::exclusive(-0.11)))
+        Range::bounded(Bound::exclusive(-1.1), Bound::exclusive(-0.11))
+            < Range::upper_bounded(Bound::exclusive(-0.11))
     );
 }
 
 #[test]
 fn compare_upper_bounded_and_bounded_not_related() {
-    assert!(Range::new(None, Some(Bound::exclusive(10.10)))
-        .partial_cmp(&Range::new(
-            Some(Bound::exclusive(20.20)),
-            Some(Bound::exclusive(25.25))
+    assert!(Range::upper_bounded(Bound::exclusive(10.10))
+        .partial_cmp(&Range::bounded(
+            Bound::exclusive(20.20),
+            Bound::exclusive(25.25)
         ))
         .is_none());
 
-    assert!(Range::new(
-        Some(Bound::exclusive(-25.25)),
-        Some(Bound::exclusive(-20.20))
-    )
-    .partial_cmp(&Range::new(None, Some(Bound::exclusive(-30.30))))
-    .is_none());
+    assert!(
+        Range::bounded(Bound::exclusive(-25.25), Bound::exclusive(-20.20))
+            .partial_cmp(&Range::upper_bounded(Bound::exclusive(-30.30)))
+            .is_none()
+    );
 
-    assert!(Range::new(None, Some(Bound::exclusive(10.10)))
-        .partial_cmp(&Range::new(
-            Some(Bound::inclusive(10.10)),
-            Some(Bound::inclusive(25.25))
+    assert!(Range::upper_bounded(Bound::exclusive(10.10))
+        .partial_cmp(&Range::bounded(
+            Bound::inclusive(10.10),
+            Bound::inclusive(25.25)
         ))
         .is_none());
 
-    assert!(Range::new(
-        Some(Bound::inclusive(-25.25)),
-        Some(Bound::inclusive(-20.20))
-    )
-    .partial_cmp(&Range::new(None, Some(Bound::inclusive(-25.25))))
-    .is_none());
+    assert!(
+        Range::bounded(Bound::inclusive(-25.25), Bound::inclusive(-20.20))
+            .partial_cmp(&Range::upper_bounded(Bound::inclusive(-25.25)))
+            .is_none()
+    );
 
-    assert!(Range::new(None, Some(Bound::exclusive(33.33)))
-        .partial_cmp(&Range::new(
-            Some(Bound::inclusive(10.10)),
-            Some(Bound::inclusive(33.33))
+    assert!(Range::upper_bounded(Bound::exclusive(33.33))
+        .partial_cmp(&Range::bounded(
+            Bound::inclusive(10.10),
+            Bound::inclusive(33.33)
         ))
         .is_none());
 
-    assert!(Range::new(
-        Some(Bound::inclusive(-11.25)),
-        Some(Bound::inclusive(-7.33))
-    )
-    .partial_cmp(&Range::new(None, Some(Bound::exclusive(-7.33))))
-    .is_none());
+    assert!(
+        Range::bounded(Bound::inclusive(-11.25), Bound::inclusive(-7.33))
+            .partial_cmp(&Range::upper_bounded(Bound::exclusive(-7.33)))
+            .is_none()
+    );
 }
 
 #[test]
 fn compare_lower_bounded_and_bounded_related() {
     assert!(
-        Range::new(Some(Bound::inclusive(-100)), None)
-            > Range::new(Some(Bound::exclusive(-10)), Some(Bound::exclusive(10)))
+        Range::lower_bounded(Bound::inclusive(-100))
+            > Range::bounded(Bound::exclusive(-10), Bound::exclusive(10))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-1)), Some(Bound::exclusive(1)))
-            < Range::new(Some(Bound::inclusive(-22)), None)
+        Range::bounded(Bound::exclusive(-1), Bound::exclusive(1))
+            < Range::lower_bounded(Bound::inclusive(-22))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(15.5)), None)
-            > Range::new(Some(Bound::exclusive(15.5)), Some(Bound::exclusive(200.22)))
+        Range::lower_bounded(Bound::inclusive(15.5))
+            > Range::bounded(Bound::exclusive(15.5), Bound::exclusive(200.22))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(15.5)), None)
-            > Range::new(Some(Bound::inclusive(15.5)), Some(Bound::exclusive(200.22)))
+        Range::lower_bounded(Bound::inclusive(15.5))
+            > Range::bounded(Bound::inclusive(15.5), Bound::exclusive(200.22))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-11.1)), Some(Bound::exclusive(11.1)))
-            < Range::new(Some(Bound::inclusive(-11.1)), None)
+        Range::bounded(Bound::exclusive(-11.1), Bound::exclusive(11.1))
+            < Range::lower_bounded(Bound::inclusive(-11.1))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-0.11)), Some(Bound::exclusive(0.11)))
-            < Range::new(Some(Bound::exclusive(-0.11)), None)
+        Range::bounded(Bound::exclusive(-0.11), Bound::exclusive(0.11))
+            < Range::lower_bounded(Bound::exclusive(-0.11))
     );
 }
 
 #[test]
 fn compare_lower_bounded_and_bounded_not_related() {
-    assert!(Range::new(Some(Bound::exclusive(10.10)), None)
-        .partial_cmp(&Range::new(
-            Some(Bound::exclusive(1.1)),
-            Some(Bound::exclusive(5.5))
+    assert!(Range::lower_bounded(Bound::exclusive(10.10))
+        .partial_cmp(&Range::bounded(
+            Bound::exclusive(1.1),
+            Bound::exclusive(5.5)
         ))
         .is_none());
 
-    assert!(Range::new(
-        Some(Bound::exclusive(-33.33)),
-        Some(Bound::exclusive(-22.22))
-    )
-    .partial_cmp(&Range::new(Some(Bound::exclusive(-20.20)), None))
-    .is_none());
+    assert!(
+        Range::bounded(Bound::exclusive(-33.33), Bound::exclusive(-22.22))
+            .partial_cmp(&Range::lower_bounded(Bound::exclusive(-20.20)))
+            .is_none()
+    );
 
-    assert!(Range::new(Some(Bound::exclusive(12.12)), None)
-        .partial_cmp(&Range::new(
-            Some(Bound::inclusive(1.1)),
-            Some(Bound::inclusive(12.12))
+    assert!(Range::lower_bounded(Bound::exclusive(12.12))
+        .partial_cmp(&Range::bounded(
+            Bound::inclusive(1.1),
+            Bound::inclusive(12.12)
         ))
         .is_none());
 
-    assert!(Range::new(
-        Some(Bound::inclusive(-30.30)),
-        Some(Bound::inclusive(-25.25))
-    )
-    .partial_cmp(&Range::new(Some(Bound::inclusive(-25.25)), None))
-    .is_none());
+    assert!(
+        Range::bounded(Bound::inclusive(-30.30), Bound::inclusive(-25.25))
+            .partial_cmp(&Range::lower_bounded(Bound::inclusive(-25.25)))
+            .is_none()
+    );
 
-    assert!(Range::new(Some(Bound::exclusive(3.3)), None)
-        .partial_cmp(&Range::new(
-            Some(Bound::inclusive(3.3)),
-            Some(Bound::inclusive(10.10))
+    assert!(Range::lower_bounded(Bound::exclusive(3.3))
+        .partial_cmp(&Range::bounded(
+            Bound::inclusive(3.3),
+            Bound::inclusive(10.10)
         ))
         .is_none());
 
-    assert!(Range::new(
-        Some(Bound::inclusive(-11.25)),
-        Some(Bound::inclusive(-7.33))
-    )
-    .partial_cmp(&Range::new(Some(Bound::exclusive(-7.33)), None))
-    .is_none());
+    assert!(
+        Range::bounded(Bound::inclusive(-11.25), Bound::inclusive(-7.33))
+            .partial_cmp(&Range::lower_bounded(Bound::exclusive(-7.33)))
+            .is_none()
+    );
 
-    assert!(Range::new(Some(Bound::exclusive(10.10)), None)
-        .partial_cmp(&Range::new(
-            Some(Bound::inclusive(10.10)),
-            Some(Bound::inclusive(25.25))
+    assert!(Range::lower_bounded(Bound::exclusive(10.10))
+        .partial_cmp(&Range::bounded(
+            Bound::inclusive(10.10),
+            Bound::inclusive(25.25)
         ))
         .is_none());
 }
@@ -2260,67 +2235,67 @@ fn compare_lower_bounded_and_bounded_not_related() {
 #[test]
 fn compare_upper_bounded() {
     assert_eq!(
-        Range::new(None, Some(Bound::exclusive(10.10))),
-        Range::new(None, Some(Bound::exclusive(10.10)))
+        Range::upper_bounded(Bound::exclusive(10.10)),
+        Range::upper_bounded(Bound::exclusive(10.10))
     );
 
     assert!(
-        Range::new(None, Some(Bound::exclusive(15.15)))
-            > Range::new(None, Some(Bound::exclusive(10.10)))
+        Range::upper_bounded(Bound::exclusive(15.15))
+            > Range::upper_bounded(Bound::exclusive(10.10))
     );
 
     assert!(
-        Range::new(None, Some(Bound::exclusive(-15.15)))
-            < Range::new(None, Some(Bound::exclusive(-10.10)))
+        Range::upper_bounded(Bound::exclusive(-15.15))
+            < Range::upper_bounded(Bound::exclusive(-10.10))
     );
 
     assert!(
-        Range::new(None, Some(Bound::inclusive(10.10)))
-            > Range::new(None, Some(Bound::exclusive(10.10)))
+        Range::upper_bounded(Bound::inclusive(10.10))
+            > Range::upper_bounded(Bound::exclusive(10.10))
     );
 
     assert!(
-        Range::new(None, Some(Bound::exclusive(-10.10)))
-            < Range::new(None, Some(Bound::inclusive(-10.10)))
+        Range::upper_bounded(Bound::exclusive(-10.10))
+            < Range::upper_bounded(Bound::inclusive(-10.10))
     );
 }
 
 #[test]
 fn compare_lower_bounded() {
     assert_eq!(
-        Range::new(Some(Bound::exclusive(3.14)), None),
-        Range::new(Some(Bound::exclusive(3.14)), None)
+        Range::lower_bounded(Bound::exclusive(3.14)),
+        Range::lower_bounded(Bound::exclusive(3.14))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(15.15)), None)
-            < Range::new(Some(Bound::exclusive(10.10)), None)
+        Range::lower_bounded(Bound::exclusive(15.15))
+            < Range::lower_bounded(Bound::exclusive(10.10))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(-15.15)), None)
-            > Range::new(Some(Bound::exclusive(-10.10)), None)
+        Range::lower_bounded(Bound::exclusive(-15.15))
+            > Range::lower_bounded(Bound::exclusive(-10.10))
     );
 
     assert!(
-        Range::new(Some(Bound::exclusive(10.10)), None)
-            < Range::new(Some(Bound::inclusive(10.10)), None)
+        Range::lower_bounded(Bound::exclusive(10.10))
+            < Range::lower_bounded(Bound::inclusive(10.10))
     );
 
     assert!(
-        Range::new(Some(Bound::inclusive(-10.10)), None)
-            > Range::new(Some(Bound::exclusive(-10.10)), None)
+        Range::lower_bounded(Bound::inclusive(-10.10))
+            > Range::lower_bounded(Bound::exclusive(-10.10))
     );
 }
 
 #[test]
 fn compare_upper_and_lower_bounded() {
-    assert!(Range::new(None, Some(Bound::exclusive(10.10)))
-        .partial_cmp(&Range::new(Some(Bound::exclusive(10.10)), None))
+    assert!(Range::upper_bounded(Bound::exclusive(10.10))
+        .partial_cmp(&Range::lower_bounded(Bound::exclusive(10.10)))
         .is_none());
 
-    assert!(Range::new(Some(Bound::exclusive(-10.10)), None)
-        .partial_cmp(&Range::new(None, Some(Bound::exclusive(10.10))))
+    assert!(Range::lower_bounded(Bound::exclusive(-10.10))
+        .partial_cmp(&Range::upper_bounded(Bound::exclusive(10.10)))
         .is_none());
 }
 
@@ -2358,16 +2333,13 @@ fn all_schemas() -> HashMap<&'static str, StandardSchema> {
     map.insert("equal", StandardSchema::Equal(Value::Extant));
     map.insert(
         "in_range_int",
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(0)),
-            Some(Bound::inclusive(10)),
-        )),
+        StandardSchema::InRangeInt(Range::bounded(Bound::inclusive(0), Bound::inclusive(10))),
     );
     map.insert(
         "in_range_float",
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::inclusive(0.5)),
-            Some(Bound::inclusive(10.5)),
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::inclusive(0.5),
+            Bound::inclusive(10.5),
         )),
     );
     map.insert("non_nan", StandardSchema::NonNan);
@@ -2460,34 +2432,31 @@ fn compare_of_kind_i32() {
     let schema = StandardSchema::OfKind(ValueKind::Int32);
     let greater_schemas = vec![
         StandardSchema::OfKind(ValueKind::Int64),
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::exclusive(i32::MIN as i64 - 1)),
-            Some(Bound::exclusive(i32::MAX as i64 + 1)),
+        StandardSchema::InRangeInt(Range::bounded(
+            Bound::exclusive(i32::MIN as i64 - 1),
+            Bound::exclusive(i32::MAX as i64 + 1),
         )),
     ];
 
     let lesser_schemas = vec![
         StandardSchema::Equal(Value::Int32Value(10)),
         StandardSchema::Equal(Value::Int64Value(20)),
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(10)),
-            Some(Bound::inclusive(20)),
-        )),
+        StandardSchema::InRangeInt(Range::bounded(Bound::inclusive(10), Bound::inclusive(20))),
     ];
 
     let equal_schemas = vec![
         StandardSchema::OfKind(ValueKind::Int32),
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(i32::MIN as i64)),
-            Some(Bound::inclusive(i32::MAX as i64)),
+        StandardSchema::InRangeInt(Range::bounded(
+            Bound::inclusive(i32::MIN as i64),
+            Bound::inclusive(i32::MAX as i64),
         )),
     ];
 
     let not_related_schemas = vec![
         StandardSchema::Equal(Value::Int64Value(i32::MAX as i64 + 1)),
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(i32::MIN as i64 - 1)),
-            Some(Bound::inclusive(20)),
+        StandardSchema::InRangeInt(Range::bounded(
+            Bound::inclusive(i32::MIN as i64 - 1),
+            Bound::inclusive(20),
         )),
     ];
 
@@ -2505,17 +2474,14 @@ fn compare_of_kind_i64() {
         StandardSchema::OfKind(ValueKind::Int32),
         StandardSchema::Equal(Value::Int32Value(10)),
         StandardSchema::Equal(Value::Int64Value(20)),
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(0)),
-            Some(Bound::inclusive(10)),
-        )),
+        StandardSchema::InRangeInt(Range::bounded(Bound::inclusive(0), Bound::inclusive(10))),
     ];
 
     let equal_schemas = vec![
         StandardSchema::OfKind(ValueKind::Int64),
-        StandardSchema::InRangeInt(Range::new(
-            Some(Bound::inclusive(i64::MIN)),
-            Some(Bound::inclusive(i64::MAX)),
+        StandardSchema::InRangeInt(Range::bounded(
+            Bound::inclusive(i64::MIN),
+            Bound::inclusive(i64::MAX),
         )),
     ];
 
@@ -2529,18 +2495,18 @@ fn compare_of_kind_f64() {
     let lesser_schemas = vec![
         StandardSchema::Finite,
         StandardSchema::NonNan,
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::inclusive(0.0)),
-            Some(Bound::inclusive(10.0)),
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::inclusive(0.0),
+            Bound::inclusive(10.0),
         )),
         StandardSchema::Equal(Value::Float64Value(10.0)),
     ];
 
     let equal_schemas = vec![
         StandardSchema::OfKind(ValueKind::Float64),
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::inclusive(f64::MIN)),
-            Some(Bound::inclusive(f64::MAX)),
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::inclusive(f64::MIN),
+            Bound::inclusive(f64::MAX),
         )),
     ];
 
@@ -2619,9 +2585,9 @@ fn compare_of_kind_record() {
 fn compare_equal_i32() {
     let schema = StandardSchema::Equal(Value::Int32Value(42));
 
-    let greater_schemas = vec![StandardSchema::InRangeInt(Range::new(
-        Some(Bound::inclusive(10)),
-        Some(Bound::exclusive(55)),
+    let greater_schemas = vec![StandardSchema::InRangeInt(Range::bounded(
+        Bound::inclusive(10),
+        Bound::exclusive(55),
     ))];
     let equal_schemas = vec![
         StandardSchema::Equal(Value::Int32Value(42)),
@@ -2636,9 +2602,9 @@ fn compare_equal_i32() {
 fn compare_equal_i64() {
     let schema = StandardSchema::Equal(Value::Int64Value(24));
 
-    let greater_schemas = vec![StandardSchema::InRangeInt(Range::new(
-        Some(Bound::inclusive(24)),
-        Some(Bound::exclusive(30)),
+    let greater_schemas = vec![StandardSchema::InRangeInt(Range::bounded(
+        Bound::inclusive(24),
+        Bound::exclusive(30),
     ))];
     let equal_schemas = vec![
         StandardSchema::Equal(Value::Int32Value(24)),
@@ -2654,9 +2620,9 @@ fn compare_equal_f64() {
     let schema = StandardSchema::Equal(Value::Float64Value(15.15));
 
     let greater_schemas = vec![
-        StandardSchema::InRangeFloat(Range::new(
-            Some(Bound::inclusive(-10.10)),
-            Some(Bound::exclusive(30.30)),
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::inclusive(-10.10),
+            Bound::exclusive(30.30),
         )),
         StandardSchema::NonNan,
         StandardSchema::Finite,
@@ -2706,9 +2672,9 @@ fn compare_equal_record() {
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::new(
                 TextSchema::NonEmpty,
-                StandardSchema::InRangeInt(Range::new(
-                    Some(Bound::inclusive(0)),
-                    Some(Bound::inclusive(15)),
+                StandardSchema::InRangeInt(Range::bounded(
+                    Bound::inclusive(0),
+                    Bound::inclusive(15),
                 )),
             )),
             required: true,
@@ -2786,4 +2752,126 @@ fn compare_equal_record() {
 
     assert_less_than(schema.clone(), greater_schemas);
     assert_equal(schema.clone(), equal_schemas);
+}
+
+#[test]
+fn compare_in_range_int() {
+    let schema =
+        StandardSchema::InRangeInt(Range::bounded(Bound::inclusive(5), Bound::inclusive(15)));
+
+    let equal_schemas = vec![StandardSchema::InRangeInt(Range::bounded(
+        Bound::inclusive(5),
+        Bound::inclusive(15),
+    ))];
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::bounded(Bound::inclusive(4), Bound::inclusive(16))),
+        StandardSchema::InRangeInt(Range::unbounded()),
+    ];
+
+    let lesser_schemas = vec![
+        StandardSchema::InRangeInt(Range::bounded(Bound::exclusive(5), Bound::exclusive(15))),
+        StandardSchema::InRangeInt(Range::bounded(Bound::exclusive(6), Bound::exclusive(11))),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::InRangeInt(Range::bounded(Bound::exclusive(-5), Bound::exclusive(-15))),
+        StandardSchema::InRangeInt(Range::bounded(Bound::exclusive(6), Bound::exclusive(255))),
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_in_range_float() {
+    let schema = StandardSchema::InRangeFloat(Range::bounded(
+        Bound::inclusive(5.5),
+        Bound::inclusive(15.15),
+    ));
+
+    let equal_schemas = vec![StandardSchema::InRangeFloat(Range::bounded(
+        Bound::inclusive(5.5),
+        Bound::inclusive(15.15),
+    ))];
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::inclusive(4.4),
+            Bound::inclusive(16.16),
+        )),
+        StandardSchema::InRangeFloat(Range::unbounded()),
+    ];
+
+    let lesser_schemas = vec![
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::exclusive(5.5),
+            Bound::exclusive(15.15),
+        )),
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::exclusive(6.6),
+            Bound::exclusive(11.11),
+        )),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::exclusive(-5.5),
+            Bound::exclusive(-15.15),
+        )),
+        StandardSchema::InRangeFloat(Range::bounded(
+            Bound::exclusive(6.6),
+            Bound::exclusive(255.255),
+        )),
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_in_range_float_finite() {
+    let bounded = StandardSchema::InRangeFloat(Range::bounded(
+        Bound::inclusive(5.5),
+        Bound::inclusive(15.15),
+    ));
+    let upper_bounded = StandardSchema::InRangeFloat(Range::upper_bounded(Bound::inclusive(15.15)));
+    let lower_bounded = StandardSchema::InRangeFloat(Range::lower_bounded(Bound::inclusive(5.5)));
+    let unbounded = StandardSchema::InRangeFloat(Range::unbounded());
+
+    assert_less_than(bounded, vec![StandardSchema::Finite]);
+    assert_not_related(upper_bounded, vec![StandardSchema::Finite]);
+    assert_not_related(lower_bounded, vec![StandardSchema::Finite]);
+    assert_not_related(unbounded, vec![StandardSchema::Finite]);
+}
+
+#[test]
+fn compare_in_range_float_non_nan() {
+    let bounded = StandardSchema::InRangeFloat(Range::bounded(
+        Bound::inclusive(5.5),
+        Bound::inclusive(15.15),
+    ));
+    let upper_bounded = StandardSchema::InRangeFloat(Range::upper_bounded(Bound::inclusive(15.15)));
+    let lower_bounded = StandardSchema::InRangeFloat(Range::lower_bounded(Bound::inclusive(5.5)));
+    let unbounded = StandardSchema::InRangeFloat(Range::unbounded());
+
+    assert_less_than(bounded, vec![StandardSchema::NonNan]);
+    assert_less_than(upper_bounded, vec![StandardSchema::NonNan]);
+    assert_less_than(lower_bounded, vec![StandardSchema::NonNan]);
+    assert_not_related(unbounded, vec![StandardSchema::NonNan]);
+}
+
+#[test]
+fn compare_non_nan() {
+    let schema = StandardSchema::NonNan;
+
+    let equal_schemas = vec![StandardSchema::NonNan];
+    let lesser_schemas = vec![StandardSchema::Finite];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_greater_than(schema, lesser_schemas);
 }
