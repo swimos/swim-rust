@@ -51,7 +51,6 @@ mod wasm {
     use std::pin::Pin;
     use std::task::{Context, Poll};
     use tokio::sync::oneshot;
-    use tokio::task::JoinHandle;
 
     /// A handle to a returned task by the current runtime.
     #[pin_project]
