@@ -417,12 +417,12 @@ fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustiv
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Bound<T: Copy + PartialOrd> {
+pub struct Bound<T> {
     value: T,
     inclusive: bool,
 }
 
-impl<T: Copy + PartialOrd> Bound<T> {
+impl<T> Bound<T> {
     pub fn new(value: T, inclusive: bool) -> Self {
         Bound { value, inclusive }
     }
@@ -443,76 +443,28 @@ impl<T: Copy + PartialOrd> Bound<T> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum RangeBound<T: Copy + PartialOrd> {
-    Upper(Bound<T>),
-    Lower(Bound<T>),
-}
-
-impl<T: Copy + PartialOrd> RangeBound<T> {
-    fn get_bound(&self) -> &Bound<T> {
-        match self {
-            RangeBound::Upper(bound) => bound,
-            RangeBound::Lower(bound) => bound,
-        }
-    }
-}
-
-impl<T: Copy + PartialOrd> PartialOrd for RangeBound<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (RangeBound::Lower(this), RangeBound::Lower(other)) => {
-                if this.inclusive == other.inclusive {
-                    Some(this.value.partial_cmp(&other.value)?.reverse())
-                } else if this.value == other.value {
-                    if this.inclusive {
-                        Some(Ordering::Greater)
-                    } else {
-                        Some(Ordering::Less)
-                    }
-                } else {
-                    Some(this.value.partial_cmp(&other.value)?.reverse())
-                }
-            }
-            (RangeBound::Upper(this), RangeBound::Upper(other)) => {
-                if this.inclusive == other.inclusive {
-                    this.value.partial_cmp(&other.value)
-                } else if this.value == other.value {
-                    if this.inclusive {
-                        Some(Ordering::Greater)
-                    } else {
-                        Some(Ordering::Less)
-                    }
-                } else {
-                    this.value.partial_cmp(&other.value)
-                }
-            }
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Range<T: Copy + PartialOrd> {
-    min: Option<RangeBound<T>>,
-    max: Option<RangeBound<T>>,
+    min: Option<Bound<T>>,
+    max: Option<Bound<T>>,
 }
 
 impl<T: Copy + PartialOrd> Range<T> {
-    pub fn new(min: Option<Bound<T>>, max: Option<Bound<T>>) -> Self {
-        let min = min.map(RangeBound::Lower);
-        let max = max.map(RangeBound::Upper);
+    fn new(min: Option<Bound<T>>, max: Option<Bound<T>>) -> Self {
         Range { min, max }
     }
 
     pub fn upper_bounded(max: Bound<T>) -> Self {
         Range::new(None, Some(max))
     }
+
     pub fn lower_bounded(min: Bound<T>) -> Self {
         Range::new(Some(min), None)
     }
+
     pub fn bounded(min: Bound<T>, max: Bound<T>) -> Self {
         Range::new(Some(min), Some(max))
     }
+
     pub fn unbounded() -> Self {
         Range::new(None, None)
     }
@@ -536,18 +488,19 @@ impl<T: Copy + PartialOrd> Range<T> {
 
 impl<T: Copy + PartialOrd> PartialOrd for Range<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.is_unbounded() && other.is_unbounded() {
+        if self.eq(other) {
             Some(Ordering::Equal)
         } else if self.is_unbounded() {
             Some(Ordering::Greater)
         } else if other.is_unbounded() {
             Some(Ordering::Less)
         } else if self.is_bounded() && other.is_bounded() {
-            if self.min == other.min && self.max == other.max {
-                Some(Ordering::Equal)
-            } else if self.min >= other.min && self.max >= other.max {
+            let lower = partial_cmp_lower_bounds(self.min?, other.min?)?;
+            let upper = partial_cmp_upper_bounds(self.max?, other.max?)?;
+
+            if lower != Ordering::Less && upper != Ordering::Less {
                 Some(Ordering::Greater)
-            } else if self.min <= other.min && self.max <= other.max {
+            } else if lower != Ordering::Greater && upper != Ordering::Greater {
                 Some(Ordering::Less)
             } else {
                 None
@@ -557,12 +510,46 @@ impl<T: Copy + PartialOrd> PartialOrd for Range<T> {
         } else if self.is_bounded() {
             Some(cmp_bounded_and_half_bounded_range(other, self)?.reverse())
         } else if self.is_lower_bounded() && other.is_lower_bounded() {
-            self.min.partial_cmp(&other.min)
+            partial_cmp_lower_bounds(self.min?, other.min?)
         } else if self.is_upper_bounded() && other.is_upper_bounded() {
-            self.max.partial_cmp(&other.max)
+            partial_cmp_upper_bounds(self.max?, other.max?)
         } else {
             None
         }
+    }
+}
+
+fn partial_cmp_lower_bounds<T: Copy + PartialOrd>(
+    this: Bound<T>,
+    other: Bound<T>,
+) -> Option<Ordering> {
+    if this.inclusive == other.inclusive {
+        Some(this.value.partial_cmp(&other.value)?.reverse())
+    } else if this.value == other.value {
+        if this.inclusive {
+            Some(Ordering::Greater)
+        } else {
+            Some(Ordering::Less)
+        }
+    } else {
+        Some(this.value.partial_cmp(&other.value)?.reverse())
+    }
+}
+
+fn partial_cmp_upper_bounds<T: Copy + PartialOrd>(
+    this: Bound<T>,
+    other: Bound<T>,
+) -> Option<Ordering> {
+    if this.inclusive == other.inclusive {
+        this.value.partial_cmp(&other.value)
+    } else if this.value == other.value {
+        if this.inclusive {
+            Some(Ordering::Greater)
+        } else {
+            Some(Ordering::Less)
+        }
+    } else {
+        this.value.partial_cmp(&other.value)
     }
 }
 
@@ -570,8 +557,10 @@ fn cmp_bounded_and_half_bounded_range<T: Copy + PartialOrd>(
     half_bounded: &Range<T>,
     bounded: &Range<T>,
 ) -> Option<Ordering> {
-    if (half_bounded.is_upper_bounded() && half_bounded.max >= bounded.max)
-        || half_bounded.is_lower_bounded() && half_bounded.min >= bounded.min
+    if (half_bounded.is_upper_bounded()
+        && partial_cmp_upper_bounds(half_bounded.max?, bounded.max?)? != Ordering::Less)
+        || (half_bounded.is_lower_bounded()
+            && partial_cmp_lower_bounds(half_bounded.min?, bounded.min?)? != Ordering::Less)
     {
         Some(Ordering::Greater)
     } else {
@@ -1112,10 +1101,10 @@ fn range_to_value<N: Into<Value> + Copy + PartialOrd>(tag: &str, range: Range<N>
     let mut slots = vec![];
     let Range { min, max } = range;
 
-    if let Some(RangeBound::Lower(Bound { value, inclusive })) = min {
+    if let Some(Bound { value, inclusive }) = min {
         slots.push(endpoint_to_slot("min", value, inclusive))
     }
-    if let Some(RangeBound::Upper(Bound { value, inclusive })) = max {
+    if let Some(Bound { value, inclusive }) = max {
         slots.push(endpoint_to_slot("max", value, inclusive))
     }
     Attr::with_items(tag, slots).into()
@@ -1177,12 +1166,12 @@ fn in_range<T: Copy + PartialOrd>(value: T, range: &Range<T>) -> bool {
             let Bound {
                 value: lb,
                 inclusive: incl,
-            } = bound.get_bound();
+            } = bound;
 
-            if *incl {
-                lb <= &value
+            if incl {
+                lb <= value
             } else {
-                lb < &value
+                lb < value
             }
         })
         .unwrap_or(true);
@@ -1193,11 +1182,11 @@ fn in_range<T: Copy + PartialOrd>(value: T, range: &Range<T>) -> bool {
             let Bound {
                 value: ub,
                 inclusive: incl,
-            } = bound.get_bound();
-            if *incl {
-                ub >= &value
+            } = bound;
+            if incl {
+                ub >= value
             } else {
-                ub > &value
+                ub > value
             }
         })
         .unwrap_or(true);
