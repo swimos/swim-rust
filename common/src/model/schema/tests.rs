@@ -1124,6 +1124,82 @@ fn optional_attribute_in_order_non_exhaustive() {
 }
 
 #[test]
+fn optional_attributes_partial_exhaustive() {
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Equal(Value::Int32Value(1)),
+                ),
+                false,
+                true,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Equal(Value::Int32Value(2)),
+                ),
+                false,
+                true,
+            ),
+        ],
+        exhaustive: true,
+    };
+
+    let good1 = Value::Record(vec![Attr::of(("foo", 1)), Attr::of(("bar", 2))], vec![]);
+    let good2 = Value::Record(vec![Attr::of(("foo", 1)), Attr::of(("foo", 2))], vec![]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+
+    let bad1 = Value::Record(vec![Attr::of(("foo", "bar")), Attr::of(("bar", 2))], vec![]);
+    assert!(!schema.matches(&bad1));
+}
+
+#[test]
+fn optional_attributes_partial_non_exhaustive() {
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Equal(Value::Int32Value(1)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Equal(Value::Int32Value(2)),
+                ),
+                false,
+                true,
+            ),
+        ],
+        exhaustive: false,
+    };
+
+    let good1 = Value::Record(vec![Attr::of(("foo", 1)), Attr::of(("bar", 2))], vec![]);
+    let good2 = Value::Record(vec![Attr::of(("foo", 1)), Attr::of(("foo", 2))], vec![]);
+    let good3 = Value::Record(vec![Attr::of(("foo", 1)), Attr::of(("foo", 1))], vec![]);
+    let good4 = Value::Record(vec![Attr::of(("foo", 1))], vec![]);
+    let good5 = Value::Record(vec![Attr::of(("bar", 2))], vec![]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+    assert!(schema.matches(&good4));
+    assert!(schema.matches(&good5));
+
+    let bad1 = Value::Record(vec![Attr::of(("foo", "bar")), Attr::of(("bar", 2))], vec![]);
+    let bad2 = Value::Record(vec![Attr::of(("foo", 2)), Attr::of(("bar", 2))], vec![]);
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+}
+
+#[test]
 fn mandatory_items_in_order_exhaustive() {
     let item_schema1 = ItemSchema::Field(SlotSchema::new(
         StandardSchema::Text(TextSchema::exact("name1")),
@@ -1267,6 +1343,93 @@ fn optional_item_in_order_non_exhaustive() {
     assert!(schema.matches(&good3));
     assert!(schema.matches(&good4));
     assert!(schema.matches(&good5));
+}
+
+#[test]
+fn optional_slots_partial_exhaustive() {
+    let schema = StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::OfKind(ValueKind::Int32),
+                    StandardSchema::Equal(Value::Int32Value(23)),
+                ),
+                false,
+                true,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::OfKind(ValueKind::Int32),
+                    StandardSchema::Equal(Value::Int32Value(45)),
+                ),
+                false,
+                true,
+            ),
+        ],
+        exhaustive: true,
+    };
+
+    let good1 = Value::Record(vec![], vec![Item::of((10, 23))]);
+    let good2 = Value::Record(vec![], vec![Item::of((10, 23)), Item::of((9, 45))]);
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+
+    let bad1 = Value::Record(vec![], vec![Item::of(("bar", 23)), Item::of((9, 45))]);
+    let bad2 = Value::Record(vec![], vec![Item::of((10, 24)), Item::of((9, 45))]);
+    let bad3 = Value::Record(
+        vec![],
+        vec![Item::of((10, 23)), Item::of((9, 45)), Item::of((8, 23))],
+    );
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
+    assert!(!schema.matches(&bad3));
+}
+
+#[test]
+fn optional_slots_partial_non_exhaustive() {
+    let schema = StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::OfKind(ValueKind::Int32),
+                    StandardSchema::Equal(Value::Int32Value(23)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::OfKind(ValueKind::Int32),
+                    StandardSchema::Equal(Value::Int32Value(45)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: false,
+    };
+
+    let good1 = Value::Record(vec![], vec![Item::of((10, 23))]);
+    let good2 = Value::Record(vec![], vec![Item::of((10, 45))]);
+    let good3 = Value::Record(vec![], vec![Item::of((1, 23)), Item::of((1, 23))]);
+    let good4 = Value::Record(vec![], vec![Item::of((1, 23)), Item::of((1, 45))]);
+    let good5 = Value::Record(
+        vec![],
+        vec![Item::of((1, 23)), Item::of((1, 45)), Item::of((1, 45))],
+    );
+
+    assert!(schema.matches(&good1));
+    assert!(schema.matches(&good2));
+    assert!(schema.matches(&good3));
+    assert!(schema.matches(&good4));
+    assert!(schema.matches(&good5));
+
+    let bad1 = Value::Record(vec![], vec![Item::of((10, 222))]);
+    let bad2 = Value::Record(vec![], vec![Item::of((10, 23)), Item::of((10, 46))]);
+
+    assert!(!schema.matches(&bad1));
+    assert!(!schema.matches(&bad2));
 }
 
 #[test]

@@ -36,7 +36,7 @@ pub enum FieldMatchResult {
     KeyOnly,
     /// Both schemas matched.
     Both,
-    /// The key schema matched and teh value schema was not tested.
+    /// The key schema did not match and the value schema was not tested.
     KeyFailed,
 }
 
@@ -356,6 +356,7 @@ fn check_contained<T, S: FieldSchema<T>>(
     exhaustive: bool,
 ) -> bool {
     let mut matched = HashSet::new();
+    let mut partial_matched = HashSet::new();
     for spec in schemas.iter() {
         let FieldSpec {
             schema,
@@ -366,7 +367,7 @@ fn check_contained<T, S: FieldSchema<T>>(
         for (i, item) in items.iter().enumerate() {
             match schema.matches_field(item) {
                 FieldMatchResult::KeyOnly => {
-                    return false;
+                    partial_matched.insert(i);
                 }
                 FieldMatchResult::Both => {
                     matched.insert(i);
@@ -379,7 +380,8 @@ fn check_contained<T, S: FieldSchema<T>>(
             return false;
         }
     }
-    !exhaustive || matched.len() == items.len()
+
+    (!exhaustive || matched.len() == items.len()) && matched.is_superset(&partial_matched)
 }
 
 fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustive: bool) -> bool {
