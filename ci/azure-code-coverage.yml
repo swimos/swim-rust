@@ -2,7 +2,7 @@ trigger: none
 
 schedules:
   - cron: "0 0 * * *"
-    displayName: Daily midnight build
+    displayName: Nightly code coverage run
     branches:
       include:
         - master
@@ -21,9 +21,10 @@ jobs:
       - template: azure-install-rust.yml
         parameters:
           rust_version: 1.44.0
+      - template: azure-install-sccache.yml
       - script: |
           cargo install cargo-tarpaulin
           cargo tarpaulin --out Xml -t 300
           bash <(curl -s https://codecov.io/bash)
         workingDirectory: $(Build.SourcesDirectory)
-        displayName: Code coverage
+        displayName: Generate code coverage
