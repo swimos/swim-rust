@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::map::summary::MapLaneEvent;
-use crate::agent::lane::map::{make_lane, MapLane};
+use crate::agent::lane::map::{make_lane_model, MapLaneModel};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::{FutureExt, Stream, StreamExt};
@@ -22,7 +22,7 @@ use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
 
-async fn update_direct<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
+async fn update_direct<Str>(lane: &MapLaneModel<i32, i32>, events: &mut Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -39,23 +39,23 @@ where
 
 #[tokio::test]
 async fn update_direct_queue() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
     update_direct(&lane, &mut events).await;
 }
 
 #[tokio::test]
 async fn update_direct_dropping() {
-    let (lane, mut events) = make_lane(Dropping);
+    let (lane, mut events) = make_lane_model(Dropping);
     update_direct(&lane, &mut events).await;
 }
 
 #[tokio::test]
 async fn update_direct_buffered() {
-    let (lane, mut events) = make_lane(Buffered::default());
+    let (lane, mut events) = make_lane_model(Buffered::default());
     update_direct(&lane, &mut events).await;
 }
 
-async fn remove_direct_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn remove_direct_not_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -68,23 +68,23 @@ where
 
 #[tokio::test]
 async fn remove_direct_not_contained_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     remove_direct_not_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_direct_not_contained_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     remove_direct_not_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_direct_not_contained_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     remove_direct_not_contained(lane, events).await;
 }
 
-async fn remove_direct_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn remove_direct_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -98,23 +98,23 @@ where
 
 #[tokio::test]
 async fn remove_direct_contained_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     remove_direct_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_direct_contained_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     remove_direct_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_direct_contained_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     remove_direct_contained(lane, events).await;
 }
 
-async fn clear_direct_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn clear_direct_empty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -127,23 +127,23 @@ where
 
 #[tokio::test]
 async fn clear_direct_empty_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     clear_direct_empty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_direct_empty_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     clear_direct_empty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_direct_empty_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     clear_direct_empty(lane, events).await;
 }
 
-async fn clear_direct_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn clear_direct_nonempty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -157,25 +157,25 @@ where
 
 #[tokio::test]
 async fn clear_direct_nonempty_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     clear_direct_nonempty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_direct_nonempty_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     clear_direct_nonempty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_direct_nonempty_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     clear_direct_nonempty(lane, events).await;
 }
 
 #[tokio::test]
 async fn get_value() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
     update_direct(&lane, &mut events).await;
 
     let result1 = atomically(&lane.get(1), ExactlyOnce).await;
@@ -189,7 +189,7 @@ async fn get_value() {
 
 #[tokio::test]
 async fn contains_key() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
     update_direct(&lane, &mut events).await;
 
     let result1 = atomically(&lane.contains(1), ExactlyOnce).await;
@@ -203,7 +203,7 @@ async fn contains_key() {
 
 #[tokio::test]
 async fn map_len() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
 
     let result1 = atomically(&lane.len(), ExactlyOnce).await;
 
@@ -218,7 +218,7 @@ async fn map_len() {
 
 #[tokio::test]
 async fn map_is_empty() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
 
     let result1 = atomically(&lane.is_empty(), ExactlyOnce).await;
 
@@ -231,7 +231,7 @@ async fn map_is_empty() {
     assert!(matches!(result2, Ok(false)));
 }
 
-async fn populate<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
+async fn populate<Str>(lane: &MapLaneModel<i32, i32>, events: &mut Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -245,7 +245,7 @@ where
 
 #[tokio::test]
 async fn map_first() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
 
     populate(&lane, &mut events).await;
 
@@ -256,7 +256,7 @@ async fn map_first() {
 
 #[tokio::test]
 async fn map_last() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
 
     populate(&lane, &mut events).await;
 
@@ -265,7 +265,7 @@ async fn map_last() {
     assert!(matches!(result, Ok(Some(v)) if *v == 13));
 }
 
-async fn update_compound<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
+async fn update_compound<Str>(lane: &MapLaneModel<i32, i32>, events: &mut Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -279,23 +279,23 @@ where
 
 #[tokio::test]
 async fn update_compound_queue() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
     update_compound(&lane, &mut events).await;
 }
 
 #[tokio::test]
 async fn update_compound_dropping() {
-    let (lane, mut events) = make_lane(Dropping);
+    let (lane, mut events) = make_lane_model(Dropping);
     update_compound(&lane, &mut events).await;
 }
 
 #[tokio::test]
 async fn update_compound_buffered() {
-    let (lane, mut events) = make_lane(Buffered::default());
+    let (lane, mut events) = make_lane_model(Buffered::default());
     update_direct(&lane, &mut events).await;
 }
 
-async fn remove_compound_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn remove_compound_not_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -308,23 +308,23 @@ where
 
 #[tokio::test]
 async fn remove_compound_not_contained_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     remove_compound_not_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_compound_not_contained_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     remove_compound_not_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_compound_not_contained_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     remove_compound_not_contained(lane, events).await;
 }
 
-async fn remove_compound_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn remove_compound_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -338,23 +338,23 @@ where
 
 #[tokio::test]
 async fn remove_compound_contained_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     remove_compound_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_compound_contained_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     remove_compound_contained(lane, events).await;
 }
 
 #[tokio::test]
 async fn remove_compound_contained_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     remove_compound_contained(lane, events).await;
 }
 
-async fn clear_compound_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn clear_compound_empty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -367,23 +367,23 @@ where
 
 #[tokio::test]
 async fn clear_compound_empty_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     clear_compound_empty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_compound_empty_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     clear_compound_empty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_compound_empty_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     clear_compound_empty(lane, events).await;
 }
 
-async fn clear_compound_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn clear_compound_nonempty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -397,23 +397,23 @@ where
 
 #[tokio::test]
 async fn clear_compound_nonempty_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     clear_compound_nonempty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_compound_nonempty_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     clear_compound_nonempty(lane, events).await;
 }
 
 #[tokio::test]
 async fn clear_compound_nonempty_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     clear_compound_nonempty(lane, events).await;
 }
 
-async fn double_set<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn double_set<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -439,23 +439,23 @@ where
 
 #[tokio::test]
 async fn double_set_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     double_set(lane, events).await;
 }
 
 #[tokio::test]
 async fn double_set_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     double_set(lane, events).await;
 }
 
 #[tokio::test]
 async fn double_set_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     double_set(lane, events).await;
 }
 
-async fn transaction_with_clear<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn transaction_with_clear<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -483,25 +483,25 @@ where
 
 #[tokio::test]
 async fn transaction_with_clear_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     transaction_with_clear(lane, events).await;
 }
 
 #[tokio::test]
 async fn transaction_with_clear_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     transaction_with_clear(lane, events).await;
 }
 
 #[tokio::test]
 async fn transaction_with_clear_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     transaction_with_clear(lane, events).await;
 }
 
 #[tokio::test]
 async fn snapshot_map() {
-    let (lane, mut events) = make_lane(Queue::default());
+    let (lane, mut events) = make_lane_model(Queue::default());
 
     populate(&lane, &mut events).await;
 
@@ -514,7 +514,7 @@ async fn snapshot_map() {
     assert!(matches!(result, Ok(map) if &map == &expected));
 }
 
-async fn modify_if_defined_direct<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn modify_if_defined_direct<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -541,23 +541,23 @@ where
 
 #[tokio::test]
 async fn modify_if_defined_direct_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     modify_if_defined_direct(lane, events).await;
 }
 
 #[tokio::test]
 async fn modify_if_defined_direct_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     modify_if_defined_direct(lane, events).await;
 }
 
 #[tokio::test]
 async fn modify_if_defined_direct_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     modify_if_defined_direct(lane, events).await;
 }
 
-async fn modify_direct_some<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn modify_direct_some<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -581,23 +581,23 @@ where
 
 #[tokio::test]
 async fn modify_direct_some_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     modify_direct_some(lane, events).await;
 }
 
 #[tokio::test]
 async fn modify_direct_some_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     modify_direct_some(lane, events).await;
 }
 
 #[tokio::test]
 async fn modify_direct_some_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     modify_direct_some(lane, events).await;
 }
 
-async fn modify_direct_none<Str>(lane: MapLane<i32, i32>, mut events: Str)
+async fn modify_direct_none<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -621,18 +621,18 @@ where
 
 #[tokio::test]
 async fn modify_direct_none_queue() {
-    let (lane, events) = make_lane(Queue::default());
+    let (lane, events) = make_lane_model(Queue::default());
     modify_direct_none(lane, events).await;
 }
 
 #[tokio::test]
 async fn modify_direct_none_dropping() {
-    let (lane, events) = make_lane(Dropping);
+    let (lane, events) = make_lane_model(Dropping);
     modify_direct_none(lane, events).await;
 }
 
 #[tokio::test]
 async fn modify_direct_none_buffered() {
-    let (lane, events) = make_lane(Buffered::default());
+    let (lane, events) = make_lane_model(Buffered::default());
     modify_direct_none(lane, events).await;
 }

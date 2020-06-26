@@ -43,7 +43,7 @@ use utilities::future::{SwimStreamExt, Transform, TransformedStream};
 mod summary;
 
 /// A lane consisting of a map from keys to values.
-pub struct MapLane<K, V> {
+pub struct MapLaneModel<K, V> {
     // Transactional variable containing the current state of the map where the value of each entry
     // is stored in its own variable. The keys are stored as recon values as the map ordering
     // needs to be determined by the Ord implementation for the Value type, not any Ord
@@ -58,7 +58,7 @@ pub struct MapLane<K, V> {
 }
 
 /// Create a new map lane with the specified watch strategy.
-pub fn make_lane<K, V, W>(watch: W) -> (MapLane<K, V>, W::View)
+pub fn make_lane_model<K, V, W>(watch: W) -> (MapLaneModel<K, V>, W::View)
 where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
@@ -67,7 +67,7 @@ where
     let (observer, view) = watch.make_watch();
     let summary = TVar::new_with_observer(Default::default(), observer);
     let transaction_started = TLocal::new(false);
-    let lane = MapLane {
+    let lane = MapLaneModel {
         map_state: Default::default(),
         summary,
         transaction_started,
@@ -192,7 +192,7 @@ impl<K: Form, V> Transform<MapLaneEvent<Value, V>> for TypeEvents<K> {
     }
 }
 
-impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
+impl<K: Form, V: Any + Send + Sync> MapLaneModel<K, V> {
     /// Updates (or inserts) the value of an entry in the map, in a transaction. This is more
     /// efficient than `update` but cannot be composed into a larger transaction.
     pub fn update_direct(&self, key: K, value: Arc<V>) -> DirectUpdate<'_, K, V> {
@@ -285,7 +285,7 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     /// Update (or insert) the value associated with a key in the map, in a transaction. If this
     /// does not need to be composed into a larger transaction, `update_direct` is more efficient.
     pub fn update(&self, key: K, value: Arc<V>) -> impl Stm<Result = ()> + '_ {
-        let MapLane {
+        let MapLaneModel {
             map_state,
             summary,
             transaction_started,
@@ -302,7 +302,7 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     /// Remove an entry from the map, in a transaction. If this does not need to be composed into a
     /// larger transaction, `remove_direct` is more efficient.
     pub fn remove(&self, key: K) -> impl Stm<Result = ()> + '_ {
-        let MapLane {
+        let MapLaneModel {
             map_state,
             summary,
             transaction_started,
@@ -326,7 +326,7 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     /// Clear the map, in a transaction. If this does not need to be composed into a larger
     /// transaction, `clear_direct` is more efficient.
     pub fn clear(&self) -> impl Stm<Result = ()> + '_ {
-        let MapLane {
+        let MapLaneModel {
             map_state,
             summary,
             transaction_started,
@@ -346,7 +346,7 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     }
 }
 
-impl<K, V> MapLane<K, V>
+impl<K, V> MapLaneModel<K, V>
 where
     K: Form + Hash + Eq + Clone + Send + Sync,
     V: Any + Send + Sync,
@@ -452,7 +452,7 @@ fn remove_lane<'a, V: Any + Send + Sync>(
 /// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectUpdate<'a, K, V> {
-    lane: &'a MapLane<K, V>,
+    lane: &'a MapLaneModel<K, V>,
     key: K,
     value: Arc<V>,
 }
@@ -483,7 +483,7 @@ where
 /// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectRemove<'a, K, V> {
-    lane: &'a MapLane<K, V>,
+    lane: &'a MapLaneModel<K, V>,
     key: K,
 }
 
@@ -518,7 +518,7 @@ where
 /// Returned by the `clear_direct` method of [`MapLane`]. This wraps the clear transaction
 /// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
-pub struct DirectClear<'a, K, V>(&'a MapLane<K, V>);
+pub struct DirectClear<'a, K, V>(&'a MapLaneModel<K, V>);
 
 impl<'a, K, V> DirectClear<'a, K, V>
 where
@@ -550,7 +550,7 @@ where
 /// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectModify<'a, K, V, F> {
-    lane: &'a MapLane<K, V>,
+    lane: &'a MapLaneModel<K, V>,
     key: K,
     f: F,
 }
@@ -618,7 +618,7 @@ where
 /// transaction so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectModifyDefined<'a, K, V, F> {
-    lane: &'a MapLane<K, V>,
+    lane: &'a MapLaneModel<K, V>,
     key: K,
     f: F,
 }
