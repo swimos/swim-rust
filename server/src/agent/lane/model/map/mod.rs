@@ -29,7 +29,7 @@ use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 use swim_form::Form;
 
-use crate::agent::lane::map::summary::{MapLaneEvent, TransactionSummary};
+use crate::agent::lane::model::map::summary::{MapLaneEvent, TransactionSummary};
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
 use crate::agent::lane::{BroadcastStream, InvalidForm};
 use futures::stream::{iter, Flatten, Iter, StreamExt};

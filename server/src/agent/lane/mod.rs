@@ -21,12 +21,10 @@ use std::task::{Context, Poll};
 use swim_form::FormDeserializeErr;
 use tokio::sync::broadcast;
 
-pub mod action;
-pub mod map;
+pub mod model;
 pub mod strategy;
 #[cfg(test)]
 pub mod tests;
-pub mod value;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct InvalidForm(FormDeserializeErr);

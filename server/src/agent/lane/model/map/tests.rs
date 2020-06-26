@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::map::summary::MapLaneEvent;
-use crate::agent::lane::map::{make_lane_model, MapLaneModel};
+use crate::agent::lane::model::map::summary::MapLaneEvent;
+use crate::agent::lane::model::map::{make_lane_model, MapLaneModel};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::{FutureExt, Stream, StreamExt};
