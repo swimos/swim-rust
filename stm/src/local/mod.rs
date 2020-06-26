@@ -14,7 +14,6 @@
 
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -27,7 +26,6 @@ static COUNT: AtomicU64 = AtomicU64::new(0);
 pub struct TLocal<T> {
     pub(crate) index: u64,
     pub(crate) default: Arc<T>,
-    _data_type: PhantomData<T>,
 }
 
 impl<T> TLocal<T> {
@@ -41,7 +39,6 @@ impl<T> TLocal<T> {
         TLocal {
             index,
             default: Arc::new(default),
-            _data_type: PhantomData,
         }
     }
 
@@ -61,7 +58,6 @@ impl<T> Clone for TLocal<T> {
         TLocal {
             index: self.index,
             default: self.default.clone(),
-            _data_type: PhantomData,
         }
     }
 }
