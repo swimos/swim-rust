@@ -23,9 +23,16 @@ jobs:
         parameters:
           rust_version: 1.44.0
       - template: azure-install-sccache.yml
-      - script: |
-          cargo install cargo-tarpaulin
-          cargo tarpaulin --out Xml -t 300
-          bash <(curl -s https://codecov.io/bash)
+
+      - script: cargo install cargo-tarpaulin
+        displayName: Install Tarpaulin
         workingDirectory: $(Build.SourcesDirectory)
+
+      - script: cargo tarpaulin --out Xml -t 300
         displayName: Generate code coverage
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - script: bash <(curl -s https://codecov.io/bash)
+        displayName: Upload code coverage
+        workingDirectory: $(Build.SourcesDirectory)
+
