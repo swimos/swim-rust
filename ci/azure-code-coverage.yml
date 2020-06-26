@@ -1,0 +1,29 @@
+trigger: none
+
+schedules:
+  - cron: "0 0 * * *"
+    displayName: Daily midnight build
+    branches:
+      include:
+        - master
+
+variables:
+    RUSTFLAGS: -Dwarnings
+
+jobs:
+  - job: Code_coverage
+    displayName: Code coverage
+
+    pool:
+      vmImage: ubuntu-18.04
+
+    steps:
+      - template: azure-install-rust.yml
+        parameters:
+          rust_version: 1.44.0
+      - script: |
+          cargo install cargo-tarpaulin
+          cargo tarpaulin --out Xml -t 300
+          bash <(curl -s https://codecov.io/bash)
+        workingDirectory: $(Build.SourcesDirectory)
+        displayName: Code coverage
