@@ -1,0 +1,33 @@
+[package]
+name = "swim-wasm-chat"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+description = "SWIM.AI Rust Client WASM chat demo"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
+console_error_panic_hook = "0.1.6"
+swim_client = { package = "client", path = "../../client", default-features = false }
+swim_form = { path = "../../swim_form" }
+swim_wasm = { path = "../../swim_wasm" }
+tokio = { version = "0.2.21", features = ["sync", "stream", "macros"] }
+url = "2.1.1"
+futures = "0.3.4"
+futures-util = "0.3.4"
+stdweb = "0.4.20"
+chrono = "0.4.11"
+wasm-bindgen-futures = "0.4.13"
+js-sys = "0.3.40"
+serde = { version = "1.0", features = ["derive"] }
+either = "1.5.3"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.13"
+
+[profile.release]
+opt-level = "s"
+lto = true
