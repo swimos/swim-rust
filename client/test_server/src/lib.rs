@@ -22,7 +22,6 @@ pub use testcontainers::*;
 #[derive(Default)]
 pub struct SwimTestServer;
 
-#[cfg_attr(tarpaulin, skip)]
 impl Image for SwimTestServer {
     type Args = Vec<String>;
     type EnvVars = HashMap<String, String>;
