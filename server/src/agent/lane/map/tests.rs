@@ -513,3 +513,126 @@ async fn snapshot_map() {
 
     assert!(matches!(result, Ok(map) if &map == &expected));
 }
+
+async fn modify_if_defined_direct<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    populate(&lane, &mut events).await;
+
+    let result = lane
+        .modify_if_defined_direct(1, |n| *n * 2)
+        .apply(ExactlyOnce)
+        .await;
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Update(1, v)) if *v == 14));
+
+    let result = lane
+        .modify_if_defined_direct(27, |n| *n * 2)
+        .apply(ExactlyOnce)
+        .await;
+    assert!(result.is_ok());
+
+    let event = events.next().now_or_never();
+    assert!(event.is_none());
+}
+
+#[tokio::test]
+async fn modify_if_defined_direct_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    modify_if_defined_direct(lane, events).await;
+}
+
+#[tokio::test]
+async fn modify_if_defined_direct_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    modify_if_defined_direct(lane, events).await;
+}
+
+#[tokio::test]
+async fn modify_if_defined_direct_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    modify_if_defined_direct(lane, events).await;
+}
+
+async fn modify_direct_some<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    populate(&lane, &mut events).await;
+
+    let result = lane
+        .modify_direct(1, |opt| opt.map(|n| *n * 2))
+        .apply(ExactlyOnce)
+        .await;
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Update(1, v)) if *v == 14));
+
+    let result = lane.modify_direct(1, |_| None).apply(ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Remove(1))));
+}
+
+#[tokio::test]
+async fn modify_direct_some_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    modify_direct_some(lane, events).await;
+}
+
+#[tokio::test]
+async fn modify_direct_some_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    modify_direct_some(lane, events).await;
+}
+
+#[tokio::test]
+async fn modify_direct_some_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    modify_direct_some(lane, events).await;
+}
+
+async fn modify_direct_none<Str>(lane: MapLane<i32, i32>, mut events: Str)
+where
+    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
+{
+    populate(&lane, &mut events).await;
+
+    let result = lane
+        .modify_direct(27, |_| Some(42))
+        .apply(ExactlyOnce)
+        .await;
+    assert!(result.is_ok());
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Update(27, v)) if *v == 42));
+
+    let result = lane.modify_direct(156, |_| None).apply(ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let event = events.next().now_or_never();
+    assert!(event.is_none());
+}
+
+#[tokio::test]
+async fn modify_direct_none_queue() {
+    let (lane, events) = make_lane(Queue::default());
+    modify_direct_none(lane, events).await;
+}
+
+#[tokio::test]
+async fn modify_direct_none_dropping() {
+    let (lane, events) = make_lane(Dropping);
+    modify_direct_none(lane, events).await;
+}
+
+#[tokio::test]
+async fn modify_direct_none_buffered() {
+    let (lane, events) = make_lane(Buffered::default());
+    modify_direct_none(lane, events).await;
+}
