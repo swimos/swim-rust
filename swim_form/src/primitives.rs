@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
+use common::model::{Value, ValueKind};
 use deserialize::FormDeserializeErr;
 
-use crate::_common::model::schema::StandardSchema;
-use crate::_common::model::ValueKind;
 use crate::{Form, ValidatedForm};
+use common::model::schema::StandardSchema;
 
 impl Form for f64 {
     fn as_value(&self) -> Value {
