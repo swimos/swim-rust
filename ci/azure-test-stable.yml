@@ -10,7 +10,7 @@ jobs:
           MacOS:
             vmImage: macOS-10.15
           Windows:
-            vmImage: vs2017-win2016
+            vmImage: windows-2019
     pool:
       vmImage: $(vmImage)
 
