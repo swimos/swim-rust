@@ -1,0 +1,12 @@
+[package]
+name = "swim-console"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+swim_client = { package = "client", path = "../../client" }
+tokio = { version = "0.2.21", features = ["sync", "stream", "macros"] }
+url = "2.1.1"
+futures = "0.3.4"
+futures-util = "0.3.4"
