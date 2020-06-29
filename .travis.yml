@@ -39,18 +39,3 @@ cache:
 
 before_cache:
   - rm -rf /home/travis/.cargo/registry
-
-before_script:
-  - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
-
-addons:
-  apt:
-    packages:
-      - libssl-dev
-
-after_success:
-  - |
-    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
-      cargo tarpaulin --ignore-tests --out Xml -t 300
-      bash <(curl -s https://codecov.io/bash)
-    fi
