@@ -17,15 +17,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
-use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionError, ConnectionPool, ConnectionSender, SwimConnPool};
-use crate::router::incoming::{IncomingHostTask, IncomingRequest};
-use crate::router::outgoing::OutgoingHostTask;
-use common::request::request_future::{RequestError, RequestFuture, Sequenced};
-use common::sink::item::map_err::SenderErrInto;
-use common::sink::item::ItemSender;
-use common::warp::envelope::{Envelope, IncomingLinkMessage};
-use common::warp::path::{AbsolutePath, RelativePath};
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::{Future, Stream};
@@ -33,9 +24,22 @@ use tokio::stream::StreamExt;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
-use tracing::{error, trace_span};
+use tracing::trace_span;
+use tracing::{span, Level};
 use tracing_futures::Instrument;
+
+use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use common::sink::item::map_err::SenderErrInto;
+use common::sink::item::ItemSender;
+use common::warp::envelope::{Envelope, IncomingLinkMessage};
+use common::warp::path::{AbsolutePath, RelativePath};
+use swim_runtime::task::*;
+
+use crate::configuration::router::RouterParams;
+use crate::connections::{ConnectionPool, ConnectionSender, SwimConnPool};
+use crate::router::incoming::{IncomingHostTask, IncomingRequest};
+use crate::router::outgoing::OutgoingHostTask;
+use common::connections::error::ConnectionError;
 
 pub mod incoming;
 pub mod outgoing;
@@ -90,7 +94,7 @@ pub enum RouterEvent {
 pub struct SwimRouter<Pool: ConnectionPool> {
     router_connection_request_tx: mpsc::Sender<RouterConnRequest>,
     router_sink_tx: mpsc::Sender<RouterMessageRequest>,
-    task_manager_handle: JoinHandle<Result<(), RoutingError>>,
+    task_manager_handle: TaskHandle<Result<(), RoutingError>>,
     connection_pool: Pool,
     close_tx: CloseSender,
     configuration: RouterParams,
@@ -113,7 +117,7 @@ impl<Pool: ConnectionPool> SwimRouter<Pool> {
         let (task_manager, router_connection_request_tx, router_sink_tx) =
             TaskManager::new(connection_pool.clone(), close_rx, configuration);
 
-        let task_manager_handle = tokio::spawn(task_manager.run());
+        let task_manager_handle = spawn(task_manager.run());
 
         SwimRouter {
             router_connection_request_tx,
@@ -165,7 +169,7 @@ enum RouterTask {
 type HostManagerHandle = (
     mpsc::Sender<Envelope>,
     mpsc::Sender<SubscriberRequest>,
-    JoinHandle<Result<(), RoutingError>>,
+    TaskHandle<Result<(), RoutingError>>,
 );
 
 /// The task manager is the main task in the router. It is responsible for creating sub-tasks
@@ -307,7 +311,7 @@ where
         (
             sink,
             stream_registrator,
-            tokio::spawn(
+            spawn(
                 host_manager
                     .run()
                     .instrument(trace_span!(HOST_MANAGER_TASK_NAME)),
@@ -395,8 +399,6 @@ struct HostManager<Pool: ConnectionPool> {
     config: RouterParams,
 }
 
-use tracing::{span, Level};
-
 impl<Pool: ConnectionPool> HostManager<Pool> {
     fn new(
         host: url::Url,
@@ -444,12 +446,12 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let outgoing_task =
             OutgoingHostTask::new(sink_rx, connection_request_tx, close_rx.clone(), config);
 
-        let incoming_handle = tokio::spawn(
+        let incoming_handle = spawn(
             incoming_task
                 .run()
                 .instrument(span!(Level::TRACE, INCOMING_TASK_NAME)),
         );
-        let outgoing_handle = tokio::spawn(
+        let outgoing_handle = spawn(
             outgoing_task
                 .run()
                 .instrument(span!(Level::TRACE, OUTGOING_TASK_NAME)),
@@ -458,10 +460,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let mut rx = combine_host_streams(connection_request_rx, stream_registrator_rx, close_rx);
 
         loop {
-            let task = rx.next().await.ok_or({
-                error!("Sender dropped");
-                RoutingError::ConnectionError
-            })?;
+            let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
 
             match task {
                 HostTask::Connect(ConnectionRequest {
@@ -606,6 +605,7 @@ impl RoutingError {
         match &self {
             RoutingError::ConnectionError => true,
             RoutingError::HostUnreachable => true,
+            RoutingError::PoolError(ConnectionError::ConnectionRefused) => true,
             _ => false,
         }
     }

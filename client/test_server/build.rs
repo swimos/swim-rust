@@ -138,14 +138,14 @@ mod enabled {
     fn build_image(repo_path: &Path) {
         let cmd_output = if cfg!(windows) {
             Command::new("cmd")
-                .args(&["/C", "gradlew.bat dockerBuildImage"])
+                .args(&["/C", "gradlew.bat dockerBuildImage --info"])
                 .current_dir(repo_path)
                 .output()
                 .expect("failed to build docker image")
         } else if cfg!(unix) {
             Command::new("sh")
                 .arg("-c")
-                .arg("./gradlew dockerBuildImage")
+                .arg("./gradlew dockerBuildImage --info")
                 .current_dir(repo_path)
                 .output()
                 .expect("failed to build docker image")

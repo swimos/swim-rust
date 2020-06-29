@@ -17,8 +17,8 @@ use common::topic::{Topic, TopicError};
 use futures::task::{Context, Poll};
 use futures::Stream;
 use pin_project::pin_project;
+use std::pin::Pin;
 use std::sync::Arc;
-use tokio::macros::support::Pin;
 use utilities::future::{TransformOnce, TransformedFuture};
 
 /// A wrapper around a [`Topic`] containing a pointer to an associated downlink task.

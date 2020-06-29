@@ -1,0 +1,40 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'idea'
+}
+
+repositories {
+    mavenCentral()
+    jcenter()
+    maven { url 'http://packages.confluent.io/maven/' }
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+version '1.1'
+mainClassName = 'basic.BasicPlane'
+
+group = 'org.swimos'
+idea.module.outputDir file("out/production/classes")
+
+afterEvaluate {
+    compileJava {
+        options.compilerArgs = ['--module-path', classpath.asPath, '-Xlint:all']
+        classpath = files()
+        options.encoding = 'UTF-8'
+        source = sourceSets.main.allJava
+        sourceCompatibility = JavaVersion.VERSION_1_9
+        targetCompatibility = JavaVersion.VERSION_1_9
+    }
+}
+
+dependencies {
+    compile group: 'org.swimos', name: 'swim-api', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-server', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-client', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-deflate', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-actor', version: '3.10.2'
+    compile group: 'org.swimos', name: 'swim-ws', version: '3.10.2'
+}

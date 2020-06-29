@@ -3,51 +3,30 @@ language: rust
 branches:
   only:
     - master
-    - router
+    - server-prototype
 
-matrix:
+jobs:
   include:
-    - os: linux
-      dist: bionic
+    - dist: bionic
+      os: linux
       arch: amd64
       services:
         - docker
       env:
         - ARCH=amd64
         - TEST_SERVER_VERSION=v1.1
-        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-test-server:1.1"
-        - REPO_URL="https://github.com/SirCipher/swim-test-server/"
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.1"
+        - REPO_URL="https://github.com/swimos/swim-docker-example/"
       script:
-        - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
-        - cargo test --workspace --exclude client
         - cd client
-        #       Features aren't allowed in the root of a virtual workspace
-        - cargo test --package client --features test-server
+        # Features aren't allowed in the root of a virtual workspace
+        - cargo test --all-targets --package client --features test-server
         - cd ..
 
     - os: linux
       arch: arm64
       env: ARCH=arm64
       script:
-        - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
-        - cargo test --workspace
-
-    - os: osx
-      arch: amd64
-      env: ARCH=amd64
-      script:
-        - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
-        - cargo test --workspace
-
-    - os: windows
-      arch: amd64
-      env: ARCH=amd64
-      script:
-        - cargo fmt -- --check
-        - cargo clippy --all-features -- -D warnings -A clippy::match_wild_err_arm
         - cargo test --workspace
 
 rust:
@@ -62,12 +41,7 @@ before_cache:
   - rm -rf /home/travis/.cargo/registry
 
 before_script:
-  - rustup component add clippy
-  - rustup component add rustfmt
-  - |
-    if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
-      cargo install cargo-tarpaulin
-    fi
+  - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
 
 addons:
   apt:
@@ -77,6 +51,6 @@ addons:
 after_success:
   - |
     if [[ "$ARCH" == "amd64" && "$TRAVIS_OS_NAME" == "linux" ]]; then
-      cargo tarpaulin --out Xml -t 300
+      cargo tarpaulin --ignore-tests --out Xml -t 300
       bash <(curl -s https://codecov.io/bash)
     fi
