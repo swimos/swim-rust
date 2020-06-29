@@ -605,6 +605,7 @@ impl RoutingError {
         match &self {
             RoutingError::ConnectionError => true,
             RoutingError::HostUnreachable => true,
+            RoutingError::PoolError(ConnectionError::ConnectionRefused) => true,
             _ => false,
         }
     }
