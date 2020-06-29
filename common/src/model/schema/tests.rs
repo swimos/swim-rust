@@ -1527,12 +1527,7 @@ fn in_int_range_to_value_min() {
     let value = schema.to_value();
     let expected = Value::of_attr((
         "in_range_int",
-        Value::singleton((
-            "min",
-            Value::from_vec(vec![
-                Item::slot("value", 12i64),
-            ]),
-        )),
+        Value::singleton(("min", Value::from_vec(vec![Item::slot("value", 12i64)]))),
     ));
     assert_that!(value, eq(expected));
 }
@@ -1543,12 +1538,7 @@ fn in_int_range_to_value_max() {
     let value = schema.to_value();
     let expected = Value::of_attr((
         "in_range_int",
-        Value::singleton((
-            "max",
-            Value::from_vec(vec![
-                Item::slot("value", 12i64),
-            ]),
-        )),
+        Value::singleton(("max", Value::from_vec(vec![Item::slot("value", 12i64)]))),
     ));
     assert_that!(value, eq(expected));
 }
