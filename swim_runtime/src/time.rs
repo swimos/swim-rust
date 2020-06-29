@@ -17,21 +17,35 @@ pub mod delay {
     use futures::task::{Context, Poll};
     use futures::Future;
     use pin_project::*;
-    use std::fmt::Debug;
     use std::pin::Pin;
     use std::time::Duration;
 
     #[pin_project]
     pub struct Delay {
+        #[cfg(not(target_arch = "wasm32"))]
         #[pin]
-        f: Pin<Box<dyn Future<Output = ()> + Unpin + Send>>,
+        inner: tokio::time::Delay,
+        #[cfg(target_arch = "wasm32")]
+        #[pin]
+        inner: wasm_timer::Delay,
     }
 
     impl Future for Delay {
         type Output = ();
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            self.project().f.poll(cx)
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.project().inner.poll(cx)
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                match self.project().inner.poll(cx) {
+                    Poll::Pending => Poll::Pending,
+                    Poll::Ready(Ok(_)) => Poll::Ready(()),
+                    Poll::Ready(Err(e)) => panic!("{:?}", e),
+                }
+            }
         }
     }
 
@@ -40,42 +54,15 @@ pub mod delay {
     pub fn delay_for(duration: Duration) -> Delay {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let delay = tokio::time::delay_for(duration);
-
             Delay {
-                f: Pin::new(Box::new(delay)),
+                inner: tokio::time::delay_for(duration),
             }
         }
 
         #[cfg(target_arch = "wasm32")]
         {
-            let delay = wasm_timer::Delay::new(duration);
-            let delay = WasmTimerWrapper { f: delay };
-
             Delay {
-                f: Pin::new(Box::new(delay)),
-            }
-        }
-    }
-
-    #[pin_project]
-    struct WasmTimerWrapper<F> {
-        #[pin]
-        f: F,
-    }
-
-    impl<F, O, E> Future for WasmTimerWrapper<F>
-    where
-        F: Future<Output = Result<O, E>>,
-        E: Debug,
-    {
-        type Output = ();
-
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            match self.project().f.poll(cx) {
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(Ok(_)) => Poll::Ready(()),
-                Poll::Ready(Err(e)) => panic!("{:?}", e),
+                inner: wasm_timer::Delay::new(duration),
             }
         }
     }
