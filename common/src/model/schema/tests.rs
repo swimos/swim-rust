@@ -1531,7 +1531,6 @@ fn in_int_range_to_value_min() {
             "min",
             Value::from_vec(vec![
                 Item::slot("value", 12i64),
-                Item::slot("inclusive", true),
             ]),
         )),
     ));
@@ -1548,7 +1547,6 @@ fn in_int_range_to_value_max() {
             "max",
             Value::from_vec(vec![
                 Item::slot("value", 12i64),
-                Item::slot("inclusive", true),
             ]),
         )),
     ));
@@ -1558,7 +1556,7 @@ fn in_int_range_to_value_max() {
 #[test]
 fn in_int_range_to_value_both() {
     let schema = StandardSchema::InRangeInt(Range::<i64>::bounded(
-        Bound::exclusive(-3),
+        Bound::exclusive(-4),
         Bound::inclusive(12),
     ));
     let value = schema.to_value();
