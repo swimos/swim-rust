@@ -2802,3 +2802,71 @@ fn compare_non_nan() {
     assert_equal(schema.clone(), equal_schemas);
     assert_greater_than(schema, lesser_schemas);
 }
+
+#[test]
+fn compare_text_non_empty() {
+    let schema = StandardSchema::Text(TextSchema::NonEmpty);
+
+    let equal_schemas = vec![StandardSchema::Text(TextSchema::NonEmpty)];
+    let lesser_schemas = vec![
+        StandardSchema::Text(TextSchema::Exact("foo".to_string())),
+        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w+").unwrap())),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Text(TextSchema::Exact("".to_string())),
+        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*").unwrap())),
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas)
+}
+
+#[test]
+fn compare_text_exact() {
+    let schema = StandardSchema::Text(TextSchema::Exact("test".to_string()));
+
+    let equal_schemas = vec![StandardSchema::Text(TextSchema::Exact("test".to_string()))];
+    let greater_schemas = vec![
+        StandardSchema::Text(TextSchema::NonEmpty),
+        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*").unwrap())),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Text(TextSchema::Exact("not_a_test".to_string())),
+        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*_").unwrap())),
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+
+    assert_not_related(
+        StandardSchema::Text(TextSchema::Exact("".to_string())),
+        vec![StandardSchema::Text(TextSchema::NonEmpty)],
+    )
+}
+
+#[test]
+fn compare_text_matches() {
+    let schema = StandardSchema::Text(TextSchema::Matches(Regex::new("\\w+").unwrap()));
+
+    let equal_schemas = vec![StandardSchema::Text(TextSchema::Matches(
+        Regex::new("\\w+").unwrap(),
+    ))];
+
+    let greater_schemas = vec![StandardSchema::Text(TextSchema::NonEmpty)];
+    let lesser_schemas = vec![StandardSchema::Text(TextSchema::Exact("foo".to_string()))];
+    let not_related_schemas = vec![StandardSchema::Text(TextSchema::Exact("@@@".to_string()))];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+
+    assert_not_related(
+        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*").unwrap())),
+        vec![StandardSchema::Text(TextSchema::NonEmpty)],
+    )
+}
