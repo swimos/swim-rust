@@ -69,6 +69,27 @@ fn int64_value_to_string() {
 }
 
 #[test]
+fn uint32_value_to_string() {
+    assert_that!(Value::UInt32Value(0).to_string(), eq("0"));
+    assert_that!(Value::UInt32Value(34).to_string(), eq("34"));
+    assert_that!(Value::UInt32Value(5000).to_string(), eq("5000"));
+}
+
+#[test]
+fn uint64_value_to_string() {
+    assert_that!(Value::UInt64Value(0).to_string(), eq("0"));
+    assert_that!(Value::UInt64Value(34).to_string(), eq("34"));
+    assert_that!(
+        Value::UInt64Value(u64::max_value()).to_string(),
+        eq(u64::max_value().to_string())
+    );
+    assert_that!(
+        Value::UInt64Value(12_456_765_984u64).to_string(),
+        eq("12456765984")
+    );
+}
+
+#[test]
 fn boolean_value_to_string() {
     assert_that!(Value::BooleanValue(true).to_string(), eq("true"));
     assert_that!(Value::BooleanValue(false).to_string(), eq("false"));
@@ -168,4 +189,22 @@ fn nested_records_to_string() {
     let complex_inner = Value::Record(vec![("inner", 1).into()], vec![("a", 1).into(), 7.into()]);
     let nested_attr: Attr = ("outer", complex_inner.clone()).into();
     assert_that!(nested_attr.to_string(), eq("@outer(@inner(1){a:1,7})"));
+}
+
+#[test]
+fn unsigned_sort() {
+    assert!(Value::UInt64Value(100) < Value::UInt32Value(10000));
+    assert_eq!(
+        Value::UInt64Value(1000).cmp(&Value::UInt32Value(1000)),
+        Ordering::Equal
+    );
+    assert!(Value::UInt64Value(u64::max_value()) > Value::UInt32Value(u32::max_value()));
+    assert_eq!(
+        Value::Float64Value(1.0).cmp(&Value::UInt32Value(100)),
+        Ordering::Less
+    );
+    assert_eq!(
+        Value::Float64Value(100.0).cmp(&Value::UInt32Value(1)),
+        Ordering::Greater
+    );
 }

@@ -282,6 +282,28 @@ impl Value {
                         }
                     }
                 }
+                Value::UInt32Value(m) => {
+                    if x.is_nan() {
+                        Ordering::Less
+                    } else {
+                        match PartialOrd::partial_cmp(x, &(*m as f64)) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
+                        }
+                    }
+                }
+                Value::UInt64Value(m) => {
+                    if x.is_nan() {
+                        Ordering::Less
+                    } else {
+                        match PartialOrd::partial_cmp(x, &(*m as f64)) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
+                        }
+                    }
+                }
                 Value::Float64Value(y) => {
                     if x.is_nan() {
                         if y.is_nan() {
