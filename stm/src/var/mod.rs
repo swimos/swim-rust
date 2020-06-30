@@ -36,21 +36,26 @@ pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 pub(crate) struct TVarGuarded {
     content: Contents,
     observer: Option<DynObserver>,
+    wakers: Mutex<Vec<Waker>>,
 }
 
 impl TVarGuarded {
-    /// Notify the observer, if present.
+    /// Notify the observer and any wakers, if present.
     async fn notify(&mut self) {
         if let Some(observer) = &mut self.observer {
             observer.notify_raw(self.content.clone()).await;
         }
+        self.wakers
+            .lock()
+            .expect("Locked twice by the same thread.")
+            .drain(..)
+            .for_each(|w| w.wake());
     }
 }
 
 // Type erased contents of a transactional cell.
 pub(in crate) struct TVarInner {
     guarded: RwLock<TVarGuarded>,
-    wakers: Mutex<Vec<Waker>>,
 }
 
 impl TVarInner {
@@ -71,8 +76,8 @@ impl TVarInner {
             guarded: RwLock::new(TVarGuarded {
                 content: value,
                 observer: None,
+                wakers: Mutex::new(vec![]),
             }),
-            wakers: Mutex::new(vec![]),
         }
     }
 
@@ -87,8 +92,8 @@ impl TVarInner {
             guarded: RwLock::new(TVarGuarded {
                 content: value,
                 observer: Some(Box::new(RawWrapper::new(observer))),
+                wakers: Mutex::new(vec![]),
             }),
-            wakers: Mutex::new(vec![]),
         }
     }
 
@@ -108,30 +113,29 @@ impl TVarInner {
         lock.content.clone()
     }
 
-    /// Notify any futures waiting for the variable to change.
-    pub fn notify(&self) {
-        self.wakers
-            .lock()
-            .expect("Locked twice by the same thread.")
-            .drain(..)
-            .for_each(|w| w.wake());
-    }
-
     /// Determine if the contents of the variable have changed as compared to a previous value.
     pub fn has_changed(&self, ptr: &Contents) -> bool {
         if let Some(guard) = self.guarded.read().now_or_never() {
             !data_ptr_eq(guard.deref().content.as_ref(), ptr.as_ref())
         } else {
-            false
+            true
         }
     }
 
-    /// Register an interest in the next change to the variable.
-    pub fn subscribe(&self, waker: Waker) {
-        self.wakers
-            .lock()
-            .expect("Locked twice by the same thread.")
-            .push(waker);
+    /// Determine if the contents of the variable have changed and register a waker if they
+    /// have not.
+    pub fn add_waker(&self, ptr: &Contents, waker: &Waker) -> bool {
+        if let Some(guard) = self.guarded.read().now_or_never() {
+            if data_ptr_eq(guard.deref().content.as_ref(), ptr.as_ref()) {
+                let mut lock = guard.wakers.lock().unwrap();
+                lock.push(waker.clone());
+                false
+            } else {
+                true
+            }
+        } else {
+            true
+        }
     }
 
     /// Determine if the contents of the variable have changed as compared to a previous value and,
@@ -160,11 +164,7 @@ impl TVarInner {
             Some(expected) if !data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) => {
                 None
             }
-            _ => Some(ApplyWrite {
-                var: self,
-                guard,
-                value,
-            }),
+            _ => Some(ApplyWrite { guard, value }),
         }
     }
 }
@@ -311,8 +311,6 @@ impl<T: Any + Send + Sync> TVar<T> {
         let mut lock = inner.guarded.write().await;
         (*lock).content = value;
         lock.notify().await;
-        drop(lock);
-        inner.notify();
     }
 
     /// Store a value in the variable outside of a transaction.
@@ -338,7 +336,6 @@ impl<T: Any + Clone> TVar<T> {
 /// Holds the write lock on the variable and a value to be written allowing the write to be
 /// applied later.
 pub(crate) struct ApplyWrite<'a> {
-    var: &'a TVarInner,
     guard: RwLockWriteGuard<'a, TVarGuarded>,
     value: Contents,
 }
@@ -346,15 +343,9 @@ pub(crate) struct ApplyWrite<'a> {
 impl<'a> ApplyWrite<'a> {
     /// Apply the pending write and release the lock.
     pub async fn apply(self) {
-        let ApplyWrite {
-            var,
-            mut guard,
-            value,
-        } = self;
+        let ApplyWrite { mut guard, value } = self;
 
         (*guard).content = value;
         guard.notify().await;
-        drop(guard);
-        var.notify();
     }
 }

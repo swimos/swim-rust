@@ -34,6 +34,7 @@ use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
+use std::task::Waker;
 
 // Default capacity of the transaction log.
 const DEFAULT_LOG_CAP: usize = 32;
@@ -149,12 +150,6 @@ enum LogState {
 impl Default for LogState {
     fn default() -> Self {
         LogState::UnconditionalSet
-    }
-}
-
-impl LogState {
-    fn has_dependency(&self) -> bool {
-        !matches!(self, LogState::UnconditionalSet)
     }
 }
 
@@ -533,9 +528,25 @@ impl Transaction {
             .iter()
             .any(|(PtrKey(var), i)| match self.log.get(*i) {
                 Some(LogEntry { state, .. }) => match state {
-                    LogState::Get(original) | LogState::ConditionalSet(original) => {
-                        var.has_changed(original)
-                    }
+                    LogState::Get(original)
+                    | LogState::ConditionalSet(original)
+                    | LogState::GetInFailedPath(original) => var.has_changed(original),
+                    _ => false,
+                },
+                _ => false,
+            })
+    }
+
+    // Register a waker that will be called if any variable changes. If this returns true, a change
+    // was detected while registering the waker.
+    fn register_waker(&self, waker: &Waker) -> bool {
+        self.log_assoc
+            .iter()
+            .any(|(PtrKey(var), i)| match self.log.get(*i) {
+                Some(LogEntry { state, .. }) => match state {
+                    LogState::Get(original)
+                    | LogState::ConditionalSet(original)
+                    | LogState::GetInFailedPath(original) => var.add_waker(original, waker),
                     _ => false,
                 },
                 _ => false,
@@ -721,15 +732,8 @@ impl<'a> Future for AwaitChanged<'a> {
             if transaction.reads_changed_or_locked() {
                 return Poll::Ready(());
             }
-            transaction.log_assoc.iter().for_each(|(PtrKey(var), i)| {
-                match transaction.log.get(*i) {
-                    Some(LogEntry { state, .. }) if state.has_dependency() => {
-                        var.subscribe(cx.waker().clone());
-                    }
-                    _ => {}
-                }
-            });
-            if transaction.reads_changed_or_locked() {
+            let waker = cx.waker();
+            if transaction.register_waker(&waker) {
                 Poll::Ready(())
             } else {
                 Poll::Pending
