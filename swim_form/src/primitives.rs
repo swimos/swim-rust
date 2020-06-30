@@ -84,6 +84,44 @@ impl ValidatedForm for i64 {
     }
 }
 
+impl Form for u32 {
+    fn as_value(&self) -> Value {
+        Value::UInt32Value(*self)
+    }
+
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+        match value {
+            Value::UInt32Value(i) => Ok(*i),
+            v => de_incorrect_type("Value::UInt32Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for u32 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt32)
+    }
+}
+
+impl Form for u64 {
+    fn as_value(&self) -> Value {
+        Value::UInt64Value(*self)
+    }
+
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+        match value {
+            Value::UInt64Value(i) => Ok(*i),
+            v => de_incorrect_type("Value::UInt64Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for u64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt64)
+    }
+}
+
 impl Form for bool {
     fn as_value(&self) -> Value {
         Value::BooleanValue(*self)

@@ -90,6 +90,18 @@ fn from_i64() {
 }
 
 #[test]
+fn from_u32() {
+    let r = u32::try_from_value(&Value::UInt32Value(101));
+    assert_success(r, 101);
+}
+
+#[test]
+fn from_u64() {
+    let r = u64::try_from_value(&Value::UInt64Value(1));
+    assert_success(r, 1);
+}
+
+#[test]
 fn from_str() {
     let r = String::try_from_value(&Value::from(1.0));
     assert_err(
