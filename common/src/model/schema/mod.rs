@@ -291,6 +291,28 @@ impl SlotSchema {
     }
 }
 
+//Todo add tests
+impl PartialOrd for SlotSchema {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.eq(other) {
+            Some(Ordering::Equal)
+        } else {
+            let key = self.key_schema.partial_cmp(&other.key_schema)?;
+            let val = self.value_schema.partial_cmp(&other.value_schema)?;
+
+            if key == Ordering::Equal && val == Ordering::Equal {
+                Some(Ordering::Equal)
+            } else if key != Ordering::Greater && val != Ordering::Greater {
+                Some(Ordering::Less)
+            } else if key != Ordering::Less && val != Ordering::Less {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+    }
+}
+
 impl ToValue for SlotSchema {
     fn to_value(&self) -> Value {
         Value::of_attr((
@@ -327,6 +349,25 @@ impl FieldSchema<Item> for SlotSchema {
 pub enum ItemSchema {
     Field(SlotSchema),
     ValueItem(StandardSchema),
+}
+
+//Todo add tests
+impl PartialOrd for ItemSchema {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.eq(other) {
+            Some(Ordering::Equal)
+        } else {
+            match (self, other) {
+                (ItemSchema::Field(this_schema), ItemSchema::Field(other_schema)) => {
+                    this_schema.partial_cmp(other_schema)
+                }
+                (ItemSchema::ValueItem(this_schema), ItemSchema::ValueItem(other_schema)) => {
+                    this_schema.partial_cmp(other_schema)
+                }
+                _ => None,
+            }
+        }
+    }
 }
 
 impl ToValue for ItemSchema {
@@ -682,6 +723,10 @@ impl PartialOrd for StandardSchema {
                 (_, StandardSchema::NonNan) => Some(non_nan_cmp(self)?.reverse()),
                 (StandardSchema::Text(value), _) => text_cmp(value, other),
                 (_, StandardSchema::Text(value)) => Some(text_cmp(value, self)?.reverse()),
+                (StandardSchema::AllItems(value), _) => all_items_cmp(value, other),
+                (_, StandardSchema::AllItems(value)) => Some(all_items_cmp(value, self)?.reverse()),
+                (StandardSchema::NumAttrs(size), _) => num_attrs_cmp(size, other),
+                (_, StandardSchema::NumAttrs(size)) => Some(num_attrs_cmp(size, self)?.reverse()),
                 _ => None,
             }
         }
@@ -843,6 +888,114 @@ fn text_cmp(this: &TextSchema, other: &StandardSchema) -> Option<Ordering> {
             Some(Ordering::Greater)
         }
         _ => None,
+    }
+}
+
+fn all_items_cmp(this: &ItemSchema, other: &StandardSchema) -> Option<Ordering> {
+    match (this, other) {
+        (this, StandardSchema::AllItems(other_schema)) => this.partial_cmp(&other_schema),
+
+        (
+            this,
+            StandardSchema::HeadAttribute {
+                schema: _,
+                required: true,
+                remainder,
+            },
+        ) => {
+            let cmp = StandardSchema::AllItems(Box::new(this.clone())).partial_cmp(remainder)?;
+
+            if cmp != Ordering::Less {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+
+        (
+            _,
+            StandardSchema::HasAttributes {
+                attributes,
+                exhaustive,
+            },
+        ) if attributes.is_empty() && !*exhaustive => Some(Ordering::Less),
+
+        (_, StandardSchema::HasSlots { slots, exhaustive }) if slots.is_empty() && !*exhaustive => {
+            Some(Ordering::Less)
+        }
+
+        (this, StandardSchema::HasSlots { slots, exhaustive }) if *exhaustive => {
+            if let ItemSchema::Field(this_schema) = this {
+                for FieldSpec { schema: s, .. } in slots {
+                    if this_schema.partial_cmp(s)? == Ordering::Less {
+                        return None;
+                    }
+                }
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+
+        (_, StandardSchema::Layout { items, exhaustive }) if items.is_empty() && !*exhaustive => {
+            Some(Ordering::Less)
+        }
+
+        (this, StandardSchema::Layout { items, exhaustive }) if *exhaustive => {
+            for (schema, _) in items {
+                if this.partial_cmp(schema)? == Ordering::Less {
+                    return None;
+                }
+            }
+
+            Some(Ordering::Greater)
+        }
+
+        _ => None,
+    }
+}
+
+fn num_attrs_cmp(size: &usize, other: &StandardSchema) -> Option<Ordering> {
+    match other {
+        StandardSchema::HeadAttribute {
+            schema: _,
+            required,
+            remainder,
+        } if *required => {
+            if StandardSchema::NumAttrs(size - 1).partial_cmp(remainder)? != Ordering::Less {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+
+        StandardSchema::HasAttributes {
+            attributes,
+            exhaustive,
+        } if !*exhaustive && attributes.is_empty() => Some(Ordering::Less),
+
+        StandardSchema::HasAttributes {
+            attributes,
+            exhaustive,
+        } if *exhaustive && attributes.len() == *size => {
+            for attr in attributes {
+                if !attr.required {
+                    return None;
+                }
+            }
+
+            Some(Ordering::Greater)
+        }
+
+        StandardSchema::HasSlots { slots, exhaustive } if !*exhaustive && slots.is_empty() => {
+            Some(Ordering::Less)
+        }
+
+        StandardSchema::Layout { items, exhaustive } if !*exhaustive && items.is_empty() => {
+            Some(Ordering::Less)
+        }
+
+        _ => None {},
     }
 }
 
