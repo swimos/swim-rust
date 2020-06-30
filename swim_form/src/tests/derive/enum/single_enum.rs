@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::model::Value;
 use form_derive::*;
 
-#[form]
+#[form(Value)]
 enum SomeEnum {
     A,
     B(i32),
