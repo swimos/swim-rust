@@ -481,6 +481,18 @@ impl From<i64> for Value {
     }
 }
 
+impl From<u32> for Value {
+    fn from(n: u32) -> Self {
+        Value::UInt32Value(n)
+    }
+}
+
+impl From<u64> for Value {
+    fn from(n: u64) -> Self {
+        Value::UInt64Value(n)
+    }
+}
+
 impl From<f64> for Value {
     fn from(x: f64) -> Self {
         Value::Float64Value(x)

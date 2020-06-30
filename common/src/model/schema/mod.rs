@@ -424,10 +424,15 @@ pub enum StandardSchema {
     OfKind(ValueKind),
     /// Asserts that a [`Value`] takes a specific value.
     Equal(Value),
-    /// Asserts that a [`Value`] is an integer and within a specified range.
+    /// Asserts that a [`Value`] is a signed integer and within a specified range.
     InRangeInt {
         min: Option<(i64, bool)>,
         max: Option<(i64, bool)>,
+    },
+    /// Asserts that a [`Value`] is an unsigned integer and within a specified range.
+    InRangeUInt {
+        min: Option<(u64, bool)>,
+        max: Option<(u64, bool)>,
     },
     /// Asserts that a [`Value`] is a floating point number and in a specified range.
     InRangeFloat {
@@ -584,6 +589,7 @@ impl Schema<Value> for StandardSchema {
         match self {
             StandardSchema::OfKind(kind) => &value.kind() == kind,
             StandardSchema::InRangeInt { min, max } => in_int_range(value, min, max),
+            StandardSchema::InRangeUInt { min, max } => in_uint_range(value, min, max),
             StandardSchema::InRangeFloat { min, max } => in_float_range(value, min, max),
             StandardSchema::NonNan => as_f64(value).map(|x| !f64::is_nan(x)).unwrap_or(false),
             StandardSchema::Finite => as_f64(value).map(f64::is_finite).unwrap_or(false),
@@ -677,6 +683,46 @@ impl StandardSchema {
         }
     }
 
+    /// Matches integer values in an inclusive range.
+    pub fn inclusive_uint_range(min: u64, max: u64) -> Self {
+        StandardSchema::InRangeUInt {
+            min: Some((min, true)),
+            max: Some((max, true)),
+        }
+    }
+
+    /// Matches integer values in an exclusive range.
+    pub fn exclusive_uint_range(min: u64, max: u64) -> Self {
+        StandardSchema::InRangeUInt {
+            min: Some((min, false)),
+            max: Some((max, false)),
+        }
+    }
+
+    /// Matches integer values, inclusive below and exclusive above.
+    pub fn uint_range(min: u64, max: u64) -> Self {
+        StandardSchema::InRangeUInt {
+            min: Some((min, true)),
+            max: Some((max, false)),
+        }
+    }
+
+    /// Matches integer values less than (or less than or equal to) a value.
+    pub fn until_uint(n: u64, inclusive: bool) -> Self {
+        StandardSchema::InRangeUInt {
+            min: None,
+            max: Some((n, inclusive)),
+        }
+    }
+
+    /// Matches integer values greater than (or greater than or equal to) a value.
+    pub fn after_uint(n: u64, inclusive: bool) -> Self {
+        StandardSchema::InRangeUInt {
+            min: Some((n, inclusive)),
+            max: None,
+        }
+    }
+
     /// Matches floating point values in an inclusive range.
     pub fn inclusive_float_range(min: f64, max: f64) -> Self {
         StandardSchema::InRangeFloat {
@@ -758,6 +804,7 @@ impl ToValue for StandardSchema {
             StandardSchema::OfKind(kind) => Value::of_attr(("kind", kind_to_str(*kind))),
             StandardSchema::Equal(v) => Value::of_attr(("equal", v.clone())),
             StandardSchema::InRangeInt { min, max } => range_to_value("in_range_int", *min, *max),
+            StandardSchema::InRangeUInt { min, max } => range_to_value("in_range_uint", *min, *max),
             StandardSchema::InRangeFloat { min, max } => {
                 range_to_value("in_range_float", *min, *max)
             }
@@ -866,6 +913,14 @@ fn as_i64(value: &Value) -> Option<i64> {
     }
 }
 
+fn as_u64(value: &Value) -> Option<u64> {
+    match value {
+        Value::UInt32Value(n) => Some((*n).into()),
+        Value::UInt64Value(n) => Some(*n),
+        _ => None,
+    }
+}
+
 fn as_f64(value: &Value) -> Option<f64> {
     match value {
         Value::Float64Value(x) => Some(*x),
@@ -882,6 +937,13 @@ fn as_record(value: &Value) -> Option<(&[Attr], &[Item])> {
 
 fn in_int_range(value: &Value, min: &Option<(i64, bool)>, max: &Option<(i64, bool)>) -> bool {
     match as_i64(&value) {
+        Some(n) => in_range(n, min, max),
+        _ => false,
+    }
+}
+
+fn in_uint_range(value: &Value, min: &Option<(u64, bool)>, max: &Option<(u64, bool)>) -> bool {
+    match as_u64(&value) {
         Some(n) => in_range(n, min, max),
         _ => false,
     }
