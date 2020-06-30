@@ -1,0 +1,106 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::cmp::Ordering;
+
+/// Compares an [`i64`] and a [`u64`], returning whether the left-hand side is less than, equal to
+/// or greater than the right-hand side.
+pub fn cmp_i64_u64(lhs: i64, rhs: u64) -> Ordering {
+    if lhs < 0 {
+        Ordering::Less
+    } else {
+        let lhs = lhs as u64;
+        lhs.cmp(&rhs)
+    }
+}
+
+/// Compares an [`i32`] and a [`u32`], returning whether the left-hand side is less than, equal to
+/// or greater than the right-hand side.
+pub fn cmp_i32_u32(lhs: i32, rhs: u32) -> Ordering {
+    if lhs < 0 {
+        Ordering::Less
+    } else {
+        let lhs = lhs as u32;
+        lhs.cmp(&rhs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    mod test_32 {
+        use crate::num::cmp_i32_u32;
+        use std::cmp::Ordering;
+
+        #[test]
+        fn less() {
+            assert_eq!(cmp_i32_u32(-10, 10), Ordering::Less);
+        }
+
+        #[test]
+        fn greater() {
+            assert_eq!(cmp_i32_u32(10, 0), Ordering::Greater);
+        }
+
+        #[test]
+        fn eq() {
+            assert_eq!(cmp_i32_u32(10, 10), Ordering::Equal);
+        }
+
+        #[test]
+        fn much_less() {
+            assert_eq!(cmp_i32_u32(10, u32::max_value()), Ordering::Less);
+        }
+
+        #[test]
+        fn much_greater() {
+            assert_eq!(
+                cmp_i32_u32(i32::max_value(), u32::min_value()),
+                Ordering::Greater
+            );
+        }
+    }
+
+    mod test_64 {
+        use crate::num::cmp_i64_u64;
+        use std::cmp::Ordering;
+
+        #[test]
+        fn less() {
+            assert_eq!(cmp_i64_u64(-10, 10), Ordering::Less);
+        }
+
+        #[test]
+        fn greater() {
+            assert_eq!(cmp_i64_u64(10, 0), Ordering::Greater);
+        }
+
+        #[test]
+        fn eq() {
+            assert_eq!(cmp_i64_u64(10, 10), Ordering::Equal);
+        }
+
+        #[test]
+        fn much_less() {
+            assert_eq!(cmp_i64_u64(10, u64::max_value()), Ordering::Less);
+        }
+
+        #[test]
+        fn much_greater() {
+            assert_eq!(
+                cmp_i64_u64(i64::max_value(), u64::min_value()),
+                Ordering::Greater
+            );
+        }
+    }
+}

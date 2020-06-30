@@ -43,6 +43,12 @@ pub enum Value {
     /// A 64-bit integer wrapped as a [`Value`].
     Int64Value(i64),
 
+    /// A 32-bit unsigned integer wrapped as a [`Value`].
+    UInt32Value(u32),
+
+    /// A 64-bit unsigned integer wrapped as a [`Value`].
+    UInt64Value(u64),
+
     /// A 64-bit floating point number wrapped as a [`Value`].
     Float64Value(f64),
 
@@ -83,6 +89,8 @@ pub enum ValueKind {
     Extant,
     Int32,
     Int64,
+    UInt32,
+    UInt64,
     Float64,
     Boolean,
     Text,
@@ -121,6 +129,8 @@ impl Display for ValueKind {
             ValueKind::Extant => write!(f, "Extant"),
             ValueKind::Int32 => write!(f, "Int32"),
             ValueKind::Int64 => write!(f, "Int64"),
+            ValueKind::UInt32 => write!(f, "UInt32"),
+            ValueKind::UInt64 => write!(f, "UInt64"),
             ValueKind::Float64 => write!(f, "Float64"),
             ValueKind::Boolean => write!(f, "Boolean"),
             ValueKind::Text => write!(f, "Text"),
@@ -176,6 +186,8 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::Int32Value(m) => n.cmp(m),
                 Value::Int64Value(m) => (*n as i64).cmp(m),
+                Value::UInt32Value(x) => utilities::num::cmp_i32_u32(*n, *x),
+                Value::UInt64Value(x) => utilities::num::cmp_i64_u64(*n as i64, *x),
                 Value::Float64Value(y) => {
                     if y.is_nan() {
                         Ordering::Greater
@@ -193,6 +205,46 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::Int32Value(m) => n.cmp(&(*m as i64)),
                 Value::Int64Value(m) => n.cmp(m),
+                Value::UInt32Value(x) => utilities::num::cmp_i64_u64(*n, *x as u64),
+                Value::UInt64Value(x) => utilities::num::cmp_i64_u64(*n, *x),
+                Value::Float64Value(y) => {
+                    if y.is_nan() {
+                        Ordering::Greater
+                    } else {
+                        match PartialOrd::partial_cmp(&(*n as f64), y) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
+                        }
+                    }
+                }
+                _ => Ordering::Greater,
+            },
+            Value::UInt32Value(n) => match other {
+                Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                Value::UInt32Value(u) => n.cmp(u),
+                Value::UInt64Value(u) => (*n as u64).cmp(u),
+                Value::Int32Value(x) => utilities::num::cmp_i32_u32(*x, *n),
+                Value::Int64Value(x) => utilities::num::cmp_i64_u64(*x, *n as u64),
+                Value::Float64Value(f) => {
+                    if f.is_nan() {
+                        Ordering::Greater
+                    } else {
+                        match PartialOrd::partial_cmp(&(*n as f64), f) {
+                            Some(Ordering::Less) => Ordering::Less,
+                            Some(Ordering::Greater) => Ordering::Greater,
+                            _ => Ordering::Equal,
+                        }
+                    }
+                }
+                _ => Ordering::Greater,
+            },
+            Value::UInt64Value(n) => match other {
+                Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                Value::Int32Value(m) => utilities::num::cmp_i64_u64(*m as i64, *n),
+                Value::Int64Value(m) => utilities::num::cmp_i64_u64(*m, *n),
+                Value::UInt32Value(x) => n.cmp(&(*x as u64)),
+                Value::UInt64Value(x) => n.cmp(x),
                 Value::Float64Value(y) => {
                     if y.is_nan() {
                         Ordering::Greater
@@ -281,6 +333,8 @@ impl Value {
             Value::Extant => ValueKind::Extant,
             Value::Int32Value(_) => ValueKind::Int32,
             Value::Int64Value(_) => ValueKind::Int64,
+            Value::UInt32Value(_) => ValueKind::UInt32,
+            Value::UInt64Value(_) => ValueKind::UInt64,
             Value::Float64Value(_) => ValueKind::Float64,
             Value::BooleanValue(_) => ValueKind::Boolean,
             Value::Text(_) => ValueKind::Text,
@@ -318,6 +372,14 @@ impl PartialEq for Value {
             },
             Value::Int64Value(n) => match other {
                 Value::Int64Value(m) => n == m,
+                _ => false,
+            },
+            Value::UInt32Value(n) => match other {
+                Value::UInt32Value(m) => n == m,
+                _ => false,
+            },
+            Value::UInt64Value(n) => match other {
+                Value::UInt64Value(m) => n == m,
                 _ => false,
             },
             Value::Float64Value(x) => match other {
@@ -394,6 +456,14 @@ impl Hash for Value {
                 state.write_u8(6);
                 attrs.hash(state);
                 items.hash(state);
+            }
+            Value::UInt32Value(n) => {
+                state.write_u8(7);
+                state.write_u32(*n);
+            }
+            Value::UInt64Value(n) => {
+                state.write_u8(8);
+                state.write_u64(*n);
             }
         }
     }
@@ -693,6 +763,8 @@ impl Display for Value {
             Value::Extant => f.write_str(""),
             Value::Int32Value(n) => write!(f, "{}", n),
             Value::Int64Value(n) => write!(f, "{}", n),
+            Value::UInt32Value(n) => write!(f, "{}", n),
+            Value::UInt64Value(n) => write!(f, "{}", n),
             Value::Float64Value(x) => write!(f, "{:e}", x),
             Value::BooleanValue(p) => write!(f, "{}", p),
             Value::Text(s) => write_string_literal(s, f),
@@ -975,6 +1047,8 @@ impl ValueEncoder {
             Value::Extant => Ok(()),
             Value::Int32Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
             Value::Int64Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
+            Value::UInt32Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
+            Value::UInt64Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
             Value::Float64Value(x) => write!(dst, "{}", x).map_err(|e| e.into()),
             Value::BooleanValue(p) => {
                 if p {
@@ -1097,6 +1171,24 @@ impl ValueEncoder {
                 } else {
                     i
                 }
+            }
+            Value::UInt32Value(n) => {
+                let mut a = *n;
+                let mut i = 0;
+                while a > 0 {
+                    a /= 10;
+                    i += 1;
+                }
+                i
+            }
+            Value::UInt64Value(n) => {
+                let mut a = *n;
+                let mut i = 0;
+                while a > 0 {
+                    a /= 10;
+                    i += 1;
+                }
+                i
             }
             Value::Float64Value(_) => 5,
             Value::BooleanValue(_) => 10,

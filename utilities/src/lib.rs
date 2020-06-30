@@ -21,7 +21,7 @@ pub mod errors;
 pub mod future;
 pub mod iteratee;
 pub mod lru_cache;
-#[macro_use]
+pub mod num;
 pub mod ptr;
 pub mod trace;
 

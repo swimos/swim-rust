@@ -913,6 +913,8 @@ fn kind_to_str(kind: ValueKind) -> &'static str {
         ValueKind::Extant => "extant",
         ValueKind::Int32 => "int32",
         ValueKind::Int64 => "int64",
+        ValueKind::UInt32 => "uint32",
+        ValueKind::UInt64 => "uint64",
         ValueKind::Float64 => "float64",
         ValueKind::Boolean => "boolean",
         ValueKind::Text => "text",
