@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::atomically;
+use crate::local::TLocal;
 use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither};
 use crate::transaction::{RetryManager, TransactionError};
 use crate::var::tests::TestObserver;
@@ -733,6 +734,70 @@ async fn wait_on_var_choice_second() {
     assert!(matches!(result, Ok(Ok(s)) if s == "c"));
 }
 
+#[tokio::test(threaded_scheduler)]
+async fn read_default_from_local() {
+    let local = TLocal::new(3);
+    let stm = local.get();
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(3)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn write_to_local() {
+    let local = TLocal::new(0);
+    let stm = local.put(2).followed_by(local.get());
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(2)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn modify_local() {
+    let local = TLocal::new(0);
+    let stm = local
+        .get()
+        .and_then(|i| local.put(*i + 1))
+        .followed_by(local.get());
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(1)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn changes_to_locals_not_persisted() {
+    let local = TLocal::new(0);
+    let put_stm = local.put(7);
+    let result = atomically(&put_stm, ExactlyOnce).await;
+    assert!(result.is_ok());
+
+    let get_stm = local.get();
+    let after = atomically(&get_stm, ExactlyOnce).await;
+    assert!(matches!(after, Ok(v) if v == Arc::new(0)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn locals_rolled_back_on_retry() {
+    let local = TLocal::new(0);
+    let branching = Choice::new(local.put(2).followed_by(stm::retry()), local.get());
+    let stm = local.put(1).followed_by(branching);
+
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(1)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn locals_rolled_back_on_abort() {
+    let local = TLocal::new(0);
+    let recovering = Catch::new(
+        local
+            .put(2)
+            .followed_by(stm::abort(TestError::new("Boom".to_string()))),
+        |_: TestError| local.get(),
+    );
+    let stm = local.put(1).followed_by(recovering);
+
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == Arc::new(1)));
+}
+
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {
     T::required_stack()
 }
@@ -740,12 +805,15 @@ fn stack_size<T: Stm>(_: &T) -> Option<usize> {
 #[test]
 fn zero_stack_sizes() {
     let var = TVar::new(0);
+    let local = TLocal::new(0);
 
     assert_eq!(stack_size(&Constant(1)), Some(0));
     assert_eq!(stack_size(&Constant(1).followed_by(Constant(1))), Some(0));
     assert_eq!(stack_size(&Constant(1).map(|n| n * 2)), Some(0));
     assert_eq!(stack_size(&var.get()), Some(0));
     assert_eq!(stack_size(&var.put(1)), Some(0));
+    assert_eq!(stack_size(&local.get()), Some(0));
+    assert_eq!(stack_size(&local.put(1)), Some(0));
     assert_eq!(
         stack_size::<Abort<TestError, i32>>(&stm::abort(TestError("Boom".to_string()))),
         Some(0)

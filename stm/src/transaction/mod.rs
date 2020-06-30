@@ -34,6 +34,7 @@ use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
+use std::task::Waker;
 
 // Default capacity of the transaction log.
 const DEFAULT_LOG_CAP: usize = 32;
@@ -41,9 +42,24 @@ const DEFAULT_LOG_CAP: usize = 32;
 // determined.
 const DEFAULT_STACK_SIZE: usize = 8;
 
+#[derive(Debug)]
+struct Frame {
+    vars: FrameMask,
+    locals: FrameMask,
+}
+
+impl Frame {
+    fn new() -> Self {
+        Frame {
+            vars: FrameMask::new(),
+            locals: FrameMask::new(),
+        }
+    }
+}
+
 /// A stack of masks indicating which variables were read from/written two in each frame.
 #[derive(Debug)]
-struct MaskStack(Vec<FrameMask>);
+struct MaskStack(Vec<Frame>);
 
 impl MaskStack {
     fn new(capacity: usize) -> Self {
@@ -53,11 +69,11 @@ impl MaskStack {
     // Enter a new frame.
     fn enter(&mut self) {
         let MaskStack(stack) = self;
-        stack.push(FrameMask::new());
+        stack.push(Frame::new());
     }
 
     // Pop the top frame.
-    fn pop(&mut self) -> Option<FrameMask> {
+    fn pop(&mut self) -> Option<Frame> {
         let MaskStack(stack) = self;
         stack.pop()
     }
@@ -65,7 +81,7 @@ impl MaskStack {
     // Returns true if the stack is empty or a variable was written in this frame.
     fn root_or_set_in_frame(&self, i: usize) -> bool {
         let MaskStack(stack) = self;
-        if let Some(mask) = stack.last() {
+        if let Some(Frame { vars: mask, .. }) = stack.last() {
             matches!(
                 mask.get(i),
                 Some(ReadWrite::Write) | Some(ReadWrite::ReadWrite)
@@ -75,10 +91,19 @@ impl MaskStack {
         }
     }
 
+    fn root_or_local_set_in_frame(&self, i: usize) -> bool {
+        let MaskStack(stack) = self;
+        if let Some(Frame { locals: mask, .. }) = stack.last() {
+            matches!(mask.get(i), Some(ReadWrite::Write))
+        } else {
+            true
+        }
+    }
+
     // If the stack is non-empty, record that a variable was read in this frame.
     fn set_read(&mut self, i: usize) {
         let MaskStack(stack) = self;
-        if let Some(mask) = stack.last_mut() {
+        if let Some(Frame { vars: mask, .. }) = stack.last_mut() {
             mask.read(i);
         }
     }
@@ -86,7 +111,15 @@ impl MaskStack {
     // If the stack is non-empty, record that a variable was written in this frame.
     fn set_written(&mut self, i: usize) {
         let MaskStack(stack) = self;
-        if let Some(mask) = stack.last_mut() {
+        if let Some(Frame { vars: mask, .. }) = stack.last_mut() {
+            mask.write(i);
+        }
+    }
+
+    // If the stack is non-empty, record that a variable was written in this frame.
+    fn set_local_written(&mut self, i: usize) {
+        let MaskStack(stack) = self;
+        if let Some(Frame { locals: mask, .. }) = stack.last_mut() {
             mask.write(i);
         }
     }
@@ -120,12 +153,6 @@ impl Default for LogState {
     }
 }
 
-impl LogState {
-    fn has_dependency(&self) -> bool {
-        !matches!(self, LogState::UnconditionalSet)
-    }
-}
-
 /// A transaction log entry for a single variable.
 #[derive(Debug)]
 struct LogEntry {
@@ -133,6 +160,48 @@ struct LogEntry {
     state: LogState,
     /// Stack of values that have been set into the value for each stack frame.
     stack: Vec<Contents>,
+}
+
+/// A transaction-local entry for a single variable.
+#[derive(Debug)]
+struct LocalEntry {
+    stack: Vec<Contents>,
+}
+
+impl LocalEntry {
+    fn pop(&mut self) {
+        self.stack.pop();
+    }
+
+    fn set<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
+        if let Some(top) = self.stack.last_mut() {
+            assert_eq!(value.as_ref().type_id(), top.as_ref().type_id());
+            *top = value;
+        } else {
+            self.stack.push(value);
+        }
+    }
+
+    // Set the value of a local variable (within the transaction), entering a new stack frame.
+    fn enter<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
+        if let Some(top) = self.stack.last() {
+            assert_eq!(value.as_ref().type_id(), top.as_ref().type_id());
+        }
+        self.stack.push(value);
+    }
+
+    fn get<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.stack
+            .last()
+            .map(|current| match current.clone().downcast() {
+                Err(_) => panic!(
+                    "Inconsistent transaction local variable. Expected {:?} but was {:?}.",
+                    TypeId::of::<T>(),
+                    current.type_id()
+                ),
+                Ok(t) => t,
+            })
+    }
 }
 
 // Panic message for when an inconsistent transaction log is detected.
@@ -257,8 +326,12 @@ impl LogEntry {
 pub struct Transaction {
     // Mapping from variables to entries in the log.
     log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
-    // State of each variable that are referred to in the transaction.
+    // Mapping from transaction-local indices to entries in the log.
+    local_assoc: HashMap<u64, usize>,
+    // State of each variable that is referred to in the transaction.
     log: Slab<LogEntry>,
+    // State of each transaction-local variable that is referred to in the transaction.
+    locals_log: Slab<LocalEntry>,
     // Records which variables have been accessed in each frame of the transaction stack.
     masks: MaskStack,
     // Estimated maximum depth of the transaction stack.
@@ -278,13 +351,41 @@ fn get_entry<'a>(
     }
 }
 
+//Get the log entry associated with a local variable, if it exists.
+fn get_local_entry_mut<'a>(
+    local_assoc: &HashMap<u64, usize>,
+    log: &'a mut Slab<LocalEntry>,
+    index: u64,
+) -> Option<(usize, &'a mut LocalEntry)> {
+    if let Some(i) = local_assoc.get(&index) {
+        log.get_mut(*i).map(|entry| (*i, entry))
+    } else {
+        None
+    }
+}
+
+//Get the log entry associated with a local variable, if it exists.
+fn get_local_entry<'a>(
+    local_assoc: &HashMap<u64, usize>,
+    log: &'a Slab<LocalEntry>,
+    index: u64,
+) -> Option<&'a LocalEntry> {
+    if let Some(i) = local_assoc.get(&index) {
+        log.get(*i)
+    } else {
+        None
+    }
+}
+
 impl Transaction {
     /// Create a new transaction with an estimate of the maximum possible depth of the
     /// execution stack.
     pub fn new(stack_size: usize) -> Self {
         Transaction {
             log_assoc: HashMap::new(),
+            local_assoc: HashMap::new(),
             log: Slab::with_capacity(DEFAULT_LOG_CAP),
+            locals_log: Slab::with_capacity(DEFAULT_LOG_CAP),
             masks: MaskStack::new(stack_size),
             stack_size,
         }
@@ -325,6 +426,40 @@ impl Transaction {
             }
         } else {
             self.entry_for_set(k, value);
+        }
+    }
+
+    pub(crate) fn get_local<T: Any + Send + Sync>(&self, index: u64) -> Option<Arc<T>> {
+        let Transaction {
+            local_assoc,
+            locals_log,
+            ..
+        } = self;
+        get_local_entry(local_assoc, locals_log, index).and_then(|entry| entry.get())
+    }
+
+    pub(crate) fn set_local<T: Any + Send + Sync>(&mut self, index: u64, value: Arc<T>) {
+        let Transaction {
+            local_assoc,
+            locals_log,
+            masks,
+            stack_size,
+            ..
+        } = self;
+        if let Some((i, entry)) = get_local_entry_mut(local_assoc, locals_log, index) {
+            if masks.root_or_local_set_in_frame(i) {
+                entry.set(value)
+            } else {
+                entry.enter(value);
+                masks.set_local_written(i);
+            }
+        } else {
+            let mut stack: Vec<Contents> = Vec::with_capacity(*stack_size);
+            stack.push(value);
+            let entry = LocalEntry { stack };
+            let i = locals_log.insert(entry);
+            masks.set_local_written(i);
+            local_assoc.insert(index, i);
         }
     }
 
@@ -393,9 +528,25 @@ impl Transaction {
             .iter()
             .any(|(PtrKey(var), i)| match self.log.get(*i) {
                 Some(LogEntry { state, .. }) => match state {
-                    LogState::Get(original) | LogState::ConditionalSet(original) => {
-                        var.has_changed(original)
-                    }
+                    LogState::Get(original)
+                    | LogState::ConditionalSet(original)
+                    | LogState::GetInFailedPath(original) => var.has_changed(original),
+                    _ => false,
+                },
+                _ => false,
+            })
+    }
+
+    // Register a waker that will be called if any variable changes. If this returns true, a change
+    // was detected while registering the waker.
+    fn register_waker(&self, waker: &Waker) -> bool {
+        self.log_assoc
+            .iter()
+            .any(|(PtrKey(var), i)| match self.log.get(*i) {
+                Some(LogEntry { state, .. }) => match state {
+                    LogState::Get(original)
+                    | LogState::ConditionalSet(original)
+                    | LogState::GetInFailedPath(original) => var.add_waker(original, waker),
                     _ => false,
                 },
                 _ => false,
@@ -416,11 +567,16 @@ impl Transaction {
 
     /// Pop the top frame of the execution stack.
     pub(crate) fn pop_frame(&mut self) {
-        let Transaction { log, masks, .. } = self;
+        let Transaction {
+            log,
+            locals_log,
+            masks,
+            ..
+        } = self;
 
         match masks.pop() {
-            Some(mask) => {
-                for (index, rw) in mask.iter() {
+            Some(Frame { vars, locals }) => {
+                for (index, rw) in vars.iter() {
                     let remove_entry = if let Some(entry) = log.get_mut(index) {
                         entry.pop(rw)
                     } else {
@@ -428,6 +584,11 @@ impl Transaction {
                     };
                     if remove_entry {
                         log.remove(index);
+                    }
+                }
+                for (index, _) in locals.iter() {
+                    if let Some(entry) = locals_log.get_mut(index) {
+                        entry.pop();
                     }
                 }
             }
@@ -571,15 +732,8 @@ impl<'a> Future for AwaitChanged<'a> {
             if transaction.reads_changed_or_locked() {
                 return Poll::Ready(());
             }
-            transaction.log_assoc.iter().for_each(|(PtrKey(var), i)| {
-                match transaction.log.get(*i) {
-                    Some(LogEntry { state, .. }) if state.has_dependency() => {
-                        var.subscribe(cx.waker().clone());
-                    }
-                    _ => {}
-                }
-            });
-            if transaction.reads_changed_or_locked() {
+            let waker = cx.waker();
+            if transaction.register_waker(&waker) {
                 Poll::Ready(())
             } else {
                 Poll::Pending
@@ -622,6 +776,7 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
             log,
             masks,
             stack_size,
+            ..
         } = transaction.get_mut();
 
         let this = self.get_mut();

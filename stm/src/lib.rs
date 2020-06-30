@@ -14,6 +14,7 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
+pub mod local;
 pub(crate) mod ptr;
 pub mod stm;
 pub mod transaction;

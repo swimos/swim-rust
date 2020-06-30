@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::local::{TLocalRead, TLocalWrite};
 use crate::stm::stm_futures::{
-    AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture, MapStmFuture,
-    SequenceTransFuture, TransactionFuture, WriteFuture,
+    AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture,
+    LocalReadFuture, LocalWriteFuture, MapStmFuture, SequenceTransFuture, TransactionFuture,
+    WriteFuture,
 };
 use crate::transaction::ReadFuture;
 use crate::var::{TVarRead, TVarWrite};
@@ -640,8 +642,31 @@ where
     }
 }
 
+impl<T: Any + Send + Sync> DynamicStm for TLocalRead<T> {
+    type Result = Arc<T>;
+    type TransFuture = LocalReadFuture<T>;
+
+    fn runner(&self) -> Self::TransFuture {
+        LocalReadFuture::new(self.clone())
+    }
+}
+
+impl<T: Any + Send + Sync> Stm for TLocalRead<T> {}
+
+impl<T: Any + Send + Sync> DynamicStm for TLocalWrite<T> {
+    type Result = ();
+    type TransFuture = LocalWriteFuture<T>;
+
+    fn runner(&self) -> Self::TransFuture {
+        LocalWriteFuture::new(self.clone())
+    }
+}
+
+impl<T: Any + Send + Sync> Stm for TLocalWrite<T> {}
+
 mod private {
     use super::Retry;
+    use crate::local::{TLocalRead, TLocalWrite};
     use crate::stm::{
         Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither,
     };
@@ -661,6 +686,8 @@ mod private {
     impl<E, T> Sealed for Abort<E, T> {}
     impl<E, S1, S2, F: Fn(E) -> S2> Sealed for Catch<E, S1, S2, F> {}
     impl<S1, S2> Sealed for StmEither<S1, S2> {}
+    impl<T> Sealed for TLocalRead<T> {}
+    impl<T> Sealed for TLocalWrite<T> {}
     impl<S: ?Sized> Sealed for BoxedStm<S> {}
     impl<SRef> Sealed for SRef
     where
