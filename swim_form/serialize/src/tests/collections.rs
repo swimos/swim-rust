@@ -14,9 +14,7 @@
 
 use serde::Serialize;
 
-use crate::tests::assert_err;
 use crate::tests::to_value;
-use crate::FormSerializeErr;
 use common::model::{Attr, Item, Value};
 use std::collections::BTreeSet;
 
@@ -154,25 +152,5 @@ mod valid_types {
         );
 
         assert_eq!(parsed_value, expected);
-    }
-}
-
-#[cfg(test)]
-mod invalid_types {
-    use std::collections::BTreeMap;
-
-    use super::*;
-
-    #[test]
-    fn invalid_nested_type() {
-        let mut map: BTreeMap<&str, Vec<u32>> = BTreeMap::new();
-        map.insert("a", vec![1, 2, 3]);
-        map.insert("b", vec![1, 2, 3]);
-
-        let parsed_value = to_value(&map);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u32")),
-        );
     }
 }

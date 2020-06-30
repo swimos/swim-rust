@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::tests::assert_err;
 use crate::tests::to_value;
-use crate::FormSerializeErr;
 use common::model::{Attr, Item, Value};
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -38,31 +36,6 @@ mod valid {
         let expected = Value::Record(vec![Attr::of("Test")], vec![Item::slot("v", "hello")]);
 
         assert_eq!(parsed_value, expected);
-    }
-
-    #[test]
-    fn illegal_struct() {
-        #[derive(Serialize)]
-        struct Parent {
-            a: i32,
-            b: Child,
-        }
-
-        #[derive(Serialize)]
-        struct Child {
-            a: u64,
-        }
-
-        let test = Parent {
-            a: 0,
-            b: Child { a: 0 },
-        };
-
-        let parsed_value = to_value(&test);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u64")),
-        );
     }
 
     #[test]

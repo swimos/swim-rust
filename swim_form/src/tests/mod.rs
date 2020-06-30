@@ -50,7 +50,4 @@ fn test_derive() {
     t.pass("src/tests/derive/collection/vector_with_compound.rs");
 
     t.compile_fail("src/tests/derive/unimplemented/unimplemented_compound.rs");
-    t.compile_fail("src/tests/derive/unimplemented/unimplemented_nested.rs");
-    t.compile_fail("src/tests/derive/unimplemented/unimplemented_primitive.rs");
-    t.compile_fail("src/tests/derive/unimplemented/unimplemented_vector.rs");
 }

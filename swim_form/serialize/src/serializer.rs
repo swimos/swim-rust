@@ -55,20 +55,24 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         Ok(())
     }
 
-    fn serialize_u8(self, _v: u8) -> Result<()> {
-        self.err_unsupported("u8")
+    fn serialize_u8(self, v: u8) -> Result<()> {
+        self.push_value(Value::UInt32Value(u32::from(v)));
+        Ok(())
     }
 
-    fn serialize_u16(self, _v: u16) -> Result<()> {
-        self.err_unsupported("u16")
+    fn serialize_u16(self, v: u16) -> Result<()> {
+        self.push_value(Value::UInt32Value(u32::from(v)));
+        Ok(())
     }
 
-    fn serialize_u32(self, _v: u32) -> Result<()> {
-        self.err_unsupported("u32")
+    fn serialize_u32(self, v: u32) -> Result<()> {
+        self.push_value(Value::UInt32Value(v));
+        Ok(())
     }
 
-    fn serialize_u64(self, _v: u64) -> Result<()> {
-        self.err_unsupported("u64")
+    fn serialize_u64(self, v: u64) -> Result<()> {
+        self.push_value(Value::UInt64Value(v));
+        Ok(())
     }
 
     fn serialize_f32(self, v: f32) -> Result<()> {

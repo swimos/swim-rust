@@ -16,9 +16,7 @@ use serde::Serialize;
 
 use common::model::{Attr, Item, Value};
 
-use crate::tests::assert_err;
 use crate::tests::to_value;
-use crate::FormSerializeErr;
 
 #[cfg(test)]
 mod tuples {
@@ -338,6 +336,74 @@ mod struct_valid_types {
     }
 
     #[test]
+    fn test_u8() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u8,
+        }
+
+        let test = Test { a: 1 };
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::slot("a", Value::UInt32Value(1))],
+        );
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_u16() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u16,
+        }
+
+        let test = Test { a: 1 };
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::slot("a", Value::UInt32Value(1))],
+        );
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_u32() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u32,
+        }
+
+        let test = Test { a: 1 };
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::slot("a", Value::UInt32Value(1))],
+        );
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn test_u64() {
+        #[derive(Serialize)]
+        struct Test {
+            a: u64,
+        }
+
+        let test = Test { a: 1 };
+        let parsed_value = to_value(&test).unwrap();
+        let expected = Value::Record(
+            vec![Attr::of("Test")],
+            vec![Item::slot("a", Value::UInt64Value(1))],
+        );
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
     fn test_f32() {
         #[derive(Serialize)]
         struct Test {
@@ -381,93 +447,6 @@ mod struct_valid_types {
 }
 
 #[cfg(test)]
-mod illegal_types {
-    use super::*;
-
-    #[test]
-    fn test_bytes() {
-        #[derive(Serialize)]
-        struct Test<'a> {
-            a: &'a [u8],
-        }
-
-        let test = Test {
-            a: "abcd".as_bytes(),
-        };
-
-        let parsed_value = to_value(&test);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u8")),
-        );
-    }
-
-    #[test]
-    fn test_u8() {
-        #[derive(Serialize)]
-        struct Test {
-            a: u8,
-        }
-
-        let test = Test { a: 1 };
-
-        let parsed_value = to_value(&test);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u8")),
-        );
-    }
-
-    #[test]
-    fn test_u16() {
-        #[derive(Serialize)]
-        struct Test {
-            a: u16,
-        }
-
-        let test = Test { a: 1 };
-
-        let parsed_value = to_value(&test);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u16")),
-        );
-    }
-
-    #[test]
-    fn test_32() {
-        #[derive(Serialize)]
-        struct Test {
-            a: u32,
-        }
-
-        let test = Test { a: 1 };
-
-        let parsed_value = to_value(&test);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u32")),
-        );
-    }
-
-    #[test]
-    fn test_u64() {
-        #[derive(Serialize)]
-        struct Test {
-            a: u64,
-        }
-
-        let test = Test { a: 1 };
-
-        let parsed_value = to_value(&test);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u64")),
-        );
-    }
-}
-
-#[cfg(test)]
 mod compound_types {
     use super::*;
 
@@ -500,32 +479,6 @@ mod compound_types {
         );
 
         assert_eq!(parsed_value, expected);
-    }
-
-    #[test]
-    fn illegal_struct() {
-        #[derive(Serialize)]
-        struct Test {
-            a: i32,
-            b: f32,
-            c: i8,
-            d: String,
-            e: u64,
-        }
-
-        let test = Test {
-            a: 1,
-            b: 2.0,
-            c: 3,
-            d: String::from("hello"),
-            e: 1,
-        };
-
-        let parsed_value = to_value(&test);
-        assert_err(
-            parsed_value,
-            FormSerializeErr::UnsupportedType(String::from("u64")),
-        );
     }
 
     #[test]

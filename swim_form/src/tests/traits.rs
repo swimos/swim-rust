@@ -84,6 +84,12 @@ fn from_f64() {
 }
 
 #[test]
+fn from_i32() {
+    let r = i32::try_from_value(&Value::Int32Value(1));
+    assert_success(r, 1);
+}
+
+#[test]
 fn from_i64() {
     let r = i64::try_from_value(&Value::Int64Value(1));
     assert_success(r, 1);
