@@ -81,7 +81,8 @@ fn kind_schema() {
         let schema = StandardSchema::OfKind(*schema_kind);
         for input_kind in KINDS.iter() {
             let input = examples.get(input_kind).unwrap();
-            if input_kind == schema_kind {
+
+            if input.is_coercible_to(*schema_kind) {
                 assert!(schema.matches(input));
             } else {
                 assert!(!schema.matches(input));
@@ -1467,7 +1468,7 @@ fn array_of_values() {
 
     assert!(schema.matches(&Value::empty_record()));
     assert!(schema.matches(&Value::from_vec(vec![1, 2, 3, 4])));
-    assert!(!schema.matches(&Value::from_vec(vec![1i64, 2i64, 3i64, 4i64])));
+    assert!(schema.matches(&Value::from_vec(vec![1i64, 2i64, 3i64, 4i64])));
     assert!(!schema.matches(&Value::from_vec(vec![Item::of(1), Item::of("hello")])));
 
     let with_attr = Value::Record(vec![Attr::of("name")], vec![Item::of(1), Item::of(10)]);

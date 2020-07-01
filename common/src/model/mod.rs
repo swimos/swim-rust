@@ -148,79 +148,30 @@ impl Value {
                 ValueKind::Int64 => true,
                 ValueKind::UInt32 => u32::try_from(*n).is_ok(),
                 ValueKind::UInt64 => u64::try_from(*n).is_ok(),
-                ValueKind::Extant => *n == 0,
-                ValueKind::Record => true,
-                ValueKind::Float64 => true,
-                ValueKind::Boolean => *n < 2,
-                ValueKind::Text => true,
+                _ => false,
             },
             Value::Int64Value(n) => match &kind {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
                 ValueKind::Int64 => true,
                 ValueKind::UInt32 => u32::try_from(*n).is_ok(),
                 ValueKind::UInt64 => u64::try_from(*n).is_ok(),
-                ValueKind::Extant => *n == 0,
-                ValueKind::Record => true,
-                ValueKind::Float64 => true,
-                ValueKind::Boolean => *n < 2,
-                ValueKind::Text => true,
+                _ => false,
             },
             Value::UInt32Value(n) => match &kind {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
                 ValueKind::Int64 => i64::try_from(*n).is_ok(),
                 ValueKind::UInt32 => true,
                 ValueKind::UInt64 => u64::try_from(*n).is_ok(),
-                ValueKind::Extant => *n == 0,
-                ValueKind::Record => true,
-                ValueKind::Float64 => true,
-                ValueKind::Boolean => *n < 2,
-                ValueKind::Text => true,
+                _ => false,
             },
             Value::UInt64Value(n) => match &kind {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
                 ValueKind::Int64 => i64::try_from(*n).is_ok(),
                 ValueKind::UInt32 => u32::try_from(*n).is_ok(),
                 ValueKind::UInt64 => true,
-                ValueKind::Extant => *n == 0,
-                ValueKind::Record => true,
-                ValueKind::Float64 => true,
-                ValueKind::Boolean => *n < 2,
-                ValueKind::Text => true,
+                _ => false,
             },
-            Value::Extant => true,
-            Value::Float64Value(n) => match &kind {
-                ValueKind::Int32 => false,
-                ValueKind::Int64 => false,
-                ValueKind::UInt32 => false,
-                ValueKind::UInt64 => false,
-                ValueKind::Extant => n.partial_cmp(&0.0).is_some(),
-                ValueKind::Record => true,
-                ValueKind::Float64 => true,
-                ValueKind::Boolean => *n < 2.0,
-                ValueKind::Text => true,
-            },
-            Value::BooleanValue(_) => true,
-            Value::Text(t) => match &kind {
-                ValueKind::Int32 => t.parse::<i32>().is_ok(),
-                ValueKind::Int64 => t.parse::<i64>().is_ok(),
-                ValueKind::UInt32 => t.parse::<u32>().is_ok(),
-                ValueKind::UInt64 => t.parse::<u64>().is_ok(),
-                ValueKind::Extant => t.is_empty(),
-                ValueKind::Float64 => t.parse::<f64>().is_ok(),
-                ValueKind::Boolean => t.parse::<bool>().is_ok(),
-                ValueKind::Text => true,
-                ValueKind::Record => true,
-            },
-            Value::Record(attrs, items) => {
-                if attrs.len() == 0 && items.len() == 1 {
-                    match items.first() {
-                        Some(Item::ValueItem(v)) => Value::is_coercible_to(v, kind),
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            }
+            _ => self.kind() == kind,
         }
     }
 
