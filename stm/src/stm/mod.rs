@@ -16,7 +16,7 @@ use crate::local::{TLocalRead, TLocalWrite};
 use crate::stm::stm_futures::{
     AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture,
     LocalReadFuture, LocalWriteFuture, MapStmFuture, SequenceTransFuture, TransactionFuture,
-    WriteFuture,
+    VecStmFuture, WriteFuture,
 };
 use crate::transaction::ReadFuture;
 use crate::var::{TVarRead, TVarWrite};
@@ -150,6 +150,7 @@ pub trait DynamicStm: Send + Sync + private::Sealed {
     fn runner(&self) -> Self::TransFuture;
 }
 
+#[must_use = "Transactions do nothing if not executed."]
 pub trait Stm: DynamicStm {
     /// Transform the output value of this [`Stm`]. This function could be executed any number of
     /// times and so should be side-effect free. Particularly, two executions of the function
@@ -354,6 +355,17 @@ pub fn left<S1: Stm, S2: Stm>(stm: S1) -> StmEither<S1, S2> {
 pub fn right<S1: Stm, S2: Stm>(stm: S2) -> StmEither<S1, S2> {
     StmEither::Right(stm)
 }
+
+/// [`Stm`] that evaluates a vector of [`Stm`] instances to produce a vector of results.
+pub struct VecStm<S>(Vec<S>);
+
+impl<S> VecStm<S> {
+    pub fn new(stms: Vec<S>) -> Self {
+        VecStm(stms)
+    }
+}
+
+pub const UNIT: Constant<()> = Constant(());
 
 impl<T: Any + Send + Sync> DynamicStm for TVarRead<T> {
     type Result = Arc<T>;
@@ -586,6 +598,31 @@ impl<S1: Stm, S2: Stm<Result = S1::Result>> Stm for StmEither<S1, S2> {
     }
 }
 
+impl<S> DynamicStm for VecStm<S>
+where
+    S: DynamicStm + Send,
+    S::Result: Send,
+{
+    type Result = Vec<S::Result>;
+    type TransFuture = VecStmFuture<S::Result, S::TransFuture>;
+
+    fn runner(&self) -> Self::TransFuture {
+        let VecStm(stms) = self;
+        let runners = stms.iter().map(DynamicStm::runner).collect::<Vec<_>>();
+        VecStmFuture::new(runners)
+    }
+}
+
+impl<S> Stm for VecStm<S>
+where
+    S: Stm + Send,
+    S::Result: Send,
+{
+    fn required_stack() -> Option<usize> {
+        S::required_stack()
+    }
+}
+
 impl<SRef> DynamicStm for SRef
 where
     SRef: Deref + Send + Sync,
@@ -668,7 +705,7 @@ mod private {
     use super::Retry;
     use crate::local::{TLocalRead, TLocalWrite};
     use crate::stm::{
-        Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither,
+        Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither, VecStm,
     };
     use crate::var::{TVarRead, TVarWrite};
     use std::ops::Deref;
@@ -689,6 +726,7 @@ mod private {
     impl<T> Sealed for TLocalRead<T> {}
     impl<T> Sealed for TLocalWrite<T> {}
     impl<S: ?Sized> Sealed for BoxedStm<S> {}
+    impl<S> Sealed for VecStm<S> {}
     impl<SRef> Sealed for SRef
     where
         SRef: Deref,

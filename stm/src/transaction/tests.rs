@@ -14,7 +14,7 @@
 
 use super::atomically;
 use crate::local::TLocal;
-use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither};
+use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither, VecStm};
 use crate::transaction::{RetryManager, TransactionError};
 use crate::var::tests::TestObserver;
 use crate::var::TVar;
@@ -796,6 +796,20 @@ async fn locals_rolled_back_on_abort() {
 
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn empty_vector_stm() {
+    let stm: VecStm<Constant<i32>> = VecStm::new(vec![]);
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v.is_empty()));
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn vector_stm() {
+    let stm = VecStm::new(vec![Constant(1), Constant(2), Constant(3)]);
+    let result = atomically(&stm, ExactlyOnce).await;
+    assert!(matches!(result, Ok(v) if v == vec![1, 2, 3]));
 }
 
 fn stack_size<T: Stm>(_: &T) -> Option<usize> {

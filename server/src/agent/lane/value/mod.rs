@@ -13,15 +13,13 @@
 // limitations under the License.
 
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
-use futures::task::{Context, Poll};
-use futures::{ready, Stream};
-use pin_project::pin_project;
+use crate::agent::lane::BroadcastStream;
+use futures::Stream;
 use std::any::Any;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::observer::StaticObserver;
 use stm::var::TVar;
-use tokio::macros::support::Pin;
 use tokio::sync::{broadcast, mpsc, watch};
 
 #[cfg(test)]
@@ -38,8 +36,9 @@ where
     T: Any + Send + Sync,
     W: ValueLaneWatch<T>,
 {
-    let (observer, view) = watch.make_watch();
-    let var = TVar::new_with_observer(init, observer);
+    let value = Arc::new(init);
+    let (observer, view) = watch.make_watch(&value);
+    let var = TVar::from_arc_with_observer(value, observer);
     let lane = ValueLane { value: var };
     (lane, view)
 }
@@ -64,7 +63,7 @@ pub trait ValueLaneWatch<T> {
     type View: Stream<Item = Arc<T>> + Send + Sync + 'static;
 
     /// Create a linked observer and view stream.
-    fn make_watch(&self) -> (Self::Obs, Self::View);
+    fn make_watch(&self, init: &Arc<T>) -> (Self::Obs, Self::View);
 }
 
 impl<T> ValueLaneWatch<T> for Queue
@@ -74,7 +73,7 @@ where
     type Obs = ChannelObserver<mpsc::Sender<Arc<T>>>;
     type View = mpsc::Receiver<Arc<T>>;
 
-    fn make_watch(&self) -> (Self::Obs, Self::View) {
+    fn make_watch(&self, _init: &Arc<T>) -> (Self::Obs, Self::View) {
         let Queue(n) = self;
         let (tx, rx) = mpsc::channel(n.get());
         let observer = ChannelObserver::new(tx);
@@ -89,29 +88,10 @@ where
     type Obs = ChannelObserver<watch::Sender<Arc<T>>>;
     type View = watch::Receiver<Arc<T>>;
 
-    fn make_watch(&self) -> (Self::Obs, Self::View) {
-        let (tx, rx) = watch::channel(Default::default());
+    fn make_watch(&self, init: &Arc<T>) -> (Self::Obs, Self::View) {
+        let (tx, rx) = watch::channel(init.clone());
         let observer = ChannelObserver::new(tx);
         (observer, rx)
-    }
-}
-
-#[pin_project]
-pub struct BroadcastStream<T>(#[pin] broadcast::Receiver<T>);
-
-impl<T: Clone> Stream for BroadcastStream<T> {
-    type Item = T;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut projected = self.project();
-        loop {
-            match ready!(projected.0.as_mut().poll_next(cx)) {
-                Some(Err(broadcast::RecvError::Closed)) => break Poll::Ready(None),
-                Some(Err(broadcast::RecvError::Lagged(_))) => {}
-                Some(Ok(t)) => break Poll::Ready(Some(t)),
-                _ => break Poll::Ready(None),
-            }
-        }
     }
 }
 
@@ -122,7 +102,7 @@ where
     type Obs = ChannelObserver<broadcast::Sender<Arc<T>>>;
     type View = BroadcastStream<Arc<T>>;
 
-    fn make_watch(&self) -> (Self::Obs, Self::View) {
+    fn make_watch(&self, _init: &Arc<T>) -> (Self::Obs, Self::View) {
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());
         let observer = ChannelObserver::new(tx);

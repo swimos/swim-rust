@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::{BroadcastStream, InvalidForm};
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
+use futures::StreamExt;
 use stm::transaction::RetryManager;
+use swim_form::FormDeserializeErr;
+use tokio::sync::broadcast;
 
 pub struct ExactlyOnce;
 
@@ -29,4 +33,33 @@ impl RetryManager for ExactlyOnce {
     fn retry(&mut self) -> Self::RetryFut {
         ready(false)
     }
+}
+
+#[test]
+fn format_invalid_form() {
+    let err = InvalidForm(FormDeserializeErr::Malformatted);
+    let str = format!("{}", err);
+    assert_eq!(
+        str,
+        "Lane form implementation is inconsistent: Malformatted"
+    );
+}
+
+#[tokio::test]
+async fn broadcast_stream_send() {
+    let (tx, rx) = broadcast::channel(1);
+    let mut stream = BroadcastStream(rx);
+    assert!(tx.send(2).is_ok());
+    let received = stream.next().await;
+    assert_eq!(received, Some(2));
+}
+
+#[tokio::test]
+async fn broadcast_stream_lag() {
+    let (tx, rx) = broadcast::channel(1);
+    let mut stream = BroadcastStream(rx);
+    assert!(tx.send(2).is_ok());
+    assert!(tx.send(3).is_ok());
+    let received = stream.next().await;
+    assert_eq!(received, Some(3));
 }

@@ -502,3 +502,78 @@ impl<T: Any + Send + Sync> TransactionFuture for LocalWriteFuture<T> {
         Poll::Ready(ExecResult::Done(()))
     }
 }
+
+/// A transaction future that executes a vector of transactions and returns their results in a
+/// vector.
+#[pin_project(project = VecStmProject)]
+pub enum VecStmFuture<R, Fut> {
+    NonEmpty {
+        #[pin]
+        current: Fut,
+        runners: Vec<Fut>,
+        results: Option<Vec<R>>,
+    },
+    Empty,
+}
+
+impl<Fut> VecStmFuture<Fut::Output, Fut>
+where
+    Fut: TransactionFuture,
+{
+    pub fn new(mut runners: Vec<Fut>) -> Self {
+        let len = runners.len();
+        runners.reverse();
+        match runners.pop() {
+            Some(first) => VecStmFuture::NonEmpty {
+                current: first,
+                runners,
+                results: Some(Vec::with_capacity(len)),
+            },
+            _ => VecStmFuture::Empty,
+        }
+    }
+}
+
+impl<Fut> TransactionFuture for VecStmFuture<Fut::Output, Fut>
+where
+    Fut: TransactionFuture,
+{
+    type Output = Vec<Fut::Output>;
+
+    fn poll_in(
+        self: Pin<&mut Self>,
+        mut transaction: Pin<&mut Transaction>,
+        cx: &mut Context<'_>,
+    ) -> Poll<ExecResult<Self::Output>> {
+        let projected = self.project();
+        match projected {
+            VecStmProject::NonEmpty {
+                mut current,
+                runners,
+                results,
+            } => {
+                let res: &mut Vec<Fut::Output> = results
+                    .as_mut()
+                    .expect("Vector transaction future polled twice.");
+                loop {
+                    let result = match ready!(current.as_mut().poll_in(transaction.as_mut(), cx)) {
+                        ExecResult::Done(r) => r,
+                        ExecResult::Retry => return Poll::Ready(ExecResult::Retry),
+                        ExecResult::Abort(err) => return Poll::Ready(ExecResult::Abort(err)),
+                    };
+                    res.push(result);
+                    if let Some(next) = runners.pop() {
+                        current.set(next);
+                    } else {
+                        break;
+                    }
+                }
+                match results.take() {
+                    Some(r) => Poll::Ready(ExecResult::Done(r)),
+                    _ => unreachable!(),
+                }
+            }
+            _ => Poll::Ready(ExecResult::Done(Vec::new())),
+        }
+    }
+}
