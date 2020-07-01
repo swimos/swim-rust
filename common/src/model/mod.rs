@@ -161,7 +161,7 @@ impl Value {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
                 ValueKind::Int64 => i64::try_from(*n).is_ok(),
                 ValueKind::UInt32 => true,
-                ValueKind::UInt64 => u64::try_from(*n).is_ok(),
+                ValueKind::UInt64 => true,
                 _ => false,
             },
             Value::UInt64Value(n) => match &kind {
