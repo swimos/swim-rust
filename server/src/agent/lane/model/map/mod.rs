@@ -203,7 +203,7 @@ impl<K: Form, V: Any + Send + Sync> MapLaneModel<K, V> {
         }
     }
 
-    /// Modifies the value of an entry in the map, in a transaction. This is mor efficient than
+    /// Modifies the value of an entry in the map, in a transaction. This is more efficient than
     /// a compound of `get`,  `update` and `remove` transactions.
     pub fn modify_direct<'a, F>(&'a self, key: K, f: F) -> DirectModify<'a, K, V, F>
     where
@@ -212,7 +212,7 @@ impl<K: Form, V: Any + Send + Sync> MapLaneModel<K, V> {
         DirectModify { lane: self, key, f }
     }
 
-    /// Modifies the value of an entry in the map, in a transaction. This is mor efficient than
+    /// Modifies the value of an entry in the map, in a transaction. This is more efficient than
     /// a compound of `get` and `update` transactions.
     pub fn modify_if_defined_direct<'a, F>(
         &'a self,

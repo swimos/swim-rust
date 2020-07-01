@@ -100,7 +100,7 @@ impl<K: Hash + Eq + Clone, V> TransactionSummary<K, V> {
     }
 }
 
-/// At transaction to clear a summary.
+/// A transaction to clear a summary.
 pub fn clear_summary<V: Any + Send + Sync>(
     summary: &TVar<TransactionSummary<Value, V>>,
 ) -> impl Stm<Result = ()> {
