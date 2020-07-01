@@ -141,6 +141,7 @@ impl Display for ValueKind {
 
 #[allow(clippy::float_cmp, clippy::cognitive_complexity)]
 impl Value {
+    /// Checks if the a [`Value`] is coercible into the [`ValueKind`] provided.
     pub fn is_coercible_to(&self, kind: ValueKind) -> bool {
         match &self {
             Value::Int32Value(n) => match &kind {
