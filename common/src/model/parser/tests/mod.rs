@@ -121,6 +121,31 @@ fn iteratee_integer_tokens() {
 }
 
 fn integer_tokens(read_single: ReadSingleToken) {
+    assert_that!(
+        read_single("-2147483648").unwrap(),
+        eq(ReconToken::Int32Literal(-2147483648))
+    );
+    assert_that!(
+        read_single("-2147483649").unwrap(),
+        eq(ReconToken::Int64Literal(-2147483649))
+    );
+    assert_that!(
+        read_single("-9223372036854775808").unwrap(),
+        eq(ReconToken::Int64Literal(-9223372036854775808))
+    );
+    assert_that!(
+        read_single("4294967295").unwrap(),
+        eq(ReconToken::UInt32Literal(4294967295))
+    );
+    assert_that!(
+        read_single("4294967296").unwrap(),
+        eq(ReconToken::UInt64Literal(4294967296))
+    );
+    assert_that!(
+        read_single("18446744073709551615").unwrap(),
+        eq(ReconToken::UInt64Literal(18446744073709551615))
+    );
+
     assert_that!(read_single("0").unwrap(), eq(ReconToken::UInt32Literal(0)));
     assert_that!(read_single("1").unwrap(), eq(ReconToken::UInt32Literal(1)));
     assert_that!(

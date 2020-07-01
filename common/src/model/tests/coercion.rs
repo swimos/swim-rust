@@ -112,3 +112,9 @@ fn test_u64() {
 
     assert_eq!(Value::is_coercible_to(&value, ValueKind::Text), false);
 }
+
+#[test]
+fn t() {
+    println!("{}", i32::min_value());
+    println!("{}", i64::min_value());
+}
