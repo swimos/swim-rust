@@ -14,9 +14,6 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use client::configuration::downlink::{
-        BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-    };
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
     use client::downlink::model::map::{MapModification, UntypedMapModification};
     use client::interface::SwimClient;
@@ -28,21 +25,6 @@ mod tests {
     use test_server::Docker;
     use test_server::SwimTestServer;
     use tokio::time::Duration;
-
-    fn config() -> ConfigHierarchy {
-        let client_params = ClientParams::new(2, Default::default()).unwrap();
-        let timeout = Duration::from_secs(60000);
-        let default_params = DownlinkParams::new_queue(
-            BackpressureMode::Propagate,
-            5,
-            timeout,
-            5,
-            OnInvalidMessage::Terminate,
-            256,
-        )
-        .unwrap();
-        ConfigHierarchy::new(client_params, default_params)
-    }
 
     #[tokio::test]
     async fn test_recv_untyped_value_event() {
@@ -161,7 +143,7 @@ mod tests {
         let incoming = event_dl.recv().await.unwrap();
 
         let header = Attr::of(("update", Value::record(vec![Item::slot("key", "milk")])));
-        let body = Item::of(6);
+        let body = Item::of(6u32);
         let expected = Value::Record(vec![header], vec![body]);
 
         assert_eq!(incoming, expected);
@@ -183,7 +165,7 @@ mod tests {
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
         let mut event_dl = client
-            .event_downlink::<MapModification<String, i32>>(event_path, Default::default())
+            .event_downlink::<MapModification<String, u32>>(event_path, Default::default())
             .await
             .unwrap();
 
