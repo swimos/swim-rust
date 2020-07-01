@@ -540,7 +540,7 @@ impl ReconToken<&str> {
 }
 
 impl<S: TokenStr> ReconToken<S> {
-    /// True if the token constitutes a ['Value'] in itself.
+    /// True if, and only if, the token constitutes a ['Value'] in itself.
     fn is_value(&self) -> bool {
         match self {
             ReconToken::Identifier(_)

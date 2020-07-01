@@ -587,6 +587,21 @@ fn matches_head_attr<'a>(
 impl Schema<Value> for StandardSchema {
     fn matches(&self, value: &Value) -> bool {
         match self {
+            // StandardSchema::OfKind(kind) if kind.int_type() => {
+            //     if value.kind().int_type() {
+            //         match &self {
+            //             Value::Int32Value(n) => {}
+            //             Value::Int64Value(n) => {}
+            //             Value::UInt32Value(n) => {}
+            //             Value::UInt64Value(n) => {}
+            //             _ => unreachable!(),
+            //         }
+            //
+            //         unimplemented!()
+            //     } else {
+            //         false
+            //     }
+            // }
             StandardSchema::OfKind(kind) => &value.kind() == kind,
             StandardSchema::InRangeInt { min, max } => in_int_range(value, min, max),
             StandardSchema::InRangeUInt { min, max } => in_uint_range(value, min, max),

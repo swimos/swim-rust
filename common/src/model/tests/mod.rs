@@ -16,6 +16,7 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
 use super::*;
+mod coercion;
 
 #[test]
 fn extant_to_string() {

@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::{ConnectionPool, ConnectionReceiver, ConnectionSender};
+use crate::downlink::model::map::{MapModification, UntypedMapModification};
+use crate::interface::SwimClient;
 use crate::router::{Router, RouterEvent, SwimRouter};
 use common::connections::error::{ConnectionError, WebSocketError};
 use common::connections::WsMessage;
@@ -26,8 +29,10 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use swim_form::Form;
 use tokio::sync::{mpsc, watch};
 use tokio::time::timeout;
+use tracing::Level;
 
 async fn get_message(
     pool_handlers: &mut HashMap<url::Url, PoolHandler>,
@@ -1883,4 +1888,39 @@ impl ConnectionPool for TestPool {
     fn close(self) -> Result<Self::CloseFut, ConnectionError> {
         Ok(ready(Ok(Ok(()))))
     }
+}
+
+#[tokio::test]
+async fn test_recv_typed_map_event_valid() {
+    tracing_subscriber::fmt()
+        .with_max_level(Level::TRACE)
+        // .with_env_filter(filter)
+        .init();
+
+    let host = "ws://127.0.0.1:9001";
+
+    let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+    let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+
+    let command_path =
+        AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+
+    let mut event_dl = client
+        .event_downlink::<MapModification<String, i32>>(event_path, Default::default())
+        .await
+        .unwrap();
+
+    tokio::time::delay_for(Duration::from_secs(1)).await;
+
+    let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+
+    let item =
+        UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value()).as_value();
+
+    command_dl.send_item(item).await.unwrap();
+
+    let incoming = event_dl.recv().await.unwrap();
+
+    assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6));
 }

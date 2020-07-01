@@ -17,6 +17,7 @@ use deserialize::FormDeserializeErr;
 
 use crate::{Form, ValidatedForm};
 use common::model::schema::StandardSchema;
+use std::convert::TryFrom;
 
 impl Form for f64 {
     fn as_value(&self) -> Value {
@@ -53,6 +54,21 @@ impl Form for i32 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Int32Value(i) => Ok(*i),
+            Value::Int64Value(i) => i32::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int32Value, found Value::Int64Value".into(),
+                )
+            }),
+            Value::UInt32Value(i) => i32::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int32Value, found Value::UInt32Value".into(),
+                )
+            }),
+            Value::UInt64Value(i) => i32::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int32Value, found Value::UInt64Value".into(),
+                )
+            }),
             v => de_incorrect_type("Value::Int32Value", v),
         }
     }
@@ -71,7 +87,18 @@ impl Form for i64 {
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
+            Value::Int32Value(i) => Ok(*i as i64),
             Value::Int64Value(i) => Ok(*i),
+            Value::UInt32Value(i) => i64::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int64Value, found Value::UInt32Value".into(),
+                )
+            }),
+            Value::UInt64Value(i) => i64::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int64Value, found Value::UInt64Value".into(),
+                )
+            }),
             v => de_incorrect_type("Value::Int64Value", v),
         }
     }
@@ -90,7 +117,22 @@ impl Form for u32 {
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
+            Value::Int32Value(i) => u32::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::Int64Value(i) => u32::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::Int64Value".into(),
+                )
+            }),
             Value::UInt32Value(i) => Ok(*i),
+            Value::UInt64Value(i) => u32::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::UInt64Value".into(),
+                )
+            }),
             v => de_incorrect_type("Value::UInt32Value", v),
         }
     }
@@ -109,6 +151,17 @@ impl Form for u64 {
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
+            Value::Int32Value(i) => u64::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::Int64Value(i) => u64::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::UInt32Value(i) => Ok(*i as u64),
             Value::UInt64Value(i) => Ok(*i),
             v => de_incorrect_type("Value::UInt64Value", v),
         }
