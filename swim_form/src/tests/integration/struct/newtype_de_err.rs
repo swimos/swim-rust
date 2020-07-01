@@ -19,7 +19,7 @@ use swim_form::Form;
 use swim_form::_deserialize::FormDeserializeErr;
 
 fn main() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent(i32);
 

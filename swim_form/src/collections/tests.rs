@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use super::*;
-use crate::_common::model::schema::Schema;
-use crate::_common::model::{Attr, Value};
+use common::model::schema::Schema;
+use common::model::{Attr, Value};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::collections::HashSet;
