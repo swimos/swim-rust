@@ -81,22 +81,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Int32Value(i)) = &self.current_state.value {
-            visitor.visit_i32(*i)
-        } else {
-            self.err_incorrect_type("Value::Int32Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Int64Value(i)) = &self.current_state.value {
-            visitor.visit_i64(*i)
-        } else {
-            self.err_incorrect_type("Value::Int64Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value>
@@ -117,22 +109,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::UInt32Value(i)) = &self.current_state.value {
-            visitor.visit_u32(*i)
-        } else {
-            self.err_incorrect_type("Value::UInt32Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::UInt64Value(i)) = &self.current_state.value {
-            visitor.visit_u64(*i)
-        } else {
-            self.err_incorrect_type("Value::UInt64Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>

@@ -907,6 +907,8 @@ fn layout_item(schema: &ItemSchema, required: bool) -> Item {
 
 fn as_i64(value: &Value) -> Option<i64> {
     match value {
+        Value::UInt32Value(n) => i64::try_from(*n).ok(),
+        Value::UInt64Value(n) => i64::try_from(*n).ok(),
         Value::Int32Value(n) => Some((*n).into()),
         Value::Int64Value(n) => Some(*n),
         _ => None,
@@ -917,6 +919,8 @@ fn as_u64(value: &Value) -> Option<u64> {
     match value {
         Value::UInt32Value(n) => Some((*n).into()),
         Value::UInt64Value(n) => Some(*n),
+        Value::Int32Value(n) => u64::try_from(*n).ok(),
+        Value::Int64Value(n) => u64::try_from(*n).ok(),
         _ => None,
     }
 }
