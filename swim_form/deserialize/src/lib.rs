@@ -20,6 +20,8 @@ use std::fmt::{Debug, Display, Formatter};
 use serde::de;
 
 use common::model::{Attr, Item, Value};
+use num_bigint::BigInt;
+use serde::de::{SeqAccess, Visitor};
 
 #[cfg(test)]
 mod tests;
@@ -178,3 +180,18 @@ impl de::Error for FormDeserializeErr {
 }
 
 impl std::error::Error for FormDeserializeErr {}
+
+// impl<'de> Visitor<'de> for BigInt {
+//     type Value = BigInt;
+//
+//     fn expecting(&self, formatter: &mut Formatter) -> Result<Self::Value> {
+//         unimplemented!()
+//     }
+//
+//     fn visit_seq<A>(self, seq: A) -> Result<Self::Value>
+//     where
+//         A: SeqAccess<'de>,
+//     {
+//         unimplemented!()
+//     }
+// }

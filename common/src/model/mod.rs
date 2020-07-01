@@ -23,7 +23,8 @@ use either::Either;
 use tokio_util::codec::Encoder;
 
 use crate::model::parser::is_identifier;
-
+use num_bigint::{BigInt, BigUint};
+use num_traits::sign::Signed;
 pub mod parser;
 pub mod schema;
 
@@ -76,6 +77,12 @@ pub enum Value {
     /// A compound [`Value`] consisting of any number of [`Attr`]s and [`Item`]s.
     ///
     Record(Vec<Attr>, Vec<Item>),
+
+    /// A big signed integer type wrapped as a [`Value`].
+    BigInt(BigInt),
+
+    /// A big unsigned integer type wrapped as a [`Value`].
+    BigUInt(BigUint),
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -87,6 +94,8 @@ pub enum ValueKind {
     Boolean,
     Text,
     Record,
+    BigInt,
+    BigUInt,
 }
 
 /// Trait for types that can be converted to [`Value`]s.
@@ -125,6 +134,8 @@ impl Display for ValueKind {
             ValueKind::Boolean => write!(f, "Boolean"),
             ValueKind::Text => write!(f, "Text"),
             ValueKind::Record => write!(f, "Record"),
+            ValueKind::BigInt => write!(f, "BigInt"),
+            ValueKind::BigUInt => write!(f, "BigUInt"),
         }
     }
 }
@@ -273,6 +284,8 @@ impl Value {
                 }
                 _ => Ordering::Less,
             },
+            Value::BigInt(bi) => unimplemented!(),
+            Value::BigUInt(bi) => unimplemented!(),
         }
     }
 
@@ -285,6 +298,8 @@ impl Value {
             Value::BooleanValue(_) => ValueKind::Boolean,
             Value::Text(_) => ValueKind::Text,
             Value::Record(_, _) => ValueKind::Record,
+            Value::BigInt(_) => ValueKind::BigInt,
+            Value::BigUInt(_) => ValueKind::BigUInt,
         }
     }
 
@@ -342,6 +357,14 @@ impl PartialEq for Value {
                 Value::Record(attrs2, items2) => attrs1 == attrs2 && items1 == items2,
                 _ => false,
             },
+            Value::BigInt(left) => match other {
+                Value::BigInt(right) => left == right,
+                _ => false,
+            },
+            Value::BigUInt(left) => match other {
+                Value::BigUInt(right) => left == right,
+                _ => false,
+            },
         }
     }
 }
@@ -394,6 +417,14 @@ impl Hash for Value {
                 state.write_u8(6);
                 attrs.hash(state);
                 items.hash(state);
+            }
+            Value::BigInt(bi) => {
+                state.write_u8(7);
+                bi.hash(state);
+            }
+            Value::BigUInt(bi) => {
+                state.write_u8(8);
+                bi.hash(state);
             }
         }
     }
@@ -719,6 +750,8 @@ impl Display for Value {
                     }
                 }
             }
+            Value::BigInt(bi) => write!(f, "{}", bi),
+            Value::BigUInt(bi) => write!(f, "{}", bi),
         }
     }
 }
@@ -1001,6 +1034,8 @@ impl ValueEncoder {
                 }
                 Ok(())
             }
+            Value::BigInt(bi) => write!(dst, "{}", bi).map_err(|e| e.into()),
+            Value::BigUInt(bi) => write!(dst, "{}", bi).map_err(|e| e.into()),
         }
     }
 
@@ -1130,6 +1165,25 @@ impl ValueEncoder {
                     }
                     sum
                 }
+            }
+            Value::BigInt(bi) => {
+                let req = if bi.is_negative() {
+                    bi.bits() + 1
+                } else {
+                    bi.bits()
+                };
+
+                if req > usize::max_value() as u64 {
+                    panic!("Buffer overflow")
+                }
+                req as usize
+            }
+            Value::BigUInt(bi) => {
+                let req = bi.bits();
+                if req > usize::max_value() as u64 {
+                    panic!("Buffer overflow")
+                }
+                req as usize
             }
         }
     }

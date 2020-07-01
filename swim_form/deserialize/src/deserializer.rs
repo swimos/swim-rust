@@ -12,14 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::de::Visitor;
-use serde::Deserializer;
+use serde::de::{SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 
 use common::model::{Item, Value};
 
 use crate::enum_access::Enum;
 use crate::map_access::RecordMap;
 use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
+use core::fmt;
+use num_bigint::BigInt;
+use serde::export::Formatter;
 
 impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     type Error = FormDeserializeErr;
@@ -30,13 +33,18 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     {
         match self.current_state.value {
             Some(value) => match value {
-                Value::Record(_attrs, _items) => panic!(),
+                Value::Record(_attrs, _items) => {
+                    unreachable!("Deserializer entered an illegal state")
+                }
                 Value::Int32Value(_) => self.deserialize_i32(visitor),
                 Value::Int64Value(_) => self.deserialize_i64(visitor),
                 Value::Extant => self.deserialize_option(visitor),
                 Value::Text(_) => self.deserialize_string(visitor),
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
                 Value::BooleanValue(_) => self.deserialize_bool(visitor),
+                _=>panic!()
+                // Value::BigInt(bi) => num_bigint::BigInt::deserialize(self),
+                // Value::BigUInt(bi) => num_bigint::BigInt::deserialize(self),
             },
             None => {
                 if let DeserializerState::ReadingAttribute(a) =
@@ -257,7 +265,15 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
             result
         } else {
             match self.current_state.value {
-                Some(v) => self.err_incorrect_type("Value::Record", Some(v)),
+                Some(v) => match v {
+                    Value::BigInt(bi) => {
+                        let bid = BigIntDeserializer { de: &mut self };
+
+                        visitor.visit_seq(bid)
+                    }
+                    Value::BigUInt(bi) => unimplemented!(),
+                    _ => self.err_incorrect_type("Value::Record", Some(v)),
+                },
                 None => Err(FormDeserializeErr::Message(String::from("Missing value"))),
             }
         }
@@ -395,5 +411,30 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         V: Visitor<'de>,
     {
         self.deserialize_any(_visitor)
+    }
+}
+
+struct BigIntDeserializer<'a, 'de: 'a> {
+    de: &'a mut ValueDeserializer<'de>,
+}
+
+impl<'a, 'de: 'a> Visitor<'de> for BigIntDeserializer<'a, 'de> {
+    type Value = BigInt;
+
+    fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+        unimplemented!()
+    }
+
+    fn visit_seq<A>(
+        self,
+        seq: A,
+    ) -> std::result::Result<Self::Value, <A as serde::de::SeqAccess<'de>>::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        match self.de.current_state.value {
+            Some(Value::BigInt(bi)) => Ok(bi.clone()),
+            _ => unreachable!("Illegal state"),
+        }
     }
 }

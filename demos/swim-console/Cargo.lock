@@ -157,6 +157,8 @@ dependencies = [
  "either",
  "futures",
  "futures-util",
+ "num-bigint",
+ "num-traits",
  "pin-project",
  "pin-utils",
  "regex",
@@ -191,6 +193,7 @@ name = "deserialize"
 version = "0.1.0"
 dependencies = [
  "common",
+ "num-bigint",
  "serde",
 ]
 
@@ -614,6 +617,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f3fc75e3697059fb1bc465e3d8cca6cf92f56854f201158b3f9c77d5a3cfa0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -993,6 +1008,7 @@ name = "serialize"
 version = "0.1.0"
 dependencies = [
  "common",
+ "num-bigint",
  "serde",
 ]
 
