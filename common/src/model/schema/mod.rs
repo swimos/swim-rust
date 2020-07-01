@@ -75,6 +75,36 @@ impl TextSchema {
     }
 }
 
+impl PartialOrd for TextSchema {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.eq(other) {
+            Some(Ordering::Equal)
+        } else {
+            match (self, other) {
+                (TextSchema::NonEmpty, TextSchema::Exact(val)) if !val.is_empty() => {
+                    Some(Ordering::Greater)
+                }
+                (TextSchema::NonEmpty, TextSchema::Matches(regex)) if !regex.is_match("") => {
+                    Some(Ordering::Greater)
+                }
+                (TextSchema::Exact(val), TextSchema::NonEmpty) if !val.is_empty() => {
+                    Some(Ordering::Less)
+                }
+                (TextSchema::Exact(val), TextSchema::Matches(regex)) if regex.is_match(&val) => {
+                    Some(Ordering::Less)
+                }
+                (TextSchema::Matches(regex), TextSchema::NonEmpty) if !regex.is_match("") => {
+                    Some(Ordering::Less)
+                }
+                (TextSchema::Matches(regex), TextSchema::Exact(val)) if regex.is_match(val) => {
+                    Some(Ordering::Greater)
+                }
+                _ => None,
+            }
+        }
+    }
+}
+
 impl ToValue for TextSchema {
     fn to_value(&self) -> Value {
         match self {
@@ -207,6 +237,37 @@ impl AttrSchema {
     }
 }
 
+impl PartialOrd for AttrSchema {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.eq(other) {
+            Some(Ordering::Equal)
+        } else {
+            let name = self.name_schema.partial_cmp(&other.name_schema)?;
+            let val = self.value_schema.partial_cmp(&other.value_schema)?;
+
+            combine_orderings(vec![name, val])
+        }
+    }
+}
+
+fn combine_orderings(orderings: Vec<Ordering>) -> Option<Ordering> {
+    if orderings.is_empty() {
+        return None;
+    }
+
+    let mut prev_ord = Ordering::Equal;
+
+    for ord in orderings {
+        if prev_ord != Ordering::Equal && ord == prev_ord.reverse() {
+            return None;
+        } else if ord != Ordering::Equal {
+            prev_ord = ord;
+        }
+    }
+
+    Some(prev_ord)
+}
+
 impl ToValue for AttrSchema {
     fn to_value(&self) -> Value {
         Value::of_attr(self.to_attr())
@@ -291,7 +352,6 @@ impl SlotSchema {
     }
 }
 
-//Todo add tests
 impl PartialOrd for SlotSchema {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.eq(other) {
@@ -300,15 +360,7 @@ impl PartialOrd for SlotSchema {
             let key = self.key_schema.partial_cmp(&other.key_schema)?;
             let val = self.value_schema.partial_cmp(&other.value_schema)?;
 
-            if key == Ordering::Equal && val == Ordering::Equal {
-                Some(Ordering::Equal)
-            } else if key != Ordering::Greater && val != Ordering::Greater {
-                Some(Ordering::Less)
-            } else if key != Ordering::Less && val != Ordering::Less {
-                Some(Ordering::Greater)
-            } else {
-                None
-            }
+            combine_orderings(vec![key, val])
         }
     }
 }
@@ -351,7 +403,6 @@ pub enum ItemSchema {
     ValueItem(StandardSchema),
 }
 
-//Todo add tests
 impl PartialOrd for ItemSchema {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.eq(other) {
@@ -573,14 +624,7 @@ impl<T: Copy + PartialOrd> PartialOrd for Range<T> {
         } else if self.is_bounded() && other.is_bounded() {
             let lower = partial_cmp_lower_bounds(self.min?, other.min?)?;
             let upper = partial_cmp_upper_bounds(self.max?, other.max?)?;
-
-            if lower != Ordering::Less && upper != Ordering::Less {
-                Some(Ordering::Greater)
-            } else if lower != Ordering::Greater && upper != Ordering::Greater {
-                Some(Ordering::Less)
-            } else {
-                None
-            }
+            combine_orderings(vec![lower, upper])
         } else if other.is_bounded() {
             cmp_bounded_and_half_bounded_range(self, other)
         } else if self.is_bounded() {
@@ -727,6 +771,8 @@ impl PartialOrd for StandardSchema {
                 (_, StandardSchema::AllItems(value)) => Some(all_items_cmp(value, self)?.reverse()),
                 (StandardSchema::NumAttrs(size), _) => num_attrs_cmp(size, other),
                 (_, StandardSchema::NumAttrs(size)) => Some(num_attrs_cmp(size, self)?.reverse()),
+                (StandardSchema::NumItems(size), _) => num_items_cmp(size, other),
+                (_, StandardSchema::NumItems(size)) => Some(num_items_cmp(size, self)?.reverse()),
                 _ => None,
             }
         }
@@ -861,32 +907,7 @@ fn non_nan_cmp(other: &StandardSchema) -> Option<Ordering> {
 
 fn text_cmp(this: &TextSchema, other: &StandardSchema) -> Option<Ordering> {
     match (this, other) {
-        (TextSchema::NonEmpty, StandardSchema::Text(TextSchema::Exact(val))) if !val.is_empty() => {
-            Some(Ordering::Greater)
-        }
-        (TextSchema::NonEmpty, StandardSchema::Text(TextSchema::Matches(regex)))
-            if !regex.is_match("") =>
-        {
-            Some(Ordering::Greater)
-        }
-        (TextSchema::Exact(val), StandardSchema::Text(TextSchema::NonEmpty)) if !val.is_empty() => {
-            Some(Ordering::Less)
-        }
-        (TextSchema::Exact(val), StandardSchema::Text(TextSchema::Matches(regex)))
-            if regex.is_match(val) =>
-        {
-            Some(Ordering::Less)
-        }
-        (TextSchema::Matches(regex), StandardSchema::Text(TextSchema::NonEmpty))
-            if !regex.is_match("") =>
-        {
-            Some(Ordering::Less)
-        }
-        (TextSchema::Matches(regex), StandardSchema::Text(TextSchema::Exact(val)))
-            if regex.is_match(val) =>
-        {
-            Some(Ordering::Greater)
-        }
+        (this_schema, StandardSchema::Text(other_schema)) => this_schema.partial_cmp(other_schema),
         _ => None,
     }
 }
@@ -996,6 +1017,57 @@ fn num_attrs_cmp(size: &usize, other: &StandardSchema) -> Option<Ordering> {
         }
 
         _ => None {},
+    }
+}
+
+fn num_items_cmp(size: &usize, other: &StandardSchema) -> Option<Ordering> {
+    match other {
+        StandardSchema::HeadAttribute {
+            schema: _,
+            required: _,
+            remainder,
+        } => {
+            if StandardSchema::NumItems(*size).partial_cmp(remainder)? != Ordering::Less {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+
+        StandardSchema::HasAttributes {
+            attributes,
+            exhaustive,
+        } if !*exhaustive && attributes.is_empty() => Some(Ordering::Less),
+
+        StandardSchema::HasSlots { slots, exhaustive } if !*exhaustive && slots.is_empty() => {
+            Some(Ordering::Less)
+        }
+
+        StandardSchema::HasSlots { slots, exhaustive } if *exhaustive && *size == slots.len() => {
+            for s in slots {
+                if !s.required {
+                    return None;
+                }
+            }
+
+            Some(Ordering::Greater)
+        }
+
+        StandardSchema::Layout { items, exhaustive } if !*exhaustive && items.is_empty() => {
+            Some(Ordering::Less)
+        }
+
+        StandardSchema::Layout { items, exhaustive } if *exhaustive && *size == items.len() => {
+            for i in items {
+                if !i.1 {
+                    return None;
+                }
+            }
+
+            Some(Ordering::Greater)
+        }
+
+        _ => None,
     }
 }
 

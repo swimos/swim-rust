@@ -2331,6 +2331,605 @@ fn compare_lower_bounded() {
 }
 
 #[test]
+fn combine_ordering_equal() {
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal]).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Equal]).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Equal, Ordering::Equal]).unwrap(),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn combine_ordering_greater() {
+    assert_eq!(
+        combine_orderings(vec![Ordering::Greater]).unwrap(),
+        Ordering::Greater
+    );
+    assert_eq!(
+        combine_orderings(vec![Ordering::Greater, Ordering::Greater]).unwrap(),
+        Ordering::Greater
+    );
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Equal, Ordering::Greater]).unwrap(),
+        Ordering::Greater
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Greater, Ordering::Equal, Ordering::Equal]).unwrap(),
+        Ordering::Greater
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Greater, Ordering::Equal]).unwrap(),
+        Ordering::Greater
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Greater, Ordering::Greater, Ordering::Equal]).unwrap(),
+        Ordering::Greater
+    );
+}
+
+#[test]
+fn combine_ordering_less() {
+    assert_eq!(
+        combine_orderings(vec![Ordering::Less]).unwrap(),
+        Ordering::Less
+    );
+    assert_eq!(
+        combine_orderings(vec![Ordering::Less, Ordering::Less]).unwrap(),
+        Ordering::Less
+    );
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Equal, Ordering::Less]).unwrap(),
+        Ordering::Less
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Less, Ordering::Equal, Ordering::Equal]).unwrap(),
+        Ordering::Less
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Less, Ordering::Equal]).unwrap(),
+        Ordering::Less
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Less, Ordering::Less, Ordering::Equal]).unwrap(),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn combine_ordering_not_related() {
+    assert_eq!(combine_orderings(vec![]), None);
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Less, Ordering::Greater]),
+        None
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Less, Ordering::Greater, Ordering::Greater]),
+        None
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Less, Ordering::Greater, Ordering::Less]),
+        None
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Less, Ordering::Greater]),
+        None
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Greater, Ordering::Equal, Ordering::Less]),
+        None
+    );
+
+    assert_eq!(
+        combine_orderings(vec![Ordering::Equal, Ordering::Greater, Ordering::Less]),
+        None
+    );
+}
+
+#[test]
+fn compare_slot_schemas_equal() {
+    let schema = SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(5)),
+        StandardSchema::Equal(Value::Int32Value(10)),
+    );
+
+    let equal_schema_1 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(5)),
+        StandardSchema::Equal(Value::Int32Value(10)),
+    );
+
+    let equal_schema_2 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(5)),
+        StandardSchema::Equal(Value::Int64Value(10)),
+    );
+
+    let equal_schema_3 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(5)),
+        StandardSchema::Equal(Value::Int32Value(10)),
+    );
+
+    assert_eq!(
+        schema.partial_cmp(&equal_schema_1).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        equal_schema_1.partial_cmp(&schema).unwrap(),
+        Ordering::Equal
+    );
+
+    assert_eq!(
+        schema.partial_cmp(&equal_schema_2).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        equal_schema_2.partial_cmp(&schema).unwrap(),
+        Ordering::Equal
+    );
+
+    assert_eq!(
+        schema.partial_cmp(&equal_schema_3).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        equal_schema_3.partial_cmp(&schema).unwrap(),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn compare_slot_schemas_greater() {
+    let schema = SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int32Value(15)),
+    );
+
+    let greater_schema_1 = SlotSchema::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::Equal(Value::Int32Value(15)),
+    );
+
+    let greater_schema_2 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+
+    let greater_schema_3 = SlotSchema::new(
+        StandardSchema::OfKind(ValueKind::Int32),
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+
+    assert!(schema < greater_schema_1);
+    assert!(greater_schema_1 > schema);
+    assert!(schema < greater_schema_2);
+    assert!(greater_schema_2 > schema);
+    assert!(schema < greater_schema_2);
+    assert!(greater_schema_3 > schema);
+}
+
+#[test]
+fn compare_slot_schemas_lesser() {
+    let schema = SlotSchema::new(
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-20),
+            Bound::inclusive(-10),
+        )),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let lesser_schema_1 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(-15)),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let lesser_schema_2 = SlotSchema::new(
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-20),
+            Bound::inclusive(-10),
+        )),
+        StandardSchema::Equal(Value::Int64Value(15)),
+    );
+
+    let lesser_schema_3 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(-15)),
+        StandardSchema::Equal(Value::Int64Value(15)),
+    );
+
+    assert!(schema > lesser_schema_1);
+    assert!(lesser_schema_1 < schema);
+    assert!(schema > lesser_schema_2);
+    assert!(lesser_schema_2 < schema);
+    assert!(schema > lesser_schema_2);
+    assert!(lesser_schema_3 < schema);
+}
+
+#[test]
+fn compare_slot_schemas_not_related() {
+    let schema = SlotSchema::new(
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-20),
+            Bound::inclusive(-10),
+        )),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let not_related_schema_1 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(-30)),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let not_related_schema_2 = SlotSchema::new(
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-20),
+            Bound::inclusive(-10),
+        )),
+        StandardSchema::Equal(Value::Int64Value(50)),
+    );
+
+    let not_related_schema_3 = SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(-30)),
+        StandardSchema::Equal(Value::Int64Value(50)),
+    );
+
+    assert_eq!(schema.partial_cmp(&not_related_schema_1), None);
+    assert_eq!(not_related_schema_1.partial_cmp(&schema), None);
+    assert_eq!(schema.partial_cmp(&not_related_schema_2), None);
+    assert_eq!(not_related_schema_2.partial_cmp(&schema), None);
+    assert_eq!(schema.partial_cmp(&not_related_schema_3), None);
+    assert_eq!(not_related_schema_3.partial_cmp(&schema), None);
+}
+
+#[test]
+fn compare_item_schemas_equal() {
+    let value_item_schema = ItemSchema::ValueItem(StandardSchema::Equal(Value::Int32Value(5)));
+    let field_schema = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int32Value(20)),
+    ));
+
+    let value_item_equal_schema_1 =
+        ItemSchema::ValueItem(StandardSchema::Equal(Value::Int32Value(5)));
+
+    let value_item_equal_schema_2 =
+        ItemSchema::ValueItem(StandardSchema::Equal(Value::Int64Value(5)));
+
+    let field_equal_schema_1 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int32Value(20)),
+    ));
+
+    let field_equal_schema_2 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+    ));
+
+    assert_eq!(
+        value_item_schema
+            .partial_cmp(&value_item_equal_schema_1)
+            .unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        value_item_equal_schema_1
+            .partial_cmp(&value_item_schema)
+            .unwrap(),
+        Ordering::Equal
+    );
+
+    assert_eq!(
+        value_item_schema
+            .partial_cmp(&value_item_equal_schema_2)
+            .unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        value_item_equal_schema_2
+            .partial_cmp(&value_item_schema)
+            .unwrap(),
+        Ordering::Equal
+    );
+
+    assert_eq!(
+        field_schema.partial_cmp(&field_equal_schema_1).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        field_equal_schema_1.partial_cmp(&field_schema).unwrap(),
+        Ordering::Equal
+    );
+
+    assert_eq!(
+        field_schema.partial_cmp(&field_equal_schema_2).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        field_equal_schema_2.partial_cmp(&field_schema).unwrap(),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn compare_item_schemas_greater() {
+    let value_item_schema = ItemSchema::ValueItem(StandardSchema::Equal(Value::Int32Value(5)));
+    let field_schema = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int32Value(20)),
+    ));
+
+    let value_item_greater_schema = ItemSchema::ValueItem(StandardSchema::InRangeInt(
+        Range::<i64>::bounded(Bound::inclusive(0), Bound::inclusive(20)),
+    ));
+
+    let field_greater_schema = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(5),
+            Bound::inclusive(15),
+        )),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(15),
+            Bound::inclusive(25),
+        )),
+    ));
+
+    assert!(value_item_schema < value_item_greater_schema);
+    assert!(value_item_greater_schema > value_item_schema);
+    assert!(field_schema < field_greater_schema);
+    assert!(field_greater_schema > field_schema);
+}
+
+#[test]
+fn compare_item_schemas_lesser() {
+    let value_item_schema = ItemSchema::ValueItem(StandardSchema::InRangeInt(
+        Range::<i64>::bounded(Bound::inclusive(5), Bound::inclusive(15)),
+    ));
+
+    let field_schema = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(5),
+            Bound::inclusive(15),
+        )),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(15),
+            Bound::inclusive(25),
+        )),
+    ));
+
+    let value_item_lesser_schema =
+        ItemSchema::ValueItem(StandardSchema::Equal(Value::Int64Value(10)));
+
+    let field_lesser_schema = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+    ));
+
+    assert!(value_item_schema > value_item_lesser_schema);
+    assert!(value_item_lesser_schema < value_item_schema);
+    assert!(field_schema > field_lesser_schema);
+    assert!(field_lesser_schema < field_schema);
+}
+
+#[test]
+fn compare_item_schemas_not_related() {
+    let value_item_schema = ItemSchema::ValueItem(StandardSchema::InRangeInt(
+        Range::<i64>::bounded(Bound::inclusive(5), Bound::inclusive(15)),
+    ));
+
+    let field_schema = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(5),
+            Bound::inclusive(15),
+        )),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(15),
+            Bound::inclusive(25),
+        )),
+    ));
+
+    let value_item_not_related_schema_1 =
+        ItemSchema::ValueItem(StandardSchema::Equal(Value::Int64Value(-10)));
+
+    let value_item_not_related_schema_2 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(10)),
+        StandardSchema::Equal(Value::Int64Value(11)),
+    ));
+
+    let field_not_related_schema_1 = ItemSchema::Field(SlotSchema::new(
+        StandardSchema::Equal(Value::Int64Value(55)),
+        StandardSchema::Equal(Value::Int64Value(105)),
+    ));
+
+    let field_not_related_schema_2 =
+        ItemSchema::ValueItem(StandardSchema::Equal(Value::Int64Value(15)));
+
+    assert_eq!(
+        value_item_schema.partial_cmp(&value_item_not_related_schema_1),
+        None
+    );
+    assert_eq!(
+        value_item_not_related_schema_1.partial_cmp(&value_item_schema),
+        None
+    );
+    assert_eq!(
+        value_item_schema.partial_cmp(&value_item_not_related_schema_2),
+        None
+    );
+    assert_eq!(
+        value_item_not_related_schema_2.partial_cmp(&value_item_schema),
+        None
+    );
+    assert_eq!(field_schema.partial_cmp(&field_not_related_schema_1), None);
+    assert_eq!(field_not_related_schema_1.partial_cmp(&field_schema), None);
+    assert_eq!(field_schema.partial_cmp(&field_not_related_schema_2), None);
+    assert_eq!(field_not_related_schema_2.partial_cmp(&field_schema), None);
+}
+
+#[test]
+fn compare_attr_schemas_equal() {
+    let schema = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::Equal(Value::Int32Value(10)),
+    );
+
+    let equal_schema_1 = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::Equal(Value::Int32Value(10)),
+    );
+
+    let equal_schema_2 = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::Equal(Value::Int64Value(10)),
+    );
+
+    assert_eq!(
+        schema.partial_cmp(&equal_schema_1).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        equal_schema_1.partial_cmp(&schema).unwrap(),
+        Ordering::Equal
+    );
+
+    assert_eq!(
+        schema.partial_cmp(&equal_schema_2).unwrap(),
+        Ordering::Equal
+    );
+    assert_eq!(
+        equal_schema_2.partial_cmp(&schema).unwrap(),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn compare_attr_schemas_greater() {
+    let schema = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::Equal(Value::Int32Value(10)),
+    );
+
+    let greater_schema_1 = AttrSchema::new(
+        TextSchema::NonEmpty,
+        StandardSchema::Equal(Value::Int32Value(10)),
+    );
+
+    let greater_schema_2 = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+
+    let greater_schema_3 = AttrSchema::new(
+        TextSchema::NonEmpty,
+        StandardSchema::OfKind(ValueKind::Int32),
+    );
+
+    assert!(schema < greater_schema_1);
+    assert!(greater_schema_1 > schema);
+    assert!(schema < greater_schema_2);
+    assert!(greater_schema_2 > schema);
+    assert!(schema < greater_schema_2);
+    assert!(greater_schema_3 > schema);
+}
+
+#[test]
+fn compare_attr_schemas_lesser() {
+    let schema = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let lesser_schema_1 = AttrSchema::new(
+        TextSchema::Exact("a".to_string()),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let lesser_schema_2 = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::Equal(Value::Int64Value(15)),
+    );
+
+    let lesser_schema_3 = AttrSchema::new(
+        TextSchema::Exact("a".to_string()),
+        StandardSchema::Equal(Value::Int64Value(15)),
+    );
+
+    assert!(schema > lesser_schema_1);
+    assert!(lesser_schema_1 < schema);
+    assert!(schema > lesser_schema_2);
+    assert!(lesser_schema_2 < schema);
+    assert!(schema > lesser_schema_2);
+    assert!(lesser_schema_3 < schema);
+}
+
+#[test]
+fn compare_attr_schemas_not_related() {
+    let schema = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let not_related_schema_1 = AttrSchema::new(
+        TextSchema::Exact("@".to_string()),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+    );
+
+    let not_related_schema_2 = AttrSchema::new(
+        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        StandardSchema::Equal(Value::Int64Value(-15)),
+    );
+
+    let not_related_schema_3 = AttrSchema::new(
+        TextSchema::Exact("@".to_string()),
+        StandardSchema::Equal(Value::Int64Value(-15)),
+    );
+
+    assert_eq!(schema.partial_cmp(&not_related_schema_1), None);
+    assert_eq!(not_related_schema_1.partial_cmp(&schema), None);
+    assert_eq!(schema.partial_cmp(&not_related_schema_2), None);
+    assert_eq!(not_related_schema_2.partial_cmp(&schema), None);
+    assert_eq!(schema.partial_cmp(&not_related_schema_3), None);
+    assert_eq!(not_related_schema_3.partial_cmp(&schema), None);
+}
+
+#[test]
 fn compare_upper_and_lower_bounded() {
     assert!(Range::<f64>::upper_bounded(Bound::exclusive(10.10))
         .partial_cmp(&Range::<f64>::lower_bounded(Bound::exclusive(10.10)))
@@ -3609,5 +4208,391 @@ fn compare_num_attrs_layout() {
     ];
 
     assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_num_items_head_attribute() {
+    let schema = StandardSchema::NumItems(3);
+
+    let equal_schemas = vec![StandardSchema::NumItems(3)];
+
+    let lesser_schemas = vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::NumItems(3)),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::HasSlots {
+                slots: vec![
+                    FieldSpec::new(
+                        SlotSchema::new(
+                            StandardSchema::Equal(Value::Int32Value(1)),
+                            StandardSchema::Equal(Value::Int32Value(1)),
+                        ),
+                        true,
+                        false,
+                    ),
+                    FieldSpec::new(
+                        SlotSchema::new(
+                            StandardSchema::Equal(Value::Int32Value(1)),
+                            StandardSchema::Equal(Value::Int32Value(1)),
+                        ),
+                        true,
+                        false,
+                    ),
+                    FieldSpec::new(
+                        SlotSchema::new(
+                            StandardSchema::Equal(Value::Int32Value(1)),
+                            StandardSchema::Equal(Value::Int32Value(1)),
+                        ),
+                        true,
+                        false,
+                    ),
+                ],
+                exhaustive: true,
+            }),
+        },
+    ];
+
+    let not_related_schemas = vec![StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::new(
+            TextSchema::NonEmpty,
+            StandardSchema::Equal(Value::Int32Value(10)),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::NumItems(4)),
+    }];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_num_items_has_attributes() {
+    let schema = StandardSchema::NumItems(3);
+
+    let greater_schemas = vec![StandardSchema::HasAttributes {
+        attributes: vec![],
+        exhaustive: false,
+    }];
+    let not_related_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: true,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::OfKind(ValueKind::Text),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_num_items_has_slots() {
+    let schema = StandardSchema::NumItems(3);
+
+    let greater_schemas = vec![StandardSchema::HasSlots {
+        slots: vec![],
+        exhaustive: false,
+    }];
+
+    let lesser_schemas = vec![StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Equal(Value::Int32Value(3)),
+                    StandardSchema::Equal(Value::Int32Value(3)),
+                ),
+                true,
+                true,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Equal(Value::Int32Value(3)),
+                    StandardSchema::Equal(Value::Int32Value(24)),
+                ),
+                true,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Equal(Value::Int32Value(3)),
+                    StandardSchema::Equal(Value::Int32Value(12)),
+                ),
+                true,
+                true,
+            ),
+        ],
+        exhaustive: true,
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                    ),
+                    true,
+                    true,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(24)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(12)),
+                    ),
+                    true,
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                    ),
+                    true,
+                    true,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(24)),
+                    ),
+                    true,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(12)),
+                    ),
+                    true,
+                    true,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(12)),
+                    ),
+                    true,
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Equal(Value::Int32Value(3)),
+                    StandardSchema::Equal(Value::Int32Value(3)),
+                ),
+                true,
+                true,
+            )],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                    ),
+                    true,
+                    true,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(24)),
+                    ),
+                    true,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Equal(Value::Int32Value(3)),
+                        StandardSchema::Equal(Value::Int32Value(12)),
+                    ),
+                    true,
+                    true,
+                ),
+            ],
+            exhaustive: false,
+        },
+    ];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_num_items_layout() {
+    let schema = StandardSchema::NumItems(3);
+
+    let greater_schemas = vec![StandardSchema::Layout {
+        items: vec![],
+        exhaustive: false,
+    }];
+
+    let lesser_schemas = vec![StandardSchema::Layout {
+        items: vec![
+            (
+                ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                true,
+            ),
+            (
+                ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                true,
+            ),
+            (
+                ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                true,
+            ),
+        ],
+        exhaustive: true,
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::OfKind(ValueKind::Text),
+                    StandardSchema::OfKind(ValueKind::Text),
+                )),
+                false,
+            )],
+            exhaustive: false,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::OfKind(ValueKind::Text),
+                        StandardSchema::OfKind(ValueKind::Text),
+                    )),
+                    true,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::OfKind(ValueKind::Text),
+                        StandardSchema::OfKind(ValueKind::Text),
+                    )),
+                    true,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    false,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+                (
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
     assert_not_related(schema, not_related_schemas);
 }
