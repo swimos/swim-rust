@@ -82,7 +82,7 @@ pub enum Value {
     BigInt(BigInt),
 
     /// A big unsigned integer type wrapped as a [`Value`].
-    BigUInt(BigUint),
+    BigUint(BigUint),
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -284,8 +284,8 @@ impl Value {
                 }
                 _ => Ordering::Less,
             },
-            Value::BigInt(bi) => unimplemented!(),
-            Value::BigUInt(bi) => unimplemented!(),
+            Value::BigInt(_bi) => unimplemented!(),
+            Value::BigUint(_bi) => unimplemented!(),
         }
     }
 
@@ -299,7 +299,7 @@ impl Value {
             Value::Text(_) => ValueKind::Text,
             Value::Record(_, _) => ValueKind::Record,
             Value::BigInt(_) => ValueKind::BigInt,
-            Value::BigUInt(_) => ValueKind::BigUInt,
+            Value::BigUint(_) => ValueKind::BigUInt,
         }
     }
 
@@ -361,8 +361,8 @@ impl PartialEq for Value {
                 Value::BigInt(right) => left == right,
                 _ => false,
             },
-            Value::BigUInt(left) => match other {
-                Value::BigUInt(right) => left == right,
+            Value::BigUint(left) => match other {
+                Value::BigUint(right) => left == right,
                 _ => false,
             },
         }
@@ -422,7 +422,7 @@ impl Hash for Value {
                 state.write_u8(7);
                 bi.hash(state);
             }
-            Value::BigUInt(bi) => {
+            Value::BigUint(bi) => {
                 state.write_u8(8);
                 bi.hash(state);
             }
@@ -463,6 +463,18 @@ impl From<String> for Value {
 impl From<&str> for Value {
     fn from(s: &str) -> Self {
         Value::Text(s.to_owned())
+    }
+}
+
+impl From<BigInt> for Value {
+    fn from(bi: BigInt) -> Self {
+        Value::BigInt(bi)
+    }
+}
+
+impl From<BigUint> for Value {
+    fn from(bi: BigUint) -> Self {
+        Value::BigUint(bi)
     }
 }
 
@@ -751,7 +763,7 @@ impl Display for Value {
                 }
             }
             Value::BigInt(bi) => write!(f, "{}", bi),
-            Value::BigUInt(bi) => write!(f, "{}", bi),
+            Value::BigUint(bi) => write!(f, "{}", bi),
         }
     }
 }
@@ -1035,7 +1047,7 @@ impl ValueEncoder {
                 Ok(())
             }
             Value::BigInt(bi) => write!(dst, "{}", bi).map_err(|e| e.into()),
-            Value::BigUInt(bi) => write!(dst, "{}", bi).map_err(|e| e.into()),
+            Value::BigUint(bi) => write!(dst, "{}", bi).map_err(|e| e.into()),
         }
     }
 
@@ -1178,7 +1190,7 @@ impl ValueEncoder {
                 }
                 req as usize
             }
-            Value::BigUInt(bi) => {
+            Value::BigUint(bi) => {
                 let req = bi.bits();
                 if req > usize::max_value() as u64 {
                     panic!("Buffer overflow")

@@ -15,30 +15,8 @@
 use serde::Deserialize;
 
 use crate::tests::from_value;
-use crate::{FormDeserializeErr, ValueDeserializer};
+use crate::FormDeserializeErr;
 use common::model::{Attr, Item, Value};
-use num_bigint::BigInt;
-
-#[test]
-fn t() {
-    #[derive(Deserialize, PartialEq, Debug)]
-    struct Test {
-        bi: BigInt,
-    }
-
-    let record = Value::Record(
-        vec![Attr::from("Test")],
-        vec![
-            Item::from(("a", 1)),
-            Item::from(("bi", Value::BigInt(BigInt::from(10)))),
-        ],
-    );
-
-    let mut deserializer = ValueDeserializer::for_values(&record);
-    let res = Test::deserialize(&mut deserializer);
-
-    println!("{:?}", res);
-}
 
 #[cfg(test)]
 mod illegal {

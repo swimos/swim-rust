@@ -20,8 +20,6 @@ use std::fmt::{Debug, Display, Formatter};
 use serde::de;
 
 use common::model::{Attr, Item, Value};
-use num_bigint::BigInt;
-use serde::de::{SeqAccess, Visitor};
 
 #[cfg(test)]
 mod tests;
