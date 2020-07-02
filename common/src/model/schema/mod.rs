@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::{Attr, Item, ToValue, Value, ValueKind};
-use regex::{Error as RegexError, Regex};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
+
+use num_bigint::{BigInt, ToBigInt};
+use regex::{Error as RegexError, Regex};
+
+use crate::model::{Attr, Item, ToValue, Value, ValueKind};
 
 #[cfg(test)]
 mod tests;
@@ -434,6 +437,11 @@ pub enum StandardSchema {
         min: Option<(f64, bool)>,
         max: Option<(f64, bool)>,
     },
+    /// Asserts that a [`Value`] is a big integer and in a specified range.
+    InRangeBigInt {
+        min: Option<(BigInt, bool)>,
+        max: Option<(BigInt, bool)>,
+    },
     /// Asserts that a [`Value`] is a non-NaN floating point number.
     NonNan,
     /// Asserts that a [`Value`] is a finite floating point number.
@@ -585,6 +593,7 @@ impl Schema<Value> for StandardSchema {
             StandardSchema::OfKind(kind) => &value.kind() == kind,
             StandardSchema::InRangeInt { min, max } => in_int_range(value, min, max),
             StandardSchema::InRangeFloat { min, max } => in_float_range(value, min, max),
+            StandardSchema::InRangeBigInt { min, max } => in_big_int_range(value, min, max),
             StandardSchema::NonNan => as_f64(value).map(|x| !f64::is_nan(x)).unwrap_or(false),
             StandardSchema::Finite => as_f64(value).map(f64::is_finite).unwrap_or(false),
             StandardSchema::Not(p) => !p.matches(value),
@@ -761,6 +770,9 @@ impl ToValue for StandardSchema {
             StandardSchema::InRangeFloat { min, max } => {
                 range_to_value("in_range_float", *min, *max)
             }
+            StandardSchema::InRangeBigInt { min, max } => {
+                range_to_value("in_range_float", min.clone(), max.clone())
+            }
             StandardSchema::NonNan => Value::of_attr("non_nan"),
             StandardSchema::Finite => Value::of_attr("finite"),
             StandardSchema::Text(text_schema) => text_schema.to_value().prepend(Attr::of("text")),
@@ -890,6 +902,39 @@ fn in_int_range(value: &Value, min: &Option<(i64, bool)>, max: &Option<(i64, boo
 fn in_float_range(value: &Value, min: &Option<(f64, bool)>, max: &Option<(f64, bool)>) -> bool {
     match as_f64(&value) {
         Some(x) => in_range(x, min, max),
+        _ => false,
+    }
+}
+
+fn in_big_int_range(
+    value: &Value,
+    min: &Option<(BigInt, bool)>,
+    max: &Option<(BigInt, bool)>,
+) -> bool {
+    match value {
+        Value::BigInt(bi) => {
+            let lower = min
+                .as_ref()
+                .map(|(lb, incl)| if *incl { lb <= bi } else { lb < bi })
+                .unwrap_or(true);
+            let upper = max
+                .as_ref()
+                .map(|(ub, incl)| if *incl { ub >= bi } else { ub > bi })
+                .unwrap_or(true);
+            lower && upper
+        }
+        Value::BigUint(bi) => {
+            let bi = bi.to_bigint().expect("infailable");
+            let lower = min
+                .as_ref()
+                .map(|(lb, incl)| if *incl { lb <= &bi } else { lb < &bi })
+                .unwrap_or(true);
+            let upper = max
+                .as_ref()
+                .map(|(ub, incl)| if *incl { ub >= &bi } else { ub > &bi })
+                .unwrap_or(true);
+            lower && upper
+        }
         _ => false,
     }
 }

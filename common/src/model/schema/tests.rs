@@ -15,7 +15,7 @@
 use super::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
-use num_bigint::{BigUint, RandBigInt};
+use num_bigint::BigUint;
 use std::collections::HashMap;
 
 #[test]
@@ -57,6 +57,8 @@ fn arbitrary() -> HashMap<ValueKind, Value> {
     map.insert(ValueKind::Int32, Value::Int32Value(23));
     map.insert(ValueKind::Int64, Value::Int64Value(-4569847476726364i64));
     map.insert(ValueKind::Float64, Value::Float64Value(-0.5));
+    map.insert(ValueKind::BigInt, Value::BigInt(BigInt::from(10000)));
+    map.insert(ValueKind::BigUint, Value::BigUint(BigUint::from(10000u32)));
     map.insert(ValueKind::Boolean, Value::BooleanValue(true));
     map.insert(ValueKind::Text, Value::text("Hello"));
     map.insert(ValueKind::Record, Value::empty_record());
@@ -1991,16 +1993,4 @@ fn nothing_to_value() {
         StandardSchema::Nothing.to_value(),
         eq(Value::of_attr("nothing"))
     );
-}
-
-#[test]
-fn t() {
-    let mut rng = rand::thread_rng();
-    let biga = rng.gen_biguint(64);
-    let bigb = 32;
-
-    println!("{}", biga);
-    println!("{}", bigb);
-
-    println!("{}", (biga > BigUint::try_from(bigb).unwrap()));
 }
