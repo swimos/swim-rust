@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
-use std::any::type_name;
+use std::any::{type_name, Any, TypeId};
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
@@ -34,14 +34,16 @@ impl<Command, Response> Default for ActionLane<Command, Response> {
     }
 }
 
-impl<Command, Response> Debug for ActionLane<Command, Response> {
+impl<Command, Response: Any> Debug for ActionLane<Command, Response> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let cmd_name = type_name::<Command>();
         let resp_name = type_name::<Response>();
-        if resp_name == type_name::<()>() {
-            write!(f, "CommandLaneModel({})", cmd_name)
+        let id_resp = TypeId::of::<Response>();
+        let id_unit = TypeId::of::<()>();
+        if id_resp == id_unit {
+            write!(f, "CommandLane({})", cmd_name)
         } else {
-            write!(f, "ActionLaneModel({} -> {})", cmd_name, resp_name)
+            write!(f, "ActionLane({} -> {})", cmd_name, resp_name)
         }
     }
 }
