@@ -211,7 +211,7 @@ fn bigint_f64_cmp() {
     let bi_value = Value::BigInt(rng.gen_bigint(1));
     assert!(Value::Float64Value(-100.0) < bi_value);
 
-    let bi_value = Value::BigInt(rng.gen_bigint(1000));
+    let bi_value = Value::BigInt(rng.gen_bigint_range(&BigInt::from(0), &BigInt::from(1000)));
     assert!(Value::Float64Value(-100.0) < bi_value);
 
     assert_eq!(
