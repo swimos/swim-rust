@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use crate::agent::context::ContextImpl;
-use crate::agent::lane::lifecycle::LaneLifecycle;
+use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
 use crate::agent::lane::model;
+use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
@@ -116,6 +117,8 @@ struct LifecycleTasks<L, S, P> {
 
 struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
 impl<Agent, Context, T, L, S, P> LaneTasks<Agent, Context> for ValueLifecycleTasks<L, S, P>
 where
@@ -123,7 +126,7 @@ where
     Context: AgentContext<Agent> + Send + Sync + 'static,
     S: Stream<Item = Arc<T>> + Send + Sync + 'static,
     T: Any + Send + Sync,
-    L: for<'l> LaneLifecycle<'l, ValueLane<T>, Agent>,
+    L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
     L::WatchStrategy: ValueLaneWatch<T, View = S>,
     P: Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
 {
@@ -163,7 +166,7 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
     T: Any + Send + Sync,
-    L: for<'l> LaneLifecycle<'l, ValueLane<T>, Agent>,
+    L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
     L::WatchStrategy: ValueLaneWatch<T>,
 {
     let (lane, event_stream) = model::value::make_lane_model(init, lifecycle.create_strategy());
@@ -183,7 +186,7 @@ where
     S: Stream<Item = MapLaneEvent<K, V>> + Send + Sync + 'static,
     K: Any + Form + Send + Sync,
     V: Any + Send + Sync,
-    L: for<'l> LaneLifecycle<'l, MapLane<K, V>, Agent>,
+    L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
     L::WatchStrategy: MapLaneWatch<K, V, View = S>,
     P: Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
 {
@@ -223,13 +226,126 @@ where
     Context: AgentContext<Agent> + Send + Sync + 'static,
     K: Any + Form + Send + Sync,
     V: Any + Send + Sync,
-    L: for<'l> LaneLifecycle<'l, MapLane<K, V>, Agent>,
+    L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
     L::WatchStrategy: MapLaneWatch<K, V>,
     P: Fn(&Agent) -> &MapLane<K, V>,
 {
     let (lane, event_stream) = model::map::make_lane_model(lifecycle.create_strategy());
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
+        lifecycle,
+        event_stream,
+        projection,
+    });
+    (lane, tasks)
+}
+
+impl<Agent, Context, Command, Response, L, S, P> LaneTasks<Agent, Context>
+    for ActionLifecycleTasks<L, S, P>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = Command> + Send + Sync + 'static,
+    Command: Any + Send + Sync,
+    Response: Any + Send + Sync,
+    L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
+    P: Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
+{
+    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
+
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        async move {
+            let ActionLifecycleTasks(LifecycleTasks {
+                lifecycle,
+                event_stream,
+                projection,
+            }) = *self;
+            let model = projection(context.agent()).clone();
+            pin_mut!(event_stream);
+            while let Some(command) = event_stream.next().await {
+                //TODO After agents are connected to web-sockets the response will have somewhere to go.
+                let _response = lifecycle.on_command(&command, &model, &context).await;
+            }
+        }
+        .boxed()
+    }
+}
+
+impl<Agent, Context, Command, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = Command> + Send + Sync + 'static,
+    Command: Any + Send + Sync,
+    L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
+    P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+{
+    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
+
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        async move {
+            let CommandLifecycleTasks(LifecycleTasks {
+                lifecycle,
+                event_stream,
+                projection,
+            }) = *self;
+            let model = projection(context.agent()).clone();
+            pin_mut!(event_stream);
+            while let Some(command) = event_stream.next().await {
+                lifecycle.on_command(&command, &model, &context).await;
+            }
+        }
+        .boxed()
+    }
+}
+
+pub fn make_action_lane<Agent, Context, Command, Response, L, S, P>(
+    lifecycle: L,
+    projection: impl Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
+    buffer_size: NonZeroUsize,
+) -> (
+    ActionLane<Command, Response>,
+    impl LaneTasks<Agent, Context>,
+)
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = Command> + Send + Sync + 'static,
+    Command: Any + Send + Sync,
+    Response: Any + Send + Sync,
+    L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
+    P: Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
+{
+    let (lane, event_stream) = model::action::make_lane_model(buffer_size);
+
+    let tasks = ActionLifecycleTasks(LifecycleTasks {
+        lifecycle,
+        event_stream,
+        projection,
+    });
+    (lane, tasks)
+}
+
+pub fn make_command_lane<Agent, Context, Command, L, S, P>(
+    lifecycle: L,
+    projection: impl Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+    buffer_size: NonZeroUsize,
+) -> (CommandLane<Command>, impl LaneTasks<Agent, Context>)
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = Command> + Send + Sync + 'static,
+    Command: Any + Send + Sync,
+    L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
+    P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+{
+    let (lane, event_stream) = model::action::make_lane_model(buffer_size);
+
+    let tasks = CommandLifecycleTasks(LifecycleTasks {
         lifecycle,
         event_stream,
         projection,

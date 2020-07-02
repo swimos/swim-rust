@@ -19,14 +19,14 @@ use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
 use std::future::Future;
 
-pub trait LaneLifecycleBase: Default + Send + Sync + 'static {
+pub trait StatefulLaneLifecycleBase: Default + Send + Sync + 'static {
     type WatchStrategy;
 
     fn create_strategy(&self) -> Self::WatchStrategy;
 }
 
 #[allow(unused)]
-pub trait LaneLifecycle<'a, Model: LaneModel, Agent>: LaneLifecycleBase {
+pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: StatefulLaneLifecycleBase {
     type StartFuture: Future<Output = ()> + Send + 'a;
     type EventFuture: Future<Output = ()> + Send + 'a;
 
@@ -46,13 +46,20 @@ pub trait LaneLifecycle<'a, Model: LaneModel, Agent>: LaneLifecycleBase {
         C: AgentContext<Agent> + Send + Sync + 'static;
 }
 
-pub trait ActionLaneLifecycle<Command, Response, Agent>:
-    for<'l> LaneLifecycle<'l, ActionLane<Command, Response>, Agent>
+pub trait ActionLaneLifecycle<'a, Command, Response, Agent>:
+    Default + Send + Sync + 'static
 {
-    fn on_command<C: AgentContext<Agent>>(&self, command: &Command, context: &C) -> Response;
+    type ResponseFuture: Future<Output = Response> + Send + 'a;
+
+    fn on_command<C: AgentContext<Agent>>(
+        &'a self,
+        command: &'a Command,
+        model: &'a ActionLane<Command, Response>,
+        context: &'a C,
+    ) -> Self::ResponseFuture;
 }
 
-impl LaneLifecycleBase for Queue {
+impl StatefulLaneLifecycleBase for Queue {
     type WatchStrategy = Self;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -60,7 +67,7 @@ impl LaneLifecycleBase for Queue {
     }
 }
 
-impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Queue {
+impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Queue {
     type StartFuture = Ready<()>;
     type EventFuture = Ready<()>;
 
@@ -82,7 +89,7 @@ impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Queue {
     }
 }
 
-impl LaneLifecycleBase for Dropping {
+impl StatefulLaneLifecycleBase for Dropping {
     type WatchStrategy = Self;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -90,7 +97,7 @@ impl LaneLifecycleBase for Dropping {
     }
 }
 
-impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Dropping {
+impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Dropping {
     type StartFuture = Ready<()>;
     type EventFuture = Ready<()>;
 
@@ -112,7 +119,7 @@ impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Dropping {
     }
 }
 
-impl LaneLifecycleBase for Buffered {
+impl StatefulLaneLifecycleBase for Buffered {
     type WatchStrategy = Self;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -120,7 +127,7 @@ impl LaneLifecycleBase for Buffered {
     }
 }
 
-impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Buffered {
+impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Buffered {
     type StartFuture = Ready<()>;
     type EventFuture = Ready<()>;
 
