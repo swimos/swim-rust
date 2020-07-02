@@ -773,6 +773,18 @@ impl PartialOrd for StandardSchema {
                 (_, StandardSchema::NumAttrs(size)) => Some(num_attrs_cmp(size, self)?.reverse()),
                 (StandardSchema::NumItems(size), _) => num_items_cmp(size, other),
                 (_, StandardSchema::NumItems(size)) => Some(num_items_cmp(size, self)?.reverse()),
+                (head_schema @ StandardSchema::HeadAttribute { .. }, _) => {
+                    head_attribute_cmp(head_schema, other)
+                }
+                (_, head_schema @ StandardSchema::HeadAttribute { .. }) => {
+                    Some(head_attribute_cmp(head_schema, self)?.reverse())
+                }
+                (attr_schema @ StandardSchema::HasAttributes { .. }, _) => {
+                    has_attributes_cmp(attr_schema, other)
+                }
+                (_, attr_schema @ StandardSchema::HasAttributes { .. }) => {
+                    Some(has_attributes_cmp(attr_schema, self)?.reverse())
+                }
                 _ => None,
             }
         }
@@ -1069,6 +1081,179 @@ fn num_items_cmp(size: &usize, other: &StandardSchema) -> Option<Ordering> {
 
         _ => None,
     }
+}
+
+fn head_attribute_cmp(head_schema: &StandardSchema, other: &StandardSchema) -> Option<Ordering> {
+    if let StandardSchema::HeadAttribute {
+        schema: this_schema,
+        required: this_required,
+        remainder: this_remainder,
+    } = head_schema
+    {
+        match other {
+            StandardSchema::HeadAttribute {
+                schema: other_schema,
+                required: other_required,
+                remainder: other_remainder,
+            } => {
+                let schema = this_schema.partial_cmp(other_schema)?;
+                let required = this_required.partial_cmp(other_required)?.reverse();
+                let remainder = this_remainder.partial_cmp(other_remainder)?;
+
+                combine_orderings(vec![schema, required, remainder])
+            }
+
+            StandardSchema::HasAttributes {
+                attributes,
+                exhaustive,
+            } if !*exhaustive && attributes.is_empty() => Some(Ordering::Less),
+
+            StandardSchema::HasAttributes {
+                attributes,
+                exhaustive,
+            } if *exhaustive => {
+                let mut prev_comp = Ordering::Equal;
+                let this_schema = *this_schema.clone();
+
+                for FieldSpec {
+                    schema: other_schema,
+                    ..
+                } in attributes
+                {
+                    let current_cmp = this_schema.partial_cmp(other_schema)?;
+                    prev_comp = combine_orderings(vec![prev_comp, current_cmp])?;
+                }
+
+                let this_remainder = *this_remainder.clone();
+                let remainder = this_remainder.partial_cmp(&StandardSchema::HasAttributes {
+                    attributes: attributes.clone(),
+                    exhaustive: *exhaustive,
+                })?;
+
+                combine_orderings(vec![prev_comp, remainder])
+            }
+
+            StandardSchema::HasSlots { slots, exhaustive } if !*exhaustive && slots.is_empty() => {
+                Some(Ordering::Less)
+            }
+
+            StandardSchema::Layout { items, exhaustive } if !*exhaustive && items.is_empty() => {
+                Some(Ordering::Less)
+            }
+
+            _ => None,
+        }
+    } else {
+        unreachable!()
+    }
+}
+
+fn has_attributes_cmp(attr_schema: &StandardSchema, other: &StandardSchema) -> Option<Ordering> {
+    if let StandardSchema::HasAttributes {
+        attributes,
+        exhaustive,
+    } = attr_schema
+    {
+        match other {
+            StandardSchema::HasAttributes {
+                attributes: other_attributes,
+                exhaustive: other_exhaustive,
+            } => {
+                if !*exhaustive && other_attributes.is_empty() {
+                    Some(Ordering::Greater)
+                } else if !*other_exhaustive && other_attributes.is_empty() {
+                    Some(Ordering::Less)
+                } else if exhaustive == other_exhaustive {
+                    if attributes.len() > other_attributes.len() {
+                        if contains_all_fields(attributes, other_attributes) {
+                            if *exhaustive {
+                                Some(Ordering::Greater)
+                            } else {
+                                Some(Ordering::Less)
+                            }
+                        } else {
+                            None
+                        }
+                    } else if attributes.len() < other_attributes.len() {
+                        if contains_all_fields(other_attributes, attributes) {
+                            if *exhaustive {
+                                Some(Ordering::Less)
+                            } else {
+                                Some(Ordering::Greater)
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        if contains_all_fields(attributes, other_attributes) {
+                            Some(Ordering::Equal)
+                        } else {
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            }
+
+            StandardSchema::HasSlots {
+                slots,
+                exhaustive: slots_exhaustive,
+            } => vec_schemas_cmp(*exhaustive, *slots_exhaustive, attributes, slots),
+
+            StandardSchema::Layout {
+                items,
+                exhaustive: layout_exhaustive,
+            } => vec_schemas_cmp(*exhaustive, *layout_exhaustive, attributes, items),
+
+            _ => None,
+        }
+    } else {
+        unreachable!()
+    }
+}
+
+fn vec_schemas_cmp<T1, T2>(
+    this_exhaustive: bool,
+    other_exhaustive: bool,
+    this_vec: &Vec<T1>,
+    other_vec: &Vec<T2>,
+) -> Option<Ordering> {
+    if !this_exhaustive && !other_exhaustive && this_vec.is_empty() && other_vec.is_empty() {
+        Some(Ordering::Equal)
+    } else if !this_exhaustive && this_vec.is_empty() {
+        Some(Ordering::Greater)
+    } else if !other_exhaustive && other_vec.is_empty() {
+        Some(Ordering::Less)
+    } else {
+        None
+    }
+}
+
+fn contains_all_fields<T: PartialEq>(
+    sup_fields: &Vec<FieldSpec<T>>,
+    sub_fields: &Vec<FieldSpec<T>>,
+) -> bool {
+    if sup_fields.len() < sub_fields.len() {
+        return false;
+    }
+
+    for sub_field in sub_fields {
+        let mut has_equal = false;
+
+        for sup_field in sup_fields {
+            if sup_field == sub_field {
+                has_equal = true;
+                break;
+            }
+        }
+
+        if !has_equal {
+            return false;
+        }
+    }
+
+    true
 }
 
 fn int_32_range() -> Range<i64> {

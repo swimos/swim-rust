@@ -2331,6 +2331,120 @@ fn compare_lower_bounded() {
 }
 
 #[test]
+fn test_vec_schemas_compare() {
+    let empty_vec = Vec::<i32>::new();
+    let non_empty_vec = vec![1];
+
+    assert_eq!(
+        vec_schemas_cmp(false, false, &empty_vec, &empty_vec).unwrap(),
+        Ordering::Equal
+    );
+
+    assert_eq!(
+        vec_schemas_cmp(true, false, &empty_vec, &empty_vec).unwrap(),
+        Ordering::Less
+    );
+
+    assert_eq!(
+        vec_schemas_cmp(false, true, &empty_vec, &empty_vec).unwrap(),
+        Ordering::Greater
+    );
+
+    assert_eq!(
+        vec_schemas_cmp(false, false, &non_empty_vec, &empty_vec).unwrap(),
+        Ordering::Less
+    );
+
+    assert_eq!(
+        vec_schemas_cmp(false, false, &empty_vec, &non_empty_vec).unwrap(),
+        Ordering::Greater
+    );
+
+    assert!(vec_schemas_cmp(false, false, &non_empty_vec, &non_empty_vec).is_none());
+    assert!(vec_schemas_cmp(true, true, &empty_vec, &empty_vec).is_none());
+    assert!(vec_schemas_cmp(true, true, &non_empty_vec, &non_empty_vec).is_none());
+}
+
+#[test]
+fn test_contains_all_fields() {
+    let sup_fields = vec![
+        FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("second".to_string()), false, true),
+        FieldSpec::new(TextSchema::Exact("third".to_string()), true, false),
+    ];
+
+    let sub_fields_valid_first = vec![
+        FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("third".to_string()), true, false),
+    ];
+
+    let sub_fields_valid_second = vec![
+        FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("second".to_string()), false, true),
+        FieldSpec::new(TextSchema::Exact("third".to_string()), true, false),
+    ];
+
+    let sub_fields_valid_third = vec![FieldSpec::new(
+        TextSchema::Exact("second".to_string()),
+        false,
+        true,
+    )];
+
+    let sub_fields_invalid_first = vec![FieldSpec::new(
+        TextSchema::Exact("fourth".to_string()),
+        false,
+        false,
+    )];
+
+    let sub_fields_invalid_second = vec![FieldSpec::new(
+        TextSchema::Exact("first".to_string()),
+        true,
+        false,
+    )];
+
+    let sub_fields_invalid_third = vec![FieldSpec::new(
+        TextSchema::Exact("first".to_string()),
+        false,
+        true,
+    )];
+
+    let sub_fields_invalid_fourth = vec![
+        FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("fourth".to_string()), false, true),
+    ];
+
+    let sub_fields_invalid_fifth = vec![
+        FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("fifth".to_string()), false, true),
+        FieldSpec::new(TextSchema::Exact("third".to_string()), true, false),
+    ];
+
+    let sub_fields_invalid_sixth = vec![
+        FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("second".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("third".to_string()), true, false),
+    ];
+
+    assert!(contains_all_fields(&sup_fields, &sub_fields_valid_first));
+    assert!(contains_all_fields(&sup_fields, &sub_fields_valid_second));
+    assert!(contains_all_fields(&sup_fields, &sub_fields_valid_third));
+
+    assert!(!contains_all_fields(&vec![], &sup_fields));
+    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_first));
+    assert!(!contains_all_fields(
+        &sup_fields,
+        &sub_fields_invalid_second
+    ));
+    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_third));
+    assert!(!contains_all_fields(
+        &sup_fields,
+        &sub_fields_invalid_fourth
+    ));
+    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_fifth));
+    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_sixth));
+}
+
+#[test]
 fn combine_ordering_equal() {
     assert_eq!(
         combine_orderings(vec![Ordering::Equal]).unwrap(),
@@ -4595,4 +4709,848 @@ fn compare_num_items_layout() {
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
     assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_head_attr_head_attr() {
+    let schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::new(
+            TextSchema::NonEmpty,
+            StandardSchema::Equal(Value::Int32Value(10)),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+    };
+
+    let equal_schemas = vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Equal(Value::Int64Value(10)),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+        },
+    ];
+
+    let greater_schemas = vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::OfKind(ValueKind::Int32),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: false,
+            remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::OfKind(ValueKind::Float64)),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::NonEmpty,
+                StandardSchema::OfKind(ValueKind::Int32),
+            )),
+            required: false,
+            remainder: Box::new(StandardSchema::OfKind(ValueKind::Float64)),
+        },
+    ];
+
+    let lesser_schemas = vec![StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::new(
+            TextSchema::Exact("test".to_string()),
+            StandardSchema::Equal(Value::Int32Value(10)),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::Exact("test".to_string()),
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: false,
+            remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::Exact("test".to_string()),
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::OfKind(ValueKind::Float64)),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::new(
+                TextSchema::Exact("test".to_string()),
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            required: false,
+            remainder: Box::new(StandardSchema::OfKind(ValueKind::Float64)),
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_head_attr_has_attrs() {
+    let schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::new(
+            TextSchema::Exact("foo".to_string()),
+            StandardSchema::Equal(Value::Int32Value(10)),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("foo".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: true,
+        }),
+    };
+
+    let equal_schemas = vec![StandardSchema::HasAttributes {
+        attributes: vec![FieldSpec::new(
+            AttrSchema::new(
+                TextSchema::Exact("foo".to_string()),
+                StandardSchema::Equal(Value::Int32Value(10)),
+            ),
+            false,
+            false,
+        )],
+        exhaustive: true,
+    }];
+
+    let greater_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: false,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("foo".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::NonEmpty,
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::OfKind(ValueKind::Int32),
+                ),
+                true,
+                true,
+            )],
+            exhaustive: false,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("foo".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_head_attr_has_slots() {
+    let schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::new(
+            TextSchema::NonEmpty,
+            StandardSchema::Equal(Value::Int32Value(10)),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+    };
+
+    let greater_schemas = vec![StandardSchema::HasSlots {
+        slots: vec![],
+        exhaustive: false,
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::HasSlots {
+            slots: vec![],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_head_attr_layout() {
+    let schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::new(
+            TextSchema::NonEmpty,
+            StandardSchema::Equal(Value::Int32Value(10)),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Equal(Value::Float64Value(20.20))),
+    };
+
+    let greater_schemas = vec![StandardSchema::Layout {
+        items: vec![],
+        exhaustive: false,
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::ValueItem(StandardSchema::Equal(Value::Int32Value(10))),
+                false,
+            )],
+            exhaustive: false,
+        },
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_has_attrs_has_attrs_exhaustive() {
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("ten".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("twenty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: true,
+    };
+
+    let equal_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("ten".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("ten".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    let greater_schemas = vec![StandardSchema::HasAttributes {
+        attributes: vec![
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("twenty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("ten".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("thirty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(30)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: true,
+    }];
+
+    let lesser_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("twenty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: true,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("ten".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: true,
+        },
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("fifty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(50)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: true,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("fifty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("thirty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("ten".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("fifty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema.clone(), not_related_schemas);
+}
+
+#[test]
+fn compare_has_attrs_has_attrs_non_exhaustive() {
+    let schema = StandardSchema::HasAttributes {
+        attributes: vec![
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("ten".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("twenty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: false,
+    };
+
+    let equal_schemas = vec![StandardSchema::HasAttributes {
+        attributes: vec![
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("twenty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("ten".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: false,
+    }];
+
+    let greater_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("twenty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("ten".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+    ];
+
+    let lesser_schemas = vec![StandardSchema::HasAttributes {
+        attributes: vec![
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("twenty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("ten".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("thirty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(30)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: false,
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::Exact("fifty".to_string()),
+                    StandardSchema::Equal(Value::Int32Value(50)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("fifty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("thirty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("ten".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema.clone(), not_related_schemas);
+}
+
+#[test]
+fn compare_has_attrs_has_slots() {
+    assert_equal(
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: false,
+        },
+        vec![
+            StandardSchema::HasAttributes {
+                attributes: vec![],
+                exhaustive: false,
+            },
+            StandardSchema::HasSlots {
+                slots: vec![],
+                exhaustive: false,
+            },
+        ],
+    );
+
+    assert_greater_than(
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: false,
+        },
+        vec![
+            StandardSchema::HasSlots {
+                slots: vec![],
+                exhaustive: true,
+            },
+            StandardSchema::HasSlots {
+                slots: vec![FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::NonEmpty),
+                        StandardSchema::Text(TextSchema::NonEmpty),
+                    ),
+                    false,
+                    false,
+                )],
+                exhaustive: false,
+            },
+        ],
+    );
+
+    assert_less_than(
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: true,
+        },
+        vec![StandardSchema::HasSlots {
+            slots: vec![],
+            exhaustive: false,
+        }],
+    );
+
+    assert_less_than(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Text(TextSchema::NonEmpty),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        vec![StandardSchema::HasSlots {
+            slots: vec![],
+            exhaustive: false,
+        }],
+    );
+
+    assert_not_related(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Text(TextSchema::NonEmpty),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        vec![StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::NonEmpty),
+                    StandardSchema::Text(TextSchema::NonEmpty),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        }],
+    );
+}
+
+#[test]
+fn compare_hast_attrs_has_layout() {
+    assert_equal(
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: false,
+        },
+        vec![
+            StandardSchema::HasAttributes {
+                attributes: vec![],
+                exhaustive: false,
+            },
+            StandardSchema::Layout {
+                items: vec![],
+                exhaustive: false,
+            },
+        ],
+    );
+
+    assert_greater_than(
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: false,
+        },
+        vec![
+            StandardSchema::Layout {
+                items: vec![],
+                exhaustive: true,
+            },
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                    false,
+                )],
+                exhaustive: false,
+            },
+        ],
+    );
+
+    assert_less_than(
+        StandardSchema::HasAttributes {
+            attributes: vec![],
+            exhaustive: true,
+        },
+        vec![StandardSchema::Layout {
+            items: vec![],
+            exhaustive: false,
+        }],
+    );
+
+    assert_less_than(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Text(TextSchema::NonEmpty),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        vec![StandardSchema::Layout {
+            items: vec![],
+            exhaustive: false,
+        }],
+    );
+
+    assert_not_related(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::new(
+                AttrSchema::new(
+                    TextSchema::NonEmpty,
+                    StandardSchema::Text(TextSchema::NonEmpty),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        vec![StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::ValueItem(StandardSchema::Text(TextSchema::NonEmpty)),
+                false,
+            )],
+            exhaustive: false,
+        }],
+    );
 }
