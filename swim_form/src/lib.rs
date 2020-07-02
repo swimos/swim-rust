@@ -14,15 +14,15 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
-pub extern crate common as _common;
-pub extern crate deserialize as _deserialize;
 #[macro_use]
 #[allow(unused_imports)]
 pub extern crate form_derive;
+pub extern crate deserialize as _deserialize;
 pub extern crate serialize as _serialize;
 
-use _common::model::schema::StandardSchema;
+use common::model::schema::StandardSchema;
 use common::model::Value;
+
 pub use deserialize::FormDeserializeErr;
 pub use form_derive::*;
 pub use serialize::FormSerializeErr;
@@ -34,16 +34,16 @@ pub mod bigint;
 pub mod collections;
 pub mod primitives;
 
-pub use num_bigint::{self, BigInt, BigUint};
-
-/// The preferred approach to deriving forms is to use the attribute [`[#form]`] as this will derive
-/// [`Form`], [`Serialize`], and [`Deserialize`], as well as performing compile-time checking on the
-/// types used. If both serialization anddeserialization is not required then
-/// [`#[derive(Form, Serialize)]`] or [`#[derive(Form, Deserialize)]`] can be used. Or checking can
-/// be avoided by [`#[derive(Form, Serialize, Deserialize)]`]
+/// A [`Form`] transforms between a Rust object and a structurally typed [`Value`]. Decorating a
+/// Rust object with [`#[form(Value)`] derives a method to serialise the object to a [`Value`] and to
+/// deserialise it back into a Rust object. The argument to this macro is a name binding to the
+/// [`Value`] enumeration; this differs between the Swim Client and Swim Server crates and so must be
+/// specified.
 ///
-/// SWIM forms are backed by Serde and so all of Serde's attributes work for serialisation and
-/// deserialisation.
+/// The form macro performs compile-time checking to ensure that all fields implement the [`Form`]
+/// trait. Forms are backed by Serde and so all of Serde's attributes work for serialisation and
+/// deserialisation. As a result, Serde must be included as a dependency with the [`derive`] feature
+/// enabled.
 ///
 /// # Examples
 ///
@@ -52,7 +52,7 @@ pub use num_bigint::{self, BigInt, BigUint};
 /// use swim_form::Form;
 /// use common::model::{Value, Attr, Item};
 ///
-/// #[form]
+/// #[form(Value)]
 /// #[derive(PartialEq, Debug)]
 /// struct Message {
 ///     id: i32,
