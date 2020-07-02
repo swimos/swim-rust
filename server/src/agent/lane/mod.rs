@@ -28,9 +28,7 @@ pub mod strategy;
 pub mod tests;
 
 pub trait LaneModel {
-
     type Event;
-
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

@@ -67,7 +67,7 @@ impl<K, V> Clone for MapLane<K, V> {
             map_state: self.map_state.clone(),
             summary: self.summary.clone(),
             transaction_started: self.transaction_started.clone(),
-            _key_type: PhantomData
+            _key_type: PhantomData,
         }
     }
 }

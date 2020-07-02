@@ -16,10 +16,5 @@ use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 
 pub trait AgentLifecycle<Agent> {
-
-    fn on_start<'a, C: AgentContext<Agent>>(
-        &'a self,
-        context: &'a C,
-    ) -> BoxFuture<'a, ()>;
-
+    fn on_start<'a, C: AgentContext<Agent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>;
 }

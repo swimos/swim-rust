@@ -12,49 +12,46 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::context::ContextImpl;
 use crate::agent::lane::lifecycle::LaneLifecycle;
 use crate::agent::lane::model;
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use futures::future::{ready, BoxFuture};
+use futures::sink::drain;
 use futures::stream::{once, repeat, unfold, BoxStream};
 use futures::{FutureExt, Stream, StreamExt};
-use futures::sink::drain;
+use futures_util::stream::FuturesUnordered;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_form::Form;
-use url::Url;
-use crate::agent::context::ContextImpl;
-use futures_util::stream::FuturesUnordered;
 use tokio::sync::mpsc;
-use std::convert::Infallible;
+use url::Url;
+use utilities::future::SwimStreamExt;
 
 mod context;
 pub mod lane;
 pub mod lifecycle;
 
 pub trait SwimAgent: Sized {
-
     fn instantiate<Context: AgentContext<Self>>() -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>);
-
 }
 
 pub async fn run_agent<Agent>(url: Url)
 where
     Agent: SwimAgent + Send + Sync + 'static,
 {
-
     let (agent, tasks) = Agent::instantiate::<ContextImpl<Agent>>();
     let agent_ref = Arc::new(agent);
     let (tx, rx) = mpsc::channel(5);
-    let mut context = ContextImpl::new(agent_ref, url, tx);
+    let context = ContextImpl::new(agent_ref, url, tx);
 
     for lane_task in tasks.iter() {
-        (**lane_task).start(&mut context).await;
+        (**lane_task).start(&context).await;
     }
 
     let task_manager: FuturesUnordered<Eff> = FuturesUnordered::new();
@@ -65,18 +62,17 @@ where
         task_manager.push(lane_task.events(context.clone()));
     }
 
-    let _ = task_manager.map(infallible).forward(drain::<()>()).await;
-}
-
-fn infallible<T>(t: T) -> Result<T, Infallible> {
-    Ok(t)
+    task_manager
+        .never_error()
+        .forward(drain())
+        .map(|_| ()) //Never is an empty type so we can discard the errors.
+        .await
 }
 
 pub type Eff = BoxFuture<'static, ()>;
 pub type EffStream = BoxStream<'static, ()>;
 
 pub trait AgentContext<Agent> {
-
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
     where
         Effect: Future<Output = ()> + Send + 'static,
@@ -109,7 +105,6 @@ pub trait LaneTasks<Agent, Context: AgentContext<Agent> + Sized + Send + Sync + 
     fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()>;
 
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()>;
-
 }
 
 struct LifecycleTasks<L, S, P> {
@@ -148,7 +143,7 @@ where
                 event_stream,
                 projection,
             }) = *self;
-            let model = projection(context.agent()).clone();
+            let model = projection(context.agent());
             pin_mut!(event_stream);
             while let Some(event) = event_stream.next().await {
                 lifecycle.on_event(&event, &model, &context).await

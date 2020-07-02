@@ -69,7 +69,7 @@ where
             })
             .never_error()
             .forward(drain())
-            .map(|_| ()) //Infallible is an empty type so we can drop the errors.
+            .map(|_| ()) //Never is an empty type so we can drop the errors.
             .boxed();
 
         let mut sender = self.scheduler.clone();

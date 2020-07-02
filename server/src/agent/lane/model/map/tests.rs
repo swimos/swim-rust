@@ -15,13 +15,12 @@
 use crate::agent::lane::model::map::{make_lane_model, MapLane, MapLaneEvent};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
+use common::model::Value;
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use common::model::Value;
-
 
 #[test]
 fn try_type_update_event_success() {

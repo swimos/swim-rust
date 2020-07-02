@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
-use std::fmt::{Debug, Formatter};
-use std::any::type_name;
 use crate::agent::lane::LaneModel;
+use std::any::type_name;
+use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
 
 /// Model for a lane that can receive commands and optionally produce responses. It is entirely
 /// stateless so has no fields.

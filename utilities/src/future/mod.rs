@@ -17,12 +17,12 @@ pub mod retryable;
 #[cfg(test)]
 mod tests;
 
+use futures::never::Never;
 use futures::task::{Context, Poll};
 use futures::{Future, Sink, Stream, TryFuture};
 use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use futures::never::Never;
 
 /// A future that transforms another future using [`Into`].
 #[pin_project]
@@ -431,7 +431,7 @@ pub trait SwimStreamExt: Stream {
         UntilFailure::new(self, transform)
     }
 
-    /// Tranform this stream into an infallible [`TryStream`].
+    /// Transform this stream into an infallible [`TryStream`].
     ///
     fn never_error(self) -> NeverErrorStream<Self>
     where
