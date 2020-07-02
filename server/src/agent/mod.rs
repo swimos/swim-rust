@@ -26,13 +26,13 @@ use futures_util::stream::FuturesUnordered;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_form::Form;
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::future::SwimStreamExt;
-use std::num::NonZeroUsize;
 
 mod context;
 pub mod lane;
@@ -123,7 +123,7 @@ where
     Context: AgentContext<Agent> + Send + Sync + 'static,
     S: Stream<Item = Arc<T>> + Send + Sync + 'static,
     T: Any + Send + Sync,
-    L: LaneLifecycle<ValueLane<T>, Agent>,
+    L: for<'l> LaneLifecycle<'l, ValueLane<T>, Agent>,
     L::WatchStrategy: ValueLaneWatch<T, View = S>,
     P: Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
 {
@@ -134,7 +134,7 @@ where
             ..
         }) = self;
         let model = projection(context.agent());
-        lifecycle.on_start(model, context)
+        lifecycle.on_start(model, context).boxed()
     }
 
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
@@ -163,7 +163,7 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
     T: Any + Send + Sync,
-    L: LaneLifecycle<ValueLane<T>, Agent>,
+    L: for<'l> LaneLifecycle<'l, ValueLane<T>, Agent>,
     L::WatchStrategy: ValueLaneWatch<T>,
 {
     let (lane, event_stream) = model::value::make_lane_model(init, lifecycle.create_strategy());
@@ -183,7 +183,7 @@ where
     S: Stream<Item = MapLaneEvent<K, V>> + Send + Sync + 'static,
     K: Any + Form + Send + Sync,
     V: Any + Send + Sync,
-    L: LaneLifecycle<MapLane<K, V>, Agent>,
+    L: for<'l> LaneLifecycle<'l, MapLane<K, V>, Agent>,
     L::WatchStrategy: MapLaneWatch<K, V, View = S>,
     P: Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
 {
@@ -194,7 +194,7 @@ where
             ..
         }) = self;
         let model = projection(context.agent());
-        lifecycle.on_start(model, context)
+        lifecycle.on_start(model, context).boxed()
     }
 
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
@@ -223,7 +223,7 @@ where
     Context: AgentContext<Agent> + Send + Sync + 'static,
     K: Any + Form + Send + Sync,
     V: Any + Send + Sync,
-    L: LaneLifecycle<MapLane<K, V>, Agent>,
+    L: for<'l> LaneLifecycle<'l, MapLane<K, V>, Agent>,
     L::WatchStrategy: MapLaneWatch<K, V>,
     P: Fn(&Agent) -> &MapLane<K, V>,
 {

@@ -16,107 +16,128 @@ use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
-use futures::future::{ready, BoxFuture, FutureExt};
+use futures::future::{ready, Ready};
+use std::future::Future;
 
-#[allow(unused)]
-pub trait LaneLifecycle<Model: LaneModel, Agent>: Default + Send + Sync + 'static {
+pub trait LaneLifecycleBase: Default + Send + Sync + 'static {
     type WatchStrategy;
 
     fn create_strategy(&self) -> Self::WatchStrategy;
+}
 
-    fn on_start<'a, C: AgentContext<Agent>>(
+#[allow(unused)]
+pub trait LaneLifecycle<'a, Model: LaneModel, Agent>: LaneLifecycleBase {
+    type StartFuture: Future<Output = ()> + Send + 'a;
+    type EventFuture: Future<Output = ()> + Send + 'a;
+
+    fn on_start<C: AgentContext<Agent>>(
         &'a self,
         model: &'a Model,
         context: &'a C,
-    ) -> BoxFuture<'a, ()>;
+    ) -> Self::StartFuture;
 
-    fn on_event<'a, C>(
+    fn on_event<C>(
         &'a self,
         event: &'a Model::Event,
         model: &'a Model,
         context: &'a C,
-    ) -> BoxFuture<'a, ()>
+    ) -> Self::EventFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
 }
 
 pub trait ActionLaneLifecycle<Command, Response, Agent>:
-    LaneLifecycle<ActionLane<Command, Response>, Agent>
+    for<'l> LaneLifecycle<'l, ActionLane<Command, Response>, Agent>
 {
     fn on_command<C: AgentContext<Agent>>(&self, command: &Command, context: &C) -> Response;
 }
 
-impl<Model: LaneModel, Agent> LaneLifecycle<Model, Agent> for Queue {
+impl LaneLifecycleBase for Queue {
     type WatchStrategy = Self;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
         self.clone()
-    }
-
-    fn on_start<'a, C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
-    }
-
-    fn on_event<'a, C: AgentContext<Agent>>(
-        &'a self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
     }
 }
 
-impl<Model: LaneModel, Agent> LaneLifecycle<Model, Agent> for Dropping {
-    type WatchStrategy = Self;
+impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Queue {
+    type StartFuture = Ready<()>;
+    type EventFuture = Ready<()>;
 
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        self.clone()
-    }
-
-    fn on_start<'a, C: AgentContext<Agent>>(
+    fn on_start<C: AgentContext<Agent>>(
         &'a self,
         _model: &'a Model,
         _context: &'a C,
-    ) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
+    ) -> Self::StartFuture {
+        ready(())
     }
 
-    fn on_event<'a, C: AgentContext<Agent>>(
+    fn on_event<C: AgentContext<Agent>>(
         &'a self,
         _event: &'a Model::Event,
         _model: &'a Model,
         _context: &'a C,
-    ) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
+    ) -> Self::EventFuture {
+        ready(())
     }
 }
 
-impl<Model: LaneModel, Agent> LaneLifecycle<Model, Agent> for Buffered {
+impl LaneLifecycleBase for Dropping {
     type WatchStrategy = Self;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
         self.clone()
     }
+}
 
-    fn on_start<'a, C: AgentContext<Agent>>(
+impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Dropping {
+    type StartFuture = Ready<()>;
+    type EventFuture = Ready<()>;
+
+    fn on_start<C: AgentContext<Agent>>(
         &'a self,
         _model: &'a Model,
         _context: &'a C,
-    ) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
+    ) -> Self::StartFuture {
+        ready(())
     }
 
-    fn on_event<'a, C: AgentContext<Agent>>(
+    fn on_event<C: AgentContext<Agent>>(
         &'a self,
         _event: &'a Model::Event,
         _model: &'a Model,
         _context: &'a C,
-    ) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
+    ) -> Self::EventFuture {
+        ready(())
+    }
+}
+
+impl LaneLifecycleBase for Buffered {
+    type WatchStrategy = Self;
+
+    fn create_strategy(&self) -> Self::WatchStrategy {
+        self.clone()
+    }
+}
+
+impl<'a, Model: LaneModel, Agent> LaneLifecycle<'a, Model, Agent> for Buffered {
+    type StartFuture = Ready<()>;
+    type EventFuture = Ready<()>;
+
+    fn on_start<C: AgentContext<Agent>>(
+        &'a self,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::StartFuture {
+        ready(())
+    }
+
+    fn on_event<C: AgentContext<Agent>>(
+        &'a self,
+        _event: &'a Model::Event,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::EventFuture {
+        ready(())
     }
 }
