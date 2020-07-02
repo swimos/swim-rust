@@ -22,6 +22,7 @@ use futures::{Future, Sink, Stream, TryFuture};
 use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use futures::never::Never;
 
 /// A future that transforms another future using [`Into`].
 #[pin_project]
@@ -49,6 +50,11 @@ pub struct TransformedFuture<Fut, Trans> {
     future: Fut,
     transform: Option<Trans>,
 }
+
+/// Trans forms a stream of [`T`] into a stream of [`Result<T, Never>`].
+#[pin_project]
+#[derive(Debug)]
+pub struct NeverErrorStream<Str>(#[pin] Str);
 
 impl<F, T> FutureInto<F, T>
 where
@@ -138,6 +144,18 @@ where
             Some(trans) => trans.transform(input),
             _ => panic!("Transformed future used more than once."),
         })
+    }
+}
+
+impl<T, Str> Stream for NeverErrorStream<Str>
+where
+    Str: Stream<Item = T>,
+{
+    type Item = Result<T, Never>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let projected = self.project();
+        projected.0.poll_next(cx).map(|t| t.map(Ok))
     }
 }
 
@@ -411,6 +429,15 @@ pub trait SwimStreamExt: Stream {
         Trans: TransformMut<Self::Item, Out = Result<T, E>>,
     {
         UntilFailure::new(self, transform)
+    }
+
+    /// Tranform this stream into an infallible [`TryStream`].
+    ///
+    fn never_error(self) -> NeverErrorStream<Self>
+    where
+        Self: Sized,
+    {
+        NeverErrorStream(self)
     }
 }
 

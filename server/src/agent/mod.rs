@@ -31,14 +31,11 @@ use url::Url;
 use crate::agent::context::ContextImpl;
 use futures_util::stream::FuturesUnordered;
 use tokio::sync::mpsc;
-use crate::agent::scheduler::ScheduleTask;
-use std::num::NonZeroUsize;
 use std::convert::Infallible;
 
 mod context;
 pub mod lane;
 pub mod lifecycle;
-mod scheduler;
 
 pub trait SwimAgent: Sized {
 
@@ -46,7 +43,7 @@ pub trait SwimAgent: Sized {
 
 }
 
-pub async fn run_agent<Agent>(url: Url, scheduler_buffer_size: NonZeroUsize)
+pub async fn run_agent<Agent>(url: Url)
 where
     Agent: SwimAgent + Send + Sync + 'static,
 {
@@ -55,7 +52,6 @@ where
     let agent_ref = Arc::new(agent);
     let (tx, rx) = mpsc::channel(5);
     let mut context = ContextImpl::new(agent_ref, url, tx);
-    let scheduler = ScheduleTask::new(rx, scheduler_buffer_size);
 
     for lane_task in tasks.iter() {
         (**lane_task).start(&mut context).await;
@@ -63,7 +59,7 @@ where
 
     let task_manager: FuturesUnordered<Eff> = FuturesUnordered::new();
 
-    task_manager.push(scheduler.run().boxed());
+    task_manager.push(rx.for_each_concurrent(None, |eff| eff).boxed());
 
     for lane_task in tasks.into_iter() {
         task_manager.push(lane_task.events(context.clone()));
@@ -77,13 +73,14 @@ fn infallible<T>(t: T) -> Result<T, Infallible> {
 }
 
 pub type Eff = BoxFuture<'static, ()>;
-pub type EffStream = BoxStream<'static, Eff>;
+pub type EffStream = BoxStream<'static, ()>;
 
 pub trait AgentContext<Agent> {
 
-    fn schedule<Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
+    fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
     where
-        Str: Stream<Item = Eff> + Send + 'static,
+        Effect: Future<Output = ()> + Send + 'static,
+        Str: Stream<Item = Effect> + Send + 'static,
         Sch: Stream<Item = Duration> + Send + 'static;
 
     fn periodically<Fut, F>(&self, mut effect: F, interval: Duration) -> BoxFuture<()>
@@ -91,7 +88,7 @@ pub trait AgentContext<Agent> {
         Fut: Future<Output = ()> + Send + 'static,
         F: FnMut() -> Fut + Send + 'static,
     {
-        let effects = unfold((), move |_| ready(Some((effect().boxed(), ()))));
+        let effects = unfold((), move |_| ready(Some((effect(), ()))));
         let sch = repeat(interval);
         self.schedule(effects, sch)
     }
@@ -100,7 +97,7 @@ pub trait AgentContext<Agent> {
     where
         Fut: Future<Output = ()> + Send + 'static,
     {
-        self.schedule(once(ready(effect.boxed())), once(ready(duration)))
+        self.schedule(once(ready(effect)), once(ready(duration)))
     }
 
     fn agent(&self) -> &Agent;

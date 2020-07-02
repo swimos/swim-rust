@@ -12,21 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::{AgentContext, EffStream, Eff};
-use futures::{Stream, StreamExt};
-use futures::stream::once;
+use crate::agent::{AgentContext, Eff};
+use futures::future::BoxFuture;
+use futures::sink::drain;
+use futures::{FutureExt, Stream, StreamExt};
+use std::future::Future;
 use std::sync::Arc;
+use swim_runtime::time::delay;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
-use swim_runtime::time::delay;
-use futures::future::BoxFuture;
+use utilities::future::SwimStreamExt;
 
 #[derive(Debug)]
 pub struct ContextImpl<Agent> {
     agent_ref: Arc<Agent>,
     url: Url,
-    scheduler: mpsc::Sender<EffStream>,
+    scheduler: mpsc::Sender<Eff>,
 }
 
 impl<Agent> Clone for ContextImpl<Agent> {
@@ -40,11 +42,7 @@ impl<Agent> Clone for ContextImpl<Agent> {
 }
 
 impl<Agent> ContextImpl<Agent> {
-    pub fn new(
-        agent_ref: Arc<Agent>,
-        url: Url,
-        scheduler: mpsc::Sender<EffStream>,
-    ) -> Self {
+    pub fn new(agent_ref: Arc<Agent>, url: Url, scheduler: mpsc::Sender<Eff>) -> Self {
         ContextImpl {
             agent_ref,
             url,
@@ -57,20 +55,27 @@ impl<Agent> AgentContext<Agent> for ContextImpl<Agent>
 where
     Agent: Send + Sync + 'static,
 {
-    fn schedule<Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
+    fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
     where
-        Str: Stream<Item = Eff> + Send + 'static,
+        Effect: Future<Output = ()> + Send + 'static,
+        Str: Stream<Item = Effect> + Send + 'static,
         Sch: Stream<Item = Duration> + Send + 'static,
     {
-        let effects = StreamExt::boxed(schedule.flat_map(|dur| once(delay::delay_for(dur)))
+        let schedule_effect = schedule
             .zip(effects)
-            .map(|(_, eff)| eff));
+            .then(|(dur, eff)| async move {
+                delay::delay_for(dur).await;
+                eff.await;
+            })
+            .never_error()
+            .forward(drain())
+            .map(|_| ()) //Infallible is an empty type so we can drop the errors.
+            .boxed();
 
         let mut sender = self.scheduler.clone();
         Box::pin(async move {
             //TODO Handle this.
-            let _ = sender.send(effects).await;
-            ()
+            let _ = sender.send(schedule_effect).await;
         })
     }
 
