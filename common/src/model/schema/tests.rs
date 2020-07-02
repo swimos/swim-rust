@@ -15,6 +15,7 @@
 use super::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use num_bigint::{BigUint, RandBigInt};
 use std::collections::HashMap;
 
 #[test]
@@ -1990,4 +1991,16 @@ fn nothing_to_value() {
         StandardSchema::Nothing.to_value(),
         eq(Value::of_attr("nothing"))
     );
+}
+
+#[test]
+fn t() {
+    let mut rng = rand::thread_rng();
+    let biga = rng.gen_biguint(64);
+    let bigb = 32;
+
+    println!("{}", biga);
+    println!("{}", bigb);
+
+    println!("{}", (biga > BigUint::try_from(bigb).unwrap()));
 }

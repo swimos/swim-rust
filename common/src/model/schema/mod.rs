@@ -918,6 +918,6 @@ fn kind_to_str(kind: ValueKind) -> &'static str {
         ValueKind::Text => "text",
         ValueKind::Record => "record",
         ValueKind::BigInt => "bigInt",
-        ValueKind::BigUInt => "bigUInt",
+        ValueKind::BigUint => "bigUint",
     }
 }

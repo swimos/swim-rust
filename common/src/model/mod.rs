@@ -12,19 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::*;
+use either::Either;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
-
-use bytes::*;
-use either::Either;
 use tokio_util::codec::Encoder;
 
 use crate::model::parser::is_identifier;
-use num_bigint::{BigInt, BigUint};
+use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::sign::Signed;
+use std::str::FromStr;
+
 pub mod parser;
 pub mod schema;
 
@@ -95,7 +97,7 @@ pub enum ValueKind {
     Text,
     Record,
     BigInt,
-    BigUInt,
+    BigUint,
 }
 
 /// Trait for types that can be converted to [`Value`]s.
@@ -135,7 +137,7 @@ impl Display for ValueKind {
             ValueKind::Text => write!(f, "Text"),
             ValueKind::Record => write!(f, "Record"),
             ValueKind::BigInt => write!(f, "BigInt"),
-            ValueKind::BigUInt => write!(f, "BigUInt"),
+            ValueKind::BigUint => write!(f, "BigUint"),
         }
     }
 }
@@ -198,6 +200,11 @@ impl Value {
                         }
                     }
                 }
+                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigUint(bi) => match BigUint::try_from(*n) {
+                    Ok(n) => n.cmp(bi),
+                    Err(_) => Ordering::Greater,
+                },
                 _ => Ordering::Greater,
             },
             Value::Int64Value(n) => match other {
@@ -215,9 +222,54 @@ impl Value {
                         }
                     }
                 }
+                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigUint(bi) => match BigUint::try_from(*n) {
+                    Ok(n) => n.cmp(bi),
+                    Err(_) => Ordering::Greater,
+                },
                 _ => Ordering::Greater,
             },
             Value::Float64Value(x) => match other {
+                Value::BigInt(bi) => {
+                    if x.is_nan() {
+                        Ordering::Less
+                    } else {
+                        match f64::from_str(&bi.to_string()) {
+                            Ok(bi) => match x.partial_cmp(&bi) {
+                                Some(Ordering::Less) => Ordering::Less,
+                                Some(Ordering::Greater) => Ordering::Greater,
+                                _ => Ordering::Equal,
+                            },
+                            Err(_) => {
+                                if x.is_sign_negative() && bi.is_negative() {
+                                    Ordering::Less
+                                } else {
+                                    Ordering::Greater
+                                }
+                            }
+                        }
+                    }
+                }
+                Value::BigUint(bi) => {
+                    if x.is_nan() {
+                        Ordering::Less
+                    } else {
+                        match f64::from_str(&bi.to_string()) {
+                            Ok(bi) => match x.partial_cmp(&bi) {
+                                Some(Ordering::Less) => Ordering::Less,
+                                Some(Ordering::Greater) => Ordering::Greater,
+                                _ => Ordering::Equal,
+                            },
+                            Err(_) => {
+                                if x.is_sign_negative() {
+                                    Ordering::Greater
+                                } else {
+                                    Ordering::Less
+                                }
+                            }
+                        }
+                    }
+                }
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::Int32Value(m) => {
                     if x.is_nan() {
@@ -284,8 +336,39 @@ impl Value {
                 }
                 _ => Ordering::Less,
             },
-            Value::BigInt(_bi) => unimplemented!(),
-            Value::BigUint(_bi) => unimplemented!(),
+            Value::BigInt(bi) => match other {
+                Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                Value::Int32Value(m) => bi.cmp(&BigInt::from(*m)),
+                Value::Int64Value(m) => bi.cmp(&BigInt::from(*m)),
+                Value::Float64Value(y) => bi.cmp(&BigInt::from(*y as i64)),
+                Value::BigInt(other_bi) => bi.cmp(&other_bi),
+                Value::BigUint(other_bi) => match other_bi.to_bigint() {
+                    Some(other_bi) => bi.cmp(&other_bi),
+                    None => Ordering::Less,
+                },
+                _ => Ordering::Greater,
+            },
+            Value::BigUint(bi) => match other {
+                Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                Value::Int32Value(m) => match u32::try_from(*m) {
+                    Ok(m) => bi.cmp(&BigUint::from(m)),
+                    Err(_) => Ordering::Greater,
+                },
+                Value::Int64Value(m) => match u64::try_from(*m) {
+                    Ok(m) => bi.cmp(&BigUint::from(m)),
+                    Err(_) => Ordering::Greater,
+                },
+                Value::Float64Value(m) => match u64::try_from(*m as i64) {
+                    Ok(m) => bi.cmp(&BigUint::from(m)),
+                    Err(_) => Ordering::Greater,
+                },
+                Value::BigInt(other_bi) => match other_bi.to_biguint() {
+                    Some(other_bi) => bi.cmp(&other_bi),
+                    None => Ordering::Less,
+                },
+                Value::BigUint(other_bi) => bi.cmp(&other_bi),
+                _ => Ordering::Greater,
+            },
         }
     }
 
@@ -299,7 +382,7 @@ impl Value {
             Value::Text(_) => ValueKind::Text,
             Value::Record(_, _) => ValueKind::Record,
             Value::BigInt(_) => ValueKind::BigInt,
-            Value::BigUint(_) => ValueKind::BigUInt,
+            Value::BigUint(_) => ValueKind::BigUint,
         }
     }
 

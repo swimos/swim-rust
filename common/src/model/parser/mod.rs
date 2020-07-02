@@ -512,7 +512,7 @@ enum ReconToken<S> {
     Int32Literal(i32),
     Int64Literal(i64),
     BigInt(BigInt),
-    BigUInt(BigUint),
+    BigUint(BigUint),
     Float64Literal(f64),
     BoolLiteral(bool),
 }
@@ -534,7 +534,7 @@ impl ReconToken<&str> {
             ReconToken::Int32Literal(n) => ReconToken::Int32Literal(n),
             ReconToken::Int64Literal(n) => ReconToken::Int64Literal(n),
             ReconToken::BigInt(ref n) => ReconToken::BigInt(n.clone()),
-            ReconToken::BigUInt(ref n) => ReconToken::BigUInt(n.clone()),
+            ReconToken::BigUint(ref n) => ReconToken::BigUint(n.clone()),
             ReconToken::Float64Literal(x) => ReconToken::Float64Literal(x),
             ReconToken::BoolLiteral(p) => ReconToken::BoolLiteral(p),
         }
@@ -551,7 +551,7 @@ impl<S: TokenStr> ReconToken<S> {
             | ReconToken::Int64Literal(_)
             | ReconToken::Float64Literal(_)
             | ReconToken::BigInt(_)
-            | ReconToken::BigUInt(_)
+            | ReconToken::BigUint(_)
             | ReconToken::BoolLiteral(_) => true,
             _ => false,
         }
@@ -567,7 +567,7 @@ impl<S: TokenStr> ReconToken<S> {
             ReconToken::Float64Literal(x) => Some(Ok(Value::Float64Value(x))),
             ReconToken::BoolLiteral(p) => Some(Ok(Value::BooleanValue(p))),
             ReconToken::BigInt(bi) => Some(Ok(Value::BigInt(bi))),
-            ReconToken::BigUInt(bi) => Some(Ok(Value::BigUint(bi))),
+            ReconToken::BigUint(bi) => Some(Ok(Value::BigUint(bi))),
             _ => None,
         }
     }
@@ -785,7 +785,7 @@ fn parse_int_token<T: TokenStr>(
         Err(_) => match BigUint::from_str(rep) {
             Ok(n) => {
                 *state = TokenParseState::None;
-                Ok(loc(ReconToken::BigUInt(n), offset))
+                Ok(loc(ReconToken::BigUint(n), offset))
             }
             Err(_) => match BigInt::from_str(rep) {
                 Ok(n) => {
