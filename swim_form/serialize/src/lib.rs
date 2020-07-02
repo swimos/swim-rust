@@ -15,9 +15,8 @@
 #![allow(clippy::match_wild_err_arm)]
 
 use core::fmt;
-use std::fmt::{Debug, Display, Formatter};
-
 use serde::ser;
+use std::fmt::{Debug, Display, Formatter};
 
 use common::model::{Attr, Item, Value};
 

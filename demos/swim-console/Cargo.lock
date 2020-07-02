@@ -1008,7 +1008,6 @@ name = "serialize"
 version = "0.1.0"
 dependencies = [
  "common",
- "num-bigint",
  "serde",
 ]
 
@@ -1083,6 +1082,7 @@ dependencies = [
  "deserialize",
  "form_derive",
  "im",
+ "num-bigint",
  "serde",
  "serialize",
 ]

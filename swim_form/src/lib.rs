@@ -30,8 +30,11 @@ pub use serialize::FormSerializeErr;
 #[cfg(test)]
 mod tests;
 
+pub mod bigint;
 pub mod collections;
 pub mod primitives;
+
+pub use num_bigint::{self, BigInt, BigUint};
 
 /// The preferred approach to deriving forms is to use the attribute [`[#form]`] as this will derive
 /// [`Form`], [`Serialize`], and [`Deserialize`], as well as performing compile-time checking on the
