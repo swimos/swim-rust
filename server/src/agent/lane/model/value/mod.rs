@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
-use crate::agent::lane::BroadcastStream;
+use crate::agent::lane::{BroadcastStream, LaneModel};
 use futures::Stream;
 use std::any::Any;
 use std::sync::Arc;
@@ -26,12 +26,17 @@ use tokio::sync::{broadcast, mpsc, watch};
 mod tests;
 
 /// A lane containing a single value.
-pub struct ValueLaneModel<T> {
+#[derive(Clone)]
+pub struct ValueLane<T> {
     value: TVar<T>,
 }
 
+impl<T> LaneModel for ValueLane<T> {
+    type Event = Arc<T>;
+}
+
 /// Create a new value lane with the specified watch strategy.
-pub fn make_lane_model<T, W>(init: T, watch: W) -> (ValueLaneModel<T>, W::View)
+pub fn make_lane_model<T, W>(init: T, watch: W) -> (ValueLane<T>, W::View)
 where
     T: Any + Send + Sync,
     W: ValueLaneWatch<T>,
@@ -39,11 +44,11 @@ where
     let value = Arc::new(init);
     let (observer, view) = watch.make_watch(&value);
     let var = TVar::from_arc_with_observer(value, observer);
-    let lane = ValueLaneModel { value: var };
+    let lane = ValueLane { value: var };
     (lane, view)
 }
 
-impl<T: Any + Send + Sync> ValueLaneModel<T> {
+impl<T: Any + Send + Sync> ValueLane<T> {
     /// Get the current value.
     pub fn get(&self) -> impl Stm<Result = Arc<T>> {
         self.value.get()

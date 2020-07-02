@@ -31,10 +31,15 @@ mod tests;
 //Strategies for watching events from a lane.
 
 /// Push lane events into a bounded queue.
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Queue(pub NonZeroUsize);
+
 /// Publish the latest lane event.
+#[derive(Default, Debug, Clone)]
 pub struct Dropping;
+
 /// Publish the latest lane events to a bounded buffer.
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Buffered(pub NonZeroUsize);
 
 /// The default buffer size for the [`Queue`] and [`Buffered`] strategies.

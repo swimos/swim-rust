@@ -180,36 +180,6 @@ fn to_events_clear() {
     if Arc::ptr_eq(&v, &value1)));
 }
 
-#[test]
-fn try_type_update_event_success() {
-    let value = Arc::new(4);
-    let event = MapLaneEvent::Update(Value::Int32Value(2), value.clone());
-    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
-    assert!(matches!(typed, Ok(MapLaneEvent::Update(2, v)) if Arc::ptr_eq(&v, &value)));
-}
-
-#[test]
-fn try_type_remove_event_success() {
-    let event: MapLaneEvent<Value, i32> = MapLaneEvent::Remove(Value::Int32Value(2));
-    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
-    assert!(matches!(typed, Ok(MapLaneEvent::Remove(2))));
-}
-
-#[test]
-fn try_type_update_event_failure() {
-    let value = Arc::new(4);
-    let event = MapLaneEvent::Update(Value::text("Boom!"), value.clone());
-    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
-    assert!(typed.is_err());
-}
-
-#[test]
-fn try_type_remove_event_failure() {
-    let event: MapLaneEvent<Value, i32> = MapLaneEvent::Remove(Value::text("Boom!"));
-    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
-    assert!(typed.is_err());
-}
-
 #[tokio::test]
 async fn clear_summary_transaction() {
     let key = Value::Int32Value(2);

@@ -15,21 +15,26 @@
 use std::marker::PhantomData;
 use std::fmt::{Debug, Formatter};
 use std::any::type_name;
+use crate::agent::lane::LaneModel;
 
 /// Model for a lane that can receive commands and optionally produce responses. It is entirely
 /// stateless so has no fields.
-pub struct ActionLaneModel<Command, Response>(PhantomData<fn(Command) -> Response>);
+pub struct ActionLane<Command, Response>(PhantomData<fn(Command) -> Response>);
+
+impl<Command, Response> LaneModel for ActionLane<Command, Response> {
+    type Event = Response;
+}
 
 /// An action lane model that produces no response.
-pub type CommandLaneModel<Command> = ActionLaneModel<Command, ()>;
+pub type CommandLane<Command> = ActionLane<Command, ()>;
 
-impl<Command, Response> Default for ActionLaneModel<Command, Response> {
+impl<Command, Response> Default for ActionLane<Command, Response> {
     fn default() -> Self {
-        ActionLaneModel(PhantomData)
+        ActionLane(PhantomData)
     }
 }
 
-impl<Command, Response> Debug for ActionLaneModel<Command, Response> {
+impl<Command, Response> Debug for ActionLane<Command, Response> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let cmd_name = type_name::<Command>();
         let resp_name = type_name::<Response>();

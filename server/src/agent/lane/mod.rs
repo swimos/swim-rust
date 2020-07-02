@@ -21,10 +21,17 @@ use std::task::{Context, Poll};
 use swim_form::FormDeserializeErr;
 use tokio::sync::broadcast;
 
+pub mod lifecycle;
 pub mod model;
 pub mod strategy;
 #[cfg(test)]
 pub mod tests;
+
+pub trait LaneModel {
+
+    type Event;
+
+}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct InvalidForm(FormDeserializeErr);

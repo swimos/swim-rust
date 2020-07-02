@@ -22,7 +22,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::TVar;
-use swim_form::{Form, FormDeserializeErr};
+use crate::agent::lane::model::map::MapLaneEvent;
 
 /// Representation of the modification to the value of an entry in a map lane.
 #[derive(Debug)]
@@ -49,28 +49,6 @@ pub struct TransactionSummary<K: Hash + Eq, V> {
     clear: bool,
     /// Modifications applied to entries in the map during the transaction (after the last clear).
     changes: HashMap<K, EntryModification<V>>,
-}
-
-/// A single event that occured during a transaction.
-#[derive(Debug)]
-pub enum MapLaneEvent<K, V> {
-    /// The map as cleared.
-    Clear,
-    /// An entry was updated.
-    Update(K, Arc<V>),
-    /// An entry was removed.
-    Remove(K),
-}
-
-impl<V> MapLaneEvent<Value, V> {
-    /// Attempt to type the key of a [`MapLaneEvent`] using a form.
-    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormDeserializeErr> {
-        match self {
-            MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),
-            MapLaneEvent::Update(k, v) => Ok(MapLaneEvent::Update(K::try_convert(k)?, v)),
-            MapLaneEvent::Remove(k) => Ok(MapLaneEvent::Remove(K::try_convert(k)?)),
-        }
-    }
 }
 
 impl<K: Hash + Eq + Clone, V> TransactionSummary<K, V> {

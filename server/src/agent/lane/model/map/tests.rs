@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::map::summary::MapLaneEvent;
-use crate::agent::lane::model::map::{make_lane_model, MapLaneModel};
+use crate::agent::lane::model::map::{make_lane_model, MapLane, MapLaneEvent};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::{FutureExt, Stream, StreamExt};
@@ -21,8 +20,40 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use common::model::Value;
 
-async fn update_direct<Str>(lane: &MapLaneModel<i32, i32>, events: &mut Str)
+
+#[test]
+fn try_type_update_event_success() {
+    let value = Arc::new(4);
+    let event = MapLaneEvent::Update(Value::Int32Value(2), value.clone());
+    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
+    assert!(matches!(typed, Ok(MapLaneEvent::Update(2, v)) if Arc::ptr_eq(&v, &value)));
+}
+
+#[test]
+fn try_type_remove_event_success() {
+    let event: MapLaneEvent<Value, i32> = MapLaneEvent::Remove(Value::Int32Value(2));
+    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
+    assert!(matches!(typed, Ok(MapLaneEvent::Remove(2))));
+}
+
+#[test]
+fn try_type_update_event_failure() {
+    let value = Arc::new(4);
+    let event = MapLaneEvent::Update(Value::text("Boom!"), value.clone());
+    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
+    assert!(typed.is_err());
+}
+
+#[test]
+fn try_type_remove_event_failure() {
+    let event: MapLaneEvent<Value, i32> = MapLaneEvent::Remove(Value::text("Boom!"));
+    let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
+    assert!(typed.is_err());
+}
+
+async fn update_direct<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -55,7 +86,7 @@ async fn update_direct_buffered() {
     update_direct(&lane, &mut events).await;
 }
 
-async fn remove_direct_not_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn remove_direct_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -84,7 +115,7 @@ async fn remove_direct_not_contained_buffered() {
     remove_direct_not_contained(lane, events).await;
 }
 
-async fn remove_direct_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn remove_direct_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -114,7 +145,7 @@ async fn remove_direct_contained_buffered() {
     remove_direct_contained(lane, events).await;
 }
 
-async fn clear_direct_empty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn clear_direct_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -143,7 +174,7 @@ async fn clear_direct_empty_buffered() {
     clear_direct_empty(lane, events).await;
 }
 
-async fn clear_direct_nonempty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn clear_direct_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -231,7 +262,7 @@ async fn map_is_empty() {
     assert!(matches!(result2, Ok(false)));
 }
 
-async fn populate<Str>(lane: &MapLaneModel<i32, i32>, events: &mut Str)
+async fn populate<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -265,7 +296,7 @@ async fn map_last() {
     assert!(matches!(result, Ok(Some(v)) if *v == 13));
 }
 
-async fn update_compound<Str>(lane: &MapLaneModel<i32, i32>, events: &mut Str)
+async fn update_compound<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -295,7 +326,7 @@ async fn update_compound_buffered() {
     update_direct(&lane, &mut events).await;
 }
 
-async fn remove_compound_not_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn remove_compound_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -324,7 +355,7 @@ async fn remove_compound_not_contained_buffered() {
     remove_compound_not_contained(lane, events).await;
 }
 
-async fn remove_compound_contained<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn remove_compound_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -354,7 +385,7 @@ async fn remove_compound_contained_buffered() {
     remove_compound_contained(lane, events).await;
 }
 
-async fn clear_compound_empty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn clear_compound_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -383,7 +414,7 @@ async fn clear_compound_empty_buffered() {
     clear_compound_empty(lane, events).await;
 }
 
-async fn clear_compound_nonempty<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn clear_compound_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -413,7 +444,7 @@ async fn clear_compound_nonempty_buffered() {
     clear_compound_nonempty(lane, events).await;
 }
 
-async fn double_set<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn double_set<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -455,7 +486,7 @@ async fn double_set_buffered() {
     double_set(lane, events).await;
 }
 
-async fn transaction_with_clear<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn transaction_with_clear<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -514,7 +545,7 @@ async fn snapshot_map() {
     assert!(matches!(result, Ok(map) if &map == &expected));
 }
 
-async fn modify_if_defined_direct<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn modify_if_defined_direct<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -557,7 +588,7 @@ async fn modify_if_defined_direct_buffered() {
     modify_if_defined_direct(lane, events).await;
 }
 
-async fn modify_direct_some<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn modify_direct_some<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -597,7 +628,7 @@ async fn modify_direct_some_buffered() {
     modify_direct_some(lane, events).await;
 }
 
-async fn modify_direct_none<Str>(lane: MapLaneModel<i32, i32>, mut events: Str)
+async fn modify_direct_none<Str>(lane: MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
