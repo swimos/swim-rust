@@ -34,6 +34,7 @@ use swim_form::Form;
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::future::SwimStreamExt;
+use crate::agent::lifecycle::AgentLifecycle;
 
 mod context;
 pub mod lane;
@@ -43,14 +44,19 @@ pub trait SwimAgent: Sized {
     fn instantiate<Context: AgentContext<Self>>() -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>);
 }
 
-pub async fn run_agent<Agent>(url: Url, scheduler_buffer_size: NonZeroUsize)
+pub async fn run_agent<Agent, L>(lifecycle: L,
+                                 url: Url,
+                                 scheduler_buffer_size: NonZeroUsize)
 where
     Agent: SwimAgent + Send + Sync + 'static,
+    L: AgentLifecycle<Agent>,
 {
     let (agent, tasks) = Agent::instantiate::<ContextImpl<Agent>>();
     let agent_ref = Arc::new(agent);
     let (tx, rx) = mpsc::channel(scheduler_buffer_size.get());
     let context = ContextImpl::new(agent_ref, url, tx);
+
+    lifecycle.on_start(&context).await;
 
     for lane_task in tasks.iter() {
         (**lane_task).start(&context).await;

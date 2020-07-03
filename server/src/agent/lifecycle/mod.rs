@@ -13,8 +13,15 @@
 // limitations under the License.
 
 use crate::agent::AgentContext;
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, ready};
+use futures::FutureExt;
 
 pub trait AgentLifecycle<Agent> {
     fn on_start<'a, C: AgentContext<Agent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>;
+}
+
+impl<Agent> AgentLifecycle<Agent> for () {
+    fn on_start<'a, C: AgentContext<Agent>>(&'a self, _context: &'a C) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
 }
