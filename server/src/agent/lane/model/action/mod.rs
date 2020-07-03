@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::agent::lane::LaneModel;
 use futures::Stream;
 use std::any::{type_name, Any, TypeId};
@@ -93,16 +96,30 @@ impl<Command, Response> LaneModel for ActionLane<Command, Response> {
 /// An action lane model that produces no response.
 pub type CommandLane<Command> = ActionLane<Command, ()>;
 
+struct TypeOf<T: ?Sized>(PhantomData<T>);
+
+fn type_of<T: ?Sized>() -> TypeOf<T> {
+    TypeOf(PhantomData)
+}
+
+impl<T: ?Sized> Debug for TypeOf<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", type_name::<T>())
+    }
+}
+
 impl<Command, Response: Any> Debug for ActionLane<Command, Response> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let cmd_name = type_name::<Command>();
-        let resp_name = type_name::<Response>();
         let id_resp = TypeId::of::<Response>();
         let id_unit = TypeId::of::<()>();
         if id_resp == id_unit {
-            write!(f, "CommandLane({})", cmd_name)
+            f.debug_tuple("CommandLane")
+                .field(&type_of::<Command>())
+                .finish()
         } else {
-            write!(f, "ActionLane({} -> {})", cmd_name, resp_name)
+            f.debug_tuple("ActionLane")
+                .field(&type_of::<fn(Command) -> Response>())
+                .finish()
         }
     }
 }
