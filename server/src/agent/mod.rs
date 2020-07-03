@@ -126,14 +126,35 @@ pub trait AgentContext<Agent> {
     ///
     /// * `effect` - Factory closure to generate the events.
     /// * `interval` - The fixed interval on which to generate the events.
-    fn periodically<Fut, F>(&self, mut effect: F, interval: Duration) -> BoxFuture<()>
+    /// * `max_periods` - The maximum number of times that the effect will run. `Some(0)` is
+    /// treated as `None`.
+    fn periodically<Fut, F>(
+        &self,
+        mut effect: F,
+        interval: Duration,
+        max_periods: Option<usize>,
+    ) -> BoxFuture<()>
     where
         Fut: Future<Output = ()> + Send + 'static,
         F: FnMut() -> Fut + Send + 'static,
     {
-        let effects = unfold((), move |_| ready(Some((effect(), ()))));
         let sch = repeat(interval);
-        self.schedule(effects, sch)
+        match max_periods {
+            Some(n) if n > 0 => {
+                let effects = unfold(0, move |i| {
+                    if i < n {
+                        ready(Some((effect(), i + 1)))
+                    } else {
+                        ready(None)
+                    }
+                });
+                self.schedule(effects, sch)
+            }
+            _ => {
+                let effects = unfold((), move |_| ready(Some((effect(), ()))));
+                self.schedule(effects, sch)
+            }
+        }
     }
 
     /// Schedule a single event to run after a fixed delay.

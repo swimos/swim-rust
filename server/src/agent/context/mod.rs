@@ -24,6 +24,9 @@ use tokio::time::Duration;
 use url::Url;
 use utilities::future::SwimStreamExt;
 
+#[cfg(test)]
+mod tests;
+
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
