@@ -12,31 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueDeserializer;
-use common::model::Value;
 use core::fmt;
-use num_bigint::{BigInt as RemoteBigInt, BigInt};
+use num_bigint::BigInt;
 use serde::de::{Error, Visitor};
 use serde::export::Formatter;
-use serde::{Deserialize, Deserializer};
+use serde::Deserializer;
 use std::str::FromStr;
 
 #[allow(dead_code)]
-fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
-where
-    T: Deserialize<'de>,
-{
-    let mut deserializer = match value {
-        Value::Record(_, _) => ValueDeserializer::for_values(value),
-        _ => ValueDeserializer::for_single_value(value),
-    };
-
-    let t = T::deserialize(&mut deserializer)?;
-    Ok(t)
-}
-
-#[allow(dead_code)]
-pub fn deserialize<'de, D>(deserializer: D) -> Result<RemoteBigInt, D::Error>
+pub fn deserialize<'de, D>(deserializer: D) -> Result<BigInt, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -151,23 +135,4 @@ impl<'de> Visitor<'de> for BigIntVisitor {
             Err(e) => Err(E::custom(format!("{:?}", e))),
         }
     }
-}
-
-#[test]
-fn t() {
-    use common::model::{Attr, Item};
-
-    #[derive(Debug, Deserialize, Eq, PartialEq)]
-    struct S {
-        #[serde(deserialize_with = "deserialize")]
-        bi: RemoteBigInt,
-    }
-
-    let record = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::from(("bi", Value::Int64Value(1)))],
-    );
-
-    let parsed_value = from_value::<S>(&record).unwrap();
-    println!("{:#?}", parsed_value);
 }

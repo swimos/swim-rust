@@ -39,8 +39,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                 Value::Text(_) => self.deserialize_string(visitor),
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
                 Value::BooleanValue(_) => self.deserialize_bool(visitor),
-                Value::BigInt(_bi) => unimplemented!("big int"),
-                Value::BigUint(_bui) => unimplemented!("biguint"),
+                Value::BigInt(_) => self.deserialize_str(visitor),
+                Value::BigUint(_) => self.deserialize_string(visitor),
             },
             None => {
                 if let DeserializerState::ReadingAttribute(a) =
@@ -169,10 +169,11 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Text(t)) = &self.current_state.value {
-            visitor.visit_string(t.to_owned())
-        } else {
-            self.err_incorrect_type("Value::Text", self.current_state.value)
+        match &self.current_state.value {
+            Some(Value::Text(t)) => visitor.visit_string(t.to_owned()),
+            Some(Value::BigInt(bi)) => visitor.visit_string(bi.to_string()),
+            Some(Value::BigUint(bui)) => visitor.visit_string(bui.to_string()),
+            _ => self.err_incorrect_type("Value::Text", self.current_state.value),
         }
     }
 

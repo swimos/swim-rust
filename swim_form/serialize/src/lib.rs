@@ -25,6 +25,7 @@ pub type Result<T> = ::std::result::Result<T, FormSerializeErr>;
 #[cfg(test)]
 mod tests;
 
+pub mod bigint;
 mod collection_access;
 mod serializer;
 mod struct_access;

@@ -17,6 +17,11 @@ use serde::{Serialize, Serializer};
 use common::model::{Attr, Value};
 
 use crate::{FormSerializeErr, Result, SerializerState, ValueSerializer};
+use num_bigint::{BigInt, BigUint};
+use std::str::FromStr;
+
+pub const BIG_INT_PREFIX: &str = "____BIG___INT___";
+pub const BIG_UINT_PREFIX: &str = "____BIG___UINT___";
 
 // CLion/IntelliJ believes there is a missing implementation
 //noinspection RsTraitImplementation
@@ -86,8 +91,28 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_str(self, v: &str) -> Result<()> {
-        self.push_value(Value::Text(String::from(v)));
-        Ok(())
+        if v.starts_with(BIG_INT_PREFIX) {
+            let s = v.split(BIG_INT_PREFIX).collect::<Vec<&str>>();
+            match BigInt::from_str(s.get(1).unwrap()) {
+                Ok(bi) => {
+                    self.push_value(Value::BigInt(bi));
+                    Ok(())
+                }
+                Err(e) => Err(FormSerializeErr::Message(e.to_string())),
+            }
+        } else if v.starts_with(BIG_UINT_PREFIX) {
+            let s = v.split(BIG_UINT_PREFIX).collect::<Vec<&str>>();
+            match BigUint::from_str(s.get(1).unwrap()) {
+                Ok(bi) => {
+                    self.push_value(Value::BigUint(bi));
+                    Ok(())
+                }
+                Err(e) => Err(FormSerializeErr::Message(e.to_string())),
+            }
+        } else {
+            self.push_value(Value::Text(String::from(v)));
+            Ok(())
+        }
     }
 
     fn serialize_bytes(self, _v: &[u8]) -> Result<()> {

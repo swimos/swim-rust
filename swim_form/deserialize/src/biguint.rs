@@ -12,33 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueDeserializer;
-use common::model::Value;
 use core::fmt;
-use num_bigint::{BigUint as RemoteBigUint, BigUint};
+use num_bigint::BigUint;
 use num_traits::FromPrimitive;
 use serde::de::{Error, Visitor};
 use serde::export::Formatter;
-use serde::{Deserialize, Deserializer};
+use serde::Deserializer;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
 #[allow(dead_code)]
-fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
-where
-    T: Deserialize<'de>,
-{
-    let mut deserializer = match value {
-        Value::Record(_, _) => ValueDeserializer::for_values(value),
-        _ => ValueDeserializer::for_single_value(value),
-    };
-
-    let t = T::deserialize(&mut deserializer)?;
-    Ok(t)
-}
-
-#[allow(dead_code)]
-pub fn deserialize<'de, D>(deserializer: D) -> Result<RemoteBigUint, D::Error>
+pub fn deserialize<'de, D>(deserializer: D) -> Result<BigUint, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -46,7 +30,6 @@ where
 }
 
 pub struct BigIntVisitor;
-
 impl<'de> Visitor<'de> for BigIntVisitor {
     type Value = BigUint;
 

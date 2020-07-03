@@ -27,8 +27,6 @@ fn test_derive() {
     t.pass("src/tests/derive/struct/newtype.rs");
     t.pass("src/tests/derive/struct/unit_struct.rs");
 
-    t.pass("src/tests/integration/struct/bigint.rs");
-
     t.pass("src/tests/integration/struct/serialize_ok.rs");
     t.pass("src/tests/integration/struct/deserialize_ok.rs");
     t.pass("src/tests/integration/struct/deserialize_err.rs");
