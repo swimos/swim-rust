@@ -2366,7 +2366,7 @@ fn test_vec_schemas_compare() {
 }
 
 #[test]
-fn test_contains_all_fields() {
+fn test_fields_are_related() {
     let sup_fields = vec![
         FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
         FieldSpec::new(TextSchema::Exact("second".to_string()), false, true),
@@ -2385,9 +2385,9 @@ fn test_contains_all_fields() {
     ];
 
     let sub_fields_valid_third = vec![FieldSpec::new(
-        TextSchema::Exact("second".to_string()),
-        false,
+        TextSchema::Exact("third".to_string()),
         true,
+        false,
     )];
 
     let sub_fields_invalid_first = vec![FieldSpec::new(
@@ -2425,23 +2425,233 @@ fn test_contains_all_fields() {
         FieldSpec::new(TextSchema::Exact("third".to_string()), true, false),
     ];
 
-    assert!(contains_all_fields(&sup_fields, &sub_fields_valid_first));
-    assert!(contains_all_fields(&sup_fields, &sub_fields_valid_second));
-    assert!(contains_all_fields(&sup_fields, &sub_fields_valid_third));
+    // Valid if non exhaustive, invalid otherwise
+    let sub_fields_mixed = vec![
+        FieldSpec::new(TextSchema::Exact("first".to_string()), false, false),
+        FieldSpec::new(TextSchema::Exact("second".to_string()), false, true),
+    ];
 
-    assert!(!contains_all_fields(&vec![], &sup_fields));
-    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_first));
-    assert!(!contains_all_fields(
+    assert!(fields_are_related(
         &sup_fields,
-        &sub_fields_invalid_second
+        &sub_fields_valid_first,
+        true
     ));
-    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_third));
-    assert!(!contains_all_fields(
+    assert!(fields_are_related(
         &sup_fields,
-        &sub_fields_invalid_fourth
+        &sub_fields_valid_second,
+        true
     ));
-    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_fifth));
-    assert!(!contains_all_fields(&sup_fields, &sub_fields_invalid_sixth));
+    assert!(fields_are_related(
+        &sup_fields,
+        &sub_fields_valid_third,
+        true
+    ));
+
+    assert!(!fields_are_related(&vec![], &sup_fields, true));
+    assert!(!fields_are_related(
+        &sup_fields,
+        &sub_fields_invalid_first,
+        true
+    ));
+    assert!(!fields_are_related(
+        &sup_fields,
+        &sub_fields_invalid_second,
+        true
+    ));
+    assert!(!fields_are_related(
+        &sup_fields,
+        &sub_fields_invalid_third,
+        true
+    ));
+    assert!(!fields_are_related(
+        &sup_fields,
+        &sub_fields_invalid_fourth,
+        true
+    ));
+    assert!(!fields_are_related(
+        &sup_fields,
+        &sub_fields_invalid_fifth,
+        true
+    ));
+    assert!(!fields_are_related(
+        &sup_fields,
+        &sub_fields_invalid_sixth,
+        true
+    ));
+
+    assert!(fields_are_related(&sup_fields, &sub_fields_mixed, false));
+
+    assert!(!fields_are_related(&sup_fields, &sub_fields_mixed, true));
+}
+
+#[test]
+fn test_ordered_items_are_related() {
+    let sup_items = vec![
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact(
+                "second".to_string(),
+            ))),
+            true,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("third".to_string()))),
+            false,
+        ),
+    ];
+
+    let sub_items_valid_first = vec![
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact(
+                "second".to_string(),
+            ))),
+            true,
+        ),
+    ];
+
+    let sub_items_valid_second = vec![
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact(
+                "second".to_string(),
+            ))),
+            true,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("third".to_string()))),
+            false,
+        ),
+    ];
+
+    let sub_items_invalid_first = vec![(
+        ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("forth".to_string()))),
+        false,
+    )];
+
+    let sub_items_invalid_second = vec![(
+        ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+        true,
+    )];
+
+    let sub_items_invalid_third = vec![(
+        ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact(
+            "second".to_string(),
+        ))),
+        true,
+    )];
+
+    let sub_items_invalid_fourth = vec![
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("third".to_string()))),
+            false,
+        ),
+    ];
+
+    let sub_items_invalid_fifth = vec![
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact(
+                "second".to_string(),
+            ))),
+            true,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("third".to_string()))),
+            true,
+        ),
+    ];
+
+    let sub_items_invalid_sixth = vec![
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+            false,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("fifth".to_string()))),
+            true,
+        ),
+        (
+            ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("third".to_string()))),
+            false,
+        ),
+    ];
+
+    // Valid if non exhaustive, invalid otherwise
+    let sub_items_mixed = vec![(
+        ItemSchema::ValueItem(StandardSchema::Text(TextSchema::Exact("first".to_string()))),
+        false,
+    )];
+
+    assert!(ordered_items_are_related(
+        &sup_items,
+        &sub_items_valid_first,
+        true
+    ));
+    assert!(ordered_items_are_related(
+        &sup_items,
+        &sub_items_valid_second,
+        true
+    ));
+
+    assert!(!ordered_items_are_related(&vec![], &sup_items, true));
+    assert!(!ordered_items_are_related(
+        &sup_items,
+        &sub_items_invalid_first,
+        true
+    ));
+    assert!(!ordered_items_are_related(
+        &sup_items,
+        &sub_items_invalid_second,
+        true
+    ));
+    assert!(!ordered_items_are_related(
+        &sup_items,
+        &sub_items_invalid_third,
+        true
+    ));
+    assert!(!ordered_items_are_related(
+        &sup_items,
+        &sub_items_invalid_fourth,
+        true
+    ));
+    assert!(!ordered_items_are_related(
+        &sup_items,
+        &sub_items_invalid_fifth,
+        true
+    ));
+    assert!(!ordered_items_are_related(
+        &sup_items,
+        &sub_items_invalid_sixth,
+        true
+    ));
+
+    assert!(ordered_items_are_related(
+        &sup_items,
+        &sub_items_mixed,
+        false
+    ));
+    assert!(!ordered_items_are_related(
+        &sup_items,
+        &sub_items_mixed,
+        true
+    ));
 }
 
 #[test]
@@ -5188,6 +5398,35 @@ fn compare_has_attrs_has_attrs_exhaustive() {
             ],
             exhaustive: true,
         },
+        StandardSchema::HasAttributes {
+            attributes: vec![
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("ten".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("twenty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    AttrSchema::new(
+                        TextSchema::Exact("fifty".to_string()),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    true,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
     ];
 
     assert_equal(schema.clone(), equal_schemas);
@@ -5466,7 +5705,7 @@ fn compare_has_attrs_has_slots() {
 }
 
 #[test]
-fn compare_hast_attrs_has_layout() {
+fn compare_has_attrs_has_layout() {
     assert_equal(
         StandardSchema::HasAttributes {
             attributes: vec![],
@@ -5553,4 +5792,882 @@ fn compare_hast_attrs_has_layout() {
             exhaustive: false,
         }],
     );
+}
+
+#[test]
+fn compare_has_slots_has_slots_exhaustive() {
+    let schema = StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: true,
+    };
+
+    let equal_schemas = vec![
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    let greater_schemas = vec![StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(30)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: true,
+    }];
+
+    let lesser_schemas = vec![
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: true,
+        },
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(50)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    true,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema.clone(), not_related_schemas);
+}
+
+#[test]
+fn compare_has_slots_has_slots_non_exhaustive() {
+    let schema = StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: false,
+    };
+
+    let equal_schemas = vec![StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: false,
+    }];
+
+    let greater_schemas = vec![
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+    ];
+
+    let lesser_schemas = vec![StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(30)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: false,
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::HasSlots {
+            slots: vec![FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(50)),
+                ),
+                false,
+                false,
+            )],
+            exhaustive: false,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::HasSlots {
+            slots: vec![
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    ),
+                    false,
+                    false,
+                ),
+                FieldSpec::new(
+                    SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    ),
+                    false,
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema.clone(), not_related_schemas);
+}
+
+#[test]
+fn compare_has_slots_layout() {
+    let schema = StandardSchema::HasSlots {
+        slots: vec![
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                ),
+                false,
+                false,
+            ),
+            FieldSpec::new(
+                SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                ),
+                false,
+                false,
+            ),
+        ],
+        exhaustive: true,
+    };
+
+    let lesser_schemas = vec![
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                )),
+                false,
+            )],
+            exhaustive: true,
+        },
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(30)),
+                )),
+                false,
+            )],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                )),
+                false,
+            )],
+            exhaustive: false,
+        },
+    ];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema.clone(), not_related_schemas);
+}
+
+#[test]
+fn compare_layout_layout_exhaustive() {
+    let schema = StandardSchema::Layout {
+        items: vec![
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                )),
+                false,
+            ),
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                )),
+                false,
+            ),
+        ],
+        exhaustive: true,
+    };
+
+    let equal_schemas = vec![StandardSchema::Layout {
+        items: vec![
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                )),
+                false,
+            ),
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                )),
+                false,
+            ),
+        ],
+        exhaustive: true,
+    }];
+
+    let greater_schemas = vec![StandardSchema::Layout {
+        items: vec![
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                )),
+                false,
+            ),
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                )),
+                false,
+            ),
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(30)),
+                )),
+                false,
+            ),
+        ],
+        exhaustive: true,
+    }];
+
+    let lesser_schemas = vec![StandardSchema::Layout {
+        items: vec![(
+            ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            false,
+        )],
+        exhaustive: true,
+    }];
+
+    let not_related_schemas = vec![
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(50)),
+                )),
+                false,
+            )],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    )),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema.clone(), not_related_schemas);
+}
+
+#[test]
+fn compare_layout_layout_non_exhaustive() {
+    let schema = StandardSchema::Layout {
+        items: vec![
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                )),
+                false,
+            ),
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                )),
+                false,
+            ),
+        ],
+        exhaustive: false,
+    };
+
+    let equal_schemas = vec![StandardSchema::Layout {
+        items: vec![
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(10)),
+                )),
+                false,
+            ),
+            (
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(20)),
+                )),
+                false,
+            ),
+        ],
+        exhaustive: false,
+    }];
+
+    let greater_schemas = vec![StandardSchema::Layout {
+        items: vec![(
+            ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                StandardSchema::Equal(Value::Int32Value(10)),
+            )),
+            false,
+        )],
+        exhaustive: false,
+    }];
+
+    let lesser_schemas = vec![
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    )),
+                    true,
+                ),
+            ],
+            exhaustive: false,
+        },
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                    StandardSchema::Equal(Value::Int32Value(50)),
+                )),
+                false,
+            )],
+            exhaustive: false,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("fifty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(50)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("thirty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(30)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: false,
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("ten".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(10)),
+                    )),
+                    false,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::Text(TextSchema::Exact("twenty".to_string())),
+                        StandardSchema::Equal(Value::Int32Value(20)),
+                    )),
+                    false,
+                ),
+            ],
+            exhaustive: true,
+        },
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema.clone(), not_related_schemas);
 }

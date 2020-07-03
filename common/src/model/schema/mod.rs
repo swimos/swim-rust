@@ -785,6 +785,19 @@ impl PartialOrd for StandardSchema {
                 (_, attr_schema @ StandardSchema::HasAttributes { .. }) => {
                     Some(has_attributes_cmp(attr_schema, self)?.reverse())
                 }
+                (slot_schema @ StandardSchema::HasSlots { .. }, _) => {
+                    has_slots_cmp(slot_schema, other)
+                }
+                (_, slot_schema @ StandardSchema::HasSlots { .. }) => {
+                    Some(has_slots_cmp(slot_schema, self)?.reverse())
+                }
+                (layout_schema @ StandardSchema::Layout { .. }, _) => {
+                    layout_cmp(layout_schema, other)
+                }
+                (_, layout_schema @ StandardSchema::Layout { .. }) => {
+                    Some(layout_cmp(layout_schema, self)?.reverse())
+                }
+
                 _ => None,
             }
         }
@@ -1159,40 +1172,17 @@ fn has_attributes_cmp(attr_schema: &StandardSchema, other: &StandardSchema) -> O
                 attributes: other_attributes,
                 exhaustive: other_exhaustive,
             } => {
-                if !*exhaustive && other_attributes.is_empty() {
-                    Some(Ordering::Greater)
-                } else if !*other_exhaustive && other_attributes.is_empty() {
-                    Some(Ordering::Less)
-                } else if exhaustive == other_exhaustive {
-                    if attributes.len() > other_attributes.len() {
-                        if contains_all_fields(attributes, other_attributes) {
-                            if *exhaustive {
-                                Some(Ordering::Greater)
-                            } else {
-                                Some(Ordering::Less)
-                            }
-                        } else {
-                            None
-                        }
-                    } else if attributes.len() < other_attributes.len() {
-                        if contains_all_fields(other_attributes, attributes) {
-                            if *exhaustive {
-                                Some(Ordering::Less)
-                            } else {
-                                Some(Ordering::Greater)
-                            }
-                        } else {
-                            None
-                        }
+                let cmp =
+                    vec_schemas_cmp(*exhaustive, *other_exhaustive, attributes, other_attributes);
+
+                if cmp.is_none() && exhaustive == other_exhaustive {
+                    if fields_are_related(attributes, other_attributes, *exhaustive) {
+                        cmp_related(attributes.len(), other_attributes.len(), *exhaustive)
                     } else {
-                        if contains_all_fields(attributes, other_attributes) {
-                            Some(Ordering::Equal)
-                        } else {
-                            None
-                        }
+                        None
                     }
                 } else {
-                    None
+                    cmp
                 }
             }
 
@@ -1213,11 +1203,115 @@ fn has_attributes_cmp(attr_schema: &StandardSchema, other: &StandardSchema) -> O
     }
 }
 
+fn has_slots_cmp(slot_schema: &StandardSchema, other: &StandardSchema) -> Option<Ordering> {
+    if let StandardSchema::HasSlots { slots, exhaustive } = slot_schema {
+        match other {
+            StandardSchema::HasSlots {
+                slots: other_slots,
+                exhaustive: other_exhaustive,
+            } => {
+                let cmp = vec_schemas_cmp(*exhaustive, *other_exhaustive, slots, other_slots);
+
+                if cmp.is_none()
+                    && exhaustive == other_exhaustive
+                    && fields_are_related(slots, other_slots, *exhaustive)
+                {
+                    cmp_related(slots.len(), other_slots.len(), *exhaustive)
+                } else {
+                    cmp
+                }
+            }
+
+            StandardSchema::Layout {
+                items,
+                exhaustive: other_exhaustive,
+            } => {
+                let cmp = vec_schemas_cmp(*exhaustive, *other_exhaustive, slots, items);
+
+                if exhaustive == other_exhaustive && *exhaustive && cmp.is_none() {
+                    let mut other_slots = Vec::new();
+
+                    for (item, required) in items {
+                        if let ItemSchema::Field(slot) = item {
+                            other_slots.push(FieldSpec::new(slot.clone(), *required, false))
+                        } else {
+                            return None;
+                        }
+                    }
+
+                    if slots.len() < other_slots.len() {
+                        None
+                    } else {
+                        let are_related = fields_are_related(slots, &other_slots, *exhaustive);
+
+                        if are_related {
+                            Some(Ordering::Greater)
+                        } else {
+                            None
+                        }
+                    }
+                } else {
+                    cmp
+                }
+            }
+
+            _ => None,
+        }
+    } else {
+        unreachable!()
+    }
+}
+
+fn layout_cmp(layout_schema: &StandardSchema, other_schema: &StandardSchema) -> Option<Ordering> {
+    if let StandardSchema::Layout { items, exhaustive } = layout_schema {
+        match other_schema {
+            StandardSchema::Layout {
+                items: other_items,
+                exhaustive: other_exhaustive,
+            } => {
+                let cmp = vec_schemas_cmp(*exhaustive, *other_exhaustive, items, other_items);
+
+                if cmp.is_none() && exhaustive == other_exhaustive {
+                    let are_related = ordered_items_are_related(items, other_items, *exhaustive);
+
+                    if are_related {
+                        cmp_related(items.len(), other_items.len(), *exhaustive)
+                    } else {
+                        None
+                    }
+                } else {
+                    cmp
+                }
+            }
+
+            _ => None,
+        }
+    } else {
+        unreachable!()
+    }
+}
+
+fn cmp_related(first_len: usize, second_len: usize, exhaustive: bool) -> Option<Ordering> {
+    if first_len == second_len {
+        Some(Ordering::Equal)
+    } else if first_len > second_len {
+        if exhaustive {
+            Some(Ordering::Greater)
+        } else {
+            Some(Ordering::Less)
+        }
+    } else if exhaustive {
+        Some(Ordering::Less)
+    } else {
+        Some(Ordering::Greater)
+    }
+}
+
 fn vec_schemas_cmp<T1, T2>(
     this_exhaustive: bool,
     other_exhaustive: bool,
-    this_vec: &Vec<T1>,
-    other_vec: &Vec<T2>,
+    this_vec: &[T1],
+    other_vec: &[T2],
 ) -> Option<Ordering> {
     if !this_exhaustive && !other_exhaustive && this_vec.is_empty() && other_vec.is_empty() {
         Some(Ordering::Equal)
@@ -1230,13 +1324,18 @@ fn vec_schemas_cmp<T1, T2>(
     }
 }
 
-fn contains_all_fields<T: PartialEq>(
-    sup_fields: &Vec<FieldSpec<T>>,
-    sub_fields: &Vec<FieldSpec<T>>,
+fn fields_are_related<T: PartialEq>(
+    this_fields: &[FieldSpec<T>],
+    other_fields: &[FieldSpec<T>],
+    exhaustive: bool,
 ) -> bool {
-    if sup_fields.len() < sub_fields.len() {
-        return false;
-    }
+    let (sup_fields, sub_fields) = if this_fields.len() >= other_fields.len() {
+        (this_fields, other_fields)
+    } else {
+        (other_fields, this_fields)
+    };
+
+    let mut required_sub_count = 0;
 
     for sub_field in sub_fields {
         let mut has_equal = false;
@@ -1251,6 +1350,41 @@ fn contains_all_fields<T: PartialEq>(
         if !has_equal {
             return false;
         }
+
+        if sub_field.required {
+            required_sub_count += 1
+        }
+    }
+
+    if exhaustive {
+        let required_sup_count = sup_fields.iter().filter(|f| f.required).count();
+        if required_sup_count > required_sub_count {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn ordered_items_are_related(
+    this_items: &[(ItemSchema, bool)],
+    other_items: &[(ItemSchema, bool)],
+    exhaustive: bool,
+) -> bool {
+    let (mut sup_items_iter, sub_items) = if this_items.len() >= other_items.len() {
+        (this_items.iter(), other_items)
+    } else {
+        (other_items.iter(), this_items)
+    };
+
+    for sub_field in sub_items {
+        if Some(sub_field) != sup_items_iter.next() {
+            return false;
+        }
+    }
+
+    if exhaustive {
+        return sup_items_iter.all(|(_, required)| !*required);
     }
 
     true
