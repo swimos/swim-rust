@@ -6,6 +6,7 @@ members = [
     "swim_runtime",
     "common",
     "server",
+    "stm",
     "utilities",
 ]
 
