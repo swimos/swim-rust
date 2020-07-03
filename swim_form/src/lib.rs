@@ -20,6 +20,8 @@ pub extern crate form_derive;
 pub extern crate deserialize as _deserialize;
 pub extern crate serialize as _serialize;
 
+pub use _serialize::bigint::{self, serialize_big_uint, serialize_bigint};
+
 use common::model::schema::StandardSchema;
 use common::model::Value;
 

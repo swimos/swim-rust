@@ -45,7 +45,7 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let value_name_binding = args.get(0).unwrap();
-    let input = parse_macro_input!(input as DeriveInput);
+    let mut input = parse_macro_input!(input as DeriveInput);
     let ident = input.ident.clone();
 
     let ser = Ident::new(
@@ -58,7 +58,7 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     );
 
     let derived: proc_macro2::TokenStream =
-        expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
+        expand_derive_form(&mut input, value_name_binding).unwrap_or_else(to_compile_errors);
 
     let q = quote! {
         use serde::Serialize as #ser;
@@ -74,14 +74,16 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 fn expand_derive_form(
-    input: &syn::DeriveInput,
+    input: &mut syn::DeriveInput,
     value_name_binding: &NestedMeta,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let context = Context::new();
-    let parser = match Parser::from_ast(&context, input) {
+    let mut parser = match Parser::from_ast(&context, input) {
         Some(cont) => cont,
         None => return Err(context.check().unwrap_err()),
     };
+
+    parser.parse_attributes();
 
     context.check()?;
 
