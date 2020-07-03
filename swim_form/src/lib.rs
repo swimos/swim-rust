@@ -30,7 +30,6 @@ pub use serialize::FormSerializeErr;
 #[cfg(test)]
 mod tests;
 
-pub mod bigint;
 pub mod collections;
 pub mod primitives;
 pub use num_bigint::{self, BigInt, BigUint};

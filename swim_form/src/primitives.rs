@@ -17,6 +17,27 @@ use deserialize::FormDeserializeErr;
 
 use crate::{Form, ValidatedForm};
 use common::model::schema::StandardSchema;
+use num_bigint::{BigInt, BigUint};
+
+impl Form for BigInt {
+    fn as_value(&self) -> Value {
+        Value::BigInt(self.clone())
+    }
+
+    fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl Form for BigUint {
+    fn as_value(&self) -> Value {
+        Value::BigUint(self.clone())
+    }
+
+    fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
 
 impl Form for f64 {
     fn as_value(&self) -> Value {

@@ -39,7 +39,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                 Value::Text(_) => self.deserialize_string(visitor),
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
                 Value::BooleanValue(_) => self.deserialize_bool(visitor),
-                _ => panic!(),
+                Value::BigInt(_bi) => unimplemented!("big int"),
+                Value::BigUint(_bui) => unimplemented!("biguint"),
             },
             None => {
                 if let DeserializerState::ReadingAttribute(a) =
@@ -260,7 +261,13 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
             result
         } else {
             match self.current_state.value {
-                Some(v) => self.err_incorrect_type("Value::Record", Some(v)),
+                Some(v) => match v {
+                    Value::BigInt(_bi) => {
+                        println!("big int");
+                        unimplemented!()
+                    }
+                    _ => self.err_incorrect_type("Value::Record", Some(v)),
+                },
                 None => Err(FormDeserializeErr::Message(String::from("Missing value"))),
             }
         }
@@ -400,3 +407,23 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         self.deserialize_any(_visitor)
     }
 }
+
+// pub struct BigIntDeserializer<'a, 'de: 'a> {
+//     big_int: &'a BigInt,
+//     de: &'a mut ValueDeserializer<'de>,
+// }
+//
+// impl<'a, 'de> BigIntDeserializer<'a, 'de> {
+//     pub fn new(de: &'a mut ValueDeserializer<'de>) -> Self {
+//         BigIntDeserializer { de }
+//     }
+// }
+//
+// impl<'a, 'de> Deserialize for BigIntDeserializer<'a, 'de> {
+//     fn deserialize<D>(deserializer: D) -> Result<Self>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         unimplemented!()
+//     }
+// }
