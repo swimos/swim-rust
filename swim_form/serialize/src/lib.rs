@@ -41,7 +41,14 @@ pub enum FormSerializeErr {
 
 impl Display for FormSerializeErr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.to_string())
+        match self {
+            FormSerializeErr::Message(m) => write!(f, "{}", m),
+            FormSerializeErr::UnsupportedType(t) => write!(f, "Unsupported type: {}", t),
+            FormSerializeErr::IncorrectType(t) => write!(f, "Incorrect type: {}", t),
+            FormSerializeErr::IllegalItem(i) => write!(f, "Illegal item: {}", i),
+            FormSerializeErr::IllegalState(s) => write!(f, "Illegal state: {}", s),
+            FormSerializeErr::Malformatted => write!(f, "Malformatted"),
+        }
     }
 }
 

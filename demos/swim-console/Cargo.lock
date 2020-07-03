@@ -1008,6 +1008,7 @@ name = "serialize"
 version = "0.1.0"
 dependencies = [
  "common",
+ "num-bigint",
  "serde",
 ]
 
@@ -1070,6 +1071,9 @@ dependencies = [
  "client",
  "futures",
  "futures-util",
+ "serde",
+ "serde_json",
+ "swim_form",
  "tokio",
  "url",
 ]

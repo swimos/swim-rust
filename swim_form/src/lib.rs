@@ -33,6 +33,7 @@ mod tests;
 pub mod bigint;
 pub mod collections;
 pub mod primitives;
+pub use num_bigint::{self, BigInt, BigUint};
 
 /// A [`Form`] transforms between a Rust object and a structurally typed [`Value`]. Decorating a
 /// Rust object with [`#[form(Value)`] derives a method to serialise the object to a [`Value`] and to

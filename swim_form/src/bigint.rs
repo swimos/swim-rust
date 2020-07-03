@@ -16,13 +16,15 @@ use core::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 
+use crate::{Form, FormDeserializeErr};
+use common::model::Value;
 use serde::de::{Error, Visitor};
 use serde::export::Formatter;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
-struct BigInt {
-    inner: num_bigint::BigInt,
+pub struct BigInt {
+    pub inner: num_bigint::BigInt,
 }
 
 impl From<num_bigint::BigInt> for BigInt {
@@ -74,12 +76,48 @@ impl<'de> Visitor<'de> for BigIntVisitor {
     }
 }
 
+pub fn serialize<S>(bi: &num_bigint::BigInt, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let wrapped = BigInt { inner: bi.clone() };
+    BigInt::serialize(&wrapped, serializer)
+}
+
+pub fn deserialize<'de, D>(deserializer: D) -> Result<num_bigint::BigInt, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let res = BigInt::deserialize(deserializer);
+    res.map(|bi| bi.inner)
+}
+
 impl<'de> Deserialize<'de> for BigInt {
     fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
     where
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(BigIntVisitor)
+    }
+}
+
+impl Form for BigInt {
+    fn as_value(&self) -> Value {
+        Value::BigInt(self.inner.clone())
+    }
+
+    fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl Form for num_bigint::BigInt {
+    fn as_value(&self) -> Value {
+        Value::BigInt(self.clone())
+    }
+
+    fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
     }
 }
 
