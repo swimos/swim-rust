@@ -16,6 +16,9 @@ use crate::agent::AgentContext;
 use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
 
+#[cfg(test)]
+mod tests;
+
 /// Life cycle events to add behaviour to an agent.
 /// #Type Parameters
 ///

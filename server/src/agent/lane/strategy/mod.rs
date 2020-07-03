@@ -35,7 +35,7 @@ mod tests;
 pub struct Queue(pub NonZeroUsize);
 
 /// Publish the latest lane event.
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Dropping;
 
 /// Publish the latest lane events to a bounded buffer.

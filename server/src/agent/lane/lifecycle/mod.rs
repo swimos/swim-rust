@@ -19,6 +19,9 @@ use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
 use std::future::Future;
 
+#[cfg(test)]
+mod tests;
+
 /// Base trait for all lane lifecycles for lanes that maintain an internal state.
 pub trait StatefulLaneLifecycleBase: Default + Send + Sync + 'static {
     type WatchStrategy;
