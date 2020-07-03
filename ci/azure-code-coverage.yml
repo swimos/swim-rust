@@ -1,0 +1,38 @@
+trigger: none
+
+schedules:
+  - cron: "0 0 * * *"
+    displayName: Nightly code coverage run
+    branches:
+      include:
+        - master
+        - server-prototype
+
+variables:
+    RUSTFLAGS: -Dwarnings
+
+jobs:
+  - job: Code_coverage
+    displayName: Code coverage
+
+    pool:
+      vmImage: ubuntu-18.04
+
+    steps:
+      - template: azure-install-rust.yml
+        parameters:
+          rust_version: 1.44.0
+      - template: azure-install-sccache.yml
+
+      - script: cargo install cargo-tarpaulin
+        displayName: Install Tarpaulin
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - script: cargo tarpaulin --out Xml -t 300
+        displayName: Generate code coverage
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - script: bash <(curl -s https://codecov.io/bash)
+        displayName: Upload code coverage
+        workingDirectory: $(Build.SourcesDirectory)
+

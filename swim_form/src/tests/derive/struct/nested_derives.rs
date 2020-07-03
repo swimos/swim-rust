@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::model::Value;
 use form_derive::*;
 
-#[form]
+#[form(Value)]
 struct Parent {
     a: i32,
     b: Child,
 }
 
-#[form]
+#[form(Value)]
 struct Child {
     c: i32,
 }

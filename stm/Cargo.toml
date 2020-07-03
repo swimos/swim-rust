@@ -1,0 +1,19 @@
+[package]
+name = "stm"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+futures = "0.3.4"
+futures-util = "0.3.4"
+pin-project = "0.4.20"
+tokio = { version = "0.2.21", features = ["sync"] }
+slab = "0.4.2"
+
+utilities = { path = "../utilities" }
+
+[dev-dependencies]
+hamcrest2 = "0.3"
+tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "time"] }
+
