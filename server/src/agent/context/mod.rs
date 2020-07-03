@@ -24,8 +24,10 @@ use tokio::time::Duration;
 use url::Url;
 use utilities::future::SwimStreamExt;
 
+/// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
+/// channel.
 #[derive(Debug)]
-pub struct ContextImpl<Agent> {
+pub(super) struct ContextImpl<Agent> {
     agent_ref: Arc<Agent>,
     url: Url,
     scheduler: mpsc::Sender<Eff>,
@@ -42,7 +44,7 @@ impl<Agent> Clone for ContextImpl<Agent> {
 }
 
 impl<Agent> ContextImpl<Agent> {
-    pub fn new(agent_ref: Arc<Agent>, url: Url, scheduler: mpsc::Sender<Eff>) -> Self {
+    pub(super) fn new(agent_ref: Arc<Agent>, url: Url, scheduler: mpsc::Sender<Eff>) -> Self {
         ContextImpl {
             agent_ref,
             url,

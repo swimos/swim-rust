@@ -20,8 +20,12 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
 
-/// Model for a lane that can receive commands and optionally produce responses. It is entirely
-/// stateless so has no fields.
+/// Model for a lane that can receive commands and optionally produce responses.
+///
+/// #Type Parameters
+///
+/// * `Command` - The type of commands that the lane can handle.
+/// * `Response` - The type of messages that will be received by a subscriber to the lane.
 pub struct ActionLane<Command, Response> {
     sender: mpsc::Sender<Command>,
     _handler_type: PhantomData<fn(Command) -> Response>,
@@ -36,16 +40,22 @@ impl<Command, Response> Clone for ActionLane<Command, Response> {
     }
 }
 
+/// Handle to send commands to a [`ActionLane`].
+/// #Type Parameters
+///
+/// * `Command` - The type of commands that the lane can handle.
 #[derive(Clone, Debug)]
 pub struct Commander<Command>(mpsc::Sender<Command>);
 
 impl<Command, Response> ActionLane<Command, Response> {
+    /// Create a [`Commander`] that can send multiple commands to the lane.
     pub fn commander(&self) -> Commander<Command> {
         Commander(self.sender.clone())
     }
 }
 
 impl<Command> Commander<Command> {
+    /// Asynchronously send a command to the lane.
     pub async fn command(&mut self, cmd: Command) {
         let Commander(tx) = self;
         if tx.send(cmd).await.is_err() {
@@ -54,7 +64,11 @@ impl<Command> Commander<Command> {
     }
 }
 
-/// Create a new action lane model and a stream of the received commands..
+/// Create a new action lane model and a stream of the received commands.
+///
+/// #Arguments
+///
+/// * `buffer_size` - Buffer size for the MPSC channel that transmits the commands.
 pub fn make_lane_model<Command, Response>(
     buffer_size: NonZeroUsize,
 ) -> (

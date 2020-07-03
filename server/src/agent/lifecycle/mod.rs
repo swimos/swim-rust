@@ -13,10 +13,20 @@
 // limitations under the License.
 
 use crate::agent::AgentContext;
-use futures::future::{BoxFuture, ready};
+use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
 
+/// Life cycle events to add behaviour to an agent.
+/// #Type Parameters
+///
+/// * `Agent` - The type of the agent to which the lane belongs.
 pub trait AgentLifecycle<Agent> {
+    /// Called when the agent starts, before the corresponding method on the lifecycles of the
+    /// agent's lanes.
+    ///
+    /// #Arguments
+    ///
+    /// * `context` - Context of the agent.
     fn on_start<'a, C: AgentContext<Agent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>;
 }
 
