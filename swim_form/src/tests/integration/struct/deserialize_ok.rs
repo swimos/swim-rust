@@ -17,7 +17,7 @@ use form_derive::*;
 use swim_form::Form;
 
 fn main() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent {
         a: i32,

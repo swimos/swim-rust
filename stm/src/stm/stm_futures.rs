@@ -62,7 +62,7 @@ pub struct RunIn<'a, F> {
 }
 
 impl<'a, F> RunIn<'a, F> {
-    pub fn new(transaction: &'a mut Transaction, future: F) -> Self {
+    pub(crate) fn new(transaction: &'a mut Transaction, future: F) -> Self {
         RunIn {
             transaction: Pin::new(transaction),
             future,
@@ -85,7 +85,8 @@ where
     }
 }
 
-/// A transaction future for executing a [`MapStm`] STM instance.
+/// A transaction future for the `map` combinator of [Stm]. This should never need to be
+/// created explicitly.
 #[pin_project]
 pub struct MapStmFuture<Fut, F> {
     #[pin]
@@ -94,7 +95,7 @@ pub struct MapStmFuture<Fut, F> {
 }
 
 impl<Fut, F> MapStmFuture<Fut, F> {
-    pub fn new(future: Fut, f: F) -> Self {
+    pub(crate) fn new(future: Fut, f: F) -> Self {
         MapStmFuture { future, f }
     }
 }
@@ -131,9 +132,8 @@ impl<T: Send + Sync> TransactionFuture for Ready<ExecResult<T>> {
     }
 }
 
-/// A transaction future for executing an [`AndThen`] STM instance.
 #[pin_project(project = AndThenProject)]
-pub enum AndThenTransFuture<Fut1, Fut2, F> {
+enum AndThenTransFutureInner<Fut1, Fut2, F> {
     First {
         #[pin]
         future: Fut1,
@@ -145,9 +145,14 @@ pub enum AndThenTransFuture<Fut1, Fut2, F> {
     },
 }
 
+/// A transaction future for the `and_then` combinator of [Stm]. This should never need to be
+/// created explicitly.
+#[pin_project]
+pub struct AndThenTransFuture<Fut1, Fut2, F>(#[pin] AndThenTransFutureInner<Fut1, Fut2, F>);
+
 impl<Fut1, Fut2, F> AndThenTransFuture<Fut1, Fut2, F> {
-    pub fn new(future: Fut1, f: F) -> Self {
-        AndThenTransFuture::First { future, f }
+    pub(crate) fn new(future: Fut1, f: F) -> Self {
+        AndThenTransFuture(AndThenTransFutureInner::First { future, f })
     }
 }
 
@@ -161,12 +166,13 @@ where
     type Output = S::Result;
 
     fn poll_in(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         mut transaction: Pin<&mut Transaction>,
         cx: &mut Context<'_>,
     ) -> Poll<ExecResult<Self::Output>> {
+        let mut inner = self.project().0;
         loop {
-            let projected = self.as_mut().project();
+            let projected = inner.as_mut().project();
             let fut2 = match projected {
                 AndThenProject::First { future, f } => {
                     let result = ready!(future.poll_in(transaction.as_mut(), cx));
@@ -180,14 +186,13 @@ where
                     return future.poll_in(transaction.as_mut(), cx);
                 }
             };
-            self.set(AndThenTransFuture::Second { future: fut2 });
+            inner.set(AndThenTransFutureInner::Second { future: fut2 });
         }
     }
 }
 
-/// A transaction future for executing a [`Sequence`] STM instance.
 #[pin_project(project = SequenceProject)]
-pub enum SequenceTransFuture<Fut1, Fut2> {
+enum SequenceTransFutureInner<Fut1, Fut2> {
     First {
         #[pin]
         future: Fut1,
@@ -199,12 +204,17 @@ pub enum SequenceTransFuture<Fut1, Fut2> {
     },
 }
 
+/// A transaction future for the `followed_by` combinator of [Stm]. This should never need to be
+/// created explicitly.
+#[pin_project]
+pub struct SequenceTransFuture<Fut1, Fut2>(#[pin] SequenceTransFutureInner<Fut1, Fut2>);
+
 impl<Fut1, Fut2> SequenceTransFuture<Fut1, Fut2> {
     pub(crate) fn new(future: Fut1, second: Fut2) -> Self {
-        SequenceTransFuture::First {
+        SequenceTransFuture(SequenceTransFutureInner::First {
             future,
             second: Some(second),
-        }
+        })
     }
 }
 
@@ -216,12 +226,13 @@ where
     type Output = Fut2::Output;
 
     fn poll_in(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         mut transaction: Pin<&mut Transaction>,
         cx: &mut Context<'_>,
     ) -> Poll<ExecResult<Self::Output>> {
+        let mut inner = self.project().0;
         loop {
-            let projected = self.as_mut().project();
+            let projected = inner.as_mut().project();
             let next = match projected {
                 SequenceProject::First { future, second } => {
                     let result = ready!(future.poll_in(transaction.as_mut(), cx));
@@ -238,12 +249,12 @@ where
                     return future.poll_in(transaction.as_mut(), cx);
                 }
             };
-            self.set(SequenceTransFuture::Second { future: next });
+            inner.set(SequenceTransFutureInner::Second { future: next });
         }
     }
 }
 
-/// A transaction future for executing a [`TVarWrite`] STM instance.
+/// A transaction future for writing a value of type `T` to a transactional variable.
 pub struct WriteFuture<T> {
     inner: Arc<TVarInner>,
     value: Option<Arc<T>>,
@@ -295,9 +306,8 @@ where
     }
 }
 
-/// A transaction future for executing a [`Choice`] STM instance.
 #[pin_project(project = ChoiceProject)]
-pub enum ChoiceTransFuture<Fut1, Fut2> {
+enum ChoiceTransFutureInner<Fut1, Fut2> {
     First {
         #[pin]
         future: Fut1,
@@ -310,13 +320,18 @@ pub enum ChoiceTransFuture<Fut1, Fut2> {
     },
 }
 
+/// A transaction future for the `or_else` combinator of [Stm]. This should never need to be
+/// created explicitly.
+#[pin_project]
+pub struct ChoiceTransFuture<Fut1, Fut2>(#[pin] ChoiceTransFutureInner<Fut1, Fut2>);
+
 impl<Fut1, Fut2> ChoiceTransFuture<Fut1, Fut2> {
     pub(crate) fn new(first: Fut1, second: Fut2) -> Self {
-        ChoiceTransFuture::First {
+        ChoiceTransFuture(ChoiceTransFutureInner::First {
             future: first,
             second: Some(second),
             frame_entered: false,
-        }
+        })
     }
 }
 
@@ -328,12 +343,13 @@ where
     type Output = Fut1::Output;
 
     fn poll_in(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         mut transaction: Pin<&mut Transaction>,
         cx: &mut Context<'_>,
     ) -> Poll<ExecResult<Self::Output>> {
+        let mut inner = self.project().0;
         loop {
-            let projected = self.as_mut().project();
+            let projected = inner.as_mut().project();
             let next = match projected {
                 ChoiceProject::First {
                     future,
@@ -366,14 +382,13 @@ where
                     return future.poll_in(transaction.as_mut(), cx);
                 }
             };
-            self.set(ChoiceTransFuture::Second { future: next });
+            inner.set(ChoiceTransFutureInner::Second { future: next });
         }
     }
 }
 
-/// A transaction future for executing a [`Catch`] STM instance.
 #[pin_project(project = CatchProject)]
-pub enum CatchTransFuture<E, Fut1, Fut2, F> {
+enum CatchTransFutureInner<E, Fut1, Fut2, F> {
     First {
         #[pin]
         future: Fut1,
@@ -387,14 +402,19 @@ pub enum CatchTransFuture<E, Fut1, Fut2, F> {
     },
 }
 
+/// A transaction future for the `catch` combinator of [Stm]. This should never need to be
+/// created explicitly.
+#[pin_project]
+pub struct CatchTransFuture<E, Fut1, Fut2, F>(#[pin] CatchTransFutureInner<E, Fut1, Fut2, F>);
+
 impl<E, Fut1, Fut2, F> CatchTransFuture<E, Fut1, Fut2, F> {
     pub(crate) fn new(first: Fut1, f: F) -> Self {
-        CatchTransFuture::First {
+        CatchTransFuture(CatchTransFutureInner::First {
             future: first,
             frame_entered: false,
             f,
             _handler_type: PhantomData,
-        }
+        })
     }
 }
 
@@ -408,12 +428,13 @@ where
     type Output = Fut::Output;
 
     fn poll_in(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         mut transaction: Pin<&mut Transaction>,
         cx: &mut Context<'_>,
     ) -> Poll<ExecResult<Self::Output>> {
+        let mut inner = self.project().0;
         loop {
-            let projected = self.as_mut().project();
+            let projected = inner.as_mut().project();
             let next = match projected {
                 CatchProject::First {
                     future,
@@ -449,7 +470,7 @@ where
                     return future.poll_in(transaction.as_mut(), cx);
                 }
             };
-            self.set(CatchTransFuture::Second { future: next });
+            inner.set(CatchTransFutureInner::Second { future: next });
         }
     }
 }
@@ -458,7 +479,7 @@ where
 pub struct LocalReadFuture<T>(TLocalRead<T>);
 
 impl<T> LocalReadFuture<T> {
-    pub fn new(read: TLocalRead<T>) -> Self {
+    pub(crate) fn new(read: TLocalRead<T>) -> Self {
         LocalReadFuture(read)
     }
 }
@@ -484,7 +505,7 @@ impl<T: Any + Send + Sync> TransactionFuture for LocalReadFuture<T> {
 pub struct LocalWriteFuture<T>(TLocalWrite<T>);
 
 impl<T> LocalWriteFuture<T> {
-    pub fn new(write: TLocalWrite<T>) -> Self {
+    pub(crate) fn new(write: TLocalWrite<T>) -> Self {
         LocalWriteFuture(write)
     }
 }
@@ -503,10 +524,8 @@ impl<T: Any + Send + Sync> TransactionFuture for LocalWriteFuture<T> {
     }
 }
 
-/// A transaction future that executes a vector of transactions and returns their results in a
-/// vector.
 #[pin_project(project = VecStmProject)]
-pub enum VecStmFuture<R, Fut> {
+enum VecStmFutureInner<R, Fut> {
     NonEmpty {
         #[pin]
         current: Fut,
@@ -516,20 +535,25 @@ pub enum VecStmFuture<R, Fut> {
     Empty,
 }
 
+/// A transaction future that executes a vector of transaction futures (`Fut`) with result type `R`
+/// and returns their results in a vector.
+#[pin_project]
+pub struct VecStmFuture<R, Fut>(#[pin] VecStmFutureInner<R, Fut>);
+
 impl<Fut> VecStmFuture<Fut::Output, Fut>
 where
     Fut: TransactionFuture,
 {
-    pub fn new(mut runners: Vec<Fut>) -> Self {
+    pub(crate) fn new(mut runners: Vec<Fut>) -> Self {
         let len = runners.len();
         runners.reverse();
         match runners.pop() {
-            Some(first) => VecStmFuture::NonEmpty {
+            Some(first) => VecStmFuture(VecStmFutureInner::NonEmpty {
                 current: first,
                 runners,
                 results: Some(Vec::with_capacity(len)),
-            },
-            _ => VecStmFuture::Empty,
+            }),
+            _ => VecStmFuture(VecStmFutureInner::Empty),
         }
     }
 }
@@ -545,7 +569,7 @@ where
         mut transaction: Pin<&mut Transaction>,
         cx: &mut Context<'_>,
     ) -> Poll<ExecResult<Self::Output>> {
-        let projected = self.project();
+        let projected = self.project().0.project();
         match projected {
             VecStmProject::NonEmpty {
                 mut current,
