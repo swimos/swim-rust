@@ -1,0 +1,642 @@
+#![feature(prelude_import)]
+#[prelude_import]
+use std::prelude::v1::*;
+#[macro_use]
+extern crate std;
+use swim_client::common::model::{Attr, Item, Value};
+use swim_form::{BigInt, BigUint, FormDeserializeErr};
+
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+use num_bigint::RandBigInt;
+use swim_form::*;
+
+fn main() {
+    use serde::Serialize as ParentSerialize;
+    use serde::Deserialize as ParentDeserialize;
+    struct Parent {
+        #[serde(serialize_with = "swim_form::bigint::serialize_bigint",
+                deserialize_with = "swim_form::deserialize_bigint")]
+        a: BigInt,
+        #[serde(serialize_with = "swim_form::bigint::serialize_big_uint",
+                deserialize_with = "swim_form::deserialize_biguint")]
+        b: BigUint,
+    }
+    #[doc(hidden)]
+    #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+    const _: () =
+        {
+            #[allow(rust_2018_idioms, clippy :: useless_attribute)]
+            extern crate serde as _serde;
+            #[allow(unused_macros)]
+            macro_rules! try {
+                ($ __expr : expr) =>
+                {
+                    match $ __expr
+                    {
+                        _serde :: export :: Ok(__val) => __val, _serde ::
+                        export :: Err(__err) =>
+                        { return _serde :: export :: Err(__err) ; }
+                    }
+                }
+            }
+            #[automatically_derived]
+            impl _serde::Serialize for Parent {
+                fn serialize<__S>(&self, __serializer: __S)
+                 -> _serde::export::Result<__S::Ok, __S::Error> where
+                 __S: _serde::Serializer {
+                    let mut __serde_state =
+                        match _serde::Serializer::serialize_struct(__serializer,
+                                                                   "Parent",
+                                                                   false as
+                                                                       usize +
+                                                                       1 + 1)
+                            {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                    match _serde::ser::SerializeStruct::serialize_field(&mut __serde_state,
+                                                                        "a",
+                                                                        {
+                                                                            struct __SerializeWith<'__a> {
+                                                                                values: (&'__a BigInt,),
+                                                                                phantom: _serde::export::PhantomData<Parent>,
+                                                                            }
+                                                                            impl <'__a>
+                                                                             _serde::Serialize
+                                                                             for
+                                                                             __SerializeWith<'__a>
+                                                                             {
+                                                                                fn serialize<__S>(&self,
+                                                                                                  __s:
+                                                                                                      __S)
+                                                                                 ->
+                                                                                     _serde::export::Result<__S::Ok,
+                                                                                                            __S::Error>
+                                                                                 where
+                                                                                 __S: _serde::Serializer {
+                                                                                    swim_form::bigint::serialize_bigint(self.values.0,
+                                                                                                                        __s)
+                                                                                }
+                                                                            }
+                                                                            &__SerializeWith{values:
+                                                                                                 (&self.a,),
+                                                                                             phantom:
+                                                                                                 _serde::export::PhantomData::<Parent>,}
+                                                                        }) {
+                        _serde::export::Ok(__val) => __val,
+                        _serde::export::Err(__err) => {
+                            return _serde::export::Err(__err);
+                        }
+                    };
+                    match _serde::ser::SerializeStruct::serialize_field(&mut __serde_state,
+                                                                        "b",
+                                                                        {
+                                                                            struct __SerializeWith<'__a> {
+                                                                                values: (&'__a BigUint,),
+                                                                                phantom: _serde::export::PhantomData<Parent>,
+                                                                            }
+                                                                            impl <'__a>
+                                                                             _serde::Serialize
+                                                                             for
+                                                                             __SerializeWith<'__a>
+                                                                             {
+                                                                                fn serialize<__S>(&self,
+                                                                                                  __s:
+                                                                                                      __S)
+                                                                                 ->
+                                                                                     _serde::export::Result<__S::Ok,
+                                                                                                            __S::Error>
+                                                                                 where
+                                                                                 __S: _serde::Serializer {
+                                                                                    swim_form::bigint::serialize_big_uint(self.values.0,
+                                                                                                                          __s)
+                                                                                }
+                                                                            }
+                                                                            &__SerializeWith{values:
+                                                                                                 (&self.b,),
+                                                                                             phantom:
+                                                                                                 _serde::export::PhantomData::<Parent>,}
+                                                                        }) {
+                        _serde::export::Ok(__val) => __val,
+                        _serde::export::Err(__err) => {
+                            return _serde::export::Err(__err);
+                        }
+                    };
+                    _serde::ser::SerializeStruct::end(__serde_state)
+                }
+            }
+        };
+    #[doc(hidden)]
+    #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+    const _: () =
+        {
+            #[allow(rust_2018_idioms, clippy :: useless_attribute)]
+            extern crate serde as _serde;
+            #[allow(unused_macros)]
+            macro_rules! try {
+                ($ __expr : expr) =>
+                {
+                    match $ __expr
+                    {
+                        _serde :: export :: Ok(__val) => __val, _serde ::
+                        export :: Err(__err) =>
+                        { return _serde :: export :: Err(__err) ; }
+                    }
+                }
+            }
+            #[automatically_derived]
+            impl <'de> _serde::Deserialize<'de> for Parent {
+                fn deserialize<__D>(__deserializer: __D)
+                 -> _serde::export::Result<Self, __D::Error> where
+                 __D: _serde::Deserializer<'de> {
+                    #[allow(non_camel_case_types)]
+                    enum __Field { __field0, __field1, __ignore, }
+                    struct __FieldVisitor;
+                    impl <'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                        type Value = __Field;
+                        fn expecting(&self,
+                                     __formatter:
+                                         &mut _serde::export::Formatter)
+                         -> _serde::export::fmt::Result {
+                            _serde::export::Formatter::write_str(__formatter,
+                                                                 "field identifier")
+                        }
+                        fn visit_u64<__E>(self, __value: u64)
+                         -> _serde::export::Result<Self::Value, __E> where
+                         __E: _serde::de::Error {
+                            match __value {
+                                0u64 => _serde::export::Ok(__Field::__field0),
+                                1u64 => _serde::export::Ok(__Field::__field1),
+                                _ =>
+                                _serde::export::Err(_serde::de::Error::invalid_value(_serde::de::Unexpected::Unsigned(__value),
+                                                                                     &"field index 0 <= i < 2")),
+                            }
+                        }
+                        fn visit_str<__E>(self, __value: &str)
+                         -> _serde::export::Result<Self::Value, __E> where
+                         __E: _serde::de::Error {
+                            match __value {
+                                "a" => _serde::export::Ok(__Field::__field0),
+                                "b" => _serde::export::Ok(__Field::__field1),
+                                _ => { _serde::export::Ok(__Field::__ignore) }
+                            }
+                        }
+                        fn visit_bytes<__E>(self, __value: &[u8])
+                         -> _serde::export::Result<Self::Value, __E> where
+                         __E: _serde::de::Error {
+                            match __value {
+                                b"a" => _serde::export::Ok(__Field::__field0),
+                                b"b" => _serde::export::Ok(__Field::__field1),
+                                _ => { _serde::export::Ok(__Field::__ignore) }
+                            }
+                        }
+                    }
+                    impl <'de> _serde::Deserialize<'de> for __Field {
+                        #[inline]
+                        fn deserialize<__D>(__deserializer: __D)
+                         -> _serde::export::Result<Self, __D::Error> where
+                         __D: _serde::Deserializer<'de> {
+                            _serde::Deserializer::deserialize_identifier(__deserializer,
+                                                                         __FieldVisitor)
+                        }
+                    }
+                    struct __Visitor<'de> {
+                        marker: _serde::export::PhantomData<Parent>,
+                        lifetime: _serde::export::PhantomData<&'de ()>,
+                    }
+                    impl <'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                        type Value = Parent;
+                        fn expecting(&self,
+                                     __formatter:
+                                         &mut _serde::export::Formatter)
+                         -> _serde::export::fmt::Result {
+                            _serde::export::Formatter::write_str(__formatter,
+                                                                 "struct Parent")
+                        }
+                        #[inline]
+                        fn visit_seq<__A>(self, mut __seq: __A)
+                         -> _serde::export::Result<Self::Value, __A::Error>
+                         where __A: _serde::de::SeqAccess<'de> {
+                            let __field0 =
+                                match {
+                                          struct __DeserializeWith<'de> {
+                                              value: BigInt,
+                                              phantom: _serde::export::PhantomData<Parent>,
+                                              lifetime: _serde::export::PhantomData<&'de ()>,
+                                          }
+                                          impl <'de> _serde::Deserialize<'de>
+                                           for __DeserializeWith<'de> {
+                                              fn deserialize<__D>(__deserializer:
+                                                                      __D)
+                                               ->
+                                                   _serde::export::Result<Self,
+                                                                          __D::Error>
+                                               where
+                                               __D: _serde::Deserializer<'de> {
+                                                  _serde::export::Ok(__DeserializeWith{value:
+                                                                                           match swim_form::deserialize_bigint(__deserializer)
+                                                                                               {
+                                                                                               _serde::export::Ok(__val)
+                                                                                               =>
+                                                                                               __val,
+                                                                                               _serde::export::Err(__err)
+                                                                                               =>
+                                                                                               {
+                                                                                                   return _serde::export::Err(__err);
+                                                                                               }
+                                                                                           },
+                                                                                       phantom:
+                                                                                           _serde::export::PhantomData,
+                                                                                       lifetime:
+                                                                                           _serde::export::PhantomData,})
+                                              }
+                                          }
+                                          _serde::export::Option::map(match _serde::de::SeqAccess::next_element::<__DeserializeWith<'de>>(&mut __seq)
+                                                                          {
+                                                                          _serde::export::Ok(__val)
+                                                                          =>
+                                                                          __val,
+                                                                          _serde::export::Err(__err)
+                                                                          => {
+                                                                              return _serde::export::Err(__err);
+                                                                          }
+                                                                      },
+                                                                      |__wrap|
+                                                                          __wrap.value)
+                                      } {
+                                    _serde::export::Some(__value) => __value,
+                                    _serde::export::None => {
+                                        return _serde::export::Err(_serde::de::Error::invalid_length(0usize,
+                                                                                                     &"struct Parent with 2 elements"));
+                                    }
+                                };
+                            let __field1 =
+                                match {
+                                          struct __DeserializeWith<'de> {
+                                              value: BigUint,
+                                              phantom: _serde::export::PhantomData<Parent>,
+                                              lifetime: _serde::export::PhantomData<&'de ()>,
+                                          }
+                                          impl <'de> _serde::Deserialize<'de>
+                                           for __DeserializeWith<'de> {
+                                              fn deserialize<__D>(__deserializer:
+                                                                      __D)
+                                               ->
+                                                   _serde::export::Result<Self,
+                                                                          __D::Error>
+                                               where
+                                               __D: _serde::Deserializer<'de> {
+                                                  _serde::export::Ok(__DeserializeWith{value:
+                                                                                           match swim_form::deserialize_biguint(__deserializer)
+                                                                                               {
+                                                                                               _serde::export::Ok(__val)
+                                                                                               =>
+                                                                                               __val,
+                                                                                               _serde::export::Err(__err)
+                                                                                               =>
+                                                                                               {
+                                                                                                   return _serde::export::Err(__err);
+                                                                                               }
+                                                                                           },
+                                                                                       phantom:
+                                                                                           _serde::export::PhantomData,
+                                                                                       lifetime:
+                                                                                           _serde::export::PhantomData,})
+                                              }
+                                          }
+                                          _serde::export::Option::map(match _serde::de::SeqAccess::next_element::<__DeserializeWith<'de>>(&mut __seq)
+                                                                          {
+                                                                          _serde::export::Ok(__val)
+                                                                          =>
+                                                                          __val,
+                                                                          _serde::export::Err(__err)
+                                                                          => {
+                                                                              return _serde::export::Err(__err);
+                                                                          }
+                                                                      },
+                                                                      |__wrap|
+                                                                          __wrap.value)
+                                      } {
+                                    _serde::export::Some(__value) => __value,
+                                    _serde::export::None => {
+                                        return _serde::export::Err(_serde::de::Error::invalid_length(1usize,
+                                                                                                     &"struct Parent with 2 elements"));
+                                    }
+                                };
+                            _serde::export::Ok(Parent{a: __field0,
+                                                      b: __field1,})
+                        }
+                        #[inline]
+                        fn visit_map<__A>(self, mut __map: __A)
+                         -> _serde::export::Result<Self::Value, __A::Error>
+                         where __A: _serde::de::MapAccess<'de> {
+                            let mut __field0: _serde::export::Option<BigInt> =
+                                _serde::export::None;
+                            let mut __field1:
+                                    _serde::export::Option<BigUint> =
+                                _serde::export::None;
+                            while let _serde::export::Some(__key) =
+                                      match _serde::de::MapAccess::next_key::<__Field>(&mut __map)
+                                          {
+                                          _serde::export::Ok(__val) => __val,
+                                          _serde::export::Err(__err) => {
+                                              return _serde::export::Err(__err);
+                                          }
+                                      } {
+                                match __key {
+                                    __Field::__field0 => {
+                                        if _serde::export::Option::is_some(&__field0)
+                                           {
+                                            return _serde::export::Err(<__A::Error
+                                                                           as
+                                                                           _serde::de::Error>::duplicate_field("a"));
+                                        }
+                                        __field0 =
+                                            _serde::export::Some({
+                                                                     struct __DeserializeWith<'de> {
+                                                                         value: BigInt,
+                                                                         phantom: _serde::export::PhantomData<Parent>,
+                                                                         lifetime: _serde::export::PhantomData<&'de ()>,
+                                                                     }
+                                                                     impl <'de>
+                                                                      _serde::Deserialize<'de>
+                                                                      for
+                                                                      __DeserializeWith<'de>
+                                                                      {
+                                                                         fn deserialize<__D>(__deserializer:
+                                                                                                 __D)
+                                                                          ->
+                                                                              _serde::export::Result<Self,
+                                                                                                     __D::Error>
+                                                                          where
+                                                                          __D: _serde::Deserializer<'de> {
+                                                                             _serde::export::Ok(__DeserializeWith{value:
+                                                                                                                      match swim_form::deserialize_bigint(__deserializer)
+                                                                                                                          {
+                                                                                                                          _serde::export::Ok(__val)
+                                                                                                                          =>
+                                                                                                                          __val,
+                                                                                                                          _serde::export::Err(__err)
+                                                                                                                          =>
+                                                                                                                          {
+                                                                                                                              return _serde::export::Err(__err);
+                                                                                                                          }
+                                                                                                                      },
+                                                                                                                  phantom:
+                                                                                                                      _serde::export::PhantomData,
+                                                                                                                  lifetime:
+                                                                                                                      _serde::export::PhantomData,})
+                                                                         }
+                                                                     }
+                                                                     match _serde::de::MapAccess::next_value::<__DeserializeWith<'de>>(&mut __map)
+                                                                         {
+                                                                         _serde::export::Ok(__wrapper)
+                                                                         =>
+                                                                         __wrapper.value,
+                                                                         _serde::export::Err(__err)
+                                                                         => {
+                                                                             return _serde::export::Err(__err);
+                                                                         }
+                                                                     }
+                                                                 });
+                                    }
+                                    __Field::__field1 => {
+                                        if _serde::export::Option::is_some(&__field1)
+                                           {
+                                            return _serde::export::Err(<__A::Error
+                                                                           as
+                                                                           _serde::de::Error>::duplicate_field("b"));
+                                        }
+                                        __field1 =
+                                            _serde::export::Some({
+                                                                     struct __DeserializeWith<'de> {
+                                                                         value: BigUint,
+                                                                         phantom: _serde::export::PhantomData<Parent>,
+                                                                         lifetime: _serde::export::PhantomData<&'de ()>,
+                                                                     }
+                                                                     impl <'de>
+                                                                      _serde::Deserialize<'de>
+                                                                      for
+                                                                      __DeserializeWith<'de>
+                                                                      {
+                                                                         fn deserialize<__D>(__deserializer:
+                                                                                                 __D)
+                                                                          ->
+                                                                              _serde::export::Result<Self,
+                                                                                                     __D::Error>
+                                                                          where
+                                                                          __D: _serde::Deserializer<'de> {
+                                                                             _serde::export::Ok(__DeserializeWith{value:
+                                                                                                                      match swim_form::deserialize_biguint(__deserializer)
+                                                                                                                          {
+                                                                                                                          _serde::export::Ok(__val)
+                                                                                                                          =>
+                                                                                                                          __val,
+                                                                                                                          _serde::export::Err(__err)
+                                                                                                                          =>
+                                                                                                                          {
+                                                                                                                              return _serde::export::Err(__err);
+                                                                                                                          }
+                                                                                                                      },
+                                                                                                                  phantom:
+                                                                                                                      _serde::export::PhantomData,
+                                                                                                                  lifetime:
+                                                                                                                      _serde::export::PhantomData,})
+                                                                         }
+                                                                     }
+                                                                     match _serde::de::MapAccess::next_value::<__DeserializeWith<'de>>(&mut __map)
+                                                                         {
+                                                                         _serde::export::Ok(__wrapper)
+                                                                         =>
+                                                                         __wrapper.value,
+                                                                         _serde::export::Err(__err)
+                                                                         => {
+                                                                             return _serde::export::Err(__err);
+                                                                         }
+                                                                     }
+                                                                 });
+                                    }
+                                    _ => {
+                                        let _ =
+                                            match _serde::de::MapAccess::next_value::<_serde::de::IgnoredAny>(&mut __map)
+                                                {
+                                                _serde::export::Ok(__val) =>
+                                                __val,
+                                                _serde::export::Err(__err) =>
+                                                {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            };
+                                    }
+                                }
+                            }
+                            let __field0 =
+                                match __field0 {
+                                    _serde::export::Some(__field0) =>
+                                    __field0,
+                                    _serde::export::None =>
+                                    return _serde::export::Err(<__A::Error as
+                                                                   _serde::de::Error>::missing_field("a")),
+                                };
+                            let __field1 =
+                                match __field1 {
+                                    _serde::export::Some(__field1) =>
+                                    __field1,
+                                    _serde::export::None =>
+                                    return _serde::export::Err(<__A::Error as
+                                                                   _serde::de::Error>::missing_field("b")),
+                                };
+                            _serde::export::Ok(Parent{a: __field0,
+                                                      b: __field1,})
+                        }
+                    }
+                    const FIELDS: &'static [&'static str] = &["a", "b"];
+                    _serde::Deserializer::deserialize_struct(__deserializer,
+                                                             "Parent", FIELDS,
+                                                             __Visitor{marker:
+                                                                           _serde::export::PhantomData::<Parent>,
+                                                                       lifetime:
+                                                                           _serde::export::PhantomData,})
+                }
+            }
+        };
+    impl ::core::marker::StructuralPartialEq for Parent { }
+    #[automatically_derived]
+    #[allow(unused_qualifications)]
+    impl ::core::cmp::PartialEq for Parent {
+        #[inline]
+        fn eq(&self, other: &Parent) -> bool {
+            match *other {
+                Parent { a: ref __self_1_0, b: ref __self_1_1 } =>
+                match *self {
+                    Parent { a: ref __self_0_0, b: ref __self_0_1 } =>
+                    (*__self_0_0) == (*__self_1_0) &&
+                        (*__self_0_1) == (*__self_1_1),
+                },
+            }
+        }
+        #[inline]
+        fn ne(&self, other: &Parent) -> bool {
+            match *other {
+                Parent { a: ref __self_1_0, b: ref __self_1_1 } =>
+                match *self {
+                    Parent { a: ref __self_0_0, b: ref __self_0_1 } =>
+                    (*__self_0_0) != (*__self_1_0) ||
+                        (*__self_0_1) != (*__self_1_1),
+                },
+            }
+        }
+    }
+    #[automatically_derived]
+    #[allow(unused_qualifications)]
+    impl ::core::fmt::Debug for Parent {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            match *self {
+                Parent { a: ref __self_0_0, b: ref __self_0_1 } => {
+                    let mut debug_trait_builder = f.debug_struct("Parent");
+                    let _ = debug_trait_builder.field("a", &&(*__self_0_0));
+                    let _ = debug_trait_builder.field("b", &&(*__self_0_1));
+                    debug_trait_builder.finish()
+                }
+            }
+        }
+    }
+    const _IMPL_FORM_FOR_Parent: () =
+        {
+            use swim_form::_serialize;
+            use swim_form::_deserialize;
+            use swim_form::Form;
+            struct AssertReceiver;
+            #[automatically_derived]
+            impl AssertReceiver {
+                fn __assert() {
+                    struct __Assert___self_0_0_Receivers where BigInt: Form;
+                    struct __Assert___self_0_1_Receivers where BigUint: Form;
+                }
+            }
+            #[automatically_derived]
+            #[allow(unused_qualifications)]
+            impl Form for Parent {
+                #[inline]
+                fn as_value(&self) -> Value {
+                    let mut serializer =
+                        _serialize::ValueSerializer::default();
+                    match self.serialize(&mut serializer) {
+                        Ok(_) => serializer.output(),
+                        Err(e) =>
+
+
+                        {
+                            {
+                                {
+                                    ::std::rt::begin_panic_fmt(&::core::fmt::Arguments::new_v1(&["internal error: entered unreachable code: "],
+                                                                                               &match (&e,)
+                                                                                                    {
+                                                                                                    (arg0,)
+                                                                                                    =>
+                                                                                                    [::core::fmt::ArgumentV1::new(arg0,
+                                                                                                                                  ::core::fmt::Display::fmt)],
+                                                                                                }))
+                                }
+                            }
+                        }
+                    }
+                }
+                #[inline]
+                fn try_from_value(value: &Value)
+                 -> Result<Self, _deserialize::FormDeserializeErr> {
+                    let mut deserializer =
+                        match value {
+                            Value::Record(_, _) =>
+                            _deserialize::ValueDeserializer::for_values(value),
+                            _ =>
+                            _deserialize::ValueDeserializer::for_single_value(value),
+                        };
+                    let result = Self::deserialize(&mut deserializer)?;
+                    Ok(result)
+                }
+            }
+        };
+    let mut rng = rand::thread_rng();
+    let p = Parent{a: rng.gen_bigint(100), b: rng.gen_biguint(100),};
+    let record = p.as_value();
+    let result = Parent::try_from_value(&record);
+    {
+        match (&p, &result.unwrap()) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    {
+                        ::std::rt::begin_panic_fmt(&::core::fmt::Arguments::new_v1(&["assertion failed: `(left == right)`\n  left: `",
+                                                                                     "`,\n right: `",
+                                                                                     "`"],
+                                                                                   &match (&&*left_val,
+                                                                                           &&*right_val)
+                                                                                        {
+                                                                                        (arg0,
+                                                                                         arg1)
+                                                                                        =>
+                                                                                        [::core::fmt::ArgumentV1::new(arg0,
+                                                                                                                      ::core::fmt::Debug::fmt),
+                                                                                         ::core::fmt::ArgumentV1::new(arg1,
+                                                                                                                      ::core::fmt::Debug::fmt)],
+                                                                                    }))
+                    }
+                }
+            }
+        }
+    }
+}

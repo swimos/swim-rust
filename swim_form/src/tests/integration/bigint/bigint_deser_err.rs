@@ -14,7 +14,6 @@
 
 use common::model::{Attr, Item, Value};
 use form_derive::*;
-use swim_form::_deserialize::FormDeserializeErr;
 use swim_form::*;
 
 fn main() {

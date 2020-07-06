@@ -640,6 +640,7 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
+ "rand",
  "serde",
 ]
 
@@ -1096,6 +1097,8 @@ dependencies = [
  "client",
  "futures",
  "futures-util",
+ "num-bigint",
+ "rand",
  "serde",
  "serde_json",
  "swim_form",

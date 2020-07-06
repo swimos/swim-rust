@@ -54,6 +54,8 @@ fn test_derive() {
     t.compile_fail("src/tests/derive/unimplemented/unimplemented_primitive.rs");
     t.compile_fail("src/tests/derive/unimplemented/unimplemented_vector.rs");
 
+    t.compile_fail("src/tests/derive/attributes/invalid_bigint_attr.rs");
+    t.compile_fail("src/tests/derive/attributes/invalid_biguint_attr.rs");
     t.compile_fail("src/tests/derive/attributes/missing_arg.rs");
     t.compile_fail("src/tests/derive/attributes/too_many_args.rs");
 

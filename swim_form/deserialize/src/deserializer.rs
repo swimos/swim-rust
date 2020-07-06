@@ -263,10 +263,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         } else {
             match self.current_state.value {
                 Some(v) => match v {
-                    Value::BigInt(_bi) => {
-                        println!("big int");
-                        unimplemented!()
-                    }
+                    Value::BigInt(_) => self.deserialize_string(visitor),
+                    Value::BigUint(_) => self.deserialize_string(visitor),
                     _ => self.err_incorrect_type("Value::Record", Some(v)),
                 },
                 None => Err(FormDeserializeErr::Message(String::from("Missing value"))),

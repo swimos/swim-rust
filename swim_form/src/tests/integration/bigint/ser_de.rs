@@ -12,9 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::Form;
+use common::model::Value;
 use form_derive::*;
+use num_bigint::{BigInt, BigUint};
 
-#[form(a, b, c)]
-struct S;
+#[form(Value)]
+struct S {
+    #[form(bigint)]
+    a: BigInt,
+    #[form(biguint)]
+    b: BigUint,
+}
 
-fn main() {}
+fn main() {
+    let mut rng = rand::thread_rng();
+
+    let s = S {
+        a: rng.gen_bigint(100),
+        b: rng.gen_biguint(100),
+    };
+
+    let rec = s.as_value();
+}

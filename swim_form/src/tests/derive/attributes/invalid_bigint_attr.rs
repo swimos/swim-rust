@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::model::Value;
 use form_derive::*;
 
-#[form(a, b, c)]
-struct S;
+#[form(Value)]
+struct S {
+    #[form(bigint)]
+    a: i32,
+}
 
 fn main() {}
