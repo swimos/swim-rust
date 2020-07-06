@@ -34,12 +34,12 @@ impl Form for BigInt {
             Value::Int64Value(v) => Ok(BigInt::from(*v)),
             Value::Float64Value(v) => BigInt::from_f64(*v).ok_or_else(|| {
                 FormDeserializeErr::Message(String::from(
-                    "Failed to parse big integer into big unsigned integer",
+                    "Failed to parse float into big unsigned integer",
                 ))
             }),
             Value::Text(t) => BigInt::from_str(&t).map_err(|_| {
                 FormDeserializeErr::Message(String::from(
-                    "Failed to parse big integer into big unsigned integer",
+                    "Failed to parse text into big unsigned integer",
                 ))
             }),
             Value::BigUint(uint) => Ok(BigInt::from(uint.clone())),
@@ -62,22 +62,22 @@ impl Form for BigUint {
             }),
             Value::Int32Value(v) => BigUint::from_i32(*v).ok_or_else(|| {
                 FormDeserializeErr::Message(String::from(
-                    "Failed to parse big integer into big unsigned integer",
+                    "Failed to parse int32 into big unsigned integer",
                 ))
             }),
             Value::Int64Value(v) => BigUint::from_i64(*v).ok_or_else(|| {
                 FormDeserializeErr::Message(String::from(
-                    "Failed to parse big integer into big unsigned integer",
+                    "Failed to parse int64 into big unsigned integer",
                 ))
             }),
             Value::Float64Value(v) => BigUint::from_f64(*v).ok_or_else(|| {
                 FormDeserializeErr::Message(String::from(
-                    "Failed to parse big integer into big unsigned integer",
+                    "Failed to parse float64 into big unsigned integer",
                 ))
             }),
             Value::Text(t) => BigUint::from_str(&t).map_err(|_| {
                 FormDeserializeErr::Message(String::from(
-                    "Failed to parse big integer into big unsigned integer",
+                    "Failed to parse text into big unsigned integer",
                 ))
             }),
             Value::BigUint(uint) => Ok(uint.clone()),
