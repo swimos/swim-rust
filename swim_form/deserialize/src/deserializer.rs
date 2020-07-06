@@ -406,23 +406,3 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         self.deserialize_any(_visitor)
     }
 }
-
-// pub struct BigIntDeserializer<'a, 'de: 'a> {
-//     big_int: &'a BigInt,
-//     de: &'a mut ValueDeserializer<'de>,
-// }
-//
-// impl<'a, 'de> BigIntDeserializer<'a, 'de> {
-//     pub fn new(de: &'a mut ValueDeserializer<'de>) -> Self {
-//         BigIntDeserializer { de }
-//     }
-// }
-//
-// impl<'a, 'de> Deserialize for BigIntDeserializer<'a, 'de> {
-//     fn deserialize<D>(deserializer: D) -> Result<Self>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         unimplemented!()
-//     }
-// }
