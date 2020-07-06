@@ -14,8 +14,8 @@
 
 use trybuild::TestCases;
 
-// #[cfg(test)]
-// mod traits;
+#[cfg(test)]
+mod traits;
 
 #[test]
 fn test_derive() {
