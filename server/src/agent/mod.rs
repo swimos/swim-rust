@@ -205,6 +205,88 @@ struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
+pub fn value_lane_tasks<Agent, Context, T, S, L>(
+    lifecycle: L,
+    event_stream: S,
+    projection: impl Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
+) -> impl LaneTasks<Agent, Context>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = Arc<T>> + Send + Sync + 'static,
+    T: Any + Send + Sync,
+    L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
+    L::WatchStrategy: ValueLaneWatch<T, View = S>,
+{
+    ValueLifecycleTasks(LifecycleTasks {
+        lifecycle,
+        event_stream,
+        projection,
+    })
+}
+
+pub fn map_lane_tasks<Agent, Context, K, V, S, L>(
+    lifecycle: L,
+    event_stream: S,
+    projection: impl Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
+) -> impl LaneTasks<Agent, Context>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = MapLaneEvent<K, V>> + Send + Sync + 'static,
+    K: Any + Form + Send + Sync,
+    V: Any + Send + Sync,
+    L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
+    L::WatchStrategy: MapLaneWatch<K, V, View = S>,
+{
+    MapLifecycleTasks(LifecycleTasks {
+        lifecycle,
+        event_stream,
+        projection
+    })
+}
+
+pub fn action_lane_tasks<Agent, Context, Command, Response, S, L>(
+    lifecycle: L,
+    event_stream: S,
+    projection: impl Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
+) -> impl LaneTasks<Agent, Context>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = Command> + Send + Sync + 'static,
+    Command: Any + Send + Sync,
+    Response: Any + Send + Sync,
+    L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
+{
+    ActionLifecycleTasks(LifecycleTasks {
+        lifecycle,
+        event_stream,
+        projection,
+    })
+}
+
+pub fn command_lane_tasks<Agent, Context, Command, S, L>(
+    lifecycle: L,
+    event_stream: S,
+    projection: impl Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+) -> impl LaneTasks<Agent, Context>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = Command> + Send + Sync + 'static,
+    Command: Any + Send + Sync,
+    L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
+{
+    CommandLifecycleTasks(LifecycleTasks {
+        lifecycle,
+        event_stream,
+        projection,
+    })
+}
+
+
+
 impl<Agent, Context, T, L, S, P> LaneTasks<Agent, Context> for ValueLifecycleTasks<L, S, P>
 where
     Agent: 'static,
