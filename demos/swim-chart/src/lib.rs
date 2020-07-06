@@ -40,6 +40,7 @@ struct Entry {
     value: i32,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Entry {
     fn of(key: &Value, value: &Value) -> Entry {
         let key = if let Value::Int64Value(i) = *key {
@@ -61,6 +62,7 @@ impl Entry {
 #[wasm_bindgen]
 pub struct RustClient;
 
+#[cfg(not(tarpaulin_include))]
 #[wasm_bindgen]
 impl RustClient {
     #[wasm_bindgen(constructor)]

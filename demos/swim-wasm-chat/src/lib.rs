@@ -51,6 +51,7 @@ pub struct Message {
     uuid: String,
 }
 
+#[cfg(not(tarpaulin_include))]
 #[wasm_bindgen]
 impl Message {
     pub fn new(value: String, user_name: String, uuid: String) -> Message {
@@ -69,6 +70,7 @@ pub struct ChatClient {
     swim_client_tx: mpsc::Sender<MessageRequest>,
 }
 
+#[cfg(not(tarpaulin_include))]
 #[wasm_bindgen]
 impl ChatClient {
     #[wasm_bindgen(constructor)]
@@ -107,6 +109,7 @@ struct ClientTask {
     on_message_callback: js_sys::Function,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl ClientTask {
     fn new(
         swim_client: SwimClient,
