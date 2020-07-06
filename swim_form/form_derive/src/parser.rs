@@ -19,9 +19,9 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::Meta::{List, NameValue, Path};
-use syn::NestedMeta::{Lit, Meta};
-use syn::{DeriveInput, PathSegment};
+use syn::DeriveInput;
+use syn::Meta::{List, Path};
+use syn::NestedMeta::Meta;
 
 pub struct Parser<'a> {
     pub ident: syn::Ident,
@@ -110,32 +110,34 @@ impl Context {
 
 impl<'p> Parser<'p> {
     pub fn parse_attributes(&mut self) {
-        let mut fields = match &self.data {
-            TypeContents::Struct(_ct, f) => f.iter().map(|f| f.original).collect(),
-            TypeContents::Enum(v) => v.iter().fold(Vec::new(), |mut v, f| {
-                v.append(&mut f.fields.iter().map(|f| f.original).collect());
-                v
-            }),
-        };
+        {
+            let mut fields = match &self.data {
+                TypeContents::Struct(_ct, f) => f.iter().map(|f| f.original).collect(),
+                TypeContents::Enum(v) => v.iter().fold(Vec::new(), |mut v, f| {
+                    v.append(&mut f.fields.iter().map(|f| f.original).collect());
+                    v
+                }),
+            };
 
-        fields
-            .iter_mut()
-            .flat_map(|f| &f.attrs)
-            .flat_map(|attr| {
-                if !attr.path.is_ident("swim") {
-                    return Ok(Vec::new());
-                }
+            fields
+                .iter_mut()
+                .flat_map(|f| &f.attrs)
+                .flat_map(|attr| {
+                    if !attr.path.is_ident("form") {
+                        return Ok(Vec::new());
+                    }
 
-                match attr.parse_meta() {
-                    Ok(List(meta)) => Ok(meta.nested.into_iter().collect()),
-                    _ => Err(()),
-                }
-            })
-            .flatten()
-            .for_each(|mut meta: syn::NestedMeta| match meta {
-                Meta(Path(arg)) if arg.is_ident("bigint") => {}
-                nm => {}
-            });
+                    match attr.parse_meta() {
+                        Ok(List(meta)) => Ok(meta.nested.into_iter().collect()),
+                        _ => Err(()),
+                    }
+                })
+                .flatten()
+                .for_each(|meta: syn::NestedMeta| match meta {
+                    Meta(Path(arg)) if arg.is_ident("bigint") => {}
+                    nm => {}
+                });
+        }
     }
 
     pub fn from_ast(context: &Context, input: &'p syn::DeriveInput) -> Option<Parser<'p>> {

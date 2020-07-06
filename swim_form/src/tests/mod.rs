@@ -56,4 +56,7 @@ fn test_derive() {
 
     t.compile_fail("src/tests/derive/attributes/missing_arg.rs");
     t.compile_fail("src/tests/derive/attributes/too_many_args.rs");
+
+    t.pass("src/tests/integration/bigint/bigint_ser_ok.rs");
+    t.pass("src/tests/integration/bigint/bigint_deser_err.rs");
 }

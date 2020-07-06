@@ -936,6 +936,7 @@ dependencies = [
  "form_derive",
  "im 14.3.0",
  "num-bigint",
+ "num-traits",
  "serde",
  "serialize",
 ]

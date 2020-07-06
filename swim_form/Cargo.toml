@@ -12,6 +12,7 @@ deserialize = { path = "deserialize" }
 form_derive = { path = "form_derive" }
 serialize = { path = "serialize" }
 num-bigint = { version = "0.3" }
+num-traits = "0.2.12"
 
 [dev-dependencies]
 hamcrest2 = "0.3"

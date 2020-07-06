@@ -24,12 +24,18 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
-use syn::{AttributeArgs, DeriveInput, NestedMeta};
+use syn::parse_quote;
+use syn::visit_mut::VisitMut;
+use syn::{Attribute, AttributeArgs, DeriveInput, Fields, Meta, NestedMeta};
 
 use crate::parser::{Context, Parser};
 
 #[allow(dead_code, unused_variables)]
 mod parser;
+
+const ATTRIBUTE_PATH: &str = "form";
+const BIG_INT_PATH: &str = "bigint";
+const BIG_UINT_PATH: &str = "biguint";
 
 #[proc_macro_attribute]
 pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -60,6 +66,8 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     let derived: proc_macro2::TokenStream =
         expand_derive_form(&mut input, value_name_binding).unwrap_or_else(to_compile_errors);
 
+    remove_form_attributes(&mut input);
+
     let q = quote! {
         use serde::Serialize as #ser;
         use serde::Deserialize as #de;
@@ -71,6 +79,49 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     q.into()
+}
+
+fn remove_form_attributes(input: &mut syn::DeriveInput) {
+    struct FieldVisitor;
+    impl VisitMut for FieldVisitor {
+        fn visit_fields_mut(&mut self, fields: &mut Fields) {
+            fields.iter_mut()
+                .flat_map(|f| &mut f.attrs)
+                .filter(|attr| attr.path.is_ident(ATTRIBUTE_PATH))
+                .for_each(|attr| {
+                    match attr.parse_meta() {
+                        Ok(Meta::List(meta)) => {
+                            meta.nested.into_iter().for_each(|meta: syn::NestedMeta| {
+                                match meta {
+                                    NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BIG_INT_PATH) => {
+                                        let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::bigint::serialize_bigint", deserialize_with = "swim_form::deserialize_bigint")]);
+                                        *attr = replacement_attribute;
+                                    }
+                                    NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BIG_UINT_PATH) => {
+                                        let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::bigint::serialize_big_uint", deserialize_with = "swim_form::deserialize_biguint")]);
+                                        *attr = replacement_attribute;
+                                    }
+                                    _nm => {}
+                                }
+                            })
+                        }
+                        _ => panic!("Failed to parse attribute meta"),
+                    }
+                });
+        }
+    }
+
+    match &mut input.data {
+        syn::Data::Enum(ref mut data) => {
+            data.variants.iter_mut().for_each(|v| {
+                FieldVisitor.visit_fields_mut(&mut v.fields);
+            });
+        }
+        syn::Data::Struct(ref mut data) => {
+            FieldVisitor.visit_fields_mut(&mut data.fields);
+        }
+        syn::Data::Union(_) => {}
+    }
 }
 
 fn expand_derive_form(

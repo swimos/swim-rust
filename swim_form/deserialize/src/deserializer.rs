@@ -39,7 +39,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                 Value::Text(_) => self.deserialize_string(visitor),
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
                 Value::BooleanValue(_) => self.deserialize_bool(visitor),
-                Value::BigInt(_) => self.deserialize_str(visitor),
+                Value::BigInt(_) => self.deserialize_string(visitor),
                 Value::BigUint(_) => self.deserialize_string(visitor),
             },
             None => {
