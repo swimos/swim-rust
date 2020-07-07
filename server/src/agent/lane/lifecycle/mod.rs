@@ -23,7 +23,7 @@ use std::future::Future;
 mod tests;
 
 /// Base trait for all lane lifecycles for lanes that maintain an internal state.
-pub trait StatefulLaneLifecycleBase: Default + Send + Sync + 'static {
+pub trait StatefulLaneLifecycleBase: Send + Sync + 'static {
     type WatchStrategy;
 
     /// Create the watch strategy that will receive events indicating the changes to the
@@ -46,11 +46,9 @@ pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: StatefulLaneLifecy
     ///
     /// * `model` - The model of the lane.
     /// * `context` - Context of the agent that owns the lane.
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        model: &'a Model,
-        context: &'a C,
-    ) -> Self::StartFuture;
+    fn on_start<C>(&'a self, model: &'a Model, context: &'a C) -> Self::StartFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'a;
 
     /// Called each type an event is received by the lane's watch strategy (at most once each time
     /// the state changes, depending on the strategy).
@@ -96,7 +94,9 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>:
         command: &'a Command,
         model: &'a ActionLane<Command, Response>,
         context: &'a C,
-    ) -> Self::ResponseFuture;
+    ) -> Self::ResponseFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
 }
 
 impl StatefulLaneLifecycleBase for Queue {

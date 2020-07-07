@@ -57,8 +57,41 @@ pub struct MapLane<K, V> {
     _key_type: PhantomData<K>,
 }
 
-impl<K, V> LaneModel for MapLane<K, V> {
+impl<K, V> MapLane<K, V>
+where
+    K: Form + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    pub fn new() -> MapLane<K, V> {
+        MapLane {
+            map_state: Default::default(),
+            summary: Default::default(),
+            transaction_started: TLocal::new(false),
+            _key_type: PhantomData,
+        }
+    }
+}
+
+impl<K, V> Default for MapLane<K, V>
+where
+    K: Form + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V> LaneModel for MapLane<K, V>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
     type Event = MapLaneEvent<K, V>;
+
+    fn same_lane(this: &Self, other: &Self) -> bool {
+        TVar::same_var(&this.map_state, &other.map_state)
+    }
 }
 
 impl<K, V> Clone for MapLane<K, V> {
@@ -91,8 +124,8 @@ where
     (lane, view)
 }
 
-/// A single event that occured during a transaction.
-#[derive(Debug)]
+/// A single event that occurred during a transaction.
+#[derive(Debug, Clone)]
 pub enum MapLaneEvent<K, V> {
     /// The map as cleared.
     Clear,

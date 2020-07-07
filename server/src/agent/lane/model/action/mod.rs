@@ -21,6 +21,7 @@ use std::any::{type_name, Any, TypeId};
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// Model for a lane that can receive commands and optionally produce responses.
@@ -31,13 +32,28 @@ use tokio::sync::mpsc;
 /// * `Response` - The type of messages that will be received by a subscriber to the lane.
 pub struct ActionLane<Command, Response> {
     sender: mpsc::Sender<Command>,
+    id: Arc<()>,
     _handler_type: PhantomData<fn(Command) -> Response>,
+}
+
+impl<Command, Response> ActionLane<Command, Response>
+where
+    Command: Send + Sync + 'static,
+{
+    pub(crate) fn new(sender: mpsc::Sender<Command>) -> Self {
+        ActionLane {
+            sender,
+            id: Default::default(),
+            _handler_type: PhantomData,
+        }
+    }
 }
 
 impl<Command, Response> Clone for ActionLane<Command, Response> {
     fn clone(&self) -> Self {
         ActionLane {
             sender: self.sender.clone(),
+            id: self.id.clone(),
             _handler_type: PhantomData,
         }
     }
@@ -79,18 +95,19 @@ pub fn make_lane_model<Command, Response>(
     impl Stream<Item = Command> + Send + 'static,
 )
 where
-    Command: Send + 'static,
+    Command: Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
-    let lane = ActionLane {
-        sender: tx,
-        _handler_type: PhantomData,
-    };
+    let lane = ActionLane::new(tx);
     (lane, rx)
 }
 
 impl<Command, Response> LaneModel for ActionLane<Command, Response> {
-    type Event = Response;
+    type Event = Command;
+
+    fn same_lane(this: &Self, other: &Self) -> bool {
+        Arc::ptr_eq(&this.id, &other.id)
+    }
 }
 
 /// An action lane model that produces no response.

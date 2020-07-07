@@ -31,8 +31,23 @@ pub struct ValueLane<T> {
     value: TVar<T>,
 }
 
-impl<T> LaneModel for ValueLane<T> {
+impl<T: Any + Send + Sync> ValueLane<T> {
+    pub fn new(init: T) -> Self {
+        ValueLane {
+            value: TVar::new(init),
+        }
+    }
+}
+
+impl<T> LaneModel for ValueLane<T>
+where
+    T: Send + Sync + 'static,
+{
     type Event = Arc<T>;
+
+    fn same_lane(this: &Self, other: &Self) -> bool {
+        TVar::same_var(&this.value, &other.value)
+    }
 }
 
 /// Create a new value lane with the specified watch strategy.

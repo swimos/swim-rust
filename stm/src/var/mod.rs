@@ -288,8 +288,8 @@ impl<T> TVar<T> {
     }
 
     /// Determine whether two variables are the same.
-    pub fn same_var(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+    pub fn same_var(this: &Self, other: &Self) -> bool {
+        Arc::ptr_eq(&this.0, &other.0)
     }
 }
 

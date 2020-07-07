@@ -27,6 +27,10 @@ struct TestModel;
 
 impl LaneModel for TestModel {
     type Event = ();
+
+    fn same_lane(_this: &Self, _other: &Self) -> bool {
+        true
+    }
 }
 
 struct TestAgent(TestModel);
