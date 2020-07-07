@@ -917,5 +917,6 @@ fn kind_to_str(kind: ValueKind) -> &'static str {
         ValueKind::Boolean => "boolean",
         ValueKind::Text => "text",
         ValueKind::Record => "record",
+        ValueKind::Blob => "blob",
     }
 }

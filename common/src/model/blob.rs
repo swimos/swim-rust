@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::Value;
+use base64::display::Base64Display;
 use base64::write::EncoderWriter;
 use base64::{Config, DecodeError, URL_SAFE};
+use core::fmt;
 use futures::io::IoSlice;
+use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::str::FromStr;
 
 /// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. By default, a
@@ -122,5 +125,23 @@ impl Write for Blob {
 
     fn write_all(&mut self, mut buf: &[u8]) -> io::Result<()> {
         self.data.write_all(buf)
+    }
+}
+
+impl Hash for Blob {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.data.hash(state)
+    }
+}
+
+impl Display for Blob {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Base64Display::with_config(&self.data, self.config).fmt(f)
+    }
+}
+
+impl AsRef<[u8]> for Blob {
+    fn as_ref(&self) -> &[u8] {
+        &self.data
     }
 }
