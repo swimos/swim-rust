@@ -15,6 +15,7 @@
 use js_sys::Promise;
 use serde::{Deserialize, Serialize};
 
+use swim_client::common::model::Value;
 use swim_client::common::warp::path::AbsolutePath;
 use swim_client::downlink::model::map::{MapEvent, ViewWithEvent};
 use swim_client::downlink::Event;
@@ -41,7 +42,7 @@ pub async fn start() {
 }
 
 #[wasm_bindgen]
-#[form]
+#[form(Value)]
 #[derive(Debug)]
 pub struct Message {
     value: String,
