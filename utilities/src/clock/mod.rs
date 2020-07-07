@@ -19,9 +19,9 @@ use swim_runtime::time::delay;
 
 /// Trait for tracking the passage of time in asynchronous code. Implementations should ensure that
 /// time is monotonically non-decreasing.
-pub trait Clock: Debug + Clone {
+pub trait Clock: Debug + Clone + Send + Sync + 'static {
     /// The type of futures tracking a delay.
-    type DelayFuture: Future<Output = ()>;
+    type DelayFuture: Future<Output = ()> + Send + 'static;
 
     /// Create a future that will complete after a fixed delay.
     fn delay(&self, duration: Duration) -> Self::DelayFuture;

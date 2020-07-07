@@ -37,6 +37,7 @@ use std::time::Duration;
 use swim_form::Form;
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::clock::Clock;
 use utilities::future::SwimStreamExt;
 
 mod context;
@@ -60,15 +61,21 @@ pub trait SwimAgent: Sized {
 /// * `url` - The node URL for the agent instance.
 /// * `schedule_buffer_size` - The buffer size for the MPSC channel used by the agent to schedule
 /// events.
-pub async fn run_agent<Agent, L>(lifecycle: L, url: Url, scheduler_buffer_size: NonZeroUsize)
-where
+/// * `clock` - Clock for timing asynchronous events.
+pub async fn run_agent<Clk, Agent, L>(
+    lifecycle: L,
+    url: Url,
+    scheduler_buffer_size: NonZeroUsize,
+    clock: Clk,
+) where
+    Clk: Clock,
     Agent: SwimAgent + Send + Sync + 'static,
     L: AgentLifecycle<Agent>,
 {
-    let (agent, tasks) = Agent::instantiate::<ContextImpl<Agent>>();
+    let (agent, tasks) = Agent::instantiate::<ContextImpl<Agent, Clk>>();
     let agent_ref = Arc::new(agent);
     let (tx, rx) = mpsc::channel(scheduler_buffer_size.get());
-    let context = ContextImpl::new(agent_ref, url, tx);
+    let context = ContextImpl::new(agent_ref, url, tx, clock);
 
     lifecycle.on_start(&context).await;
 

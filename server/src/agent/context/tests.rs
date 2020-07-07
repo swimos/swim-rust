@@ -19,18 +19,20 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
+use utilities::clock;
+use utilities::clock::Clock;
 
 #[test]
 fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    let context = ContextImpl::new(agent.clone(), url.clone(), tx);
+    let context = ContextImpl::new(agent.clone(), url.clone(), tx, clock::runtime_clock());
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_url(), &url);
 }
 
-fn create_context(n: usize) -> ContextImpl<&'static str> {
+fn create_context(n: usize) -> ContextImpl<&'static str, impl Clock> {
     let (tx, rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -38,7 +40,7 @@ fn create_context(n: usize) -> ContextImpl<&'static str> {
 
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    ContextImpl::new(agent.clone(), url.clone(), tx)
+    ContextImpl::new(agent.clone(), url.clone(), tx, clock::runtime_clock())
 }
 
 #[tokio::test]
