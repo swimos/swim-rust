@@ -24,24 +24,27 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
-use syn::DeriveInput;
+use syn::{AttributeArgs, DeriveInput, NestedMeta};
 
 use crate::parser::{Context, Parser};
 
 #[allow(dead_code, unused_variables)]
 mod parser;
 
-#[proc_macro_derive(Form)]
-pub fn derive_form(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    expand_derive_form(&input)
-        .unwrap_or_else(to_compile_errors)
-        .into()
-}
-
 #[proc_macro_attribute]
-pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
+
+    if args.len() != 1 {
+        return syn::Error::new(
+            Span::call_site(),
+            "Exactly one Value name binding must be provided",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let value_name_binding = args.get(0).unwrap();
     let input = parse_macro_input!(input as DeriveInput);
     let ident = input.ident.clone();
 
@@ -54,12 +57,17 @@ pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
         Span::call_site(),
     );
 
+    let derived: proc_macro2::TokenStream =
+        expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
+
     let q = quote! {
         use serde::Serialize as #ser;
         use serde::Deserialize as #de;
 
-        #[derive(Form, #ser, #de)]
+        #[derive(#ser, #de)]
         #input
+
+        #derived
     };
 
     q.into()
@@ -67,6 +75,7 @@ pub fn form(_attr: TokenStream, input: TokenStream) -> TokenStream {
 
 fn expand_derive_form(
     input: &syn::DeriveInput,
+    value_name_binding: &NestedMeta,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let context = Context::new();
     let parser = match Parser::from_ast(&context, input) {
@@ -95,7 +104,7 @@ fn expand_derive_form(
         #[allow(unused_qualifications)]
         impl Form for #ident {
             #[inline]
-            fn as_value(&self) -> _common::model::Value {
+            fn as_value(&self) -> #value_name_binding {
                 let mut serializer = _serialize::ValueSerializer::default();
                 match self.serialize(&mut serializer) {
                     Ok(_) => serializer.output(),
@@ -104,9 +113,9 @@ fn expand_derive_form(
             }
 
             #[inline]
-            fn try_from_value(value: &_common::model::Value) -> Result<Self, _deserialize::FormDeserializeErr> {
+            fn try_from_value(value: &#value_name_binding) -> Result<Self, _deserialize::FormDeserializeErr> {
                 let mut deserializer = match value {
-                    _common::model::Value::Record(_, _) => _deserialize::ValueDeserializer::for_values(value),
+                    #value_name_binding::Record(_, _) => _deserialize::ValueDeserializer::for_values(value),
                     _ => _deserialize::ValueDeserializer::for_single_value(value),
                 };
 
@@ -118,7 +127,6 @@ fn expand_derive_form(
 
     let res = quote! {
         const #const_name: () = {
-            use swim_form::_common;
             use swim_form::_serialize;
             use swim_form::_deserialize;
             use swim_form::Form;
