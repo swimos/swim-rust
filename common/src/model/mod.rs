@@ -25,6 +25,7 @@ use tokio_util::codec::Encoder;
 use crate::model::parser::is_identifier;
 use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::sign::Signed;
+use num_traits::ToPrimitive;
 use std::str::FromStr;
 
 pub mod parser;
@@ -234,13 +235,13 @@ impl Value {
                     if x.is_nan() {
                         Ordering::Less
                     } else {
-                        match f64::from_str(&bi.to_string()) {
-                            Ok(bi) => match x.partial_cmp(&bi) {
+                        match bi.to_f64() {
+                            Some(bi) => match x.partial_cmp(&bi) {
                                 Some(Ordering::Less) => Ordering::Less,
                                 Some(Ordering::Greater) => Ordering::Greater,
                                 _ => Ordering::Equal,
                             },
-                            Err(_) => {
+                            None => {
                                 if x.is_sign_negative() && bi.is_negative() {
                                     Ordering::Less
                                 } else {
@@ -468,20 +469,30 @@ impl Ord for Value {
 
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        const EXTANT_HASH: u8 = 0;
+        const INT32_HASH: u8 = 1;
+        const INT64_HASH: u8 = 2;
+        const FLOAT64_HASH: u8 = 3;
+        const BOOLEAN_HASH: u8 = 4;
+        const TEXT_HASH: u8 = 5;
+        const RECORD_HASH: u8 = 6;
+        const BIGINT_HASH: u8 = 7;
+        const BIGUINT_HASH: u8 = 8;
+
         match self {
             Value::Extant => {
-                state.write_u8(0);
+                state.write_u8(EXTANT_HASH);
             }
             Value::Int32Value(n) => {
-                state.write_u8(1);
+                state.write_u8(INT32_HASH);
                 state.write_i32(*n);
             }
             Value::Int64Value(n) => {
-                state.write_u8(2);
+                state.write_u8(INT64_HASH);
                 state.write_i64(*n);
             }
             Value::Float64Value(x) => {
-                state.write_u8(3);
+                state.write_u8(FLOAT64_HASH);
                 if x.is_nan() {
                     state.write_u64(0);
                 } else {
@@ -489,24 +500,24 @@ impl Hash for Value {
                 }
             }
             Value::BooleanValue(p) => {
-                state.write_u8(4);
+                state.write_u8(BOOLEAN_HASH);
                 state.write_u8(if *p { 1 } else { 0 })
             }
             Value::Text(s) => {
-                state.write_u8(5);
+                state.write_u8(TEXT_HASH);
                 s.hash(state);
             }
             Value::Record(attrs, items) => {
-                state.write_u8(6);
+                state.write_u8(RECORD_HASH);
                 attrs.hash(state);
                 items.hash(state);
             }
             Value::BigInt(bi) => {
-                state.write_u8(7);
+                state.write_u8(BIGINT_HASH);
                 bi.hash(state);
             }
             Value::BigUint(bi) => {
-                state.write_u8(8);
+                state.write_u8(BIGUINT_HASH);
                 bi.hash(state);
             }
         }
@@ -1268,9 +1279,6 @@ impl ValueEncoder {
                     bi.bits()
                 };
 
-                if req > usize::max_value() as u64 {
-                    panic!("Buffer overflow")
-                }
                 req as usize
             }
             Value::BigUint(bi) => {

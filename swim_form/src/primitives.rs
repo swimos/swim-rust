@@ -48,6 +48,12 @@ impl Form for BigInt {
     }
 }
 
+impl ValidatedForm for BigInt {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::BigInt)
+    }
+}
+
 impl Form for BigUint {
     fn as_value(&self) -> Value {
         Value::BigUint(self.clone())
@@ -83,6 +89,12 @@ impl Form for BigUint {
             Value::BigUint(uint) => Ok(uint.clone()),
             v => de_incorrect_type("Value::Float64Value", v),
         }
+    }
+}
+
+impl ValidatedForm for BigUint {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::BigUint)
     }
 }
 

@@ -28,7 +28,7 @@ mod simple_data_types;
 #[cfg(test)]
 mod vectors;
 
-pub(crate) fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
+pub fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
 where
     T: Deserialize<'de>,
 {
