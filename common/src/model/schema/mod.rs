@@ -12,13 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::schema::attr::AttrSchema;
+use crate::model::schema::item::ItemSchema;
+use crate::model::schema::range::{
+    float_64_range, float_range_to_value, in_float_range, in_int_range, in_range, int_32_range,
+    int_64_range, int_range_to_value, Bound, Range,
+};
+use crate::model::schema::slot::SlotSchema;
+use crate::model::schema::text::TextSchema;
 use crate::model::{Attr, Item, ToValue, Value, ValueKind};
-use regex::{Error as RegexError, Regex};
-use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
+
+pub mod attr;
+mod item;
+mod range;
+pub mod slot;
+mod text;
 
 #[cfg(test)]
 mod tests;
@@ -52,239 +64,13 @@ impl<T, S: FieldSchema<T>> Schema<T> for S {
     }
 }
 
-/// Schema for UTF8 strings.
-#[derive(Clone, Debug)]
-pub enum TextSchema {
-    /// Matches if an only if the string is non-empty.
-    NonEmpty,
-    /// Matches only a specific string.
-    Exact(String),
-    /// Matches a string against a regular expression.
-    Matches(Regex),
-}
-
-impl TextSchema {
-    /// A schema that matches a single string.
-    pub fn exact(string: &str) -> TextSchema {
-        TextSchema::Exact(string.to_string())
-    }
-
-    /// A schema that accepts strings matching a regular expression.
-    pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
-        Regex::new(string).map(TextSchema::Matches)
-    }
-}
-
-impl PartialOrd for TextSchema {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.eq(other) {
-            Some(Ordering::Equal)
-        } else {
-            match (self, other) {
-                (TextSchema::NonEmpty, TextSchema::Exact(val)) if !val.is_empty() => {
-                    Some(Ordering::Greater)
-                }
-                (TextSchema::NonEmpty, TextSchema::Matches(regex)) if !regex.is_match("") => {
-                    Some(Ordering::Greater)
-                }
-                (TextSchema::Exact(val), TextSchema::NonEmpty) if !val.is_empty() => {
-                    Some(Ordering::Less)
-                }
-                (TextSchema::Exact(val), TextSchema::Matches(regex)) if regex.is_match(&val) => {
-                    Some(Ordering::Less)
-                }
-                (TextSchema::Matches(regex), TextSchema::NonEmpty) if !regex.is_match("") => {
-                    Some(Ordering::Less)
-                }
-                (TextSchema::Matches(regex), TextSchema::Exact(val)) if regex.is_match(val) => {
-                    Some(Ordering::Greater)
-                }
-                _ => None,
-            }
-        }
-    }
-}
-
-impl ToValue for TextSchema {
-    fn to_value(&self) -> Value {
-        match self {
-            TextSchema::NonEmpty => Attr::of("non_empty"),
-            TextSchema::Exact(v) => Attr::of(("equal", v.clone())),
-            TextSchema::Matches(r) => Attr::of(("matches", r.to_string())),
-        }
-        .into()
-    }
-}
-
-impl PartialEq for TextSchema {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (TextSchema::NonEmpty, TextSchema::NonEmpty) => true,
-            (TextSchema::Exact(left), TextSchema::Exact(right)) => left == right,
-            (TextSchema::Matches(left), TextSchema::Matches(right)) => {
-                left.as_str() == right.as_str()
-            }
-            _ => false,
-        }
-    }
-}
-
-impl Eq for TextSchema {}
-
-impl TextSchema {
-    pub fn matches_str(&self, text: &str) -> bool {
-        match self {
-            TextSchema::NonEmpty => !text.is_empty(),
-            TextSchema::Exact(s) => text == s,
-            TextSchema::Matches(r) => r.is_match(text),
-        }
-    }
-
-    pub fn matches_value(&self, value: &Value) -> bool {
-        match value {
-            Value::Text(text) => self.matches_str(text.borrow()),
-            _ => false,
-        }
-    }
-}
-
-impl Schema<String> for TextSchema {
-    fn matches(&self, value: &String) -> bool {
-        self.matches_str(value.borrow())
-    }
-}
-
-/// Schema for Recon [`Attr`]s.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AttrSchema {
-    name_schema: TextSchema,
-    value_schema: StandardSchema,
-}
-
-impl AttrSchema {
-    /// Create an attribute schema.
-    /// # Arguments
-    ///
-    /// * `name` - Schema for the name of the attribute.
-    /// * `value` - Schema for the value of the attribute.
-    ///
-    pub fn new(name: TextSchema, value: StandardSchema) -> Self {
-        AttrSchema {
-            name_schema: name,
-            value_schema: value,
-        }
-    }
-
-    /// Create an attribute schema with a fixed name.
-    /// # Arguments
-    ///
-    /// * `name` - The name of the attribute.
-    /// * `value` - Schema for the value of the attribute.
-    ///
-    pub fn named(name: &str, value: StandardSchema) -> Self {
-        AttrSchema {
-            name_schema: TextSchema::exact(name),
-            value_schema: value,
-        }
-    }
-
-    /// Create a schema that matches attributes without bodies.
-    /// # Arguments
-    ///
-    /// * `name` - The name of the attribute.
-    ///
-    pub fn tag(name: &str) -> Self {
-        AttrSchema {
-            name_schema: TextSchema::exact(name),
-            value_schema: StandardSchema::OfKind(ValueKind::Extant),
-        }
-    }
-
-    /// Creates a schema that checks the first attribute of a record against this schema
-    /// the the remainder of the record against another.
-    pub fn and_then(self, schema: StandardSchema) -> StandardSchema {
-        StandardSchema::HeadAttribute {
-            schema: Box::new(self),
-            required: true,
-            remainder: Box::new(schema),
-        }
-    }
-
-    /// Creates a schema that checks that the value is a record containing only an attribute
-    /// matching this schema.
-    pub fn only(self) -> StandardSchema {
-        self.and_then(StandardSchema::is_empty_record())
-    }
-
-    /// Creates a schema that optionally checks the first attribute of a record against this schema
-    /// the the remainder of the record against another.
-    pub fn optionally_and_then(self, schema: StandardSchema) -> StandardSchema {
-        StandardSchema::HeadAttribute {
-            schema: Box::new(self),
-            required: false,
-            remainder: Box::new(schema),
-        }
-    }
-
-    fn to_attr(&self) -> Attr {
-        Attr::of((
-            "attr",
-            Value::from_vec(vec![
-                Item::slot("name", self.name_schema.to_value()),
-                Item::slot("value", self.value_schema.to_value()),
-            ]),
-        ))
-    }
-}
-
-impl PartialOrd for AttrSchema {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.eq(other) {
-            Some(Ordering::Equal)
-        } else {
-            let name = self.name_schema.partial_cmp(&other.name_schema)?;
-            let val = self.value_schema.partial_cmp(&other.value_schema)?;
-
-            combine_orderings(vec![name, val])
-        }
-    }
-}
-
-fn combine_orderings(orderings: Vec<Ordering>) -> Option<Ordering> {
-    if orderings.is_empty() {
-        return None;
-    }
-
-    let mut prev_ord = Ordering::Equal;
-
-    for ord in orderings {
-        if prev_ord != Ordering::Equal && ord == prev_ord.reverse() {
-            return None;
-        } else if ord != Ordering::Equal {
-            prev_ord = ord;
-        }
-    }
-
-    Some(prev_ord)
-}
-
-impl ToValue for AttrSchema {
-    fn to_value(&self) -> Value {
-        Value::of_attr(self.to_attr())
-    }
-}
-
-impl FieldSchema<Attr> for AttrSchema {
-    fn matches_field(&self, field: &Attr) -> FieldMatchResult {
-        if self.name_schema.matches_str(&field.name.borrow()) {
-            if self.value_schema.matches(&field.value) {
-                FieldMatchResult::Both
-            } else {
-                FieldMatchResult::KeyOnly
-            }
-        } else {
-            FieldMatchResult::KeyFailed
-        }
+fn combine_orderings(this: Ordering, that: Ordering) -> Option<Ordering> {
+    if this != Ordering::Equal && this == that.reverse() {
+        None
+    } else if this != Ordering::Equal {
+        Some(this)
+    } else {
+        Some(that)
     }
 }
 
@@ -326,118 +112,6 @@ impl<S: ToValue> ToValue for FieldSpec<S> {
                 Value::Record(attrs, items)
             }
             ow => Value::Record(vec![head_attr], vec![Item::ValueItem(ow)]),
-        }
-    }
-}
-
-/// Schema for Recon slots.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SlotSchema {
-    key_schema: StandardSchema,
-    value_schema: StandardSchema,
-}
-
-impl SlotSchema {
-    /// Create an slot schema.
-    /// # Arguments
-    ///
-    /// * `key` - Schema for the key of the attribute.
-    /// * `value` - Schema for the value of the attribute.
-    ///
-    pub fn new(key: StandardSchema, value: StandardSchema) -> Self {
-        SlotSchema {
-            key_schema: key,
-            value_schema: value,
-        }
-    }
-}
-
-impl PartialOrd for SlotSchema {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.eq(other) {
-            Some(Ordering::Equal)
-        } else {
-            let key = self.key_schema.partial_cmp(&other.key_schema)?;
-            let val = self.value_schema.partial_cmp(&other.value_schema)?;
-
-            combine_orderings(vec![key, val])
-        }
-    }
-}
-
-impl ToValue for SlotSchema {
-    fn to_value(&self) -> Value {
-        Value::of_attr((
-            "slot",
-            Value::from_vec(vec![
-                Item::slot("key", self.key_schema.to_value()),
-                Item::slot("value", self.value_schema.to_value()),
-            ]),
-        ))
-    }
-}
-
-impl FieldSchema<Item> for SlotSchema {
-    fn matches_field(&self, field: &Item) -> FieldMatchResult {
-        match field {
-            Item::ValueItem(_) => FieldMatchResult::KeyFailed,
-            Item::Slot(key, value) => {
-                if self.key_schema.matches(key) {
-                    if self.value_schema.matches(value) {
-                        FieldMatchResult::Both
-                    } else {
-                        FieldMatchResult::KeyOnly
-                    }
-                } else {
-                    FieldMatchResult::KeyFailed
-                }
-            }
-        }
-    }
-}
-
-/// Schema for Recon [`Item`]s.
-#[derive(Clone, Debug, PartialEq)]
-pub enum ItemSchema {
-    Field(SlotSchema),
-    ValueItem(StandardSchema),
-}
-
-impl PartialOrd for ItemSchema {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.eq(other) {
-            Some(Ordering::Equal)
-        } else {
-            match (self, other) {
-                (ItemSchema::Field(this_schema), ItemSchema::Field(other_schema)) => {
-                    this_schema.partial_cmp(other_schema)
-                }
-                (ItemSchema::ValueItem(this_schema), ItemSchema::ValueItem(other_schema)) => {
-                    this_schema.partial_cmp(other_schema)
-                }
-                _ => None,
-            }
-        }
-    }
-}
-
-impl ToValue for ItemSchema {
-    fn to_value(&self) -> Value {
-        match self {
-            ItemSchema::Field(slot) => slot.to_value(),
-            ItemSchema::ValueItem(s) => s.to_value(),
-        }
-    }
-}
-
-impl Schema<Item> for ItemSchema {
-    fn matches(&self, item: &Item) -> bool {
-        match self {
-            ItemSchema::Field(slot_schema) => slot_schema.matches(item),
-            ItemSchema::ValueItem(schema) => match item {
-                Item::ValueItem(value) => schema.matches(value),
-                Item::Slot(_, _) => false,
-            },
         }
     }
 }
@@ -508,180 +182,6 @@ fn check_in_order<T, S: Schema<T>>(schemas: &[(S, bool)], items: &[T], exhaustiv
         }
     };
     matched && (pending.is_none() || !exhaustive)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Bound<T> {
-    value: T,
-    inclusive: bool,
-}
-
-impl<T> Bound<T> {
-    pub fn new(value: T, inclusive: bool) -> Self {
-        Bound { value, inclusive }
-    }
-
-    pub fn inclusive(value: T) -> Self {
-        Bound::new(value, true)
-    }
-
-    pub fn exclusive(value: T) -> Self {
-        Bound::new(value, false)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Range<T: Copy + PartialOrd> {
-    min: Option<Bound<T>>,
-    max: Option<Bound<T>>,
-}
-
-impl Range<i64> {
-    fn new(min: Option<Bound<i64>>, max: Option<Bound<i64>>) -> Self {
-        let min = min.map(|Bound { value, inclusive }| {
-            if !inclusive {
-                Bound::new(value + 1, true)
-            } else {
-                Bound::new(value, inclusive)
-            }
-        });
-
-        let max = max.map(|Bound { value, inclusive }| {
-            if !inclusive {
-                Bound::new(value - 1, true)
-            } else {
-                Bound::new(value, inclusive)
-            }
-        });
-
-        Range { min, max }
-    }
-
-    pub fn upper_bounded(max: Bound<i64>) -> Self {
-        Range::<i64>::new(None, Some(max))
-    }
-
-    pub fn lower_bounded(min: Bound<i64>) -> Self {
-        Range::<i64>::new(Some(min), None)
-    }
-
-    pub fn bounded(min: Bound<i64>, max: Bound<i64>) -> Self {
-        Range::<i64>::new(Some(min), Some(max))
-    }
-}
-
-impl Range<f64> {
-    fn new(min: Option<Bound<f64>>, max: Option<Bound<f64>>) -> Self {
-        Range { min, max }
-    }
-
-    pub fn upper_bounded(max: Bound<f64>) -> Self {
-        Range::<f64>::new(None, Some(max))
-    }
-
-    pub fn lower_bounded(min: Bound<f64>) -> Self {
-        Range::<f64>::new(Some(min), None)
-    }
-
-    pub fn bounded(min: Bound<f64>, max: Bound<f64>) -> Self {
-        Range::<f64>::new(Some(min), Some(max))
-    }
-}
-
-impl<T: Copy + PartialOrd> Range<T> {
-    pub fn unbounded() -> Self {
-        Range {
-            min: None,
-            max: None,
-        }
-    }
-
-    fn is_upper_bounded(&self) -> bool {
-        self.min.is_none() && self.max.is_some()
-    }
-
-    fn is_lower_bounded(&self) -> bool {
-        self.min.is_some() && self.max.is_none()
-    }
-
-    fn is_bounded(&self) -> bool {
-        self.min.is_some() && self.max.is_some()
-    }
-
-    fn is_unbounded(&self) -> bool {
-        self.min.is_none() && self.max.is_none()
-    }
-}
-
-impl<T: Copy + PartialOrd> PartialOrd for Range<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.eq(other) {
-            Some(Ordering::Equal)
-        } else if self.is_unbounded() {
-            Some(Ordering::Greater)
-        } else if other.is_unbounded() {
-            Some(Ordering::Less)
-        } else if self.is_bounded() && other.is_bounded() {
-            let lower = partial_cmp_lower_bounds(self.min?, other.min?)?;
-            let upper = partial_cmp_upper_bounds(self.max?, other.max?)?;
-            combine_orderings(vec![lower, upper])
-        } else if other.is_bounded() {
-            cmp_bounded_and_half_bounded_range(self, other)
-        } else if self.is_bounded() {
-            Some(cmp_bounded_and_half_bounded_range(other, self)?.reverse())
-        } else if self.is_lower_bounded() && other.is_lower_bounded() {
-            partial_cmp_lower_bounds(self.min?, other.min?)
-        } else if self.is_upper_bounded() && other.is_upper_bounded() {
-            partial_cmp_upper_bounds(self.max?, other.max?)
-        } else {
-            None
-        }
-    }
-}
-
-fn partial_cmp_lower_bounds<T: Copy + PartialOrd>(
-    this: Bound<T>,
-    other: Bound<T>,
-) -> Option<Ordering> {
-    if this.value == other.value && this.inclusive != other.inclusive {
-        if this.inclusive {
-            Some(Ordering::Greater)
-        } else {
-            Some(Ordering::Less)
-        }
-    } else {
-        Some(this.value.partial_cmp(&other.value)?.reverse())
-    }
-}
-
-fn partial_cmp_upper_bounds<T: Copy + PartialOrd>(
-    this: Bound<T>,
-    other: Bound<T>,
-) -> Option<Ordering> {
-    if this.value == other.value && this.inclusive != other.inclusive {
-        if this.inclusive {
-            Some(Ordering::Greater)
-        } else {
-            Some(Ordering::Less)
-        }
-    } else {
-        this.value.partial_cmp(&other.value)
-    }
-}
-
-fn cmp_bounded_and_half_bounded_range<T: Copy + PartialOrd>(
-    half_bounded: &Range<T>,
-    bounded: &Range<T>,
-) -> Option<Ordering> {
-    if (half_bounded.is_upper_bounded()
-        && partial_cmp_upper_bounds(half_bounded.max?, bounded.max?)? != Ordering::Less)
-        || (half_bounded.is_lower_bounded()
-            && partial_cmp_lower_bounds(half_bounded.min?, bounded.min?)? != Ordering::Less)
-    {
-        Some(Ordering::Greater)
-    } else {
-        None
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -773,29 +273,47 @@ impl PartialOrd for StandardSchema {
                 (_, StandardSchema::NumAttrs(size)) => Some(num_attrs_cmp(size, self)?.reverse()),
                 (StandardSchema::NumItems(size), _) => num_items_cmp(size, other),
                 (_, StandardSchema::NumItems(size)) => Some(num_items_cmp(size, self)?.reverse()),
-                (head_schema @ StandardSchema::HeadAttribute { .. }, _) => {
-                    head_attribute_cmp(head_schema, other)
+                (
+                    StandardSchema::HeadAttribute {
+                        schema,
+                        required,
+                        remainder,
+                    },
+                    _,
+                ) => head_attribute_cmp(schema, *required, remainder, other),
+                (
+                    _,
+                    StandardSchema::HeadAttribute {
+                        schema,
+                        required,
+                        remainder,
+                    },
+                ) => Some(head_attribute_cmp(schema, *required, remainder, self)?.reverse()),
+                (
+                    StandardSchema::HasAttributes {
+                        attributes,
+                        exhaustive,
+                    },
+                    _,
+                ) => has_attributes_cmp(attributes, *exhaustive, other),
+                (
+                    _,
+                    StandardSchema::HasAttributes {
+                        attributes,
+                        exhaustive,
+                    },
+                ) => Some(has_attributes_cmp(attributes, *exhaustive, self)?.reverse()),
+                (StandardSchema::HasSlots { slots, exhaustive }, _) => {
+                    has_slots_cmp(slots, *exhaustive, other)
                 }
-                (_, head_schema @ StandardSchema::HeadAttribute { .. }) => {
-                    Some(head_attribute_cmp(head_schema, self)?.reverse())
+                (_, StandardSchema::HasSlots { slots, exhaustive }) => {
+                    Some(has_slots_cmp(slots, *exhaustive, self)?.reverse())
                 }
-                (attr_schema @ StandardSchema::HasAttributes { .. }, _) => {
-                    has_attributes_cmp(attr_schema, other)
+                (StandardSchema::Layout { items, exhaustive }, _) => {
+                    layout_cmp(items, *exhaustive, other)
                 }
-                (_, attr_schema @ StandardSchema::HasAttributes { .. }) => {
-                    Some(has_attributes_cmp(attr_schema, self)?.reverse())
-                }
-                (slot_schema @ StandardSchema::HasSlots { .. }, _) => {
-                    has_slots_cmp(slot_schema, other)
-                }
-                (_, slot_schema @ StandardSchema::HasSlots { .. }) => {
-                    Some(has_slots_cmp(slot_schema, self)?.reverse())
-                }
-                (layout_schema @ StandardSchema::Layout { .. }, _) => {
-                    layout_cmp(layout_schema, other)
-                }
-                (_, layout_schema @ StandardSchema::Layout { .. }) => {
-                    Some(layout_cmp(layout_schema, self)?.reverse())
+                (_, StandardSchema::Layout { items, exhaustive }) => {
+                    Some(layout_cmp(items, *exhaustive, self)?.reverse())
                 }
 
                 _ => None,
@@ -918,7 +436,7 @@ fn in_range_float_cmp(this: &Range<f64>, other: &StandardSchema) -> Option<Order
     match other {
         StandardSchema::InRangeFloat(other_range) => this.partial_cmp(&other_range),
         StandardSchema::Finite if this.is_bounded() => Some(Ordering::Less),
-        StandardSchema::NonNan if !this.is_unbounded() => Some(Ordering::Less),
+        StandardSchema::NonNan if !this.is_doubly_unbounded() => Some(Ordering::Less),
         _ => None,
     }
 }
@@ -931,24 +449,21 @@ fn non_nan_cmp(other: &StandardSchema) -> Option<Ordering> {
 }
 
 fn text_cmp(this: &TextSchema, other: &StandardSchema) -> Option<Ordering> {
-    match (this, other) {
-        (this_schema, StandardSchema::Text(other_schema)) => this_schema.partial_cmp(other_schema),
+    match other {
+        StandardSchema::Text(other_schema) => this.partial_cmp(other_schema),
         _ => None,
     }
 }
 
 fn all_items_cmp(this: &ItemSchema, other: &StandardSchema) -> Option<Ordering> {
-    match (this, other) {
-        (this, StandardSchema::AllItems(other_schema)) => this.partial_cmp(&other_schema),
+    match other {
+        StandardSchema::AllItems(other_schema) => this.partial_cmp(&other_schema),
 
-        (
-            this,
-            StandardSchema::HeadAttribute {
-                schema: _,
-                required: true,
-                remainder,
-            },
-        ) => {
+        StandardSchema::HeadAttribute {
+            schema: _,
+            required: true,
+            remainder,
+        } => {
             let cmp = StandardSchema::AllItems(Box::new(this.clone())).partial_cmp(remainder)?;
 
             if cmp != Ordering::Less {
@@ -958,19 +473,16 @@ fn all_items_cmp(this: &ItemSchema, other: &StandardSchema) -> Option<Ordering> 
             }
         }
 
-        (
-            _,
-            StandardSchema::HasAttributes {
-                attributes,
-                exhaustive,
-            },
-        ) if attributes.is_empty() && !*exhaustive => Some(Ordering::Less),
+        StandardSchema::HasAttributes {
+            attributes,
+            exhaustive,
+        } if attributes.is_empty() && !*exhaustive => Some(Ordering::Less),
 
-        (_, StandardSchema::HasSlots { slots, exhaustive }) if slots.is_empty() && !*exhaustive => {
+        StandardSchema::HasSlots { slots, exhaustive } if slots.is_empty() && !*exhaustive => {
             Some(Ordering::Less)
         }
 
-        (this, StandardSchema::HasSlots { slots, exhaustive }) if *exhaustive => {
+        StandardSchema::HasSlots { slots, exhaustive } if *exhaustive => {
             if let ItemSchema::Field(this_schema) = this {
                 for FieldSpec { schema: s, .. } in slots {
                     if this_schema.partial_cmp(s)? == Ordering::Less {
@@ -983,11 +495,11 @@ fn all_items_cmp(this: &ItemSchema, other: &StandardSchema) -> Option<Ordering> 
             }
         }
 
-        (_, StandardSchema::Layout { items, exhaustive }) if items.is_empty() && !*exhaustive => {
+        StandardSchema::Layout { items, exhaustive } if items.is_empty() && !*exhaustive => {
             Some(Ordering::Less)
         }
 
-        (this, StandardSchema::Layout { items, exhaustive }) if *exhaustive => {
+        StandardSchema::Layout { items, exhaustive } if *exhaustive => {
             for (schema, _) in items {
                 if this.partial_cmp(schema)? == Ordering::Less {
                     return None;
@@ -1096,198 +608,224 @@ fn num_items_cmp(size: &usize, other: &StandardSchema) -> Option<Ordering> {
     }
 }
 
-fn head_attribute_cmp(head_schema: &StandardSchema, other: &StandardSchema) -> Option<Ordering> {
-    if let StandardSchema::HeadAttribute {
-        schema: this_schema,
-        required: this_required,
-        remainder: this_remainder,
-    } = head_schema
-    {
-        match other {
-            StandardSchema::HeadAttribute {
+fn head_attribute_cmp(
+    this_schema: &AttrSchema,
+    this_required: bool,
+    this_remainder: &StandardSchema,
+    other: &StandardSchema,
+) -> Option<Ordering> {
+    match other {
+        StandardSchema::HeadAttribute {
+            schema: other_schema,
+            required: other_required,
+            remainder: other_remainder,
+        } => {
+            let schema = this_schema.partial_cmp(other_schema)?;
+            let required = this_required.partial_cmp(other_required)?.reverse();
+
+            let combined = combine_orderings(schema, required)?;
+            let remainder = this_remainder.partial_cmp(other_remainder)?;
+
+            combine_orderings(combined, remainder)
+        }
+
+        StandardSchema::HasAttributes {
+            attributes,
+            exhaustive,
+        } if !*exhaustive && attributes.is_empty() => Some(Ordering::Less),
+
+        StandardSchema::HasAttributes {
+            attributes,
+            exhaustive,
+        } if *exhaustive => {
+            let mut prev_comp = Ordering::Equal;
+
+            for FieldSpec {
                 schema: other_schema,
-                required: other_required,
-                remainder: other_remainder,
-            } => {
-                let schema = this_schema.partial_cmp(other_schema)?;
-                let required = this_required.partial_cmp(other_required)?.reverse();
-                let remainder = this_remainder.partial_cmp(other_remainder)?;
-
-                combine_orderings(vec![schema, required, remainder])
+                ..
+            } in attributes
+            {
+                let current_cmp = this_schema.partial_cmp(other_schema)?;
+                prev_comp = combine_orderings(prev_comp, current_cmp)?;
             }
 
-            StandardSchema::HasAttributes {
-                attributes,
-                exhaustive,
-            } if !*exhaustive && attributes.is_empty() => Some(Ordering::Less),
+            let remainder = this_remainder.partial_cmp(&StandardSchema::HasAttributes {
+                attributes: attributes.clone(),
+                exhaustive: *exhaustive,
+            })?;
 
-            StandardSchema::HasAttributes {
-                attributes,
-                exhaustive,
-            } if *exhaustive => {
-                let mut prev_comp = Ordering::Equal;
-                let this_schema = *this_schema.clone();
-
-                for FieldSpec {
-                    schema: other_schema,
-                    ..
-                } in attributes
-                {
-                    let current_cmp = this_schema.partial_cmp(other_schema)?;
-                    prev_comp = combine_orderings(vec![prev_comp, current_cmp])?;
-                }
-
-                let this_remainder = *this_remainder.clone();
-                let remainder = this_remainder.partial_cmp(&StandardSchema::HasAttributes {
-                    attributes: attributes.clone(),
-                    exhaustive: *exhaustive,
-                })?;
-
-                combine_orderings(vec![prev_comp, remainder])
-            }
-
-            StandardSchema::HasSlots { slots, exhaustive } if !*exhaustive && slots.is_empty() => {
-                Some(Ordering::Less)
-            }
-
-            StandardSchema::Layout { items, exhaustive } if !*exhaustive && items.is_empty() => {
-                Some(Ordering::Less)
-            }
-
-            _ => None,
+            combine_orderings(prev_comp, remainder)
         }
-    } else {
-        unreachable!()
+
+        StandardSchema::HasSlots { slots, exhaustive } if !*exhaustive && slots.is_empty() => {
+            Some(Ordering::Less)
+        }
+
+        StandardSchema::Layout { items, exhaustive } if !*exhaustive && items.is_empty() => {
+            Some(Ordering::Less)
+        }
+
+        _ => None,
     }
 }
 
-fn has_attributes_cmp(attr_schema: &StandardSchema, other: &StandardSchema) -> Option<Ordering> {
-    if let StandardSchema::HasAttributes {
-        attributes,
-        exhaustive,
-    } = attr_schema
-    {
-        match other {
-            StandardSchema::HasAttributes {
-                attributes: other_attributes,
-                exhaustive: other_exhaustive,
-            } => {
-                let cmp =
-                    vec_schemas_cmp(*exhaustive, *other_exhaustive, attributes, other_attributes);
+fn has_attributes_cmp(
+    this_attributes: &[FieldSpec<AttrSchema>],
+    this_exhaustive: bool,
+    other: &StandardSchema,
+) -> Option<Ordering> {
+    match other {
+        StandardSchema::HasAttributes {
+            attributes: other_attributes,
+            exhaustive: other_exhaustive,
+        } => {
+            let cmp = vec_schemas_cmp(
+                this_exhaustive,
+                *other_exhaustive,
+                this_attributes.is_empty(),
+                other_attributes.is_empty(),
+            );
 
-                if cmp.is_none() && exhaustive == other_exhaustive {
-                    if fields_are_related(attributes, other_attributes, *exhaustive) {
-                        cmp_related(attributes.len(), other_attributes.len(), *exhaustive)
+            if cmp.is_none() && this_exhaustive == *other_exhaustive {
+                if fields_are_related(this_attributes, other_attributes, this_exhaustive) {
+                    cmp_related(
+                        this_attributes.len(),
+                        other_attributes.len(),
+                        this_exhaustive,
+                    )
+                } else {
+                    None
+                }
+            } else {
+                cmp
+            }
+        }
+
+        StandardSchema::HasSlots {
+            slots,
+            exhaustive: slots_exhaustive,
+        } => vec_schemas_cmp(
+            this_exhaustive,
+            *slots_exhaustive,
+            this_attributes.is_empty(),
+            slots.is_empty(),
+        ),
+
+        StandardSchema::Layout {
+            items,
+            exhaustive: layout_exhaustive,
+        } => vec_schemas_cmp(
+            this_exhaustive,
+            *layout_exhaustive,
+            this_attributes.is_empty(),
+            items.is_empty(),
+        ),
+
+        _ => None,
+    }
+}
+
+fn has_slots_cmp(
+    this_slots: &[FieldSpec<SlotSchema>],
+    this_exhaustive: bool,
+    other: &StandardSchema,
+) -> Option<Ordering> {
+    match other {
+        StandardSchema::HasSlots {
+            slots: other_slots,
+            exhaustive: other_exhaustive,
+        } => {
+            let cmp = vec_schemas_cmp(
+                this_exhaustive,
+                *other_exhaustive,
+                this_slots.is_empty(),
+                other_slots.is_empty(),
+            );
+
+            if cmp.is_none()
+                && this_exhaustive == *other_exhaustive
+                && fields_are_related(this_slots, other_slots, this_exhaustive)
+            {
+                cmp_related(this_slots.len(), other_slots.len(), this_exhaustive)
+            } else {
+                cmp
+            }
+        }
+
+        StandardSchema::Layout {
+            items,
+            exhaustive: other_exhaustive,
+        } => {
+            let cmp = vec_schemas_cmp(
+                this_exhaustive,
+                *other_exhaustive,
+                this_slots.is_empty(),
+                items.is_empty(),
+            );
+
+            if this_exhaustive == *other_exhaustive && this_exhaustive && cmp.is_none() {
+                let mut other_slots = Vec::new();
+
+                for (item, required) in items {
+                    if let ItemSchema::Field(slot) = item {
+                        other_slots.push(FieldSpec::new(slot.clone(), *required, false))
                     } else {
-                        None
+                        return None;
                     }
-                } else {
-                    cmp
                 }
-            }
 
-            StandardSchema::HasSlots {
-                slots,
-                exhaustive: slots_exhaustive,
-            } => vec_schemas_cmp(*exhaustive, *slots_exhaustive, attributes, slots),
-
-            StandardSchema::Layout {
-                items,
-                exhaustive: layout_exhaustive,
-            } => vec_schemas_cmp(*exhaustive, *layout_exhaustive, attributes, items),
-
-            _ => None,
-        }
-    } else {
-        unreachable!()
-    }
-}
-
-fn has_slots_cmp(slot_schema: &StandardSchema, other: &StandardSchema) -> Option<Ordering> {
-    if let StandardSchema::HasSlots { slots, exhaustive } = slot_schema {
-        match other {
-            StandardSchema::HasSlots {
-                slots: other_slots,
-                exhaustive: other_exhaustive,
-            } => {
-                let cmp = vec_schemas_cmp(*exhaustive, *other_exhaustive, slots, other_slots);
-
-                if cmp.is_none()
-                    && exhaustive == other_exhaustive
-                    && fields_are_related(slots, other_slots, *exhaustive)
-                {
-                    cmp_related(slots.len(), other_slots.len(), *exhaustive)
+                if this_slots.len() < other_slots.len() {
+                    None
                 } else {
-                    cmp
-                }
-            }
-
-            StandardSchema::Layout {
-                items,
-                exhaustive: other_exhaustive,
-            } => {
-                let cmp = vec_schemas_cmp(*exhaustive, *other_exhaustive, slots, items);
-
-                if exhaustive == other_exhaustive && *exhaustive && cmp.is_none() {
-                    let mut other_slots = Vec::new();
-
-                    for (item, required) in items {
-                        if let ItemSchema::Field(slot) = item {
-                            other_slots.push(FieldSpec::new(slot.clone(), *required, false))
-                        } else {
-                            return None;
-                        }
-                    }
-
-                    if slots.len() < other_slots.len() {
-                        None
-                    } else {
-                        let are_related = fields_are_related(slots, &other_slots, *exhaustive);
-
-                        if are_related {
-                            Some(Ordering::Greater)
-                        } else {
-                            None
-                        }
-                    }
-                } else {
-                    cmp
-                }
-            }
-
-            _ => None,
-        }
-    } else {
-        unreachable!()
-    }
-}
-
-fn layout_cmp(layout_schema: &StandardSchema, other_schema: &StandardSchema) -> Option<Ordering> {
-    if let StandardSchema::Layout { items, exhaustive } = layout_schema {
-        match other_schema {
-            StandardSchema::Layout {
-                items: other_items,
-                exhaustive: other_exhaustive,
-            } => {
-                let cmp = vec_schemas_cmp(*exhaustive, *other_exhaustive, items, other_items);
-
-                if cmp.is_none() && exhaustive == other_exhaustive {
-                    let are_related = ordered_items_are_related(items, other_items, *exhaustive);
+                    let are_related = fields_are_related(this_slots, &other_slots, this_exhaustive);
 
                     if are_related {
-                        cmp_related(items.len(), other_items.len(), *exhaustive)
+                        Some(Ordering::Greater)
                     } else {
                         None
                     }
-                } else {
-                    cmp
                 }
+            } else {
+                cmp
             }
-
-            _ => None,
         }
-    } else {
-        unreachable!()
+
+        _ => None,
+    }
+}
+
+fn layout_cmp(
+    this_items: &[(ItemSchema, bool)],
+    this_exhaustive: bool,
+    other_schema: &StandardSchema,
+) -> Option<Ordering> {
+    match other_schema {
+        StandardSchema::Layout {
+            items: other_items,
+            exhaustive: other_exhaustive,
+        } => {
+            let cmp = vec_schemas_cmp(
+                this_exhaustive,
+                *other_exhaustive,
+                this_items.is_empty(),
+                other_items.is_empty(),
+            );
+
+            if cmp.is_none() && this_exhaustive == *other_exhaustive {
+                let are_related =
+                    ordered_items_are_related(this_items, other_items, this_exhaustive);
+
+                if are_related {
+                    cmp_related(this_items.len(), other_items.len(), this_exhaustive)
+                } else {
+                    None
+                }
+            } else {
+                cmp
+            }
+        }
+
+        _ => None,
     }
 }
 
@@ -1307,17 +845,17 @@ fn cmp_related(first_len: usize, second_len: usize, exhaustive: bool) -> Option<
     }
 }
 
-fn vec_schemas_cmp<T1, T2>(
+fn vec_schemas_cmp(
     this_exhaustive: bool,
     other_exhaustive: bool,
-    this_vec: &[T1],
-    other_vec: &[T2],
+    this_is_empty: bool,
+    other_is_empty: bool,
 ) -> Option<Ordering> {
-    if !this_exhaustive && !other_exhaustive && this_vec.is_empty() && other_vec.is_empty() {
+    if !this_exhaustive && !other_exhaustive && this_is_empty && other_is_empty {
         Some(Ordering::Equal)
-    } else if !this_exhaustive && this_vec.is_empty() {
+    } else if !this_exhaustive && this_is_empty {
         Some(Ordering::Greater)
-    } else if !other_exhaustive && other_vec.is_empty() {
+    } else if !other_exhaustive && other_is_empty {
         Some(Ordering::Less)
     } else {
         None
@@ -1388,21 +926,6 @@ fn ordered_items_are_related(
     }
 
     true
-}
-
-fn int_32_range() -> Range<i64> {
-    Range::<i64>::bounded(
-        Bound::inclusive(i32::MIN as i64),
-        Bound::inclusive(i32::MAX as i64),
-    )
-}
-
-fn int_64_range() -> Range<i64> {
-    Range::<i64>::bounded(Bound::inclusive(i64::MIN), Bound::inclusive(i64::MAX))
-}
-
-fn float_64_range() -> Range<f64> {
-    Range::<f64>::bounded(Bound::inclusive(f64::MIN), Bound::inclusive(f64::MAX))
 }
 
 impl Display for StandardSchema {
@@ -1729,42 +1252,6 @@ fn float_endpoint_to_slot<N: Into<Value>>(tag: &str, value: N, inclusive: bool) 
     Item::slot(tag, end_point)
 }
 
-// Create a Value from an int range schema.
-fn int_range_to_value<N: Into<Value> + Copy + PartialOrd>(tag: &str, range: Range<N>) -> Value {
-    let mut slots = vec![];
-    let Range { min, max } = range;
-
-    if let Some(Bound {
-        value,
-        inclusive: _,
-    }) = min
-    {
-        slots.push(int_endpoint_to_slot("min", value))
-    }
-    if let Some(Bound {
-        value,
-        inclusive: _,
-    }) = max
-    {
-        slots.push(int_endpoint_to_slot("max", value))
-    }
-    Attr::with_items(tag, slots).into()
-}
-
-// Create a Value from a float range schema.
-fn float_range_to_value<N: Into<Value> + Copy + PartialOrd>(tag: &str, range: Range<N>) -> Value {
-    let mut slots = vec![];
-    let Range { min, max } = range;
-
-    if let Some(Bound { value, inclusive }) = min {
-        slots.push(float_endpoint_to_slot("min", value, inclusive))
-    }
-    if let Some(Bound { value, inclusive }) = max {
-        slots.push(float_endpoint_to_slot("max", value, inclusive))
-    }
-    Attr::with_items(tag, slots).into()
-}
-
 // Create a Value from an "and" or "or" schema.
 fn operator_sequence_to_value(tag: &str, terms: &[StandardSchema]) -> Value {
     Attr::with_items(tag, terms.iter().map(ToValue::to_value).collect()).into()
@@ -1798,54 +1285,6 @@ fn as_record(value: &Value) -> Option<(&[Attr], &[Item])> {
         Value::Record(attrs, items) => Some((attrs, items)),
         _ => None,
     }
-}
-
-fn in_int_range(value: &Value, range: &Range<i64>) -> bool {
-    match as_i64(&value) {
-        Some(n) => in_range(n, range),
-        _ => false,
-    }
-}
-
-fn in_float_range(value: &Value, range: &Range<f64>) -> bool {
-    match as_f64(&value) {
-        Some(x) => in_range(x, range),
-        _ => false,
-    }
-}
-
-fn in_range<T: Copy + PartialOrd>(value: T, range: &Range<T>) -> bool {
-    let lower = range
-        .min
-        .map(|bound| {
-            let Bound {
-                value: lb,
-                inclusive: incl,
-            } = bound;
-
-            if incl {
-                lb <= value
-            } else {
-                lb < value
-            }
-        })
-        .unwrap_or(true);
-
-    let upper = range
-        .max
-        .map(|bound| {
-            let Bound {
-                value: ub,
-                inclusive: incl,
-            } = bound;
-            if incl {
-                ub >= value
-            } else {
-                ub > value
-            }
-        })
-        .unwrap_or(true);
-    lower && upper
 }
 
 fn kind_to_str(kind: ValueKind) -> &'static str {

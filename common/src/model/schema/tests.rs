@@ -15,6 +15,7 @@
 use super::*;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use regex::Regex;
 use std::collections::HashMap;
 
 #[test]
@@ -2336,33 +2337,45 @@ fn test_vec_schemas_compare() {
     let non_empty_vec = vec![1];
 
     assert_eq!(
-        vec_schemas_cmp(false, false, &empty_vec, &empty_vec).unwrap(),
+        vec_schemas_cmp(false, false, empty_vec.is_empty(), empty_vec.is_empty()).unwrap(),
         Ordering::Equal
     );
 
     assert_eq!(
-        vec_schemas_cmp(true, false, &empty_vec, &empty_vec).unwrap(),
+        vec_schemas_cmp(true, false, empty_vec.is_empty(), empty_vec.is_empty()).unwrap(),
         Ordering::Less
     );
 
     assert_eq!(
-        vec_schemas_cmp(false, true, &empty_vec, &empty_vec).unwrap(),
+        vec_schemas_cmp(false, true, empty_vec.is_empty(), empty_vec.is_empty()).unwrap(),
         Ordering::Greater
     );
 
     assert_eq!(
-        vec_schemas_cmp(false, false, &non_empty_vec, &empty_vec).unwrap(),
+        vec_schemas_cmp(false, false, non_empty_vec.is_empty(), empty_vec.is_empty()).unwrap(),
         Ordering::Less
     );
 
     assert_eq!(
-        vec_schemas_cmp(false, false, &empty_vec, &non_empty_vec).unwrap(),
+        vec_schemas_cmp(false, false, empty_vec.is_empty(), non_empty_vec.is_empty()).unwrap(),
         Ordering::Greater
     );
 
-    assert!(vec_schemas_cmp(false, false, &non_empty_vec, &non_empty_vec).is_none());
-    assert!(vec_schemas_cmp(true, true, &empty_vec, &empty_vec).is_none());
-    assert!(vec_schemas_cmp(true, true, &non_empty_vec, &non_empty_vec).is_none());
+    assert!(vec_schemas_cmp(
+        false,
+        false,
+        non_empty_vec.is_empty(),
+        non_empty_vec.is_empty()
+    )
+    .is_none());
+    assert!(vec_schemas_cmp(true, true, empty_vec.is_empty(), empty_vec.is_empty()).is_none());
+    assert!(vec_schemas_cmp(
+        true,
+        true,
+        non_empty_vec.is_empty(),
+        non_empty_vec.is_empty()
+    )
+    .is_none());
 }
 
 #[test]
@@ -2657,15 +2670,15 @@ fn test_ordered_items_are_related() {
 #[test]
 fn combine_ordering_equal() {
     assert_eq!(
-        combine_orderings(vec![Ordering::Equal]).unwrap(),
+        combine_orderings(Ordering::Equal, Ordering::Equal).unwrap(),
         Ordering::Equal
     );
     assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Equal]).unwrap(),
-        Ordering::Equal
-    );
-    assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Equal, Ordering::Equal]).unwrap(),
+        combine_orderings(
+            Ordering::Equal,
+            combine_orderings(Ordering::Equal, Ordering::Equal).unwrap()
+        )
+        .unwrap(),
         Ordering::Equal
     );
 }
@@ -2673,30 +2686,42 @@ fn combine_ordering_equal() {
 #[test]
 fn combine_ordering_greater() {
     assert_eq!(
-        combine_orderings(vec![Ordering::Greater]).unwrap(),
+        combine_orderings(Ordering::Greater, Ordering::Greater).unwrap(),
         Ordering::Greater
     );
     assert_eq!(
-        combine_orderings(vec![Ordering::Greater, Ordering::Greater]).unwrap(),
-        Ordering::Greater
-    );
-    assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Equal, Ordering::Greater]).unwrap(),
-        Ordering::Greater
-    );
-
-    assert_eq!(
-        combine_orderings(vec![Ordering::Greater, Ordering::Equal, Ordering::Equal]).unwrap(),
+        combine_orderings(
+            Ordering::Equal,
+            combine_orderings(Ordering::Equal, Ordering::Greater).unwrap()
+        )
+        .unwrap(),
         Ordering::Greater
     );
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Greater, Ordering::Equal]).unwrap(),
+        combine_orderings(
+            Ordering::Greater,
+            combine_orderings(Ordering::Equal, Ordering::Equal).unwrap()
+        )
+        .unwrap(),
         Ordering::Greater
     );
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Greater, Ordering::Greater, Ordering::Equal]).unwrap(),
+        combine_orderings(
+            Ordering::Equal,
+            combine_orderings(Ordering::Greater, Ordering::Equal).unwrap()
+        )
+        .unwrap(),
+        Ordering::Greater
+    );
+
+    assert_eq!(
+        combine_orderings(
+            Ordering::Greater,
+            combine_orderings(Ordering::Greater, Ordering::Equal).unwrap()
+        )
+        .unwrap(),
         Ordering::Greater
     );
 }
@@ -2704,65 +2729,79 @@ fn combine_ordering_greater() {
 #[test]
 fn combine_ordering_less() {
     assert_eq!(
-        combine_orderings(vec![Ordering::Less]).unwrap(),
+        combine_orderings(Ordering::Less, Ordering::Less).unwrap(),
         Ordering::Less
     );
     assert_eq!(
-        combine_orderings(vec![Ordering::Less, Ordering::Less]).unwrap(),
-        Ordering::Less
-    );
-    assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Equal, Ordering::Less]).unwrap(),
-        Ordering::Less
-    );
-
-    assert_eq!(
-        combine_orderings(vec![Ordering::Less, Ordering::Equal, Ordering::Equal]).unwrap(),
+        combine_orderings(
+            Ordering::Equal,
+            combine_orderings(Ordering::Equal, Ordering::Less).unwrap()
+        )
+        .unwrap(),
         Ordering::Less
     );
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Less, Ordering::Equal]).unwrap(),
+        combine_orderings(
+            Ordering::Less,
+            combine_orderings(Ordering::Equal, Ordering::Equal).unwrap()
+        )
+        .unwrap(),
         Ordering::Less
     );
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Less, Ordering::Less, Ordering::Equal]).unwrap(),
+        combine_orderings(
+            Ordering::Equal,
+            combine_orderings(Ordering::Less, Ordering::Equal).unwrap()
+        )
+        .unwrap(),
+        Ordering::Less
+    );
+
+    assert_eq!(
+        combine_orderings(
+            Ordering::Less,
+            combine_orderings(Ordering::Less, Ordering::Equal).unwrap()
+        )
+        .unwrap(),
         Ordering::Less
     );
 }
 
 #[test]
 fn combine_ordering_not_related() {
-    assert_eq!(combine_orderings(vec![]), None);
+    assert_eq!(combine_orderings(Ordering::Less, Ordering::Greater), None);
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Less, Ordering::Greater]),
+        combine_orderings(
+            Ordering::Less,
+            combine_orderings(Ordering::Greater, Ordering::Greater).unwrap()
+        ),
         None
     );
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Less, Ordering::Greater, Ordering::Greater]),
+        combine_orderings(
+            combine_orderings(Ordering::Equal, Ordering::Less).unwrap(),
+            Ordering::Greater
+        ),
         None
     );
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Less, Ordering::Greater, Ordering::Less]),
+        combine_orderings(
+            combine_orderings(Ordering::Greater, Ordering::Equal).unwrap(),
+            Ordering::Less
+        ),
         None
     );
 
     assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Less, Ordering::Greater]),
-        None
-    );
-
-    assert_eq!(
-        combine_orderings(vec![Ordering::Greater, Ordering::Equal, Ordering::Less]),
-        None
-    );
-
-    assert_eq!(
-        combine_orderings(vec![Ordering::Equal, Ordering::Greater, Ordering::Less]),
+        combine_orderings(
+            combine_orderings(Ordering::Equal, Ordering::Greater).unwrap(),
+            Ordering::Less
+        ),
         None
     );
 }
