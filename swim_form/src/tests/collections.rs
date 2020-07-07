@@ -11,21 +11,3 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-use common::model::{Attr, Value};
-use form_derive::*;
-use swim_form::Form;
-
-fn main() {
-    #[form]
-    #[derive(PartialEq)]
-    enum Parent {
-        A,
-    }
-
-    let record = Value::of_attr(Attr::of(("A", Value::Extant)));
-    let parent = Parent::A;
-    let result = parent.as_value();
-
-    assert_eq!(result, record)
-}
