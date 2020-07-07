@@ -12,16 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use base64::display::Base64Display;
-use base64::write::EncoderWriter;
-use base64::{Config, DecodeError, URL_SAFE};
 use core::fmt;
-use futures::io::IoSlice;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::Write;
 use std::str::FromStr;
+
+use base64::display::Base64Display;
+use base64::write::EncoderWriter;
+use base64::{Config, DecodeError, URL_SAFE};
+use futures::io::IoSlice;
+use serde::de::{Error, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. By default, a
 /// URL-safe encoding (UTF-7) is used but an alternative configuration (provided by the base64 crate) object
@@ -143,5 +146,88 @@ impl Display for Blob {
 impl AsRef<[u8]> for Blob {
     fn as_ref(&self) -> &[u8] {
         &self.data
+    }
+}
+
+impl Serialize for Blob {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&base64::encode_config(&self.data, self.config))
+    }
+}
+
+struct WrappedBlobVisitor;
+
+impl<'de> Visitor<'de> for WrappedBlobVisitor {
+    type Value = Blob;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "A valid base64 encoded string or byte array")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Blob::from_str(v).map_err(E::custom)
+    }
+
+    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Blob::from_str(v).map_err(E::custom)
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Blob::from_str(&v).map_err(E::custom)
+    }
+
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(Blob::from_vec(v.to_owned(), URL_SAFE))
+    }
+
+    fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(Blob::from_vec(v.to_owned(), URL_SAFE))
+    }
+
+    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(Blob::from_vec(v.to_owned(), URL_SAFE))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, <A as SeqAccess<'de>>::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut vec = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+
+        while let Some(byte) = seq.next_element()? {
+            vec.push(byte);
+        }
+
+        Ok(Blob::from_vec(vec, URL_SAFE))
+    }
+}
+
+impl<'de> Deserialize<'de> for Blob {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(WrappedBlobVisitor)
     }
 }

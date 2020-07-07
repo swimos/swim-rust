@@ -151,6 +151,7 @@ dependencies = [
  "pin-project",
  "pin-utils",
  "regex",
+ "serde",
  "swim_runtime",
  "tokio",
  "tokio-util",
