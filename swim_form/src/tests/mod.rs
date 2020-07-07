@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::FormDeserializeErr;
-use crate::_common::model::{Attr, Item, Value};
 use trybuild::TestCases;
+
+use common::model::{Attr, Item, Value};
+
+use crate::Form;
+use crate::FormDeserializeErr;
 
 #[cfg(test)]
 mod traits;
-
-mod collections;
 
 #[test]
 fn test_derive() {
@@ -33,17 +34,15 @@ fn test_derive() {
 
 // Mimics the form_derive include declarations
 mod swim_form {
-    pub use crate::Form;
-    pub use _common;
     pub use _deserialize;
     pub use _serialize;
-}
 
-use crate::Form;
+    pub use crate::Form;
+}
 
 #[test]
 fn simple_vector() {
-    #[form]
+    #[form(Value)]
     struct FormStruct {
         a: Vec<i32>,
     }
@@ -55,12 +54,12 @@ fn simple_vector() {
 
 #[test]
 fn vector_with_compound() {
-    #[form]
+    #[form(Value)]
     struct FormStruct {
         a: Vec<Child>,
     }
 
-    #[form]
+    #[form(Value)]
     struct Child {
         a: i32,
     }
@@ -72,14 +71,14 @@ fn vector_with_compound() {
 
 #[test]
 fn nested_enum() {
-    #[form]
+    #[form(Value)]
     enum Parent {
         A,
         B(i32),
         C { c: Child },
     }
 
-    #[form]
+    #[form(Value)]
     enum Child {
         A,
         B(i32),
@@ -95,7 +94,7 @@ fn nested_enum() {
 
 #[test]
 fn single_enum() {
-    #[form]
+    #[form(Value)]
     enum SomeEnum {
         A,
         B(i32),
@@ -109,13 +108,13 @@ fn single_enum() {
 
 #[test]
 fn nested_derives() {
-    #[form]
+    #[form(Value)]
     struct Parent {
         a: i32,
         b: Child,
     }
 
-    #[form]
+    #[form(Value)]
     struct Child {
         c: i32,
     }
@@ -128,7 +127,7 @@ fn nested_derives() {
 
 #[test]
 fn newtype() {
-    #[form]
+    #[form(Value)]
     struct FormStruct(i32);
 
     let _ = FormStruct(1);
@@ -136,7 +135,7 @@ fn newtype() {
 
 #[test]
 fn single_derve() {
-    #[form]
+    #[form(Value)]
     struct FormStruct {
         a: i32,
     }
@@ -146,7 +145,7 @@ fn single_derve() {
 
 #[test]
 fn tuple_struct() {
-    #[form]
+    #[form(Value)]
     struct FormStruct(i32, String);
 
     let _ = FormStruct(1, String::from("hello"));
@@ -154,7 +153,7 @@ fn tuple_struct() {
 
 #[test]
 fn unit_struct() {
-    #[form]
+    #[form(Value)]
     struct FormStruct;
 
     let _ = FormStruct;
@@ -162,7 +161,7 @@ fn unit_struct() {
 
 #[test]
 fn enum_ser_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     enum Parent {
         A,
@@ -177,7 +176,7 @@ fn enum_ser_ok() {
 
 #[test]
 fn enum_ser_struct_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     enum Parent {
         A { b: i32, c: i64 },
@@ -196,7 +195,7 @@ fn enum_ser_struct_ok() {
 
 #[test]
 fn enum_ser_tuple_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     enum Parent {
         A(i32, i32),
@@ -215,7 +214,7 @@ fn enum_ser_tuple_ok() {
 
 #[test]
 fn struct_deserialize_err() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     struct Parent {
         a: i32,
@@ -238,7 +237,7 @@ fn struct_deserialize_err() {
 
 #[test]
 fn struct_deserialize_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent {
         a: i32,
@@ -252,7 +251,7 @@ fn struct_deserialize_ok() {
 
 #[test]
 fn newtype_de_err() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent(i32);
 
@@ -280,7 +279,7 @@ fn newtype_de_err() {
 
 #[test]
 fn newtype_de_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent(i32);
 
@@ -292,7 +291,7 @@ fn newtype_de_ok() {
 
 #[test]
 fn newtype_ser_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     struct Parent(i32);
 
@@ -306,7 +305,7 @@ fn newtype_ser_ok() {
 
 #[test]
 fn struct_serialize_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     struct Parent {
         a: i32,
@@ -322,7 +321,7 @@ fn struct_serialize_ok() {
 
 #[test]
 fn tuple_de_err() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent(i32, i32);
 
@@ -353,7 +352,7 @@ fn tuple_de_err() {
 
 #[test]
 fn tuple_de_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent(i32, i32);
 
@@ -368,7 +367,7 @@ fn tuple_de_ok() {
 
 #[test]
 fn unit_de_err() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent;
 
@@ -392,7 +391,7 @@ fn unit_de_err() {
 
 #[test]
 fn unit_de_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq, Debug)]
     struct Parent(i32);
 
@@ -404,7 +403,7 @@ fn unit_de_ok() {
 
 #[test]
 fn unit_ser_ok() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     struct Parent;
 
