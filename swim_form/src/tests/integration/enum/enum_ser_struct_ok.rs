@@ -17,7 +17,7 @@ use form_derive::*;
 use swim_form::Form;
 
 fn main() {
-    #[form]
+    #[form(Value)]
     #[derive(PartialEq)]
     enum Parent {
         A { b: i32, c: i64 },

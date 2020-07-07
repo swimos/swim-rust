@@ -1,0 +1,7 @@
+error: Exactly one Value name binding must be provided
+  --> $DIR/too_many_args.rs:17:1
+   |
+17 | #[form(a, b, c)]
+   | ^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in an attribute macro (in Nightly builds, run with -Z macro-backtrace for more info)
