@@ -22,8 +22,10 @@ use bytes::*;
 use either::Either;
 use tokio_util::codec::Encoder;
 
+use crate::model::blob::Blob;
 use crate::model::parser::is_identifier;
 
+pub mod blob;
 pub mod parser;
 pub mod schema;
 
@@ -76,6 +78,9 @@ pub enum Value {
     /// A compound [`Value`] consisting of any number of [`Attr`]s and [`Item`]s.
     ///
     Record(Vec<Attr>, Vec<Item>),
+
+    /// A Binary Large OBject (BLOB)
+    Blob(Blob),
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -87,6 +92,7 @@ pub enum ValueKind {
     Boolean,
     Text,
     Record,
+    Blob,
 }
 
 /// Trait for types that can be converted to [`Value`]s.

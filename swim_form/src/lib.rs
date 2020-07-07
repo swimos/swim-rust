@@ -31,7 +31,7 @@ pub use serialize::FormSerializeErr;
 mod tests;
 
 pub mod collections;
-pub mod primitives;
+pub mod impls;
 
 /// The preferred approach to deriving forms is to use the attribute [`[#form]`] as this will derive
 /// [`Form`], [`Serialize`], and [`Deserialize`], as well as performing compile-time checking on the

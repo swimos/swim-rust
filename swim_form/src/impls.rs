@@ -12,12 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
+use common::model::blob::Blob;
+use common::model::schema::StandardSchema;
+use common::model::{Value, ValueKind};
 use deserialize::FormDeserializeErr;
 
-use crate::_common::model::schema::StandardSchema;
-use crate::_common::model::ValueKind;
 use crate::{Form, ValidatedForm};
+
+impl Form for Blob {
+    fn as_value(&self) -> Value {
+        Value::Blob(self.clone())
+    }
+
+    fn into_value(self) -> Value {
+        Value::Blob(self)
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        match value {
+            Value::Blob(blob) => Ok(blob.clone()),
+            v => de_incorrect_type("Value::Blob", v),
+        }
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
+        match value {
+            Value::Blob(blob) => Ok(blob),
+            v => de_incorrect_type("Value::Blob", &v),
+        }
+    }
+}
+
+impl ValidatedForm for Blob {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Blob)
+    }
+}
 
 impl Form for f64 {
     fn as_value(&self) -> Value {
