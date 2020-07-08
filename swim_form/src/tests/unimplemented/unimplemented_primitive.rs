@@ -12,21 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::{Attr, Item, Value};
+use common::model::Value;
 use form_derive::*;
-use swim_form::Form;
+
+#[form(Value)]
+#[derive(Debug)]
+struct FormStruct {
+    a: u32,
+}
 
 fn main() {
-    #[form(Value)]
-    #[derive(PartialEq)]
-    struct Parent {
-        a: i32,
-    }
-
-    let record = Value::Record(vec![Attr::from("Parent")], vec![Item::from(("a", 1))]);
-
-    let parent = Parent { a: 1 };
-    let result = parent.as_value();
-
-    assert_eq!(result, record)
+    let _ = FormStruct { a: 1 };
 }

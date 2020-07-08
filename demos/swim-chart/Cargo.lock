@@ -110,7 +110,7 @@ dependencies = [
  "either",
  "futures 0.3.5",
  "futures-util",
- "im",
+ "im 15.0.0",
  "pin-project",
  "pin-utils",
  "rand",
@@ -344,7 +344,21 @@ dependencies = [
  "bitmaps",
  "rand_core",
  "rand_xoshiro",
- "sized-chunks",
+ "sized-chunks 0.5.3",
+ "typenum",
+ "version_check",
+]
+
+[[package]]
+name = "im"
+version = "15.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "111c1983f3c5bb72732df25cddacee9b546d08325fb584b5ebd38148be7b0246"
+dependencies = [
+ "bitmaps",
+ "rand_core",
+ "rand_xoshiro",
+ "sized-chunks 0.6.2",
  "typenum",
  "version_check",
 ]
@@ -794,6 +808,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sized-chunks"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ec31ceca5644fa6d444cc77548b88b67f46db6f7c71683b0f9336e671830d2f"
+dependencies = [
+ "bitmaps",
+ "typenum",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -893,7 +917,7 @@ dependencies = [
  "common",
  "deserialize",
  "form_derive",
- "im",
+ "im 14.3.0",
  "serde",
  "serialize",
  "utilities",

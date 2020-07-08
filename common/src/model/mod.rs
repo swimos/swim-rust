@@ -97,6 +97,20 @@ pub enum ValueKind {
     Record,
 }
 
+impl PartialOrd for ValueKind {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.eq(other) {
+            Some(Ordering::Equal)
+        } else {
+            match (self, other) {
+                (ValueKind::Int32, ValueKind::Int64) => Some(Ordering::Less),
+                (ValueKind::Int64, ValueKind::Int32) => Some(Ordering::Greater),
+                _ => None,
+            }
+        }
+    }
+}
+
 /// Trait for types that can be converted to [`Value`]s.
 pub trait ToValue {
     fn to_value(&self) -> Value;
