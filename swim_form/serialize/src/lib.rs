@@ -252,7 +252,7 @@ impl ValueSerializer {
     /// subsequent value to the correct Value variant.
     ///
     /// As a result of this, to use Serde's JSON serializer/deserializer (as well as others), the
-    /// structure must be minimiced and have the `#[serde(with = ...)]` / `#[form(..)]` attributes
+    /// structure must be mimicked and have the `#[serde(with = ...)]` / `#[form(..)]` attributes
     /// removed so that this function is not called; otherwise, there will be an extra field in the output.
     #[doc(hidden)]
     pub fn enter_ext(&mut self, ext_name: &'static str) -> bool {
