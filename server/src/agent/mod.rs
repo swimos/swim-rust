@@ -91,6 +91,8 @@ pub async fn run_agent<Clk, Agent, L>(
         task_manager.push(lane_task.events(context.clone()));
     }
 
+    drop(context);
+
     task_manager
         .never_error()
         .forward(drain())
