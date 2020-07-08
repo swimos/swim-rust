@@ -15,12 +15,14 @@
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::item::ItemSchema;
 use crate::model::schema::range::{
-    float_64_range, float_range_to_value, in_float_range, in_int_range, in_range, int_32_range,
-    int_64_range, int_range_to_value, Bound, Range,
+    big_int_range_to_value, float_64_range, float_range_to_value, in_big_int_range, in_float_range,
+    in_int_range, in_range, int_32_range, int_64_range, int_range_to_value, Bound, Range,
 };
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;
 use crate::model::{Attr, Item, ToValue, Value, ValueKind};
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -194,6 +196,11 @@ pub enum StandardSchema {
     InRangeInt(Range<i64>),
     /// Asserts that a [`Value`] is a floating point number and in a specified range.
     InRangeFloat(Range<f64>),
+    /// Asserts that a [`Value`] is a big integer and in a specified range.
+    InRangeBigInt {
+        min: Option<(BigInt, bool)>,
+        max: Option<(BigInt, bool)>,
+    },
     /// Asserts that a [`Value`] is a non-NaN floating point number.
     NonNan,
     /// Asserts that a [`Value`] is a finite floating point number.
@@ -1016,6 +1023,7 @@ impl Schema<Value> for StandardSchema {
             StandardSchema::OfKind(kind) => &value.kind() == kind,
             StandardSchema::InRangeInt(range) => in_int_range(value, range),
             StandardSchema::InRangeFloat(range) => in_float_range(value, range),
+            StandardSchema::InRangeBigInt { min, max } => in_big_int_range(value, min, max),
             StandardSchema::NonNan => as_f64(value).map(|x| !f64::is_nan(x)).unwrap_or(false),
             StandardSchema::Finite => as_f64(value).map(f64::is_finite).unwrap_or(false),
             StandardSchema::Not(p) => !p.matches(value),
@@ -1090,6 +1098,14 @@ impl StandardSchema {
             Bound::inclusive(min),
             Bound::exclusive(max),
         ))
+    }
+
+    /// Matches big integer values, inclusive below and exclusive above.
+    pub fn big_int_range(min: BigInt, max: BigInt) -> Self {
+        StandardSchema::InRangeBigInt {
+            min: Some((min, true)),
+            max: Some((max, false)),
+        }
     }
 
     /// Matches integer values less than (or less than or equal to) a value.
@@ -1178,6 +1194,9 @@ impl ToValue for StandardSchema {
             StandardSchema::Equal(v) => Value::of_attr(("equal", v.clone())),
             StandardSchema::InRangeInt(range) => int_range_to_value("in_range_int", *range),
             StandardSchema::InRangeFloat(range) => float_range_to_value("in_range_float", *range),
+            StandardSchema::InRangeBigInt { min, max } => {
+                big_int_range_to_value("in_range_big_int", min.clone(), max.clone())
+            }
             StandardSchema::NonNan => Value::of_attr("non_nan"),
             StandardSchema::Finite => Value::of_attr("finite"),
             StandardSchema::Text(text_schema) => text_schema.to_value().prepend(Attr::of("text")),
@@ -1269,6 +1288,8 @@ fn as_i64(value: &Value) -> Option<i64> {
     match value {
         Value::Int32Value(n) => Some((*n).into()),
         Value::Int64Value(n) => Some(*n),
+        Value::BigInt(bi) => bi.to_i64(),
+        Value::BigUint(bi) => bi.to_i64(),
         _ => None,
     }
 }
@@ -1296,5 +1317,7 @@ fn kind_to_str(kind: ValueKind) -> &'static str {
         ValueKind::Boolean => "boolean",
         ValueKind::Text => "text",
         ValueKind::Record => "record",
+        ValueKind::BigInt => "bigint",
+        ValueKind::BigUint => "biguint",
     }
 }
