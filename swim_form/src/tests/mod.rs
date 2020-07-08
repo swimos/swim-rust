@@ -18,6 +18,8 @@ use common::model::{Attr, Item, Value};
 
 use crate::Form;
 use crate::FormDeserializeErr;
+use common::model::blob::Blob;
+use std::str::FromStr;
 
 #[cfg(test)]
 mod traits;
@@ -37,7 +39,7 @@ mod swim_form {
     pub use _deserialize;
     pub use _serialize;
 
-    pub use crate::Form;
+    pub use crate::*;
 }
 
 #[test]
@@ -413,4 +415,20 @@ fn unit_ser_ok() {
     let result = parent.as_value();
 
     assert_eq!(result, record)
+}
+
+#[test]
+fn blob_ser_ok() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct S {
+        #[form(blob)]
+        blob: Blob,
+    }
+    let s = S {
+        blob: Blob::from_str("heloleoo").unwrap(),
+    };
+
+    let result = s.as_value();
+    println!("{:?}", result);
 }

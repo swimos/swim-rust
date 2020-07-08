@@ -24,7 +24,10 @@ use base64::write::EncoderWriter;
 use base64::{Config, DecodeError, URL_SAFE};
 use futures::io::IoSlice;
 use serde::de::{Error, SeqAccess, Visitor};
+use serde::ser::SerializeStructVariant;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+pub const EXT_BLOB: &str = "___BLOB";
 
 /// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. By default, a
 /// URL-safe encoding (UTF-7) is used but an alternative configuration (provided by the base64 crate) object
@@ -206,7 +209,7 @@ impl<'de> Visitor<'de> for WrappedBlobVisitor {
     where
         E: Error,
     {
-        Ok(Blob::from_vec(v.to_owned(), URL_SAFE))
+        Ok(Blob::from_vec(v, URL_SAFE))
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, <A as SeqAccess<'de>>::Error>
@@ -237,7 +240,12 @@ pub fn serialize_blob_as_value<S>(bi: &Blob, serializer: S) -> Result<S::Ok, S::
 where
     S: Serializer,
 {
-    unimplemented!()
+    let mut r = serializer
+        .serialize_struct_variant(EXT_BLOB, u32::max_value(), EXT_BLOB, usize::max_value())
+        .expect("infailable");
+
+    r.serialize_field(EXT_BLOB, &bi)?;
+    r.end()
 }
 
 #[allow(warnings)]

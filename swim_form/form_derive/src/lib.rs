@@ -79,6 +79,8 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     q.into()
 }
 
+// Searches for #[form(... attributes and replaces them with the correct serde serializer and
+// deserializer attributes
 fn remove_form_attributes(input: &mut syn::DeriveInput) {
     struct FieldVisitor;
     impl VisitMut for FieldVisitor {
@@ -92,7 +94,7 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
                         meta.nested.into_iter()
                         .for_each(|meta: syn::NestedMeta| match meta {
                             NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BLOB_PATH) => {
-                                let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::deserialize_value_to_blob", deserialize_with = "swim_form::serialize_blob_as_value")]);
+                                let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::serialize_blob_as_value", deserialize_with = "swim_form::deserialize_value_to_blob")]);
                                 *attr = replacement_attribute;
                             }
                             _nm => {}
@@ -112,7 +114,7 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
         syn::Data::Struct(ref mut data) => {
             FieldVisitor.visit_fields_mut(&mut data.fields);
         }
-        syn::Data::Union(_) => {}
+        syn::Data::Union(_) => panic!("Unions are not supported"),
     }
 }
 
