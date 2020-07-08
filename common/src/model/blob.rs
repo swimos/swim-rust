@@ -232,6 +232,7 @@ impl<'de> Deserialize<'de> for Blob {
     }
 }
 
+#[allow(warnings)]
 pub fn serialize_blob_as_value<S>(bi: &Blob, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -239,6 +240,7 @@ where
     unimplemented!()
 }
 
+#[allow(warnings)]
 pub fn deserialize_value_to_blob<'de, D>(deserializer: D) -> Result<Blob, D::Error>
 where
     D: Deserializer<'de>,
