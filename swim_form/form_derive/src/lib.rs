@@ -94,7 +94,7 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
                         meta.nested.into_iter()
                         .for_each(|meta: syn::NestedMeta| match meta {
                             NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BLOB_PATH) => {
-                                let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::serialize_blob_as_value", deserialize_with = "swim_form::deserialize_value_to_blob")]);
+                                let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::serialize_blob_as_value")]);
                                 *attr = replacement_attribute;
                             }
                             _nm => {}

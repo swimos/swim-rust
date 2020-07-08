@@ -426,9 +426,38 @@ fn blob_ser_ok() {
         blob: Blob,
     }
     let s = S {
-        blob: Blob::from_str("heloleoo").unwrap(),
+        blob: Blob::from_str("swimming").unwrap(),
     };
 
     let result = s.as_value();
-    println!("{:?}", result);
+    let expected = Value::Record(
+        vec![Attr::of(("S", Value::Extant))],
+        vec![Item::slot(
+            "blob",
+            Value::Blob(Blob::from_str("swimming").unwrap()),
+        )],
+    );
+    assert_eq!(result, expected)
+}
+
+#[test]
+fn blob_de_ok() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct S {
+        #[form(blob)]
+        blob: Blob,
+    }
+
+    let value = Value::Record(
+        vec![Attr::of(("S", Value::Extant))],
+        vec![Item::slot("blob", Value::Blob(Blob::encode("swimming")))],
+    );
+
+    let result = S::try_from_value(&value).unwrap();
+    let expected = S {
+        blob: Blob::encode("swimming"),
+    };
+
+    assert_eq!(result, expected)
 }

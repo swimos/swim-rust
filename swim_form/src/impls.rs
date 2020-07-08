@@ -45,7 +45,6 @@ impl Form for Blob {
 
 impl ValidatedForm for Blob {
     fn schema() -> StandardSchema {
-        // StandardSchema::And(vec![ValueKind::Blob, StandardSchema::ByteLengthEq()])
         StandardSchema::OfKind(ValueKind::Blob)
     }
 }

@@ -13,10 +13,12 @@
 // limitations under the License.
 
 use super::*;
+use crate::model::blob::Blob;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 #[test]
 fn non_empty_string() {
@@ -41,7 +43,7 @@ fn regex_match() {
     assert!(!schema.matches_str("abca"));
 }
 
-const KINDS: [ValueKind; 7] = [
+const KINDS: [ValueKind; 8] = [
     ValueKind::Extant,
     ValueKind::Int32,
     ValueKind::Int64,
@@ -49,6 +51,7 @@ const KINDS: [ValueKind; 7] = [
     ValueKind::Boolean,
     ValueKind::Text,
     ValueKind::Record,
+    ValueKind::Blob,
 ];
 
 fn arbitrary() -> HashMap<ValueKind, Value> {
@@ -60,6 +63,10 @@ fn arbitrary() -> HashMap<ValueKind, Value> {
     map.insert(ValueKind::Boolean, Value::BooleanValue(true));
     map.insert(ValueKind::Text, Value::text("Hello"));
     map.insert(ValueKind::Record, Value::empty_record());
+    map.insert(
+        ValueKind::Blob,
+        Value::Blob(Blob::from_str("swimming").unwrap()),
+    );
     map
 }
 
@@ -6709,4 +6716,13 @@ fn compare_layout_layout_non_exhaustive() {
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
     assert_not_related(schema.clone(), not_related_schemas);
+}
+
+#[test]
+fn schema() {
+    let encoded = base64::encode_config("swimming", base64::URL_SAFE);
+    let schema = StandardSchema::blob(encoded.len());
+    let blob = Blob::from_str(&encoded).unwrap();
+
+    assert!(schema.matches(&Value::Blob(blob)));
 }

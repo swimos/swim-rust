@@ -21,7 +21,6 @@ use serde::ser;
 
 use common::model::blob::Blob;
 use common::model::{Attr, Item, Value, ValueKind};
-use std::str::FromStr;
 
 pub type SerializerResult<T> = ::std::result::Result<T, FormSerializeErr>;
 const EXT_BLOB: &str = common::model::blob::EXT_BLOB;
@@ -68,7 +67,7 @@ pub enum SerializerState {
     // Reading key
     ReadingMap(bool),
     None,
-    // Reading a special variant.
+    // Reading a special variant. Such as a blob or big integer.
     ReadingExt(ValueKind),
 }
 
@@ -131,8 +130,7 @@ impl ValueSerializer {
                 // correct position so the field's name matches the value.
                 let r = match (vk, value) {
                     (ValueKind::Blob, Value::Text(s)) => {
-                        let b = Blob::from_str(&s)
-                            .map_err(|e| FormSerializeErr::Message(e.to_string()))?;
+                        let b = Blob::from_encoded(Vec::from(s.as_bytes()));
                         Value::Blob(b)
                     }
                     _ => unreachable!(),
@@ -176,7 +174,7 @@ impl ValueSerializer {
                 Value::Extant => {
                     self.current_state.output = value;
                 }
-                v => unimplemented!("{:?}", v),
+                v => unreachable!("{:?}", v),
             },
         }
         Ok(())

@@ -19,23 +19,20 @@ use std::io;
 use std::io::Write;
 use std::str::FromStr;
 
-use base64::display::Base64Display;
 use base64::write::EncoderWriter;
-use base64::{Config, DecodeError, URL_SAFE};
+use base64::{DecodeError, URL_SAFE};
 use futures::io::IoSlice;
-use serde::de::{Error, SeqAccess, Visitor};
-use serde::ser::SerializeStructVariant;
+use serde::de::{Error as DeError, SeqAccess, Visitor};
+use serde::ser::{Error as SerError, SerializeStructVariant};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const EXT_BLOB: &str = "___BLOB";
 
-/// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. By default, a
-/// URL-safe encoding (UTF-7) is used but an alternative configuration (provided by the base64 crate) object
-/// can be provided for an alternative encoding and decoding strategy.
+/// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. A URL-safe
+/// encoding (UTF-7) is used.
 #[derive(Debug, Clone)]
 pub struct Blob {
     data: Vec<u8>,
-    config: Config,
 }
 
 impl PartialEq for Blob {
@@ -46,35 +43,21 @@ impl PartialEq for Blob {
 
 impl Default for Blob {
     fn default() -> Blob {
-        Blob {
-            data: Vec::new(),
-            config: URL_SAFE,
-        }
+        Blob { data: Vec::new() }
     }
 }
 
 impl Blob {
-    /// Construct a new blob object using the provided configuration object for encoding and decoding.
-    pub fn new(config: Config) -> Blob {
-        Blob {
-            data: Vec::new(),
-            config,
-        }
-    }
-
-    /// Construct a new blob object of the provided capacity using the provided configuration
-    /// object for encoding and decoding.
-    pub fn with_capacity(cap: usize, config: Config) -> Blob {
+    /// Construct a new blob object of the provided capacity.
+    pub fn with_capacity(cap: usize) -> Blob {
         Blob {
             data: Vec::with_capacity(cap),
-            config,
         }
     }
 
-    /// Construct a new blob object of the provided capacity using the provided configuration
-    /// object for encoding and decoding.
-    pub fn from_vec(data: Vec<u8>, config: Config) -> Blob {
-        Blob { data, config }
+    /// Construct a new blob object of the provided capacity.
+    pub fn from_vec(data: Vec<u8>) -> Blob {
+        Blob { data }
     }
 
     /// Consumes this blob object and returns the underlying data.
@@ -93,26 +76,48 @@ impl Blob {
     }
 
     /// Attempts to encode this blob's data into the provided writer.
-    pub fn try_encode<W: Write>(&self, mut writer: W) -> io::Result<()> {
-        EncoderWriter::new(&mut writer, self.config).write_all(&self.data)
+    pub fn encode_to_writer<W: Write>(&self, mut writer: W) -> io::Result<()> {
+        EncoderWriter::new(&mut writer, URL_SAFE).write_all(&self.data)
     }
 
-    /// Attempts to decode the provided data using the configuration provided. Returning a result
-    /// containing either the decoded data as a [`Blob`] or a [`base64::DecodeError`].
-    pub fn try_decode<T>(encoded: T, config: Config) -> Result<Blob, DecodeError>
+    /// Consumes this BLOB and returns the decoded data.
+    pub fn into_decoded(self) -> Result<Vec<u8>, DecodeError> {
+        base64::decode_config(self.data, URL_SAFE)
+    }
+
+    /// Clone the underlying data and decode it.
+    pub fn as_decoded(&self) -> Result<Vec<u8>, DecodeError> {
+        base64::decode_config(self.data.clone(), URL_SAFE)
+    }
+
+    /// Attempts to decode the provided data. Returning a result containing either the decoded data
+    /// as a [`Blob`] or a [`base64::DecodeError`].
+    pub fn try_decode<T>(encoded: T) -> Result<Blob, DecodeError>
     where
         T: AsRef<[u8]>,
     {
-        base64::decode_config(encoded.as_ref(), config).map(|b| Blob::from_vec(b, config))
+        base64::decode_config(encoded.as_ref(), URL_SAFE).map(Blob::from_vec)
+    }
+
+    /// Encodes the provided data into a [`Blob`].
+    pub fn encode<T: AsRef<[u8]>>(input: T) -> Blob {
+        let encoded = base64::encode_config(input, URL_SAFE);
+        Blob {
+            data: Vec::from(encoded.as_bytes()),
+        }
+    }
+
+    /// Creates a BLOB from pre-encoded data. Effectively providing a wrapper around base64 encoded data.
+    pub fn from_encoded(data: Vec<u8>) -> Blob {
+        Blob { data }
     }
 }
 
 impl FromStr for Blob {
     type Err = DecodeError;
 
-    /// Attempts to decode the provided str using URL-safe characters.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Blob::try_decode(s, URL_SAFE)
+        Ok(Blob::from_encoded(Vec::from(s.as_bytes())))
     }
 }
 
@@ -142,7 +147,8 @@ impl Hash for Blob {
 
 impl Display for Blob {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Base64Display::with_config(&self.data, self.config).fmt(f)
+        let s = String::from_utf8(self.data.clone()).map_err(|_| fmt::Error)?;
+        write!(f, "{}", s)
     }
 }
 
@@ -157,7 +163,8 @@ impl Serialize for Blob {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&base64::encode_config(&self.data, self.config))
+        let s = String::from_utf8(self.data.clone()).map_err(SerError::custom)?;
+        serializer.serialize_str(&s)
     }
 }
 
@@ -172,44 +179,44 @@ impl<'de> Visitor<'de> for WrappedBlobVisitor {
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: DeError,
     {
-        Blob::from_str(v).map_err(E::custom)
+        Ok(Blob::from_encoded(Vec::from(v.as_bytes())))
     }
 
     fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: DeError,
     {
-        Blob::from_str(v).map_err(E::custom)
+        Ok(Blob::from_encoded(Vec::from(v.as_bytes())))
     }
 
     fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: DeError,
     {
-        Blob::from_str(&v).map_err(E::custom)
+        Ok(Blob::from_encoded(Vec::from(v.as_bytes())))
     }
 
     fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: DeError,
     {
-        Ok(Blob::from_vec(v.to_owned(), URL_SAFE))
+        Ok(Blob::from_vec(v.to_owned()))
     }
 
     fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: DeError,
     {
-        Ok(Blob::from_vec(v.to_owned(), URL_SAFE))
+        Ok(Blob::from_vec(v.to_owned()))
     }
 
     fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: DeError,
     {
-        Ok(Blob::from_vec(v, URL_SAFE))
+        Ok(Blob::from_vec(v))
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, <A as SeqAccess<'de>>::Error>
@@ -222,7 +229,7 @@ impl<'de> Visitor<'de> for WrappedBlobVisitor {
             vec.push(byte);
         }
 
-        Ok(Blob::from_vec(vec, URL_SAFE))
+        Ok(Blob::from_vec(vec))
     }
 }
 
@@ -235,7 +242,6 @@ impl<'de> Deserialize<'de> for Blob {
     }
 }
 
-#[allow(warnings)]
 pub fn serialize_blob_as_value<S>(bi: &Blob, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -248,10 +254,23 @@ where
     r.end()
 }
 
-#[allow(warnings)]
-pub fn deserialize_value_to_blob<'de, D>(deserializer: D) -> Result<Blob, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    unimplemented!()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_str() {
+        let encoded = base64::encode_config("swimming", URL_SAFE);
+        let blob = Blob::from_str(&encoded).unwrap();
+        assert_eq!(blob.to_string(), "c3dpbW1pbmc=".to_string());
+    }
+
+    #[test]
+    fn from_encoded() {
+        let encoded = base64::encode_config("swimming", URL_SAFE);
+        let decoded = base64::decode_config(encoded.as_bytes(), URL_SAFE).unwrap();
+        let blob = Blob::from_encoded(Vec::from(encoded.as_bytes()));
+
+        assert_eq!(decoded, blob.into_decoded().unwrap())
+    }
 }
