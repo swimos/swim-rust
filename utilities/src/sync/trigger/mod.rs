@@ -14,9 +14,11 @@
 
 use futures_util::task::Context;
 use parking_lot::Mutex;
+use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
+use std::ops::DerefMut;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::Waker;
@@ -28,7 +30,7 @@ mod tests;
 #[derive(Debug)]
 struct TriggerInner {
     flag: AtomicU8,
-    waiters: Mutex<Vec<Waker>>,
+    waiters: Mutex<Slab<Waker>>,
 }
 
 #[derive(Debug)]
@@ -41,6 +43,7 @@ impl Error for TriggerError {}
 #[derive(Clone, Debug)]
 pub struct Receiver {
     inner: Arc<TriggerInner>,
+    slot: Option<usize>,
 }
 
 /// Create a simple one to many asynchronous trigger. Every copy of the receiver will complete
@@ -48,13 +51,13 @@ pub struct Receiver {
 pub fn trigger() -> (Sender, Receiver) {
     let inner = Arc::new(TriggerInner {
         flag: AtomicU8::new(0),
-        waiters: Mutex::new(vec![]),
+        waiters: Mutex::new(Slab::new()),
     });
     (
         Sender {
             inner: Some(Arc::downgrade(&inner)),
         },
-        Receiver { inner },
+        Receiver { inner, slot: None },
     )
 }
 
@@ -73,7 +76,7 @@ impl Sender {
 fn trigger_with(inner: &Arc<TriggerInner>, flag: u8) {
     inner.flag.store(flag, Ordering::Release);
     let mut lock = inner.waiters.lock();
-    for waker in std::mem::take::<Vec<Waker>>(lock.as_mut()).into_iter() {
+    for waker in std::mem::take::<Slab<Waker>>(lock.deref_mut()).drain() {
         waker.wake();
     }
 }
@@ -101,13 +104,20 @@ impl Future for Receiver {
     type Output = Result<(), TriggerError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let flag = self.inner.flag.load(Ordering::Acquire);
+        let Receiver { inner, slot } = self.get_mut();
+        let flag = inner.flag.load(Ordering::Acquire);
         match flag {
             0 => {
-                let mut lock = self.inner.waiters.lock();
-                match self.inner.flag.load(Ordering::Acquire) {
+                let mut lock = inner.waiters.lock();
+                match inner.flag.load(Ordering::Acquire) {
                     0 => {
-                        lock.push(cx.waker().clone());
+                        if let Some(waker) = slot.and_then(|i| lock.get_mut(i)) {
+                            if !waker.will_wake(cx.waker()) {
+                                *waker = cx.waker().clone();
+                            }
+                        } else {
+                            *slot = Some(lock.insert(cx.waker().clone()));
+                        }
                         Poll::Pending
                     }
                     1 => Poll::Ready(Ok(())),
