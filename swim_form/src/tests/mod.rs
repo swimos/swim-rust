@@ -20,7 +20,6 @@ use crate::Form;
 use crate::FormDeserializeErr;
 use base64::URL_SAFE;
 use common::model::blob::Blob;
-use std::str::FromStr;
 
 #[cfg(test)]
 mod traits;
@@ -427,16 +426,13 @@ fn blob_ser_ok() {
         blob: Blob,
     }
     let s = S {
-        blob: Blob::from_str("swimming").unwrap(),
+        blob: Blob::encode("swimming"),
     };
 
     let result = s.as_value();
     let expected = Value::Record(
         vec![Attr::of(("S", Value::Extant))],
-        vec![Item::slot(
-            "blob",
-            Value::Blob(Blob::from_str("swimming").unwrap()),
-        )],
+        vec![Item::slot("blob", Value::Blob(Blob::encode("swimming")))],
     );
     assert_eq!(result, expected)
 }

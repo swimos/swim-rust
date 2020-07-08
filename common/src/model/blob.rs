@@ -17,7 +17,6 @@ use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::io::Write;
-use std::str::FromStr;
 
 use base64::write::EncoderWriter;
 use base64::{DecodeError, URL_SAFE};
@@ -110,14 +109,6 @@ impl Blob {
     /// Creates a BLOB from pre-encoded data. Effectively providing a wrapper around base64 encoded data.
     pub fn from_encoded(data: Vec<u8>) -> Blob {
         Blob { data }
-    }
-}
-
-impl FromStr for Blob {
-    type Err = DecodeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Blob::from_encoded(Vec::from(s.as_bytes())))
     }
 }
 
@@ -260,8 +251,7 @@ mod tests {
 
     #[test]
     fn test_str() {
-        let encoded = base64::encode_config("swimming", URL_SAFE);
-        let blob = Blob::from_str(&encoded).unwrap();
+        let blob = Blob::encode("swimming");
         assert_eq!(blob.to_string(), "c3dpbW1pbmc=".to_string());
     }
 

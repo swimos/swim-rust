@@ -18,7 +18,6 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
-use std::str::FromStr;
 
 #[test]
 fn non_empty_string() {
@@ -63,10 +62,7 @@ fn arbitrary() -> HashMap<ValueKind, Value> {
     map.insert(ValueKind::Boolean, Value::BooleanValue(true));
     map.insert(ValueKind::Text, Value::text("Hello"));
     map.insert(ValueKind::Record, Value::empty_record());
-    map.insert(
-        ValueKind::Blob,
-        Value::Blob(Blob::from_str("swimming").unwrap()),
-    );
+    map.insert(ValueKind::Blob, Value::Blob(Blob::encode("swimming")));
     map
 }
 
@@ -6722,7 +6718,7 @@ fn compare_layout_layout_non_exhaustive() {
 fn schema() {
     let encoded = base64::encode_config("swimming", base64::URL_SAFE);
     let schema = StandardSchema::blob(encoded.len());
-    let blob = Blob::from_str(&encoded).unwrap();
+    let blob = Blob::from_encoded(Vec::from(encoded.as_bytes()));
 
     assert!(schema.matches(&Value::Blob(blob)));
 }
