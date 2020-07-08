@@ -25,7 +25,7 @@ use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
 use syn::visit_mut::VisitMut;
-use syn::{AttributeArgs, DeriveInput, Fields, Meta, NestedMeta};
+use syn::{Attribute, AttributeArgs, DeriveInput, Fields, Meta, NestedMeta};
 
 use crate::parser::{Context, Parser};
 
@@ -33,6 +33,7 @@ use crate::parser::{Context, Parser};
 mod parser;
 
 const ATTRIBUTE_PATH: &str = "form";
+const BLOB_PATH: &str = "blob";
 
 #[proc_macro_attribute]
 pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -88,11 +89,14 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
                 .filter(|attr| attr.path.is_ident(ATTRIBUTE_PATH))
                 .for_each(|attr| match attr.parse_meta() {
                     Ok(Meta::List(meta)) => {
-                        meta.nested.into_iter();
-                        // todo add attributes for bigint/biguint/blob
-                        // .for_each(|meta: syn::NestedMeta| match meta {
-                        //     _nm => {}
-                        // })
+                        meta.nested.into_iter()
+                        .for_each(|meta: syn::NestedMeta| match meta {
+                            NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BLOB_PATH) => {
+                                let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::deserialize_value_to_blob", deserialize_with = "swim_form::serialize_blob_as_value")]);
+                                *attr = replacement_attribute;
+                            }
+                            _nm => {}
+                        })
                     }
                     _ => panic!("Failed to parse attribute meta"),
                 });

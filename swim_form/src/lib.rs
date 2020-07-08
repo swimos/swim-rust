@@ -20,6 +20,8 @@ pub extern crate form_derive;
 pub extern crate deserialize as _deserialize;
 pub extern crate serialize as _serialize;
 
+use common::model::blob::{self, deserialize_value_to_blob, serialize_blob_as_value};
+
 use common::model::schema::StandardSchema;
 use common::model::Value;
 

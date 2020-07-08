@@ -231,3 +231,17 @@ impl<'de> Deserialize<'de> for Blob {
         deserializer.deserialize_any(WrappedBlobVisitor)
     }
 }
+
+pub fn serialize_blob_as_value<S>(bi: &Blob, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    unimplemented!()
+}
+
+pub fn deserialize_value_to_blob<'de, D>(deserializer: D) -> Result<Blob, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    unimplemented!()
+}
