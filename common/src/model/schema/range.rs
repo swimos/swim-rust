@@ -1,5 +1,5 @@
 use crate::model::schema::{
-    as_f64, as_i64, combine_orderings, float_endpoint_to_slot, int_endpoint_to_slot,
+    as_f64, as_i64, as_u64, combine_orderings, float_endpoint_to_slot, int_endpoint_to_slot,
 };
 use crate::model::{Attr, Value};
 use std::cmp::Ordering;
@@ -175,6 +175,13 @@ fn cmp_bounded_and_half_bounded_range<T: Copy + PartialOrd>(
 
 pub fn in_int_range(value: &Value, range: &Range<i64>) -> bool {
     match as_i64(&value) {
+        Some(n) => in_range(n, range),
+        _ => false,
+    }
+}
+
+pub fn in_uint_range(value: &Value, range: &Range<u64>) -> bool {
+    match as_u64(&value) {
         Some(n) => in_range(n, range),
         _ => false,
     }
