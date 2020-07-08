@@ -13,12 +13,15 @@
 // limitations under the License.
 
 use super::{SwimFutureExt, SwimStreamExt, SwimTryFutureExt, TransformMut};
+use crate::sync::trigger;
 use futures::executor::block_on;
 use futures::future::{ready, Ready};
 use futures::stream::iter;
 use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Barrier};
 
 #[test]
 fn future_into() {
@@ -87,4 +90,33 @@ fn until_failure() {
     let inputs = iter(vec![0, 1, 2, -3, 4].into_iter());
     let outputs: Vec<i32> = block_on(inputs.until_failure(PlusIfNonNeg(3)).collect::<Vec<i32>>());
     assert_eq!(outputs, vec![3, 4, 5]);
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn take_until() {
+    let (mut tx, rx) = mpsc::channel(5);
+
+    let (stop, stop_sig) = trigger::trigger();
+
+    let barrier1 = Arc::new(Barrier::new(2));
+    let barrier2 = barrier1.clone();
+
+    let stream_task = swim_runtime::task::spawn(async move {
+        let mut stream = rx.take_until_completes(stop_sig);
+        assert_eq!(stream.next().await, Some(1));
+        assert_eq!(stream.next().await, Some(2));
+        assert_eq!(stream.next().await, Some(3));
+        barrier1.wait().await;
+        assert!(stream.next().await.is_none());
+    });
+
+    assert!(tx.send(1).await.is_ok());
+    assert!(tx.send(2).await.is_ok());
+    assert!(tx.send(3).await.is_ok());
+    barrier2.wait().await;
+    stop.trigger();
+    assert!(tx.send(4).await.is_ok());
+    assert!(tx.send(5).await.is_ok());
+
+    assert!(stream_task.await.is_ok());
 }
