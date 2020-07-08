@@ -21,7 +21,9 @@ use futures::Stream;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
-use common::model::schema::{AttrSchema, FieldSpec, Schema, SlotSchema, StandardSchema};
+use common::model::schema::attr::AttrSchema;
+use common::model::schema::slot::SlotSchema;
+use common::model::schema::{FieldSpec, Schema, StandardSchema};
 use common::model::{Attr, Item, Value, ValueKind};
 use common::sink::item::ItemSender;
 use swim_form::FormDeserializeErr;
