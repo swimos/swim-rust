@@ -31,6 +31,7 @@ impl Form for Blob {
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Blob(blob) => Ok(blob.clone()),
+            Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
             v => de_incorrect_type("Value::Blob", v),
         }
     }
@@ -38,6 +39,7 @@ impl Form for Blob {
     fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
         match value {
             Value::Blob(blob) => Ok(blob),
+            Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
             v => de_incorrect_type("Value::Blob", &v),
         }
     }

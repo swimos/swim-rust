@@ -18,6 +18,7 @@ use common::model::{Attr, Item, Value};
 
 use crate::Form;
 use crate::FormDeserializeErr;
+use base64::URL_SAFE;
 use common::model::blob::Blob;
 use std::str::FromStr;
 
@@ -452,6 +453,29 @@ fn blob_de_ok() {
     let value = Value::Record(
         vec![Attr::of(("S", Value::Extant))],
         vec![Item::slot("blob", Value::Blob(Blob::encode("swimming")))],
+    );
+
+    let result = S::try_from_value(&value).unwrap();
+    let expected = S {
+        blob: Blob::encode("swimming"),
+    };
+
+    assert_eq!(result, expected)
+}
+
+#[test]
+fn text_to_blob() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct S {
+        #[form(blob)]
+        blob: Blob,
+    }
+
+    let encoded = base64::encode_config("swimming", URL_SAFE);
+    let value = Value::Record(
+        vec![Attr::of(("S", Value::Extant))],
+        vec![Item::slot("blob", Value::Text(encoded))],
     );
 
     let result = S::try_from_value(&value).unwrap();
