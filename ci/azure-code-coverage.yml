@@ -28,7 +28,7 @@ jobs:
         displayName: Install Tarpaulin
         workingDirectory: $(Build.SourcesDirectory)
 
-      - script: cargo tarpaulin --ignore-tests -o Xml -t 300 --exclude-files demos
+      - script: cargo tarpaulin --ignore-tests -o Xml -t 300 --exclude-files demos --workspace --exclude swim_wasm form_derive
         displayName: Generate code coverage
         workingDirectory: $(Build.SourcesDirectory)
 
