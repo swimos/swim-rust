@@ -20,6 +20,7 @@ pub mod topic;
 use crate::downlink::any::{AnyDownlink, AnyEventReceiver, TopicKind};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::subscription::TypedValueReceiver;
 use crate::downlink::typed::action::{MapActions, ValueActions};
 use crate::downlink::typed::any::map::AnyMapDownlink;
 use crate::downlink::typed::any::value::AnyValueDownlink;
@@ -31,8 +32,11 @@ use crate::downlink::{Downlink, Event, StoppedFuture};
 use common::model::Value;
 use common::sink::item::ItemSink;
 use common::topic::Topic;
+use std::cmp::Ordering;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
-use swim_form::Form;
+use swim_form::{Form, ValidatedForm};
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
@@ -53,7 +57,7 @@ impl<Inner: Clone, T> Clone for ValueDownlink<Inner, T> {
 
 impl<T> ValueDownlink<AnyDownlink<Action, SharedValue>, T>
 where
-    T: Form + Send + 'static,
+    T: ValidatedForm + Send + 'static,
 {
     /// Unwrap an [`AnyDownlink`] and then reapply the type transformation to it.
     pub fn into_specific(self) -> AnyValueDownlink<T> {
@@ -81,7 +85,42 @@ where
     pub fn await_stopped(&self) -> StoppedFuture {
         self.inner.await_stopped()
     }
+
+    pub async fn read_only_view<ViewType: ValidatedForm>(
+        &mut self,
+    ) -> Result<TypedValueReceiver<ViewType>, ViewError> {
+        if ViewType::schema().partial_cmp(&T::schema()) != Some(Ordering::Less) {
+            if self.is_running() {
+                let rec = self
+                    .subscribe()
+                    .await
+                    .map_err(|_| ViewError::SubscribeError)?;
+                Ok(rec.replace_trans(ApplyForm::new()))
+            } else {
+                Err(ViewError::SubscribeError)
+            }
+        } else {
+            Err(ViewError::FormError)
+        }
+    }
 }
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum ViewError {
+    SubscribeError,
+    FormError,
+}
+
+impl Display for ViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewError::SubscribeError => write!(f, "Subscribe error"),
+            ViewError::FormError => write!(f, "Form error"),
+        }
+    }
+}
+
+impl Error for ViewError {}
 
 impl<Inner, T> ValueDownlink<Inner, T>
 where

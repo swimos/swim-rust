@@ -37,7 +37,10 @@ use crate::router::{RoutingError, SwimRouter};
 use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
 
-/// Respresents errors that can occur in the client.
+#[cfg(test)]
+mod test;
+
+/// Represents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
     /// An error that occurred when subscribing to a downlink.
