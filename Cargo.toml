@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "client",
-    "swim_form_old",
     "swim_form",
+    "swim_form_new",
     "swim_wasm",
     "swim_runtime",
     "common",

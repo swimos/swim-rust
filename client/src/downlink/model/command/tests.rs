@@ -2,7 +2,7 @@ use crate::downlink::model::command::CommandStateMachine;
 use crate::downlink::model::map::MapModification;
 use crate::downlink::{Command, DownlinkState, Operation, Response, StateMachine};
 use common::model::{Attr, Item, Value};
-use swim_form_old::{Form, ValidatedForm};
+use swim_form::{Form, ValidatedForm};
 
 #[test]
 fn test_handle_value_action_valid() {

@@ -1,8 +1,0 @@
-error[E0277]: the trait bound `u32: swim_form_old::Form` is not satisfied
-  --> $DIR/unimplemented_vector.rs:22:1
-   |
-22 | #[form]
-   | ^^^^^^^ the trait `swim_form_old::Form` is not implemented for `u32`
-   |
-   = help: see issue #48214
-   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)

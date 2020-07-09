@@ -128,7 +128,7 @@ dependencies = [
  "pin-project",
  "pin-utils",
  "rand",
- "swim_form_old",
+ "swim_form",
  "swim_runtime",
  "tokio",
  "tokio-tls",
@@ -1060,7 +1060,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "swim_form_old"
+name = "swim_form"
 version = "0.1.0"
 dependencies = [
  "common",

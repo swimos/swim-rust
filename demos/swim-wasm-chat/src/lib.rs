@@ -19,12 +19,12 @@ use swim_client::common::warp::path::AbsolutePath;
 use swim_client::downlink::model::map::{MapEvent, ViewWithEvent};
 use swim_client::downlink::Event;
 use swim_client::interface::SwimClient;
-use swim_form_old::*;
+use swim_form::*;
 use swim_wasm::connection::WasmWsFactory;
 
 use either::Either;
 use futures::{select, StreamExt};
-use swim_form_old::_common::warp::envelope::Envelope;
+use swim_form::_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{future_to_promise, spawn_local};

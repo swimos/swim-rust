@@ -14,7 +14,7 @@
 
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
-use swim_form_old::Form;
+use swim_form::Form;
 
 use super::*;
 use crate::downlink::Message;

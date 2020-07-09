@@ -12,68 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
-
-pub extern crate common as _common;
-pub extern crate deserialize as _deserialize;
-#[macro_use]
-#[allow(unused_imports)]
-pub extern crate form_derive;
-pub extern crate serialize as _serialize;
-
-use _common::model::schema::StandardSchema;
+use crate::deserialize::FormDeserializeErr;
+use common::model::schema::StandardSchema;
 use common::model::Value;
-pub use deserialize::FormDeserializeErr;
-pub use form_derive::*;
-pub use serialize::FormSerializeErr;
 
-#[cfg(test)]
-mod tests;
+mod deserialize;
+#[allow(warnings)]
+mod form_impls;
+#[allow(warnings)]
+mod serialize;
 
-pub mod collections;
-pub mod primitives;
+#[allow(warnings)]
+pub use serialize::SerializeToValue;
 
-/// The preferred approach to deriving forms is to use the attribute [`[#form]`] as this will derive
-/// [`Form`], [`Serialize`], and [`Deserialize`], as well as performing compile-time checking on the
-/// types used. If both serialization anddeserialization is not required then
-/// [`#[derive(Form, Serialize)]`] or [`#[derive(Form, Deserialize)]`] can be used. Or checking can
-/// be avoided by [`#[derive(Form, Serialize, Deserialize)]`]
-///
-/// SWIM forms are backed by Serde and so all of Serde's attributes work for serialisation and
-/// deserialisation.
-///
-/// # Examples
-///
-/// ```
-/// use swim_form::form_derive::*;
-/// use swim_form::Form;
-/// use common::model::{Value, Attr, Item};
-///
-/// #[form]
-/// #[derive(PartialEq, Debug)]
-/// struct Message {
-///     id: i32,
-///     msg: String
-/// }
-///
-/// let record = Value::Record(
-///     vec![Attr::of("Message")],
-///     vec![
-///         Item::from(("id", 1)),
-///         Item::from(("msg", "Hello"))
-///     ]
-/// );
-/// let msg = Message {
-///     id: 1,
-///     msg: String::from("Hello"),
-/// };
-///
-/// let result = msg.as_value();
-/// assert_eq!(record, result);
-///
-/// let result = Message::try_from_value(&record).unwrap();
-/// assert_eq!(result, msg);
-/// ```
 pub trait Form: Sized {
     fn as_value(&self) -> Value;
 
@@ -119,3 +70,5 @@ impl ValidatedForm for Value {
         StandardSchema::Anything
     }
 }
+
+pub struct FieldProperties;

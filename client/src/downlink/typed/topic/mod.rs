@@ -23,8 +23,8 @@ use common::topic::{Topic, TopicError};
 use futures::Stream;
 use std::convert::TryInto;
 use std::marker::PhantomData;
-use swim_form_old::Form;
-use swim_form_old::FormDeserializeErr;
+use swim_form::Form;
+use swim_form::FormDeserializeErr;
 use utilities::future::{SwimFutureExt, Transform, TransformedFuture, UntilFailure};
 
 /// A transformation that attempts to apply a form to an [`Event<Value>`].

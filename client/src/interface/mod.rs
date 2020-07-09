@@ -21,7 +21,7 @@ use tracing::info;
 
 use common::model::Value;
 use common::warp::path::AbsolutePath;
-use swim_form_old::ValidatedForm;
+use swim_form::ValidatedForm;
 
 use crate::configuration::downlink::{Config, ConfigHierarchy};
 use crate::configuration::router::RouterParamBuilder;

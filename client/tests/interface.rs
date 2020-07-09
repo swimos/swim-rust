@@ -23,7 +23,7 @@ mod tests {
     use common::model::{Attr, Item, Value};
     use common::sink::item::ItemSink;
     use common::warp::path::AbsolutePath;
-    use swim_form_old::Form;
+    use swim_form::Form;
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;

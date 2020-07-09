@@ -21,7 +21,7 @@ use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::sync::Arc;
-use swim_form_old::FormDeserializeErr;
+use swim_form::FormDeserializeErr;
 
 fn make_raw() -> ValMap {
     let mut map = ValMap::new();

@@ -1,0 +1,14 @@
+[package]
+name = "swim_form_new"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+common = { path = "../common" }
+form_derive_new = { path = "form_derive_new" }
+num-bigint = { version = "0.3" }
+num-traits = "0.2.12"
+
+[dev-dependencies]
+trybuild = "1.0.17"
