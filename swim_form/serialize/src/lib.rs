@@ -129,9 +129,9 @@ impl ValueSerializer {
                 // to be poppped, the Value transformed into the correct type and pushed up into the
                 // correct position so the field's name matches the value.
                 let r = match (vk, value) {
-                    (ValueKind::Binary, Value::Text(s)) => {
+                    (ValueKind::Data, Value::Text(s)) => {
                         let b = Blob::from_encoded(Vec::from(s.as_bytes()));
-                        Value::Binary(b)
+                        Value::Data(b)
                     }
                     _ => unreachable!(),
                 };
@@ -259,7 +259,7 @@ impl ValueSerializer {
         match ext_name {
             EXT_BLOB => {
                 self.push_state(State::new_with_state(SerializerState::ReadingExt(
-                    ValueKind::Binary,
+                    ValueKind::Data,
                 )));
 
                 true

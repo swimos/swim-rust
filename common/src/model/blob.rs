@@ -24,25 +24,18 @@ use futures::io::IoSlice;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
 use serde::ser::{Error as SerError, SerializeStructVariant};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 
 pub const EXT_BLOB: &str = "___BLOB";
 
 /// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. A URL-safe
 /// encoding (UTF-7) is used.
-#[derive(Debug, Clone, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Blob {
     data: Vec<u8>,
 }
 
 impl Blob {
-    /// Construct a new blob object of the provided capacity.
-    pub fn with_capacity(cap: usize) -> Blob {
-        Blob {
-            data: Vec::with_capacity(cap),
-        }
-    }
-
     /// Construct a new blob object of the provided capacity.
     pub fn from_vec(data: Vec<u8>) -> Blob {
         Blob { data }
@@ -119,6 +112,12 @@ impl Display for Blob {
 impl Borrow<Vec<u8>> for Blob {
     fn borrow(&self) -> &Vec<u8> {
         &self.data
+    }
+}
+
+impl BorrowMut<Vec<u8>> for Blob {
+    fn borrow_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.data
     }
 }
 
