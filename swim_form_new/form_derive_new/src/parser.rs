@@ -48,6 +48,7 @@ pub struct Parser<'a> {
     pub ident: syn::Ident,
     pub data: TypeContents<'a>,
     pub original: &'a DeriveInput,
+    pub generics: &'a syn::Generics,
 }
 
 pub struct Variant<'a> {
@@ -217,6 +218,7 @@ impl<'p> Parser<'p> {
             ident: input.ident.clone(),
             data,
             original: input,
+            generics: &input.generics,
         };
 
         Some(item)

@@ -46,17 +46,6 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let value_name_binding = args.get(0).unwrap();
     let input = parse_macro_input!(input as DeriveInput);
-    let ident = input.ident.clone();
-
-    let ser = Ident::new(
-        &format!("{}Serialize", ident.to_string()),
-        Span::call_site(),
-    );
-    let de = Ident::new(
-        &format!("{}Deserialize", ident.to_string()),
-        Span::call_site(),
-    );
-
     let derived: proc_macro2::TokenStream =
         expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
 
@@ -85,11 +74,12 @@ fn expand_derive_form(
     let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
     let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
     let serialized_fields = parser.serialize_fields();
+    let (impl_generics, type_generics, where_clause) = parser.generics.split_for_impl();
 
     let quote = quote! {
         #[automatically_derived]
         #[allow(unused_qualifications)]
-        impl swim_form::Form for #ident {
+        impl #impl_generics swim_form::Form for #ident #type_generics #where_clause {
             #[inline]
             fn as_value(&self) -> #value_name_binding {
                 swim_form::SerializeToValue::serialize(self, None)
@@ -103,7 +93,7 @@ fn expand_derive_form(
 
         #[automatically_derived]
         #[allow(unused_qualifications)]
-        impl swim_form::SerializeToValue for #ident {
+        impl #impl_generics swim_form::SerializeToValue for #ident #type_generics #where_clause {
             #[inline]
             fn serialize(&self, _properties: Option<swim_form::SerializerProps>) -> #value_name_binding {
                 #serialized_fields

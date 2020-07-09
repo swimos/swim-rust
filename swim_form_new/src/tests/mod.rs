@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::Form;
 use common::model::Value;
+
+use crate::{Form, SerializeToValue};
 
 mod swim_form {
     pub use crate::*;
@@ -27,7 +28,41 @@ fn single_derve() {
     }
 
     let fs = FormStruct { a: 1 };
-    let value: Value = fs.as_value();
+    let _v = fs.as_value();
+}
 
-    println!("{:?}", value);
+#[test]
+fn single_derve_with_lifetime() {
+    #[form(Value)]
+    struct FormStruct<V>
+    where
+        V: SerializeToValue,
+    {
+        v: V,
+    }
+
+    let fs = FormStruct { v: 1 };
+    let v: Value = fs.as_value();
+    println!("{}", v);
+}
+
+#[test]
+fn nested_derives() {
+    #[form(Value)]
+    struct Parent {
+        a: i32,
+        b: Child,
+    }
+
+    #[form(Value)]
+    struct Child {
+        c: i32,
+    }
+
+    let fs = Parent {
+        a: 1,
+        b: Child { c: 1 },
+    };
+
+    let _v = fs.as_value();
 }

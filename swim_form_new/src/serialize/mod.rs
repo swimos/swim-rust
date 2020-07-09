@@ -57,7 +57,6 @@ serialize_impl!(i64);
 serialize_impl!(f64);
 serialize_impl!(BigInt);
 serialize_impl!(BigUint);
-
 // serialize_impl!(u32);
 // serialize_impl!(u64);
 
