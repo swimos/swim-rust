@@ -24,7 +24,7 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
-use syn::{AttributeArgs, DeriveInput, GenericParam, LifetimeDef, NestedMeta};
+use syn::{AttributeArgs, DeriveInput, LifetimeDef, NestedMeta};
 
 use crate::parser::{Context, Parser};
 

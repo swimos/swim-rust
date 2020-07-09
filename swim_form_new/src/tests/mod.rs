@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
+use common::model::{Attr, Item, Value};
 
 use crate::{Form, SerializeToValue};
+use common::model::Value::Int32Value;
 
 mod swim_form {
     pub use crate::*;
@@ -28,7 +29,13 @@ fn single_derve() {
     }
 
     let fs = FormStruct { a: 1 };
-    let _v = fs.as_value();
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::slot("a", Value::Int32Value(1))],
+    );
+
+    assert_eq!(v, expected);
 }
 
 #[test]
@@ -42,7 +49,13 @@ fn single_derve_with_generics() {
     }
 
     let fs = FormStruct { v: 1 };
-    let _v = fs.as_value();
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::slot("v", Value::Int32Value(1))],
+    );
+
+    assert_eq!(v, expected);
 }
 
 #[test]
@@ -58,10 +71,25 @@ fn nested_derives() {
         c: i32,
     }
 
-    let fs = Parent {
+    let parent = Parent {
         a: 1,
-        b: Child { c: 1 },
+        b: Child { c: 2 },
     };
 
-    let _v = fs.as_value();
+    let v: Value = parent.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("Parent")],
+        vec![
+            Item::slot("a", Value::Int32Value(1)),
+            Item::slot(
+                "b",
+                Value::Record(
+                    vec![Attr::of("Child")],
+                    vec![Item::slot("c", Int32Value(2))],
+                ),
+            ),
+        ],
+    );
+
+    assert_eq!(v, expected)
 }
