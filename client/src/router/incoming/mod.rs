@@ -25,6 +25,7 @@ use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use std::convert::TryFrom;
+use std::iter::FromIterator;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
@@ -220,21 +221,24 @@ async fn broadcast_destination(
     destination: RelativePath,
     event: RouterEvent,
 ) -> Result<(), RoutingError> {
-    let futures = FuturesUnordered::new();
-
     if subscribers.contains_key(&destination) {
         let destination_subs = subscribers
             .get_mut(&destination)
             .ok_or(RoutingError::ConnectionError)?;
 
-        for (index, sender) in destination_subs.iter_mut().enumerate() {
-            futures.push(index_sender(sender, event.clone(), index));
-        }
+        let futures = FuturesUnordered::from_iter(
+            destination_subs
+                .iter_mut()
+                .enumerate()
+                .map(|(index, sender)| index_sender(sender, event.clone(), index)),
+        );
 
-        for result in futures.collect::<Vec<_>>().await {
-            if let Some(index) = result {
-                destination_subs.remove(index);
-            }
+        for index in futures
+            .filter_map(|result| async move { result })
+            .collect::<Vec<_>>()
+            .await
+        {
+            destination_subs.remove(index);
         }
     } else {
         trace!("No downlink interested in event: {:?}", event);
