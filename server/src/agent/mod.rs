@@ -39,6 +39,7 @@ use tokio::sync::mpsc;
 use url::Url;
 use utilities::clock::Clock;
 use utilities::future::SwimStreamExt;
+use utilities::sync::trigger;
 
 mod context;
 pub mod lane;
@@ -62,11 +63,13 @@ pub trait SwimAgent: Sized {
 /// * `schedule_buffer_size` - The buffer size for the MPSC channel used by the agent to schedule
 /// events.
 /// * `clock` - Clock for timing asynchronous events.
+/// * `stop_trigger` - External trigger to cleanly stop the agent.
 pub async fn run_agent<Clk, Agent, L>(
     lifecycle: L,
     url: Url,
     scheduler_buffer_size: NonZeroUsize,
     clock: Clk,
+    stop_trigger: trigger::Receiver,
 ) where
     Clk: Clock,
     Agent: SwimAgent + Send + Sync + 'static,
@@ -75,7 +78,7 @@ pub async fn run_agent<Clk, Agent, L>(
     let (agent, tasks) = Agent::instantiate::<ContextImpl<Agent, Clk>>();
     let agent_ref = Arc::new(agent);
     let (tx, rx) = mpsc::channel(scheduler_buffer_size.get());
-    let context = ContextImpl::new(agent_ref, url, tx, clock);
+    let context = ContextImpl::new(agent_ref, url, tx, clock, stop_trigger.clone());
 
     lifecycle.on_start(&context).await;
 
@@ -85,7 +88,10 @@ pub async fn run_agent<Clk, Agent, L>(
 
     let task_manager: FuturesUnordered<Eff> = FuturesUnordered::new();
 
-    task_manager.push(rx.for_each_concurrent(None, |eff| eff).boxed());
+    let scheduler_task = rx
+        .take_until_completes(stop_trigger)
+        .for_each_concurrent(None, |eff| eff);
+    task_manager.push(scheduler_task.boxed());
 
     for lane_task in tasks.into_iter() {
         task_manager.push(lane_task.events(context.clone()));
@@ -191,6 +197,9 @@ pub trait AgentContext<Agent> {
 
     /// Get the node URL of the agent instance.
     fn node_url(&self) -> &Url;
+
+    /// Get a future that will complete when the agent is stopping.
+    fn agent_stop_event(&self) -> trigger::Receiver;
 }
 
 /// Provides an abstraction over the different types of lane to allow the lane life-cycles to be
@@ -244,8 +253,9 @@ where
                 projection,
             }) = *self;
             let model = projection(context.agent());
-            pin_mut!(event_stream);
-            while let Some(event) = event_stream.next().await {
+            let events = event_stream.take_until_completes(context.agent_stop_event());
+            pin_mut!(events);
+            while let Some(event) = events.next().await {
                 lifecycle.on_event(&event, &model, &context).await
             }
         }
@@ -310,8 +320,9 @@ where
                 projection,
             }) = *self;
             let model = projection(context.agent()).clone();
-            pin_mut!(event_stream);
-            while let Some(event) = event_stream.next().await {
+            let events = event_stream.take_until_completes(context.agent_stop_event());
+            pin_mut!(events);
+            while let Some(event) = events.next().await {
                 lifecycle.on_event(&event, &model, &context).await
             }
         }
@@ -371,8 +382,9 @@ where
                 projection,
             }) = *self;
             let model = projection(context.agent()).clone();
-            pin_mut!(event_stream);
-            while let Some(command) = event_stream.next().await {
+            let events = event_stream.take_until_completes(context.agent_stop_event());
+            pin_mut!(events);
+            while let Some(command) = events.next().await {
                 //TODO After agents are connected to web-sockets the response will have somewhere to go.
                 let _response = lifecycle.on_command(&command, &model, &context).await;
             }
@@ -402,8 +414,9 @@ where
                 projection,
             }) = *self;
             let model = projection(context.agent()).clone();
-            pin_mut!(event_stream);
-            while let Some(command) = event_stream.next().await {
+            let events = event_stream.take_until_completes(context.agent_stop_event());
+            pin_mut!(events);
+            while let Some(command) = events.next().await {
                 lifecycle.on_command(&command, &model, &context).await;
             }
         }

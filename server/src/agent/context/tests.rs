@@ -21,18 +21,33 @@ use tokio::time::Duration;
 use url::Url;
 use utilities::clock;
 use utilities::clock::Clock;
+use utilities::sync::trigger;
 
 #[test]
 fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
+    let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    let context = ContextImpl::new(agent.clone(), url.clone(), tx, clock::runtime_clock());
+    let context = ContextImpl::new(
+        agent.clone(),
+        url.clone(),
+        tx,
+        clock::runtime_clock(),
+        close_sig.clone(),
+    );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_url(), &url);
+    assert!(trigger::Receiver::same_receiver(
+        &close_sig,
+        &context.agent_stop_event()
+    ));
 }
 
-fn create_context(n: usize) -> ContextImpl<&'static str, impl Clock> {
+fn create_context(
+    n: usize,
+    close_trigger: trigger::Receiver,
+) -> ContextImpl<&'static str, impl Clock> {
     let (tx, rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -40,12 +55,19 @@ fn create_context(n: usize) -> ContextImpl<&'static str, impl Clock> {
 
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    ContextImpl::new(agent.clone(), url.clone(), tx, clock::runtime_clock())
+    ContextImpl::new(
+        agent.clone(),
+        url.clone(),
+        tx,
+        clock::runtime_clock(),
+        close_trigger,
+    )
 }
 
 #[tokio::test]
 async fn send_single_to_scheduler() {
-    let context = create_context(1);
+    let (_close, close_sig) = trigger::trigger();
+    let context = create_context(1, close_sig);
 
     let (mut defer_tx, mut defer_rx) = mpsc::channel(1);
     context
@@ -64,7 +86,8 @@ async fn send_single_to_scheduler() {
 
 #[tokio::test]
 async fn send_multiple_to_scheduler() {
-    let context = create_context(1);
+    let (_close, close_sig) = trigger::trigger();
+    let context = create_context(1, close_sig);
 
     let (defer_tx, mut defer_rx) = mpsc::channel(1);
     let mut i = 0;

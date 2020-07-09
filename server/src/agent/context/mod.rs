@@ -23,6 +23,7 @@ use tokio::time::Duration;
 use url::Url;
 use utilities::clock::Clock;
 use utilities::future::SwimStreamExt;
+use utilities::sync::trigger;
 
 #[cfg(test)]
 mod tests;
@@ -35,6 +36,7 @@ pub(super) struct ContextImpl<Agent, Clk> {
     url: Url,
     scheduler: mpsc::Sender<Eff>,
     clock: Clk,
+    stop_signal: trigger::Receiver,
 }
 
 impl<Agent, Clk: Clone> Clone for ContextImpl<Agent, Clk> {
@@ -44,6 +46,7 @@ impl<Agent, Clk: Clone> Clone for ContextImpl<Agent, Clk> {
             url: self.url.clone(),
             scheduler: self.scheduler.clone(),
             clock: self.clock.clone(),
+            stop_signal: self.stop_signal.clone(),
         }
     }
 }
@@ -54,12 +57,14 @@ impl<Agent, Clk> ContextImpl<Agent, Clk> {
         url: Url,
         scheduler: mpsc::Sender<Eff>,
         clock: Clk,
+        stop_signal: trigger::Receiver,
     ) -> Self {
         ContextImpl {
             agent_ref,
             url,
             scheduler,
             clock,
+            stop_signal,
         }
     }
 }
@@ -85,6 +90,7 @@ where
                     eff.await;
                 }
             })
+            .take_until_completes(self.stop_signal.clone())
             .never_error()
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can drop the errors.
@@ -103,5 +109,9 @@ where
 
     fn node_url(&self) -> &Url {
         &self.url
+    }
+
+    fn agent_stop_event(&self) -> trigger::Receiver {
+        self.stop_signal.clone()
     }
 }

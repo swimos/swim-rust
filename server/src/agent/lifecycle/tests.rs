@@ -19,6 +19,7 @@ use futures::Stream;
 use std::future::Future;
 use std::time::Duration;
 use url::Url;
+use utilities::sync::trigger::Receiver;
 
 struct TestAgent;
 
@@ -39,6 +40,10 @@ impl AgentContext<TestAgent> for TestContext {
     }
 
     fn node_url(&self) -> &Url {
+        panic!("Default lifecycles should do nothing.")
+    }
+
+    fn agent_stop_event(&self) -> Receiver {
         panic!("Default lifecycles should do nothing.")
     }
 }

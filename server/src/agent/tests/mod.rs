@@ -33,6 +33,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Duration;
 use url::Url;
+use utilities::sync::trigger;
+use utilities::sync::trigger::Receiver;
 
 struct TestAgent<Lane> {
     name: &'static str,
@@ -172,7 +174,17 @@ impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
     }
 }
 
-struct TestContext<Lane>(Arc<TestAgent<Lane>>, Url);
+struct TestContext<Lane> {
+    lane: Arc<TestAgent<Lane>>,
+    url: Url,
+    closed: trigger::Receiver,
+}
+
+impl<Lane> TestContext<Lane> {
+    fn new(lane: Arc<TestAgent<Lane>>, url: Url, closed: trigger::Receiver) -> Self {
+        TestContext { lane, url, closed }
+    }
+}
 
 impl<Lane> AgentContext<TestAgent<Lane>> for TestContext<Lane>
 where
@@ -188,11 +200,15 @@ where
     }
 
     fn agent(&self) -> &TestAgent<Lane> {
-        self.0.as_ref()
+        self.lane.as_ref()
     }
 
     fn node_url(&self) -> &Url {
-        &self.1
+        &self.url
+    }
+
+    fn agent_stop_event(&self) -> Receiver {
+        self.closed.clone()
     }
 }
 
@@ -203,6 +219,7 @@ fn proj<Lane>() -> impl Fn(&TestAgent<Lane>) -> &Lane {
 #[tokio::test]
 async fn value_lane_start_task() {
     let (_tx, rx) = mpsc::channel(5);
+    let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<ValueLane<String>> = TestLifecycle::default();
 
@@ -218,7 +235,8 @@ async fn value_lane_start_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext(agent.clone(), Url::parse("test://").unwrap());
+
+    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
 
     tasks.start(&context).await;
 
@@ -234,6 +252,7 @@ async fn value_lane_start_task() {
 #[tokio::test]
 async fn value_lane_events_task() {
     let (mut tx, rx) = mpsc::channel(5);
+    let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<ValueLane<String>> = TestLifecycle::default();
 
@@ -249,7 +268,7 @@ async fn value_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext(agent.clone(), Url::parse("test://").unwrap());
+    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -282,6 +301,7 @@ async fn value_lane_events_task() {
 #[tokio::test]
 async fn map_lane_start_task() {
     let (_tx, rx) = mpsc::channel(5);
+    let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<MapLane<String, String>> = TestLifecycle::default();
 
@@ -297,7 +317,7 @@ async fn map_lane_start_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext(agent.clone(), Url::parse("test://").unwrap());
+    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
 
     tasks.start(&context).await;
 
@@ -313,6 +333,7 @@ async fn map_lane_start_task() {
 #[tokio::test]
 async fn map_lane_events_task() {
     let (mut tx, rx) = mpsc::channel(5);
+    let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<MapLane<String, String>> = TestLifecycle::default();
 
@@ -328,7 +349,7 @@ async fn map_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext(agent.clone(), Url::parse("test://").unwrap());
+    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -364,6 +385,7 @@ async fn map_lane_events_task() {
 async fn action_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
     let (mut tx, rx) = mpsc::channel(5);
+    let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<ActionLane<String, usize>> = TestLifecycle::default();
 
@@ -379,7 +401,7 @@ async fn action_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext(agent.clone(), Url::parse("test://").unwrap());
+    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -413,6 +435,7 @@ async fn action_lane_events_task() {
 async fn command_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
     let (mut tx, rx) = mpsc::channel(5);
+    let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
 
@@ -428,7 +451,7 @@ async fn command_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext(agent.clone(), Url::parse("test://").unwrap());
+    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
 
     let events = tasks.events(context);
 
