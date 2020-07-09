@@ -50,7 +50,7 @@ const KINDS: [ValueKind; 8] = [
     ValueKind::Boolean,
     ValueKind::Text,
     ValueKind::Record,
-    ValueKind::Blob,
+    ValueKind::Binary,
 ];
 
 fn arbitrary() -> HashMap<ValueKind, Value> {
@@ -62,7 +62,7 @@ fn arbitrary() -> HashMap<ValueKind, Value> {
     map.insert(ValueKind::Boolean, Value::BooleanValue(true));
     map.insert(ValueKind::Text, Value::text("Hello"));
     map.insert(ValueKind::Record, Value::empty_record());
-    map.insert(ValueKind::Blob, Value::Blob(Blob::encode("swimming")));
+    map.insert(ValueKind::Binary, Value::Binary(Blob::encode("swimming")));
     map
 }
 
@@ -6720,5 +6720,5 @@ fn schema() {
     let schema = StandardSchema::blob(encoded.len());
     let blob = Blob::from_encoded(Vec::from(encoded.as_bytes()));
 
-    assert!(schema.matches(&Value::Blob(blob)));
+    assert!(schema.matches(&Value::Binary(blob)));
 }

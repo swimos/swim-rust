@@ -80,7 +80,7 @@ pub enum Value {
     Record(Vec<Attr>, Vec<Item>),
 
     /// A Binary Large OBject (BLOB)
-    Blob(Blob),
+    Binary(Blob),
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -92,7 +92,7 @@ pub enum ValueKind {
     Boolean,
     Text,
     Record,
-    Blob,
+    Binary,
 }
 
 impl PartialOrd for ValueKind {
@@ -145,7 +145,7 @@ impl Display for ValueKind {
             ValueKind::Boolean => write!(f, "Boolean"),
             ValueKind::Text => write!(f, "Text"),
             ValueKind::Record => write!(f, "Record"),
-            ValueKind::Blob => write!(f, "Blob"),
+            ValueKind::Binary => write!(f, "Blob"),
         }
     }
 }
@@ -189,8 +189,8 @@ impl Value {
 
     fn compare(&self, other: &Self) -> Ordering {
         match self {
-            Value::Blob(_) => match other {
-                Value::Blob(_) => Ordering::Equal,
+            Value::Binary(_) => match other {
+                Value::Binary(_) => Ordering::Equal,
                 _ => Ordering::Greater,
             },
             Value::Extant => match other {
@@ -310,7 +310,7 @@ impl Value {
             Value::BooleanValue(_) => ValueKind::Boolean,
             Value::Text(_) => ValueKind::Text,
             Value::Record(_, _) => ValueKind::Record,
-            Value::Blob(_) => ValueKind::Blob,
+            Value::Binary(_) => ValueKind::Binary,
         }
     }
 
@@ -334,8 +334,8 @@ impl Default for Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            Value::Blob(mb) => match other {
-                Value::Blob(tb) => mb.eq(tb),
+            Value::Binary(mb) => match other {
+                Value::Binary(tb) => mb.eq(tb),
                 _ => false,
             },
             Value::Extant => match other {
@@ -425,7 +425,7 @@ impl Hash for Value {
                 attrs.hash(state);
                 items.hash(state);
             }
-            Value::Blob(b) => {
+            Value::Binary(b) => {
                 state.write_u8(7);
                 b.hash(state);
             }
@@ -724,7 +724,7 @@ fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std:
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            Value::Blob(b) => write!(f, "{}", b),
+            Value::Binary(b) => write!(f, "{}", b),
             Value::Extant => f.write_str(""),
             Value::Int32Value(n) => write!(f, "{}", n),
             Value::Int64Value(n) => write!(f, "{}", n),
@@ -1007,7 +1007,7 @@ impl ValueEncoder {
 
     fn encode_value(&mut self, item: Value, dst: &mut BytesMut) -> Result<(), ValueEncodeErr> {
         match item {
-            Value::Blob(b) => write!(dst, "{:?}", b.as_ref()).map_err(Into::into),
+            Value::Binary(b) => write!(dst, "{:?}", b.as_ref()).map_err(Into::into),
             Value::Extant => Ok(()),
             Value::Int32Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
             Value::Int64Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
@@ -1107,7 +1107,7 @@ impl ValueEncoder {
 
     fn estimate_size(value: &Value) -> usize {
         match value {
-            Value::Blob(b) => b.as_ref().len(),
+            Value::Binary(b) => b.as_ref().len(),
             Value::Extant => 0,
             Value::Int32Value(n) => {
                 let mut a = (*n).abs();

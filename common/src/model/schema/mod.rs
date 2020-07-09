@@ -239,7 +239,7 @@ pub enum StandardSchema {
     /// Matches nothing.
     Nothing,
     /// Asserts a BLOB's data length.
-    Blob(usize),
+    BlobLength(usize),
 }
 
 // Very basic partial ordering for schemas. This could be significantly extended if desirable.
@@ -1060,8 +1060,8 @@ impl Schema<Value> for StandardSchema {
             } => as_record(value)
                 .map(|(_, items)| check_in_order(item_schemas.as_slice(), items, *exhaustive))
                 .unwrap_or(false),
-            StandardSchema::Blob(len) => match value {
-                Value::Blob(b) => b.size() == *len,
+            StandardSchema::BlobLength(len) => match value {
+                Value::Binary(b) => b.as_ref().len() == *len,
                 _ => false,
             },
         }
@@ -1164,7 +1164,7 @@ impl StandardSchema {
 
     /// A schema that matches the length of a BLOB.
     pub fn blob(len: usize) -> Self {
-        StandardSchema::Blob(len)
+        StandardSchema::BlobLength(len)
     }
 
     /// A schema for records with items that all match a schema.
@@ -1233,7 +1233,7 @@ impl ToValue for StandardSchema {
             }
             StandardSchema::Anything => Value::of_attr("anything"),
             StandardSchema::Nothing => Value::of_attr("nothing"),
-            StandardSchema::Blob(len) => Value::of_attr(("blob", *len as i32)),
+            StandardSchema::BlobLength(len) => Value::of_attr(("blob", *len as i32)),
         }
     }
 }
@@ -1308,6 +1308,6 @@ fn kind_to_str(kind: ValueKind) -> &'static str {
         ValueKind::Boolean => "boolean",
         ValueKind::Text => "text",
         ValueKind::Record => "record",
-        ValueKind::Blob => "blob",
+        ValueKind::Binary => "blob",
     }
 }

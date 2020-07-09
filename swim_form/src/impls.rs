@@ -21,16 +21,16 @@ use crate::{Form, ValidatedForm};
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
-        Value::Blob(self.clone())
+        Value::Binary(self.clone())
     }
 
     fn into_value(self) -> Value {
-        Value::Blob(self)
+        Value::Binary(self)
     }
 
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
         match value {
-            Value::Blob(blob) => Ok(blob.clone()),
+            Value::Binary(blob) => Ok(blob.clone()),
             Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
             v => de_incorrect_type("Value::Blob", v),
         }
@@ -38,7 +38,7 @@ impl Form for Blob {
 
     fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
         match value {
-            Value::Blob(blob) => Ok(blob),
+            Value::Binary(blob) => Ok(blob),
             Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
             v => de_incorrect_type("Value::Blob", &v),
         }
@@ -47,7 +47,7 @@ impl Form for Blob {
 
 impl ValidatedForm for Blob {
     fn schema() -> StandardSchema {
-        StandardSchema::OfKind(ValueKind::Blob)
+        StandardSchema::OfKind(ValueKind::Binary)
     }
 }
 

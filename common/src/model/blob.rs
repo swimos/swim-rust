@@ -14,7 +14,7 @@
 
 use core::fmt;
 use std::fmt::{Display, Formatter};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::io;
 use std::io::Write;
 
@@ -24,26 +24,15 @@ use futures::io::IoSlice;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
 use serde::ser::{Error as SerError, SerializeStructVariant};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Borrow;
 
 pub const EXT_BLOB: &str = "___BLOB";
 
 /// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. A URL-safe
 /// encoding (UTF-7) is used.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Hash)]
 pub struct Blob {
     data: Vec<u8>,
-}
-
-impl PartialEq for Blob {
-    fn eq(&self, other: &Self) -> bool {
-        self.data == other.data
-    }
-}
-
-impl Default for Blob {
-    fn default() -> Blob {
-        Blob { data: Vec::new() }
-    }
 }
 
 impl Blob {
@@ -62,16 +51,6 @@ impl Blob {
     /// Consumes this blob object and returns the underlying data.
     pub fn into_vec(self) -> Vec<u8> {
         self.data
-    }
-
-    /// Returns the size of the contained data.
-    pub fn size(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Reserve `n` more bytes in the underlying vector.
-    pub fn reserve(&mut self, n: usize) {
-        self.data.reserve(n);
     }
 
     /// Attempts to encode this blob's data into the provided writer.
@@ -130,16 +109,16 @@ impl Write for Blob {
     }
 }
 
-impl Hash for Blob {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.data.hash(state)
-    }
-}
-
 impl Display for Blob {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = String::from_utf8(self.data.clone()).map_err(|_| fmt::Error)?;
         write!(f, "{}", s)
+    }
+}
+
+impl Borrow<Vec<u8>> for Blob {
+    fn borrow(&self) -> &Vec<u8> {
+        &self.data
     }
 }
 

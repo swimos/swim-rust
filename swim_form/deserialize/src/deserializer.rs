@@ -37,7 +37,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                 Value::Text(_) => self.deserialize_string(visitor),
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
                 Value::BooleanValue(_) => self.deserialize_bool(visitor),
-                Value::Blob(_) => self.deserialize_string(visitor),
+                Value::Binary(_) => self.deserialize_string(visitor),
             },
             None => {
                 if let DeserializerState::ReadingAttribute(a) =
@@ -168,7 +168,7 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     {
         match &self.current_state.value {
             Some(Value::Text(t)) => visitor.visit_string(t.to_owned()),
-            Some(Value::Blob(b)) => visitor.visit_string(b.to_string()),
+            Some(Value::Binary(b)) => visitor.visit_string(b.to_string()),
             _ => self.err_incorrect_type("Value::Text", self.current_state.value),
         }
     }

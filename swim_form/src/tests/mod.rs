@@ -432,7 +432,7 @@ fn blob_ser_ok() {
     let result = s.as_value();
     let expected = Value::Record(
         vec![Attr::of(("S", Value::Extant))],
-        vec![Item::slot("blob", Value::Blob(Blob::encode("swimming")))],
+        vec![Item::slot("blob", Value::Binary(Blob::encode("swimming")))],
     );
     assert_eq!(result, expected)
 }
@@ -448,7 +448,7 @@ fn blob_de_ok() {
 
     let value = Value::Record(
         vec![Attr::of(("S", Value::Extant))],
-        vec![Item::slot("blob", Value::Blob(Blob::encode("swimming")))],
+        vec![Item::slot("blob", Value::Binary(Blob::encode("swimming")))],
     );
 
     let result = S::try_from_value(&value).unwrap();
