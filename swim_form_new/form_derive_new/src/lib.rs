@@ -61,10 +61,6 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
         expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
 
     let q = quote! {
-        use serde::Serialize as #ser;
-        use serde::Deserialize as #de;
-
-        #[derive(#ser, #de)]
         #input
 
         #derived
@@ -86,51 +82,36 @@ fn expand_derive_form(
     context.check()?;
 
     let ident = parser.ident.clone();
-    let assertions = parser.receiver_assert_quote();
     let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
     let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
 
     let quote = quote! {
-        struct AssertReceiver;
-
         #[automatically_derived]
-        impl AssertReceiver {
-            fn __assert() {
-                 #(#assertions)*
+        #[allow(unused_qualifications)]
+        impl swim_form::Form for #ident {
+            #[inline]
+            fn as_value(&self) -> #value_name_binding {
+                swim_form::SerializeToValue::serialize(self, None)
+            }
+
+            #[inline]
+            fn try_from_value(value: &#value_name_binding) -> Result<Self, swim_form::FormDeserializeErr> {
+                unimplemented!()
             }
         }
 
         #[automatically_derived]
         #[allow(unused_qualifications)]
-        impl Form for #ident {
+        impl swim_form::SerializeToValue for #ident {
             #[inline]
-            fn as_value(&self) -> #value_name_binding {
-                let mut serializer = _serialize::ValueSerializer::default();
-                match self.serialize(&mut serializer) {
-                    Ok(_) => serializer.output(),
-                    Err(e) => unreachable!(e),
-                }
-            }
-
-            #[inline]
-            fn try_from_value(value: &#value_name_binding) -> Result<Self, _deserialize::FormDeserializeErr> {
-                let mut deserializer = match value {
-                    #value_name_binding::Record(_, _) => _deserialize::ValueDeserializer::for_values(value),
-                    _ => _deserialize::ValueDeserializer::for_single_value(value),
-                };
-
-                let result = Self::deserialize(&mut deserializer)?;
-                Ok(result)
+            fn serialize(&self, _properties: Option<swim_form::SerializerProps>) -> #value_name_binding {
+                unimplemented!()
             }
         }
     };
 
     let res = quote! {
         const #const_name: () = {
-            use swim_form::_serialize;
-            use swim_form::_deserialize;
-            use swim_form::Form;
-
             #quote
         };
     };

@@ -14,7 +14,8 @@
 
 use crate::deserialize::FormDeserializeErr;
 use crate::serialize::serializer::ValueSerializer;
-use crate::{FieldProperties, Form, SerializeToValue};
+use crate::serialize::SerializerProps;
+use crate::{Form, SerializeToValue};
 use common::model::{Attr, Item, Value};
 use num_bigint::BigInt;
 
@@ -35,7 +36,7 @@ fn test_bigint() {
     }
 
     impl SerializeToValue for S {
-        fn serialize(&self, _properties: Option<FieldProperties>) -> Value {
+        fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
             let mut serializer = ValueSerializer::default();
 
             serializer.serialize_struct("S");

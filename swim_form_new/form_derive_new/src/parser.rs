@@ -18,7 +18,6 @@ use std::fmt::Display;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
 use syn::DeriveInput;
 
 pub struct Parser<'a> {
@@ -130,42 +129,6 @@ impl<'p> Parser<'p> {
         };
 
         Some(item)
-    }
-
-    pub fn receiver_assert_quote(&self) -> Vec<TokenStream> {
-        match &self.data {
-            TypeContents::Struct(_, fields) => fields
-                .iter()
-                .map(|field| {
-                    let span = field.span();
-                    let ty = field.ty;
-                    let receiver_ident = Ident::new(
-                        &format!("__Assert_{}_Receivers", field.ident),
-                        Span::call_site(),
-                    );
-
-                    quote_spanned! {span=>
-                        struct #receiver_ident where #ty: Form;
-                    }
-                })
-                .collect(),
-            TypeContents::Enum(variants) => variants
-                .iter()
-                .flat_map(|v| v.fields.iter().map(move |f| (&v.ident, f)))
-                .map(|(ident, field)| {
-                    let span = field.span();
-                    let ty = field.ty;
-                    let receiver_ident = Ident::new(
-                        &format!("__Assert_{}_{}_Receivers", ident, field.ident),
-                        Span::call_site(),
-                    );
-
-                    quote_spanned! {span=>
-                        struct #receiver_ident where #ty: Form;
-                    }
-                })
-                .collect(),
-        }
     }
 }
 

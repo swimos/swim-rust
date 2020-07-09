@@ -14,8 +14,8 @@
 
 use crate::deserialize::FormDeserializeErr;
 use crate::serialize::serializer::{SerializerState, ValueSerializer};
-use crate::serialize::{FormSerializeErr, SerializeToValue};
-use crate::{FieldProperties, Form};
+use crate::serialize::{FormSerializeErr, SerializeToValue, SerializerProps};
+use crate::Form;
 use common::model::{Attr, Item, Value};
 
 #[test]
@@ -36,7 +36,7 @@ fn test_serialize() {
     }
 
     impl SerializeToValue for S {
-        fn serialize(&self, _properties: Option<FieldProperties>) -> Value {
+        fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
             let mut serializer = ValueSerializer::default();
 
             serializer.serialize_struct("S");

@@ -15,13 +15,15 @@
 use common::model::{Item, Value};
 
 use crate::deserialize::FormDeserializeErr;
-use crate::serialize::serializer::ValueSerializer;
-use crate::{FieldProperties, Form};
+use crate::Form;
 use num_bigint::{BigInt, BigUint};
 mod serializer;
+pub use serializer::ValueSerializer;
 
 #[cfg(test)]
 mod tests;
+
+pub struct SerializerProps;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FormSerializeErr {
@@ -34,14 +36,14 @@ pub enum FormSerializeErr {
 }
 
 pub trait SerializeToValue: Form {
-    fn serialize(&self, _properties: Option<FieldProperties>) -> Value;
+    fn serialize(&self, _properties: Option<SerializerProps>) -> Value;
 }
 
 macro_rules! serialize_impl {
     ($ty:ident) => {
         impl SerializeToValue for $ty {
             #[inline]
-            fn serialize(&self, _properties: Option<FieldProperties>) -> Value {
+            fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
                 self.as_value()
             }
         }
@@ -63,7 +65,7 @@ impl<V> SerializeToValue for Option<V>
 where
     V: SerializeToValue,
 {
-    fn serialize(&self, properties: Option<FieldProperties>) -> Value {
+    fn serialize(&self, properties: Option<SerializerProps>) -> Value {
         match self {
             Option::None => Value::Extant,
             Option::Some(v) => V::serialize(v, properties),

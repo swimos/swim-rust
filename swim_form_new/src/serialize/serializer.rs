@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::serialize::{FormSerializeErr, SerializeToValue};
-use crate::{FieldProperties, Form};
+use crate::{Form, SerializerProps};
 use common::model::{Attr, Item, Value};
 
 pub struct ValueSerializer {
@@ -174,7 +174,7 @@ impl ValueSerializer {
         &mut self,
         name_opt: Option<&'static str>,
         f: &F,
-        properties: Option<FieldProperties>,
+        properties: Option<SerializerProps>,
     ) {
         if let Some(name) = name_opt {
             self.current_state.attr_name = Some(name.to_owned());

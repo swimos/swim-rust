@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::deserialize::FormDeserializeErr;
+#![allow(clippy::match_wild_err_arm)]
+
 use common::model::schema::StandardSchema;
 use common::model::Value;
 
@@ -22,8 +23,16 @@ mod form_impls;
 #[allow(warnings)]
 mod serialize;
 
+#[cfg(test)]
+mod tests;
+
+#[macro_use]
+#[allow(unused_imports)]
+pub extern crate form_derive_new;
+
+pub use deserialize::FormDeserializeErr;
 #[allow(warnings)]
-pub use serialize::SerializeToValue;
+pub use serialize::{SerializeToValue, SerializerProps, ValueSerializer};
 
 pub trait Form: Sized {
     fn as_value(&self) -> Value;
@@ -70,5 +79,3 @@ impl ValidatedForm for Value {
         StandardSchema::Anything
     }
 }
-
-pub struct FieldProperties;
