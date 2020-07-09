@@ -32,7 +32,7 @@ fn single_derve() {
 }
 
 #[test]
-fn single_derve_with_lifetime() {
+fn single_derve_with_generics() {
     #[form(Value)]
     struct FormStruct<V>
     where
@@ -42,8 +42,7 @@ fn single_derve_with_lifetime() {
     }
 
     let fs = FormStruct { v: 1 };
-    let v: Value = fs.as_value();
-    println!("{}", v);
+    let _v = fs.as_value();
 }
 
 #[test]

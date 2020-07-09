@@ -24,7 +24,7 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
-use syn::{AttributeArgs, DeriveInput, NestedMeta};
+use syn::{AttributeArgs, DeriveInput, GenericParam, LifetimeDef, NestedMeta};
 
 use crate::parser::{Context, Parser};
 
@@ -68,12 +68,21 @@ fn expand_derive_form(
         None => return Err(context.check().unwrap_err()),
     };
 
+    let lifetimes: Vec<&'_ LifetimeDef> = parser.generics.lifetimes().into_iter().collect();
+    if !lifetimes.is_empty() {
+        return Err(vec![syn::Error::new(
+            Span::call_site(),
+            "Lifetimes are not supported by forms",
+        )]);
+    }
+
     context.check()?;
 
     let ident = parser.ident.clone();
     let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
     let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
     let serialized_fields = parser.serialize_fields();
+
     let (impl_generics, type_generics, where_clause) = parser.generics.split_for_impl();
 
     let quote = quote! {
