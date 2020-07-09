@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 swim_runtime = { path = "../swim_runtime" }
-pin-utils = "0.1.0-alpha.4"
+pin-utils = "0.1.0"
 bytes = "0.5.3"
 either = "1.5.3"
 futures = "0.3.4"
