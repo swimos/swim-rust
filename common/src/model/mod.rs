@@ -145,7 +145,7 @@ impl Display for ValueKind {
             ValueKind::Boolean => write!(f, "Boolean"),
             ValueKind::Text => write!(f, "Text"),
             ValueKind::Record => write!(f, "Record"),
-            ValueKind::Binary => write!(f, "Blob"),
+            ValueKind::Binary => write!(f, "Binary"),
         }
     }
 }
