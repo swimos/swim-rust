@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::Form;
 use common::model::Value;
 
 mod swim_form {
@@ -25,5 +26,8 @@ fn single_derve() {
         a: i32,
     }
 
-    let _ = FormStruct { a: 1 };
+    let fs = FormStruct { a: 1 };
+    let value: Value = fs.as_value();
+
+    println!("{:?}", value);
 }

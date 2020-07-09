@@ -84,6 +84,7 @@ fn expand_derive_form(
     let ident = parser.ident.clone();
     let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
     let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
+    let serialized_fields = parser.serialize_fields();
 
     let quote = quote! {
         #[automatically_derived]
@@ -105,7 +106,7 @@ fn expand_derive_form(
         impl swim_form::SerializeToValue for #ident {
             #[inline]
             fn serialize(&self, _properties: Option<swim_form::SerializerProps>) -> #value_name_binding {
-                unimplemented!()
+                #serialized_fields
             }
         }
     };
