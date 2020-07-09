@@ -227,16 +227,18 @@ async fn broadcast_destination(
             .get_mut(&destination)
             .ok_or(RoutingError::ConnectionError)?;
 
-        for subscriber in destination_subs.iter_mut() {
-            futures.push(subscriber.send(event.clone()));
+        for (index, sender) in destination_subs.iter_mut().enumerate() {
+            futures.push(index_sender(sender, event.clone(), index));
+        }
+
+        for result in futures.collect::<Vec<_>>().await {
+            if let Some(index) = result {
+                destination_subs.remove(index);
+            }
         }
     } else {
         trace!("No downlink interested in event: {:?}", event);
     };
-
-    for result in futures.collect::<Vec<_>>().await {
-        result?
-    }
 
     Ok(())
 }
@@ -247,4 +249,16 @@ fn combine_incoming_streams(
 ) -> impl stream::Stream<Item = IncomingRequest> + Send + 'static {
     let close_requests = close_rx.map(IncomingRequest::Close);
     stream::select(task_rx, close_requests)
+}
+
+async fn index_sender(
+    sender: &mut mpsc::Sender<RouterEvent>,
+    event: RouterEvent,
+    index: usize,
+) -> Option<usize> {
+    if sender.send(event).await.is_err() {
+        Some(index)
+    } else {
+        None
+    }
 }
