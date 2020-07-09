@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::{ready, BoxFuture};
+use futures::future::{join, ready, BoxFuture};
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,6 +20,7 @@ use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
 use tokio::time::Duration;
 use utilities::clock::Clock;
+use utilities::sync::trigger;
 
 /// A test clock where the passage of time can be manipulated monotonically.
 #[derive(Debug, Clone, Default)]
@@ -31,9 +32,21 @@ pub struct TestClock {
 #[derive(Debug, Default)]
 struct TestClockInner {
     wakers: VecDeque<(usize, oneshot::Sender<()>)>,
+    waiting: Vec<trigger::Sender>,
 }
 
 impl TestClock {
+    /// Wait until a task is block waiting on the clock.
+    pub async fn wait_until_blocked(&self) {
+        let mut inner = self.inner.lock().await;
+        if inner.wakers.is_empty() {
+            let (sig, wait) = trigger::trigger();
+            inner.waiting.push(sig);
+            drop(inner);
+            let _ = wait.await;
+        }
+    }
+
     /// Advance the clock by the specified duration.
     pub async fn advance(&self, duration: Duration) {
         let offset: usize = duration.as_millis().try_into().expect("Timer overflow.");
@@ -50,6 +63,7 @@ impl TestClock {
                 }
                 Some(ow) => {
                     inner.wakers.push_front(ow);
+
                     break;
                 }
                 _ => {
@@ -57,6 +71,12 @@ impl TestClock {
                 }
             }
         }
+    }
+
+    /// Wait until at least one task is blocked on the task, then advance the clock.
+    pub async fn advance_when_blocked(&self, duration: Duration) {
+        self.wait_until_blocked().await;
+        self.advance(duration).await
     }
 }
 
@@ -69,6 +89,9 @@ impl Clock for TestClock {
         } else {
             let epoch = self.epoch.clone();
             let offset: usize = duration.as_millis().try_into().expect("Timer overflow.");
+            if offset == 0 {
+                panic!("The test clock only has millisecond precision.");
+            }
             let now = epoch.load(Ordering::SeqCst);
             let time = now.checked_add(offset).expect("Timer overflow.");
             let contents = self.inner.clone();
@@ -78,10 +101,61 @@ impl Clock for TestClock {
                 if after < time {
                     let (tx, rx) = oneshot::channel();
                     inner.wakers.push_back((time, tx));
-
+                    for trigger in std::mem::take(&mut inner.waiting).into_iter() {
+                        trigger.trigger();
+                    }
+                    drop(inner);
                     let _ = rx.await;
                 }
             })
         }
     }
+}
+
+#[tokio::test]
+async fn check_advance() {
+    let clock = TestClock::default();
+
+    let wait = clock.delay(Duration::from_secs(1));
+
+    //Note this is a real timeout and independent of the fake clock.
+    let with_timeout = tokio::time::timeout(Duration::from_secs(1), wait);
+
+    let step = clock.advance(Duration::from_secs(2));
+
+    let (result, _) = join(with_timeout, step).await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn check_under_advance() {
+    let clock = TestClock::default();
+
+    let wait = clock.delay(Duration::from_secs(1));
+
+    //Note this is a real timeout and independent of the fake clock.
+    let with_timeout = tokio::time::timeout(Duration::from_millis(100), wait);
+
+    let step = clock.advance(Duration::from_millis(500));
+
+    let (result, _) = join(with_timeout, step).await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn wait_for_block() {
+    let clock = TestClock::default();
+
+    let wait_task = swim_runtime::task::spawn(tokio::time::timeout(
+        Duration::from_secs(1),
+        clock.delay(Duration::from_secs(1)),
+    ));
+
+    clock.wait_until_blocked().await;
+    clock.advance(Duration::from_secs(2)).await;
+
+    let result = wait_task.await;
+    assert!(matches!(result, Ok(Ok(()))));
 }
