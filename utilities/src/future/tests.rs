@@ -115,8 +115,9 @@ async fn take_until() {
     assert!(tx.send(3).await.is_ok());
     barrier2.wait().await;
     stop.trigger();
-    assert!(tx.send(4).await.is_ok());
-    assert!(tx.send(5).await.is_ok());
+    //Further sends are not guaranteed to succeed but it doesn't matter if they fail.
+    let _ = tx.send(4).await;
+    let _ = tx.send(5).await;
 
     assert!(stream_task.await.is_ok());
 }
