@@ -37,12 +37,12 @@ utilities = { path = "../utilities" }
 swim_form = { path = "../swim_form" }
 swim_runtime = { path = "../swim_runtime" }
 
-pin-utils = "0.1.0-alpha.4"
-pin-project = "0.4.8"
+pin-utils = "0.1.0"
+pin-project = "0.4.20"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
-im = "14.2.0"
+im = "15.0.0"
 url = "2.1.1"
 rand = "0.7.3"
 tracing-subscriber = "0.2.3"
