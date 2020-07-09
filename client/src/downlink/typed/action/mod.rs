@@ -23,7 +23,7 @@ use common::model::Value;
 use common::request::Request;
 use common::sink::item::{ItemSender, ItemSink};
 use std::marker::PhantomData;
-use swim_form::{Form, ValidatedForm};
+use swim_form_old::{Form, ValidatedForm};
 use tokio::sync::oneshot;
 
 /// Wraps a sender of updates to a value downlink, providing typed, asynchronous operations

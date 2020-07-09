@@ -1,0 +1,17 @@
+[package]
+name = "swim_form_old"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+im = "14.2.0"
+common = { path = "../common" }
+deserialize = { path = "deserialize" }
+form_derive_old = { path = "form_derive_old" }
+serialize = { path = "serialize" }
+
+[dev-dependencies]
+hamcrest2 = "0.3"
+trybuild = "1.0.17"

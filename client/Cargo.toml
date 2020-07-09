@@ -34,7 +34,7 @@ tracing = "0.1.13"
 [dependencies]
 common = { path = "../common" }
 utilities = { path = "../utilities" }
-swim_form = { path = "../swim_form" }
+swim_form_old = { path = "../swim_form_old" }
 swim_runtime = { path = "../swim_runtime" }
 
 pin-utils = "0.1.0-alpha.4"

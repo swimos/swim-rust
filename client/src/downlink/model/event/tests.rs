@@ -5,7 +5,7 @@ use crate::downlink::Event;
 use crate::downlink::{Command, DownlinkState, Message, Operation, Response, StateMachine};
 use common::model::schema::StandardSchema;
 use common::model::{Attr, Item, Value};
-use swim_form::{Form, ValidatedForm};
+use swim_form_old::{Form, ValidatedForm};
 
 #[test]
 fn test_handle_start_event() {

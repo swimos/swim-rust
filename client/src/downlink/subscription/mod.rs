@@ -49,7 +49,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_form::ValidatedForm;
+use swim_form_old::ValidatedForm;
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
