@@ -39,6 +39,65 @@ fn struct_derive() {
 }
 
 #[test]
+fn unit_struct_derve() {
+    #[form(Value)]
+    struct Nothing;
+
+    let fs = Nothing;
+    let v: Value = fs.as_value();
+    let expected = Value::Record(vec![Attr::of("Nothing")], Vec::new());
+
+    assert_eq!(v, expected);
+}
+
+#[test]
+fn nested_struct_types() {
+    #[form(Value)]
+    struct Unit;
+
+    #[form(Value)]
+    struct NewType(Unit);
+
+    #[form(Value)]
+    struct Outer {
+        nt: NewType,
+    }
+
+    let fs = Outer { nt: NewType(Unit) };
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("Outer")],
+        vec![Item::slot(
+            "nt",
+            Value::Record(
+                vec![Attr::of("NewType")],
+                vec![Item::of(Value::Record(vec![Attr::of("Unit")], vec![]))],
+            ),
+        )],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
+fn newtype_unit_struct_derive() {
+    #[form(Value)]
+    struct Nothing;
+
+    #[form(Value)]
+    struct FormStruct(Nothing);
+
+    let fs = FormStruct(Nothing);
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::of(Value::Record(vec![Attr::of("Nothing")], vec![]))],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
 fn newtype_struct_derive() {
     #[form(Value)]
     struct FormStruct(i32);

@@ -203,6 +203,18 @@ fn serialize_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStre
     }
 }
 
+fn serialize_unit_struct(parser: &Parser) -> TokenStream {
+    let struct_name = parser.ident.to_string();
+
+    quote! {
+        let mut serializer = swim_form::ValueSerializer::default();
+
+        serializer.serialize_struct(#struct_name, 0);
+        serializer.exit_nested();
+        serializer.output()
+    }
+}
+
 impl<'p> Parser<'p> {
     pub fn serialize_fields(&self) -> TokenStream {
         match &self.data {
@@ -211,7 +223,7 @@ impl<'p> Parser<'p> {
                 serialize_newtype_struct(&fields[0], self)
             }
             TypeContents::Struct(CompoundType::Tuple, fields) => unimplemented!(),
-            TypeContents::Struct(CompoundType::Unit, fields) => unimplemented!(),
+            TypeContents::Struct(CompoundType::Unit, _fields) => serialize_unit_struct(self),
             TypeContents::Enum(variants) => unimplemented!(),
         }
     }
