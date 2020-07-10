@@ -74,6 +74,34 @@ fn nested_newtype_struct_derive() {
 }
 
 #[test]
+fn nested_struct_newtype_derive() {
+    #[form(Value)]
+    struct FormStruct {
+        a: FormStructInner,
+    };
+    #[form(Value)]
+    struct FormStructInner(i32);
+
+    let fs = FormStruct {
+        a: FormStructInner(100),
+    };
+
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::slot(
+            "a",
+            Value::Record(
+                vec![Attr::of("FormStructInner")],
+                vec![Item::of(Value::Int32Value(100))],
+            ),
+        )],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
 fn newtype_with_struct() {
     #[form(Value)]
     struct Inner {
