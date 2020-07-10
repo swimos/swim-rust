@@ -39,6 +39,92 @@ fn struct_derive() {
 }
 
 #[test]
+fn tuple_struct() {
+    #[form(Value)]
+    struct Tuple(i32, i32, i32);
+
+    let fs = Tuple(1, 2, 3);
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("Tuple")],
+        vec![
+            Item::of(Value::Int32Value(1)),
+            Item::of(Value::Int32Value(2)),
+            Item::of(Value::Int32Value(3)),
+        ],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
+fn tuple_complex() {
+    #[form(Value)]
+    struct Child {
+        s: String,
+    }
+
+    #[form(Value)]
+    struct FormNested {
+        c: Child,
+    }
+
+    #[form(Value)]
+    struct FormStruct {
+        i: i32,
+        stringy: String,
+    }
+
+    #[form(Value)]
+    struct FormUnit;
+
+    #[form(Value)]
+    struct Tuple(i32, FormStruct, FormUnit, FormNested);
+
+    let fs = Tuple(
+        1,
+        FormStruct {
+            i: 2,
+            stringy: "a string".to_string(),
+        },
+        FormUnit,
+        FormNested {
+            c: Child {
+                s: "another string".to_string(),
+            },
+        },
+    );
+
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("Tuple")],
+        vec![
+            Item::of(Value::Int32Value(1)),
+            Item::of(Value::Record(
+                vec![Attr::of("FormStruct")],
+                vec![
+                    Item::slot("i", Value::Int32Value(2)),
+                    Item::slot("stringy", Value::Text(String::from("a string"))),
+                ],
+            )),
+            Item::of(Value::Record(vec![Attr::of("FormUnit")], vec![])),
+            Item::of(Value::Record(
+                vec![Attr::of("FormNested")],
+                vec![Item::slot(
+                    "c",
+                    Value::Record(
+                        vec![Attr::of("Child")],
+                        vec![Item::slot("s", Value::Text(String::from("another string")))],
+                    ),
+                )],
+            )),
+        ],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
 fn unit_struct_derve() {
     #[form(Value)]
     struct Nothing;

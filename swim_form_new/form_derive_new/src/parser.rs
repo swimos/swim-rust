@@ -18,7 +18,7 @@ use std::fmt::Display;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::{DeriveInput, Meta, NestedMeta};
+use syn::{DeriveInput, Index, Meta, NestedMeta};
 
 const FORM_PATH: &str = "form";
 const SER_NAME: &str = "ser_name";
@@ -169,7 +169,7 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
     let fields: Vec<TokenStream> = fields
         .iter()
         .map(|f| {
-            let name = &f.attributes.name.original;
+            let name = &f.attributes.name.serialize_as;
             let ident = Ident::new(&name, Span::call_site());
 
             quote!(serializer.serialize_field(Some(#name), &self.#ident, None);)
@@ -215,6 +215,35 @@ fn serialize_unit_struct(parser: &Parser) -> TokenStream {
     }
 }
 
+fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
+    let struct_name = parser.ident.to_string();
+
+    let fields: Vec<TokenStream> = fields
+        .iter()
+        .enumerate()
+        .map(|(idx, f)| {
+            let index = Index {
+                index: idx as u32,
+                span: Span::call_site(),
+            };
+
+            quote!(serializer.serialize_field(None, &self.#index, None);)
+        })
+        .collect();
+
+    let no_fields = fields.len();
+
+    quote! {
+        let mut serializer = swim_form::ValueSerializer::default();
+
+        serializer.serialize_struct(#struct_name, #no_fields);
+        #(#fields)*
+
+        serializer.exit_nested();
+        serializer.output()
+    }
+}
+
 impl<'p> Parser<'p> {
     pub fn serialize_fields(&self) -> TokenStream {
         match &self.data {
@@ -222,7 +251,9 @@ impl<'p> Parser<'p> {
             TypeContents::Struct(CompoundType::NewType, fields) => {
                 serialize_newtype_struct(&fields[0], self)
             }
-            TypeContents::Struct(CompoundType::Tuple, fields) => unimplemented!(),
+            TypeContents::Struct(CompoundType::Tuple, fields) => {
+                serialize_tuple_struct(fields, self)
+            }
             TypeContents::Struct(CompoundType::Unit, _fields) => serialize_unit_struct(self),
             TypeContents::Enum(variants) => unimplemented!(),
         }
