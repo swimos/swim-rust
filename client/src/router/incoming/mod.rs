@@ -21,6 +21,7 @@ use common::connections::WsMessage;
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
 use common::warp::path::RelativePath;
+use futures::future::ready;
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -209,10 +210,7 @@ async fn broadcast_all(
         }
     }
 
-    let results = futures
-        .filter_map(|result| async move { result })
-        .collect::<Vec<_>>()
-        .await;
+    let results = futures.filter_map(ready).collect::<Vec<_>>().await;
 
     Ok(results)
 }
@@ -242,11 +240,7 @@ async fn broadcast_destination(
                 .map(|(index, sender)| index_sender(sender, event.clone(), index)),
         );
 
-        for index in futures
-            .filter_map(|result| async move { result })
-            .collect::<Vec<_>>()
-            .await
-        {
+        for index in futures.filter_map(ready).collect::<Vec<_>>().await {
             destination_subs.remove(index);
         }
     } else {
