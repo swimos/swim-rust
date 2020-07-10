@@ -1,5 +1,5 @@
 trigger: ["master", "server-prototype"]
-pr: ["master", "server-prototype"]
+pr: ["master", "server-prototype", "forms_mk2"]
 
 variables:
   RUSTFLAGS: -Dwarnings
