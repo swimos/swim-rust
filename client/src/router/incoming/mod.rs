@@ -197,6 +197,27 @@ async fn broadcast_all(
     subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     event: RouterEvent,
 ) -> Result<Vec<(RelativePath, usize)>, RoutingError> {
+    if subscribers.len() == 1 {
+        let (dest, dest_subs) = subscribers
+            .iter_mut()
+            .next()
+            .ok_or(RoutingError::ConnectionError)?;
+
+        if dest_subs.len() == 1 {
+            let result = dest_subs
+                .get_mut(0)
+                .ok_or(RoutingError::ConnectionError)?
+                .send(event)
+                .await;
+
+            return if result.is_err() {
+                Ok(vec![(dest.clone(), 0)])
+            } else {
+                Ok(vec![])
+            };
+        }
+    }
+
     let futures = FuturesUnordered::new();
 
     for (dest, dest_subs) in subscribers {
@@ -233,15 +254,27 @@ async fn broadcast_destination(
             .get_mut(&destination)
             .ok_or(RoutingError::ConnectionError)?;
 
-        let futures = FuturesUnordered::from_iter(
-            destination_subs
-                .iter_mut()
-                .enumerate()
-                .map(|(index, sender)| index_sender(sender, event.clone(), index)),
-        );
+        if destination_subs.len() == 1 {
+            let result = destination_subs
+                .get_mut(0)
+                .ok_or(RoutingError::ConnectionError)?
+                .send(event)
+                .await;
 
-        for index in futures.filter_map(ready).collect::<Vec<_>>().await {
-            destination_subs.remove(index);
+            if result.is_err() {
+                destination_subs.remove(0);
+            }
+        } else {
+            let futures = FuturesUnordered::from_iter(
+                destination_subs
+                    .iter_mut()
+                    .enumerate()
+                    .map(|(index, sender)| index_sender(sender, event.clone(), index)),
+            );
+
+            for index in futures.filter_map(ready).collect::<Vec<_>>().await {
+                destination_subs.remove(index);
+            }
         }
     } else {
         trace!("No downlink interested in event: {:?}", event);
