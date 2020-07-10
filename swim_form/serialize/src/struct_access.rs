@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::{FormSerializeErr, SerializerResult, ValueSerializer};
 use serde::ser::{
     SerializeStruct, SerializeStructVariant, SerializeTuple, SerializeTupleStruct,
     SerializeTupleVariant,
@@ -24,14 +25,14 @@ impl<'a> SerializeTuple for &'a mut ValueSerializer {
     type Ok = ();
     type Error = FormSerializeErr;
 
-    fn serialize_element<T>(&mut self, value: &T) -> Result<()>
+    fn serialize_element<T>(&mut self, value: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> SerializerResult<()> {
         self.exit_nested();
         Ok(())
     }
@@ -41,14 +42,14 @@ impl<'a> SerializeTupleStruct for &'a mut ValueSerializer {
     type Ok = ();
     type Error = FormSerializeErr;
 
-    fn serialize_field<T>(&mut self, value: &T) -> Result<()>
+    fn serialize_field<T>(&mut self, value: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> SerializerResult<()> {
         self.exit_nested();
         Ok(())
     }
@@ -58,14 +59,14 @@ impl<'a> SerializeTupleVariant for &'a mut ValueSerializer {
     type Ok = ();
     type Error = FormSerializeErr;
 
-    fn serialize_field<T>(&mut self, value: &T) -> Result<()>
+    fn serialize_field<T>(&mut self, value: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> SerializerResult<()> {
         self.exit_nested();
         Ok(())
     }
@@ -75,7 +76,7 @@ impl<'a> SerializeStruct for &'a mut ValueSerializer {
     type Ok = ();
     type Error = FormSerializeErr;
 
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
@@ -83,7 +84,7 @@ impl<'a> SerializeStruct for &'a mut ValueSerializer {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> SerializerResult<()> {
         self.exit_nested();
 
         Ok(())
@@ -94,7 +95,7 @@ impl<'a> SerializeStructVariant for &'a mut ValueSerializer {
     type Ok = ();
     type Error = FormSerializeErr;
 
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
@@ -102,7 +103,7 @@ impl<'a> SerializeStructVariant for &'a mut ValueSerializer {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> SerializerResult<()> {
         self.exit_nested();
         Ok(())
     }

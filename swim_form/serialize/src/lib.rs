@@ -18,9 +18,11 @@ use core::fmt;
 use serde::ser;
 use std::fmt::{Debug, Display, Formatter};
 
-use common::model::{Attr, Item, Value};
+use common::model::blob::Blob;
+use common::model::{Attr, Item, Value, ValueKind};
 
-pub type Result<T> = ::std::result::Result<T, FormSerializeErr>;
+pub type SerializerResult<T> = ::std::result::Result<T, FormSerializeErr>;
+const EXT_BLOB: &str = common::model::blob::EXT_BLOB;
 
 #[cfg(test)]
 mod tests;
@@ -72,6 +74,8 @@ pub enum SerializerState {
     // Reading key
     ReadingMap(bool),
     None,
+    // Reading a special variant. Such as a blob or big integer.
+    ReadingExt(ValueKind),
 }
 
 impl ser::Error for FormSerializeErr {
@@ -125,44 +129,62 @@ impl ValueSerializer {
         }
     }
 
-    pub fn push_value(&mut self, value: Value) {
-        match &mut self.current_state.output {
-            Value::Record(ref mut attrs, ref mut items) => {
-                match self.current_state.serializer_state {
-                    SerializerState::ReadingMap(reading_key) => {
-                        if reading_key {
-                            let item = Item::Slot(value, Value::Extant);
-                            items.push(item);
-                        } else if let Some(last_item) = items.last_mut() {
-                            match last_item {
-                                Item::Slot(_, ref mut val) => {
-                                    *val = value;
-                                }
-                                i => {
-                                    panic!("Illegal state. Incorrect item type: {:?}", i);
+    pub fn push_value(&mut self, value: Value) -> SerializerResult<()> {
+        match &mut self.current_state.serializer_state {
+            SerializerState::ReadingExt(vk) => {
+                // At this point we are an element deeper than we need to be. The current state needs
+                // to be poppped, the Value transformed into the correct type and pushed up into the
+                // correct position so the field's name matches the value.
+                let r = match (vk, value) {
+                    (ValueKind::Data, Value::Text(s)) => {
+                        let b = Blob::from_encoded(Vec::from(s.as_bytes()));
+                        Value::Data(b)
+                    }
+                    _ => unreachable!(),
+                };
+
+                self.current_state = self.stack.pop().expect("Serializer in an illegal state.");
+                self.push_value(r)?
+            }
+            _ => match &mut self.current_state.output {
+                Value::Record(ref mut attrs, ref mut items) => {
+                    match self.current_state.serializer_state {
+                        SerializerState::ReadingMap(reading_key) => {
+                            if reading_key {
+                                let item = Item::Slot(value, Value::Extant);
+                                items.push(item);
+                            } else if let Some(last_item) = items.last_mut() {
+                                match last_item {
+                                    Item::Slot(_, ref mut val) => {
+                                        *val = value;
+                                    }
+                                    i => {
+                                        panic!("Illegal state. Incorrect item type: {:?}", i);
+                                    }
                                 }
                             }
                         }
-                    }
-                    SerializerState::ReadingEnumName => match value {
-                        Value::Text(s) => attrs.push(Attr::from(s)),
-                        v => panic!("Illegal type for attribute: {:?}", v),
-                    },
-                    _ => {
-                        let item = match &self.current_state.attr_name {
-                            Some(name) => Item::Slot(Value::Text(name.to_owned()), value),
-                            None => Item::ValueItem(value),
-                        };
+                        SerializerState::ReadingEnumName => match value {
+                            Value::Text(s) => attrs.push(Attr::from(s)),
+                            v => panic!("Illegal type for attribute: {:?}", v),
+                        },
+                        _ => {
+                            let item = match &self.current_state.attr_name {
+                                Some(name) => Item::Slot(Value::Text(name.to_owned()), value),
+                                None => Item::ValueItem(value),
+                            };
 
-                        items.push(item)
+                            items.push(item)
+                        }
                     }
                 }
-            }
-            Value::Extant => {
-                self.current_state.output = value;
-            }
-            v => unimplemented!("{:?}", v),
+                Value::Extant => {
+                    self.current_state.output = value;
+                }
+                v => unreachable!("{:?}", v),
+            },
         }
+        Ok(())
     }
 
     pub fn err_unsupported<V>(&self, t: &str) -> std::result::Result<V, FormSerializeErr> {
@@ -212,6 +234,47 @@ impl ValueSerializer {
                 }
             }
             self.current_state = previous_state;
+        }
+    }
+
+    /// Changes the serializer's state to accept a known Value variant provided by a key `ext_name`.
+    /// This operation should only be used *once* per field that requires it and only a single value
+    /// should be pushed onto the current state.
+    ///
+    /// Returns whether or not the provided key was of a known Value variant.
+    ///
+    /// * Note:
+    /// Implementations of serialize and deserialize must be generic across all serializers and
+    /// deserializers and so provide no way to provide a specialised implementation without nightly's
+    /// specialisation. As a result of this, structures that can be represented as a single field
+    /// - such as a big integer or a BLOB - will be serialized incorrectly; such as into Value::Text.
+    /// TypeId::of<T>() requires that the function has a static lifetime and Serde objects may not have
+    /// a static lifetime, and intrinsics::type_name may not return a consistent name across
+    /// compiler versions that can be checked when serializing an object.
+    ///
+    /// The only consistent approach to serializing these correctly is for structures to use a special
+    /// serialize implementation that passes in its type name as a string that this serializer
+    /// can use to map the current type to the correct Value variant. This happens *before* the
+    /// actual value is serialized so that the serializer's state can be setup to accept and map the
+    /// subsequent value to the correct Value variant.
+    ///
+    /// As a result of this, to use Serde's JSON serializer/deserializer (as well as others), the
+    /// structure must be mimicked and have the `#[serde(with = ...)]` / `#[form(..)]` attributes
+    /// removed so that this function is not called; otherwise, there will be an extra field in the output.
+    #[doc(hidden)]
+    pub fn enter_ext(&mut self, ext_name: &'static str) -> bool {
+        match ext_name {
+            EXT_BLOB => {
+                self.push_state(State::new_with_state(SerializerState::ReadingExt(
+                    ValueKind::Data,
+                )));
+
+                true
+            }
+            _ => {
+                // no op as the name will be the structure's actual name
+                false
+            }
         }
     }
 }

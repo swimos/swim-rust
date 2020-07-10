@@ -26,15 +26,19 @@ pub use _deserialize::{deserialize_bigint, deserialize_biguint};
 pub use _serialize::bigint::{self, serialize_big_uint, serialize_bigint};
 use common::model::schema::StandardSchema;
 use common::model::Value;
+
 pub use deserialize::FormDeserializeErr;
 pub use form_derive::*;
 pub use serialize::FormSerializeErr;
+
+#[allow(unused_imports)]
+use common::model::blob::{self, serialize_blob_as_value};
 
 #[cfg(test)]
 mod tests;
 
 pub mod collections;
-pub mod primitives;
+pub mod impls;
 
 /// A [`Form`] transforms between a Rust object and a structurally typed [`Value`]. Decorating a
 /// Rust object with [`#[form(Value)`] derives a method to serialise the object to a [`Value`] and to

@@ -36,6 +36,7 @@ mod parser;
 const ATTRIBUTE_PATH: &str = "form";
 const BIG_INT_PATH: &str = "bigint";
 const BIG_UINT_PATH: &str = "biguint";
+const BLOB_PATH: &str = "blob";
 
 #[proc_macro_attribute]
 pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -81,6 +82,8 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     q.into()
 }
 
+// Searches for #[form(... attributes and replaces them with the correct serde serializer and
+// deserializer attributes
 fn remove_form_attributes(input: &mut syn::DeriveInput) {
     struct FieldVisitor;
     impl VisitMut for FieldVisitor {
@@ -99,6 +102,10 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
                                     }
                                     NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BIG_UINT_PATH) => {
                                         let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::bigint::serialize_big_uint", deserialize_with = "swim_form::deserialize_biguint")]);
+                                        *attr = replacement_attribute;
+                                    }
+                                    NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BLOB_PATH) => {
+                                        let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::serialize_blob_as_value")]);
                                         *attr = replacement_attribute;
                                     }
                                     _nm => {}
@@ -120,7 +127,7 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
         syn::Data::Struct(ref mut data) => {
             FieldVisitor.visit_fields_mut(&mut data.fields);
         }
-        syn::Data::Union(_) => {}
+        syn::Data::Union(_) => panic!("Unions are not supported"),
     }
 }
 

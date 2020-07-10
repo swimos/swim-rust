@@ -27,7 +27,9 @@ use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::sign::Signed;
 use num_traits::ToPrimitive;
 use std::str::FromStr;
+use crate::model::blob::Blob;
 
+pub mod blob;
 pub mod parser;
 pub mod schema;
 
@@ -86,6 +88,9 @@ pub enum Value {
 
     /// A big unsigned integer type wrapped as a [`Value`].
     BigUint(BigUint),
+
+    /// A Binary Large OBject (BLOB)
+    Data(Blob),
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -99,6 +104,7 @@ pub enum ValueKind {
     Record,
     BigInt,
     BigUint,
+    Data,
 }
 
 impl PartialOrd for ValueKind {
@@ -153,6 +159,7 @@ impl Display for ValueKind {
             ValueKind::Record => write!(f, "Record"),
             ValueKind::BigInt => write!(f, "BigInt"),
             ValueKind::BigUint => write!(f, "BigUint"),
+            ValueKind::Data => write!(f, "data"),
         }
     }
 }
@@ -196,6 +203,10 @@ impl Value {
 
     fn compare(&self, other: &Self) -> Ordering {
         match self {
+            Value::Data(left_len) => match other {
+                Value::Data(right_len) => left_len.cmp(right_len),
+                _ => Ordering::Less,
+            },
             Value::Extant => match other {
                 Value::Extant => Ordering::Equal,
                 _ => Ordering::Greater,
@@ -398,6 +409,7 @@ impl Value {
             Value::Record(_, _) => ValueKind::Record,
             Value::BigInt(_) => ValueKind::BigInt,
             Value::BigUint(_) => ValueKind::BigUint,
+            Value::Data(_) => ValueKind::Data,
         }
     }
 
@@ -421,6 +433,10 @@ impl Default for Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
+            Value::Data(mb) => match other {
+                Value::Data(tb) => mb.eq(tb),
+                _ => false,
+            },
             Value::Extant => match other {
                 Value::Extant => true,
                 _ => false,
@@ -492,6 +508,7 @@ impl Hash for Value {
         const RECORD_HASH: u8 = 6;
         const BIGINT_HASH: u8 = 7;
         const BIGUINT_HASH: u8 = 8;
+        const DATA_HASH: u8 = 9;
 
         match self {
             Value::Extant => {
@@ -533,6 +550,10 @@ impl Hash for Value {
             Value::BigUint(bi) => {
                 state.write_u8(BIGUINT_HASH);
                 bi.hash(state);
+            }
+            Value::Data(b) => {
+                state.write_u8(DATA_HASH);
+                b.hash(state);
             }
         }
     }
@@ -841,6 +862,7 @@ fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std:
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
+            Value::Data(b) => write!(f, "{}", b),
             Value::Extant => f.write_str(""),
             Value::Int32Value(n) => write!(f, "{}", n),
             Value::Int64Value(n) => write!(f, "{}", n),
@@ -1125,6 +1147,7 @@ impl ValueEncoder {
 
     fn encode_value(&mut self, item: Value, dst: &mut BytesMut) -> Result<(), ValueEncodeErr> {
         match item {
+            Value::Data(b) => write!(dst, "{:?}", b.as_ref()).map_err(Into::into),
             Value::Extant => Ok(()),
             Value::Int32Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
             Value::Int64Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
@@ -1226,6 +1249,7 @@ impl ValueEncoder {
 
     fn estimate_size(value: &Value) -> usize {
         match value {
+            Value::Data(b) => b.as_ref().len(),
             Value::Extant => 0,
             Value::Int32Value(n) => {
                 let mut a = (*n).abs();
