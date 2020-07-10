@@ -179,13 +179,10 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
     let no_fields = fields.len();
 
     quote! {
-        let mut serializer = swim_form::ValueSerializer::default();
-
         serializer.serialize_struct(#struct_name, #no_fields);
         #(#fields)*
 
         serializer.exit_nested();
-        serializer.output()
     }
 }
 
@@ -193,13 +190,10 @@ fn serialize_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStre
     let struct_name = parser.ident.to_string();
 
     quote! {
-        let mut serializer = swim_form::ValueSerializer::default();
-
         serializer.serialize_struct(#struct_name, 1);
         serializer.serialize_field(None, &self.0, None);
 
         serializer.exit_nested();
-        serializer.output()
     }
 }
 
@@ -207,11 +201,8 @@ fn serialize_unit_struct(parser: &Parser) -> TokenStream {
     let struct_name = parser.ident.to_string();
 
     quote! {
-        let mut serializer = swim_form::ValueSerializer::default();
-
         serializer.serialize_struct(#struct_name, 0);
         serializer.exit_nested();
-        serializer.output()
     }
 }
 
@@ -234,13 +225,10 @@ fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
     let no_fields = fields.len();
 
     quote! {
-        let mut serializer = swim_form::ValueSerializer::default();
-
         serializer.serialize_struct(#struct_name, #no_fields);
         #(#fields)*
 
         serializer.exit_nested();
-        serializer.output()
     }
 }
 

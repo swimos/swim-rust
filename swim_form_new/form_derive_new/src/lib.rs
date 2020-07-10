@@ -68,7 +68,7 @@ fn expand_derive_form(
         None => return Err(context.check().unwrap_err()),
     };
 
-    let lifetimes: Vec<&'_ LifetimeDef> = parser.generics.lifetimes().into_iter().collect();
+    let lifetimes: Vec<&'_ LifetimeDef> = parser.generics.lifetimes().collect();
     if !lifetimes.is_empty() {
         return Err(vec![syn::Error::new(
             Span::call_site(),
@@ -91,7 +91,7 @@ fn expand_derive_form(
         impl #impl_generics swim_form::Form for #ident #type_generics #where_clause {
             #[inline]
             fn as_value(&self) -> #value_name_binding {
-                swim_form::SerializeToValue::serialize(self, None)
+                 crate::serialize::as_value(self)
             }
 
             #[inline]
@@ -104,7 +104,7 @@ fn expand_derive_form(
         #[allow(unused_qualifications)]
         impl #impl_generics swim_form::SerializeToValue for #ident #type_generics #where_clause {
             #[inline]
-            fn serialize(&self, _properties: Option<swim_form::SerializerProps>) -> #value_name_binding {
+            fn serialize(&self, serializer: &mut swim_form::ValueSerializer, _properties: Option<swim_form::SerializerProps>) {
                 #serialized_fields
             }
         }

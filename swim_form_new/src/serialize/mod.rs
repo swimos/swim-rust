@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use num_bigint::{BigInt, BigUint};
+
 use common::model::{Item, Value};
+pub use serializer::ValueSerializer;
 
 use crate::deserialize::FormDeserializeErr;
 use crate::Form;
-use num_bigint::{BigInt, BigUint};
-mod serializer;
-pub use serializer::ValueSerializer;
 
+mod serializer;
 #[cfg(test)]
 mod tests;
 
@@ -37,15 +38,37 @@ pub enum FormSerializeErr {
 }
 
 pub trait SerializeToValue: Form {
-    fn serialize(&self, _properties: Option<SerializerProps>) -> Value;
+    fn serialize(&self, serializer: &mut ValueSerializer, _properties: Option<SerializerProps>);
+}
+
+impl<'a, S> SerializeToValue for &'a S
+where
+    S: SerializeToValue,
+{
+    fn serialize(&self, serializer: &mut ValueSerializer, _properties: Option<SerializerProps>) {
+        serializer.push_value((**self).as_value());
+    }
+}
+
+impl<'a, S> SerializeToValue for &'a mut S
+where
+    S: SerializeToValue,
+{
+    fn serialize(&self, serializer: &mut ValueSerializer, _properties: Option<SerializerProps>) {
+        serializer.push_value((**self).as_value());
+    }
 }
 
 macro_rules! serialize_impl {
     ($ty:ident) => {
         impl SerializeToValue for $ty {
             #[inline]
-            fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
-                self.as_value()
+            fn serialize(
+                &self,
+                serializer: &mut ValueSerializer,
+                _properties: Option<SerializerProps>,
+            ) {
+                serializer.push_value(self.as_value());
             }
         }
     };
@@ -65,10 +88,10 @@ impl<V> SerializeToValue for Option<V>
 where
     V: SerializeToValue,
 {
-    fn serialize(&self, properties: Option<SerializerProps>) -> Value {
+    fn serialize(&self, serializer: &mut ValueSerializer, properties: Option<SerializerProps>) {
         match self {
-            Option::None => Value::Extant,
-            Option::Some(v) => V::serialize(v, properties),
+            Option::None => serializer.push_value(Value::Extant),
+            Option::Some(v) => V::serialize(v, serializer, properties),
         }
     }
 }
@@ -77,10 +100,16 @@ impl<V> SerializeToValue for Vec<V>
 where
     V: SerializeToValue,
 {
-    fn serialize(&self, properties: Option<SerializerProps>) -> Value {
-        let mut serializer = ValueSerializer::default();
+    fn serialize(&self, serializer: &mut ValueSerializer, properties: Option<SerializerProps>) {
         serializer.serialize_sequence(self, properties);
-
-        serializer.output()
     }
+}
+
+pub fn as_value<T>(v: &T) -> Value
+where
+    T: SerializeToValue,
+{
+    let mut serializer = ValueSerializer::default();
+    v.serialize(&mut serializer, None);
+    serializer.finish()
 }

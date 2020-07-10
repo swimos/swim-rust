@@ -31,8 +31,7 @@ mod tests;
 pub extern crate form_derive_new;
 
 pub use deserialize::FormDeserializeErr;
-#[allow(warnings)]
-pub use serialize::{SerializeToValue, SerializerProps, ValueSerializer};
+pub use serialize::{as_value, SerializeToValue, SerializerProps, ValueSerializer};
 
 pub trait Form: Sized {
     fn as_value(&self) -> Value;

@@ -28,7 +28,7 @@ pub struct State {
     pub attr_name: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum SerializerState {
     // Nested length
     ReadingNested(Option<usize>),
@@ -66,7 +66,7 @@ impl Default for ValueSerializer {
 }
 
 impl ValueSerializer {
-    pub fn output(&mut self) -> Value {
+    pub fn finish(&mut self) -> Value {
         self.current_state.output.to_owned()
     }
 
@@ -134,17 +134,9 @@ impl ValueSerializer {
                 if let SerializerState::ReadingNested(opt_len) = self.current_state.serializer_state
                 {
                     match &self.current_state.attr_name {
-                        Some(name) => match opt_len {
-                            Some(len) => {
-                                items.push(Item::Slot(
-                                    Value::Text(name.to_owned()),
-                                    Value::Record(Vec::new(), Vec::with_capacity(len)),
-                                ));
-                            }
-                            None => {
-                                items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
-                            }
-                        },
+                        Some(name) => {
+                            items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant))
+                        }
                         None => {
                             items.push(Item::ValueItem(Value::Extant));
                         }
@@ -181,17 +173,19 @@ impl ValueSerializer {
         }
     }
 
-    pub fn serialize_field<F: SerializeToValue>(
+    pub fn serialize_field<F>(
         &mut self,
         name_opt: Option<&'static str>,
         f: &F,
         properties: Option<SerializerProps>,
-    ) {
+    ) where
+        F: SerializeToValue,
+    {
         if let Some(name) = name_opt {
             self.current_state.attr_name = Some(name.to_owned());
         }
 
-        self.push_value(f.serialize(properties));
+        f.serialize(self, properties);
     }
 
     pub fn serialize_struct(&mut self, name: &'static str, len: usize) {
@@ -212,7 +206,7 @@ impl ValueSerializer {
             _ => self.enter_nested(SerializerState::ReadingNested(None)),
         }
 
-        it.for_each(|e| self.push_value(e.serialize(properties)));
+        it.for_each(|e| e.serialize(self, properties));
 
         self.exit_nested();
     }

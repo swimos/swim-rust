@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::serialize::as_value;
 use crate::serialize::SerializeToValue;
-use common::model::Value;
-
+use common::model::{Item, Value};
 mod bigint;
 mod compound;
 
@@ -22,7 +22,7 @@ macro_rules! test_impl {
     ($test_name:ident, $typ:expr, $expected:expr) => {
         #[test]
         fn $test_name() {
-            let value = SerializeToValue::serialize(&$typ, None);
+            let value = as_value(&$typ);
             assert_eq!(value, $expected);
         }
     };
@@ -38,10 +38,24 @@ test_impl!(
     String::from("test"),
     Value::Text(String::from("test"))
 );
+test_impl!(
+    test_vec,
+    vec![1, 2, 3, 4, 5],
+    Value::Record(
+        Vec::new(),
+        vec![
+            Item::of(Value::Int32Value(1)),
+            Item::of(Value::Int32Value(2)),
+            Item::of(Value::Int32Value(3)),
+            Item::of(Value::Int32Value(4)),
+            Item::of(Value::Int32Value(5)),
+        ]
+    )
+);
 
 #[test]
 fn test_opt_none() {
     let r: Option<i32> = None;
-    let value = r.serialize(None);
+    let value = as_value(&r);
     assert_eq!(value, Value::Extant);
 }

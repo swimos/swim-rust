@@ -20,6 +20,32 @@ use common::model::schema::StandardSchema;
 use common::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
 
+impl<'a, F> Form for &'a F
+where
+    F: Form,
+{
+    fn as_value(&self) -> Value {
+        (**self).as_value()
+    }
+
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+        Form::try_from_value(value)
+    }
+}
+
+impl<'a, F> Form for &'a mut F
+where
+    F: Form,
+{
+    fn as_value(&self) -> Value {
+        (**self).as_value()
+    }
+
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+        Form::try_from_value(value)
+    }
+}
+
 impl Form for f64 {
     fn as_value(&self) -> Value {
         Value::Float64Value(*self)

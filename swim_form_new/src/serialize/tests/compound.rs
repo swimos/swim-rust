@@ -27,7 +27,7 @@ fn test_serialize_struct() {
 
     impl Form for S {
         fn as_value(&self) -> Value {
-            self.serialize(None)
+            crate::serialize::as_value(self)
         }
 
         fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
@@ -36,15 +36,16 @@ fn test_serialize_struct() {
     }
 
     impl SerializeToValue for S {
-        fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
-            let mut serializer = ValueSerializer::default();
-
+        fn serialize(
+            &self,
+            serializer: &mut ValueSerializer,
+            _properties: Option<SerializerProps>,
+        ) {
             serializer.serialize_struct("S", 2);
             serializer.serialize_field(Some("a"), &self.a, None);
             serializer.serialize_field(Some("b"), &self.b, None);
 
             serializer.exit_nested();
-            serializer.output()
         }
     }
 
@@ -53,7 +54,8 @@ fn test_serialize_struct() {
         b: "a string".to_string(),
     };
 
-    let value = s.serialize(None);
+    let value = crate::serialize::as_value(&s);
+
     let expected = Value::Record(
         vec![Attr::of("S")],
         vec![
@@ -71,7 +73,7 @@ fn test_serialize_newtype_struct() {
 
     impl Form for S {
         fn as_value(&self) -> Value {
-            self.serialize(None)
+            crate::serialize::as_value(self)
         }
 
         fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
@@ -80,20 +82,20 @@ fn test_serialize_newtype_struct() {
     }
 
     impl SerializeToValue for S {
-        fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
-            let mut serializer = ValueSerializer::default();
-
+        fn serialize(
+            &self,
+            serializer: &mut ValueSerializer,
+            _properties: Option<SerializerProps>,
+        ) {
             serializer.serialize_struct("S", 2);
             serializer.serialize_field(None, &self.0, None);
 
             serializer.exit_nested();
-            serializer.output()
         }
     }
 
     let s = S(1);
-
-    let value = s.serialize(None);
+    let value = crate::serialize::as_value(&s);
     let expected = Value::Record(vec![Attr::of("S")], vec![Item::of(Value::Int32Value(1))]);
 
     assert_eq!(value, expected);
