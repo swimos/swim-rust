@@ -39,7 +39,7 @@ fn test_serialize() {
         fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
             let mut serializer = ValueSerializer::default();
 
-            serializer.serialize_struct("S");
+            serializer.serialize_struct("S", 2);
             serializer.serialize_field(Some("a"), &self.a, None);
             serializer.serialize_field(Some("b"), &self.b, None);
 

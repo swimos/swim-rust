@@ -176,10 +176,12 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
         })
         .collect();
 
+    let no_fields = fields.len();
+
     quote! {
         let mut serializer = swim_form::ValueSerializer::default();
 
-        serializer.serialize_struct(#struct_name);
+        serializer.serialize_struct(#struct_name, #no_fields);
         #(#fields)*
 
         serializer.exit_nested();

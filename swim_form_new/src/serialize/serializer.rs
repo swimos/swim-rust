@@ -30,7 +30,8 @@ pub struct State {
 
 #[derive(Clone)]
 pub enum SerializerState {
-    ReadingNested,
+    // Nested length
+    ReadingNested(Option<usize>),
     ReadingEnumName,
     // Reading key
     ReadingMap(bool),
@@ -130,11 +131,20 @@ impl ValueSerializer {
             self.current_state.output = Value::Record(Vec::new(), Vec::new());
         } else {
             if let Value::Record(_, ref mut items) = &mut self.current_state.output {
-                if let SerializerState::ReadingNested = self.current_state.serializer_state {
+                if let SerializerState::ReadingNested(opt_len) = self.current_state.serializer_state
+                {
                     match &self.current_state.attr_name {
-                        Some(name) => {
-                            items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
-                        }
+                        Some(name) => match opt_len {
+                            Some(len) => {
+                                items.push(Item::Slot(
+                                    Value::Text(name.to_owned()),
+                                    Value::Record(Vec::new(), Vec::with_capacity(len)),
+                                ));
+                            }
+                            None => {
+                                items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant));
+                            }
+                        },
                         None => {
                             items.push(Item::ValueItem(Value::Extant));
                         }
@@ -145,9 +155,10 @@ impl ValueSerializer {
         }
     }
 
+    // todo remove all the `to_owned` calls
     pub fn exit_nested(&mut self) {
         if let Some(mut previous_state) = self.stack.pop() {
-            if let SerializerState::ReadingNested = self.current_state.serializer_state {
+            if let SerializerState::ReadingNested(_) = self.current_state.serializer_state {
                 if let Value::Record(_, ref mut items) = previous_state.output {
                     if let Some(item) = items.last_mut() {
                         match item {
@@ -183,8 +194,8 @@ impl ValueSerializer {
         self.push_value(f.serialize(properties));
     }
 
-    pub fn serialize_struct(&mut self, name: &'static str) {
-        self.enter_nested(SerializerState::ReadingNested);
+    pub fn serialize_struct(&mut self, name: &'static str, len: usize) {
+        self.enter_nested(SerializerState::ReadingNested(Some(len)));
         self.push_attr(Attr::from(name));
     }
 }

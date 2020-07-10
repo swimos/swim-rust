@@ -39,7 +39,7 @@ fn test_bigint() {
         fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
             let mut serializer = ValueSerializer::default();
 
-            serializer.serialize_struct("S");
+            serializer.serialize_struct("S", 1);
             serializer.serialize_field(Some("bi"), &self.bi, None);
             serializer.exit_nested();
 
