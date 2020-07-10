@@ -17,6 +17,7 @@ pub mod retryable;
 #[cfg(test)]
 mod tests;
 
+use futures::never::Never;
 use futures::task::{Context, Poll};
 use futures::{Future, Sink, Stream, TryFuture};
 use pin_project::pin_project;
@@ -49,6 +50,11 @@ pub struct TransformedFuture<Fut, Trans> {
     future: Fut,
     transform: Option<Trans>,
 }
+
+/// Trans forms a stream of [`T`] into a stream of [`Result<T, Never>`].
+#[pin_project]
+#[derive(Debug)]
+pub struct NeverErrorStream<Str>(#[pin] Str);
 
 impl<F, T> FutureInto<F, T>
 where
@@ -138,6 +144,18 @@ where
             Some(trans) => trans.transform(input),
             _ => panic!("Transformed future used more than once."),
         })
+    }
+}
+
+impl<T, Str> Stream for NeverErrorStream<Str>
+where
+    Str: Stream<Item = T>,
+{
+    type Item = Result<T, Never>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let projected = self.project();
+        projected.0.poll_next(cx).map(|t| t.map(Ok))
     }
 }
 
@@ -317,6 +335,22 @@ pub struct UntilFailure<Str, Trans> {
     transform: Trans,
 }
 
+/// Stream for the `take_until_completes` combinator.
+#[pin_project]
+#[derive(Debug)]
+pub struct TakeUntil<S, F> {
+    #[pin]
+    stream: S,
+    #[pin]
+    fut: F,
+}
+
+impl<S, F> TakeUntil<S, F> {
+    pub fn new(stream: S, limit: F) -> Self {
+        TakeUntil { stream, fut: limit }
+    }
+}
+
 impl<Str, Trans> UntilFailure<Str, Trans>
 where
     Str: Stream,
@@ -341,6 +375,20 @@ where
         stream
             .poll_next(cx)
             .map(|r| r.and_then(|item| trans.transform(item).ok()))
+    }
+}
+
+impl<S: Stream, F: Future> Stream for TakeUntil<S, F> {
+    type Item = S::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let projected = self.project();
+
+        if let Poll::Ready(_) = projected.fut.poll(cx) {
+            Poll::Ready(None)
+        } else {
+            projected.stream.poll_next(cx)
+        }
     }
 }
 
@@ -412,9 +460,54 @@ pub trait SwimStreamExt: Stream {
     {
         UntilFailure::new(self, transform)
     }
+
+    /// Creates a new stream that will produce the values that this stream would produce until
+    /// a future completes.
+    ///
+    /// #Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::stream::unfold;
+    /// use futures::future::ready;
+    /// use futures::StreamExt;
+    /// use utilities::sync::trigger::trigger;
+    /// use utilities::future::SwimStreamExt;
+    ///
+    /// let (stop, stop_sig) = trigger();
+    /// let mut maybe_stop = Some(stop);
+    /// let stream = unfold(0i32, |i| ready(Some((i, i + 1))))
+    ///     .then(|i| {
+    ///         if i == 5 {
+    ///             if let Some(stop) = maybe_stop.take() {
+    ///                 stop.trigger();
+    ///             }
+    ///         }
+    ///         ready(i)
+    ///    }).take_until_completes(stop_sig);
+    ///
+    /// assert_eq!(block_on(stream.collect::<Vec<_>>()), vec![0, 1, 2, 3, 4, 5]);
+    ///
+    /// ```
+    fn take_until_completes<Fut>(self, limit: Fut) -> TakeUntil<Self, Fut>
+    where
+        Self: Sized,
+        Fut: Future,
+    {
+        TakeUntil::new(self, limit)
+    }
+
+    /// Transform this stream into an infallible [`TryStream`].
+    ///
+    fn never_error(self) -> NeverErrorStream<Self>
+    where
+        Self: Sized,
+    {
+        NeverErrorStream(self)
+    }
 }
 
 #[pin_project]
+#[derive(Debug)]
 pub struct TransformedSink<S, Trans> {
     #[pin]
     inner: S,
