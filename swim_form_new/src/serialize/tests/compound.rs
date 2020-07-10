@@ -19,7 +19,7 @@ use crate::Form;
 use common::model::{Attr, Item, Value};
 
 #[test]
-fn test_serialize() {
+fn test_serialize_struct() {
     struct S {
         a: i32,
         b: String,
@@ -61,6 +61,40 @@ fn test_serialize() {
             Item::slot("b", Value::Text(String::from("a string"))),
         ],
     );
+
+    assert_eq!(value, expected);
+}
+
+#[test]
+fn test_serialize_newtype_struct() {
+    struct S(i32);
+
+    impl Form for S {
+        fn as_value(&self) -> Value {
+            self.serialize(None)
+        }
+
+        fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+            unimplemented!()
+        }
+    }
+
+    impl SerializeToValue for S {
+        fn serialize(&self, _properties: Option<SerializerProps>) -> Value {
+            let mut serializer = ValueSerializer::default();
+
+            serializer.serialize_struct("S", 2);
+            serializer.serialize_field(None, &self.0, None);
+
+            serializer.exit_nested();
+            serializer.output()
+        }
+    }
+
+    let s = S(1);
+
+    let value = s.serialize(None);
+    let expected = Value::Record(vec![Attr::of("S")], vec![Item::of(Value::Int32Value(1))]);
 
     assert_eq!(value, expected);
 }

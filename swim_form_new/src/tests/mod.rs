@@ -22,7 +22,7 @@ mod swim_form {
 }
 
 #[test]
-fn single_derve() {
+fn struct_derive() {
     #[form(Value)]
     struct FormStruct {
         a: i32,
@@ -33,6 +33,65 @@ fn single_derve() {
     let expected = Value::Record(
         vec![Attr::of("FormStruct")],
         vec![Item::slot("a", Value::Int32Value(1))],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
+fn newtype_struct_derive() {
+    #[form(Value)]
+    struct FormStruct(i32);
+
+    let fs = FormStruct(100);
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::of(Value::Int32Value(100))],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
+fn nested_newtype_struct_derive() {
+    #[form(Value)]
+    struct FormStructInner(i32);
+    #[form(Value)]
+    struct FormStruct(FormStructInner);
+
+    let fs = FormStruct(FormStructInner(100));
+    let v: Value = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::of(Value::Record(
+            vec![Attr::of("FormStructInner")],
+            vec![Item::of(Value::Int32Value(100))],
+        ))],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
+fn newtype_with_struct() {
+    #[form(Value)]
+    struct Inner {
+        a: i32,
+    }
+
+    #[form(Value)]
+    struct FormNewType(Inner);
+
+    let fs = FormNewType(Inner { a: 100 });
+
+    let v = fs.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("FormNewType")],
+        vec![Item::of(Value::Record(
+            vec![Attr::of("Inner")],
+            vec![Item::slot("a", Value::Int32Value(100))],
+        ))],
     );
 
     assert_eq!(v, expected);
