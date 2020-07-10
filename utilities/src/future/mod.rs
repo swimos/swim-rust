@@ -317,6 +317,22 @@ pub struct UntilFailure<Str, Trans> {
     transform: Trans,
 }
 
+/// Stream for the `take_until_completes` combinator.
+#[pin_project]
+#[derive(Debug)]
+pub struct TakeUntil<S, F> {
+    #[pin]
+    stream: S,
+    #[pin]
+    fut: F,
+}
+
+impl<S, F> TakeUntil<S, F> {
+    pub fn new(stream: S, limit: F) -> Self {
+        TakeUntil { stream, fut: limit }
+    }
+}
+
 impl<Str, Trans> UntilFailure<Str, Trans>
 where
     Str: Stream,
@@ -341,6 +357,20 @@ where
         stream
             .poll_next(cx)
             .map(|r| r.and_then(|item| trans.transform(item).ok()))
+    }
+}
+
+impl<S: Stream, F: Future> Stream for TakeUntil<S, F> {
+    type Item = S::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let projected = self.project();
+
+        if let Poll::Ready(_) = projected.fut.poll(cx) {
+            Poll::Ready(None)
+        } else {
+            projected.stream.poll_next(cx)
+        }
     }
 }
 
@@ -412,9 +442,45 @@ pub trait SwimStreamExt: Stream {
     {
         UntilFailure::new(self, transform)
     }
+
+    /// Creates a new stream that will produce the values that this stream would produce until
+    /// a future completes.
+    ///
+    /// #Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::stream::unfold;
+    /// use futures::future::ready;
+    /// use futures::StreamExt;
+    /// use utilities::sync::trigger::trigger;
+    /// use utilities::future::SwimStreamExt;
+    ///
+    /// let (stop, stop_sig) = trigger();
+    /// let mut maybe_stop = Some(stop);
+    /// let stream = unfold(0i32, |i| ready(Some((i, i + 1))))
+    ///     .then(|i| {
+    ///         if i == 5 {
+    ///             if let Some(stop) = maybe_stop.take() {
+    ///                 stop.trigger();
+    ///             }
+    ///         }
+    ///         ready(i)
+    ///    }).take_until_completes(stop_sig);
+    ///
+    /// assert_eq!(block_on(stream.collect::<Vec<_>>()), vec![0, 1, 2, 3, 4, 5]);
+    ///
+    /// ```
+    fn take_until_completes<Fut>(self, limit: Fut) -> TakeUntil<Self, Fut>
+    where
+        Self: Sized,
+        Fut: Future,
+    {
+        TakeUntil::new(self, limit)
+    }
 }
 
 #[pin_project]
+#[derive(Debug)]
 pub struct TransformedSink<S, Trans> {
     #[pin]
     inner: S,
