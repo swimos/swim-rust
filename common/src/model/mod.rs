@@ -22,12 +22,12 @@ use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use tokio_util::codec::Encoder;
 
+use crate::model::blob::Blob;
 use crate::model::parser::is_identifier;
 use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::sign::Signed;
 use num_traits::ToPrimitive;
 use std::str::FromStr;
-use crate::model::blob::Blob;
 
 pub mod blob;
 pub mod parser;

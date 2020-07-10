@@ -89,24 +89,17 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         if v.starts_with(BIG_INT_PREFIX) {
             let s = v.split(BIG_INT_PREFIX).collect::<Vec<&str>>();
             match BigInt::from_str(s.get(1).unwrap()) {
-                Ok(bi) => {
-                    self.push_value(Value::BigInt(bi));
-                    Ok(())
-                }
+                Ok(bi) => self.push_value(Value::BigInt(bi)),
                 Err(e) => Err(FormSerializeErr::Message(e.to_string())),
             }
         } else if v.starts_with(BIG_UINT_PREFIX) {
             let s = v.split(BIG_UINT_PREFIX).collect::<Vec<&str>>();
             match BigUint::from_str(s.get(1).unwrap()) {
-                Ok(bi) => {
-                    self.push_value(Value::BigUint(bi));
-                    Ok(())
-                }
+                Ok(bi) => self.push_value(Value::BigUint(bi)),
                 Err(e) => Err(FormSerializeErr::Message(e.to_string())),
             }
         } else {
-            self.push_value(Value::Text(String::from(v)));
-            Ok(())
+            self.push_value(Value::Text(String::from(v)))
         }
     }
 

@@ -6731,7 +6731,6 @@ fn blob_schema() {
     assert!(schema.matches(&Value::Data(blob)));
 }
 
-
 #[test]
 fn big_int_range_schema() {
     let schema = StandardSchema::big_int_range(BigInt::from(0), BigInt::from(10000));
