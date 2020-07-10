@@ -18,10 +18,10 @@ use crate::agent::AgentContext;
 use futures::StreamExt;
 use std::sync::Arc;
 use swim_runtime::task;
+use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
-use utilities::clock::Clock;
 use utilities::sync::trigger;
 
 #[test]

@@ -35,9 +35,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_form::Form;
+use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use url::Url;
-use utilities::clock::Clock;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 

@@ -18,10 +18,10 @@ use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
 use std::future::Future;
 use std::sync::Arc;
+use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
-use utilities::clock::Clock;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
