@@ -166,7 +166,9 @@ impl IncomingHostTask {
                     trace!("Connection closed");
                     connection = None;
 
-                    broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
+                    let unreachable =
+                        broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
+                    remove_unreachable(&mut subscribers, unreachable)?;
                 }
 
                 IncomingRequest::Close(close_rx) => {
@@ -193,19 +195,26 @@ impl IncomingHostTask {
 async fn broadcast_all(
     subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     event: RouterEvent,
-) -> Result<(), RoutingError> {
+) -> Result<Vec<(RelativePath, usize)>, RoutingError> {
     let futures = FuturesUnordered::new();
 
-    subscribers
-        .iter_mut()
-        .flat_map(|(_, dest)| dest)
-        .for_each(|subscriber| futures.push(subscriber.send(event.clone())));
-
-    for result in futures.collect::<Vec<_>>().await {
-        result?
+    for (dest, dest_subs) in subscribers {
+        for (index, sender) in dest_subs.iter_mut().enumerate() {
+            futures.push(index_path_sender(
+                sender,
+                event.clone(),
+                dest.clone(),
+                index,
+            ))
+        }
     }
 
-    Ok(())
+    let results = futures
+        .filter_map(|result| async move { result })
+        .collect::<Vec<_>>()
+        .await;
+
+    Ok(results)
 }
 
 /// Broadcasts an event to all subscribers of the task that are subscribed to a given path.
@@ -255,6 +264,25 @@ fn combine_incoming_streams(
     stream::select(task_rx, close_requests)
 }
 
+fn remove_unreachable(
+    subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
+    unreachable: Vec<(RelativePath, usize)>,
+) -> Result<(), RoutingError> {
+    for (path, index) in unreachable {
+        let subs_dest = subscribers
+            .get_mut(&path)
+            .ok_or(RoutingError::ConnectionError)?;
+
+        subs_dest.remove(index);
+
+        if subs_dest.is_empty() {
+            subscribers.remove(&path);
+        }
+    }
+
+    Ok(())
+}
+
 async fn index_sender(
     sender: &mut mpsc::Sender<RouterEvent>,
     event: RouterEvent,
@@ -262,6 +290,19 @@ async fn index_sender(
 ) -> Option<usize> {
     if sender.send(event).await.is_err() {
         Some(index)
+    } else {
+        None
+    }
+}
+
+async fn index_path_sender<'a>(
+    sender: &mut mpsc::Sender<RouterEvent>,
+    event: RouterEvent,
+    path: RelativePath,
+    index: usize,
+) -> Option<(RelativePath, usize)> {
+    if sender.send(event).await.is_err() {
+        Some((path, index))
     } else {
         None
     }
