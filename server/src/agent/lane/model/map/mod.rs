@@ -43,6 +43,7 @@ use utilities::future::{SwimStreamExt, Transform, TransformedStream};
 mod summary;
 
 /// A lane consisting of a map from keys to values.
+#[derive(Debug)]
 pub struct MapLane<K, V> {
     // Transactional variable containing the current state of the map where the value of each entry
     // is stored in its own variable. The keys are stored as recon values as the map ordering
@@ -125,7 +126,7 @@ where
 }
 
 /// A single event that occurred during a transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MapLaneEvent<K, V> {
     /// The map as cleared.
     Clear,

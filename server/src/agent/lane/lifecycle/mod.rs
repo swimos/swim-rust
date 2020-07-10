@@ -76,9 +76,7 @@ pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: StatefulLaneLifecy
 /// * `Command` - The type of commands that the lane can handle.
 /// * `Response` - The type of messages that will be received by a subscriber to the lane.
 /// * `Agent` - The type of the agent to which the lane belongs.
-pub trait ActionLaneLifecycle<'a, Command, Response, Agent>:
-    Default + Send + Sync + 'static
-{
+pub trait ActionLaneLifecycle<'a, Command, Response, Agent>: Send + Sync + 'static {
     type ResponseFuture: Future<Output = Response> + Send + 'a;
 
     /// Called each type a command is applied to the lane. The returned response will be sent
@@ -89,9 +87,9 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>:
     /// * `command` - The command object.
     /// * `model` - The model of the lane.
     /// * `context` - Context of the agent that owns the lane.
-    fn on_command<C: AgentContext<Agent>>(
+    fn on_command<C>(
         &'a self,
-        command: &'a Command,
+        command: Command,
         model: &'a ActionLane<Command, Response>,
         context: &'a C,
     ) -> Self::ResponseFuture

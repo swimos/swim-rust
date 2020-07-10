@@ -26,7 +26,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 mod tests;
 
 /// A lane containing a single value.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ValueLane<T> {
     value: TVar<T>,
 }

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod test_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::lifecycle::{
@@ -135,7 +136,7 @@ impl<'a> ActionLaneLifecycle<'a, String, usize, TestAgent<ActionLane<String, usi
 
     fn on_command<C: AgentContext<TestAgent<ActionLane<String, usize>>>>(
         &'a self,
-        command: &'a String,
+        command: String,
         model: &'a ActionLane<String, usize>,
         context: &'a C,
     ) -> Self::ResponseFuture
@@ -159,7 +160,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
 
     fn on_command<C: AgentContext<TestAgent<CommandLane<String>>>>(
         &'a self,
-        command: &'a String,
+        command: String,
         model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
@@ -170,7 +171,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
             let mut lock = self.0.lock().await;
             lock.event_agent = Some(context.agent().name);
             lock.event_model = Some(model.clone());
-            lock.events.push(command.clone());
+            lock.events.push(command);
         })
     }
 }
