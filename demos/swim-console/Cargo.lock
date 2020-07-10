@@ -31,6 +31,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
 
 [[package]]
+name = "base64"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
+
+[[package]]
 name = "bitflags"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -153,13 +159,17 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "base64 0.12.3",
  "bytes",
  "either",
  "futures",
  "futures-util",
+ "num-bigint",
+ "num-traits",
  "pin-project",
  "pin-utils",
  "regex",
+ "serde",
  "swim_runtime",
  "tokio",
  "tokio-util",
@@ -191,6 +201,8 @@ name = "deserialize"
 version = "0.1.0"
 dependencies = [
  "common",
+ "num-bigint",
+ "num-traits",
  "serde",
 ]
 
@@ -628,6 +640,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f3fc75e3697059fb1bc465e3d8cca6cf92f56854f201158b3f9c77d5a3cfa0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+ "rand",
+ "serde",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1007,6 +1032,7 @@ name = "serialize"
 version = "0.1.0"
 dependencies = [
  "common",
+ "num-bigint",
  "serde",
 ]
 
@@ -1079,6 +1105,11 @@ dependencies = [
  "client",
  "futures",
  "futures-util",
+ "num-bigint",
+ "rand",
+ "serde",
+ "serde_json",
+ "swim_form",
  "tokio",
  "url",
 ]
@@ -1091,6 +1122,8 @@ dependencies = [
  "deserialize",
  "form_derive",
  "im 14.3.0",
+ "num-bigint",
+ "num-traits",
  "serde",
  "serialize",
  "utilities",
@@ -1317,7 +1350,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfea31758bf674f990918962e8e5f07071a3161bd7c4138ed23e416e1ac4264e"
 dependencies = [
- "base64",
+ "base64 0.11.0",
  "byteorder",
  "bytes",
  "http",

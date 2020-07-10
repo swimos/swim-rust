@@ -12,31 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueSerializer;
+use crate::Form;
 use common::model::Value;
+use form_derive::*;
+use num_bigint::{BigInt, BigUint};
 
-#[cfg(test)]
-mod simple_data_types;
+#[form(Value)]
+struct S {
+    #[form(bigint)]
+    a: BigInt,
+    #[form(biguint)]
+    b: BigUint,
+}
 
-#[cfg(test)]
-mod collections;
+fn main() {
+    let mut rng = rand::thread_rng();
 
-#[cfg(test)]
-mod nested;
+    let s = S {
+        a: rng.gen_bigint(100),
+        b: rng.gen_biguint(100),
+    };
 
-#[cfg(test)]
-mod vectors;
-
-use super::SerializerResult;
-use serde::Serialize;
-
-pub fn to_value<T>(value: &T) -> SerializerResult<Value>
-where
-    T: Serialize,
-{
-    let mut serializer = ValueSerializer::default();
-    match value.serialize(&mut serializer) {
-        Ok(_) => Ok(serializer.output()),
-        Err(e) => Err(e),
-    }
+    let rec = s.as_value();
 }

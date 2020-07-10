@@ -12,18 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::*;
-use either::Either;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::convert::TryFrom;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
+
+use bytes::*;
+use either::Either;
 use tokio_util::codec::Encoder;
 
+use crate::model::blob::Blob;
 use crate::model::parser::is_identifier;
+use num_bigint::{BigInt, BigUint, ToBigInt};
+use num_traits::sign::Signed;
+use num_traits::ToPrimitive;
+use std::str::FromStr;
 
+pub mod blob;
 pub mod parser;
 pub mod schema;
 
@@ -82,6 +88,15 @@ pub enum Value {
     /// A compound [`Value`] consisting of any number of [`Attr`]s and [`Item`]s.
     ///
     Record(Vec<Attr>, Vec<Item>),
+
+    /// A big signed integer type wrapped as a [`Value`].
+    BigInt(BigInt),
+
+    /// A big unsigned integer type wrapped as a [`Value`].
+    BigUint(BigUint),
+
+    /// A Binary Large OBject (BLOB)
+    Data(Blob),
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -95,6 +110,9 @@ pub enum ValueKind {
     Boolean,
     Text,
     Record,
+    BigInt,
+    BigUint,
+    Data,
 }
 
 impl PartialOrd for ValueKind {
@@ -149,6 +167,9 @@ impl Display for ValueKind {
             ValueKind::Boolean => write!(f, "Boolean"),
             ValueKind::Text => write!(f, "Text"),
             ValueKind::Record => write!(f, "Record"),
+            ValueKind::BigInt => write!(f, "BigInt"),
+            ValueKind::BigUint => write!(f, "BigUint"),
+            ValueKind::Data => write!(f, "data"),
         }
     }
 }
@@ -227,6 +248,10 @@ impl Value {
 
     fn compare(&self, other: &Self) -> Ordering {
         match self {
+            Value::Data(left_len) => match other {
+                Value::Data(right_len) => left_len.cmp(right_len),
+                _ => Ordering::Less,
+            },
             Value::Extant => match other {
                 Value::Extant => Ordering::Equal,
                 _ => Ordering::Greater,
@@ -248,6 +273,11 @@ impl Value {
                         }
                     }
                 }
+                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigUint(bi) => match BigUint::try_from(*n) {
+                    Ok(n) => n.cmp(bi),
+                    Err(_) => Ordering::Greater,
+                },
                 _ => Ordering::Greater,
             },
             Value::Int64Value(n) => match other {
@@ -305,9 +335,54 @@ impl Value {
                         }
                     }
                 }
+                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigUint(bi) => match BigUint::try_from(*n) {
+                    Ok(n) => n.cmp(bi),
+                    Err(_) => Ordering::Greater,
+                },
                 _ => Ordering::Greater,
             },
             Value::Float64Value(x) => match other {
+                Value::BigInt(bi) => {
+                    if x.is_nan() {
+                        Ordering::Less
+                    } else {
+                        match bi.to_f64() {
+                            Some(bi) => match x.partial_cmp(&bi) {
+                                Some(Ordering::Less) => Ordering::Less,
+                                Some(Ordering::Greater) => Ordering::Greater,
+                                _ => Ordering::Equal,
+                            },
+                            None => {
+                                if x.is_sign_negative() && bi.is_negative() {
+                                    Ordering::Less
+                                } else {
+                                    Ordering::Greater
+                                }
+                            }
+                        }
+                    }
+                }
+                Value::BigUint(bi) => {
+                    if x.is_nan() {
+                        Ordering::Less
+                    } else {
+                        match f64::from_str(&bi.to_string()) {
+                            Ok(bi) => match x.partial_cmp(&bi) {
+                                Some(Ordering::Less) => Ordering::Less,
+                                Some(Ordering::Greater) => Ordering::Greater,
+                                _ => Ordering::Equal,
+                            },
+                            Err(_) => {
+                                if x.is_sign_negative() {
+                                    Ordering::Greater
+                                } else {
+                                    Ordering::Less
+                                }
+                            }
+                        }
+                    }
+                }
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::Int32Value(m) => {
                     if x.is_nan() {
@@ -396,6 +471,39 @@ impl Value {
                 }
                 _ => Ordering::Less,
             },
+            Value::BigInt(bi) => match other {
+                Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                Value::Int32Value(m) => bi.cmp(&BigInt::from(*m)),
+                Value::Int64Value(m) => bi.cmp(&BigInt::from(*m)),
+                Value::Float64Value(y) => bi.cmp(&BigInt::from(*y as i64)),
+                Value::BigInt(other_bi) => bi.cmp(&other_bi),
+                Value::BigUint(other_bi) => match other_bi.to_bigint() {
+                    Some(other_bi) => bi.cmp(&other_bi),
+                    None => Ordering::Less,
+                },
+                _ => Ordering::Greater,
+            },
+            Value::BigUint(bi) => match other {
+                Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                Value::Int32Value(m) => match u32::try_from(*m) {
+                    Ok(m) => bi.cmp(&BigUint::from(m)),
+                    Err(_) => Ordering::Greater,
+                },
+                Value::Int64Value(m) => match u64::try_from(*m) {
+                    Ok(m) => bi.cmp(&BigUint::from(m)),
+                    Err(_) => Ordering::Greater,
+                },
+                Value::Float64Value(m) => match u64::try_from(*m as i64) {
+                    Ok(m) => bi.cmp(&BigUint::from(m)),
+                    Err(_) => Ordering::Greater,
+                },
+                Value::BigInt(other_bi) => match other_bi.to_biguint() {
+                    Some(other_bi) => bi.cmp(&other_bi),
+                    None => Ordering::Less,
+                },
+                Value::BigUint(other_bi) => bi.cmp(&other_bi),
+                _ => Ordering::Greater,
+            },
         }
     }
 
@@ -410,6 +518,9 @@ impl Value {
             Value::BooleanValue(_) => ValueKind::Boolean,
             Value::Text(_) => ValueKind::Text,
             Value::Record(_, _) => ValueKind::Record,
+            Value::BigInt(_) => ValueKind::BigInt,
+            Value::BigUint(_) => ValueKind::BigUint,
+            Value::Data(_) => ValueKind::Data,
         }
     }
 
@@ -433,6 +544,10 @@ impl Default for Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
+            Value::Data(mb) => match other {
+                Value::Data(tb) => mb.eq(tb),
+                _ => false,
+            },
             Value::Extant => match other {
                 Value::Extant => true,
                 _ => false,
@@ -475,6 +590,14 @@ impl PartialEq for Value {
                 Value::Record(attrs2, items2) => attrs1 == attrs2 && items1 == items2,
                 _ => false,
             },
+            Value::BigInt(left) => match other {
+                Value::BigInt(right) => left == right,
+                _ => false,
+            },
+            Value::BigUint(left) => match other {
+                Value::BigUint(right) => left == right,
+                _ => false,
+            },
         }
     }
 }
@@ -495,20 +618,41 @@ impl Ord for Value {
 
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        const EXTANT_HASH: u8 = 0;
+        const INT32_HASH: u8 = 1;
+        const INT64_HASH: u8 = 2;
+        const UINT32_HASH: u8 = 3;
+        const UINT64_HASH: u8 = 4;
+        const FLOAT64_HASH: u8 = 5;
+        const BOOLEAN_HASH: u8 = 6;
+        const TEXT_HASH: u8 = 7;
+        const RECORD_HASH: u8 = 8;
+        const BIGINT_HASH: u8 = 9;
+        const BIGUINT_HASH: u8 = 10;
+        const DATA_HASH: u8 = 11;
+
         match self {
             Value::Extant => {
-                state.write_u8(0);
+                state.write_u8(EXTANT_HASH);
             }
             Value::Int32Value(n) => {
-                state.write_u8(1);
+                state.write_u8(INT32_HASH);
                 state.write_i32(*n);
             }
             Value::Int64Value(n) => {
-                state.write_u8(2);
+                state.write_u8(INT64_HASH);
                 state.write_i64(*n);
             }
+            Value::UInt32Value(n) => {
+                state.write_u8(UINT32_HASH);
+                state.write_u32(*n);
+            }
+            Value::UInt64Value(n) => {
+                state.write_u8(UINT64_HASH);
+                state.write_u64(*n);
+            }
             Value::Float64Value(x) => {
-                state.write_u8(3);
+                state.write_u8(FLOAT64_HASH);
                 if x.is_nan() {
                     state.write_u64(0);
                 } else {
@@ -516,25 +660,29 @@ impl Hash for Value {
                 }
             }
             Value::BooleanValue(p) => {
-                state.write_u8(4);
+                state.write_u8(BOOLEAN_HASH);
                 state.write_u8(if *p { 1 } else { 0 })
             }
             Value::Text(s) => {
-                state.write_u8(5);
+                state.write_u8(TEXT_HASH);
                 s.hash(state);
             }
             Value::Record(attrs, items) => {
-                state.write_u8(6);
+                state.write_u8(RECORD_HASH);
                 attrs.hash(state);
                 items.hash(state);
             }
-            Value::UInt32Value(n) => {
-                state.write_u8(7);
-                state.write_u32(*n);
+            Value::BigInt(bi) => {
+                state.write_u8(BIGINT_HASH);
+                bi.hash(state);
             }
-            Value::UInt64Value(n) => {
-                state.write_u8(8);
-                state.write_u64(*n);
+            Value::BigUint(bi) => {
+                state.write_u8(BIGUINT_HASH);
+                bi.hash(state);
+            }
+            Value::Data(b) => {
+                state.write_u8(DATA_HASH);
+                b.hash(state);
             }
         }
     }
@@ -585,6 +733,18 @@ impl From<String> for Value {
 impl From<&str> for Value {
     fn from(s: &str) -> Self {
         Value::Text(s.to_owned())
+    }
+}
+
+impl From<BigInt> for Value {
+    fn from(bi: BigInt) -> Self {
+        Value::BigInt(bi)
+    }
+}
+
+impl From<BigUint> for Value {
+    fn from(bi: BigUint) -> Self {
+        Value::BigUint(bi)
     }
 }
 
@@ -843,6 +1003,7 @@ fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std:
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
+            Value::Data(b) => write!(f, "{}", b),
             Value::Extant => f.write_str(""),
             Value::Int32Value(n) => write!(f, "{}", n),
             Value::Int64Value(n) => write!(f, "{}", n),
@@ -874,6 +1035,8 @@ impl Display for Value {
                     }
                 }
             }
+            Value::BigInt(bi) => write!(f, "{}", bi),
+            Value::BigUint(bi) => write!(f, "{}", bi),
         }
     }
 }
@@ -1127,6 +1290,7 @@ impl ValueEncoder {
 
     fn encode_value(&mut self, item: Value, dst: &mut BytesMut) -> Result<(), ValueEncodeErr> {
         match item {
+            Value::Data(b) => write!(dst, "{:?}", b.as_ref()).map_err(Into::into),
             Value::Extant => Ok(()),
             Value::Int32Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
             Value::Int64Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
@@ -1158,6 +1322,8 @@ impl ValueEncoder {
                 }
                 Ok(())
             }
+            Value::BigInt(bi) => write!(dst, "{}", bi).map_err(|e| e.into()),
+            Value::BigUint(bi) => write!(dst, "{}", bi).map_err(|e| e.into()),
         }
     }
 
@@ -1228,6 +1394,7 @@ impl ValueEncoder {
 
     fn estimate_size(value: &Value) -> usize {
         match value {
+            Value::Data(b) => b.as_ref().len(),
             Value::Extant => 0,
             Value::Int32Value(n) => {
                 let mut a = (*n).abs();
@@ -1305,6 +1472,22 @@ impl ValueEncoder {
                     }
                     sum
                 }
+            }
+            Value::BigInt(bi) => {
+                let req = if bi.is_negative() {
+                    bi.bits() + 1
+                } else {
+                    bi.bits()
+                };
+
+                req as usize
+            }
+            Value::BigUint(bi) => {
+                let req = bi.bits();
+                if req > usize::max_value() as u64 {
+                    panic!("Buffer overflow")
+                }
+                req as usize
             }
         }
     }

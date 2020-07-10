@@ -24,8 +24,9 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
+use syn::parse_quote;
 use syn::visit_mut::VisitMut;
-use syn::{AttributeArgs, DeriveInput, Fields, Meta, NestedMeta};
+use syn::{Attribute, AttributeArgs, DeriveInput, Fields, Meta, NestedMeta};
 
 use crate::parser::{Context, Parser};
 
@@ -33,6 +34,9 @@ use crate::parser::{Context, Parser};
 mod parser;
 
 const ATTRIBUTE_PATH: &str = "form";
+const BIG_INT_PATH: &str = "bigint";
+const BIG_UINT_PATH: &str = "biguint";
+const BLOB_PATH: &str = "blob";
 
 #[proc_macro_attribute]
 pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -78,23 +82,38 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     q.into()
 }
 
+// Searches for #[form(... attributes and replaces them with the correct serde serializer and
+// deserializer attributes
 fn remove_form_attributes(input: &mut syn::DeriveInput) {
     struct FieldVisitor;
     impl VisitMut for FieldVisitor {
         fn visit_fields_mut(&mut self, fields: &mut Fields) {
-            fields
-                .iter_mut()
+            fields.iter_mut()
                 .flat_map(|f| &mut f.attrs)
                 .filter(|attr| attr.path.is_ident(ATTRIBUTE_PATH))
-                .for_each(|attr| match attr.parse_meta() {
-                    Ok(Meta::List(meta)) => {
-                        meta.nested.into_iter();
-                        // todo add attributes for bigint/biguint/blob
-                        // .for_each(|meta: syn::NestedMeta| match meta {
-                        //     _nm => {}
-                        // })
+                .for_each(|attr| {
+                    match attr.parse_meta() {
+                        Ok(Meta::List(meta)) => {
+                            meta.nested.into_iter().for_each(|meta: syn::NestedMeta| {
+                                match meta {
+                                    NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BIG_INT_PATH) => {
+                                        let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::bigint::serialize_bigint", deserialize_with = "swim_form::deserialize_bigint")]);
+                                        *attr = replacement_attribute;
+                                    }
+                                    NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BIG_UINT_PATH) => {
+                                        let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::bigint::serialize_big_uint", deserialize_with = "swim_form::deserialize_biguint")]);
+                                        *attr = replacement_attribute;
+                                    }
+                                    NestedMeta::Meta(Meta::Path(arg)) if arg.is_ident(BLOB_PATH) => {
+                                        let replacement_attribute: Attribute = parse_quote!(#[serde(serialize_with = "swim_form::serialize_blob_as_value")]);
+                                        *attr = replacement_attribute;
+                                    }
+                                    _nm => {}
+                                }
+                            })
+                        }
+                        _ => panic!("Failed to parse attribute meta"),
                     }
-                    _ => panic!("Failed to parse attribute meta"),
                 });
         }
     }
@@ -108,7 +127,7 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
         syn::Data::Struct(ref mut data) => {
             FieldVisitor.visit_fields_mut(&mut data.fields);
         }
-        syn::Data::Union(_) => {}
+        syn::Data::Union(_) => panic!("Unions are not supported"),
     }
 }
 

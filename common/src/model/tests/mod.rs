@@ -17,6 +17,7 @@ use hamcrest2::prelude::*;
 
 use super::*;
 mod coercion;
+use num_bigint::RandBigInt;
 
 #[test]
 fn extant_to_string() {
@@ -208,4 +209,121 @@ fn unsigned_sort() {
         Value::Float64Value(100.0).cmp(&Value::UInt32Value(1)),
         Ordering::Greater
     );
+}
+
+
+#[test]
+fn bigint_i32_cmp() {
+    let mut rng = rand::thread_rng();
+
+    let vi32 = Value::Int32Value(100);
+    let bi_value = Value::BigInt(rng.gen_bigint(1));
+    assert!(vi32 > bi_value);
+
+    let bi_value = Value::BigInt(rng.gen_bigint_range(&1000.into(), &10000.into()));
+    assert!(vi32 < bi_value);
+
+    let bi_value = Value::BigInt(100.into());
+    assert_eq!(vi32.cmp(&bi_value), Ordering::Equal);
+}
+
+#[test]
+fn bigint_i64_cmp() {
+    let mut rng = rand::thread_rng();
+
+    let i64 = Value::Int64Value(100);
+    let bi_value = Value::BigInt(rng.gen_bigint(1));
+    assert!(i64 > bi_value);
+
+    let bi_value = Value::BigInt(rng.gen_bigint_range(&1000.into(), &10000.into()));
+    assert!(i64 < bi_value);
+
+    let bi_value = Value::BigInt(100.into());
+    assert_eq!(i64.cmp(&bi_value), Ordering::Equal);
+}
+
+#[test]
+fn bigint_f64_cmp() {
+    let mut rng = rand::thread_rng();
+
+    let bi_value = Value::BigInt(rng.gen_bigint(1));
+    assert!(Value::Float64Value(100.0) > bi_value);
+
+    let bi_value = Value::BigInt(rng.gen_bigint(1));
+    assert!(Value::Float64Value(-100.0) < bi_value);
+
+    let bi_value = Value::BigInt(rng.gen_bigint_range(&BigInt::from(0), &BigInt::from(1000)));
+    assert!(Value::Float64Value(-100.0) < bi_value);
+
+    assert_eq!(
+        Value::Float64Value(100.0).cmp(&Value::BigInt(100.into())),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn biguint_i32_cmp() {
+    let mut rng = rand::thread_rng();
+
+    let vi32 = Value::Int32Value(100);
+    let bi_value = Value::BigUint(rng.gen_biguint(1));
+    assert!(vi32 > bi_value);
+
+    let bi_value = Value::BigUint(rng.gen_biguint_range(&1000u32.into(), &10000u32.into()));
+    assert!(vi32 < bi_value);
+
+    let bi_value = Value::BigUint(100u32.into());
+    assert_eq!(vi32.cmp(&bi_value), Ordering::Equal);
+}
+
+#[test]
+fn biguint_i64_cmp() {
+    let mut rng = rand::thread_rng();
+
+    let i64 = Value::Int64Value(100);
+    let bi_value = Value::BigUint(rng.gen_biguint(1));
+    assert!(i64 > bi_value);
+
+    let bi_value = Value::BigUint(rng.gen_biguint_range(&1000u32.into(), &10000u32.into()));
+    assert!(i64 < bi_value);
+
+    let bi_value = Value::BigUint(100u32.into());
+    assert_eq!(i64.cmp(&bi_value), Ordering::Equal);
+}
+
+#[test]
+fn biguint_f64_cmp() {
+    let mut rng = rand::thread_rng();
+
+    let bi_value = Value::BigUint(rng.gen_biguint(1));
+    assert!(Value::Float64Value(100.0) > bi_value);
+
+    let bi_value = Value::BigUint(rng.gen_biguint(1));
+    assert!(Value::Float64Value(-100.0) < bi_value);
+
+    let bi_value = Value::BigUint(rng.gen_biguint(1000));
+    assert!(Value::Float64Value(-100.0) < bi_value);
+
+    assert_eq!(
+        Value::Float64Value(100.0).cmp(&Value::BigUint(100u32.into())),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn bigint_cmp() {
+    assert!(Value::BigInt(BigInt::from(1000)) < Value::BigInt(BigInt::from(10000)));
+    assert!(Value::BigInt(BigInt::from(1)) < Value::Int32Value(100));
+    assert!(Value::BigInt(BigInt::from(1)) < Value::Int64Value(100));
+    assert!(Value::BigInt(BigInt::from(1)) < Value::Float64Value(100.0));
+    assert!(Value::BigInt(BigInt::from(1000)) < Value::BigUint(BigUint::from(10000u32)));
+}
+
+#[test]
+fn biguint_cmp() {
+    assert!(Value::BigUint(BigUint::from(1000u32)) < Value::BigInt(BigInt::from(10000)));
+    assert!(Value::BigUint(BigUint::from(1u32)) < Value::Int32Value(100));
+    assert!(Value::BigUint(BigUint::from(1u32)) < Value::Int64Value(100));
+    assert!(Value::BigUint(BigUint::from(1u32)) < Value::Float64Value(100.0));
+    assert!(Value::BigUint(BigUint::from(1000u32)) < Value::BigInt(BigInt::from(10000)));
 }

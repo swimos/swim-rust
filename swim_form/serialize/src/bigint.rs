@@ -12,31 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueSerializer;
-use common::model::Value;
+use crate::serializer::{BIG_INT_PREFIX, BIG_UINT_PREFIX};
 
-#[cfg(test)]
-mod simple_data_types;
+use num_bigint::{BigInt, BigUint};
+use serde::Serializer;
 
-#[cfg(test)]
-mod collections;
-
-#[cfg(test)]
-mod nested;
-
-#[cfg(test)]
-mod vectors;
-
-use super::SerializerResult;
-use serde::Serialize;
-
-pub fn to_value<T>(value: &T) -> SerializerResult<Value>
+pub fn serialize_bigint<S>(bi: &BigInt, serializer: S) -> Result<S::Ok, S::Error>
 where
-    T: Serialize,
+    S: Serializer,
 {
-    let mut serializer = ValueSerializer::default();
-    match value.serialize(&mut serializer) {
-        Ok(_) => Ok(serializer.output()),
-        Err(e) => Err(e),
-    }
+    serializer.serialize_str(&(BIG_INT_PREFIX.to_owned() + &bi.to_string()))
+}
+
+pub fn serialize_big_uint<S>(bi: &BigUint, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&(BIG_UINT_PREFIX.to_owned() + &bi.to_string()))
 }

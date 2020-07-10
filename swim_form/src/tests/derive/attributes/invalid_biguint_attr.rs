@@ -12,31 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueSerializer;
 use common::model::Value;
+use form_derive::*;
 
-#[cfg(test)]
-mod simple_data_types;
-
-#[cfg(test)]
-mod collections;
-
-#[cfg(test)]
-mod nested;
-
-#[cfg(test)]
-mod vectors;
-
-use super::SerializerResult;
-use serde::Serialize;
-
-pub fn to_value<T>(value: &T) -> SerializerResult<Value>
-where
-    T: Serialize,
-{
-    let mut serializer = ValueSerializer::default();
-    match value.serialize(&mut serializer) {
-        Ok(_) => Ok(serializer.output()),
-        Err(e) => Err(e),
-    }
+#[form(Value)]
+struct S {
+    #[form(biguint)]
+    a: i32,
 }
+
+fn main() {}

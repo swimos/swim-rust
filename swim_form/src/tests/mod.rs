@@ -18,6 +18,9 @@ use common::model::{Attr, Item, Value};
 
 use crate::Form;
 use crate::FormDeserializeErr;
+use base64::URL_SAFE;
+use common::model::blob::Blob;
+use num_bigint::{BigInt, BigUint, RandBigInt};
 
 #[cfg(test)]
 mod traits;
@@ -26,6 +29,8 @@ mod traits;
 fn test_derive() {
     let t = TestCases::new();
 
+    t.compile_fail("src/tests/derive/attributes/invalid_bigint_attr.rs");
+    t.compile_fail("src/tests/derive/attributes/invalid_biguint_attr.rs");
     t.compile_fail("src/tests/derive/attributes/missing_arg.rs");
     t.compile_fail("src/tests/derive/attributes/too_many_args.rs");
     t.compile_fail("src/tests/derive/unimplemented/unimplemented_compound.rs");
@@ -36,7 +41,84 @@ mod swim_form {
     pub use _deserialize;
     pub use _serialize;
 
-    pub use crate::Form;
+    pub use crate::*;
+}
+
+#[test]
+fn bigint_deser_err() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct Parent {
+        #[form(bigint)]
+        a: BigInt,
+        #[form(biguint)]
+        b: BigUint,
+    }
+
+    let record = Value::Record(
+        vec![Attr::from("Parent")],
+        vec![
+            Item::from(("a", Value::BooleanValue(true))),
+            Item::from(("b", Value::Extant)),
+        ],
+    );
+
+    let result = Parent::try_from_value(&record);
+
+    assert_eq!(
+        result,
+        Err(FormDeserializeErr::Message(String::from(
+            "invalid type: boolean `true`, expected a valid Big Integer"
+        )))
+    )
+}
+
+#[test]
+fn bigint_ser_ok() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct Parent {
+        #[form(bigint)]
+        a: BigInt,
+        #[form(biguint)]
+        b: BigUint,
+    }
+
+    let record = Value::Record(
+        vec![Attr::from("Parent")],
+        vec![
+            Item::from(("a", Value::BigInt(BigInt::from(100)))),
+            Item::from(("b", Value::BigUint(BigUint::from(100u32)))),
+        ],
+    );
+
+    let parent = Parent {
+        a: BigInt::from(100),
+        b: BigUint::from(100u32),
+    };
+    let result = parent.as_value();
+
+    assert_eq!(result, record)
+}
+
+#[test]
+fn bigint_ser_de() {
+    #[form(Value)]
+    struct S {
+        #[form(bigint)]
+        a: BigInt,
+        #[form(biguint)]
+        b: BigUint,
+    }
+
+    let mut rng = rand::thread_rng();
+
+    let s = S {
+        a: rng.gen_bigint(100),
+        b: rng.gen_biguint(100),
+    };
+
+    let _rec = s.as_value();
 }
 
 #[test]
@@ -412,4 +494,69 @@ fn unit_ser_ok() {
     let result = parent.as_value();
 
     assert_eq!(result, record)
+}
+
+#[test]
+fn blob_ser_ok() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct S {
+        #[form(blob)]
+        blob: Blob,
+    }
+    let s = S {
+        blob: Blob::encode("swimming"),
+    };
+
+    let result = s.as_value();
+    let expected = Value::Record(
+        vec![Attr::of(("S", Value::Extant))],
+        vec![Item::slot("blob", Value::Data(Blob::encode("swimming")))],
+    );
+    assert_eq!(result, expected)
+}
+
+#[test]
+fn blob_de_ok() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct S {
+        #[form(blob)]
+        blob: Blob,
+    }
+
+    let value = Value::Record(
+        vec![Attr::of(("S", Value::Extant))],
+        vec![Item::slot("blob", Value::Data(Blob::encode("swimming")))],
+    );
+
+    let result = S::try_from_value(&value).unwrap();
+    let expected = S {
+        blob: Blob::encode("swimming"),
+    };
+
+    assert_eq!(result, expected)
+}
+
+#[test]
+fn text_to_blob() {
+    #[form(Value)]
+    #[derive(PartialEq, Debug)]
+    struct S {
+        #[form(blob)]
+        blob: Blob,
+    }
+
+    let encoded = base64::encode_config("swimming", URL_SAFE);
+    let value = Value::Record(
+        vec![Attr::of(("S", Value::Extant))],
+        vec![Item::slot("blob", Value::Text(encoded))],
+    );
+
+    let result = S::try_from_value(&value).unwrap();
+    let expected = S {
+        blob: Blob::encode("swimming"),
+    };
+
+    assert_eq!(result, expected)
 }

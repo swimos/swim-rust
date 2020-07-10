@@ -44,6 +44,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b20b618342cf9891c292c4f5ac2cde7287cc5c87e87e9c769d617793607dec1"
 
 [[package]]
+name = "base64"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
+
+[[package]]
 name = "bitflags"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -137,13 +143,17 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bytes",
  "either",
  "futures 0.3.5",
  "futures-util",
+ "num-bigint",
+ "num-traits",
  "pin-project",
  "pin-utils",
  "regex",
+ "serde",
  "swim_runtime",
  "tokio",
  "tokio-util",
@@ -169,6 +179,8 @@ name = "deserialize"
 version = "0.1.0"
 dependencies = [
  "common",
+ "num-bigint",
+ "num-traits",
  "serde",
 ]
 
@@ -445,6 +457,18 @@ name = "memchr"
 version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
+
+[[package]]
+name = "num-bigint"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f3fc75e3697059fb1bc465e3d8cca6cf92f56854f201158b3f9c77d5a3cfa0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+ "serde",
+]
 
 [[package]]
 name = "num-integer"
@@ -779,6 +803,7 @@ name = "serialize"
 version = "0.1.0"
 dependencies = [
  "common",
+ "num-bigint",
  "serde",
 ]
 
@@ -918,6 +943,8 @@ dependencies = [
  "deserialize",
  "form_derive",
  "im 14.3.0",
+ "num-bigint",
+ "num-traits",
  "serde",
  "serialize",
  "utilities",
