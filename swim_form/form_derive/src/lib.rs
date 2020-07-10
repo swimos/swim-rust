@@ -24,12 +24,15 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
-use syn::{AttributeArgs, DeriveInput, NestedMeta};
+use syn::visit_mut::VisitMut;
+use syn::{AttributeArgs, DeriveInput, Fields, Meta, NestedMeta};
 
 use crate::parser::{Context, Parser};
 
 #[allow(dead_code, unused_variables)]
 mod parser;
+
+const ATTRIBUTE_PATH: &str = "form";
 
 #[proc_macro_attribute]
 pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -45,7 +48,7 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let value_name_binding = args.get(0).unwrap();
-    let input = parse_macro_input!(input as DeriveInput);
+    let mut input = parse_macro_input!(input as DeriveInput);
     let ident = input.ident.clone();
 
     let ser = Ident::new(
@@ -58,7 +61,9 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     );
 
     let derived: proc_macro2::TokenStream =
-        expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
+        expand_derive_form(&mut input, value_name_binding).unwrap_or_else(to_compile_errors);
+
+    remove_form_attributes(&mut input);
 
     let q = quote! {
         use serde::Serialize as #ser;
@@ -73,15 +78,51 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     q.into()
 }
 
+fn remove_form_attributes(input: &mut syn::DeriveInput) {
+    struct FieldVisitor;
+    impl VisitMut for FieldVisitor {
+        fn visit_fields_mut(&mut self, fields: &mut Fields) {
+            fields
+                .iter_mut()
+                .flat_map(|f| &mut f.attrs)
+                .filter(|attr| attr.path.is_ident(ATTRIBUTE_PATH))
+                .for_each(|attr| match attr.parse_meta() {
+                    Ok(Meta::List(meta)) => {
+                        meta.nested.into_iter();
+                        // todo add attributes for bigint/biguint/blob
+                        // .for_each(|meta: syn::NestedMeta| match meta {
+                        //     _nm => {}
+                        // })
+                    }
+                    _ => panic!("Failed to parse attribute meta"),
+                });
+        }
+    }
+
+    match &mut input.data {
+        syn::Data::Enum(ref mut data) => {
+            data.variants.iter_mut().for_each(|v| {
+                FieldVisitor.visit_fields_mut(&mut v.fields);
+            });
+        }
+        syn::Data::Struct(ref mut data) => {
+            FieldVisitor.visit_fields_mut(&mut data.fields);
+        }
+        syn::Data::Union(_) => {}
+    }
+}
+
 fn expand_derive_form(
-    input: &syn::DeriveInput,
+    input: &mut syn::DeriveInput,
     value_name_binding: &NestedMeta,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let context = Context::new();
-    let parser = match Parser::from_ast(&context, input) {
+    let mut parser = match Parser::from_ast(&context, input) {
         Some(cont) => cont,
         None => return Err(context.check().unwrap_err()),
     };
+
+    parser.parse_attributes();
 
     context.check()?;
 
