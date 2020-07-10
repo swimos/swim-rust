@@ -27,10 +27,10 @@ mod nested;
 #[cfg(test)]
 mod vectors;
 
-use super::Result;
+use super::SerializerResult;
 use serde::Serialize;
 
-pub fn to_value<T>(value: &T) -> Result<Value>
+pub fn to_value<T>(value: &T) -> SerializerResult<Value>
 where
     T: Serialize,
 {
