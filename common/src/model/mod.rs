@@ -22,8 +22,10 @@ use bytes::*;
 use either::Either;
 use tokio_util::codec::Encoder;
 
+use crate::model::blob::Blob;
 use crate::model::parser::is_identifier;
 
+pub mod blob;
 pub mod parser;
 pub mod schema;
 
@@ -76,6 +78,9 @@ pub enum Value {
     /// A compound [`Value`] consisting of any number of [`Attr`]s and [`Item`]s.
     ///
     Record(Vec<Attr>, Vec<Item>),
+
+    /// A Binary Large OBject (BLOB)
+    Data(Blob),
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -87,6 +92,7 @@ pub enum ValueKind {
     Boolean,
     Text,
     Record,
+    Data,
 }
 
 impl PartialOrd for ValueKind {
@@ -139,6 +145,7 @@ impl Display for ValueKind {
             ValueKind::Boolean => write!(f, "Boolean"),
             ValueKind::Text => write!(f, "Text"),
             ValueKind::Record => write!(f, "Record"),
+            ValueKind::Data => write!(f, "data"),
         }
     }
 }
@@ -182,6 +189,10 @@ impl Value {
 
     fn compare(&self, other: &Self) -> Ordering {
         match self {
+            Value::Data(left_len) => match other {
+                Value::Data(right_len) => left_len.cmp(right_len),
+                _ => Ordering::Less,
+            },
             Value::Extant => match other {
                 Value::Extant => Ordering::Equal,
                 _ => Ordering::Greater,
@@ -299,6 +310,7 @@ impl Value {
             Value::BooleanValue(_) => ValueKind::Boolean,
             Value::Text(_) => ValueKind::Text,
             Value::Record(_, _) => ValueKind::Record,
+            Value::Data(_) => ValueKind::Data,
         }
     }
 
@@ -322,6 +334,10 @@ impl Default for Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
+            Value::Data(mb) => match other {
+                Value::Data(tb) => mb.eq(tb),
+                _ => false,
+            },
             Value::Extant => match other {
                 Value::Extant => true,
                 _ => false,
@@ -408,6 +424,10 @@ impl Hash for Value {
                 state.write_u8(6);
                 attrs.hash(state);
                 items.hash(state);
+            }
+            Value::Data(b) => {
+                state.write_u8(7);
+                b.hash(state);
             }
         }
     }
@@ -704,6 +724,7 @@ fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std:
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
+            Value::Data(b) => write!(f, "{}", b),
             Value::Extant => f.write_str(""),
             Value::Int32Value(n) => write!(f, "{}", n),
             Value::Int64Value(n) => write!(f, "{}", n),
@@ -986,6 +1007,7 @@ impl ValueEncoder {
 
     fn encode_value(&mut self, item: Value, dst: &mut BytesMut) -> Result<(), ValueEncodeErr> {
         match item {
+            Value::Data(b) => write!(dst, "{:?}", b.as_ref()).map_err(Into::into),
             Value::Extant => Ok(()),
             Value::Int32Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
             Value::Int64Value(n) => write!(dst, "{}", n).map_err(|e| e.into()),
@@ -1085,6 +1107,7 @@ impl ValueEncoder {
 
     fn estimate_size(value: &Value) -> usize {
         match value {
+            Value::Data(b) => b.as_ref().len(),
             Value::Extant => 0,
             Value::Int32Value(n) => {
                 let mut a = (*n).abs();
