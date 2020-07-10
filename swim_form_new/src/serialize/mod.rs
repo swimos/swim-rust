@@ -23,6 +23,7 @@ pub use serializer::ValueSerializer;
 #[cfg(test)]
 mod tests;
 
+#[derive(Copy, Clone)]
 pub struct SerializerProps;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,5 +70,17 @@ where
             Option::None => Value::Extant,
             Option::Some(v) => V::serialize(v, properties),
         }
+    }
+}
+
+impl<V> SerializeToValue for Vec<V>
+where
+    V: SerializeToValue,
+{
+    fn serialize(&self, properties: Option<SerializerProps>) -> Value {
+        let mut serializer = ValueSerializer::default();
+        serializer.serialize_sequence(self, properties);
+
+        serializer.output()
     }
 }

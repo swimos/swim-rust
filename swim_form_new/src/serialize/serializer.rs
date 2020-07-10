@@ -198,4 +198,22 @@ impl ValueSerializer {
         self.enter_nested(SerializerState::ReadingNested(Some(len)));
         self.push_attr(Attr::from(name));
     }
+
+    pub fn serialize_sequence<S>(&mut self, seq: S, properties: Option<SerializerProps>)
+    where
+        S: IntoIterator,
+        <S as IntoIterator>::Item: SerializeToValue,
+    {
+        let it = seq.into_iter();
+        match it.size_hint() {
+            (lb, Some(ub)) if lb == ub => {
+                self.enter_nested(SerializerState::ReadingNested(Some(lb)));
+            }
+            _ => self.enter_nested(SerializerState::ReadingNested(None)),
+        }
+
+        it.for_each(|e| self.push_value(e.serialize(properties)));
+
+        self.exit_nested();
+    }
 }

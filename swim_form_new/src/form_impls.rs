@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
+use common::model::{Item, Value};
 
 use crate::deserialize::FormDeserializeErr;
 use crate::{Form, ValidatedForm};
@@ -172,6 +172,29 @@ impl Form for BigUint {
     }
 
     fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<V> Form for Vec<V>
+where
+    V: Form,
+{
+    fn as_value(&self) -> Value {
+        self.iter().fold(
+            Value::Record(vec![], Vec::with_capacity(self.len())),
+            |mut v, i| {
+                if let Value::Record(_, items) = &mut v {
+                    items.push(Item::of(i.as_value()))
+                } else {
+                    unreachable!()
+                }
+                v
+            },
+        )
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
         unimplemented!()
     }
 }
