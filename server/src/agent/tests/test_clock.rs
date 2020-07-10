@@ -17,8 +17,9 @@ use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use swim_runtime::task;
 use tokio::sync::{oneshot, Mutex};
-use tokio::time::Duration;
+use tokio::time::{timeout, Duration};
 use utilities::clock::Clock;
 use utilities::sync::trigger;
 
@@ -119,7 +120,7 @@ async fn check_advance() {
     let wait = clock.delay(Duration::from_secs(1));
 
     //Note this is a real timeout and independent of the fake clock.
-    let with_timeout = tokio::time::timeout(Duration::from_secs(1), wait);
+    let with_timeout = timeout(Duration::from_secs(1), wait);
 
     let step = clock.advance(Duration::from_secs(2));
 
@@ -135,7 +136,7 @@ async fn check_under_advance() {
     let wait = clock.delay(Duration::from_secs(1));
 
     //Note this is a real timeout and independent of the fake clock.
-    let with_timeout = tokio::time::timeout(Duration::from_millis(100), wait);
+    let with_timeout = timeout(Duration::from_millis(100), wait);
 
     let step = clock.advance(Duration::from_millis(500));
 
@@ -148,7 +149,8 @@ async fn check_under_advance() {
 async fn wait_for_block() {
     let clock = TestClock::default();
 
-    let wait_task = swim_runtime::task::spawn(tokio::time::timeout(
+    //Note this is a real timeout and independent of the fake clock.
+    let wait_task = task::spawn(timeout(
         Duration::from_secs(1),
         clock.delay(Duration::from_secs(1)),
     ));

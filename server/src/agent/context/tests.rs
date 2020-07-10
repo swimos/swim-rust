@@ -17,6 +17,7 @@ use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;
 use std::sync::Arc;
+use swim_runtime::task;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
@@ -52,7 +53,7 @@ fn create_context(
     let (tx, rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
-    swim_runtime::task::spawn(async move { rx.for_each(|eff| eff).await });
+    task::spawn(async move { rx.for_each(|eff| eff).await });
 
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
