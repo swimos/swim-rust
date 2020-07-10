@@ -65,6 +65,12 @@ impl Form for BigInt {
             Value::BigInt(bi) => Ok(bi.clone()),
             Value::Int32Value(v) => Ok(BigInt::from(*v)),
             Value::Int64Value(v) => Ok(BigInt::from(*v)),
+            Value::UInt32Value(v) => BigInt::from_u32(*v).ok_or(FormDeserializeErr::Message(
+                String::from("Failed to parse u32 into big unsigned integer"),
+            )),
+            Value::UInt64Value(v) => BigInt::from_u64(*v).ok_or(FormDeserializeErr::Message(
+                String::from("Failed to parse u64 into big unsigned integer"),
+            )),
             Value::Float64Value(v) => BigInt::from_f64(*v).ok_or_else(|| {
                 FormDeserializeErr::Message(String::from(
                     "Failed to parse float into big unsigned integer",
@@ -105,6 +111,16 @@ impl Form for BigUint {
                 ))
             }),
             Value::Int64Value(v) => BigUint::from_i64(*v).ok_or_else(|| {
+                FormDeserializeErr::Message(String::from(
+                    "Failed to parse int64 into big unsigned integer",
+                ))
+            }),
+            Value::UInt32Value(v) => BigUint::from_u32(*v).ok_or_else(|| {
+                FormDeserializeErr::Message(String::from(
+                    "Failed to parse int32 into big unsigned integer",
+                ))
+            }),
+            Value::UInt64Value(v) => BigUint::from_u64(*v).ok_or_else(|| {
                 FormDeserializeErr::Message(String::from(
                     "Failed to parse int64 into big unsigned integer",
                 ))
@@ -181,6 +197,16 @@ impl Form for i32 {
                     "Expected Value::Int32Value, found Value::UInt64Value".into(),
                 )
             }),
+            Value::BigInt(i) => i32::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int32Value, found Value::BigInt".into(),
+                )
+            }),
+            Value::BigUint(i) => i32::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int32Value, found Value::BigUint".into(),
+                )
+            }),
             v => de_incorrect_type("Value::Int32Value", v),
         }
     }
@@ -209,6 +235,16 @@ impl Form for i64 {
             Value::UInt64Value(i) => i64::try_from(*i).map_err(|_| {
                 FormDeserializeErr::IncorrectType(
                     "Expected Value::Int64Value, found Value::UInt64Value".into(),
+                )
+            }),
+            Value::BigInt(i) => i64::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int64Value, found Value::BigInt".into(),
+                )
+            }),
+            Value::BigUint(i) => i64::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::Int64Value, found Value::BigUint".into(),
                 )
             }),
             v => de_incorrect_type("Value::Int64Value", v),
@@ -245,6 +281,16 @@ impl Form for u32 {
                     "Expected Value::UInt32Value, found Value::UInt64Value".into(),
                 )
             }),
+            Value::BigInt(i) => u32::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::BigInt".into(),
+                )
+            }),
+            Value::BigUint(i) => u32::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::BigUint".into(),
+                )
+            }),
             v => de_incorrect_type("Value::UInt32Value", v),
         }
     }
@@ -275,6 +321,16 @@ impl Form for u64 {
             }),
             Value::UInt32Value(i) => Ok(*i as u64),
             Value::UInt64Value(i) => Ok(*i),
+            Value::BigInt(i) => u64::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::BigInt".into(),
+                )
+            }),
+            Value::BigUint(i) => u64::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::BigUint".into(),
+                )
+            }),
             v => de_incorrect_type("Value::UInt64Value", v),
         }
     }

@@ -996,14 +996,14 @@ fn bigint_tests() {
         ))))
     );
 
-    let i64_max = i64::max_value();
-    let i64_max_str = i64_max.to_string();
+    let u64_max = u64::max_value();
+    let u64_max_str = u64_max.to_string();
 
     assert_that!(
-        parse_single(&format!("@name({})", i64_max_str)).unwrap(),
+        parse_single(&format!("@name({})", u64_max_str)).unwrap(),
         eq(Value::of_attr(Attr::of((
             "name",
-            Value::Int64Value(i64_max)
+            Value::UInt64Value(u64_max)
         ))))
     );
 }
@@ -1021,13 +1021,13 @@ fn biguint_tests() {
         ))))
     );
 
-    let i64_oob_str = (i64::max_value() as i128 + 1).to_string();
+    let u64_oob_str = (u64::max_value() as i128 + 1).to_string();
 
     assert_that!(
-        parse_single(&format!("@name({})", i64_oob_str)).unwrap(),
+        parse_single(&format!("@name({})", u64_oob_str)).unwrap(),
         eq(Value::of_attr(Attr::of((
             "name",
-            Value::BigUint(BigUint::from_str(&i64_oob_str).unwrap())
+            Value::BigUint(BigUint::from_str(&u64_oob_str).unwrap())
         ))))
     );
 }

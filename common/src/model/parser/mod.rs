@@ -29,8 +29,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
-use crate::model::{Attr, Item, Value};
-
 #[cfg(test)]
 mod tests;
 
@@ -803,24 +801,22 @@ fn parse_int_token<T: TokenStr>(
                     offset,
                 ))
             }
-            Err(_) => {
-                match BigUint::from_str(rep) {
+            Err(_) => match BigUint::from_str(rep) {
+                Ok(n) => {
+                    *state = TokenParseState::None;
+                    Ok(loc(ReconToken::BigUint(n), offset))
+                }
+                Err(_) => match BigInt::from_str(rep) {
                     Ok(n) => {
                         *state = TokenParseState::None;
-                        Ok(loc(ReconToken::BigUint(n), offset))
+                        Ok(loc(ReconToken::BigInt(n), offset))
                     }
-                    Err(_) => match BigInt::from_str(rep) {
-                        Ok(n) => {
-                            *state = TokenParseState::None;
-                            Ok(loc(ReconToken::BigInt(n), offset))
-                        }
-                        Err(_) => {
-                            *state = TokenParseState::Failed(offset, TokenError::InvalidInteger);
-                            Err(BadToken(offset, TokenError::InvalidInteger))
-                        }
-                    },
-                }
-            }
+                    Err(_) => {
+                        *state = TokenParseState::Failed(offset, TokenError::InvalidInteger);
+                        Err(BadToken(offset, TokenError::InvalidInteger))
+                    }
+                },
+            },
         },
     }
 }

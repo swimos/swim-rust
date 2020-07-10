@@ -211,7 +211,6 @@ fn unsigned_sort() {
     );
 }
 
-
 #[test]
 fn bigint_i32_cmp() {
     let mut rng = rand::thread_rng();

@@ -15,8 +15,9 @@
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::item::ItemSchema;
 use crate::model::schema::range::{
-    big_int_range_to_value, float_64_range, float_range_to_value, in_float_range, in_int_range, in_range, in_uint_range,
-    int_32_range, int_64_range, int_range_to_value, Bound, Range,
+    big_int_range_to_value, float_64_range, float_range_to_value, in_big_int_range, in_float_range,
+    in_int_range, in_range, in_uint_range, int_32_range, int_64_range, int_range_to_value, Bound,
+    Range,
 };
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;

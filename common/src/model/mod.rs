@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::*;
+use either::Either;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
-
-use bytes::*;
-use either::Either;
 use tokio_util::codec::Encoder;
 
 use crate::model::blob::Blob;
@@ -184,6 +184,8 @@ impl Value {
                 ValueKind::Int64 => true,
                 ValueKind::UInt32 => u32::try_from(*n).is_ok(),
                 ValueKind::UInt64 => u64::try_from(*n).is_ok(),
+                ValueKind::BigUint => BigUint::try_from(*n).is_ok(),
+                ValueKind::BigInt => true,
                 _ => false,
             },
             Value::Int64Value(n) => match &kind {
@@ -191,11 +193,15 @@ impl Value {
                 ValueKind::Int64 => true,
                 ValueKind::UInt32 => u32::try_from(*n).is_ok(),
                 ValueKind::UInt64 => u64::try_from(*n).is_ok(),
+                ValueKind::BigUint => BigUint::try_from(*n).is_ok(),
+                ValueKind::BigInt => true,
                 _ => false,
             },
             Value::UInt32Value(n) => match &kind {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
                 ValueKind::Int64 => i64::try_from(*n).is_ok(),
+                ValueKind::BigInt => BigInt::try_from(*n).is_ok(),
+                ValueKind::BigUint => true,
                 ValueKind::UInt32 => true,
                 ValueKind::UInt64 => true,
                 _ => false,
@@ -204,6 +210,8 @@ impl Value {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
                 ValueKind::Int64 => i64::try_from(*n).is_ok(),
                 ValueKind::UInt32 => u32::try_from(*n).is_ok(),
+                ValueKind::BigInt => BigInt::try_from(*n).is_ok(),
+                ValueKind::BigUint => true,
                 ValueKind::UInt64 => true,
                 _ => false,
             },
@@ -297,6 +305,11 @@ impl Value {
                         }
                     }
                 }
+                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigUint(bi) => match BigUint::try_from(*n) {
+                    Ok(n) => n.cmp(bi),
+                    Err(_) => Ordering::Greater,
+                },
                 _ => Ordering::Greater,
             },
             Value::UInt32Value(n) => match other {
@@ -316,6 +329,11 @@ impl Value {
                         }
                     }
                 }
+                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigUint(bi) => match BigUint::try_from(*n) {
+                    Ok(n) => n.cmp(bi),
+                    Err(_) => Ordering::Greater,
+                },
                 _ => Ordering::Greater,
             },
             Value::UInt64Value(n) => match other {
@@ -475,6 +493,8 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::Int32Value(m) => bi.cmp(&BigInt::from(*m)),
                 Value::Int64Value(m) => bi.cmp(&BigInt::from(*m)),
+                Value::UInt32Value(m) => bi.cmp(&BigInt::from(*m)),
+                Value::UInt64Value(m) => bi.cmp(&BigInt::from(*m)),
                 Value::Float64Value(y) => bi.cmp(&BigInt::from(*y as i64)),
                 Value::BigInt(other_bi) => bi.cmp(&other_bi),
                 Value::BigUint(other_bi) => match other_bi.to_bigint() {
@@ -485,6 +505,8 @@ impl Value {
             },
             Value::BigUint(bi) => match other {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
+                Value::UInt32Value(u) => BigUint::from(*u).cmp(&bi),
+                Value::UInt64Value(u) => BigUint::from(*u).cmp(&bi),
                 Value::Int32Value(m) => match u32::try_from(*m) {
                     Ok(m) => bi.cmp(&BigUint::from(m)),
                     Err(_) => Ordering::Greater,
