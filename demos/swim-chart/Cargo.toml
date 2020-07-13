@@ -13,8 +13,8 @@ swim_client = { package = "client", path = "../../client", default-features = fa
 swim_wasm = { path = "../../swim_wasm" }
 wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
 console_error_panic_hook = "0.1.1"
-web-sys = { version = "0.3.39", features = ["HtmlCanvasElement"] }
-wasm-bindgen-futures = "0.4.13"
+web-sys = { version = "0.3.41", features = ["HtmlCanvasElement"] }
+wasm-bindgen-futures = "0.4.14"
 tokio = { version = "0.2.21", features = ["sync", "stream", "macros"] }
 url = "2.1.1"
 futures = "0.3.4"
