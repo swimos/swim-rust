@@ -124,8 +124,10 @@ seq_impl!(BinaryHeap<V: Ord>);
 seq_impl!(BTreeSet<V>);
 seq_impl!(LinkedList<V>);
 seq_impl!(HashSet<V: Eq + Hash, H: BuildHasher>);
+seq_impl!(HashSet<V: Eq + Hash>);
 seq_impl!(OrdSet<V: Ord>);
 seq_impl!(ImHashSet<V: Eq + Hash, H: BuildHasher>);
+seq_impl!(ImHashSet<V: Eq + Hash>);
 
 pub fn as_value<T>(v: &T) -> Value
 where

@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::BuildHasher;
+use std::hash::Hash;
 
-use im::{HashSet as ImHashSet, OrdSet};
+use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
 use num_bigint::{BigInt, BigUint};
 
 use common::model::schema::StandardSchema;
@@ -24,26 +25,6 @@ use common::model::{Item, Value};
 
 use crate::deserialize::FormDeserializeErr;
 use crate::{Form, ValidatedForm};
-
-fn iter_to_record<V>(it: V) -> Value
-where
-    V: Iterator,
-    <V as Iterator>::Item: Form,
-{
-    let vec = match it.size_hint() {
-        (u, Some(r)) if u == r => Vec::with_capacity(r),
-        _ => Vec::new(),
-    };
-
-    it.fold(Value::Record(vec![], vec), |mut v, i| {
-        if let Value::Record(_, items) = &mut v {
-            items.push(Item::of(i.as_value()))
-        } else {
-            unreachable!()
-        }
-        v
-    })
-}
 
 impl<'a, F> Form for &'a F
 where
@@ -227,105 +208,115 @@ impl Form for BigUint {
     }
 }
 
-impl<V> Form for Vec<V>
+fn seq_to_record<V>(it: V) -> Value
 where
-    V: Form,
+    V: Iterator,
+    <V as Iterator>::Item: Form,
 {
-    fn as_value(&self) -> Value {
-        iter_to_record(self.iter())
-    }
+    let vec = match it.size_hint() {
+        (u, Some(r)) if u == r => Vec::with_capacity(r),
+        _ => Vec::new(),
+    };
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
+    it.fold(Value::Record(vec![], vec), |mut v, i| {
+        if let Value::Record(_, items) = &mut v {
+            items.push(Item::of(i.as_value()))
+        } else {
+            unreachable!()
+        }
+        v
+    })
+}
+
+macro_rules! impl_seq_form {
+    ($ty:ident < V $(: $tbound1:ident $(+ $tbound2:ident)*)* $(, $typaram:ident : $bound:ident)* >) => {
+        impl<V $(, $typaram)*> Form for $ty<V $(, $typaram)*>
+        where
+            V: Form $(+ $tbound1 $(+ $tbound2)*)*,
+            $($typaram: Form + $bound,)*
+        {
+            fn as_value(&self) -> Value {
+                seq_to_record(self.iter())
+            }
+
+            fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+                unimplemented!()
+            }
+        }
     }
 }
 
-impl<K, V> Form for ImHashSet<K, V>
+impl_seq_form!(Vec<V>);
+impl_seq_form!(ImHashSet<V, L: BuildHasher>);
+impl_seq_form!(ImHashSet<V>);
+impl_seq_form!(OrdSet<V: Ord>);
+impl_seq_form!(VecDeque<V>);
+impl_seq_form!(BinaryHeap<V: Ord>);
+impl_seq_form!(BTreeSet<V>);
+impl_seq_form!(HashSet<V: Eq + Hash, L: BuildHasher>);
+impl_seq_form!(HashSet<V: Eq + Hash>);
+impl_seq_form!(LinkedList<V>);
+
+fn map_to_record<Iter, K, V>(it: Iter) -> Value
+where
+    Iter: Iterator<Item = (K, V)>,
+    K: Form,
+    V: Form,
+{
+    let vec = match it.size_hint() {
+        (u, Some(r)) if u == r => Vec::with_capacity(r),
+        _ => Vec::new(),
+    };
+
+    it.fold(Value::Record(vec![], vec), |mut v, (key, value)| {
+        if let Value::Record(_, items) = &mut v {
+            items.push(Item::slot(key.as_value(), value.as_value()))
+        } else {
+            unreachable!()
+        }
+        v
+    })
+}
+
+macro_rules! impl_map_form {
+    ($ty:ident < K $(: $kbound1:ident $(+ $kbound2:ident)*)*, V $(, $typaram:ident : $bound:ident)* >) => {
+        impl<K, V $(, $typaram)*> Form for $ty<K, V $(, $typaram)*>
+        where
+            K: Form $(+ $kbound1 $(+ $kbound2)*)*,
+            V: Form,
+            $($typaram: $bound,)*
+        {
+            fn as_value(&self) -> Value {
+                map_to_record(self.iter())
+            }
+
+            fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+                unimplemented!()
+            }
+        }
+    }
+}
+
+impl_map_form!(BTreeMap<K: Ord, V>);
+impl_map_form!(HashMap<K: Eq + Hash, V, H: BuildHasher>);
+
+impl<K, V> Form for ImHashMap<K, V>
 where
     K: Form,
     V: Form,
 {
     fn as_value(&self) -> Value {
-        unimplemented!()
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
-impl<V> Form for OrdSet<V>
-where
-    V: Form + Ord,
-{
-    fn as_value(&self) -> Value {
-        iter_to_record(self.iter())
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
-impl<V> Form for VecDeque<V>
-where
-    V: Form,
-{
-    fn as_value(&self) -> Value {
-        iter_to_record(self.iter())
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
-impl<V> Form for BinaryHeap<V>
-where
-    V: Form + Ord,
-{
-    fn as_value(&self) -> Value {
-        iter_to_record(self.iter())
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
-impl<V> Form for BTreeSet<V>
-where
-    V: Form,
-{
-    fn as_value(&self) -> Value {
-        iter_to_record(self.iter())
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
-impl<K, H> Form for HashSet<K, H>
-where
-    K: Form,
-    H: Form + BuildHasher,
-{
-    fn as_value(&self) -> Value {
-        unimplemented!()
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
-impl<V> Form for LinkedList<V>
-where
-    V: Form,
-{
-    fn as_value(&self) -> Value {
-        iter_to_record(self.iter())
+        self.iter().fold(
+            Value::Record(vec![], Vec::with_capacity(self.len())),
+            |mut v, (key, value)| {
+                if let Value::Record(_, items) = &mut v {
+                    items.push(Item::slot(key.as_value(), value.as_value()))
+                } else {
+                    unreachable!()
+                }
+                v
+            },
+        )
     }
 
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
