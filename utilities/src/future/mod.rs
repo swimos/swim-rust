@@ -341,18 +341,6 @@ where
     pub fn new(stream: Str, transform: Trans) -> Self {
         UntilFailure { stream, transform }
     }
-
-    pub fn replace_trans<NewTrans>(self, new_trans: NewTrans) -> UntilFailure<Str, NewTrans>
-    where
-        NewTrans: TransformMut<Str::Item>,
-    {
-        let UntilFailure {
-            stream,
-            transform: _,
-        } = self;
-
-        UntilFailure::new(stream, new_trans)
-    }
 }
 
 impl<Str, Trans, T, E> Stream for UntilFailure<Str, Trans>
