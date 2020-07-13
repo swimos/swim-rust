@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod test_agent;
+mod reporting_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::lifecycle::{
@@ -23,13 +23,16 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
+use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
+use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
     ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, LaneTasks, LifecycleTasks,
     MapLifecycleTasks, ValueLifecycleTasks,
 };
 use futures::future::{join, BoxFuture};
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
@@ -597,4 +600,72 @@ async fn command_lane_events_task_terminates() {
     stop.trigger();
 
     assert!(event_task.await.is_ok());
+}
+
+#[tokio::test]
+async fn agent_loop() {
+    let (tx, mut rx) = mpsc::channel(5);
+
+    let config = TestAgentConfig::new(tx);
+
+    let url = Url::parse("test://").unwrap();
+    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let clock = TestClock::default();
+    let (stop, stop_sig) = trigger::trigger();
+
+    let agent_lifecycle = config.agent_lifecycle();
+
+    // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
+    // a specific order. We can then safely expect these events in that order to verify the agent
+    // loop.
+    let agent_proc = super::run_agent(
+        config,
+        agent_lifecycle,
+        url,
+        buffer_size,
+        clock.clone(),
+        stop_sig,
+    );
+
+    let agent_task = swim_runtime::task::spawn(agent_proc);
+
+    async fn expect(rx: &mut mpsc::Receiver<ReportingAgentEvent>, expected: ReportingAgentEvent) {
+        let result = rx.next().await;
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event, expected);
+    }
+
+    expect(&mut rx, ReportingAgentEvent::AgentStart).await;
+
+    clock.advance_when_blocked(Duration::from_secs(1)).await;
+    expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name0".to_string(), 1.into())),
+    )
+    .await;
+    expect(&mut rx, ReportingAgentEvent::TotalEvent(1)).await;
+
+    clock.advance_when_blocked(Duration::from_secs(1)).await;
+    expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name1".to_string(), 1.into())),
+    )
+    .await;
+    expect(&mut rx, ReportingAgentEvent::TotalEvent(2)).await;
+
+    clock.advance_when_blocked(Duration::from_secs(1)).await;
+    expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name2".to_string(), 1.into())),
+    )
+    .await;
+    expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
+
+    assert!(stop.trigger());
+
+    assert!(agent_task.await.is_ok());
 }
