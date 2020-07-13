@@ -12,13 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::{BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
+use std::hash::BuildHasher;
+
+use im::{HashSet as ImHashSet, OrdSet};
+use num_bigint::{BigInt, BigUint};
+
+use common::model::schema::StandardSchema;
+use common::model::ValueKind;
 use common::model::{Item, Value};
 
 use crate::deserialize::FormDeserializeErr;
 use crate::{Form, ValidatedForm};
-use common::model::schema::StandardSchema;
-use common::model::ValueKind;
-use num_bigint::{BigInt, BigUint};
+
+fn iter_to_record<V>(it: V) -> Value
+where
+    V: Iterator,
+    <V as Iterator>::Item: Form,
+{
+    let vec = match it.size_hint() {
+        (u, Some(r)) if u == r => Vec::with_capacity(r),
+        _ => Vec::new(),
+    };
+
+    it.fold(Value::Record(vec![], vec), |mut v, i| {
+        if let Value::Record(_, items) = &mut v {
+            items.push(Item::of(i.as_value()))
+        } else {
+            unreachable!()
+        }
+        v
+    })
+}
 
 impl<'a, F> Form for &'a F
 where
@@ -207,17 +232,100 @@ where
     V: Form,
 {
     fn as_value(&self) -> Value {
-        self.iter().fold(
-            Value::Record(vec![], Vec::with_capacity(self.len())),
-            |mut v, i| {
-                if let Value::Record(_, items) = &mut v {
-                    items.push(Item::of(i.as_value()))
-                } else {
-                    unreachable!()
-                }
-                v
-            },
-        )
+        iter_to_record(self.iter())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<K, V> Form for ImHashSet<K, V>
+where
+    K: Form,
+    V: Form,
+{
+    fn as_value(&self) -> Value {
+        unimplemented!()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<V> Form for OrdSet<V>
+where
+    V: Form + Ord,
+{
+    fn as_value(&self) -> Value {
+        iter_to_record(self.iter())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<V> Form for VecDeque<V>
+where
+    V: Form,
+{
+    fn as_value(&self) -> Value {
+        iter_to_record(self.iter())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<V> Form for BinaryHeap<V>
+where
+    V: Form + Ord,
+{
+    fn as_value(&self) -> Value {
+        iter_to_record(self.iter())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<V> Form for BTreeSet<V>
+where
+    V: Form,
+{
+    fn as_value(&self) -> Value {
+        iter_to_record(self.iter())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<K, H> Form for HashSet<K, H>
+where
+    K: Form,
+    H: Form + BuildHasher,
+{
+    fn as_value(&self) -> Value {
+        unimplemented!()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
+
+impl<V> Form for LinkedList<V>
+where
+    V: Form,
+{
+    fn as_value(&self) -> Value {
+        iter_to_record(self.iter())
     }
 
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {

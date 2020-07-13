@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::{BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
+use std::hash::BuildHasher;
+use std::hash::Hash;
+
+use im::{HashSet as ImHashSet, OrdSet};
 use num_bigint::{BigInt, BigUint};
 
 use common::model::{Item, Value};
 pub use serializer::ValueSerializer;
 
 use crate::deserialize::FormDeserializeErr;
+use crate::serialize::serializer::SerializerState;
 use crate::Form;
 
 mod serializer;
@@ -81,6 +87,7 @@ serialize_impl!(i64);
 serialize_impl!(f64);
 serialize_impl!(BigInt);
 serialize_impl!(BigUint);
+
 // serialize_impl!(u32);
 // serialize_impl!(u64);
 
@@ -96,14 +103,29 @@ where
     }
 }
 
-impl<V> SerializeToValue for Vec<V>
-where
-    V: SerializeToValue,
-{
-    fn serialize(&self, serializer: &mut ValueSerializer, properties: Option<SerializerProps>) {
-        serializer.serialize_sequence(self, properties);
+macro_rules! seq_impl {
+    ($ty:ident < V $(: $tbound1:ident $(+ $tbound2:ident)*)* $(, $typaram:ident : $bound:ident)* >) => {
+        impl<V $(, $typaram)*> SerializeToValue for $ty<V $(, $typaram)*>
+        where
+            V: SerializeToValue $(+ $tbound1 $(+ $tbound2)*)*,
+            $($typaram: SerializeToValue + $bound,)*
+        {
+            #[inline]
+            fn serialize(&self, serializer: &mut ValueSerializer, properties: Option<SerializerProps>) {
+                serializer.serialize_sequence(self, properties);
+            }
+        }
     }
 }
+
+seq_impl!(VecDeque<V>);
+seq_impl!(Vec<V>);
+seq_impl!(BinaryHeap<V: Ord>);
+seq_impl!(BTreeSet<V>);
+seq_impl!(LinkedList<V>);
+seq_impl!(HashSet<V: Eq + Hash, H: BuildHasher>);
+seq_impl!(OrdSet<V: Ord>);
+seq_impl!(ImHashSet<V: Eq + Hash, H: BuildHasher>);
 
 pub fn as_value<T>(v: &T) -> Value
 where

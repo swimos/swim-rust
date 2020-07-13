@@ -198,16 +198,7 @@ impl ValueSerializer {
         S: IntoIterator,
         <S as IntoIterator>::Item: SerializeToValue,
     {
-        let it = seq.into_iter();
-        match it.size_hint() {
-            (lb, Some(ub)) if lb == ub => {
-                self.enter_nested(SerializerState::ReadingNested(Some(lb)));
-            }
-            _ => self.enter_nested(SerializerState::ReadingNested(None)),
-        }
-
-        it.for_each(|e| e.serialize(self, properties));
-
+        seq.into_iter().for_each(|e| e.serialize(self, properties));
         self.exit_nested();
     }
 }
