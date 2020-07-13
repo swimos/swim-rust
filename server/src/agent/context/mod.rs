@@ -18,11 +18,12 @@ use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
 use std::future::Future;
 use std::sync::Arc;
-use swim_runtime::time::delay;
+use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
 use utilities::future::SwimStreamExt;
+use utilities::sync::trigger;
 
 #[cfg(test)]
 mod tests;
@@ -30,35 +31,48 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent> {
+pub(super) struct ContextImpl<Agent, Clk> {
     agent_ref: Arc<Agent>,
     url: Url,
     scheduler: mpsc::Sender<Eff>,
+    clock: Clk,
+    stop_signal: trigger::Receiver,
 }
 
-impl<Agent> Clone for ContextImpl<Agent> {
+impl<Agent, Clk: Clone> Clone for ContextImpl<Agent, Clk> {
     fn clone(&self) -> Self {
         ContextImpl {
             agent_ref: self.agent_ref.clone(),
             url: self.url.clone(),
             scheduler: self.scheduler.clone(),
+            clock: self.clock.clone(),
+            stop_signal: self.stop_signal.clone(),
         }
     }
 }
 
-impl<Agent> ContextImpl<Agent> {
-    pub(super) fn new(agent_ref: Arc<Agent>, url: Url, scheduler: mpsc::Sender<Eff>) -> Self {
+impl<Agent, Clk> ContextImpl<Agent, Clk> {
+    pub(super) fn new(
+        agent_ref: Arc<Agent>,
+        url: Url,
+        scheduler: mpsc::Sender<Eff>,
+        clock: Clk,
+        stop_signal: trigger::Receiver,
+    ) -> Self {
         ContextImpl {
             agent_ref,
             url,
             scheduler,
+            clock,
+            stop_signal,
         }
     }
 }
 
-impl<Agent> AgentContext<Agent> for ContextImpl<Agent>
+impl<Agent, Clk> AgentContext<Agent> for ContextImpl<Agent, Clk>
 where
     Agent: Send + Sync + 'static,
+    Clk: Clock,
 {
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
     where
@@ -66,12 +80,17 @@ where
         Str: Stream<Item = Effect> + Send + 'static,
         Sch: Stream<Item = Duration> + Send + 'static,
     {
+        let clock = self.clock.clone();
         let schedule_effect = schedule
             .zip(effects)
-            .then(|(dur, eff)| async move {
-                delay::delay_for(dur).await;
-                eff.await;
+            .then(move |(dur, eff)| {
+                let delay_fut = clock.delay(dur);
+                async move {
+                    delay_fut.await;
+                    eff.await;
+                }
             })
+            .take_until_completes(self.stop_signal.clone())
             .never_error()
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can drop the errors.
@@ -90,5 +109,9 @@ where
 
     fn node_url(&self) -> &Url {
         &self.url
+    }
+
+    fn agent_stop_event(&self) -> trigger::Receiver {
+        self.stop_signal.clone()
     }
 }

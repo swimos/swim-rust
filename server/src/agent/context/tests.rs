@@ -13,47 +13,70 @@
 // limitations under the License.
 
 use crate::agent::context::ContextImpl;
+use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;
 use std::sync::Arc;
+use swim_runtime::task;
+use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
+use utilities::sync::trigger;
 
 #[test]
 fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
+    let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    let context = ContextImpl::new(agent.clone(), url.clone(), tx);
+    let context = ContextImpl::new(
+        agent.clone(),
+        url.clone(),
+        tx,
+        TestClock::default(),
+        close_sig.clone(),
+    );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_url(), &url);
+    assert!(trigger::Receiver::same_receiver(
+        &close_sig,
+        &context.agent_stop_event()
+    ));
 }
 
-fn create_context(n: usize) -> ContextImpl<&'static str> {
+fn create_context(
+    n: usize,
+    clock: TestClock,
+    close_trigger: trigger::Receiver,
+) -> ContextImpl<&'static str, impl Clock> {
     let (tx, rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
-    swim_runtime::task::spawn(async move { rx.for_each(|eff| eff).await });
+    task::spawn(async move { rx.for_each(|eff| eff).await });
 
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    ContextImpl::new(agent.clone(), url.clone(), tx)
+    ContextImpl::new(agent.clone(), url.clone(), tx, clock, close_trigger)
 }
 
 #[tokio::test]
 async fn send_single_to_scheduler() {
-    let context = create_context(1);
+    let (_close, close_sig) = trigger::trigger();
+    let clock = TestClock::default();
+    let context = create_context(1, clock.clone(), close_sig);
 
-    let (mut defer_tx, mut defer_rx) = mpsc::channel(1);
+    let (mut defer_tx, mut defer_rx) = mpsc::channel(5);
     context
         .defer(
             async move {
                 let _ = defer_tx.send(6).await;
             },
-            Duration::from_micros(50),
+            Duration::from_millis(50),
         )
         .await;
+
+    clock.advance_when_blocked(Duration::from_millis(50)).await;
 
     let result = defer_rx.recv().await;
 
@@ -62,7 +85,9 @@ async fn send_single_to_scheduler() {
 
 #[tokio::test]
 async fn send_multiple_to_scheduler() {
-    let context = create_context(1);
+    let (close, close_sig) = trigger::trigger();
+    let clock = TestClock::default();
+    let context = create_context(1, clock.clone(), close_sig);
 
     let (defer_tx, mut defer_rx) = mpsc::channel(1);
     let mut i = 0;
@@ -76,15 +101,24 @@ async fn send_multiple_to_scheduler() {
                     let _ = tx.send(c).await;
                 }
             },
-            Duration::from_micros(50),
+            Duration::from_millis(50),
             Some(3),
         )
         .await;
 
+    clock.advance_when_blocked(Duration::from_millis(50)).await;
     let result = defer_rx.recv().await;
     assert_eq!(result, Some(1));
+
+    clock.advance_when_blocked(Duration::from_millis(50)).await;
     let result = defer_rx.recv().await;
     assert_eq!(result, Some(2));
+
+    clock.advance_when_blocked(Duration::from_millis(50)).await;
     let result = defer_rx.recv().await;
     assert_eq!(result, Some(3));
+
+    close.trigger();
+    let result = defer_rx.recv().await;
+    assert!(result.is_none());
 }

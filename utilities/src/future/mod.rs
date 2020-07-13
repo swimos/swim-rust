@@ -461,6 +461,15 @@ pub trait SwimStreamExt: Stream {
         UntilFailure::new(self, transform)
     }
 
+    /// Transform this stream into an infallible [`TryStream`].
+    ///
+    fn never_error(self) -> NeverErrorStream<Self>
+    where
+        Self: Sized,
+    {
+        NeverErrorStream(self)
+    }
+
     /// Creates a new stream that will produce the values that this stream would produce until
     /// a future completes.
     ///
@@ -494,15 +503,6 @@ pub trait SwimStreamExt: Stream {
         Fut: Future,
     {
         TakeUntil::new(self, limit)
-    }
-
-    /// Transform this stream into an infallible [`TryStream`].
-    ///
-    fn never_error(self) -> NeverErrorStream<Self>
-    where
-        Self: Sized,
-    {
-        NeverErrorStream(self)
     }
 }
 
