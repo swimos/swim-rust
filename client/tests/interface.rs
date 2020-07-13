@@ -338,7 +338,7 @@ mod tests {
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
         let (mut dl, _) = client.value_downlink(path.clone(), 0i64).await.unwrap();
 
         if let Err(view_error) = dl.read_only_view::<String>().await {
