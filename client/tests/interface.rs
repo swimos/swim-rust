@@ -19,14 +19,17 @@ mod tests {
     };
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
     use client::downlink::model::map::{MapModification, UntypedMapModification};
+    use client::downlink::Event;
     use client::interface::SwimClient;
     use common::model::{Attr, Item, Value};
     use common::sink::item::ItemSink;
+    use common::topic::Topic;
     use common::warp::path::AbsolutePath;
     use swim_form::Form;
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;
+    use tokio::stream::StreamExt;
     use tokio::time::Duration;
 
     fn config() -> ConfigHierarchy {
@@ -273,5 +276,57 @@ mod tests {
         let incoming = event_dl.recv().await;
 
         assert_eq!(incoming, None);
+    }
+
+    #[tokio::test]
+    async fn test_read_only_value() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+
+        let mut command_dl = client
+            .command_downlink::<String>(path.clone())
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        command_dl
+            .send_item("Hello, String!".to_string())
+            .await
+            .unwrap();
+
+        let (mut dl, mut recv) = client.value_downlink(path, String::new()).await.unwrap();
+
+        let message = recv.next().await.unwrap();
+        assert_eq!(message, Event::Remote(String::from("Hello, String!")));
+
+        let mut recv_view = dl
+            .read_only_view::<Value>()
+            .await
+            .unwrap()
+            .subscribe()
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        command_dl
+            .send_item("Hello, Value!".to_string())
+            .await
+            .unwrap();
+
+        let message = recv.next().await.unwrap();
+        assert_eq!(message, Event::Remote(String::from("Hello, Value!")));
+
+        let message = recv_view.next().await.unwrap();
+        assert_eq!(
+            message,
+            Event::Remote(Value::from("Hello, Value!".to_string()))
+        );
     }
 }

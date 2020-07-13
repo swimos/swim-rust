@@ -20,7 +20,6 @@ pub mod topic;
 use crate::downlink::any::{AnyDownlink, AnyEventReceiver, TopicKind};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
-use crate::downlink::subscription::TypedValueReceiver;
 use crate::downlink::typed::action::{MapActions, ValueActions};
 use crate::downlink::typed::any::map::AnyMapDownlink;
 use crate::downlink::typed::any::value::AnyValueDownlink;
@@ -57,7 +56,7 @@ impl<Inner: Clone, T> Clone for ValueDownlink<Inner, T> {
 
 impl<T> ValueDownlink<AnyDownlink<Action, SharedValue>, T>
 where
-    T: ValidatedForm + Send + 'static,
+    T: Form + Send + 'static,
 {
     /// Unwrap an [`AnyDownlink`] and then reapply the type transformation to it.
     pub fn into_specific(self) -> AnyValueDownlink<T> {
@@ -85,20 +84,21 @@ where
     pub fn await_stopped(&self) -> StoppedFuture {
         self.inner.await_stopped()
     }
+}
 
+impl<T, Inner> ValueDownlink<Inner, T>
+where
+    Inner: Downlink<Action, Event<SharedValue>> + Clone,
+    T: ValidatedForm + Send + 'static,
+{
     pub async fn read_only_view<ViewType: ValidatedForm>(
         &mut self,
-    ) -> Result<TypedValueReceiver<ViewType>, ViewError> {
+    ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ViewError>
+    {
         if ViewType::schema().partial_cmp(&T::schema()) != Some(Ordering::Less) {
-            if self.is_running() {
-                let rec = self
-                    .subscribe()
-                    .await
-                    .map_err(|_| ViewError::SubscribeError)?;
-                Ok(rec.replace_trans(ApplyForm::new()))
-            } else {
-                Err(ViewError::SubscribeError)
-            }
+            let (topic, _) = self.inner.clone().split();
+            let topic = TryTransformTopic::new(topic, ApplyForm::<ViewType>::new());
+            Ok(topic)
         } else {
             Err(ViewError::FormError)
         }
