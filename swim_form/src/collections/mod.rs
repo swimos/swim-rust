@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::_deserialize::FormDeserializeErr;
-use crate::primitives::de_incorrect_type;
+use crate::impls::de_incorrect_type;
 use crate::{Form, ValidatedForm};
 use common::model::schema::StandardSchema;
 use common::model::{Item, Value};
