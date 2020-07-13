@@ -28,6 +28,7 @@ use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
 use crate::downlink::{Downlink, Event, StoppedFuture};
+use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::sink::item::ItemSink;
 use common::topic::Topic;
@@ -95,27 +96,34 @@ where
         &mut self,
     ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ViewError>
     {
-        if ViewType::schema().partial_cmp(&T::schema()) != Some(Ordering::Less) {
+        let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
+
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
             let (topic, _) = self.inner.clone().split();
             let topic = TryTransformTopic::new(topic, ApplyForm::<ViewType>::new());
             Ok(topic)
         } else {
-            Err(ViewError::FormError)
+            Err(ViewError::SchemaError {
+                existing: T::schema(),
+                requested: ViewType::schema(),
+            })
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum ViewError {
-    SubscribeError,
-    FormError,
+    SchemaError {
+        existing: StandardSchema,
+        requested: StandardSchema,
+    },
 }
 
 impl Display for ViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ViewError::SubscribeError => write!(f, "Subscribe error"),
-            ViewError::FormError => write!(f, "Form error"),
+            ViewError::SchemaError{existing, requested} => write!(f, "A read-only downlink with schema {} was requested but the original downlink is running with schema {}.",
+                                          requested, existing),
         }
     }
 }

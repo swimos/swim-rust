@@ -329,4 +329,28 @@ mod tests {
             Event::Remote(Value::from("Hello, Value!".to_string()))
         );
     }
+
+    #[tokio::test]
+    async fn test_read_only_value_schema_error() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+        let (mut dl, _) = client.value_downlink(path.clone(), 0i64).await.unwrap();
+
+        if let Err(view_error) = dl.read_only_view::<String>().await {
+            assert_eq!(view_error.to_string(),  "A read-only downlink with schema @kind(text) was requested but the original downlink is running with schema @kind(int64).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.read_only_view::<i32>().await {
+            assert_eq!(view_error.to_string(),  "A read-only downlink with schema @kind(int32) was requested but the original downlink is running with schema @kind(int64).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+    }
 }
