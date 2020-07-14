@@ -24,7 +24,7 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
-use syn::{AttributeArgs, DeriveInput, LifetimeDef, NestedMeta};
+use syn::{AttributeArgs, DeriveInput, NestedMeta};
 
 use crate::parser::{Context, Parser};
 
@@ -67,14 +67,6 @@ fn expand_derive_form(
         Some(cont) => cont,
         None => return Err(context.check().unwrap_err()),
     };
-
-    let lifetimes: Vec<&'_ LifetimeDef> = parser.generics.lifetimes().collect();
-    if !lifetimes.is_empty() {
-        return Err(vec![syn::Error::new(
-            Span::call_site(),
-            "Lifetimes are not supported by forms",
-        )]);
-    }
 
     context.check()?;
 
