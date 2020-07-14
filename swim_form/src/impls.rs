@@ -65,12 +65,16 @@ impl Form for BigInt {
             Value::BigInt(bi) => Ok(bi.clone()),
             Value::Int32Value(v) => Ok(BigInt::from(*v)),
             Value::Int64Value(v) => Ok(BigInt::from(*v)),
-            Value::UInt32Value(v) => BigInt::from_u32(*v).ok_or(FormDeserializeErr::Message(
-                String::from("Failed to parse u32 into big unsigned integer"),
-            )),
-            Value::UInt64Value(v) => BigInt::from_u64(*v).ok_or(FormDeserializeErr::Message(
-                String::from("Failed to parse u64 into big unsigned integer"),
-            )),
+            Value::UInt32Value(v) => BigInt::from_u32(*v).ok_or_else(|| {
+                FormDeserializeErr::Message(String::from(
+                    "Failed to parse u32 into big unsigned integer",
+                ))
+            }),
+            Value::UInt64Value(v) => BigInt::from_u64(*v).ok_or_else(|| {
+                FormDeserializeErr::Message(String::from(
+                    "Failed to parse u64 into big unsigned integer",
+                ))
+            }),
             Value::Float64Value(v) => BigInt::from_f64(*v).ok_or_else(|| {
                 FormDeserializeErr::Message(String::from(
                     "Failed to parse float into big unsigned integer",
