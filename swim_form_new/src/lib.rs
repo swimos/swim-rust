@@ -14,8 +14,14 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
+#[macro_use]
+#[allow(unused_imports)]
+pub extern crate form_derive_new;
+
 use common::model::schema::StandardSchema;
 use common::model::Value;
+pub use deserialize::FormDeserializeErr;
+pub use serialize::{as_value, SerializeToValue, ValueSerializer};
 
 mod deserialize;
 #[allow(warnings)]
@@ -25,13 +31,6 @@ mod serialize;
 
 #[cfg(test)]
 mod tests;
-
-#[macro_use]
-#[allow(unused_imports)]
-pub extern crate form_derive_new;
-
-pub use deserialize::FormDeserializeErr;
-pub use serialize::{as_value, SerializeToValue, SerializerProps, ValueSerializer};
 
 pub trait Form: Sized {
     fn as_value(&self) -> Value;

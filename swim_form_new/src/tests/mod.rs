@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::model::Value::Int32Value;
 use common::model::{Attr, Item, Value};
 
 use crate::{Form, SerializeToValue};
-use common::model::Value::Int32Value;
 
 mod attrs;
 

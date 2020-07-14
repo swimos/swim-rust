@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::serialize::{FormSerializeErr, SerializeToValue};
-use crate::{Form, SerializerProps};
 use common::model::{Attr, Item, Value};
+
+use crate::serialize::{FormSerializeErr, SerializeToValue};
+use crate::Form;
 
 pub struct ValueSerializer {
     current_state: State,
@@ -26,6 +27,7 @@ pub struct State {
     pub output: Value,
     pub serializer_state: SerializerState,
     pub attr_name: Option<String>,
+    reading_attr: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +46,7 @@ impl State {
             output: Value::Extant,
             serializer_state: SerializerState::None,
             attr_name: None,
+            reading_attr: false,
         }
     }
 
@@ -52,6 +55,7 @@ impl State {
             output: Value::Record(Vec::new(), Vec::new()),
             serializer_state: parser_state,
             attr_name: None,
+            reading_attr: false,
         }
     }
 }
@@ -70,7 +74,7 @@ impl ValueSerializer {
         self.current_state.output.to_owned()
     }
 
-    pub fn push_state(&mut self, ss: State) {
+    fn push_state(&mut self, ss: State) {
         self.stack.push(self.current_state.to_owned());
         self.current_state = ss;
     }
@@ -173,19 +177,40 @@ impl ValueSerializer {
         }
     }
 
-    pub fn serialize_field<F>(
-        &mut self,
-        name_opt: Option<&'static str>,
-        f: &F,
-        properties: Option<SerializerProps>,
-    ) where
+    fn exit_field(&mut self) {
+        self.current_state.reading_attr = false;
+    }
+
+    pub fn serialize_attr<F>(&mut self, name: &'static str, f: &F)
+    where
+        F: SerializeToValue,
+    {
+        f.serialize(self);
+
+        match &mut self.current_state.output {
+            Value::Record(attrs, items) => match items.pop() {
+                Some(Item::ValueItem(value)) => {
+                    attrs.push(Attr::of((name, value)));
+                }
+
+                v => unreachable!(
+                    "Attempted to pull up a key-value pair as an attribute: {:?}",
+                    v
+                ),
+            },
+            _ => panic!("Attempted to pull up a unit value"),
+        }
+    }
+
+    pub fn serialize_field<F>(&mut self, name_opt: Option<&'static str>, f: &F)
+    where
         F: SerializeToValue,
     {
         if let Some(name) = name_opt {
             self.current_state.attr_name = Some(name.to_owned());
         }
 
-        f.serialize(self, properties);
+        f.serialize(self);
     }
 
     pub fn serialize_struct(&mut self, name: &'static str, len: usize) {
@@ -193,7 +218,7 @@ impl ValueSerializer {
         self.push_attr(Attr::from(name));
     }
 
-    pub fn serialize_sequence<S>(&mut self, seq: S, properties: Option<SerializerProps>)
+    pub fn serialize_sequence<S>(&mut self, seq: S)
     where
         S: IntoIterator,
         <S as IntoIterator>::Item: SerializeToValue,
@@ -206,7 +231,7 @@ impl ValueSerializer {
             _ => self.enter_nested(SerializerState::ReadingNested(None)),
         }
 
-        it.for_each(|e| e.serialize(self, properties));
+        it.for_each(|e| e.serialize(self));
 
         self.exit_nested();
     }

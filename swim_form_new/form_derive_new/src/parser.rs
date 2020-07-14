@@ -23,7 +23,7 @@ use syn::{DeriveInput, Index, Lit, Meta, NestedMeta};
 const FORM_PATH: &str = "form";
 const SER_NAME: &str = "ser_name";
 const DE_NAME: &str = "de_name";
-const PULL_UP_NAME: &str = "pull_up";
+const IS_ATTR_NAME: &str = "attr";
 const IGNORE_NAME: &str = "ignore";
 
 fn get_form_attributes(ctx: &Context, attr: &syn::Attribute) -> Result<Vec<syn::NestedMeta>, ()> {
@@ -63,10 +63,20 @@ pub struct Field<'a> {
     pub ident: Ident,
 }
 
+impl<'a> Field<'a> {
+    fn is_attr(&self) -> bool {
+        self.attributes.field_attr
+    }
+
+    fn skipped(&self) -> bool {
+        self.attributes.ignore
+    }
+}
+
 pub struct Attributes {
     name: FieldName,
     ignore: bool,
-    pull_up: bool,
+    field_attr: bool,
 }
 
 impl Attributes {
@@ -83,7 +93,7 @@ impl Attributes {
                 original: field_name,
             },
             ignore: false,
-            pull_up: false,
+            field_attr: false,
         };
 
         field
@@ -115,13 +125,15 @@ impl Attributes {
                             ),
                         }
                     }
-                    NestedMeta::Meta(Meta::Path(_)) => {}
-                    NestedMeta::Meta(Meta::List(_)) => {}
-                    NestedMeta::Lit(_) => {}
-                    NestedMeta::Meta(Meta::NameValue(n)) => {
-                        ctx.error_spanned_by(meta.to_token_stream(), "Unknown attribute")
+                    NestedMeta::Meta(Meta::Path(p)) if p.is_ident(IGNORE_NAME) => {
+                        attrs.ignore = true;
                     }
+                    NestedMeta::Meta(Meta::Path(p)) if p.is_ident(IS_ATTR_NAME) => {
+                        attrs.field_attr = true;
+                    }
+                    _ => ctx.error_spanned_by(meta.to_token_stream(), "Unknown attribute"),
                 }
+
                 attrs
             })
     }
@@ -201,7 +213,11 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
             let serialised_as_name = &f.attributes.name.serialize_as;
             let ident = Ident::new(&original_name, Span::call_site());
 
-            quote!(serializer.serialize_field(Some(#serialised_as_name), &self.#ident, None);)
+            if f.is_attr() {
+                quote!(serializer.serialize_attr(#serialised_as_name, &self.#ident);)
+            } else {
+                quote!(serializer.serialize_field(Some(#serialised_as_name), &self.#ident);)
+            }
         })
         .collect();
 
@@ -220,7 +236,7 @@ fn serialize_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStre
 
     quote! {
         serializer.serialize_struct(#struct_name, 1);
-        serializer.serialize_field(None, &self.0, None);
+        serializer.serialize_field(None, &self.0);
 
         serializer.exit_nested();
     }
@@ -247,7 +263,7 @@ fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
                 span: Span::call_site(),
             };
 
-            quote!(serializer.serialize_field(None, &self.#index, None);)
+            quote!(serializer.serialize_field(None, &self.#index);)
         })
         .collect();
 

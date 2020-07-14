@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::deserialize::FormDeserializeErr;
-use crate::serialize::serializer::ValueSerializer;
-use crate::serialize::{as_value, SerializerProps};
-use crate::{Form, SerializeToValue};
-use common::model::{Attr, Item, Value};
 use num_bigint::BigInt;
+
+use common::model::{Attr, Item, Value};
+
+use crate::deserialize::FormDeserializeErr;
+use crate::serialize::as_value;
+use crate::serialize::serializer::ValueSerializer;
+use crate::{Form, SerializeToValue};
 
 #[test]
 fn test_bigint() {
@@ -36,13 +38,9 @@ fn test_bigint() {
     }
 
     impl SerializeToValue for S {
-        fn serialize(
-            &self,
-            serializer: &mut ValueSerializer,
-            _properties: Option<SerializerProps>,
-        ) {
+        fn serialize(&self, serializer: &mut ValueSerializer) {
             serializer.serialize_struct("S", 1);
-            serializer.serialize_field(Some("bi"), &self.bi, None);
+            serializer.serialize_field(Some("bi"), &self.bi);
             serializer.exit_nested();
         }
     }

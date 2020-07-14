@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::model::{Attr, Item, Value};
+
 use crate::deserialize::FormDeserializeErr;
 use crate::serialize::serializer::{SerializerState, ValueSerializer};
-use crate::serialize::{FormSerializeErr, SerializeToValue, SerializerProps};
+use crate::serialize::{FormSerializeErr, SerializeToValue};
 use crate::Form;
-use common::model::{Attr, Item, Value};
 
 #[test]
 fn test_serialize_struct() {
@@ -36,14 +37,10 @@ fn test_serialize_struct() {
     }
 
     impl SerializeToValue for S {
-        fn serialize(
-            &self,
-            serializer: &mut ValueSerializer,
-            _properties: Option<SerializerProps>,
-        ) {
+        fn serialize(&self, serializer: &mut ValueSerializer) {
             serializer.serialize_struct("S", 2);
-            serializer.serialize_field(Some("a"), &self.a, None);
-            serializer.serialize_field(Some("b"), &self.b, None);
+            serializer.serialize_field(Some("a"), &self.a);
+            serializer.serialize_field(Some("b"), &self.b);
 
             serializer.exit_nested();
         }
@@ -82,13 +79,9 @@ fn test_serialize_newtype_struct() {
     }
 
     impl SerializeToValue for S {
-        fn serialize(
-            &self,
-            serializer: &mut ValueSerializer,
-            _properties: Option<SerializerProps>,
-        ) {
+        fn serialize(&self, serializer: &mut ValueSerializer) {
             serializer.serialize_struct("S", 2);
-            serializer.serialize_field(None, &self.0, None);
+            serializer.serialize_field(None, &self.0);
 
             serializer.exit_nested();
         }

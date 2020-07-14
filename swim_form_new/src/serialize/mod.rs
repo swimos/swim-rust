@@ -24,9 +24,6 @@ mod serializer;
 #[cfg(test)]
 mod tests;
 
-#[derive(Copy, Clone)]
-pub struct SerializerProps;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum FormSerializeErr {
     Message(String),
@@ -38,14 +35,14 @@ pub enum FormSerializeErr {
 }
 
 pub trait SerializeToValue: Form {
-    fn serialize(&self, serializer: &mut ValueSerializer, _properties: Option<SerializerProps>);
+    fn serialize(&self, serializer: &mut ValueSerializer);
 }
 
 impl<'a, S> SerializeToValue for &'a S
 where
     S: SerializeToValue,
 {
-    fn serialize(&self, serializer: &mut ValueSerializer, _properties: Option<SerializerProps>) {
+    fn serialize(&self, serializer: &mut ValueSerializer) {
         serializer.push_value((**self).as_value());
     }
 }
@@ -54,7 +51,7 @@ impl<'a, S> SerializeToValue for &'a mut S
 where
     S: SerializeToValue,
 {
-    fn serialize(&self, serializer: &mut ValueSerializer, _properties: Option<SerializerProps>) {
+    fn serialize(&self, serializer: &mut ValueSerializer) {
         serializer.push_value((**self).as_value());
     }
 }
@@ -63,11 +60,7 @@ macro_rules! serialize_impl {
     ($ty:ident) => {
         impl SerializeToValue for $ty {
             #[inline]
-            fn serialize(
-                &self,
-                serializer: &mut ValueSerializer,
-                _properties: Option<SerializerProps>,
-            ) {
+            fn serialize(&self, serializer: &mut ValueSerializer) {
                 serializer.push_value(self.as_value());
             }
         }
@@ -88,10 +81,10 @@ impl<V> SerializeToValue for Option<V>
 where
     V: SerializeToValue,
 {
-    fn serialize(&self, serializer: &mut ValueSerializer, properties: Option<SerializerProps>) {
+    fn serialize(&self, serializer: &mut ValueSerializer) {
         match self {
             Option::None => serializer.push_value(Value::Extant),
-            Option::Some(v) => V::serialize(v, serializer, properties),
+            Option::Some(v) => V::serialize(v, serializer),
         }
     }
 }
@@ -100,8 +93,8 @@ impl<V> SerializeToValue for Vec<V>
 where
     V: SerializeToValue,
 {
-    fn serialize(&self, serializer: &mut ValueSerializer, properties: Option<SerializerProps>) {
-        serializer.serialize_sequence(self, properties);
+    fn serialize(&self, serializer: &mut ValueSerializer) {
+        serializer.serialize_sequence(self);
     }
 }
 
@@ -110,6 +103,6 @@ where
     T: SerializeToValue,
 {
     let mut serializer = ValueSerializer::default();
-    v.serialize(&mut serializer, None);
+    v.serialize(&mut serializer);
     serializer.finish()
 }

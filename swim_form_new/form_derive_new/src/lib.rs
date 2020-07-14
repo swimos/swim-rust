@@ -24,10 +24,10 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
+use syn::visit_mut::VisitMut;
 use syn::{AttributeArgs, DeriveInput, Fields, NestedMeta};
 
 use crate::parser::{Context, Parser};
-use syn::visit_mut::VisitMut;
 
 #[allow(dead_code, unused_variables)]
 mod parser;
@@ -135,7 +135,7 @@ fn expand_derive_form(
         #[allow(unused_qualifications)]
         impl #impl_generics swim_form::SerializeToValue for #ident #type_generics #where_clause {
             #[inline]
-            fn serialize(&self, serializer: &mut swim_form::ValueSerializer, _properties: Option<swim_form::SerializerProps>) {
+            fn serialize(&self, serializer: &mut swim_form::ValueSerializer) {
                 #serialized_fields
             }
         }

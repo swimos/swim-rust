@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::model::{Item, Value};
+
 use crate::serialize::as_value;
 use crate::serialize::SerializeToValue;
-use common::model::{Item, Value};
+
 mod bigint;
 mod compound;
 
