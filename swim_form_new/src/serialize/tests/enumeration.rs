@@ -80,6 +80,12 @@ fn enum_struct() {
     };
 
     let value: Value = fe.as_value();
+    let expected = Value::Record(
+        vec![Attr::of("A")],
+        vec![Item::slot("name", "Name"), Item::slot("age", 30)],
+    );
+
+    assert_eq!(value, expected)
 }
 
 #[test]
