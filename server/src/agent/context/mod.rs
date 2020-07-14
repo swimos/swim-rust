@@ -17,6 +17,7 @@ use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
@@ -26,7 +27,6 @@ use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(test)]
 mod tests;

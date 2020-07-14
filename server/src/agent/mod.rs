@@ -30,6 +30,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use futures_util::stream::FuturesUnordered;
 use pin_utils::pin_mut;
 use std::any::Any;
+use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -42,7 +43,6 @@ use tracing_futures::{Instrument, Instrumented};
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use std::fmt::Debug;
 
 mod context;
 pub mod lane;
@@ -100,12 +100,15 @@ pub async fn run_agent<Config, Clk, Agent, L>(
         let (tx, rx) = mpsc::channel(scheduler_buffer_size.get());
         let context = ContextImpl::new(agent_ref, url, tx, clock, stop_trigger.clone());
 
-        lifecycle.on_start(&context)
-            .instrument(span!(Level::DEBUG, AGENT_START)).await;
+        lifecycle
+            .on_start(&context)
+            .instrument(span!(Level::DEBUG, AGENT_START))
+            .await;
 
         for lane_task in tasks.iter() {
             let lane_name = lane_task.name();
-            (**lane_task).start(&context)
+            (**lane_task)
+                .start(&context)
                 .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
                 .await;
         }
@@ -121,8 +124,11 @@ pub async fn run_agent<Config, Clk, Agent, L>(
 
         for lane_task in tasks.into_iter() {
             let lane_name = lane_task.name().to_string();
-            task_manager.push(lane_task.events(context.clone())
-                .instrument(span!(Level::DEBUG, LANE_EVENTS, name = %lane_name)));
+            task_manager.push(
+                lane_task
+                    .events(context.clone())
+                    .instrument(span!(Level::DEBUG, LANE_EVENTS, name = %lane_name)),
+            );
         }
 
         drop(context);
@@ -132,7 +138,9 @@ pub async fn run_agent<Config, Clk, Agent, L>(
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can discard the errors.
             .await
-    }.instrument(span).await
+    }
+    .instrument(span)
+    .await
 }
 
 pub type Eff = BoxFuture<'static, ()>;
@@ -232,10 +240,8 @@ pub trait AgentContext<Agent> {
 }
 
 pub trait Lane {
-
     /// The name of the lane.
     fn name(&self) -> &str;
-
 }
 
 /// Provides an abstraction over the different types of lane to allow the lane life-cycles to be
@@ -246,7 +252,6 @@ pub trait Lane {
 pub trait LaneTasks<Agent, Context: AgentContext<Agent> + Sized + Send + Sync + 'static>:
     Lane + Send + Sync
 {
-
     /// Perform any required work for the lane when the agent starts.
     fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()>;
 
@@ -274,11 +279,9 @@ struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
 impl<L, S, P> Lane for ValueLifecycleTasks<L, S, P> {
-
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
-
 }
 
 impl<Agent, Context, T, L, S, P> LaneTasks<Agent, Context> for ValueLifecycleTasks<L, S, P>
@@ -290,7 +293,6 @@ where
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
     P: Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
 {
-
     fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
         let ValueLifecycleTasks(LifecycleTasks {
             lifecycle,
@@ -313,8 +315,10 @@ where
             let events = event_stream.take_until_completes(context.agent_stop_event());
             pin_mut!(events);
             while let Some(event) = events.next().await {
-                lifecycle.on_event(&event, &model, &context)
-                    .instrument(span!(Level::TRACE, ON_EVENT, ?event)).await
+                lifecycle
+                    .on_event(&event, &model, &context)
+                    .instrument(span!(Level::TRACE, ON_EVENT, ?event))
+                    .await
             }
         }
         .boxed()
@@ -354,11 +358,9 @@ where
 }
 
 impl<L, S, P> Lane for MapLifecycleTasks<L, S, P> {
-
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
-
 }
 
 impl<Agent, Context, K, V, L, S, P> LaneTasks<Agent, Context> for MapLifecycleTasks<L, S, P>
@@ -371,7 +373,6 @@ where
     L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
     P: Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
 {
-
     fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
         let MapLifecycleTasks(LifecycleTasks {
             lifecycle,
@@ -394,8 +395,10 @@ where
             let events = event_stream.take_until_completes(context.agent_stop_event());
             pin_mut!(events);
             while let Some(event) = events.next().await {
-                lifecycle.on_event(&event, &model, &context)
-                    .instrument(span!(Level::TRACE, ON_EVENT, ?event)).await
+                lifecycle
+                    .on_event(&event, &model, &context)
+                    .instrument(span!(Level::TRACE, ON_EVENT, ?event))
+                    .await
             }
         }
         .boxed()
@@ -434,11 +437,9 @@ where
 }
 
 impl<L, S, P> Lane for ActionLifecycleTasks<L, S, P> {
-
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
-
 }
 
 impl<Agent, Context, Command, Response, L, S, P> LaneTasks<Agent, Context>
@@ -452,7 +453,6 @@ where
     L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
     P: Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
 {
-
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
         ready(()).boxed()
     }
@@ -471,8 +471,10 @@ where
             while let Some(command) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 //TODO After agents are connected to web-sockets the response will have somewhere to go.
-                let response = lifecycle.on_command(command, &model, &context)
-                    .instrument(span!(Level::TRACE, ON_COMMAND)).await;
+                let response = lifecycle
+                    .on_command(command, &model, &context)
+                    .instrument(span!(Level::TRACE, ON_COMMAND))
+                    .await;
                 event!(Level::TRACE, ACTION_RESULT, ?response);
             }
         }
@@ -481,11 +483,9 @@ where
 }
 
 impl<L, S, P> Lane for CommandLifecycleTasks<L, S, P> {
-
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
-
 }
 
 impl<Agent, Context, Command, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P>
@@ -497,7 +497,6 @@ where
     L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
     P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
 {
-
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
         ready(()).boxed()
     }
@@ -515,8 +514,10 @@ where
             pin_mut!(events);
             while let Some(command) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
-                lifecycle.on_command(command, &model, &context)
-                    .instrument(span!(Level::TRACE, ON_COMMAND)).await;
+                lifecycle
+                    .on_command(command, &model, &context)
+                    .instrument(span!(Level::TRACE, ON_COMMAND))
+                    .await;
             }
         }
         .boxed()
