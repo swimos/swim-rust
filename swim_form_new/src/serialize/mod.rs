@@ -19,6 +19,7 @@ pub use serializer::ValueSerializer;
 
 use crate::deserialize::FormDeserializeErr;
 use crate::Form;
+use common::model::blob::Blob;
 
 mod serializer;
 #[cfg(test)]
@@ -81,6 +82,7 @@ serialize_impl!(i64);
 serialize_impl!(f64);
 serialize_impl!(BigInt);
 serialize_impl!(BigUint);
+serialize_impl!(Blob);
 // serialize_impl!(u32);
 // serialize_impl!(u64);
 
