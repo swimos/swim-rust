@@ -55,13 +55,10 @@ impl<K: Form, V: Form> TypedMapView<K, V> {
     /// Get the value associated with a key.
     pub fn get(&self, key: &K) -> Option<V> {
         let key_as_value = key.as_value();
-        println!("Key as value: {:?}", key_as_value);
 
-        self.inner.get(&key_as_value).and_then(|value| {
-            println!("Value found: {:?}", value);
-            let found = V::try_from_value(value.as_ref());
-            found.ok()
-        })
+        self.inner
+            .get(&key_as_value)
+            .and_then(|value| V::try_from_value(value.as_ref()).ok())
     }
 
     /// The size of the underlying map.
