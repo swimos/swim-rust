@@ -18,9 +18,10 @@ use std::fmt::Display;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::{DeriveInput, Index, Lit, Meta, NestedMeta};
+use syn::{AttributeArgs, DeriveInput, Index, Lit, Meta, NestedMeta, Path};
 
 const FORM_PATH: &str = "form";
+const STRUCT_RENAME: &str = "rename";
 const SER_NAME: &str = "ser_name";
 const DE_NAME: &str = "de_name";
 const IS_ATTR_NAME: &str = "attr";
@@ -41,11 +42,18 @@ fn get_form_attributes(ctx: &Context, attr: &syn::Attribute) -> Result<Vec<syn::
     }
 }
 
-pub struct Parser<'a> {
+pub struct StructureName {
     pub ident: syn::Ident,
+    serialize_as: String,
+    deserialize_as: String,
+}
+
+pub struct Parser<'a> {
+    pub name: StructureName,
     pub data: TypeContents<'a>,
     pub original: &'a DeriveInput,
     pub generics: &'a syn::Generics,
+    pub value_path: Option<&'a Path>,
 }
 
 pub struct Variant<'a> {
@@ -212,7 +220,7 @@ impl Context {
 }
 
 fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
-    let struct_name = parser.ident.to_string();
+    let struct_name = parser.name.serialize_as.to_string();
 
     let fields: Vec<TokenStream> = fields
         .iter()
@@ -241,7 +249,7 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
 }
 
 fn serialize_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStream {
-    let struct_name = parser.ident.to_string();
+    let struct_name = &parser.name.serialize_as;
 
     quote! {
         serializer.serialize_struct(#struct_name, 1);
@@ -252,7 +260,7 @@ fn serialize_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStre
 }
 
 fn serialize_unit_struct(parser: &Parser) -> TokenStream {
-    let struct_name = parser.ident.to_string();
+    let struct_name = &parser.name.serialize_as;
 
     quote! {
         serializer.serialize_struct(#struct_name, 0);
@@ -261,7 +269,7 @@ fn serialize_unit_struct(parser: &Parser) -> TokenStream {
 }
 
 fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
-    let struct_name = parser.ident.to_string();
+    let struct_name = &parser.name.serialize_as;
 
     let fields: Vec<TokenStream> = fields
         .iter()
@@ -302,7 +310,11 @@ impl<'p> Parser<'p> {
         }
     }
 
-    pub fn from_ast(context: &Context, input: &'p syn::DeriveInput) -> Option<Parser<'p>> {
+    pub fn from_ast(
+        context: &Context,
+        input: &'p syn::DeriveInput,
+        args: &'p AttributeArgs,
+    ) -> Option<Parser<'p>> {
         let data = match &input.data {
             syn::Data::Enum(data) => {
                 let variants = parse_enum(context, &data.variants);
@@ -318,11 +330,47 @@ impl<'p> Parser<'p> {
             }
         };
 
+        let mut serialize_as = input.ident.to_string();
+        let mut value_path = None;
+
+        args.iter().for_each(|meta| match meta {
+            NestedMeta::Meta(Meta::NameValue(name)) if name.path.is_ident(STRUCT_RENAME) => {
+                match &name.lit {
+                    Lit::Str(s) => {
+                        let new = s.value();
+                        if new.len() == 0 {
+                            context.error_spanned_by(
+                                name.to_token_stream(),
+                                "New name cannot be empty",
+                            )
+                        } else {
+                            serialize_as = new;
+                        }
+                    }
+                    _ => {
+                        context.error_spanned_by(name.to_token_stream(), "Expected string argument")
+                    }
+                }
+            }
+            NestedMeta::Meta(Meta::Path(path)) => {
+                value_path = Some(path);
+            }
+            nm => context.error_spanned_by(
+                input.to_token_stream(),
+                &format!("Unknown attribute: {}", nm.to_token_stream().to_string()),
+            ),
+        });
+
         let item = Parser {
-            ident: input.ident.clone(),
+            name: StructureName {
+                ident: input.ident.clone(),
+                serialize_as,
+                deserialize_as: input.ident.to_string(),
+            },
             data,
             original: input,
             generics: &input.generics,
+            value_path,
         };
 
         Some(item)

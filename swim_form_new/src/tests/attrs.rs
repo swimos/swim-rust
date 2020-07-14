@@ -20,8 +20,26 @@ mod swim_form {
     pub use crate::*;
 }
 
-mod renaming {
+mod compound_renaming {
     use super::*;
+
+    #[test]
+    fn rename_struct() {
+        #[form(Value, rename = "Test")]
+        struct S {}
+
+        let fs = S {};
+        let value: Value = fs.as_value();
+
+        println!("{:?}", value);
+    }
+}
+
+mod field_renaming {
+    use super::*;
+
+    #[test]
+    fn rename_struct() {}
 
     #[test]
     fn test_rename_single() {

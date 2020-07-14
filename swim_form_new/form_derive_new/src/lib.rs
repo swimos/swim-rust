@@ -37,20 +37,10 @@ const ATTRIBUTE_PATH: &str = "form";
 #[proc_macro_attribute]
 pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as AttributeArgs);
-
-    if args.len() != 1 {
-        return syn::Error::new(
-            Span::call_site(),
-            "Exactly one Value name binding must be provided",
-        )
-        .to_compile_error()
-        .into();
-    }
-
     let value_name_binding = args.get(0).unwrap();
     let mut input = parse_macro_input!(input as DeriveInput);
     let derived: proc_macro2::TokenStream =
-        expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
+        expand_derive_form(&input, value_name_binding, &args).unwrap_or_else(to_compile_errors);
 
     remove_form_attributes(&mut input);
 
@@ -100,17 +90,29 @@ fn remove_form_attributes(input: &mut syn::DeriveInput) {
 fn expand_derive_form(
     input: &syn::DeriveInput,
     value_name_binding: &NestedMeta,
+    args: &AttributeArgs,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let context = Context::new();
-    let parser = match Parser::from_ast(&context, input) {
-        Some(cont) => cont,
-        None => return Err(context.check().unwrap_err()),
+    let parser = match Parser::from_ast(&context, input, args) {
+        Some(cont) if cont.value_path.is_some() => cont,
+        Some(cont) if cont.value_path.is_none() => {
+            return Err(vec![syn::Error::new(
+                Span::call_site(),
+                "Exactly one Value name binding must be provided",
+            )]);
+        }
+        _ => return Err(context.check().unwrap_err()),
     };
 
     context.check()?;
 
-    let ident = parser.ident.clone();
-    let name = parser.ident.to_string().trim_start_matches("r#").to_owned();
+    let ident = parser.name.ident.clone();
+    let name = parser
+        .name
+        .ident
+        .to_string()
+        .trim_start_matches("r#")
+        .to_owned();
     let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
     let serialized_fields = parser.serialize_fields();
 
