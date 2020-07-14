@@ -30,8 +30,9 @@ mod compound_renaming {
 
         let fs = S {};
         let value: Value = fs.as_value();
+        let expected = Value::Record(vec![Attr::of("Test")], vec![]);
 
-        println!("{:?}", value);
+        assert_eq!(value, expected);
     }
 }
 
