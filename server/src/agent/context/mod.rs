@@ -21,9 +21,12 @@ use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(test)]
 mod tests;
@@ -35,9 +38,15 @@ pub(super) struct ContextImpl<Agent, Clk> {
     agent_ref: Arc<Agent>,
     url: Url,
     scheduler: mpsc::Sender<Eff>,
+    schedule_count: Arc<AtomicU64>,
     clock: Clk,
     stop_signal: trigger::Receiver,
 }
+
+const SCHEDULE: &str = "Schedule";
+const SCHED_TRIGGERED: &str = "Schedule triggered";
+const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
+const WAITING: &str = "Schedule waiting";
 
 impl<Agent, Clk: Clone> Clone for ContextImpl<Agent, Clk> {
     fn clone(&self) -> Self {
@@ -45,6 +54,7 @@ impl<Agent, Clk: Clone> Clone for ContextImpl<Agent, Clk> {
             agent_ref: self.agent_ref.clone(),
             url: self.url.clone(),
             scheduler: self.scheduler.clone(),
+            schedule_count: self.schedule_count.clone(),
             clock: self.clock.clone(),
             stop_signal: self.stop_signal.clone(),
         }
@@ -63,6 +73,7 @@ impl<Agent, Clk> ContextImpl<Agent, Clk> {
             agent_ref,
             url,
             scheduler,
+            schedule_count: Default::default(),
             clock,
             stop_signal,
         }
@@ -80,13 +91,17 @@ where
         Str: Stream<Item = Effect> + Send + 'static,
         Sch: Stream<Item = Duration> + Send + 'static,
     {
+        let index = self.schedule_count.fetch_add(1, Ordering::Relaxed);
+
         let clock = self.clock.clone();
         let schedule_effect = schedule
             .zip(effects)
             .then(move |(dur, eff)| {
+                event!(Level::TRACE, WAITING, ?dur);
                 let delay_fut = clock.delay(dur);
                 async move {
                     delay_fut.await;
+                    event!(Level::TRACE, SCHED_TRIGGERED);
                     eff.await;
                 }
             })
@@ -94,12 +109,15 @@ where
             .never_error()
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can drop the errors.
+            .instrument(span!(Level::DEBUG, SCHEDULE, index))
             .boxed();
 
         let mut sender = self.scheduler.clone();
         Box::pin(async move {
             //TODO Handle this.
-            let _ = sender.send(schedule_effect).await;
+            if sender.send(schedule_effect).await.is_err() {
+                event!(Level::ERROR, SCHED_STOPPED)
+            }
         })
     }
 

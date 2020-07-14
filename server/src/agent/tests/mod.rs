@@ -26,7 +26,7 @@ use crate::agent::lane::LaneModel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
-    ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, LaneTasks, LifecycleTasks,
+    ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
     MapLifecycleTasks, ValueLifecycleTasks,
 };
 use futures::future::{join, BoxFuture};
@@ -229,10 +229,13 @@ async fn value_lane_start_task() {
     let lifecycle: TestLifecycle<ValueLane<String>> = TestLifecycle::default();
 
     let tasks = ValueLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
     });
+
+    assert_eq!(tasks.name(), "lane".to_string());
 
     let lane = ValueLane::new("".to_string());
 
@@ -262,6 +265,7 @@ async fn value_lane_events_task() {
     let lifecycle: TestLifecycle<ValueLane<String>> = TestLifecycle::default();
 
     let tasks = Box::new(ValueLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
@@ -311,6 +315,7 @@ async fn value_lane_events_task_termination() {
     let lifecycle: TestLifecycle<ValueLane<String>> = TestLifecycle::default();
 
     let tasks = Box::new(ValueLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
@@ -340,10 +345,13 @@ async fn map_lane_start_task() {
     let lifecycle: TestLifecycle<MapLane<String, String>> = TestLifecycle::default();
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
     });
+
+    assert_eq!(tasks.name(), "lane".to_string());
 
     let lane: MapLane<String, String> = MapLane::new();
 
@@ -372,6 +380,7 @@ async fn map_lane_events_task() {
     let lifecycle: TestLifecycle<MapLane<String, String>> = TestLifecycle::default();
 
     let tasks = Box::new(MapLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
@@ -423,6 +432,7 @@ async fn map_lane_events_task_termination() {
     let lifecycle: TestLifecycle<MapLane<String, String>> = TestLifecycle::default();
 
     let tasks = Box::new(MapLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
@@ -453,10 +463,13 @@ async fn action_lane_events_task() {
     let lifecycle: TestLifecycle<ActionLane<String, usize>> = TestLifecycle::default();
 
     let tasks = Box::new(ActionLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
     }));
+
+    assert_eq!(tasks.name(), "lane".to_string());
 
     let lane = ActionLane::new(tx_lane);
 
@@ -502,6 +515,7 @@ async fn action_lane_events_task_termination() {
     let lifecycle: TestLifecycle<ActionLane<String, usize>> = TestLifecycle::default();
 
     let tasks = Box::new(ActionLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
@@ -532,10 +546,13 @@ async fn command_lane_events_task() {
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
 
     let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),
     }));
+
+    assert_eq!(tasks.name(), "lane".to_string());
 
     let lane = CommandLane::new(tx_lane);
 
@@ -581,6 +598,7 @@ async fn command_lane_events_task_terminates() {
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
 
     let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
+        name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
         event_stream: rx,
         projection: proj(),

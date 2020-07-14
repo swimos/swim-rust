@@ -30,6 +30,7 @@ utilities = { path = "../utilities" }
 swim_form = { path = "../swim_form" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
+tracing-futures = "0.2.3"
 
 [dev-dependencies]
 
