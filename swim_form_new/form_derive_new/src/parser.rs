@@ -232,6 +232,31 @@ fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
     }
 }
 
+fn serialize_enum<'a>(variants: &[Variant], parser: &Parser<'a>) -> TokenStream {
+    let ident = &parser.ident;
+
+    let variant = variants
+        .iter()
+        .enumerate()
+        .map(|(idx, variant)| {
+            let arm = match variant.style {
+                CompoundType::Tuple => unimplemented!(),
+                CompoundType::Unit => quote! {
+                    #ident
+                },
+                CompoundType::NewType => quote!(),
+                CompoundType::Struct => unimplemented!(),
+            };
+        })
+        .collect();
+
+    quote! {
+        #name::variant
+    }
+
+    unimplemented!()
+}
+
 impl<'p> Parser<'p> {
     pub fn serialize_fields(&self) -> TokenStream {
         match &self.data {
@@ -243,7 +268,7 @@ impl<'p> Parser<'p> {
                 serialize_tuple_struct(fields, self)
             }
             TypeContents::Struct(CompoundType::Unit, _fields) => serialize_unit_struct(self),
-            TypeContents::Enum(variants) => unimplemented!(),
+            TypeContents::Enum(variants) => serialize_enum(variants, self),
         }
     }
 

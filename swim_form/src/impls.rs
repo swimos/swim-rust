@@ -184,3 +184,13 @@ impl ValidatedForm for String {
         StandardSchema::OfKind(ValueKind::Text)
     }
 }
+
+impl<'s> Form for &'s str {
+    fn as_value(&self) -> Value {
+        Value::Text(String::from(self.clone()))
+    }
+
+    fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        unimplemented!()
+    }
+}
