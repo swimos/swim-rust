@@ -37,13 +37,13 @@ async fn read_configuration_from_file() {
     assert_that!(&result, ok());
     let items = result.unwrap();
     let complex = Value::Record(
-        vec![Attr::with_value("name", 7)],
-        vec![Item::of(1), Item::of(2), Item::of(3)],
+        vec![Attr::with_value("name", 7u32)],
+        vec![Item::of(1u32), Item::of(2u32), Item::of(3u32)],
     );
     assert_that!(
         items,
         eq(vec![
-            Item::slot("first", 3),
+            Item::slot("first", 3u32),
             Item::slot("second", "hello"),
             Item::ValueItem(complex),
             Item::of(true)

@@ -17,6 +17,11 @@ use serde::{Serialize, Serializer};
 use common::model::{Attr, Value};
 
 use crate::{FormSerializeErr, SerializerResult, SerializerState, ValueSerializer};
+use num_bigint::{BigInt, BigUint};
+use std::str::FromStr;
+
+pub const BIG_INT_PREFIX: &str = "____BIG___INT___";
+pub const BIG_UINT_PREFIX: &str = "____BIG___UINT___";
 
 // CLion/IntelliJ believes there is a missing implementation
 //noinspection RsTraitImplementation
@@ -52,20 +57,20 @@ impl<'a> Serializer for &'a mut ValueSerializer {
         self.push_value(Value::Int64Value(v))
     }
 
-    fn serialize_u8(self, _v: u8) -> SerializerResult<()> {
-        self.err_unsupported("u8")
+    fn serialize_u8(self, v: u8) -> SerializerResult<()> {
+        self.push_value(Value::UInt32Value(u32::from(v)))
     }
 
-    fn serialize_u16(self, _v: u16) -> SerializerResult<()> {
-        self.err_unsupported("u16")
+    fn serialize_u16(self, v: u16) -> SerializerResult<()> {
+        self.push_value(Value::UInt32Value(u32::from(v)))
     }
 
-    fn serialize_u32(self, _v: u32) -> SerializerResult<()> {
-        self.err_unsupported("u32")
+    fn serialize_u32(self, v: u32) -> SerializerResult<()> {
+        self.push_value(Value::UInt32Value(v))
     }
 
-    fn serialize_u64(self, _v: u64) -> SerializerResult<()> {
-        self.err_unsupported("u64")
+    fn serialize_u64(self, v: u64) -> SerializerResult<()> {
+        self.push_value(Value::UInt64Value(v))
     }
 
     fn serialize_f32(self, v: f32) -> SerializerResult<()> {
@@ -81,7 +86,21 @@ impl<'a> Serializer for &'a mut ValueSerializer {
     }
 
     fn serialize_str(self, v: &str) -> SerializerResult<()> {
-        self.push_value(Value::Text(String::from(v)))
+        if v.starts_with(BIG_INT_PREFIX) {
+            let s = v.split(BIG_INT_PREFIX).collect::<Vec<&str>>();
+            match BigInt::from_str(s.get(1).unwrap()) {
+                Ok(bi) => self.push_value(Value::BigInt(bi)),
+                Err(e) => Err(FormSerializeErr::Message(e.to_string())),
+            }
+        } else if v.starts_with(BIG_UINT_PREFIX) {
+            let s = v.split(BIG_UINT_PREFIX).collect::<Vec<&str>>();
+            match BigUint::from_str(s.get(1).unwrap()) {
+                Ok(bi) => self.push_value(Value::BigUint(bi)),
+                Err(e) => Err(FormSerializeErr::Message(e.to_string())),
+            }
+        } else {
+            self.push_value(Value::Text(String::from(v)))
+        }
     }
 
     fn serialize_bytes(self, _v: &[u8]) -> SerializerResult<()> {

@@ -20,13 +20,19 @@ use std::fmt::{Debug, Display, Formatter};
 use serde::de;
 
 use common::model::{Attr, Item, Value};
+use serde::de::Visitor;
 
 #[cfg(test)]
 mod tests;
 
+mod bigint;
+mod biguint;
 mod deserializer;
 mod enum_access;
 mod map_access;
+
+pub use bigint::deserialize as deserialize_bigint;
+pub use biguint::deserialize as deserialize_biguint;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum FormDeserializeErr {
@@ -107,6 +113,19 @@ impl<'de> ValueDeserializer<'de> {
                 }
             }
             None => Err(FormDeserializeErr::Message(String::from("Missing record"))),
+        }
+    }
+
+    pub fn deserialize_int<V>(&self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        match &self.current_state.value {
+            Some(Value::Int32Value(i)) => visitor.visit_i32(*i),
+            Some(Value::Int64Value(i)) => visitor.visit_i64(*i),
+            Some(Value::UInt32Value(i)) => visitor.visit_u32(*i),
+            Some(Value::UInt64Value(i)) => visitor.visit_u64(*i),
+            _ => self.err_incorrect_type("Value::Int32Value", self.current_state.value),
         }
     }
 

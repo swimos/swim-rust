@@ -14,9 +14,6 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use client::configuration::downlink::{
-        BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-    };
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
     use client::downlink::model::map::{MapModification, UntypedMapModification};
     use client::downlink::Event;
@@ -31,21 +28,6 @@ mod tests {
     use test_server::SwimTestServer;
     use tokio::stream::StreamExt;
     use tokio::time::Duration;
-
-    fn config() -> ConfigHierarchy {
-        let client_params = ClientParams::new(2, Default::default()).unwrap();
-        let timeout = Duration::from_secs(60000);
-        let default_params = DownlinkParams::new_queue(
-            BackpressureMode::Propagate,
-            5,
-            timeout,
-            5,
-            OnInvalidMessage::Terminate,
-            256,
-        )
-        .unwrap();
-        ConfigHierarchy::new(client_params, default_params)
-    }
 
     #[tokio::test]
     async fn test_recv_untyped_value_event() {
@@ -164,7 +146,7 @@ mod tests {
         let incoming = event_dl.recv().await.unwrap();
 
         let header = Attr::of(("update", Value::record(vec![Item::slot("key", "milk")])));
-        let body = Item::of(6);
+        let body = Item::of(6u32);
         let expected = Value::Record(vec![header], vec![body]);
 
         assert_eq!(incoming, expected);
@@ -193,17 +175,16 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(1)).await;
 
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
-        command_dl
-            .send_item(
-                UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
-                    .as_value(),
-            )
-            .await
-            .unwrap();
+
+        let item =
+            UntypedMapModification::Insert("milk".to_string().into_value(), 6i32.into_value())
+                .as_value();
+
+        command_dl.send_item(item).await.unwrap();
 
         let incoming = event_dl.recv().await.unwrap();
 
-        assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6));
+        assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6i32));
     }
 
     #[tokio::test]

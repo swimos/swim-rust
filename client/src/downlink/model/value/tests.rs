@@ -627,6 +627,7 @@ fn invalid_message_linked() {
     let mut model = ValueModel::new(Value::from(1));
 
     let schema = StandardSchema::OfKind(ValueKind::Extant).negate();
+
     let machine = ValueStateMachine::new(Value::from(0), schema.clone());
     let maybe_response = machine.handle_operation(
         &mut state,

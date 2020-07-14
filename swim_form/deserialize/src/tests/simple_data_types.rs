@@ -19,6 +19,56 @@ use crate::FormDeserializeErr;
 use common::model::{Attr, Item, Value};
 
 #[cfg(test)]
+mod casts {
+    use super::*;
+
+    #[test]
+    fn out_of_range() {
+        assert_eq!(
+            from_value::<i32>(&mut Value::UInt64Value(u64::max_value())),
+            Err(FormDeserializeErr::Message(
+                "invalid value: integer `18446744073709551615`, expected i32".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn i32_to_u32() {
+        let parsed_value = from_value::<u32>(&mut Value::Int32Value(i32::max_value())).unwrap();
+        let expected = i32::max_value() as u32;
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn i64_to_u32() {
+        let parsed_value =
+            from_value::<i64>(&mut Value::Int64Value(u32::max_value() as i64)).unwrap();
+        let expected = u32::max_value() as i64;
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn u32_to_i32() {
+        let parsed_value =
+            from_value::<i32>(&mut Value::UInt32Value(i32::max_value() as u32)).unwrap();
+        let expected = i32::max_value();
+
+        assert_eq!(parsed_value, expected);
+    }
+
+    #[test]
+    fn u64_to_i32() {
+        let parsed_value =
+            from_value::<i32>(&mut Value::UInt64Value(i32::max_value() as u64)).unwrap();
+        let expected = i32::max_value();
+
+        assert_eq!(parsed_value, expected);
+    }
+}
+
+#[cfg(test)]
 mod illegal {
 
     use super::*;
