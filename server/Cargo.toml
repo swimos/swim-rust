@@ -13,7 +13,7 @@ log_verbose = []
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
 
 [target.'cfg(not(log_verbose))'.dependencies]
-tracing = "0.1.13"
+tracing = "0.1.16"
 
 [dependencies]
 
