@@ -51,7 +51,7 @@ pub struct Parser<'a> {
     pub generics: &'a syn::Generics,
 }
 
-pub struct Variant<'a> {
+pub struct EnumVariant<'a> {
     pub ident: syn::Ident,
     pub style: CompoundType,
     pub fields: Vec<Field<'a>>,
@@ -106,7 +106,7 @@ pub struct FieldName {
 }
 
 pub enum TypeContents<'a> {
-    Enum(Vec<Variant<'a>>),
+    Enum(Vec<EnumVariant<'a>>),
     Struct(CompoundType, Vec<Field<'a>>),
 }
 
@@ -232,29 +232,84 @@ fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
     }
 }
 
-fn serialize_enum<'a>(variants: &[Variant], parser: &Parser<'a>) -> TokenStream {
+fn serialize_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStream {
     let ident = &parser.ident;
+    let enum_name = ident.to_string();
 
-    let variant = variants
+    let arms: Vec<_> = variants
         .iter()
         .enumerate()
         .map(|(idx, variant)| {
-            let arm = match variant.style {
-                CompoundType::Tuple => unimplemented!(),
-                CompoundType::Unit => quote! {
-                    #ident
-                },
-                CompoundType::NewType => quote!(),
-                CompoundType::Struct => unimplemented!(),
-            };
+            let variant_ident = &variant.ident;
+
+            match variant.style {
+                CompoundType::Tuple => {
+                    let field_names = (0..variant.fields.len())
+                        .map(|i| Ident::new(&format!("__field{}", i), Span::call_site()));
+                    let fields = (0..variant.fields.len()).map(|i| {
+                        let index = Ident::new(&format!("__field{}", i), Span::call_site());
+
+                        quote!(serializer.serialize_field(None, &#index, None);)
+                    });
+                    let len = fields.len();
+
+                    quote! {
+                        #ident::#variant_ident(#(ref #field_names),*) => {
+                            serializer.serialize_enum(#enum_name, #len);
+                            #(#fields)*
+
+                            serializer.exit_nested();
+                        }
+                    }
+                }
+                CompoundType::Unit => {
+                    let body = quote! {
+                        serializer.serialize_enum(#enum_name, 0);
+                        serializer.exit_nested();
+                    };
+                    quote!(#ident::#variant_ident => { #body })
+                }
+                CompoundType::NewType => {
+                    let body = quote! {
+                        serializer.serialize_enum(#enum_name, 1);
+                        serializer.serialize_field(None, &__field0, None);
+                        serializer.exit_nested();
+                    };
+
+                    quote!(#ident::#variant_ident(ref __field0) => { #body })
+                }
+                CompoundType::Struct => {
+                    let fields: Vec<TokenStream> = variant
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            let name = &f.attributes.name.serialize_as;
+                            let ident = Ident::new(&name, Span::call_site());
+
+                            quote!(serializer.serialize_field(Some(#name), &#ident, None);)
+                        })
+                        .collect();
+
+                    let no_fields = fields.len();
+
+                    let body = quote! {
+                        serializer.serialize_enum(#enum_name, 1);
+                        #(#fields)*
+                        serializer.exit_nested();
+                    };
+
+                    let vars = variant.fields.iter().map(|f| &f.member);
+                    quote!(#ident::#variant_ident { #(ref #vars),* } => { #body })
+                }
+            }
         })
         .collect();
 
     quote! {
-        #name::variant
+        match *self {
+            #(#arms)*
+        }
     }
-
-    unimplemented!()
 }
 
 impl<'p> Parser<'p> {
@@ -302,12 +357,12 @@ impl<'p> Parser<'p> {
 fn parse_enum<'a>(
     cx: &Context,
     variants: &'a Punctuated<syn::Variant, syn::Token![,]>,
-) -> Vec<Variant<'a>> {
+) -> Vec<EnumVariant<'a>> {
     variants
         .iter()
         .map(|variant| {
             let (style, fields) = parse_struct(cx, &variant.fields);
-            Variant {
+            EnumVariant {
                 ident: variant.ident.clone(),
                 style,
                 fields,

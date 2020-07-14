@@ -188,6 +188,11 @@ impl ValueSerializer {
         f.serialize(self, properties);
     }
 
+    pub fn serialize_enum(&mut self, name: &'static str, len: usize) {
+        self.enter_nested(SerializerState::ReadingNested(Some(len)));
+        self.push_attr(Attr::from(name));
+    }
+
     pub fn serialize_struct(&mut self, name: &'static str, len: usize) {
         self.enter_nested(SerializerState::ReadingNested(Some(len)));
         self.push_attr(Attr::from(name));

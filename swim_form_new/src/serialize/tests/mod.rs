@@ -17,6 +17,7 @@ use crate::serialize::SerializeToValue;
 use common::model::{Item, Value};
 mod bigint;
 mod compound;
+mod enumeration;
 
 macro_rules! test_impl {
     ($test_name:ident, $typ:expr, $expected:expr) => {
