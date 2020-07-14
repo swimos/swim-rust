@@ -106,7 +106,15 @@ impl Attributes {
                     NestedMeta::Meta(Meta::NameValue(name)) if name.path.is_ident(SER_NAME) => {
                         match &name.lit {
                             Lit::Str(s) => {
-                                attrs.name.serialize_as = s.value();
+                                let new = s.value();
+                                if new.len() == 0 {
+                                    ctx.error_spanned_by(
+                                        meta.to_token_stream(),
+                                        "New name cannot be empty",
+                                    )
+                                } else {
+                                    attrs.name.serialize_as = new;
+                                }
                             }
                             _ => ctx.error_spanned_by(
                                 meta.to_token_stream(),
@@ -208,6 +216,7 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
 
     let fields: Vec<TokenStream> = fields
         .iter()
+        .filter(|f| !f.attributes.ignore)
         .map(|f| {
             let original_name = &f.attributes.name.original;
             let serialised_as_name = &f.attributes.name.serialize_as;
@@ -256,6 +265,7 @@ fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
 
     let fields: Vec<TokenStream> = fields
         .iter()
+        .filter(|f| !f.attributes.ignore)
         .enumerate()
         .map(|(idx, f)| {
             let index = Index {

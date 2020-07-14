@@ -18,6 +18,7 @@ use common::model::{Attr, Item, Value};
 use crate::{Form, SerializeToValue};
 
 mod attrs;
+mod suite;
 
 mod swim_form {
     pub use crate::*;
