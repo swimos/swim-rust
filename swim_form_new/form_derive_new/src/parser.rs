@@ -241,6 +241,7 @@ fn serialize_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
         .enumerate()
         .map(|(idx, variant)| {
             let variant_ident = &variant.ident;
+            let variant_name = variant_ident.to_string();
 
             match variant.style {
                 CompoundType::Tuple => {
@@ -255,7 +256,7 @@ fn serialize_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
 
                     quote! {
                         #ident::#variant_ident(#(ref #field_names),*) => {
-                            serializer.serialize_enum(#enum_name, #len);
+                            serializer.serialize_enum(#variant_name, #len);
                             #(#fields)*
 
                             serializer.exit_nested();
@@ -264,14 +265,14 @@ fn serialize_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
                 }
                 CompoundType::Unit => {
                     let body = quote! {
-                        serializer.serialize_enum(#enum_name, 0);
+                        serializer.serialize_enum(#variant_name, 0);
                         serializer.exit_nested();
                     };
                     quote!(#ident::#variant_ident => { #body })
                 }
                 CompoundType::NewType => {
                     let body = quote! {
-                        serializer.serialize_enum(#enum_name, 1);
+                        serializer.serialize_enum(#variant_name, 1);
                         serializer.serialize_field(None, &__field0, None);
                         serializer.exit_nested();
                     };
@@ -293,7 +294,7 @@ fn serialize_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
                     let no_fields = fields.len();
 
                     let body = quote! {
-                        serializer.serialize_enum(#enum_name, 1);
+                        serializer.serialize_enum(#variant_name, 1);
                         #(#fields)*
                         serializer.exit_nested();
                     };
