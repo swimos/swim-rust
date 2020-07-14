@@ -12,31 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueDeserializer;
+use crate::Form;
 use common::model::Value;
-use serde::Deserialize;
+use form_derive::*;
+use num_bigint::{BigInt, BigUint};
 
-#[cfg(test)]
-mod nested;
+#[form(Value)]
+struct S {
+    #[form(bigint)]
+    a: BigInt,
+    #[form(biguint)]
+    b: BigUint,
+}
 
-#[cfg(test)]
-mod collections;
+fn main() {
+    let mut rng = rand::thread_rng();
 
-#[cfg(test)]
-mod simple_data_types;
-
-#[cfg(test)]
-mod vectors;
-
-pub fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
-where
-    T: Deserialize<'de>,
-{
-    let mut deserializer = match value {
-        Value::Record(_, _) => ValueDeserializer::for_values(value),
-        _ => ValueDeserializer::for_single_value(value),
+    let s = S {
+        a: rng.gen_bigint(100),
+        b: rng.gen_biguint(100),
     };
 
-    let t = T::deserialize(&mut deserializer)?;
-    Ok(t)
+    let rec = s.as_value();
 }
