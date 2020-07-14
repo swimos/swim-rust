@@ -24,12 +24,15 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 use proc_macro2::{Ident, Span};
-use syn::{AttributeArgs, DeriveInput, NestedMeta};
+use syn::{AttributeArgs, DeriveInput, Fields, NestedMeta};
 
 use crate::parser::{Context, Parser};
+use syn::visit_mut::VisitMut;
 
 #[allow(dead_code, unused_variables)]
 mod parser;
+
+const ATTRIBUTE_PATH: &str = "form";
 
 #[proc_macro_attribute]
 pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -45,9 +48,11 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let value_name_binding = args.get(0).unwrap();
-    let input = parse_macro_input!(input as DeriveInput);
+    let mut input = parse_macro_input!(input as DeriveInput);
     let derived: proc_macro2::TokenStream =
         expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
+
+    remove_form_attributes(&mut input);
 
     let q = quote! {
         #input
@@ -56,6 +61,40 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     q.into()
+}
+
+fn remove_form_attributes(input: &mut syn::DeriveInput) {
+    struct FieldVisitor;
+    impl VisitMut for FieldVisitor {
+        fn visit_fields_mut(&mut self, fields: &mut Fields) {
+            fields.iter_mut().for_each(|f| {
+                let to_remove = f
+                    .attrs
+                    .iter_mut()
+                    .enumerate()
+                    .filter(|(_idx, attr)| attr.path.is_ident(ATTRIBUTE_PATH))
+                    .fold(Vec::new(), |mut v, (idx, _attr)| {
+                        v.push(idx);
+                        v
+                    });
+                to_remove.iter().for_each(|i| {
+                    f.attrs.remove(*i);
+                })
+            });
+        }
+    }
+
+    match &mut input.data {
+        syn::Data::Enum(ref mut data) => {
+            data.variants.iter_mut().for_each(|v| {
+                FieldVisitor.visit_fields_mut(&mut v.fields);
+            });
+        }
+        syn::Data::Struct(ref mut data) => {
+            FieldVisitor.visit_fields_mut(&mut data.fields);
+        }
+        syn::Data::Union(_) => panic!("Unions are not supported"),
+    }
 }
 
 fn expand_derive_form(

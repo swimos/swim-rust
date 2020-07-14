@@ -18,7 +18,7 @@ use std::fmt::Display;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::{DeriveInput, Index, Meta, NestedMeta};
+use syn::{DeriveInput, Index, Lit, Meta, NestedMeta};
 
 const FORM_PATH: &str = "form";
 const SER_NAME: &str = "ser_name";
@@ -36,10 +36,7 @@ fn get_form_attributes(ctx: &Context, attr: &syn::Attribute) -> Result<Vec<syn::
                 ctx.error_spanned_by(other, "Invalid attribute. Expected #[form(...)]");
                 Err(())
             }
-            Err(err) => {
-                // ctx.syn_error(err);
-                Err(())
-            }
+            Err(err) => Err(()),
         }
     }
 }
@@ -68,34 +65,65 @@ pub struct Field<'a> {
 
 pub struct Attributes {
     name: FieldName,
+    ignore: bool,
+    pull_up: bool,
 }
 
 impl Attributes {
     fn from(ctx: &Context, idx: usize, field: &syn::Field) -> Attributes {
-        field
-            .attrs
-            .iter()
-            .flat_map(|a| get_form_attributes(ctx, a))
-            .flatten()
-            .for_each(|meta: NestedMeta| match &meta {
-                NestedMeta::Meta(Meta::NameValue(name)) => {}
-                NestedMeta::Meta(Meta::Path(_)) => {}
-                NestedMeta::Meta(Meta::List(_)) => {}
-                NestedMeta::Lit(_) => {}
-            });
-
         let field_name = match &field.ident {
             Some(ident) => ident.to_string().trim_start_matches("r#").to_owned(),
             None => idx.to_string(),
         };
 
-        Attributes {
+        let attrs = Attributes {
             name: FieldName {
                 serialize_as: field_name.clone(),
                 deserialize_as: field_name.clone(),
                 original: field_name,
             },
-        }
+            ignore: false,
+            pull_up: false,
+        };
+
+        field
+            .attrs
+            .iter()
+            .flat_map(|a| get_form_attributes(ctx, a))
+            .flatten()
+            .fold(attrs, |mut attrs, meta: NestedMeta| {
+                match &meta {
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path.is_ident(SER_NAME) => {
+                        match &name.lit {
+                            Lit::Str(s) => {
+                                attrs.name.serialize_as = s.value();
+                            }
+                            _ => ctx.error_spanned_by(
+                                meta.to_token_stream(),
+                                "Expected string argument",
+                            ),
+                        }
+                    }
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path.is_ident(DE_NAME) => {
+                        match &name.lit {
+                            Lit::Str(s) => {
+                                attrs.name.deserialize_as = name.lit.to_token_stream().to_string();
+                            }
+                            _ => ctx.error_spanned_by(
+                                meta.to_token_stream(),
+                                "Expected string argument",
+                            ),
+                        }
+                    }
+                    NestedMeta::Meta(Meta::Path(_)) => {}
+                    NestedMeta::Meta(Meta::List(_)) => {}
+                    NestedMeta::Lit(_) => {}
+                    NestedMeta::Meta(Meta::NameValue(n)) => {
+                        ctx.error_spanned_by(meta.to_token_stream(), "Unknown attribute")
+                    }
+                }
+                attrs
+            })
     }
 }
 
@@ -169,10 +197,11 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
     let fields: Vec<TokenStream> = fields
         .iter()
         .map(|f| {
-            let name = &f.attributes.name.serialize_as;
-            let ident = Ident::new(&name, Span::call_site());
+            let original_name = &f.attributes.name.original;
+            let serialised_as_name = &f.attributes.name.serialize_as;
+            let ident = Ident::new(&original_name, Span::call_site());
 
-            quote!(serializer.serialize_field(Some(#name), &self.#ident, None);)
+            quote!(serializer.serialize_field(Some(#serialised_as_name), &self.#ident, None);)
         })
         .collect();
 
