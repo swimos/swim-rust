@@ -105,7 +105,23 @@ mod shifting {
     use super::*;
 
     #[test]
-    fn attr() {
+    fn primitive_as_attr() {
+        #[form(Value)]
+        struct Outer {
+            #[form(attr)]
+            inner: i32,
+        }
+
+        let fs = Outer { inner: 13 };
+        let value: Value = fs.as_value();
+
+        let expected = Value::Record(vec![Attr::of("Outer"), Attr::of(("inner", 13))], vec![]);
+
+        assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn struct_as_attr() {
         #[form(Value)]
         struct Outer {
             #[form(attr)]
@@ -118,15 +134,50 @@ mod shifting {
         let fs = Outer { inner: Inner };
         let value: Value = fs.as_value();
 
-        println!("{:?}", value);
+        let expected = Value::Record(
+            vec![
+                Attr::of("Outer"),
+                Attr::of(("inner", Value::Record(vec![Attr::of("Inner")], Vec::new()))),
+            ],
+            vec![],
+        );
+
+        assert_eq!(value, expected);
     }
 
-    // todo add as test runner test
-    // fn is_both_ways() {
-    //     #[form(Value)]
-    //     struct F {
-    //         #[form(pull_up, push_down)]
-    //         name: String,
-    //     }
-    // }
+    #[test]
+    fn collection_as_attr() {
+        #[form(Value)]
+        struct Outer {
+            #[form(attr)]
+            v: Vec<i32>,
+        }
+
+        let fs = Outer {
+            v: vec![1, 2, 3, 4, 5],
+        };
+        let value: Value = fs.as_value();
+
+        let expected = Value::Record(
+            vec![
+                Attr::of("Outer"),
+                Attr::of((
+                    "v",
+                    Value::Record(
+                        Vec::new(),
+                        vec![
+                            Item::of(Value::Int32Value(1)),
+                            Item::of(Value::Int32Value(2)),
+                            Item::of(Value::Int32Value(3)),
+                            Item::of(Value::Int32Value(4)),
+                            Item::of(Value::Int32Value(5)),
+                        ],
+                    ),
+                )),
+            ],
+            vec![],
+        );
+
+        assert_eq!(value, expected);
+    }
 }
