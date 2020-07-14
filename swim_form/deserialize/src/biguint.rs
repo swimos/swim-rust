@@ -69,28 +69,28 @@ impl<'de> Visitor<'de> for BigIntVisitor {
     where
         E: Error,
     {
-        Ok(BigUint::try_from(v).expect("infailable"))
+        Ok(BigUint::try_from(v).expect("infallible"))
     }
 
     fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E>
     where
         E: Error,
     {
-        Ok(BigUint::try_from(v).expect("infailable"))
+        Ok(BigUint::try_from(v).expect("infallible"))
     }
 
     fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
     where
         E: Error,
     {
-        Ok(BigUint::try_from(v).expect("infailable"))
+        Ok(BigUint::try_from(v).expect("infallible"))
     }
 
     fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
     where
         E: Error,
     {
-        Ok(BigUint::try_from(v).expect("infailable"))
+        Ok(BigUint::try_from(v).expect("infallible"))
     }
 
     fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E>

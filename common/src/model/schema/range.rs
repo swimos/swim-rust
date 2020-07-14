@@ -206,7 +206,7 @@ pub fn in_big_int_range(
             lower && upper
         }
         Value::BigUint(bi) => {
-            let bi = bi.to_bigint().expect("infailable");
+            let bi = bi.to_bigint().expect("infallible");
             let lower = min
                 .as_ref()
                 .map(|(lb, incl)| if *incl { lb <= &bi } else { lb < &bi })
