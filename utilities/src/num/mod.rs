@@ -25,6 +25,18 @@ pub fn cmp_i64_u64(lhs: i64, rhs: u64) -> Ordering {
     }
 }
 
+//Todo test
+/// Compares an [`u64`] and a [`i64`], returning whether the left-hand side is less than, equal to
+/// or greater than the right-hand side.
+pub fn cmp_u64_i64(lhs: u64, rhs: i64) -> Ordering {
+    if rhs < 0 {
+        Ordering::Greater
+    } else {
+        let rhs = rhs as u64;
+        lhs.cmp(&rhs)
+    }
+}
+
 /// Compares an [`i32`] and a [`u32`], returning whether the left-hand side is less than, equal to
 /// or greater than the right-hand side.
 pub fn cmp_i32_u32(lhs: i32, rhs: u32) -> Ordering {
@@ -32,6 +44,18 @@ pub fn cmp_i32_u32(lhs: i32, rhs: u32) -> Ordering {
         Ordering::Less
     } else {
         let lhs = lhs as u32;
+        lhs.cmp(&rhs)
+    }
+}
+
+//Todo test
+/// Compares an [`u32`] and a [`i32`], returning whether the left-hand side is less than, equal to
+/// or greater than the right-hand side.
+pub fn cmp_u32_i32(lhs: u32, rhs: i32) -> Ordering {
+    if rhs < 0 {
+        Ordering::Greater
+    } else {
+        let rhs = rhs as u32;
         lhs.cmp(&rhs)
     }
 }

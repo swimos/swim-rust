@@ -317,8 +317,8 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::UInt32Value(u) => n.cmp(u),
                 Value::UInt64Value(u) => (*n as u64).cmp(u),
-                Value::Int32Value(x) => utilities::num::cmp_i32_u32(*x, *n).reverse(),
-                Value::Int64Value(x) => utilities::num::cmp_i64_u64(*x, *n as u64).reverse(),
+                Value::Int32Value(x) => utilities::num::cmp_u32_i32(*n, *x),
+                Value::Int64Value(x) => utilities::num::cmp_u64_i64(*n as u64, *x),
                 Value::Float64Value(f) => {
                     if f.is_nan() {
                         Ordering::Greater
@@ -339,8 +339,8 @@ impl Value {
             },
             Value::UInt64Value(n) => match other {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
-                Value::Int32Value(m) => utilities::num::cmp_i64_u64(*m as i64, *n).reverse(),
-                Value::Int64Value(m) => utilities::num::cmp_i64_u64(*m, *n).reverse(),
+                Value::Int32Value(m) => utilities::num::cmp_u64_i64(*n, *m as i64),
+                Value::Int64Value(m) => utilities::num::cmp_u64_i64(*n, *m),
                 Value::UInt32Value(x) => n.cmp(&(*x as u64)),
                 Value::UInt64Value(x) => n.cmp(x),
                 Value::Float64Value(y) => {
@@ -579,8 +579,8 @@ impl PartialEq for Value {
             Value::Int32Value(n) => match other {
                 Value::Int32Value(m) => n == m,
                 Value::Int64Value(m) => &(*n as i64) == m,
-                Value::UInt32Value(m) => &(*n as i64) == &(*m as i64),
-                Value::UInt64Value(m) => &(*n as i128) == &(*m as i128),
+                Value::UInt32Value(m) => *n as i64 == *m as i64,
+                Value::UInt64Value(m) => *n as i128 == *m as i128,
                 Value::BigInt(big_m) => big_m.to_i32().map(|ref m| n == m).unwrap_or(false),
                 Value::BigUint(big_m) => big_m.to_i32().map(|ref m| n == m).unwrap_or(false),
                 _ => false,
@@ -589,13 +589,13 @@ impl PartialEq for Value {
                 Value::Int32Value(m) => n == &(*m as i64),
                 Value::Int64Value(m) => n == m,
                 Value::UInt32Value(m) => n == &(*m as i64),
-                Value::UInt64Value(m) => &(*n as i128) == &(*m as i128),
+                Value::UInt64Value(m) => *n as i128 == *m as i128,
                 Value::BigInt(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
                 Value::BigUint(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
                 _ => false,
             },
             Value::UInt32Value(n) => match other {
-                Value::Int32Value(m) => &(*n as i64) == &(*m as i64),
+                Value::Int32Value(m) => *n as i64 == *m as i64,
                 Value::Int64Value(m) => &(*n as i64) == m,
                 Value::UInt32Value(m) => n == m,
                 Value::UInt64Value(m) => &(*n as u64) == m,
@@ -604,8 +604,8 @@ impl PartialEq for Value {
                 _ => false,
             },
             Value::UInt64Value(n) => match other {
-                Value::Int32Value(m) => &(*n as i128) == &(*m as i128),
-                Value::Int64Value(m) => &(*n as i128) == &(*m as i128),
+                Value::Int32Value(m) => *n as i128 == *m as i128,
+                Value::Int64Value(m) => *n as i128 == *m as i128,
                 Value::UInt32Value(m) => n == &(*m as u64),
                 Value::UInt64Value(m) => n == m,
                 Value::BigInt(big_m) => big_m.to_u64().map(|ref m| n == m).unwrap_or(false),
