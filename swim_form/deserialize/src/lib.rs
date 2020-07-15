@@ -24,9 +24,14 @@ use common::model::{Attr, Item, Value};
 #[cfg(test)]
 mod tests;
 
+mod bigint;
+mod biguint;
 mod deserializer;
 mod enum_access;
 mod map_access;
+
+pub use bigint::deserialize as deserialize_bigint;
+pub use biguint::deserialize as deserialize_biguint;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum FormDeserializeErr {

@@ -1,7 +1,8 @@
 use crate::model::schema::{
     as_f64, as_i64, combine_orderings, float_endpoint_to_slot, int_endpoint_to_slot,
 };
-use crate::model::{Attr, Value};
+use crate::model::{Attr, Item, Value};
+use num_bigint::{BigInt, ToBigInt};
 use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -187,6 +188,41 @@ pub fn in_float_range(value: &Value, range: &Range<f64>) -> bool {
     }
 }
 
+pub fn in_big_int_range(
+    value: &Value,
+    min: &Option<(BigInt, bool)>,
+    max: &Option<(BigInt, bool)>,
+) -> bool {
+    match value {
+        Value::BigInt(bi) => {
+            let lower = min
+                .as_ref()
+                .map(|(lb, incl)| if *incl { lb <= bi } else { lb < bi })
+                .unwrap_or(true);
+            let upper = max
+                .as_ref()
+                .map(|(ub, incl)| if *incl { ub >= bi } else { ub > bi })
+                .unwrap_or(true);
+            lower && upper
+        }
+        Value::BigUint(bi) => {
+            let bi = bi.to_bigint().expect("infallible");
+            let lower = min
+                .as_ref()
+                .map(|(lb, incl)| if *incl { lb <= &bi } else { lb < &bi })
+                .unwrap_or(true);
+            let upper = max
+                .as_ref()
+                .map(|(ub, incl)| if *incl { ub >= &bi } else { ub > &bi })
+                .unwrap_or(true);
+            lower && upper
+        }
+        Value::Int32Value(i) => in_big_int_range(&Value::BigInt(BigInt::from(*i)), min, max),
+        Value::Int64Value(i) => in_big_int_range(&Value::BigInt(BigInt::from(*i)), min, max),
+        _ => false,
+    }
+}
+
 pub fn in_range<T: Copy + PartialOrd>(value: T, range: &Range<T>) -> bool {
     let lower = range
         .min
@@ -272,5 +308,30 @@ pub fn float_range_to_value<N: Into<Value> + Copy + PartialOrd>(
     if let Some(Bound { value, inclusive }) = max {
         slots.push(float_endpoint_to_slot("max", value, inclusive))
     }
+    Attr::with_items(tag, slots).into()
+}
+
+pub fn big_int_range_to_value<N: Into<Value>>(
+    tag: &str,
+    min: Option<(N, bool)>,
+    max: Option<(N, bool)>,
+) -> Value {
+    let mut slots = vec![];
+
+    let endpoint_to_slot = |tag, value, inclusive| {
+        let end_point = Value::from_vec(vec![
+            Item::slot("value", value),
+            Item::slot("inclusive", inclusive),
+        ]);
+        Item::slot(tag, end_point)
+    };
+
+    if let Some((value, inclusive)) = min {
+        slots.push(endpoint_to_slot("min", value, inclusive))
+    }
+    if let Some((value, inclusive)) = max {
+        slots.push(endpoint_to_slot("max", value, inclusive))
+    }
+
     Attr::with_items(tag, slots).into()
 }

@@ -15,9 +15,8 @@
 #![allow(clippy::match_wild_err_arm)]
 
 use core::fmt;
-use std::fmt::{Debug, Display, Formatter};
-
 use serde::ser;
+use std::fmt::{Debug, Display, Formatter};
 
 use common::model::blob::Blob;
 use common::model::{Attr, Item, Value, ValueKind};
@@ -28,6 +27,7 @@ const EXT_BLOB: &str = common::model::blob::EXT_BLOB;
 #[cfg(test)]
 mod tests;
 
+pub mod bigint;
 mod collection_access;
 mod serializer;
 mod struct_access;
@@ -44,7 +44,14 @@ pub enum FormSerializeErr {
 
 impl Display for FormSerializeErr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.to_string())
+        match self {
+            FormSerializeErr::Message(m) => write!(f, "{}", m),
+            FormSerializeErr::UnsupportedType(t) => write!(f, "Unsupported type: {}", t),
+            FormSerializeErr::IncorrectType(t) => write!(f, "Incorrect type: {}", t),
+            FormSerializeErr::IllegalItem(i) => write!(f, "Illegal item: {}", i),
+            FormSerializeErr::IllegalState(s) => write!(f, "Illegal state: {}", s),
+            FormSerializeErr::Malformatted => write!(f, "Malformatted"),
+        }
     }
 }
 
