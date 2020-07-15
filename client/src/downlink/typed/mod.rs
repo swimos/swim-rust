@@ -239,6 +239,44 @@ where
     }
 }
 
+impl<Inner, K, V> MapDownlink<Inner, K, V>
+where
+    Inner: Downlink<MapAction, Event<ViewWithEvent>> + Clone,
+    K: ValidatedForm + Send + 'static,
+    V: ValidatedForm + Send + 'static,
+{
+    pub async fn read_only_view<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
+        &mut self,
+    ) -> Result<
+        TryTransformTopic<ViewWithEvent, Inner::DlTopic, ApplyFormsMap<ViewKeyType, ViewValueType>>,
+        ViewError,
+    > {
+        let key_schema_cmp = ViewKeyType::schema().partial_cmp(&K::schema());
+        let value_schema_cmp = ViewValueType::schema().partial_cmp(&V::schema());
+
+        if key_schema_cmp.is_some() && key_schema_cmp != Some(Ordering::Less) {
+            if value_schema_cmp.is_some() && value_schema_cmp != Some(Ordering::Less) {
+                let (topic, _) = self.inner.clone().split();
+                let topic = TryTransformTopic::new(
+                    topic,
+                    ApplyFormsMap::<ViewKeyType, ViewValueType>::new(),
+                );
+                Ok(topic)
+            } else {
+                Err(ViewError::SchemaError {
+                    existing: V::schema(),
+                    requested: ViewValueType::schema(),
+                })
+            }
+        } else {
+            Err(ViewError::SchemaError {
+                existing: K::schema(),
+                requested: ViewKeyType::schema(),
+            })
+        }
+    }
+}
+
 impl<'a, Inner, T> ItemSink<'a, Action> for ValueDownlink<Inner, T>
 where
     Inner: ItemSink<'a, Action>,
