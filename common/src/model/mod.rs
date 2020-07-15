@@ -254,6 +254,7 @@ impl Value {
         Value::Record(attrs, vec![])
     }
 
+    //Todo This needs testing!
     fn compare(&self, other: &Self) -> Ordering {
         match self {
             Value::Data(left_len) => match other {
@@ -316,8 +317,8 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::UInt32Value(u) => n.cmp(u),
                 Value::UInt64Value(u) => (*n as u64).cmp(u),
-                Value::Int32Value(x) => utilities::num::cmp_i32_u32(*x, *n),
-                Value::Int64Value(x) => utilities::num::cmp_i64_u64(*x, *n as u64),
+                Value::Int32Value(x) => utilities::num::cmp_i32_u32(*x, *n).reverse(),
+                Value::Int64Value(x) => utilities::num::cmp_i64_u64(*x, *n as u64).reverse(),
                 Value::Float64Value(f) => {
                     if f.is_nan() {
                         Ordering::Greater
@@ -338,8 +339,8 @@ impl Value {
             },
             Value::UInt64Value(n) => match other {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
-                Value::Int32Value(m) => utilities::num::cmp_i64_u64(*m as i64, *n),
-                Value::Int64Value(m) => utilities::num::cmp_i64_u64(*m, *n),
+                Value::Int32Value(m) => utilities::num::cmp_i64_u64(*m as i64, *n).reverse(),
+                Value::Int64Value(m) => utilities::num::cmp_i64_u64(*m, *n).reverse(),
                 Value::UInt32Value(x) => n.cmp(&(*x as u64)),
                 Value::UInt64Value(x) => n.cmp(x),
                 Value::Float64Value(y) => {
@@ -576,18 +577,86 @@ impl PartialEq for Value {
             },
             Value::Int32Value(n) => match other {
                 Value::Int32Value(m) => n == m,
+                Value::Int64Value(m) => &(*n as i64) == m,
+                Value::UInt32Value(m) => &(*n as i64) == &(*m as i64),
+                Value::UInt64Value(m) => &(*n as i128) == &(*m as i128),
+                Value::BigInt(big_m) => {
+                    if let Some(ref m) = big_m.to_i32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::BigUint(big_m) => {
+                    if let Some(ref m) = big_m.to_i32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
                 _ => false,
             },
             Value::Int64Value(n) => match other {
+                Value::Int32Value(m) => n == &(*m as i64),
                 Value::Int64Value(m) => n == m,
+                Value::UInt32Value(m) => n == &(*m as i64),
+                Value::UInt64Value(m) => &(*n as i128) == &(*m as i128),
+                Value::BigInt(big_m) => {
+                    if let Some(ref m) = big_m.to_i64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::BigUint(big_m) => {
+                    if let Some(ref m) = big_m.to_i64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
                 _ => false,
             },
             Value::UInt32Value(n) => match other {
+                Value::Int32Value(m) => &(*n as i64) == &(*m as i64),
+                Value::Int64Value(m) => &(*n as i64) == m,
                 Value::UInt32Value(m) => n == m,
+                Value::UInt64Value(m) => &(*n as u64) == m,
+                Value::BigInt(big_m) => {
+                    if let Some(ref m) = big_m.to_u32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::BigUint(big_m) => {
+                    if let Some(ref m) = big_m.to_u32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
                 _ => false,
             },
             Value::UInt64Value(n) => match other {
+                Value::Int32Value(m) => &(*n as i128) == &(*m as i128),
+                Value::Int64Value(m) => &(*n as i128) == &(*m as i128),
+                Value::UInt32Value(m) => n == &(*m as u64),
                 Value::UInt64Value(m) => n == m,
+                Value::BigInt(big_m) => {
+                    if let Some(ref m) = big_m.to_u64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::BigUint(big_m) => {
+                    if let Some(ref m) = big_m.to_u64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
                 _ => false,
             },
             Value::Float64Value(x) => match other {
@@ -613,10 +682,80 @@ impl PartialEq for Value {
                 _ => false,
             },
             Value::BigInt(left) => match other {
+                Value::Int32Value(m) => {
+                    if let Some(ref n) = left.to_i32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::Int64Value(m) => {
+                    if let Some(ref n) = left.to_i64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::UInt32Value(m) => {
+                    if let Some(ref n) = left.to_u32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::UInt64Value(m) => {
+                    if let Some(ref n) = left.to_u64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
                 Value::BigInt(right) => left == right,
+                Value::BigUint(right) => {
+                    if let Some(ref right) = right.to_bigint() {
+                        left == right
+                    } else {
+                        false
+                    }
+                }
                 _ => false,
             },
             Value::BigUint(left) => match other {
+                Value::Int32Value(m) => {
+                    if let Some(ref n) = left.to_i32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::Int64Value(m) => {
+                    if let Some(ref n) = left.to_i64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::UInt32Value(m) => {
+                    if let Some(ref n) = left.to_u32() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::UInt64Value(m) => {
+                    if let Some(ref n) = left.to_u64() {
+                        n == m
+                    } else {
+                        false
+                    }
+                }
+                Value::BigInt(right) => {
+                    if let Some(ref left) = left.to_bigint() {
+                        left == right
+                    } else {
+                        false
+                    }
+                }
                 Value::BigUint(right) => left == right,
                 _ => false,
             },
@@ -641,37 +780,33 @@ impl Ord for Value {
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         const EXTANT_HASH: u8 = 0;
-        const INT32_HASH: u8 = 1;
-        const INT64_HASH: u8 = 2;
-        const UINT32_HASH: u8 = 3;
-        const UINT64_HASH: u8 = 4;
-        const FLOAT64_HASH: u8 = 5;
-        const BOOLEAN_HASH: u8 = 6;
-        const TEXT_HASH: u8 = 7;
-        const RECORD_HASH: u8 = 8;
-        const BIGINT_HASH: u8 = 9;
-        const BIGUINT_HASH: u8 = 10;
-        const DATA_HASH: u8 = 11;
+        const INT_HASH: u8 = 1;
+        const FLOAT64_HASH: u8 = 2;
+        const BOOLEAN_HASH: u8 = 3;
+        const TEXT_HASH: u8 = 4;
+        const RECORD_HASH: u8 = 5;
+        const BIGINT_HASH: u8 = 6;
+        const DATA_HASH: u8 = 7;
 
         match self {
             Value::Extant => {
                 state.write_u8(EXTANT_HASH);
             }
             Value::Int32Value(n) => {
-                state.write_u8(INT32_HASH);
-                state.write_i32(*n);
+                state.write_u8(INT_HASH);
+                state.write_i128(*n as i128);
             }
             Value::Int64Value(n) => {
-                state.write_u8(INT64_HASH);
-                state.write_i64(*n);
+                state.write_u8(INT_HASH);
+                state.write_i128(*n as i128);
             }
             Value::UInt32Value(n) => {
-                state.write_u8(UINT32_HASH);
-                state.write_u32(*n);
+                state.write_u8(INT_HASH);
+                state.write_i128(*n as i128);
             }
             Value::UInt64Value(n) => {
-                state.write_u8(UINT64_HASH);
-                state.write_u64(*n);
+                state.write_u8(INT_HASH);
+                state.write_i128(*n as i128);
             }
             Value::Float64Value(x) => {
                 state.write_u8(FLOAT64_HASH);
@@ -695,12 +830,22 @@ impl Hash for Value {
                 items.hash(state);
             }
             Value::BigInt(bi) => {
-                state.write_u8(BIGINT_HASH);
-                bi.hash(state);
+                if let Some(n) = bi.to_i128() {
+                    state.write_u8(INT_HASH);
+                    state.write_i128(n as i128);
+                } else {
+                    state.write_u8(BIGINT_HASH);
+                    bi.hash(state);
+                }
             }
             Value::BigUint(bi) => {
-                state.write_u8(BIGUINT_HASH);
-                bi.hash(state);
+                if let Some(n) = bi.to_i128() {
+                    state.write_u8(INT_HASH);
+                    state.write_i128(n as i128);
+                } else {
+                    state.write_u8(BIGINT_HASH);
+                    bi.hash(state);
+                }
             }
             Value::Data(b) => {
                 state.write_u8(DATA_HASH);
