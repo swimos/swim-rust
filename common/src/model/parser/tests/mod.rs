@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod documents;
-
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
 use super::*;
+use num_bigint::RandBigInt;
+use num_traits::Signed;
+use std::ops::Neg;
+
+mod documents;
 
 fn read_single_token(repr: &str) -> Result<ReconToken<&str>, Option<BadToken>> {
     match tokenize_str(repr).next() {
@@ -937,5 +940,60 @@ fn nested_tagged_records(read_single: ReadSingleValue) {
                 Item::slot(Value::singleton("second"), 3)
             ]
         ))
+    );
+}
+
+#[test]
+fn bigint_tests() {
+    let mut rng = rand::thread_rng();
+    let big_str = {
+        let mut bi = rng.gen_bigint(1000);
+        if bi.is_positive() {
+            bi = bi.neg();
+        }
+        bi.to_string()
+    };
+
+    assert_that!(
+        parse_single(&format!("@name({})", big_str)).unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            BigInt::from_str(&big_str).unwrap()
+        ))))
+    );
+
+    let i64_max = i64::max_value();
+    let i64_max_str = i64_max.to_string();
+
+    assert_that!(
+        parse_single(&format!("@name({})", i64_max_str)).unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            Value::Int64Value(i64_max)
+        ))))
+    );
+}
+
+#[test]
+fn biguint_tests() {
+    let mut rng = rand::thread_rng();
+    let big_str = rng.gen_biguint(1000).to_string();
+
+    assert_that!(
+        parse_single(&format!("@name({})", big_str)).unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            BigUint::from_str(&big_str).unwrap()
+        ))))
+    );
+
+    let i64_oob_str = (i64::max_value() as i128 + 1).to_string();
+
+    assert_that!(
+        parse_single(&format!("@name({})", i64_oob_str)).unwrap(),
+        eq(Value::of_attr(Attr::of((
+            "name",
+            Value::BigUint(BigUint::from_str(&i64_oob_str).unwrap())
+        ))))
     );
 }

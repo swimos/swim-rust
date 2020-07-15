@@ -20,7 +20,7 @@ futures = "0.3.4"
 futures-util = "0.3.4"
 stdweb = "0.4.20"
 chrono = "0.4.11"
-wasm-bindgen-futures = "0.4.13"
+wasm-bindgen-futures = "0.4.14"
 js-sys = "0.3.40"
 serde = { version = "1.0", features = ["derive"] }
 either = "1.5.3"
