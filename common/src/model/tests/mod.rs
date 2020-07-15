@@ -326,3 +326,192 @@ fn biguint_cmp() {
     assert!(Value::BigUint(BigUint::from(1u32)) < Value::Float64Value(100.0));
     assert!(Value::BigUint(BigUint::from(1000u32)) < Value::BigInt(BigInt::from(10000)));
 }
+
+#[test]
+fn int_32_eq() {
+    assert_eq!(Value::Int32Value(10), Value::Int32Value(10));
+    assert_eq!(Value::Int32Value(10), Value::Int64Value(10));
+    assert_eq!(Value::Int32Value(10), Value::UInt32Value(10));
+    assert_eq!(Value::Int32Value(10), Value::UInt64Value(10));
+    assert_eq!(Value::Int32Value(10), Value::BigInt(BigInt::from(10)));
+    assert_eq!(Value::Int32Value(10), Value::BigUint(BigUint::from(10u32)));
+
+    assert_ne!(Value::Int32Value(10), Value::Int32Value(12));
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::Int64Value(2_147_483_648)
+    );
+    assert_ne!(Value::Int32Value(-1), Value::UInt32Value(4_294_967_295));
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::UInt64Value(2_147_483_648)
+    );
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::BigInt(BigInt::from(2_147_483_648i64))
+    );
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::BigUint(BigUint::from(2_147_483_648u32))
+    );
+}
+
+#[test]
+fn int_64_eq() {
+    assert_eq!(Value::Int64Value(11), Value::Int32Value(11));
+    assert_eq!(Value::Int64Value(11), Value::Int64Value(11));
+    assert_eq!(Value::Int64Value(11), Value::UInt32Value(11));
+    assert_eq!(Value::Int64Value(11), Value::UInt64Value(11));
+    assert_eq!(Value::Int64Value(11), Value::BigInt(BigInt::from(11)));
+    assert_eq!(Value::Int64Value(11), Value::BigUint(BigUint::from(11u32)));
+
+    assert_ne!(Value::Int64Value(11), Value::Int32Value(12));
+    assert_ne!(Value::Int64Value(11), Value::Int64Value(12));
+    assert_ne!(Value::Int64Value(11), Value::UInt32Value(12));
+    assert_ne!(
+        Value::Int64Value(-9_223_372_036_854_775_808),
+        Value::UInt64Value(9_223_372_036_854_775_808)
+    );
+    assert_ne!(
+        Value::Int64Value(-9_223_372_036_854_775_808),
+        Value::BigInt(BigInt::from(9_223_372_036_854_775_808i128))
+    );
+    assert_ne!(
+        Value::Int64Value(-9_223_372_036_854_775_808),
+        Value::BigUint(BigUint::from(9_223_372_036_854_775_808u64))
+    );
+}
+
+#[test]
+fn uint_32_eq() {
+    assert_eq!(Value::UInt32Value(12), Value::Int32Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::Int64Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::UInt32Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::UInt64Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::BigInt(BigInt::from(12)));
+    assert_eq!(Value::UInt32Value(12), Value::BigUint(BigUint::from(12u32)));
+
+    assert_ne!(Value::UInt32Value(4_294_967_295), Value::Int32Value(-1));
+    assert_ne!(Value::UInt32Value(4_294_967_295), Value::Int64Value(-1));
+    assert_ne!(Value::UInt32Value(12), Value::UInt32Value(13));
+    assert_ne!(Value::UInt32Value(0), Value::UInt64Value(4_294_967_296));
+    assert_ne!(
+        Value::UInt32Value(0),
+        Value::BigInt(BigInt::from(4_294_967_296i64))
+    );
+    assert_ne!(
+        Value::UInt32Value(0),
+        Value::BigUint(BigUint::from(4_294_967_296u64))
+    );
+}
+
+#[test]
+fn uint_64_eq() {
+    assert_eq!(Value::UInt64Value(13), Value::Int32Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::Int64Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::UInt32Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::UInt64Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::BigInt(BigInt::from(13)));
+    assert_eq!(Value::UInt64Value(13), Value::BigUint(BigUint::from(13u32)));
+
+    assert_ne!(
+        Value::UInt64Value(18_446_744_073_709_551_615),
+        Value::Int32Value(-1)
+    );
+    assert_ne!(
+        Value::UInt64Value(18_446_744_073_709_551_615),
+        Value::Int64Value(-1)
+    );
+    assert_ne!(Value::UInt64Value(13), Value::UInt32Value(14));
+    assert_ne!(Value::UInt64Value(13), Value::UInt64Value(14));
+    assert_ne!(
+        Value::UInt64Value(18_446_744_073_709_551_615),
+        Value::BigInt(BigInt::from(-1))
+    );
+    assert_ne!(
+        Value::UInt64Value(0),
+        Value::BigUint(BigUint::from(18_446_744_073_709_551_616u128))
+    );
+}
+
+#[test]
+fn big_int_eq() {
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::Int32Value(14));
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::Int64Value(14));
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::UInt32Value(14));
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::UInt64Value(14));
+    assert_eq!(
+        Value::BigInt(BigInt::from(14)),
+        Value::BigInt(BigInt::from(14))
+    );
+    assert_eq!(
+        Value::BigInt(BigInt::from(14)),
+        Value::BigUint(BigUint::from(14u32))
+    );
+
+    assert_ne!(
+        Value::BigInt(BigInt::from(2_147_483_648i64)),
+        Value::Int32Value(-2_147_483_648)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(9_223_372_036_854_775_808i128)),
+        Value::Int64Value(-9_223_372_036_854_775_808)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(4_294_967_296u64)),
+        Value::UInt32Value(0)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(18_446_744_073_709_551_616u128)),
+        Value::UInt64Value(0)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(14)),
+        Value::BigInt(BigInt::from(15))
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(-1)),
+        Value::BigUint(BigUint::from(0u32))
+    );
+}
+
+#[test]
+fn big_uint_eq() {
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::Int32Value(15));
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::Int64Value(15));
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::UInt32Value(15));
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::UInt64Value(15));
+    assert_eq!(
+        Value::BigUint(BigUint::from(15u32)),
+        Value::BigInt(BigInt::from(15))
+    );
+    assert_eq!(
+        Value::BigUint(BigUint::from(15u32)),
+        Value::BigUint(BigUint::from(15u32))
+    );
+
+    assert_ne!(
+        Value::BigUint(BigUint::from(2_147_483_648u64)),
+        Value::Int32Value(-2_147_483_648)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(9_223_372_036_854_775_808u128)),
+        Value::Int64Value(-9_223_372_036_854_775_808)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(4_294_967_296u64)),
+        Value::UInt32Value(0)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(18_446_744_073_709_551_616u128)),
+        Value::UInt64Value(0)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(14u32)),
+        Value::BigInt(BigInt::from(15u32))
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(14u32)),
+        Value::BigUint(BigUint::from(15u32))
+    );
+}
