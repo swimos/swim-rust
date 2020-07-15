@@ -564,6 +564,7 @@ impl Default for Value {
     }
 }
 
+//Todo test
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
@@ -580,20 +581,8 @@ impl PartialEq for Value {
                 Value::Int64Value(m) => &(*n as i64) == m,
                 Value::UInt32Value(m) => &(*n as i64) == &(*m as i64),
                 Value::UInt64Value(m) => &(*n as i128) == &(*m as i128),
-                Value::BigInt(big_m) => {
-                    if let Some(ref m) = big_m.to_i32() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
-                Value::BigUint(big_m) => {
-                    if let Some(ref m) = big_m.to_i32() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
+                Value::BigInt(big_m) => big_m.to_i32().map(|ref m| n == m).unwrap_or(false),
+                Value::BigUint(big_m) => big_m.to_i32().map(|ref m| n == m).unwrap_or(false),
                 _ => false,
             },
             Value::Int64Value(n) => match other {
@@ -601,20 +590,8 @@ impl PartialEq for Value {
                 Value::Int64Value(m) => n == m,
                 Value::UInt32Value(m) => n == &(*m as i64),
                 Value::UInt64Value(m) => &(*n as i128) == &(*m as i128),
-                Value::BigInt(big_m) => {
-                    if let Some(ref m) = big_m.to_i64() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
-                Value::BigUint(big_m) => {
-                    if let Some(ref m) = big_m.to_i64() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
+                Value::BigInt(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
+                Value::BigUint(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
                 _ => false,
             },
             Value::UInt32Value(n) => match other {
@@ -622,20 +599,8 @@ impl PartialEq for Value {
                 Value::Int64Value(m) => &(*n as i64) == m,
                 Value::UInt32Value(m) => n == m,
                 Value::UInt64Value(m) => &(*n as u64) == m,
-                Value::BigInt(big_m) => {
-                    if let Some(ref m) = big_m.to_u32() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
-                Value::BigUint(big_m) => {
-                    if let Some(ref m) = big_m.to_u32() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
+                Value::BigInt(big_m) => big_m.to_u32().map(|ref m| n == m).unwrap_or(false),
+                Value::BigUint(big_m) => big_m.to_u32().map(|ref m| n == m).unwrap_or(false),
                 _ => false,
             },
             Value::UInt64Value(n) => match other {
@@ -643,20 +608,8 @@ impl PartialEq for Value {
                 Value::Int64Value(m) => &(*n as i128) == &(*m as i128),
                 Value::UInt32Value(m) => n == &(*m as u64),
                 Value::UInt64Value(m) => n == m,
-                Value::BigInt(big_m) => {
-                    if let Some(ref m) = big_m.to_u64() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
-                Value::BigUint(big_m) => {
-                    if let Some(ref m) = big_m.to_u64() {
-                        n == m
-                    } else {
-                        false
-                    }
-                }
+                Value::BigInt(big_m) => big_m.to_u64().map(|ref m| n == m).unwrap_or(false),
+                Value::BigUint(big_m) => big_m.to_u64().map(|ref m| n == m).unwrap_or(false),
                 _ => false,
             },
             Value::Float64Value(x) => match other {
@@ -682,80 +635,42 @@ impl PartialEq for Value {
                 _ => false,
             },
             Value::BigInt(left) => match other {
-                Value::Int32Value(m) => {
-                    if let Some(ref n) = left.to_i32() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::Int32Value(right) => {
+                    left.to_i32().map(|ref left| left == right).unwrap_or(false)
                 }
-                Value::Int64Value(m) => {
-                    if let Some(ref n) = left.to_i64() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::Int64Value(right) => {
+                    left.to_i64().map(|ref left| left == right).unwrap_or(false)
                 }
-                Value::UInt32Value(m) => {
-                    if let Some(ref n) = left.to_u32() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::UInt32Value(right) => {
+                    left.to_u32().map(|ref left| left == right).unwrap_or(false)
                 }
-                Value::UInt64Value(m) => {
-                    if let Some(ref n) = left.to_u64() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::UInt64Value(right) => {
+                    left.to_u64().map(|ref left| left == right).unwrap_or(false)
                 }
                 Value::BigInt(right) => left == right,
-                Value::BigUint(right) => {
-                    if let Some(ref right) = right.to_bigint() {
-                        left == right
-                    } else {
-                        false
-                    }
-                }
+                Value::BigUint(right) => right
+                    .to_bigint()
+                    .map(|ref right| left == right)
+                    .unwrap_or(false),
                 _ => false,
             },
             Value::BigUint(left) => match other {
-                Value::Int32Value(m) => {
-                    if let Some(ref n) = left.to_i32() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::Int32Value(right) => {
+                    left.to_i32().map(|ref left| left == right).unwrap_or(false)
                 }
-                Value::Int64Value(m) => {
-                    if let Some(ref n) = left.to_i64() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::Int64Value(right) => {
+                    left.to_i64().map(|ref left| left == right).unwrap_or(false)
                 }
-                Value::UInt32Value(m) => {
-                    if let Some(ref n) = left.to_u32() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::UInt32Value(right) => {
+                    left.to_u32().map(|ref left| left == right).unwrap_or(false)
                 }
-                Value::UInt64Value(m) => {
-                    if let Some(ref n) = left.to_u64() {
-                        n == m
-                    } else {
-                        false
-                    }
+                Value::UInt64Value(right) => {
+                    left.to_u64().map(|ref left| left == right).unwrap_or(false)
                 }
-                Value::BigInt(right) => {
-                    if let Some(ref left) = left.to_bigint() {
-                        left == right
-                    } else {
-                        false
-                    }
-                }
+                Value::BigInt(right) => left
+                    .to_bigint()
+                    .map(|ref left| left == right)
+                    .unwrap_or(false),
                 Value::BigUint(right) => left == right,
                 _ => false,
             },
@@ -842,9 +757,11 @@ impl Hash for Value {
                 if let Some(n) = bi.to_i128() {
                     state.write_u8(INT_HASH);
                     state.write_i128(n as i128);
-                } else {
+                } else if let Some(n) = bi.to_bigint() {
                     state.write_u8(BIGINT_HASH);
-                    bi.hash(state);
+                    n.hash(state);
+                } else {
+                    unreachable!();
                 }
             }
             Value::Data(b) => {
