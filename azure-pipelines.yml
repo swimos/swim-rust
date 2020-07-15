@@ -1,4 +1,4 @@
-trigger: ["master", "server-prototype"]
+trigger: ["master", "server-prototype", "forms_mk2"]
 pr: ["master", "server-prototype", "forms_mk2"]
 
 variables:
