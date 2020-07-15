@@ -217,7 +217,7 @@ where
 {
     let mut r = serializer
         .serialize_struct_variant(EXT_BLOB, u32::max_value(), EXT_BLOB, usize::max_value())
-        .expect("infailable");
+        .expect("infallible");
 
     r.serialize_field(EXT_BLOB, &bi)?;
     r.end()

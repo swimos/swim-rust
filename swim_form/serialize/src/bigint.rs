@@ -12,31 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ValueDeserializer;
-use common::model::Value;
-use serde::Deserialize;
+use crate::serializer::{BIG_INT_PREFIX, BIG_UINT_PREFIX};
 
-#[cfg(test)]
-mod nested;
+use num_bigint::{BigInt, BigUint};
+use serde::Serializer;
 
-#[cfg(test)]
-mod collections;
-
-#[cfg(test)]
-mod simple_data_types;
-
-#[cfg(test)]
-mod vectors;
-
-pub fn from_value<'de, T>(value: &'de Value) -> super::Result<T>
+pub fn serialize_bigint<S>(bi: &BigInt, serializer: S) -> Result<S::Ok, S::Error>
 where
-    T: Deserialize<'de>,
+    S: Serializer,
 {
-    let mut deserializer = match value {
-        Value::Record(_, _) => ValueDeserializer::for_values(value),
-        _ => ValueDeserializer::for_single_value(value),
-    };
+    serializer.serialize_str(&(BIG_INT_PREFIX.to_owned() + &bi.to_string()))
+}
 
-    let t = T::deserialize(&mut deserializer)?;
-    Ok(t)
+pub fn serialize_big_uint<S>(bi: &BigUint, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&(BIG_UINT_PREFIX.to_owned() + &bi.to_string()))
 }
