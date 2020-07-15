@@ -23,6 +23,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tracing::{event, Level};
 
 /// Model for a lane that can receive commands and optionally produce responses.
 ///
@@ -66,16 +67,19 @@ impl<Command, Response> Clone for ActionLane<Command, Response> {
 #[derive(Clone, Debug)]
 pub struct Commander<Command>(mpsc::Sender<Command>);
 
-impl<Command, Response> ActionLane<Command, Response> {
+const SENDING_COMMAND: &str = "Sending command";
+
+impl<Command: Debug, Response> ActionLane<Command, Response> {
     /// Create a [`Commander`] that can send multiple commands to the lane.
     pub fn commander(&self) -> Commander<Command> {
         Commander(self.sender.clone())
     }
 }
 
-impl<Command> Commander<Command> {
+impl<Command: Debug> Commander<Command> {
     /// Asynchronously send a command to the lane.
     pub async fn command(&mut self, cmd: Command) {
+        event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
         if tx.send(cmd).await.is_err() {
             panic!("Lane commanded after the agent stopped.")

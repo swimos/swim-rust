@@ -284,6 +284,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         let inner = ReportingLifecycleInner(collector.clone());
 
         let (data, data_tasks) = agent::make_map_lane(
+            "data",
             DataLifecycle {
                 inner: inner.clone(),
             },
@@ -291,6 +292,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         );
 
         let (total, total_tasks) = agent::make_value_lane(
+            "total",
             0,
             TotalLifecycle {
                 inner: inner.clone(),
@@ -299,6 +301,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         );
 
         let (action, action_tasks) = agent::make_command_lane(
+            "action",
             ActionLifecycle {
                 inner: inner.clone(),
             },

@@ -35,9 +35,11 @@ use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
 use futures::stream::{iter, Flatten, Iter, StreamExt};
 use futures::Stream;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use stm::var::observer::StaticObserver;
 use tokio::sync::{broadcast, mpsc, watch};
+use tracing::{event, Level};
 use utilities::future::{SwimStreamExt, Transform, TransformedStream};
 
 mod summary;
@@ -528,10 +530,15 @@ pub struct DirectUpdate<'a, K, V> {
     value: Arc<V>,
 }
 
+const UPDATING: &str = "Updating entry";
+const REMOVING: &str = "Removing entry";
+const CLEARING: &str = "Clearing map";
+const MODIFYING: &str = "Modifying entry";
+
 impl<'a, K, V> DirectUpdate<'a, K, V>
 where
-    K: Form + Send + Sync + 'a,
-    V: Any + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
+    V: Any + Send + Sync + Debug + 'a,
 {
     fn into_stm(self) -> impl Stm<Result = ()> + 'a {
         let DirectUpdate { lane, key, value } = self;
@@ -545,6 +552,7 @@ where
 
     /// Executes the update as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, UPDATING, key = ?self.key, value = ?self.value);
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
@@ -560,7 +568,7 @@ pub struct DirectRemove<'a, K, V> {
 
 impl<'a, K, V> DirectRemove<'a, K, V>
 where
-    K: Form + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
     V: Any + Send + Sync + 'a,
 {
     fn into_stm(self) -> impl Stm<Result = ()> + 'a {
@@ -581,6 +589,7 @@ where
 
     /// Executes the removal as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, REMOVING, key = ?self.key);
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
@@ -612,6 +621,7 @@ where
 
     /// Executes the clear as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, CLEARING);
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
@@ -628,7 +638,7 @@ pub struct DirectModify<'a, K, V, F> {
 
 impl<'a, K, V, F> DirectModify<'a, K, V, F>
 where
-    K: Form + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
     V: Any + Send + Sync + 'a,
     F: Fn(Option<&V>) -> Option<V> + Send + Sync + Clone + 'a,
 {
@@ -680,6 +690,7 @@ where
 
     /// Executes the modification as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
@@ -696,7 +707,7 @@ pub struct DirectModifyDefined<'a, K, V, F> {
 
 impl<'a, K, V, F> DirectModifyDefined<'a, K, V, F>
 where
-    K: Form + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
     V: Any + Send + Sync + 'a,
     F: Fn(&V) -> V + Send + Sync + Clone + 'a,
 {
@@ -728,6 +739,7 @@ where
 
     /// Executes the modification as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
