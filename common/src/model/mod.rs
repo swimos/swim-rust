@@ -35,6 +35,7 @@ pub mod schema;
 
 #[cfg(test)]
 mod tests;
+pub mod text;
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
