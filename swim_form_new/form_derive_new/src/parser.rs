@@ -250,31 +250,31 @@ fn transmute_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
                     let fields = (0..variant.fields.len()).map(|i| {
                         let index = Ident::new(&format!("__field{}", i), Span::call_site());
 
-                        quote!(serializer.serialize_field(None, &#index, None);)
+                        quote!(writer.transmute_field(None, &#index);)
                     });
                     let len = fields.len();
 
                     quote! {
                         #ident::#variant_ident(#(ref #field_names),*) => {
-                            serializer.serialize_enum(#variant_name, #len);
+                            writer.transmute_enum(#variant_name, #len);
                             #(#fields)*
 
-                            serializer.exit_nested();
+                            writer.exit_nested();
                         }
                     }
                 }
                 CompoundType::Unit => {
                     let body = quote! {
-                        serializer.serialize_enum(#variant_name, 0);
-                        serializer.exit_nested();
+                        writer.transmute_enum(#variant_name, 0);
+                        writer.exit_nested();
                     };
                     quote!(#ident::#variant_ident => { #body })
                 }
                 CompoundType::NewType => {
                     let body = quote! {
-                        serializer.serialize_enum(#variant_name, 1);
-                        serializer.serialize_field(None, &__field0, None);
-                        serializer.exit_nested();
+                        writer.transmute_enum(#variant_name, 1);
+                        writer.transmute_field(None, &__field0);
+                        writer.exit_nested();
                     };
 
                     quote!(#ident::#variant_ident(ref __field0) => { #body })
@@ -284,19 +284,19 @@ fn transmute_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
                         .fields
                         .iter()
                         .map(|f| {
-                            let name = &f.attributes.name.serialize_as;
+                            let name = &f.attributes.name.write_as;
                             let ident = Ident::new(&name, Span::call_site());
 
-                            quote!(serializer.serialize_field(Some(#name), &#ident, None);)
+                            quote!(writer.transmute_field(Some(#name), &#ident);)
                         })
                         .collect();
 
                     let no_fields = fields.len();
 
                     let body = quote! {
-                        serializer.serialize_enum(#variant_name, 1);
+                        writer.transmute_enum(#variant_name, 1);
                         #(#fields)*
-                        serializer.exit_nested();
+                        writer.exit_nested();
                     };
 
                     let vars = variant.fields.iter().map(|f| &f.member);
