@@ -23,8 +23,15 @@ use common::model::schema::StandardSchema;
 use common::model::ValueKind;
 use common::model::{Item, Value};
 
-use crate::deserialize::FormDeserializeErr;
+use crate::reader::ValueReadError;
 use crate::{Form, ValidatedForm};
+use common::model::blob::Blob;
+use common::model::schema::StandardSchema;
+use common::model::ValueKind;
+use num_bigint::{BigInt, BigUint};
+use num_traits::FromPrimitive;
+use std::convert::TryFrom;
+use std::str::FromStr;
 
 impl<'a, F> Form for &'a F
 where
@@ -34,7 +41,7 @@ where
         (**self).as_value()
     }
 
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, ValueReadError> {
         Form::try_from_value(value)
     }
 }
@@ -47,7 +54,7 @@ where
         (**self).as_value()
     }
 
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, ValueReadError> {
         Form::try_from_value(value)
     }
 }
@@ -57,7 +64,7 @@ impl Form for f64 {
         Value::Float64Value(*self)
     }
 
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, ValueReadError> {
         match value {
             Value::Float64Value(i) => Ok(*i),
             v => de_incorrect_type("Value::Float64Value", v),
@@ -71,8 +78,8 @@ impl ValidatedForm for f64 {
     }
 }
 
-pub fn de_incorrect_type<V>(expected: &str, actual: &Value) -> Result<V, FormDeserializeErr> {
-    Err(FormDeserializeErr::IncorrectType(format!(
+pub fn de_incorrect_type<V>(expected: &str, actual: &Value) -> Result<V, ValueReadError> {
+    Err(ValueReadError::IncorrectType(format!(
         "Expected: {}, found: {}",
         expected,
         actual.kind()
@@ -84,7 +91,7 @@ impl Form for i32 {
         Value::Int32Value(*self)
     }
 
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, ValueReadError> {
         match value {
             Value::Int32Value(i) => Ok(*i),
             v => de_incorrect_type("Value::Int32Value", v),
@@ -103,7 +110,7 @@ impl Form for i64 {
         Value::Int64Value(*self)
     }
 
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, ValueReadError> {
         match value {
             Value::Int64Value(i) => Ok(*i),
             v => de_incorrect_type("Value::Int64Value", v),
@@ -122,7 +129,7 @@ impl Form for bool {
         Value::BooleanValue(*self)
     }
 
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, ValueReadError> {
         match value {
             Value::BooleanValue(i) => Ok(*i),
             v => de_incorrect_type("Value::BooleanValue", v),
@@ -141,7 +148,7 @@ impl Form for String {
         Value::Text(String::from(self))
     }
 
-    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value<'f>(value: &Value) -> Result<Self, ValueReadError> {
         match value {
             Value::Text(i) => Ok(i.to_owned()),
             v => de_incorrect_type("Value::Text", v),
@@ -160,7 +167,7 @@ where
         }
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value(value: &Value) -> Result<Self, ValueReadError> {
         match value {
             Value::Extant => Ok(None),
             _ => match V::try_from_value(value) {
@@ -319,7 +326,115 @@ where
         )
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value(value: &Value) -> Result<Self, ValueReadError> {
         unimplemented!()
+    }
+}
+
+impl Form for Blob {
+    fn as_value(&self) -> Value {
+        Value::Data(self.clone())
+    }
+
+    fn into_value(self) -> Value {
+        Value::Data(self)
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, ValueReadError> {
+        match value {
+            Value::Data(blob) => Ok(blob.clone()),
+            Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
+            v => de_incorrect_type("Value::Data", v),
+        }
+    }
+
+    fn try_convert(value: Value) -> Result<Self, ValueReadError> {
+        match value {
+            Value::Data(blob) => Ok(blob),
+            Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
+            v => de_incorrect_type("Value::Data", &v),
+        }
+    }
+}
+
+impl ValidatedForm for Blob {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Data)
+    }
+}
+
+impl Form for BigInt {
+    fn as_value(&self) -> Value {
+        Value::BigInt(self.clone())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, ValueReadError> {
+        match value {
+            Value::BigInt(bi) => Ok(bi.clone()),
+            Value::Int32Value(v) => Ok(BigInt::from(*v)),
+            Value::Int64Value(v) => Ok(BigInt::from(*v)),
+            Value::Float64Value(v) => BigInt::from_f64(*v).ok_or_else(|| {
+                ValueReadError::Message(String::from(
+                    "Failed to parse float into big unsigned integer",
+                ))
+            }),
+            Value::Text(t) => BigInt::from_str(&t).map_err(|_| {
+                ValueReadError::Message(String::from(
+                    "Failed to parse text into big unsigned integer",
+                ))
+            }),
+            Value::BigUint(uint) => Ok(BigInt::from(uint.clone())),
+            v => de_incorrect_type("Value::Float64Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for BigInt {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::BigInt)
+    }
+}
+
+impl Form for BigUint {
+    fn as_value(&self) -> Value {
+        Value::BigUint(self.clone())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, ValueReadError> {
+        match value {
+            Value::BigInt(bi) => BigUint::try_from(bi).map_err(|_| {
+                ValueReadError::Message(String::from(
+                    "Failed to parse big integer into big unsigned integer",
+                ))
+            }),
+            Value::Int32Value(v) => BigUint::from_i32(*v).ok_or_else(|| {
+                ValueReadError::Message(String::from(
+                    "Failed to parse int32 into big unsigned integer",
+                ))
+            }),
+            Value::Int64Value(v) => BigUint::from_i64(*v).ok_or_else(|| {
+                ValueReadError::Message(String::from(
+                    "Failed to parse int64 into big unsigned integer",
+                ))
+            }),
+            Value::Float64Value(v) => BigUint::from_f64(*v).ok_or_else(|| {
+                ValueReadError::Message(String::from(
+                    "Failed to parse float64 into big unsigned integer",
+                ))
+            }),
+            Value::Text(t) => BigUint::from_str(&t).map_err(|_| {
+                ValueReadError::Message(String::from(
+                    "Failed to parse text into big unsigned integer",
+                ))
+            }),
+            Value::BigUint(uint) => Ok(uint.clone()),
+            v => de_incorrect_type("Value::Float64Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for BigUint {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::BigUint)
     }
 }
