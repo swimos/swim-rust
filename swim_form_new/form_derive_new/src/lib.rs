@@ -114,7 +114,7 @@ fn expand_derive_form(
         .trim_start_matches("r#")
         .to_owned();
     let const_name = Ident::new(&format!("_IMPL_FORM_FOR_{}", name), Span::call_site());
-    let serialized_fields = parser.serialize_fields();
+    let transmute_to_fields = parser.transmute_fields();
 
     let (impl_generics, type_generics, where_clause) = parser.generics.split_for_impl();
 
@@ -124,21 +124,26 @@ fn expand_derive_form(
         impl #impl_generics swim_form::Form for #ident #type_generics #where_clause {
             #[inline]
             fn as_value(&self) -> #value_name_binding {
-                 crate::serialize::as_value(self)
+                 crate::writer::as_value(self)
             }
 
             #[inline]
-            fn try_from_value(value: &#value_name_binding) -> Result<Self, swim_form::FormDeserializeErr> {
+            fn try_from_value(value: &#value_name_binding) -> Result<Self, swim_form::ValueReadError> {
                 unimplemented!()
             }
         }
 
         #[automatically_derived]
         #[allow(unused_qualifications)]
-        impl #impl_generics swim_form::SerializeToValue for #ident #type_generics #where_clause {
+        impl #impl_generics swim_form::TransmuteValue for #ident #type_generics #where_clause {
             #[inline]
-            fn serialize(&self, serializer: &mut swim_form::ValueSerializer) {
-                #serialized_fields
+            fn transmute_to_value(&self, writer: &mut swim_form::ValueWriter) {
+                #transmute_to_fields
+            }
+
+            #[inline]
+            fn transmute_from_value(&self, reader: &mut swim_form::ValueReader) -> Result<Self, swim_form::ValueReadError> {
+                unimplemented!()
             }
         }
     };

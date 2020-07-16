@@ -15,10 +15,11 @@
 use common::model::Value::Int32Value;
 use common::model::{Attr, Item, Value};
 
-use crate::{Form, SerializeToValue};
-
 mod attrs;
 mod suite;
+
+use crate::{Form, TransmuteValue};
+use common::model::Value::Int32Value;
 
 mod swim_form {
     pub use crate::*;
@@ -278,7 +279,7 @@ fn single_derve_with_generics() {
     #[form(Value)]
     struct FormStruct<V>
     where
-        V: SerializeToValue,
+        V: TransmuteValue,
     {
         v: V,
     }
@@ -441,7 +442,7 @@ fn generic_field_lifetime() {
     #[form(Value)]
     struct FormStruct<'l, S>
     where
-        S: SerializeToValue,
+        S: TransmuteValue,
     {
         inner: &'l S,
     }

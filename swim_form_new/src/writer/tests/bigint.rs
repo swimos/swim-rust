@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use num_bigint::BigInt;
-
+use crate::reader::{ValueReadError, ValueReader};
+use crate::writer::as_value;
+use crate::writer::writer::ValueWriter;
+use crate::{Form, TransmuteValue};
 use common::model::{Attr, Item, Value};
-
-use crate::deserialize::FormDeserializeErr;
-use crate::serialize::as_value;
-use crate::serialize::serializer::ValueSerializer;
-use crate::{Form, SerializeToValue};
+use num_bigint::BigInt;
 
 #[test]
 fn test_bigint() {
@@ -32,16 +30,20 @@ fn test_bigint() {
             as_value(self)
         }
 
-        fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        fn try_from_value(_value: &Value) -> Result<Self, ValueReadError> {
             unimplemented!()
         }
     }
 
-    impl SerializeToValue for S {
-        fn serialize(&self, serializer: &mut ValueSerializer) {
-            serializer.serialize_struct("S", 1);
-            serializer.serialize_field(Some("bi"), &self.bi);
-            serializer.exit_nested();
+    impl TransmuteValue for S {
+        fn transmute_to_value(&self, writer: &mut ValueWriter) {
+            writer.transmute_struct("S", 1);
+            writer.transmute_field(Some("bi"), &self.bi);
+            writer.exit_nested();
+        }
+
+        fn transmute_from_value(&self, reader: &mut ValueReader) -> Result<Self, ValueReadError> {
+            unimplemented!()
         }
     }
 
@@ -52,7 +54,7 @@ fn test_bigint() {
     let value = as_value(&s);
     let expected = Value::Record(
         vec![Attr::of("S")],
-        vec![Item::slot("bi", Value::Text(String::from("100")))],
+        vec![Item::slot("bi", BigInt::from(100))],
     );
 
     assert_eq!(value, expected);

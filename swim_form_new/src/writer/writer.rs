@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::writer::WriteValueError;
+use crate::{Form, TransmuteValue};
 use common::model::{Attr, Item, Value};
 
-use crate::serialize::{FormSerializeErr, SerializeToValue};
-use crate::Form;
-
-pub struct ValueSerializer {
+pub struct ValueWriter {
     current_state: State,
     stack: Vec<State>,
 }
@@ -25,13 +24,13 @@ pub struct ValueSerializer {
 #[derive(Clone)]
 pub struct State {
     pub output: Value,
-    pub serializer_state: SerializerState,
+    pub writer_state: WriterState,
     pub attr_name: Option<String>,
     reading_attr: bool,
 }
 
 #[derive(Clone, Debug)]
-pub enum SerializerState {
+pub enum WriterState {
     // Nested length
     ReadingNested(Option<usize>),
     ReadingEnumName,
@@ -44,23 +43,23 @@ impl State {
     fn default() -> Self {
         State {
             output: Value::Extant,
-            serializer_state: SerializerState::None,
+            writer_state: WriterState::None,
             attr_name: None,
             reading_attr: false,
         }
     }
 
-    fn new_with_state(parser_state: SerializerState) -> Self {
+    fn new_with_state(parser_state: WriterState) -> Self {
         State {
             output: Value::Record(Vec::new(), Vec::new()),
-            serializer_state: parser_state,
+            writer_state: parser_state,
             attr_name: None,
             reading_attr: false,
         }
     }
 }
 
-impl Default for ValueSerializer {
+impl Default for ValueWriter {
     fn default() -> Self {
         Self {
             current_state: State::default(),
@@ -69,7 +68,7 @@ impl Default for ValueSerializer {
     }
 }
 
-impl ValueSerializer {
+impl ValueWriter {
     pub fn finish(&mut self) -> Value {
         self.current_state.output.to_owned()
     }
@@ -87,37 +86,35 @@ impl ValueSerializer {
 
     pub fn push_value(&mut self, value: Value) {
         match &mut self.current_state.output {
-            Value::Record(ref mut attrs, ref mut items) => {
-                match self.current_state.serializer_state {
-                    SerializerState::ReadingMap(reading_key) => {
-                        if reading_key {
-                            let item = Item::Slot(value, Value::Extant);
-                            items.push(item);
-                        } else if let Some(last_item) = items.last_mut() {
-                            match last_item {
-                                Item::Slot(_, ref mut val) => {
-                                    *val = value;
-                                }
-                                i => {
-                                    panic!("Illegal state. Incorrect item type: {:?}", i);
-                                }
+            Value::Record(ref mut attrs, ref mut items) => match self.current_state.writer_state {
+                WriterState::ReadingMap(reading_key) => {
+                    if reading_key {
+                        let item = Item::Slot(value, Value::Extant);
+                        items.push(item);
+                    } else if let Some(last_item) = items.last_mut() {
+                        match last_item {
+                            Item::Slot(_, ref mut val) => {
+                                *val = value;
+                            }
+                            i => {
+                                panic!("Illegal state. Incorrect item type: {:?}", i);
                             }
                         }
                     }
-                    SerializerState::ReadingEnumName => match value {
-                        Value::Text(s) => attrs.push(Attr::from(s)),
-                        v => panic!("Illegal type for attribute: {:?}", v),
-                    },
-                    _ => {
-                        let item = match &self.current_state.attr_name {
-                            Some(name) => Item::Slot(Value::Text(name.to_owned()), value),
-                            None => Item::ValueItem(value),
-                        };
-
-                        items.push(item)
-                    }
                 }
-            }
+                WriterState::ReadingEnumName => match value {
+                    Value::Text(s) => attrs.push(Attr::from(s)),
+                    v => panic!("Illegal type for attribute: {:?}", v),
+                },
+                _ => {
+                    let item = match &self.current_state.attr_name {
+                        Some(name) => Item::Slot(Value::Text(name.to_owned()), value),
+                        None => Item::ValueItem(value),
+                    };
+
+                    items.push(item)
+                }
+            },
             Value::Extant => {
                 self.current_state.output = value;
             }
@@ -125,18 +122,17 @@ impl ValueSerializer {
         }
     }
 
-    pub fn err_unsupported<V>(&self, t: &str) -> std::result::Result<V, FormSerializeErr> {
-        Err(FormSerializeErr::UnsupportedType(String::from(t)))
+    pub fn err_unsupported<V>(&self, t: &str) -> std::result::Result<V, WriteValueError> {
+        Err(WriteValueError::UnsupportedType(String::from(t)))
     }
 
-    pub fn enter_nested(&mut self, state: SerializerState) {
-        if let SerializerState::None = self.current_state.serializer_state {
-            self.current_state.serializer_state = state;
+    pub fn enter_nested(&mut self, state: WriterState) {
+        if let WriterState::None = self.current_state.writer_state {
+            self.current_state.writer_state = state;
             self.current_state.output = Value::Record(Vec::new(), Vec::new());
         } else {
             if let Value::Record(_, ref mut items) = &mut self.current_state.output {
-                if let SerializerState::ReadingNested(opt_len) = self.current_state.serializer_state
-                {
+                if let WriterState::ReadingNested(opt_len) = self.current_state.writer_state {
                     match &self.current_state.attr_name {
                         Some(name) => {
                             items.push(Item::Slot(Value::Text(name.to_owned()), Value::Extant))
@@ -154,7 +150,7 @@ impl ValueSerializer {
     // todo remove all the `to_owned` calls
     pub fn exit_nested(&mut self) {
         if let Some(mut previous_state) = self.stack.pop() {
-            if let SerializerState::ReadingNested(_) = self.current_state.serializer_state {
+            if let WriterState::ReadingNested(_) = self.current_state.writer_state {
                 if let Value::Record(_, ref mut items) = previous_state.output {
                     if let Some(item) = items.last_mut() {
                         match item {
@@ -181,11 +177,11 @@ impl ValueSerializer {
         self.current_state.reading_attr = false;
     }
 
-    pub fn serialize_attr<F>(&mut self, name: &'static str, f: &F)
+    pub fn transmute_attr<F>(&mut self, name: &'static str, f: &F)
     where
-        F: SerializeToValue,
+        F: TransmuteValue,
     {
-        f.serialize(self);
+        f.transmute_to_value(self);
 
         match &mut self.current_state.output {
             Value::Record(attrs, items) => match items.pop() {
@@ -210,28 +206,28 @@ impl ValueSerializer {
             self.current_state.attr_name = Some(name.to_owned());
         }
 
-        f.serialize(self);
+        f.serialize(self, properties);
     }
 
-    pub fn serialize_struct(&mut self, name: &'static str, len: usize) {
-        self.enter_nested(SerializerState::ReadingNested(Some(len)));
+    pub fn transmute_struct(&mut self, name: &'static str, len: usize) {
+        self.enter_nested(WriterState::ReadingNested(Some(len)));
         self.push_attr(Attr::from(name));
     }
 
-    pub fn serialize_sequence<S>(&mut self, seq: S)
+    pub fn transmute_sequence<S>(&mut self, seq: S)
     where
         S: IntoIterator,
-        <S as IntoIterator>::Item: SerializeToValue,
+        <S as IntoIterator>::Item: TransmuteValue,
     {
         let it = seq.into_iter();
         match it.size_hint() {
             (lb, Some(ub)) if lb == ub => {
-                self.enter_nested(SerializerState::ReadingNested(Some(lb)));
+                self.enter_nested(WriterState::ReadingNested(Some(lb)));
             }
-            _ => self.enter_nested(SerializerState::ReadingNested(None)),
+            _ => self.enter_nested(WriterState::ReadingNested(None)),
         }
 
-        it.for_each(|e| e.serialize(self));
+        it.for_each(|e| e.transmute_to_value(self));
 
         self.exit_nested();
     }

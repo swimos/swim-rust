@@ -96,8 +96,8 @@ impl Attributes {
 
         let attrs = Attributes {
             name: FieldName {
-                serialize_as: field_name.clone(),
-                deserialize_as: field_name.clone(),
+                write_as: field_name.clone(),
+                read_as: field_name.clone(),
                 original: field_name,
             },
             ignore: false,
@@ -156,8 +156,8 @@ impl Attributes {
 }
 
 pub struct FieldName {
-    serialize_as: String,
-    deserialize_as: String,
+    write_as: String,
+    read_as: String,
     original: String,
 }
 
@@ -219,21 +219,21 @@ impl Context {
     }
 }
 
-fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
-    let struct_name = parser.name.serialize_as.to_string();
+fn transmute_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
+    let struct_name = parser.name.write_as.to_string();
 
     let fields: Vec<TokenStream> = fields
         .iter()
         .filter(|f| !f.attributes.ignore)
         .map(|f| {
             let original_name = &f.attributes.name.original;
-            let serialised_as_name = &f.attributes.name.serialize_as;
+            let serialised_as_name = &f.attributes.name.write_as;
             let ident = Ident::new(&original_name, Span::call_site());
 
             if f.is_attr() {
-                quote!(serializer.serialize_attr(#serialised_as_name, &self.#ident);)
+                quote!(serializer.transmute_attr(#serialised_as_name, &self.#ident);)
             } else {
-                quote!(serializer.serialize_field(Some(#serialised_as_name), &self.#ident);)
+                quote!(serializer.transmute_field(Some(#serialised_as_name), &self.#ident);)
             }
         })
         .collect();
@@ -241,35 +241,35 @@ fn serialize_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
     let no_fields = fields.len();
 
     quote! {
-        serializer.serialize_struct(#struct_name, #no_fields);
+        writer.transmute_struct(#struct_name, #no_fields);
         #(#fields)*
 
-        serializer.exit_nested();
+        writer.exit_nested();
     }
 }
 
-fn serialize_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStream {
-    let struct_name = &parser.name.serialize_as;
+fn transmute_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStream {
+    let struct_name = &parser.name.write_as;
 
     quote! {
-        serializer.serialize_struct(#struct_name, 1);
-        serializer.serialize_field(None, &self.0);
+        writer.transmute_struct(#struct_name, 1);
+        writer.transmute_field(None, &self.0);
 
-        serializer.exit_nested();
+        writer.exit_nested();
     }
 }
 
-fn serialize_unit_struct(parser: &Parser) -> TokenStream {
-    let struct_name = &parser.name.serialize_as;
+fn transmute_unit_struct(parser: &Parser) -> TokenStream {
+    let struct_name = &parser.name.write_as;
 
     quote! {
-        serializer.serialize_struct(#struct_name, 0);
-        serializer.exit_nested();
+        writer.transmute_struct(#struct_name, 0);
+        writer.exit_nested();
     }
 }
 
-fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
-    let struct_name = &parser.name.serialize_as;
+fn transmute_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
+    let struct_name = &parser.name.write_as;
 
     let fields: Vec<TokenStream> = fields
         .iter()
@@ -281,31 +281,31 @@ fn serialize_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
                 span: Span::call_site(),
             };
 
-            quote!(serializer.serialize_field(None, &self.#index);)
+            quote!(writer.transmute_field(None, &self.#index);)
         })
         .collect();
 
     let no_fields = fields.len();
 
     quote! {
-        serializer.serialize_struct(#struct_name, #no_fields);
+        writer.transmute_struct(#struct_name, #no_fields);
         #(#fields)*
 
-        serializer.exit_nested();
+        writer.exit_nested();
     }
 }
 
 impl<'p> Parser<'p> {
-    pub fn serialize_fields(&self) -> TokenStream {
+    pub fn transmute_fields(&self) -> TokenStream {
         match &self.data {
-            TypeContents::Struct(CompoundType::Struct, fields) => serialize_struct(fields, self),
+            TypeContents::Struct(CompoundType::Struct, fields) => transmute_struct(fields, self),
             TypeContents::Struct(CompoundType::NewType, fields) => {
-                serialize_newtype_struct(&fields[0], self)
+                transmute_newtype_struct(&fields[0], self)
             }
             TypeContents::Struct(CompoundType::Tuple, fields) => {
-                serialize_tuple_struct(fields, self)
+                transmute_tuple_struct(fields, self)
             }
-            TypeContents::Struct(CompoundType::Unit, _fields) => serialize_unit_struct(self),
+            TypeContents::Struct(CompoundType::Unit, _fields) => transmute_unit_struct(self),
             TypeContents::Enum(variants) => unimplemented!(),
         }
     }
