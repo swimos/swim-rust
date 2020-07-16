@@ -160,6 +160,8 @@ struct LogEntry {
     state: LogState,
     /// Stack of values that have been set into the value for each stack frame.
     stack: Vec<Contents>,
+    /// Assigned slot when awaiting a change in the variable.
+    wait_slot: Option<usize>,
 }
 
 /// A transaction-local entry for a single variable.
@@ -280,7 +282,7 @@ impl LogEntry {
 
     // Pop the stack for this entry. Returns true if the entry should be removed entirely.
     fn pop(&mut self, rw: ReadWrite) -> bool {
-        let LogEntry { state, stack } = self;
+        let LogEntry { state, stack, .. } = self;
         let old_state = std::mem::take(state);
         let new_state = match old_state {
             LogState::Get(original) => {
@@ -402,6 +404,7 @@ impl Transaction {
         let entry = LogEntry {
             state: LogState::UnconditionalSet,
             stack,
+            wait_slot: None,
         };
         let i = self.log.insert(entry);
         self.masks.set_written(i);
@@ -539,14 +542,19 @@ impl Transaction {
 
     // Register a waker that will be called if any variable changes. If this returns true, a change
     // was detected while registering the waker.
-    fn register_waker(&self, waker: &Waker) -> bool {
-        self.log_assoc
+    fn register_waker(&mut self, waker: &Waker) -> bool {
+        let Transaction { log_assoc, log, .. } = self;
+        log_assoc
             .iter()
-            .any(|(PtrKey(var), i)| match self.log.get(*i) {
-                Some(LogEntry { state, .. }) => match state {
+            .any(|(PtrKey(var), i)| match log.get_mut(*i) {
+                Some(LogEntry {
+                    state, wait_slot, ..
+                }) => match state {
                     LogState::Get(original)
                     | LogState::ConditionalSet(original)
-                    | LogState::GetInFailedPath(original) => var.add_waker(original, waker),
+                    | LogState::GetInFailedPath(original) => {
+                        var.add_waker(original, wait_slot, waker)
+                    }
                     _ => false,
                 },
                 _ => false,
@@ -716,30 +724,27 @@ where
 }
 
 /// A future that awaits changes in any of the variables that were read in a transaction.
-pub struct AwaitChanged<'a>(Option<&'a mut Transaction>);
+pub struct AwaitChanged<'a>(&'a mut Transaction);
 
 impl<'a> AwaitChanged<'a> {
     fn new(transaction: &'a mut Transaction) -> Self {
-        AwaitChanged(Some(transaction))
+        AwaitChanged(transaction)
     }
 }
 
 impl<'a> Future for AwaitChanged<'a> {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(transaction) = self.0.take() {
-            if transaction.reads_changed_or_locked() {
-                return Poll::Ready(());
-            }
-            let waker = cx.waker();
-            if transaction.register_waker(&waker) {
-                Poll::Ready(())
-            } else {
-                Poll::Pending
-            }
-        } else {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let AwaitChanged(transaction) = self.get_mut();
+        if transaction.reads_changed_or_locked() {
+            return Poll::Ready(());
+        }
+        let waker = cx.waker();
+        if transaction.register_waker(&waker) {
             Poll::Ready(())
+        } else {
+            Poll::Pending
         }
     }
 }
@@ -804,6 +809,7 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
                     let entry = LogEntry {
                         state: LogState::Get(value),
                         stack: Vec::with_capacity(*stack_size),
+                        wait_slot: None,
                     };
                     let i = log.insert(entry);
                     log_assoc.insert(k, i);
