@@ -44,8 +44,8 @@ fn get_form_attributes(ctx: &Context, attr: &syn::Attribute) -> Result<Vec<syn::
 
 pub struct StructureName {
     pub ident: syn::Ident,
-    serialize_as: String,
-    deserialize_as: String,
+    write_as: String,
+    read_as: String,
 }
 
 pub struct Parser<'a> {
@@ -121,7 +121,7 @@ impl Attributes {
                                         "New name cannot be empty",
                                     )
                                 } else {
-                                    attrs.name.serialize_as = new;
+                                    attrs.name.write_as = new;
                                 }
                             }
                             _ => ctx.error_spanned_by(
@@ -133,7 +133,7 @@ impl Attributes {
                     NestedMeta::Meta(Meta::NameValue(name)) if name.path.is_ident(DE_NAME) => {
                         match &name.lit {
                             Lit::Str(s) => {
-                                attrs.name.deserialize_as = name.lit.to_token_stream().to_string();
+                                attrs.name.read_as = name.lit.to_token_stream().to_string();
                             }
                             _ => ctx.error_spanned_by(
                                 meta.to_token_stream(),
@@ -231,9 +231,9 @@ fn transmute_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
             let ident = Ident::new(&original_name, Span::call_site());
 
             if f.is_attr() {
-                quote!(serializer.transmute_attr(#serialised_as_name, &self.#ident);)
+                quote!(writer.transmute_attr(#serialised_as_name, &self.#ident);)
             } else {
-                quote!(serializer.transmute_field(Some(#serialised_as_name), &self.#ident);)
+                quote!(writer.transmute_field(Some(#serialised_as_name), &self.#ident);)
             }
         })
         .collect();
@@ -364,8 +364,8 @@ impl<'p> Parser<'p> {
         let item = Parser {
             name: StructureName {
                 ident: input.ident.clone(),
-                serialize_as,
-                deserialize_as: input.ident.to_string(),
+                write_as: serialize_as,
+                read_as: input.ident.to_string(),
             },
             data,
             original: input,

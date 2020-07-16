@@ -19,7 +19,6 @@ mod attrs;
 mod suite;
 
 use crate::{Form, TransmuteValue};
-use common::model::Value::Int32Value;
 
 mod swim_form {
     pub use crate::*;

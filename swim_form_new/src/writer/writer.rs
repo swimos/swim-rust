@@ -198,15 +198,15 @@ impl ValueWriter {
         }
     }
 
-    pub fn serialize_field<F>(&mut self, name_opt: Option<&'static str>, f: &F)
+    pub fn transmute_field<F>(&mut self, name_opt: Option<&'static str>, f: &F)
     where
-        F: SerializeToValue,
+        F: TransmuteValue,
     {
         if let Some(name) = name_opt {
             self.current_state.attr_name = Some(name.to_owned());
         }
 
-        f.serialize(self, properties);
+        f.transmute_to_value(self);
     }
 
     pub fn transmute_struct(&mut self, name: &'static str, len: usize) {
