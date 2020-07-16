@@ -24,11 +24,8 @@ use common::model::ValueKind;
 use common::model::{Item, Value};
 
 use crate::reader::ValueReadError;
-use crate::{Form, ValidatedForm};
+use crate::{Form, ValidatedForm, WriteValueError};
 use common::model::blob::Blob;
-use common::model::schema::StandardSchema;
-use common::model::ValueKind;
-use num_bigint::{BigInt, BigUint};
 use num_traits::FromPrimitive;
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -193,28 +190,6 @@ impl ValidatedForm for String {
     }
 }
 
-impl Form for BigInt {
-    fn as_value(&self) -> Value {
-        // todo update once bigint pr is in
-        Value::Text(self.to_string())
-    }
-
-    fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
-impl Form for BigUint {
-    fn as_value(&self) -> Value {
-        // todo update once bigint pr is in
-        Value::Text(self.to_string())
-    }
-
-    fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
-        unimplemented!()
-    }
-}
-
 fn seq_to_record<V>(it: V) -> Value
 where
     V: Iterator,
@@ -225,14 +200,12 @@ where
         _ => Vec::new(),
     };
 
-    it.fold(Value::Record(vec![], vec), |mut v, i| {
-        if let Value::Record(_, items) = &mut v {
-            items.push(Item::of(i.as_value()))
-        } else {
-            unreachable!()
-        }
-        v
-    })
+    let items = it.fold(vec, |mut items, i| {
+        items.push(Item::of(i.as_value()));
+        items
+    });
+
+    Value::Record(Vec::new(), items)
 }
 
 macro_rules! impl_seq_form {
@@ -246,7 +219,7 @@ macro_rules! impl_seq_form {
                 seq_to_record(self.iter())
             }
 
-            fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+            fn try_from_value(_value: &Value) -> Result<Self, ValueReadError> {
                 unimplemented!()
             }
         }
@@ -297,7 +270,7 @@ macro_rules! impl_map_form {
                 map_to_record(self.iter())
             }
 
-            fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+            fn try_from_value(_value: &Value) -> Result<Self, ValueReadError> {
                 unimplemented!()
             }
         }
