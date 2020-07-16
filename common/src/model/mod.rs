@@ -61,6 +61,12 @@ pub enum Value {
     /// A boolean wrapped as a [`Value`].
     BooleanValue(bool),
 
+    /// A big signed integer type wrapped as a [`Value`].
+    BigInt(BigInt),
+
+    /// A big unsigned integer type wrapped as a [`Value`].
+    BigUint(BigUint),
+
     /// A textual value. A text can either be an identifier or a string literal. A literal
     /// consists of underscores, digits and most characters from the basic multilingual plane and
     /// may not start with a digit.
@@ -89,12 +95,6 @@ pub enum Value {
     ///
     Record(Vec<Attr>, Vec<Item>),
 
-    /// A big signed integer type wrapped as a [`Value`].
-    BigInt(BigInt),
-
-    /// A big unsigned integer type wrapped as a [`Value`].
-    BigUint(BigUint),
-
     /// A Binary Large OBject (BLOB)
     Data(Blob),
 }
@@ -122,7 +122,36 @@ impl PartialOrd for ValueKind {
         } else {
             match (self, other) {
                 (ValueKind::Int32, ValueKind::Int64) => Some(Ordering::Less),
+                (ValueKind::Int32, ValueKind::Float64) => Some(Ordering::Less),
+                (ValueKind::Int32, ValueKind::BigInt) => Some(Ordering::Less),
+
                 (ValueKind::Int64, ValueKind::Int32) => Some(Ordering::Greater),
+                (ValueKind::Int64, ValueKind::UInt32) => Some(Ordering::Greater),
+                (ValueKind::Int64, ValueKind::BigInt) => Some(Ordering::Less),
+
+                (ValueKind::UInt32, ValueKind::Int64) => Some(Ordering::Less),
+                (ValueKind::UInt32, ValueKind::UInt64) => Some(Ordering::Less),
+                (ValueKind::UInt32, ValueKind::Float64) => Some(Ordering::Less),
+                (ValueKind::UInt32, ValueKind::BigInt) => Some(Ordering::Less),
+                (ValueKind::UInt32, ValueKind::BigUint) => Some(Ordering::Less),
+
+                (ValueKind::UInt64, ValueKind::UInt32) => Some(Ordering::Greater),
+                (ValueKind::UInt64, ValueKind::BigInt) => Some(Ordering::Less),
+                (ValueKind::UInt64, ValueKind::BigUint) => Some(Ordering::Less),
+
+                (ValueKind::Float64, ValueKind::Int32) => Some(Ordering::Greater),
+                (ValueKind::Float64, ValueKind::UInt32) => Some(Ordering::Greater),
+
+                (ValueKind::BigInt, ValueKind::Int32) => Some(Ordering::Greater),
+                (ValueKind::BigInt, ValueKind::Int64) => Some(Ordering::Greater),
+                (ValueKind::BigInt, ValueKind::UInt32) => Some(Ordering::Greater),
+                (ValueKind::BigInt, ValueKind::UInt64) => Some(Ordering::Greater),
+                (ValueKind::BigInt, ValueKind::BigUint) => Some(Ordering::Greater),
+
+                (ValueKind::BigUint, ValueKind::UInt32) => Some(Ordering::Greater),
+                (ValueKind::BigUint, ValueKind::UInt64) => Some(Ordering::Greater),
+                (ValueKind::BigUint, ValueKind::BigInt) => Some(Ordering::Less),
+
                 _ => None,
             }
         }
@@ -254,7 +283,6 @@ impl Value {
         Value::Record(attrs, vec![])
     }
 
-    //Todo This needs testing!
     fn compare(&self, other: &Self) -> Ordering {
         match self {
             Value::Data(left_len) => match other {
@@ -285,7 +313,7 @@ impl Value {
                 Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
-                    Err(_) => Ordering::Greater,
+                    Err(_) => Ordering::Less,
                 },
                 _ => Ordering::Greater,
             },
@@ -309,7 +337,7 @@ impl Value {
                 Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
-                    Err(_) => Ordering::Greater,
+                    Err(_) => Ordering::Less,
                 },
                 _ => Ordering::Greater,
             },
@@ -333,7 +361,7 @@ impl Value {
                 Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
-                    Err(_) => Ordering::Greater,
+                    Err(_) => unreachable!(),
                 },
                 _ => Ordering::Greater,
             },
@@ -357,7 +385,7 @@ impl Value {
                 Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
-                    Err(_) => Ordering::Greater,
+                    Err(_) => unreachable!(),
                 },
                 _ => Ordering::Greater,
             },
@@ -500,14 +528,12 @@ impl Value {
                 Value::BigInt(other_bi) => bi.cmp(&other_bi),
                 Value::BigUint(other_bi) => match other_bi.to_bigint() {
                     Some(other_bi) => bi.cmp(&other_bi),
-                    None => Ordering::Less,
+                    None => unreachable!(),
                 },
                 _ => Ordering::Greater,
             },
             Value::BigUint(bi) => match other {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
-                Value::UInt32Value(u) => BigUint::from(*u).cmp(&bi),
-                Value::UInt64Value(u) => BigUint::from(*u).cmp(&bi),
                 Value::Int32Value(m) => match u32::try_from(*m) {
                     Ok(m) => bi.cmp(&BigUint::from(m)),
                     Err(_) => Ordering::Greater,
@@ -516,13 +542,15 @@ impl Value {
                     Ok(m) => bi.cmp(&BigUint::from(m)),
                     Err(_) => Ordering::Greater,
                 },
+                Value::UInt32Value(u) => bi.cmp(&BigUint::from(*u)),
+                Value::UInt64Value(u) => bi.cmp(&BigUint::from(*u)),
                 Value::Float64Value(m) => match u64::try_from(*m as i64) {
                     Ok(m) => bi.cmp(&BigUint::from(m)),
                     Err(_) => Ordering::Greater,
                 },
                 Value::BigInt(other_bi) => match other_bi.to_biguint() {
                     Some(other_bi) => bi.cmp(&other_bi),
-                    None => Ordering::Less,
+                    None => Ordering::Greater,
                 },
                 Value::BigUint(other_bi) => bi.cmp(&other_bi),
                 _ => Ordering::Greater,
