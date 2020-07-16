@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::deserialize::FormDeserializeErr;
-use crate::serialize::serializer::{SerializerState, ValueSerializer};
-use crate::serialize::{FormSerializeErr, SerializeToValue, SerializerProps};
-use crate::Form;
+use crate::reader::{ValueReadError, ValueReader};
+use crate::writer::writer::{ValueWriter, WriterState};
+use crate::{Form, TransmuteValue};
 use common::model::{Attr, Item, Value};
 
 #[test]
-fn test_serialize_struct() {
+fn test_write_struct() {
     struct S {
         a: i32,
         b: String,
@@ -27,25 +26,25 @@ fn test_serialize_struct() {
 
     impl Form for S {
         fn as_value(&self) -> Value {
-            crate::serialize::as_value(self)
+            crate::writer::as_value(self)
         }
 
-        fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        fn try_from_value(_value: &Value) -> Result<Self, ValueReadError> {
             unimplemented!()
         }
     }
 
-    impl SerializeToValue for S {
-        fn serialize(
-            &self,
-            serializer: &mut ValueSerializer,
-            _properties: Option<SerializerProps>,
-        ) {
-            serializer.serialize_struct("S", 2);
-            serializer.serialize_field(Some("a"), &self.a, None);
-            serializer.serialize_field(Some("b"), &self.b, None);
+    impl TransmuteValue for S {
+        fn transmute_to_value(&self, writer: &mut ValueWriter) {
+            writer.transmute_struct("S", 2);
+            writer.transmute_field(Some("a"), &self.a);
+            writer.transmute_field(Some("b"), &self.b);
 
-            serializer.exit_nested();
+            writer.exit_nested();
+        }
+
+        fn transmute_from_value(&self, reader: &mut ValueReader) -> Result<Self, ValueReadError> {
+            unimplemented!()
         }
     }
 
@@ -54,7 +53,7 @@ fn test_serialize_struct() {
         b: "a string".to_string(),
     };
 
-    let value = crate::serialize::as_value(&s);
+    let value = crate::writer::as_value(&s);
 
     let expected = Value::Record(
         vec![Attr::of("S")],
@@ -68,34 +67,34 @@ fn test_serialize_struct() {
 }
 
 #[test]
-fn test_serialize_newtype_struct() {
+fn test_write_newtype_struct() {
     struct S(i32);
 
     impl Form for S {
         fn as_value(&self) -> Value {
-            crate::serialize::as_value(self)
+            crate::writer::as_value(self)
         }
 
-        fn try_from_value(_value: &Value) -> Result<Self, FormDeserializeErr> {
+        fn try_from_value(_value: &Value) -> Result<Self, ValueReadError> {
             unimplemented!()
         }
     }
 
-    impl SerializeToValue for S {
-        fn serialize(
-            &self,
-            serializer: &mut ValueSerializer,
-            _properties: Option<SerializerProps>,
-        ) {
-            serializer.serialize_struct("S", 2);
-            serializer.serialize_field(None, &self.0, None);
+    impl TransmuteValue for S {
+        fn transmute_to_value(&self, writer: &mut ValueWriter) {
+            writer.transmute_struct("S", 2);
+            writer.transmute_field(None, &self.0);
 
-            serializer.exit_nested();
+            writer.exit_nested();
+        }
+
+        fn transmute_from_value(&self, reader: &mut ValueReader) -> Result<Self, ValueReadError> {
+            unimplemented!()
         }
     }
 
     let s = S(1);
-    let value = crate::serialize::as_value(&s);
+    let value = crate::writer::as_value(&s);
     let expected = Value::Record(vec![Attr::of("S")], vec![Item::of(Value::Int32Value(1))]);
 
     assert_eq!(value, expected);

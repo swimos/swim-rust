@@ -14,7 +14,7 @@
 
 use common::model::{Attr, Item, Value};
 
-use crate::{Form, SerializeToValue};
+use crate::{Form, TransmuteValue};
 use common::model::Value::Int32Value;
 
 mod swim_form {
@@ -275,7 +275,7 @@ fn single_derve_with_generics() {
     #[form(Value)]
     struct FormStruct<V>
     where
-        V: SerializeToValue,
+        V: TransmuteValue,
     {
         v: V,
     }
@@ -399,4 +399,61 @@ fn simple_vector() {
     );
 
     assert_eq!(parsed_value, expected);
+}
+
+#[test]
+fn field_lifetime() {
+    #[form(Value)]
+    struct Inner {
+        a: i32,
+    }
+
+    #[form(Value)]
+    struct FormStruct<'l> {
+        inner: &'l Inner,
+    }
+
+    let inner = Inner { a: 1 };
+    let fs = FormStruct { inner: &inner };
+    let v: Value = fs.as_value();
+
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::slot(
+            "inner",
+            Value::Record(vec![Attr::of("Inner")], vec![Item::slot("a", 1)]),
+        )],
+    );
+
+    assert_eq!(v, expected);
+}
+
+#[test]
+fn generic_field_lifetime() {
+    #[form(Value)]
+    struct Inner {
+        a: i32,
+    }
+
+    #[form(Value)]
+    struct FormStruct<'l, S>
+    where
+        S: TransmuteValue,
+    {
+        inner: &'l S,
+    }
+
+    let inner = Inner { a: 1 };
+    let fs = FormStruct { inner: &inner };
+    let v: Value = fs.as_value();
+
+    let expected = Value::Record(
+        vec![Attr::of("FormStruct")],
+        vec![Item::slot(
+            "inner",
+            Value::Record(vec![Attr::of("Inner")], vec![Item::slot("a", 1)]),
+        )],
+    );
+
+    assert_eq!(v, expected);
 }

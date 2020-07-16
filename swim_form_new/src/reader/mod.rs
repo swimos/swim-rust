@@ -15,7 +15,7 @@
 use common::model::Item;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum FormDeserializeErr {
+pub enum ValueReadError {
     Message(String),
     UnsupportedType(String),
     IncorrectType(String),
@@ -23,3 +23,5 @@ pub enum FormDeserializeErr {
     IllegalState(String),
     Malformatted,
 }
+
+pub struct ValueReader;
