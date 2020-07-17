@@ -22,15 +22,14 @@ use std::cmp::Ordering;
 use std::convert::Infallible;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
+use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
 
-//This size is chosen such that the size of Value does not increase.
-const SMALL_SIZE: usize = 46;
-const SMALL_ARR: usize = SMALL_SIZE + 1;
+const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 
 enum TextInner {
-    Small([u8; SMALL_ARR]),
+    Small(usize, [u8; SMALL_SIZE]),
     Large(String),
 }
 
@@ -60,7 +59,7 @@ impl Text {
     pub fn as_str(&self) -> &str {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(bytes) => small_str(bytes),
+            TextInner::Small(len, bytes) => small_str(*len, bytes),
             TextInner::Large(str) => str.borrow(),
         }
     }
@@ -69,7 +68,7 @@ impl Text {
     pub fn as_str_mut(&mut self) -> &mut str {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(bytes) => small_str_mut(bytes),
+            TextInner::Small(len, bytes) => small_str_mut(*len, bytes),
             TextInner::Large(str) => str.borrow_mut(),
         }
     }
@@ -78,7 +77,7 @@ impl Text {
     pub fn len(&self) -> usize {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(arr) => arr[0] as usize,
+            TextInner::Small(len, _) => *len,
             TextInner::Large(string) => string.len(),
         }
     }
@@ -92,7 +91,7 @@ impl Text {
     pub fn is_small(&self) -> bool {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(_) => true,
+            TextInner::Small(_, _) => true,
             TextInner::Large(_) => false,
         }
     }
@@ -101,14 +100,13 @@ impl Text {
     pub fn push(&mut self, ch: char) {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(arr) => {
-                let len = arr[0] as usize;
+            TextInner::Small(len, arr) => {
                 let ch_len = ch.len_utf8();
-                if len + ch_len <= SMALL_SIZE {
-                    arr[0] += ch_len as u8;
-                    ch.encode_utf8(&mut arr[len + 1..]);
+                if *len + ch_len <= SMALL_SIZE {
+                    ch.encode_utf8(&mut arr[*len..]);
+                    *len += ch_len;
                 } else {
-                    let mut replacement = small_str(arr).to_string();
+                    let mut replacement = small_str(*len, arr).to_string();
                     replacement.push(ch);
                     *self = Text(TextInner::Large(replacement));
                 }
@@ -123,14 +121,13 @@ impl Text {
     pub fn push_str(&mut self, string: &str) {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(arr) => {
-                let len = arr[0] as usize;
+            TextInner::Small(len, arr) => {
                 let str_len = string.len();
-                if len + str_len <= SMALL_SIZE {
-                    arr[0] += str_len as u8;
-                    (&mut arr[len + 1..len + str_len + 1]).clone_from_slice(string.as_bytes());
+                if *len + str_len <= SMALL_SIZE {
+                    (&mut arr[*len..*len + str_len]).clone_from_slice(string.as_bytes());
+                    *len += str_len;
                 } else {
-                    let mut replacement = small_str(arr).to_string();
+                    let mut replacement = small_str(*len, arr).to_string();
                     replacement.push_str(string);
                     *self = Text(TextInner::Large(replacement));
                 }
@@ -145,10 +142,7 @@ impl Text {
     pub fn as_bytes(&self) -> &[u8] {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(arr) => {
-                let len = arr[0] as usize;
-                &arr[1..len + 1]
-            }
+            TextInner::Small(len, arr) => &arr[..*len],
             TextInner::Large(str) => str.as_bytes(),
         }
     }
@@ -177,6 +171,16 @@ impl From<String> for Text {
             small_from_str(string.as_str())
         } else {
             Text(TextInner::Large(string))
+        }
+    }
+}
+
+impl Into<String> for Text {
+    fn into(self) -> String {
+        let Text(inner) = self;
+        match inner {
+            TextInner::Small(len, arr) => small_str(len, &arr).to_string(),
+            TextInner::Large(string) => string,
         }
     }
 }
@@ -236,6 +240,15 @@ impl From<Box<str>> for Text {
 impl From<Box<Text>> for Text {
     fn from(boxed: Box<Text>) -> Self {
         *boxed
+    }
+}
+
+impl From<char> for Text {
+    fn from(ch: char) -> Self {
+        let mut arr: [u8; SMALL_SIZE] = [0; SMALL_SIZE];
+        let ch_len = ch.len_utf8();
+        ch.encode_utf8(&mut arr[..ch_len]);
+        Text(TextInner::Small(ch_len, arr))
     }
 }
 
@@ -361,10 +374,10 @@ impl Debug for Text {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(arr) => f
+            TextInner::Small(len, arr) => f
                 .debug_tuple("Text")
                 .field(&TextKind::Small)
-                .field(&small_str(arr))
+                .field(&small_str(*len, arr))
                 .finish(),
             TextInner::Large(string) => f
                 .debug_tuple("Text")
@@ -383,7 +396,7 @@ impl Display for Text {
 
 impl Default for Text {
     fn default() -> Self {
-        Text(TextInner::Small([0; SMALL_ARR]))
+        Text(TextInner::Small(0, [0; SMALL_SIZE]))
     }
 }
 
@@ -391,21 +404,22 @@ impl Clone for Text {
     fn clone(&self) -> Self {
         let Text(inner) = self;
         match inner {
-            TextInner::Small(arr) => Text(TextInner::Small(*arr)),
+            TextInner::Small(len, arr) => Text(TextInner::Small(*len, *arr)),
             TextInner::Large(string) => Text(TextInner::Large(string.clone())),
         }
     }
 
     fn clone_from(&mut self, source: &Self) {
         match (&mut self.0, &source.0) {
-            (TextInner::Small(this), TextInner::Small(other)) => {
+            (TextInner::Small(len, this), TextInner::Small(len_other, other)) => {
+                *len = *len_other;
                 this.clone_from(other);
             }
             (TextInner::Large(this), TextInner::Large(other)) => {
                 this.clone_from(other);
             }
-            (ref mut ow, TextInner::Small(other)) => {
-                **ow = TextInner::Small(*other);
+            (ref mut ow, TextInner::Small(len_other, other)) => {
+                **ow = TextInner::Small(*len_other, *other);
             }
             (ref mut ow, TextInner::Large(other)) => {
                 **ow = TextInner::Large(other.clone());
@@ -414,28 +428,108 @@ impl Clone for Text {
     }
 }
 
+impl Extend<char> for Text {
+    fn extend<T: IntoIterator<Item = char>>(&mut self, iter: T) {
+        let it = iter.into_iter();
+        let (min, max) = it.size_hint();
+        let Text(inner) = self;
+        match inner {
+            TextInner::Small(len, arr) => {
+                if *len + min > SMALL_SIZE {
+                    for ch in it {
+                        self.push(ch);
+                    }
+                } else {
+                    let n = if let Some(m) = max { m } else { min };
+                    let mut string = String::with_capacity(n);
+                    string.push_str(small_str(*len, arr));
+                    for ch in it {
+                        string.push(ch);
+                    }
+                    *self = string.into();
+                }
+            }
+            TextInner::Large(string) => {
+                for ch in it {
+                    string.push(ch);
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Extend<&'a char> for Text {
+    fn extend<T: IntoIterator<Item = &'a char>>(&mut self, iter: T) {
+        self.extend(iter.into_iter().cloned())
+    }
+}
+
+impl<'a> Extend<&'a mut char> for Text {
+    fn extend<T: IntoIterator<Item = &'a mut char>>(&mut self, iter: T) {
+        self.extend(iter.into_iter().map(|ch| &*ch))
+    }
+}
+
+impl<'a> Extend<&'a str> for Text {
+    fn extend<T: IntoIterator<Item = &'a str>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|s| self.push_str(s))
+    }
+}
+
+impl Extend<String> for Text {
+    fn extend<T: IntoIterator<Item = String>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|s| self.push_str(s.as_str()))
+    }
+}
+
+impl<'a> Extend<&'a String> for Text {
+    fn extend<T: IntoIterator<Item = &'a String>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|s| self.push_str(s.as_str()))
+    }
+}
+
+impl Extend<Text> for Text {
+    fn extend<T: IntoIterator<Item = Text>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|s| self.push_str(s.as_str()))
+    }
+}
+
+impl<'a> Extend<&'a Text> for Text {
+    fn extend<T: IntoIterator<Item = &'a Text>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|s| self.push_str(s.as_str()))
+    }
+}
+
+impl<Element> FromIterator<Element> for Text
+where
+    Text: Extend<Element>,
+{
+    fn from_iter<T: IntoIterator<Item = Element>>(iter: T) -> Self {
+        let mut text = Text::empty();
+        text.extend(iter);
+        text
+    }
+}
+
 fn small_from_str(string: &str) -> Text {
     let len = string.len();
-    let mut arr = [0; SMALL_ARR];
-    arr[0] = len as u8;
-    (&mut arr[1..len + 1]).copy_from_slice(string.as_bytes());
-    Text(TextInner::Small(arr))
+    let mut arr = [0; SMALL_SIZE];
+    (&mut arr[..len]).copy_from_slice(string.as_bytes());
+    Text(TextInner::Small(len, arr))
 }
 
-fn small_str(small: &[u8; SMALL_ARR]) -> &str {
-    unsafe { str::from_utf8_unchecked(small_slice(small)) }
+fn small_str(len: usize, small: &[u8; SMALL_SIZE]) -> &str {
+    unsafe { str::from_utf8_unchecked(small_slice(len, small)) }
 }
 
-fn small_str_mut(small: &mut [u8; SMALL_ARR]) -> &mut str {
-    unsafe { str::from_utf8_unchecked_mut(small_slice_mut(small)) }
+fn small_str_mut(len: usize, small: &mut [u8; SMALL_SIZE]) -> &mut str {
+    unsafe { str::from_utf8_unchecked_mut(small_slice_mut(len, small)) }
 }
 
-fn small_slice(small: &[u8; SMALL_ARR]) -> &[u8] {
-    let len = small[0] as usize;
-    &small[1..len + 1]
+fn small_slice(len: usize, small: &[u8; SMALL_SIZE]) -> &[u8] {
+    &small[..len]
 }
 
-fn small_slice_mut(small: &mut [u8; SMALL_ARR]) -> &mut [u8] {
-    let len = small[0] as usize;
-    &mut small[1..len + 1]
+fn small_slice_mut(len: usize, small: &mut [u8; SMALL_SIZE]) -> &mut [u8] {
+    &mut small[..len]
 }
