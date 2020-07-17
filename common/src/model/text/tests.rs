@@ -27,8 +27,8 @@ fn empty_text() {
 }
 
 const SMALL: &str = "word";
-const LARGE: &str = "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa ";
-const BORDERLINE: &str = "borderline string                 !";
+const LARGE: &str = "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa ";
+const BORDERLINE: &str = "borderline string                            !";
 
 #[test]
 fn create_text() {
@@ -450,13 +450,13 @@ fn text_debug() {
     let borderline = Text::new(BORDERLINE);
     assert_eq!(
         format!("{:?}", borderline),
-        "Text(Small, \"borderline string                 !\")"
+        "Text(Small, \"borderline string                            !\")"
     );
 
     let large = Text::new(LARGE);
     assert_eq!(
         format!("{:?}", large),
-        "Text(Large, \"aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa \")"
+        "Text(Large, \"aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa \")"
     );
 }
 

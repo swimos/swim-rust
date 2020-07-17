@@ -25,7 +25,8 @@ use std::hash::{Hash, Hasher};
 use std::str;
 use std::str::FromStr;
 
-const SMALL_SIZE: usize = 35;
+//This size is chosen such that the size of Value does not increase.
+const SMALL_SIZE: usize = 46;
 const SMALL_ARR: usize = SMALL_SIZE + 1;
 
 enum TextInner {
