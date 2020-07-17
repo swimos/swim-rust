@@ -103,7 +103,7 @@ where
             let topic = TryTransformTopic::new(topic, ApplyForm::<ViewType>::new());
             Ok(topic)
         } else {
-            Err(ViewError::SchemaError {
+            Err(ViewError::ValueSchemaError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
             })
@@ -113,7 +113,15 @@ where
 
 #[derive(Debug, Clone)]
 pub enum ViewError {
-    SchemaError {
+    ValueSchemaError {
+        existing: StandardSchema,
+        requested: StandardSchema,
+    },
+    MapSchemaKeyError {
+        existing: StandardSchema,
+        requested: StandardSchema,
+    },
+    MapSchemaValueError {
         existing: StandardSchema,
         requested: StandardSchema,
     },
@@ -122,8 +130,12 @@ pub enum ViewError {
 impl Display for ViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ViewError::SchemaError{existing, requested} => write!(f, "A read-only downlink with schema {} was requested but the original downlink is running with schema {}.",
-                                          requested, existing),
+            ViewError::ValueSchemaError {existing, requested} => write!(f, "A read-only value downlink with schema {} was requested but the original value downlink is running with schema {}.",
+                                                                        requested, existing),
+            ViewError::MapSchemaKeyError {existing, requested} => write!(f, "A read-only map downlink with key schema {} was requested but the original map downlink is running with key schema {}.",
+                                                                        requested, existing),
+            ViewError::MapSchemaValueError {existing, requested} => write!(f, "A read-only map downlink with value schema {} was requested but the original map downlink is running with value schema {}.",
+                                                                         requested, existing),
         }
     }
 }
@@ -263,13 +275,13 @@ where
                 );
                 Ok(topic)
             } else {
-                Err(ViewError::SchemaError {
+                Err(ViewError::MapSchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
                 })
             }
         } else {
-            Err(ViewError::SchemaError {
+            Err(ViewError::MapSchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
             })
