@@ -28,11 +28,15 @@ use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
 use crate::downlink::{Downlink, Event, StoppedFuture};
+use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::sink::item::ItemSink;
 use common::topic::Topic;
+use std::cmp::Ordering;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
-use swim_form::Form;
+use swim_form::{Form, ValidatedForm};
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
@@ -82,6 +86,49 @@ where
         self.inner.await_stopped()
     }
 }
+
+impl<T, Inner> ValueDownlink<Inner, T>
+where
+    Inner: Downlink<Action, Event<SharedValue>> + Clone,
+    T: ValidatedForm + Send + 'static,
+{
+    pub async fn read_only_view<ViewType: ValidatedForm>(
+        &mut self,
+    ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ViewError>
+    {
+        let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
+
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
+            let (topic, _) = self.inner.clone().split();
+            let topic = TryTransformTopic::new(topic, ApplyForm::<ViewType>::new());
+            Ok(topic)
+        } else {
+            Err(ViewError::SchemaError {
+                existing: T::schema(),
+                requested: ViewType::schema(),
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ViewError {
+    SchemaError {
+        existing: StandardSchema,
+        requested: StandardSchema,
+    },
+}
+
+impl Display for ViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewError::SchemaError{existing, requested} => write!(f, "A read-only downlink with schema {} was requested but the original downlink is running with schema {}.",
+                                          requested, existing),
+        }
+    }
+}
+
+impl Error for ViewError {}
 
 impl<Inner, T> ValueDownlink<Inner, T>
 where
