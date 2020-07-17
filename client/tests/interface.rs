@@ -371,6 +371,8 @@ mod tests {
 
             assert_eq!(view.get(&String::from("milk")).unwrap(), 1);
             assert_eq!(event, MapEvent::Initial);
+        } else {
+            panic!("The map downlink did not receive the correct message!")
         }
 
         let mut recv_view = dl
@@ -397,6 +399,8 @@ mod tests {
             assert_eq!(view.get(&String::from("milk")).unwrap(), 1);
             assert_eq!(view.get(&String::from("eggs")).unwrap(), 2);
             assert_eq!(event, MapEvent::Insert(String::from("eggs")));
+        } else {
+            panic!("The map downlink did not receive the correct message!")
         }
 
         let message = recv_view.next().await.unwrap();
@@ -412,6 +416,8 @@ mod tests {
                 Value::UInt32Value(2)
             );
             assert_eq!(event, MapEvent::Insert(Value::Text(String::from("eggs"))));
+        } else {
+            panic!("The map downlink did not receive the correct message!")
         }
     }
 
