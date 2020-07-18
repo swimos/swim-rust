@@ -38,16 +38,16 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
     if args.len() != 1 {
         return syn::Error::new(
             Span::call_site(),
-            "Exactly one Value name binding must be provided",
+            "Exactly one crate binding must be provided. `swim_client` or `swim_server`",
         )
         .to_compile_error()
         .into();
     }
 
-    let value_name_binding = args.get(0).unwrap();
+    let crate_binding = args.get(0).unwrap();
     let input = parse_macro_input!(input as DeriveInput);
     let derived: proc_macro2::TokenStream =
-        expand_derive_form(&input, value_name_binding).unwrap_or_else(to_compile_errors);
+        expand_derive_form(&input, crate_binding).unwrap_or_else(to_compile_errors);
 
     let q = quote! {
         #input
@@ -60,10 +60,10 @@ pub fn form(args: TokenStream, input: TokenStream) -> TokenStream {
 
 fn expand_derive_form(
     input: &syn::DeriveInput,
-    value_name_binding: &NestedMeta,
+    crate_binding: &NestedMeta,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let context = Context::new();
-    let parser = match Parser::from_ast(&context, input) {
+    let parser = match Parser::from_ast(&context, input, crate_binding) {
         Some(cont) => cont,
         None => return Err(context.check().unwrap_err()),
     };
@@ -82,12 +82,12 @@ fn expand_derive_form(
         #[allow(unused_qualifications)]
         impl #impl_generics swim_form::Form for #ident #type_generics #where_clause {
             #[inline]
-            fn as_value(&self) -> #value_name_binding {
-                 crate::writer::as_value(self)
+            fn as_value(&self) -> #crate_binding::Value {
+                 crate::as_value(self)
             }
 
             #[inline]
-            fn try_from_value(value: &#value_name_binding) -> Result<Self, swim_form::ValueReadError> {
+            fn try_from_value(value: &#crate_binding::Value) -> Result<Self, swim_form::ValueReadError> {
                 unimplemented!()
             }
         }
@@ -96,7 +96,7 @@ fn expand_derive_form(
         #[allow(unused_qualifications)]
         impl #impl_generics swim_form::TransmuteValue for #ident #type_generics #where_clause {
             #[inline]
-            fn transmute_to_value(&self, writer: &mut swim_form::ValueWriter) {
+            fn transmute_to_value(&self, field_name: Option<&'static str>) -> #crate_binding::Value {
                 #transmute_to_fields
             }
 

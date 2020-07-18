@@ -49,6 +49,7 @@ pub struct Parser<'a> {
     pub data: TypeContents<'a>,
     pub original: &'a DeriveInput,
     pub generics: &'a syn::Generics,
+    crate_binding: &'a NestedMeta,
 }
 
 pub struct EnumVariant<'a> {
@@ -118,7 +119,6 @@ pub enum CompoundType {
     Unit,
 }
 
-#[derive(Default)]
 pub struct Context {
     errors: RefCell<Option<Vec<syn::Error>>>,
 }
@@ -165,49 +165,52 @@ impl Context {
 
 fn transmute_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
     let struct_name = parser.ident.to_string();
+    let crate_binding = &parser.crate_binding;
 
     let fields: Vec<TokenStream> = fields
         .iter()
         .map(|f| {
+            let ty = &f.ident.to_string();
             let name = &f.attributes.name.write_as;
             let ident = Ident::new(&name, Span::call_site());
 
-            quote!(writer.transmute_field(Some(#name), &self.#ident);)
+            quote!(#crate_binding::Item::of((#name, self.#ident.transmute_to_value(Some(#ty)))))
         })
         .collect();
 
     let no_fields = fields.len();
 
     quote! {
-        writer.transmute_struct(#struct_name, #no_fields);
-        #(#fields)*
-
-        writer.exit_nested();
+        let items = vec![#(#fields),*];
+        #crate_binding::Value::Record(vec![#crate_binding::Attr::of(#struct_name)], items)
     }
 }
 
 fn transmute_newtype_struct<'a>(field: &Field, parser: &Parser<'a>) -> TokenStream {
     let struct_name = parser.ident.to_string();
+    let ty = &field.ident.to_string();
+    let crate_binding = &parser.crate_binding;
 
     quote! {
-        writer.transmute_struct(#struct_name, 1);
-        writer.transmute_field(None, &self.0);
-
-        writer.exit_nested();
+        #crate_binding::Value::Record(
+            vec![#crate_binding::Attr::of(#struct_name)],
+            vec![#crate_binding::Item::ValueItem(self.0.transmute_to_value(None))]
+        )
     }
 }
 
 fn transmute_unit_struct(parser: &Parser) -> TokenStream {
     let struct_name = parser.ident.to_string();
+    let crate_binding = &parser.crate_binding;
 
     quote! {
-        writer.transmute_struct(#struct_name, 0);
-        writer.exit_nested();
+        #crate_binding::Value::Record(vec![#crate_binding::Attr::of(#struct_name)], Vec::new())
     }
 }
 
 fn transmute_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStream {
     let struct_name = parser.ident.to_string();
+    let crate_binding = &parser.crate_binding;
 
     let fields: Vec<TokenStream> = fields
         .iter()
@@ -218,17 +221,15 @@ fn transmute_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
                 span: Span::call_site(),
             };
 
-            quote!(writer.transmute_field(None, &self.#index);)
+            quote!(#crate_binding::Item::of(self.#index.transmute_to_value(None)))
         })
         .collect();
 
     let no_fields = fields.len();
 
     quote! {
-        writer.transmute_struct(#struct_name, #no_fields);
-        #(#fields)*
-
-        writer.exit_nested();
+        let items = vec![#(#fields),*];
+        #crate_binding::Value::Record(vec![#crate_binding::Attr::of(#struct_name)], items)
     }
 }
 
@@ -328,7 +329,11 @@ impl<'p> Parser<'p> {
         }
     }
 
-    pub fn from_ast(context: &Context, input: &'p syn::DeriveInput) -> Option<Parser<'p>> {
+    pub fn from_ast(
+        context: &Context,
+        input: &'p syn::DeriveInput,
+        crate_binding: &'p NestedMeta,
+    ) -> Option<Parser<'p>> {
         let data = match &input.data {
             syn::Data::Enum(data) => {
                 let variants = parse_enum(context, &data.variants);
@@ -349,6 +354,7 @@ impl<'p> Parser<'p> {
             data,
             original: input,
             generics: &input.generics,
+            crate_binding,
         };
 
         Some(item)
