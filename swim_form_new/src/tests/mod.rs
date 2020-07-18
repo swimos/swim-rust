@@ -1,29 +1,31 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// // Copyright 2015-2020 SWIM.AI inc.
+// //
+// // Licensed under the Apache License, Version 2.0 (the "License");
+// // you may not use this file except in compliance with the License.
+// // You may obtain a copy of the License at
+// //
+// //     http://www.apache.org/licenses/LICENSE-2.0
+// //
+// // Unless required by applicable law or agreed to in writing, software
+// // distributed under the License is distributed on an "AS IS" BASIS,
+// // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// // See the License for the specific language governing permissions and
+// // limitations under the License.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 use common::model::{Attr, Item, Value};
 
 use crate::{Form, TransmuteValue};
 use common::model::Value::Int32Value;
+mod writer;
 
 mod swim_form {
     pub use crate::*;
+    pub use common::model::{Attr, Item, Value};
 }
 
 #[test]
 fn struct_derive() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct {
         a: i32,
     }
@@ -40,7 +42,7 @@ fn struct_derive() {
 
 #[test]
 fn tuple_struct() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Tuple(i32, i32, i32);
 
     let fs = Tuple(1, 2, 3);
@@ -59,26 +61,26 @@ fn tuple_struct() {
 
 #[test]
 fn tuple_complex() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Child {
         s: String,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormNested {
         c: Child,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct {
         i: i32,
         stringy: String,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormUnit;
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct Tuple(i32, FormStruct, FormUnit, FormNested);
 
     let fs = Tuple(
@@ -126,7 +128,7 @@ fn tuple_complex() {
 
 #[test]
 fn unit_struct_derve() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Nothing;
 
     let fs = Nothing;
@@ -138,13 +140,13 @@ fn unit_struct_derve() {
 
 #[test]
 fn nested_struct_types() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Unit;
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct NewType(Unit);
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct Outer {
         nt: NewType,
     }
@@ -167,10 +169,10 @@ fn nested_struct_types() {
 
 #[test]
 fn newtype_unit_struct_derive() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Nothing;
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct(Nothing);
 
     let fs = FormStruct(Nothing);
@@ -185,7 +187,7 @@ fn newtype_unit_struct_derive() {
 
 #[test]
 fn newtype_struct_derive() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct(i32);
 
     let fs = FormStruct(100);
@@ -200,9 +202,9 @@ fn newtype_struct_derive() {
 
 #[test]
 fn nested_newtype_struct_derive() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStructInner(i32);
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct(FormStructInner);
 
     let fs = FormStruct(FormStructInner(100));
@@ -220,11 +222,11 @@ fn nested_newtype_struct_derive() {
 
 #[test]
 fn nested_struct_newtype_derive() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct {
         a: FormStructInner,
     };
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStructInner(i32);
 
     let fs = FormStruct {
@@ -248,12 +250,12 @@ fn nested_struct_newtype_derive() {
 
 #[test]
 fn newtype_with_struct() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Inner {
         a: i32,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormNewType(Inner);
 
     let fs = FormNewType(Inner { a: 100 });
@@ -272,7 +274,7 @@ fn newtype_with_struct() {
 
 #[test]
 fn single_derve_with_generics() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct<V>
     where
         V: TransmuteValue,
@@ -292,13 +294,13 @@ fn single_derve_with_generics() {
 
 #[test]
 fn nested_derives() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Parent {
         a: i32,
         b: Child,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct Child {
         c: i32,
     }
@@ -328,12 +330,12 @@ fn nested_derives() {
 
 #[test]
 fn vector_of_structs() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Parent {
         seq: Vec<Child>,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct Child {
         id: i32,
     }
@@ -369,7 +371,7 @@ fn vector_of_structs() {
 
 #[test]
 fn simple_vector() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Test {
         seq: Vec<i32>,
     }
@@ -403,12 +405,12 @@ fn simple_vector() {
 
 #[test]
 fn field_lifetime() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Inner {
         a: i32,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct<'l> {
         inner: &'l Inner,
     }
@@ -430,12 +432,12 @@ fn field_lifetime() {
 
 #[test]
 fn generic_field_lifetime() {
-    #[form(Value)]
+    #[form(swim_form)]
     struct Inner {
         a: i32,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct FormStruct<'l, S>
     where
         S: TransmuteValue,

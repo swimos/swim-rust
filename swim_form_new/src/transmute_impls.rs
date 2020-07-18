@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::reader::{ValueReadError, ValueReader};
 use crate::Form;
-use crate::{TransmuteValue, ValueReadError, ValueReader, ValueWriter};
+use crate::TransmuteValue;
 use common::model::blob::Blob;
-use common::model::Value;
+use common::model::{Item, Value};
 use num_bigint::{BigInt, BigUint};
 
 impl<'a, S> TransmuteValue for &'a S
 where
     S: TransmuteValue,
 {
-    fn transmute_to_value(&self, writer: &mut ValueWriter) {
-        writer.push_value((**self).as_value());
+    fn transmute_to_value(&self, field_name: Option<&'static str>) -> Value {
+        (**self).transmute_to_value(field_name)
     }
 
     fn transmute_from_value(&self, _reader: &mut ValueReader) -> Result<Self, ValueReadError> {
@@ -35,8 +36,8 @@ impl<'a, S> TransmuteValue for &'a mut S
 where
     S: TransmuteValue,
 {
-    fn transmute_to_value(&self, writer: &mut ValueWriter) {
-        writer.push_value((**self).as_value());
+    fn transmute_to_value(&self, field_name: Option<&'static str>) -> Value {
+        (**self).transmute_to_value(field_name)
     }
 
     fn transmute_from_value(&self, _reader: &mut ValueReader) -> Result<Self, ValueReadError> {
@@ -44,12 +45,12 @@ where
     }
 }
 
-macro_rules! transmute_to_impl {
+macro_rules! impl_transmute {
     ($ty:ident) => {
         impl TransmuteValue for $ty {
             #[inline]
-            fn transmute_to_value(&self, writer: &mut ValueWriter) {
-                writer.push_value(self.as_value());
+            fn transmute_to_value(&self, _field_name: Option<&'static str>) -> Value {
+                self.as_value()
             }
 
             #[inline]
@@ -63,14 +64,14 @@ macro_rules! transmute_to_impl {
     };
 }
 
-transmute_to_impl!(bool);
-transmute_to_impl!(String);
-transmute_to_impl!(i32);
-transmute_to_impl!(i64);
-transmute_to_impl!(f64);
-transmute_to_impl!(BigInt);
-transmute_to_impl!(BigUint);
-transmute_to_impl!(Blob);
+impl_transmute!(bool);
+impl_transmute!(String);
+impl_transmute!(i32);
+impl_transmute!(i64);
+impl_transmute!(f64);
+impl_transmute!(BigInt);
+impl_transmute!(BigUint);
+impl_transmute!(Blob);
 // transmute_to_impl!(u32);
 // transmute_to_impl!(u64);
 
@@ -78,10 +79,10 @@ impl<V> TransmuteValue for Option<V>
 where
     V: TransmuteValue,
 {
-    fn transmute_to_value(&self, writer: &mut ValueWriter) {
+    fn transmute_to_value(&self, field_name: Option<&'static str>) -> Value {
         match self {
-            Option::None => writer.push_value(Value::Extant),
-            Option::Some(v) => V::transmute_to_value(v, writer),
+            Option::None => Value::Extant,
+            Option::Some(v) => V::transmute_to_value(v, field_name),
         }
     }
 
@@ -94,8 +95,15 @@ impl<V> TransmuteValue for Vec<V>
 where
     V: TransmuteValue,
 {
-    fn transmute_to_value(&self, writer: &mut ValueWriter) {
-        writer.transmute_sequence(self);
+    fn transmute_to_value(&self, _field_name: Option<&'static str>) -> Value {
+        let items = self
+            .iter()
+            .fold(Vec::with_capacity(self.len()), |mut vec, item| {
+                vec.push(Item::ValueItem(item.transmute_to_value(None)));
+                vec
+            });
+
+        Value::Record(Vec::new(), items)
     }
 
     fn transmute_from_value(&self, _reader: &mut ValueReader) -> Result<Self, ValueReadError> {

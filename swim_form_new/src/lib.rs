@@ -14,6 +14,7 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
+use crate::reader::{ValueReadError, ValueReader};
 use common::model::schema::StandardSchema;
 use common::model::Value;
 
@@ -21,8 +22,6 @@ use common::model::Value;
 mod form_impls;
 mod reader;
 mod transmute_impls;
-#[allow(warnings)]
-mod writer;
 
 #[cfg(test)]
 mod tests;
@@ -30,9 +29,6 @@ mod tests;
 #[macro_use]
 #[allow(unused_imports)]
 pub extern crate form_derive_new;
-
-pub use reader::{ValueReadError, ValueReader};
-pub use writer::{as_value, ValueWriter, WriteValueError};
 
 /// A [`Form`] transforms between a Rust object and a structurally typed [`Value`]. Decorating a
 /// Rust object with [`#[form(Value)`] derives a method to serialise the object to a [`Value`] and to
@@ -133,7 +129,14 @@ impl ValidatedForm for Value {
 }
 
 pub trait TransmuteValue: Form {
-    fn transmute_to_value(&self, writer: &mut ValueWriter);
+    fn transmute_to_value(&self, field_name: Option<&'static str>) -> Value;
 
     fn transmute_from_value(&self, reader: &mut ValueReader) -> Result<Self, ValueReadError>;
+}
+
+pub fn as_value<T>(v: &T) -> Value
+where
+    T: TransmuteValue,
+{
+    v.transmute_to_value(None)
 }

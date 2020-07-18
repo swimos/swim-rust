@@ -12,11 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::writer::as_value;
-use crate::writer::TransmuteValue;
+use crate::as_value;
 use common::model::{Item, Value};
-mod bigint;
-mod compound;
 
 macro_rules! test_impl {
     ($test_name:ident, $typ:expr, $expected:expr) => {
