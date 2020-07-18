@@ -14,7 +14,6 @@
 
 use crate::as_value;
 use common::model::{Item, Value};
-mod compound;
 mod enumeration;
 
 macro_rules! test_impl {
