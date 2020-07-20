@@ -11,19 +11,19 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
+//
 use common::model::{Attr, Item, Value};
 
 use crate::Form;
-use common::model::Value::Int32Value;
 
 mod swim_form {
     pub use crate::*;
+    pub use common::model::{Attr, Item, Value};
 }
 
 #[test]
 fn enum_unit() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum E {
         A,
     }
@@ -37,7 +37,7 @@ fn enum_unit() {
 
 #[test]
 fn enum_newtype() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum E {
         A(i32),
     }
@@ -51,7 +51,7 @@ fn enum_newtype() {
 
 #[test]
 fn enum_tuple() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum E {
         A(i32, i32, i32, i32),
     }
@@ -69,7 +69,7 @@ fn enum_tuple() {
 
 #[test]
 fn enum_struct() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum E {
         A { name: String, age: i32 },
     }
@@ -90,12 +90,12 @@ fn enum_struct() {
 
 #[test]
 fn struct_with_unit() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum TestEnum {
         A,
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct Test {
         a: TestEnum,
     }
@@ -113,12 +113,12 @@ fn struct_with_unit() {
 
 #[test]
 fn struct_with_tuple() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum TestEnum {
         A(i32, i32),
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct Test {
         a: TestEnum,
     }
@@ -141,12 +141,12 @@ fn struct_with_tuple() {
 
 #[test]
 fn struct_with_struct() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum TestEnum {
         A { a: i32, b: i64 },
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     struct Test {
         a: TestEnum,
     }
@@ -172,12 +172,12 @@ fn struct_with_struct() {
 
 #[test]
 fn nested() {
-    #[form(Value)]
+    #[form(swim_form)]
     enum A {
         B(B),
     }
 
-    #[form(Value)]
+    #[form(swim_form)]
     enum B {
         C,
     }

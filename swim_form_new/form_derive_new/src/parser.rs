@@ -236,6 +236,7 @@ fn transmute_tuple_struct<'a>(fields: &[Field], parser: &Parser<'a>) -> TokenStr
 fn transmute_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStream {
     let ident = &parser.ident;
     let enum_name = ident.to_string();
+    let crate_binding = &parser.crate_binding;
 
     let arms: Vec<_> = variants
         .iter()
@@ -251,31 +252,29 @@ fn transmute_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
                     let fields = (0..variant.fields.len()).map(|i| {
                         let index = Ident::new(&format!("__field{}", i), Span::call_site());
 
-                        quote!(writer.transmute_field(None, &#index);)
+                        quote!(#crate_binding::Item::of(#index.transmute_to_value(None)))
                     });
                     let len = fields.len();
 
                     quote! {
                         #ident::#variant_ident(#(ref #field_names),*) => {
-                            writer.transmute_enum(#variant_name, #len);
-                            #(#fields)*
-
-                            writer.exit_nested();
+                            let items = vec![#(#fields),*];
+                            #crate_binding::Value::Record(vec![#crate_binding::Attr::of(#variant_name)], items)
                         }
                     }
                 }
                 CompoundType::Unit => {
                     let body = quote! {
-                        writer.transmute_enum(#variant_name, 0);
-                        writer.exit_nested();
+                        #crate_binding::Value::Record(vec![#crate_binding::Attr::of(#variant_name)], Vec::new())
                     };
                     quote!(#ident::#variant_ident => { #body })
                 }
                 CompoundType::NewType => {
                     let body = quote! {
-                        writer.transmute_enum(#variant_name, 1);
-                        writer.transmute_field(None, &__field0);
-                        writer.exit_nested();
+                        #crate_binding::Value::Record(
+                            vec![#crate_binding::Attr::of(#variant_name)],
+                            vec![#crate_binding::Item::ValueItem(__field0.transmute_to_value(None))]
+                        )
                     };
 
                     quote!(#ident::#variant_ident(ref __field0) => { #body })
@@ -286,18 +285,17 @@ fn transmute_enum<'a>(variants: &[EnumVariant], parser: &Parser<'a>) -> TokenStr
                         .iter()
                         .map(|f| {
                             let name = &f.attributes.name.write_as;
-                            let ident = Ident::new(&name, Span::call_site());
+                            let field_ident = Ident::new(&name, Span::call_site());
 
-                            quote!(writer.transmute_field(Some(#name), &#ident);)
+                            quote!(#crate_binding::Item::of((#name, #field_ident.transmute_to_value(None))))
                         })
                         .collect();
 
                     let no_fields = fields.len();
 
                     let body = quote! {
-                        writer.transmute_enum(#variant_name, 1);
-                        #(#fields)*
-                        writer.exit_nested();
+                        let items = vec![#(#fields),*];
+                        #crate_binding::Value::Record(vec![#crate_binding::Attr::of(#variant_name)], items)
                     };
 
                     let vars = variant.fields.iter().map(|f| &f.member);
