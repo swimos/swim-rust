@@ -15,8 +15,8 @@ jobs:
       env:
         - RUST_BACKTRACE=1
         - ARCH=amd64
-        - TEST_SERVER_VERSION=v1.1
-        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.1"
+        - TEST_SERVER_VERSION=v1.2
+        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.2"
         - REPO_URL="https://github.com/swimos/swim-docker-example/"
       script:
         - cd client
