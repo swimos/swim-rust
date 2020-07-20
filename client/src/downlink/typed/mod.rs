@@ -103,26 +103,50 @@ where
             let topic = TryTransformTopic::new(topic, ApplyForm::<ViewType>::new());
             Ok(topic)
         } else {
-            Err(ViewError::ValueSchemaError {
+            Err(ViewError::ValueError(ValueViewError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
-            })
+            }))
         }
     }
 }
 
+/// Error types that are returned if a read-only / write-only
+/// views are created with incompatible types.
 #[derive(Debug, Clone)]
 pub enum ViewError {
-    ValueSchemaError {
+    //Error for views for value downlinks.
+    ValueError(ValueViewError),
+    //Error for views for map downlinks.
+    MapError(MapViewError),
+}
+
+/// Error type returned when creating a view
+/// for a value downlink with incompatible type.
+#[derive(Debug, Clone)]
+pub struct ValueViewError {
+    // A validation schema for the type of the original value downlink.
+    existing: StandardSchema,
+    // A validation schema for the type of the requested view.
+    requested: StandardSchema,
+}
+
+/// Error types returned when creating a view
+/// for a map downlink with incompatible type.
+#[derive(Debug, Clone)]
+pub enum MapViewError {
+    // Error returned when the key schemas are incompatible
+    SchemaKeyError {
+        // A validation schema for the key type of the original map downlink.
         existing: StandardSchema,
+        // A validation schema for the key type of the requested view.
         requested: StandardSchema,
     },
-    MapSchemaKeyError {
+    // Error returned when the value schemas are incompatible
+    SchemaValueError {
+        // A validation schema for the value type of the original map downlink.
         existing: StandardSchema,
-        requested: StandardSchema,
-    },
-    MapSchemaValueError {
-        existing: StandardSchema,
+        // A validation schema for the value type of the requested view.
         requested: StandardSchema,
     },
 }
@@ -130,17 +154,36 @@ pub enum ViewError {
 impl Display for ViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ViewError::ValueSchemaError {existing, requested} => write!(f, "A read-only value downlink with schema {} was requested but the original value downlink is running with schema {}.",
-                                                                        requested, existing),
-            ViewError::MapSchemaKeyError {existing, requested} => write!(f, "A read-only map downlink with key schema {} was requested but the original map downlink is running with key schema {}.",
-                                                                        requested, existing),
-            ViewError::MapSchemaValueError {existing, requested} => write!(f, "A read-only map downlink with value schema {} was requested but the original map downlink is running with value schema {}.",
-                                                                         requested, existing),
+            ViewError::ValueError(value_error) => write!(f, "{}", value_error),
+            ViewError::MapError(map_error) => write!(f, "{}", map_error),
+        }
+    }
+}
+
+impl Display for ValueViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "A read-only value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.requested, self.existing)
+    }
+}
+
+impl Display for MapViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MapViewError::SchemaKeyError {
+                existing,
+                requested,
+            } => write!(f, "A read-only map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", requested, existing),
+            MapViewError::SchemaValueError {
+                existing,
+                requested,
+            } => write!(f, "A read-only map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", requested, existing),
         }
     }
 }
 
 impl Error for ViewError {}
+impl Error for ValueViewError {}
+impl Error for MapViewError {}
 
 impl<Inner, T> ValueDownlink<Inner, T>
 where
@@ -275,16 +318,16 @@ where
                 );
                 Ok(topic)
             } else {
-                Err(ViewError::MapSchemaValueError {
+                Err(ViewError::MapError(MapViewError::SchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
-                })
+                }))
             }
         } else {
-            Err(ViewError::MapSchemaKeyError {
+            Err(ViewError::MapError(MapViewError::SchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
-            })
+            }))
         }
     }
 }
