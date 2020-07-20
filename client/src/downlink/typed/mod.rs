@@ -323,6 +323,33 @@ where
             })
         }
     }
+
+    pub async fn write_only_view<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
+        &mut self,
+    ) -> Result<MapActions<Inner::DlSink, ViewKeyType, ViewValueType>, ViewError> {
+        let key_schema_cmp = ViewKeyType::schema().partial_cmp(&K::schema());
+        let value_schema_cmp = ViewValueType::schema().partial_cmp(&V::schema());
+
+        if key_schema_cmp.is_some() && key_schema_cmp != Some(Ordering::Greater) {
+            if value_schema_cmp.is_some() && value_schema_cmp != Some(Ordering::Greater) {
+                let (_, sink) = self.inner.clone().split();
+                let sink = MapActions::new(sink);
+                Ok(sink)
+            } else {
+                Err(ViewError::MapSchemaValueError {
+                    existing: V::schema(),
+                    requested: ViewValueType::schema(),
+                    link_type: LinkType::WriteOnly,
+                })
+            }
+        } else {
+            Err(ViewError::MapSchemaKeyError {
+                existing: K::schema(),
+                requested: ViewKeyType::schema(),
+                link_type: LinkType::WriteOnly,
+            })
+        }
+    }
 }
 
 impl<'a, Inner, T> ItemSink<'a, Action> for ValueDownlink<Inner, T>
