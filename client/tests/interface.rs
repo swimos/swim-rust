@@ -18,7 +18,11 @@ mod tests {
         BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
     };
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
-    use client::downlink::model::map::{MapModification, UntypedMapModification};
+    use client::downlink::model::map::{
+        MapAction, MapEvent, MapModification, UntypedMapModification,
+    };
+    use client::downlink::model::value::Action;
+    use client::downlink::typed::event::TypedViewWithEvent;
     use client::downlink::Event;
     use client::interface::SwimClient;
     use common::model::{Attr, Item, Value};
@@ -45,6 +49,114 @@ mod tests {
         )
         .unwrap();
         ConfigHierarchy::new(client_params, default_params)
+    }
+
+    #[tokio::test]
+    async fn test_value_dl_recv() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
+
+        let (_, mut recv) = client.value_downlink(path.clone(), 0).await.unwrap();
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        let message = recv.next().await.unwrap();
+        assert_eq!(message, Event::Remote(0));
+    }
+
+    #[tokio::test]
+    async fn test_value_dl_send() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
+
+        let (mut dl, mut recv) = client.value_downlink(path.clone(), 0).await.unwrap();
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        dl.send_item(Action::set(10.into_value())).await.unwrap();
+
+        let message = recv.next().await.unwrap();
+        assert_eq!(message, Event::Remote(0));
+
+        let message = recv.next().await.unwrap();
+        assert_eq!(message, Event::Local(10));
+    }
+
+    #[tokio::test]
+    async fn test_map_dl_recv() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+
+        let (_, mut recv) = client
+            .map_downlink::<String, i32>(path.clone())
+            .await
+            .unwrap();
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        let message = recv.next().await.unwrap();
+
+        if let Event::Remote(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(view.len(), 0);
+            assert_eq!(event, MapEvent::Initial);
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_map_dl_send() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+
+        let (mut dl, mut recv) = client
+            .map_downlink::<String, i32>(path.clone())
+            .await
+            .unwrap();
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        dl.send_item(MapAction::insert(String::from("milk").into(), 1.into()))
+            .await
+            .unwrap();
+
+        let message = recv.next().await.unwrap();
+
+        if let Event::Remote(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(view.len(), 0);
+            assert_eq!(event, MapEvent::Initial);
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+
+        let message = recv.next().await.unwrap();
+
+        if let Event::Local(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(view.get(&String::from("milk")).unwrap(), 1);
+            assert_eq!(event, MapEvent::Insert(String::from("milk")));
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
     }
 
     #[tokio::test]
