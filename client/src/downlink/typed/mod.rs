@@ -106,7 +106,41 @@ where
             Err(ViewError::ValueSchemaError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
+                link_type: LinkType::ReadOnly,
             })
+        }
+    }
+
+    pub async fn write_only_view<ViewType: ValidatedForm>(
+        &mut self,
+    ) -> Result<ValueActions<Inner::DlSink, ViewType>, ViewError> {
+        let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
+
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
+            let (_, sink) = self.inner.clone().split();
+            let sink = ValueActions::new(sink);
+            Ok(sink)
+        } else {
+            Err(ViewError::ValueSchemaError {
+                existing: T::schema(),
+                requested: ViewType::schema(),
+                link_type: LinkType::WriteOnly,
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum LinkType {
+    ReadOnly,
+    WriteOnly,
+}
+
+impl Display for LinkType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LinkType::ReadOnly => write!(f, "read-only"),
+            LinkType::WriteOnly => write!(f, "write-only"),
         }
     }
 }
@@ -116,26 +150,26 @@ pub enum ViewError {
     ValueSchemaError {
         existing: StandardSchema,
         requested: StandardSchema,
+        link_type: LinkType,
     },
     MapSchemaKeyError {
         existing: StandardSchema,
         requested: StandardSchema,
+        link_type: LinkType,
     },
     MapSchemaValueError {
         existing: StandardSchema,
         requested: StandardSchema,
+        link_type: LinkType,
     },
 }
 
 impl Display for ViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ViewError::ValueSchemaError {existing, requested} => write!(f, "A read-only value downlink with schema {} was requested but the original value downlink is running with schema {}.",
-                                                                        requested, existing),
-            ViewError::MapSchemaKeyError {existing, requested} => write!(f, "A read-only map downlink with key schema {} was requested but the original map downlink is running with key schema {}.",
-                                                                        requested, existing),
-            ViewError::MapSchemaValueError {existing, requested} => write!(f, "A read-only map downlink with value schema {} was requested but the original map downlink is running with value schema {}.",
-                                                                         requested, existing),
+            ViewError::ValueSchemaError {existing, requested, link_type} => write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", link_type, requested, existing),
+            ViewError::MapSchemaKeyError {existing, requested,link_type} => write!(f, "A {} map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", link_type,requested, existing),
+            ViewError::MapSchemaValueError {existing, requested,link_type} => write!(f, "A {} map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", link_type,requested, existing),
         }
     }
 }
@@ -278,12 +312,14 @@ where
                 Err(ViewError::MapSchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
+                    link_type: LinkType::ReadOnly,
                 })
             }
         } else {
             Err(ViewError::MapSchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
+                link_type: LinkType::ReadOnly,
             })
         }
     }
