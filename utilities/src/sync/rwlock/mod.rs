@@ -17,12 +17,16 @@ use parking_lot::Mutex;
 use parking_lot_core::SpinWait;
 use slab::Slab;
 use std::cell::UnsafeCell;
+use std::fmt::Debug;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::task::Waker;
 use tokio::macros::support::{Pin, Poll};
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 struct OrderedWaker {
@@ -49,7 +53,6 @@ struct WriterQueue {
 }
 
 impl WriterQueue {
-
     fn add_waker(&mut self, waker: Waker, slot: Option<usize>) -> usize {
         let WriterQueue {
             first,
@@ -109,6 +112,9 @@ impl WriterQueue {
         if let Some(first) = self.first.take() {
             let OrderedWaker { next, waker, .. } = self.wakers.remove(first);
             self.first = next;
+            if self.wakers.len() <= 1 {
+                self.last = next;
+            }
             Some(waker)
         } else {
             None
@@ -125,12 +131,15 @@ struct RwLockInner<T> {
 }
 
 impl<T> RwLockInner<T> {
-    fn try_write(self: Arc<Self>) -> Result<WriteGuard<T>, Arc<Self>> {
+    fn try_write(self: Arc<Self>, slot: Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
         if self
             .state
             .compare_exchange(0, -1, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()
         {
+            if let Some(i) = slot {
+                self.write_queue.lock().remove(i);
+            }
             Ok(WriteGuard(self))
         } else {
             Err(self)
@@ -274,8 +283,9 @@ impl<T> Deref for WriteGuard<T> {
 impl<T> Drop for ReadGuard<T> {
     fn drop(&mut self) {
         let ReadGuard(inner) = self;
-        let prev_read_count = inner.state.fetch_sub(-1, Ordering::Release);
+        let prev_read_count = inner.state.fetch_sub(1, Ordering::Release);
         debug_assert!(prev_read_count > 0);
+
         if prev_read_count == 1 {
             if let Some(waker) = inner.write_queue.lock().poll() {
                 waker.wake();
@@ -312,19 +322,20 @@ impl<T: Send + Sync> Future for ReadFuture<T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let ReadFuture { inner, slot } = self.get_mut();
 
-        let mut inner = inner.take().expect("Read future used twice.");
+        let mut lck_inner = inner.take().expect("Read future used twice.");
 
         let mut spinner = SpinWait::new();
 
         loop {
-            match inner.try_read() {
+            match lck_inner.try_read() {
                 Ok(guard) => {
                     return Poll::Ready(guard);
                 }
                 Err(blocked) => {
-                    inner = blocked;
-                    *slot = Some(inner.add_read_waker(cx.waker().clone(), *slot));
-                    if inner.is_write_locked() {
+                    lck_inner = blocked;
+                    *slot = Some(lck_inner.add_read_waker(cx.waker().clone(), *slot));
+                    if lck_inner.is_write_locked() {
+                        *inner = Some(lck_inner);
                         return Poll::Pending;
                     } else {
                         spinner.spin_no_yield();
@@ -341,19 +352,20 @@ impl<T: Send + Sync> Future for WriteFuture<T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let WriteFuture { inner, slot } = self.get_mut();
 
-        let mut inner = inner.take().expect("Write future used twice.");
+        let mut lck_inner = inner.take().expect("Write future used twice.");
 
         let mut spinner = SpinWait::new();
 
         loop {
-            match inner.try_write() {
+            match lck_inner.try_write(*slot) {
                 Ok(guard) => {
                     return Poll::Ready(guard);
                 }
                 Err(blocked) => {
-                    inner = blocked;
-                    *slot = Some(inner.add_write_waker(cx.waker().clone(), *slot));
-                    if inner.is_locked() {
+                    lck_inner = blocked;
+                    *slot = Some(lck_inner.add_write_waker(cx.waker().clone(), *slot));
+                    if lck_inner.is_locked() {
+                        *inner = Some(lck_inner);
                         return Poll::Pending;
                     } else {
                         spinner.spin_no_yield();
@@ -366,7 +378,7 @@ impl<T: Send + Sync> Future for WriteFuture<T> {
 
 impl<T> Drop for ReadFuture<T> {
     fn drop(&mut self) {
-        let ReadFuture { inner, slot } = self;
+        let ReadFuture { inner, slot, .. } = self;
         if let Some(inner) = inner.take() {
             if let Some(i) = slot.take() {
                 let lock = inner.read_queue.lock();
