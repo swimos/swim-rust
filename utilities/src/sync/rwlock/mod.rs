@@ -55,7 +55,6 @@ struct WriterQueue {
 }
 
 impl WriterQueue {
-
     /// Adds a waker for another tasks to the queue. If the slot is specified, it will attempt
     /// to replace the waker in that slot, if occupied.
     fn add_waker(&mut self, waker: Waker, slot: Option<usize>) -> usize {
@@ -138,7 +137,6 @@ struct RwLockInner<T> {
 }
 
 impl<T> RwLockInner<T> {
-
     /// Try to immediately take a write lock, if possible.
     fn try_write(self: Arc<Self>, slot: Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
         if self
@@ -217,7 +215,6 @@ impl<T> RwLockInner<T> {
 pub struct RwLock<T>(Arc<RwLockInner<T>>);
 
 impl<T: Send + Sync> RwLock<T> {
-
     /// Create a new read/write lock with the specified initial value.
     pub fn new(init: T) -> Self {
         RwLock(Arc::new(RwLockInner {
