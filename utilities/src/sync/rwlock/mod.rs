@@ -28,6 +28,7 @@ use tokio::macros::support::{Pin, Poll};
 #[cfg(test)]
 mod tests;
 
+/// Node type for [`WriterQueue`].
 #[derive(Debug)]
 struct OrderedWaker {
     prev: Option<usize>,
@@ -45,6 +46,7 @@ impl OrderedWaker {
     }
 }
 
+/// Intrusive linked list of tasks waiting for a write lock.
 #[derive(Default, Debug)]
 struct WriterQueue {
     first: Option<usize>,
@@ -53,6 +55,9 @@ struct WriterQueue {
 }
 
 impl WriterQueue {
+
+    /// Adds a waker for another tasks to the queue. If the slot is specified, it will attempt
+    /// to replace the waker in that slot, if occupied.
     fn add_waker(&mut self, waker: Waker, slot: Option<usize>) -> usize {
         let WriterQueue {
             first,
@@ -79,6 +84,7 @@ impl WriterQueue {
         }
     }
 
+    /// Remove the waker in the specified slot, if it exists.
     fn remove(&mut self, index: usize) {
         let WriterQueue {
             first,
@@ -108,6 +114,7 @@ impl WriterQueue {
         }
     }
 
+    /// Take the waker at the head of the queue.
     fn poll(&mut self) -> Option<Waker> {
         if let Some(first) = self.first.take() {
             let OrderedWaker { next, waker, .. } = self.wakers.remove(first);
@@ -126,11 +133,13 @@ impl WriterQueue {
 struct RwLockInner<T> {
     state: AtomicIsize,
     contents: UnsafeCell<T>,
-    read_queue: Mutex<Slab<Waker>>,
+    read_waiters: Mutex<Slab<Waker>>,
     write_queue: Mutex<WriterQueue>,
 }
 
 impl<T> RwLockInner<T> {
+
+    /// Try to immediately take a write lock, if possible.
     fn try_write(self: Arc<Self>, slot: Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
         if self
             .state
@@ -146,6 +155,7 @@ impl<T> RwLockInner<T> {
         }
     }
 
+    /// Try to immediately take a read lock, if possible.
     fn try_read(self: Arc<Self>) -> Result<ReadGuard<T>, Arc<Self>> {
         let mut spinner = SpinWait::new();
         loop {
@@ -173,12 +183,14 @@ impl<T> RwLockInner<T> {
         }
     }
 
+    /// Register a task waker, waiting to take a write lock.
     fn add_write_waker(&self, waker: Waker, slot: Option<usize>) -> usize {
         self.write_queue.lock().add_waker(waker, slot)
     }
 
+    /// Register a task waker, waiting to take a read lock.
     fn add_read_waker(&self, waker: Waker, slot: Option<usize>) -> usize {
-        let mut read_wakers = self.read_queue.lock();
+        let mut read_wakers = self.read_waiters.lock();
         if let Some((existing, i)) =
             slot.and_then(|i| read_wakers.get_mut(i).map(|existing| (existing, i)))
         {
@@ -189,28 +201,34 @@ impl<T> RwLockInner<T> {
         }
     }
 
+    /// True if any read or write locks are held.
     fn is_locked(&self) -> bool {
         self.state.load(Ordering::Relaxed) != 0
     }
 
+    /// True if a write lock is held.
     fn is_write_locked(&self) -> bool {
         self.state.load(Ordering::Relaxed) < 0
     }
 }
 
+/// A read favouring, asynchronous read/write lock that can be shared between threads.
 #[derive(Debug)]
 pub struct RwLock<T>(Arc<RwLockInner<T>>);
 
 impl<T: Send + Sync> RwLock<T> {
+
+    /// Create a new read/write lock with the specified initial value.
     pub fn new(init: T) -> Self {
         RwLock(Arc::new(RwLockInner {
             state: AtomicIsize::new(0),
             contents: UnsafeCell::new(init),
-            read_queue: Default::default(),
+            read_waiters: Default::default(),
             write_queue: Default::default(),
         }))
     }
 
+    /// Create a future that will take a read lock.
     pub fn read(&self) -> ReadFuture<T> {
         let RwLock(inner) = self;
         ReadFuture {
@@ -219,6 +237,7 @@ impl<T: Send + Sync> RwLock<T> {
         }
     }
 
+    /// Create a future that will take a write lock.
     pub fn write(&self) -> WriteFuture<T> {
         let RwLock(inner) = self;
         WriteFuture {
@@ -244,18 +263,22 @@ impl<T> Clone for RwLock<T> {
     }
 }
 
+/// RAII handle representing a read lock.
 #[derive(Debug)]
 pub struct ReadGuard<T>(Arc<RwLockInner<T>>);
 
+/// RAII handle representing a write lock.
 #[derive(Debug)]
 pub struct WriteGuard<T>(Arc<RwLockInner<T>>);
 
+/// Future that will result in a [`ReadGuard`].
 #[derive(Debug)]
 pub struct ReadFuture<T> {
     inner: Option<Arc<RwLockInner<T>>>,
     slot: Option<usize>,
 }
 
+/// Future that will result in a [`WriteGuard`].
 #[derive(Debug)]
 pub struct WriteFuture<T> {
     inner: Option<Arc<RwLockInner<T>>>,
@@ -305,7 +328,7 @@ impl<T> Drop for WriteGuard<T> {
     fn drop(&mut self) {
         let WriteGuard(inner) = self;
         inner.state.store(0, Ordering::Release);
-        let mut waiting_readers = inner.read_queue.lock();
+        let mut waiting_readers = inner.read_waiters.lock();
         if waiting_readers.is_empty() {
             if let Some(waker) = inner.write_queue.lock().poll() {
                 waker.wake();
@@ -381,9 +404,9 @@ impl<T> Drop for ReadFuture<T> {
         let ReadFuture { inner, slot, .. } = self;
         if let Some(inner) = inner.take() {
             if let Some(i) = slot.take() {
-                let lock = inner.read_queue.lock();
+                let lock = inner.read_waiters.lock();
                 if lock.contains(i) {
-                    inner.read_queue.lock().remove(i);
+                    inner.read_waiters.lock().remove(i);
                 }
             }
         }
