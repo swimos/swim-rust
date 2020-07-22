@@ -384,7 +384,7 @@ pub fn u64_range_as_u64() -> Range<u64> {
 pub fn u64_range_as_big_int() -> Range<BigInt> {
     Range::<BigInt>::new(
         Some(Bound::inclusive(BigInt::from(u64::MIN))),
-        Some(Bound::inclusive(BigInt::from(u64::MIN))),
+        Some(Bound::inclusive(BigInt::from(u64::MAX))),
     )
 }
 
