@@ -25,10 +25,10 @@ use crate::stm::error::StmError;
 use crate::stm::stm_futures::{RunIn, TransactionFuture};
 use crate::stm::{ExecResult, Stm};
 use crate::transaction::frame_mask::{FrameMask, ReadWrite};
-use crate::var::{Contents, TVarInner, TVarRead};
+use crate::var::{Contents, ReadContentsFuture, TVarInner, TVarRead};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{ready, Future, Stream, StreamExt};
+use futures::{ready, Future, FutureExt, Stream, StreamExt};
 use futures_util::stream::FuturesUnordered;
 use slab::Slab;
 use std::error::Error;
@@ -325,7 +325,7 @@ impl LogEntry {
 #[derive(Debug)]
 pub struct Transaction {
     // Mapping from variables to entries in the log.
-    log_assoc: HashMap<PtrKey<Arc<TVarInner>>, usize>,
+    log_assoc: HashMap<PtrKey<TVarInner>, usize>,
     // Mapping from transaction-local indices to entries in the log.
     local_assoc: HashMap<u64, usize>,
     // State of each variable that is referred to in the transaction.
@@ -340,9 +340,9 @@ pub struct Transaction {
 
 //Get the log entry associated with a variable, if it exists.
 fn get_entry<'a>(
-    log_assoc: &HashMap<PtrKey<Arc<TVarInner>>, usize>,
+    log_assoc: &HashMap<PtrKey<TVarInner>, usize>,
     log: &'a mut Slab<LogEntry>,
-    k: &PtrKey<Arc<TVarInner>>,
+    k: &PtrKey<TVarInner>,
 ) -> Option<(usize, &'a mut LogEntry)> {
     if let Some(i) = log_assoc.get(k) {
         log.get_mut(*i).map(|entry| (*i, entry))
@@ -396,7 +396,7 @@ impl Transaction {
         self.log.len()
     }
 
-    fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<Arc<TVarInner>>, value: Arc<T>) {
+    fn entry_for_set<T: Any + Send + Sync>(&mut self, k: PtrKey<TVarInner>, value: Arc<T>) {
         let mut stack: Vec<Contents> = Vec::with_capacity(self.stack_size);
         stack.push(value);
         let entry = LogEntry {
@@ -409,7 +409,7 @@ impl Transaction {
     }
 
     /// Execute a "set" on a variable within the context of the transaction.
-    pub(crate) fn apply_set<T: Any + Send + Sync>(&mut self, var: &Arc<TVarInner>, value: Arc<T>) {
+    pub(crate) fn apply_set<T: Any + Send + Sync>(&mut self, var: &TVarInner, value: Arc<T>) {
         let Transaction {
             log_assoc,
             log,
@@ -744,30 +744,27 @@ impl<'a> Future for AwaitChanged<'a> {
     }
 }
 
-async fn await_read(inner: Arc<TVarInner>) -> (Arc<TVarInner>, Contents) {
-    let contents = inner.read().await;
-    (inner, contents)
-}
+/// State for [`VarReadFuture`] indicating that the future is waiting to read from a the variable's
+/// contents.
+pub struct AwaitRead(Option<TVarInner>, ReadContentsFuture);
 
-pub struct AwaitRead(Pin<Box<dyn Future<Output = (Arc<TVarInner>, Contents)> + Send + 'static>>);
-
-/// Transaction future for performing a read on a transactionak variable.
-pub enum ReadFuture<T> {
+/// Transaction future for performing a read on a transactional variable.
+pub enum VarReadFuture<T> {
     Start(TVarRead<T>),
     Wait(AwaitRead),
 }
 
-impl<T> ReadFuture<T> {
+impl<T> VarReadFuture<T> {
     pub(crate) fn new(read: TVarRead<T>) -> Self {
-        ReadFuture::Start(read)
+        VarReadFuture::Start(read)
     }
 }
 
-impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
+impl<T: Any + Send + Sync> TransactionFuture for VarReadFuture<T> {
     type Output = Arc<T>;
 
     fn poll_in(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         transaction: Pin<&mut Transaction>,
         cx: &mut Context<'_>,
     ) -> Poll<ExecResult<Self::Output>> {
@@ -779,10 +776,9 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
             ..
         } = transaction.get_mut();
 
-        let this = self.get_mut();
         loop {
-            let next = match this {
-                ReadFuture::Start(read) => {
+            match self.as_mut().get_mut() {
+                VarReadFuture::Start(read) => {
                     let k = PtrKey(read.inner().clone());
                     match get_entry(log_assoc, log, &k) {
                         Some((i, entry)) => {
@@ -793,12 +789,14 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
                         }
                         _ => {
                             let PtrKey(inner) = k;
-                            await_read(inner)
+                            let read_future = inner.read();
+                            self.set(VarReadFuture::Wait(AwaitRead(Some(inner), read_future)));
                         }
                     }
                 }
-                ReadFuture::Wait(AwaitRead(wait)) => {
-                    let (inner, value) = ready!(wait.as_mut().poll(cx));
+                VarReadFuture::Wait(AwaitRead(inner, wait)) => {
+                    let inner = inner.take().expect("Read future used twice.");
+                    let value = ready!(wait.poll_unpin(cx));
                     let result = value.clone().downcast().unwrap();
                     let k = PtrKey(inner);
                     let entry = LogEntry {
@@ -810,8 +808,7 @@ impl<T: Any + Send + Sync> TransactionFuture for ReadFuture<T> {
                     masks.set_read(i);
                     return Poll::Ready(ExecResult::Done(result));
                 }
-            };
-            *this = ReadFuture::Wait(AwaitRead(Box::pin(next)));
+            }
         }
     }
 }

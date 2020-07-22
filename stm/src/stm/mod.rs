@@ -18,7 +18,7 @@ use crate::stm::stm_futures::{
     LocalReadFuture, LocalWriteFuture, MapStmFuture, SequenceTransFuture, TransactionFuture,
     VecStmFuture, WriteFuture,
 };
-use crate::transaction::ReadFuture;
+use crate::transaction::VarReadFuture;
 use crate::var::{TVarRead, TVarWrite};
 use futures::future::{ready, Ready};
 use pin_project::pin_project;
@@ -369,10 +369,10 @@ pub const UNIT: Constant<()> = Constant(());
 
 impl<T: Any + Send + Sync> DynamicStm for TVarRead<T> {
     type Result = Arc<T>;
-    type TransFuture = ReadFuture<T>;
+    type TransFuture = VarReadFuture<T>;
 
     fn runner(&self) -> Self::TransFuture {
-        ReadFuture::new(self.clone())
+        VarReadFuture::new(self.clone())
     }
 }
 

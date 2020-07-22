@@ -15,17 +15,20 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
-use futures::future::FutureExt;
-
+use crate::ptr::Addressed;
 use crate::var::observer::{DynObserver, RawWrapper, StaticObserver};
+use futures::future::FutureExt;
+use futures::ready;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
+use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::Waker;
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::task::{Context, Poll, Waker};
 use utilities::ptr::data_ptr_eq;
+use utilities::sync::rwlock::{ReadFuture, ReadGuard, RwLock, WriteGuard};
 
 pub mod observer;
 
@@ -54,8 +57,17 @@ impl TVarGuarded {
 }
 
 // Type erased contents of a transactional cell.
+#[derive(Clone)]
 pub(in crate) struct TVarInner {
     guarded: RwLock<TVarGuarded>,
+}
+
+impl Addressed for TVarInner {
+    type Referent = u8;
+
+    fn addr(&self) -> *const Self::Referent {
+        self.guarded.addr()
+    }
 }
 
 impl TVarInner {
@@ -108,9 +120,10 @@ impl TVarInner {
     }
 
     /// Read the contents of the variable.
-    pub async fn read(&self) -> Contents {
-        let lock = self.guarded.read().await;
-        lock.content.clone()
+    pub fn read(&self) -> ReadContentsFuture {
+        ReadContentsFuture {
+            inner: self.guarded.read(),
+        }
     }
 
     /// Determine if the contents of the variable have changed as compared to a previous value.
@@ -140,10 +153,7 @@ impl TVarInner {
 
     /// Determine if the contents of the variable have changed as compared to a previous value and,
     /// if not, take the read lock on the variable.
-    pub(crate) async fn validate_read(
-        &self,
-        expected: Contents,
-    ) -> Option<RwLockReadGuard<'_, TVarGuarded>> {
+    pub(crate) async fn validate_read(&self, expected: Contents) -> Option<ReadGuard<TVarGuarded>> {
         let guard = self.guarded.read().await;
         if data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) {
             Some(guard)
@@ -158,7 +168,7 @@ impl TVarInner {
         &self,
         expected: Option<Contents>,
         value: Contents,
-    ) -> Option<ApplyWrite<'_>> {
+    ) -> Option<ApplyWrite> {
         let guard = self.guarded.write().await;
         match expected {
             Some(expected) if !data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) => {
@@ -170,7 +180,7 @@ impl TVarInner {
 }
 
 /// A transactional variable that can be read and written by [`crate::stm::Stm`] transactions.
-pub struct TVar<T>(Arc<TVarInner>, PhantomData<Arc<T>>);
+pub struct TVar<T>(TVarInner, PhantomData<Arc<T>>);
 
 impl<T> Clone for TVar<T> {
     fn clone(&self) -> Self {
@@ -192,7 +202,7 @@ impl<T: Default + Send + Sync + 'static> Default for TVar<T> {
 }
 
 /// Representation of a transactional read from a variable.
-pub struct TVarRead<T>(Arc<TVarInner>, PhantomData<fn() -> Arc<T>>);
+pub struct TVarRead<T>(TVarInner, PhantomData<fn() -> Arc<T>>);
 
 impl<T> Clone for TVarRead<T> {
     fn clone(&self) -> Self {
@@ -201,7 +211,7 @@ impl<T> Clone for TVarRead<T> {
 }
 
 impl<T> TVarRead<T> {
-    pub(crate) fn inner(&self) -> &Arc<TVarInner> {
+    pub(crate) fn inner(&self) -> &TVarInner {
         &self.0
     }
 }
@@ -212,9 +222,23 @@ impl<T> Debug for TVarRead<T> {
     }
 }
 
+/// Future for reading the current value of the [`TVar`].
+pub(crate) struct ReadContentsFuture {
+    inner: ReadFuture<TVarGuarded>,
+}
+
+impl Future for ReadContentsFuture {
+    type Output = Contents;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let guarded = ready!(self.inner.poll_unpin(cx));
+        Poll::Ready(guarded.content.clone())
+    }
+}
+
 /// Representation of a transactional write to a variable.
 pub struct TVarWrite<T> {
-    pub(crate) inner: Arc<TVarInner>,
+    pub(crate) inner: TVarInner,
     pub(crate) value: Arc<T>,
     _op_t_: PhantomData<fn(Arc<T>) -> ()>,
 }
@@ -232,21 +256,18 @@ impl<T: Debug> Debug for TVarWrite<T> {
 
 impl<T: Any + Send + Sync> TVar<T> {
     pub fn new(initial: T) -> Self {
-        TVar(Arc::new(TVarInner::new(initial)), PhantomData)
+        TVar(TVarInner::new(initial), PhantomData)
     }
 
     pub fn from_arc(initial: Arc<T>) -> Self {
-        TVar(Arc::new(TVarInner::from_arc(initial)), PhantomData)
+        TVar(TVarInner::from_arc(initial), PhantomData)
     }
 
     pub fn new_with_observer<Obs>(initial: T, observer: Obs) -> Self
     where
         Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
     {
-        TVar(
-            Arc::new(TVarInner::new_with_observer(initial, observer)),
-            PhantomData,
-        )
+        TVar(TVarInner::new_with_observer(initial, observer), PhantomData)
     }
 
     pub fn from_arc_with_observer<Obs>(initial: Arc<T>, observer: Obs) -> Self
@@ -254,7 +275,7 @@ impl<T: Any + Send + Sync> TVar<T> {
         Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
     {
         TVar(
-            Arc::new(TVarInner::from_arc_with_observer(initial, observer)),
+            TVarInner::from_arc_with_observer(initial, observer),
             PhantomData,
         )
     }
@@ -289,7 +310,7 @@ impl<T> TVar<T> {
 
     /// Determine whether two variables are the same.
     pub fn same_var(this: &Self, other: &Self) -> bool {
-        Arc::ptr_eq(&this.0, &other.0)
+        RwLock::same_lock(&this.0.guarded, &other.0.guarded)
     }
 }
 
@@ -335,12 +356,12 @@ impl<T: Any + Clone> TVar<T> {
 
 /// Holds the write lock on the variable and a value to be written allowing the write to be
 /// applied later.
-pub(crate) struct ApplyWrite<'a> {
-    guard: RwLockWriteGuard<'a, TVarGuarded>,
+pub(crate) struct ApplyWrite {
+    guard: WriteGuard<TVarGuarded>,
     value: Contents,
 }
 
-impl<'a> ApplyWrite<'a> {
+impl ApplyWrite {
     /// Apply the pending write and release the lock.
     pub async fn apply(self) {
         let ApplyWrite { mut guard, value } = self;
