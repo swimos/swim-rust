@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures_util::task::Context;
 use parking_lot::Mutex;
 use parking_lot_core::SpinWait;
 use slab::Slab;
@@ -20,10 +19,10 @@ use std::cell::UnsafeCell;
 use std::fmt::Debug;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
-use std::task::Waker;
-use tokio::macros::support::{Pin, Poll};
+use std::task::{Context, Poll, Waker};
 
 #[cfg(test)]
 mod tests;
