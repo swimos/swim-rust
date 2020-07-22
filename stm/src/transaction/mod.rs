@@ -795,8 +795,10 @@ impl<T: Any + Send + Sync> TransactionFuture for VarReadFuture<T> {
                     }
                 }
                 VarReadFuture::Wait(AwaitRead(inner, wait)) => {
-                    let inner = inner.take().expect("Read future used twice.");
-                    let value = ready!(wait.poll_unpin(cx));
+                    let (inner, value) = ready!(wait.poll_unpin(cx).map(|v| {
+                        let inner = inner.take().expect("Read future used twice.");
+                        (inner, v)
+                    }));
                     let result = value.clone().downcast().unwrap();
                     let k = PtrKey(inner);
                     let entry = LogEntry {
