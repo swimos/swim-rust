@@ -94,7 +94,7 @@ where
 {
     pub async fn read_only_view<ViewType: ValidatedForm>(
         &mut self,
-    ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ViewError>
+    ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ValueViewError>
     {
         let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
 
@@ -103,22 +103,12 @@ where
             let topic = TryTransformTopic::new(topic, ApplyForm::<ViewType>::new());
             Ok(topic)
         } else {
-            Err(ViewError::ValueError(ValueViewError {
+            Err(ValueViewError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
-            }))
+            })
         }
     }
-}
-
-/// Error types that are returned if a read-only / write-only
-/// views are created with incompatible types.
-#[derive(Debug, Clone)]
-pub enum ViewError {
-    //Error for views for value downlinks.
-    ValueError(ValueViewError),
-    //Error for views for map downlinks.
-    MapError(MapViewError),
 }
 
 /// Error type returned when creating a view
@@ -151,15 +141,6 @@ pub enum MapViewError {
     },
 }
 
-impl Display for ViewError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ViewError::ValueError(value_error) => write!(f, "{}", value_error),
-            ViewError::MapError(map_error) => write!(f, "{}", map_error),
-        }
-    }
-}
-
 impl Display for ValueViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "A read-only value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.requested, self.existing)
@@ -181,7 +162,6 @@ impl Display for MapViewError {
     }
 }
 
-impl Error for ViewError {}
 impl Error for ValueViewError {}
 impl Error for MapViewError {}
 
@@ -304,7 +284,7 @@ where
         &mut self,
     ) -> Result<
         TryTransformTopic<ViewWithEvent, Inner::DlTopic, ApplyFormsMap<ViewKeyType, ViewValueType>>,
-        ViewError,
+        MapViewError,
     > {
         let key_schema_cmp = ViewKeyType::schema().partial_cmp(&K::schema());
         let value_schema_cmp = ViewValueType::schema().partial_cmp(&V::schema());
@@ -318,16 +298,16 @@ where
                 );
                 Ok(topic)
             } else {
-                Err(ViewError::MapError(MapViewError::SchemaValueError {
+                Err(MapViewError::SchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
-                }))
+                })
             }
         } else {
-            Err(ViewError::MapError(MapViewError::SchemaKeyError {
+            Err(MapViewError::SchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
-            }))
+            })
         }
     }
 }
