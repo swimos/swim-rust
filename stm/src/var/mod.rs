@@ -128,7 +128,7 @@ impl TVarInner {
 
     /// Determine if the contents of the variable have changed as compared to a previous value.
     pub fn has_changed(&self, ptr: &Contents) -> bool {
-        if let Some(guard) = self.guarded.read().now_or_never() {
+        if let Some(guard) = self.guarded.try_read() {
             !data_ptr_eq(guard.deref().content.as_ref(), ptr.as_ref())
         } else {
             true
@@ -138,7 +138,7 @@ impl TVarInner {
     /// Determine if the contents of the variable have changed and register a waker if they
     /// have not.
     pub fn add_waker(&self, ptr: &Contents, waker: &Waker) -> bool {
-        if let Some(guard) = self.guarded.read().now_or_never() {
+        if let Some(guard) = self.guarded.try_read() {
             if data_ptr_eq(guard.deref().content.as_ref(), ptr.as_ref()) {
                 let mut lock = guard.wakers.lock().unwrap();
                 lock.push(waker.clone());
