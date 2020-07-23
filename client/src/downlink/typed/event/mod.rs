@@ -19,7 +19,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::sync::Arc;
 use swim_form::Form;
 use swim_form::FormDeserializeErr;
 
@@ -54,10 +53,8 @@ impl<K, V> TypedMapView<K, V> {
 impl<K: Form, V: Form> TypedMapView<K, V> {
     /// Get the value associated with a key.
     pub fn get(&self, key: &K) -> Option<V> {
-        let key_as_value = key.as_value();
-
         self.inner
-            .get(&key_as_value)
+            .get(&key.as_value())
             .and_then(|value| V::try_from_value(value.as_ref()).ok())
     }
 
@@ -127,18 +124,10 @@ impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
 
     fn try_from(view: ViewWithEvent) -> Result<Self, Self::Error> {
         let ViewWithEvent { view, event } = view;
-        let converted = view.iter().try_fold(ValMap::new(), |mut map, (k, v)| {
-            let key = K::try_from_value(k)?.as_value();
-            let value = V::try_from_value(v)?.as_value();
-            map.insert(key, Arc::new(value));
 
-            Ok(map)
-        })?;
-
-        let typed_view = TypedMapView::new(converted);
         let typed_event = type_event(event);
         typed_event.map(|ev| TypedViewWithEvent {
-            view: typed_view,
+            view: TypedMapView::new(view),
             event: ev,
         })
     }
