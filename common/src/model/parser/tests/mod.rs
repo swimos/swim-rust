@@ -20,6 +20,7 @@ use num_bigint::RandBigInt;
 use num_traits::Signed;
 use std::ops::Neg;
 
+mod configuration;
 mod documents;
 
 fn read_single_token(repr: &str) -> Result<ReconToken<&str>, Option<BadToken>> {

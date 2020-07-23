@@ -1,0 +1,25 @@
+[ValueItem(
+Record(
+[Attr { name: "config", value: Extant }],
+
+    [ValueItem(Record([Attr { name: "client", value: Extant }],
+    [Slot(Text("buffer_size"), Int32Value(2)),
+    Slot(Text("router"), Record(
+        [Attr { name: "params", value: Extant }],
+        [Slot(Text("retry_strategy"), Record(
+            [Attr { name: "exponential", value: Record([],
+            [Slot(Text("max_interval"), Int32Value(16)),
+            Slot(Text("max_backoff"), Int32Value(300)),
+            Slot(Text("retry_no"), Int32Value(0))]) }], [])),
+        Slot(Text("idle_timeout"), Int32Value(60)),
+        Slot(Text("conn_reaper_frequency"), Int32Value(60)),
+        Slot(Text("buffer_size"), Int32Value(100))]))])),
+
+
+    ValueItem(Record([Attr { name: "downlinks", value: Extant }],
+    [Slot(Text("back_pressure"), Text("propagate")),
+    Slot(Text("queue_size"), Int32Value(5)),
+    Slot(Text("idle_timeout"), Int32Value(60000)),
+    Slot(Text("buffer_size"), Int32Value(5)),
+    Slot(Text("on_invalid"), Text("terminate")),
+    Slot(Text("yield_after"), Int32Value(256))]))]))]
