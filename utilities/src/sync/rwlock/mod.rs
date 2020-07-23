@@ -136,8 +136,9 @@ struct RwLockInner<T> {
 }
 
 impl<T> RwLockInner<T> {
-    /// Try to immediately take a write lock, if possible.
-    fn try_write(self: Arc<Self>, slot: Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
+    //If this returns true, a write lock has been taken and the caller should immediately create
+    //a write guard.
+    fn try_write_inner(self: &Arc<Self>, slot: Option<usize>) -> bool {
         if self
             .state
             .compare_exchange(0, -1, Ordering::Acquire, Ordering::Relaxed)
@@ -146,20 +147,21 @@ impl<T> RwLockInner<T> {
             if let Some(i) = slot {
                 self.write_queue.lock().remove(i);
             }
-            Ok(WriteGuard(self))
+            true
         } else {
-            Err(self)
+            false
         }
     }
 
-    /// Try to immediately take a read lock, if possible.
-    fn try_read(self: Arc<Self>) -> Result<ReadGuard<T>, Arc<Self>> {
+    //If this returns true, a read lock has been taken and the caller should immediately create
+    //a read guard.
+    fn try_read_inner(self: &Arc<Self>) -> bool {
         let mut spinner = SpinWait::new();
         loop {
             let current = self.state.load(Ordering::Relaxed);
             if current < 0 {
                 debug_assert!(current == -1);
-                return Err(self);
+                return false;
             } else {
                 let new_read_count = current.checked_add(1).expect("Reader overflow.");
                 if self
@@ -172,11 +174,47 @@ impl<T> RwLockInner<T> {
                     )
                     .is_ok()
                 {
-                    return Ok(ReadGuard(self));
+                    return true;
                 } else {
                     spinner.spin_no_yield();
                 }
             }
+        }
+    }
+
+    /// Try to immediately take a read lock, if possible.
+    fn try_read(self: Arc<Self>) -> Result<ReadGuard<T>, Arc<Self>> {
+        if self.try_read_inner() {
+            Ok(ReadGuard(self))
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Try to immediately take a read lock, if possible, by reference.
+    fn try_read_ref(self: &Arc<Self>) -> Option<ReadGuard<T>> {
+        if self.try_read_inner() {
+            Some(ReadGuard(self.clone()))
+        } else {
+            None
+        }
+    }
+
+    /// Try to immediately take a write lock, if possible.
+    fn try_write(self: Arc<Self>, slot: Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
+        if self.try_write_inner(slot) {
+            Ok(WriteGuard(self))
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Try to immediately take a write lock, if possible, by reference.
+    fn try_write_ref(self: &Arc<Self>) -> Option<WriteGuard<T>> {
+        if self.try_write_inner(None) {
+            Some(WriteGuard(self.clone()))
+        } else {
+            None
         }
     }
 
@@ -240,6 +278,18 @@ impl<T: Send + Sync> RwLock<T> {
             inner: Some(inner.clone()),
             slot: None,
         }
+    }
+
+    /// Attempt to take a read lock immediately, if possible.
+    pub fn try_read(&self) -> Option<ReadGuard<T>> {
+        let RwLock(inner) = self;
+        inner.try_read_ref()
+    }
+
+    /// Attempt to take a write lock immediately, if possible.
+    pub fn try_write(&self) -> Option<WriteGuard<T>> {
+        let RwLock(inner) = self;
+        inner.try_write_ref()
     }
 }
 
