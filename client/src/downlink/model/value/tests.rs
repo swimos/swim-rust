@@ -626,13 +626,12 @@ fn invalid_message_linked() {
     let mut state = DownlinkState::Linked;
     let mut model = ValueModel::new(Value::from(1));
 
-    let schema = StandardSchema::OfKind(ValueKind::Extant).negate();
-
+    let schema = StandardSchema::OfKind(ValueKind::Int32);
     let machine = ValueStateMachine::new(Value::from(0), schema.clone());
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(Value::Extant)),
+        Operation::Message(Message::Action(Value::Text(String::from("foo")))),
     );
 
     assert_that!(&maybe_response, err());
@@ -642,8 +641,32 @@ fn invalid_message_linked() {
     assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
     assert_that!(
         error,
-        eq(DownlinkError::SchemaViolation(Value::Extant, schema))
+        eq(DownlinkError::SchemaViolation(
+            Value::Text(String::from("foo")),
+            schema
+        ))
     );
+}
+
+#[test]
+fn extant_message_linked() {
+    let mut state = DownlinkState::Linked;
+    let mut model = ValueModel::new(Value::from(1));
+
+    let schema = StandardSchema::OfKind(ValueKind::Int32);
+    let machine = ValueStateMachine::new(Value::from(0), schema.clone());
+    let maybe_response = machine.handle_operation(
+        &mut state,
+        &mut model,
+        Operation::Message(Message::Action(Value::Extant)),
+    );
+
+    assert_that!(&maybe_response, ok());
+    let response = maybe_response.unwrap();
+
+    assert_that!(state, eq(DownlinkState::Linked));
+    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
+    assert_that!(response, eq(Response::none()));
 }
 
 #[test]

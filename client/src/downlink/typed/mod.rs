@@ -94,7 +94,7 @@ where
 {
     pub async fn read_only_view<ViewType: ValidatedForm>(
         &mut self,
-    ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ViewError>
+    ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ValueViewError>
     {
         let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
 
@@ -103,7 +103,7 @@ where
             let topic = TryTransformTopic::new(topic, ApplyForm::<ViewType>::new());
             Ok(topic)
         } else {
-            Err(ViewError::ValueSchemaError {
+            Err(ValueViewError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
                 link_type: LinkType::ReadOnly,
@@ -145,36 +145,65 @@ impl Display for LinkType {
     }
 }
 
+/// Error type returned when creating a view
+/// for a value downlink with incompatible type.
 #[derive(Debug, Clone)]
-pub enum ViewError {
-    ValueSchemaError {
+pub struct ValueViewError {
+    // A validation schema for the type of the original value downlink.
+    existing: StandardSchema,
+    // A validation schema for the type of the requested view.
+    requested: StandardSchema,
+    // The type of the link.
+    link_type: LinkType,
+}
+
+/// Error types returned when creating a view
+/// for a map downlink with incompatible type.
+#[derive(Debug, Clone)]
+pub enum MapViewError {
+    // Error returned when the key schemas are incompatible
+    SchemaKeyError {
+        // A validation schema for the key type of the original map downlink.
         existing: StandardSchema,
+        // A validation schema for the key type of the requested view.
         requested: StandardSchema,
         link_type: LinkType,
     },
-    MapSchemaKeyError {
+    // Error returned when the value schemas are incompatible
+    SchemaValueError {
+        // A validation schema for the value type of the original map downlink.
         existing: StandardSchema,
-        requested: StandardSchema,
-        link_type: LinkType,
-    },
-    MapSchemaValueError {
-        existing: StandardSchema,
+        // A validation schema for the value type of the requested view.
         requested: StandardSchema,
         link_type: LinkType,
     },
 }
 
-impl Display for ViewError {
+impl Display for ValueViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.link_type, self.requested, self.existing)
+    }
+}
+
+impl Display for MapViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ViewError::ValueSchemaError {existing, requested, link_type} => write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", link_type, requested, existing),
-            ViewError::MapSchemaKeyError {existing, requested,link_type} => write!(f, "A {} map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", link_type,requested, existing),
-            ViewError::MapSchemaValueError {existing, requested,link_type} => write!(f, "A {} map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", link_type,requested, existing),
+            MapViewError::SchemaKeyError {
+                link_type
+                existing,
+                requested,
+            } => write!(f, "A {} map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", requested, existing),
+            MapViewError::SchemaValueError {
+                link_type,
+                existing,
+                requested,
+            } => write!(f, "A {} map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", requested, existing),
         }
     }
 }
 
-impl Error for ViewError {}
+impl Error for ValueViewError {}
+impl Error for MapViewError {}
 
 impl<Inner, T> ValueDownlink<Inner, T>
 where
@@ -295,7 +324,7 @@ where
         &mut self,
     ) -> Result<
         TryTransformTopic<ViewWithEvent, Inner::DlTopic, ApplyFormsMap<ViewKeyType, ViewValueType>>,
-        ViewError,
+        MapViewError,
     > {
         let key_schema_cmp = ViewKeyType::schema().partial_cmp(&K::schema());
         let value_schema_cmp = ViewValueType::schema().partial_cmp(&V::schema());
@@ -309,14 +338,14 @@ where
                 );
                 Ok(topic)
             } else {
-                Err(ViewError::MapSchemaValueError {
+                Err(MapViewError::SchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
                     link_type: LinkType::ReadOnly,
                 })
             }
         } else {
-            Err(ViewError::MapSchemaKeyError {
+            Err(MapViewError::SchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
                 link_type: LinkType::ReadOnly,
