@@ -16,8 +16,9 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
 use super::*;
+use std::collections::hash_map::DefaultHasher;
+
 mod coercion;
-use num_bigint::RandBigInt;
 
 #[test]
 fn extant_to_string() {
@@ -194,135 +195,723 @@ fn nested_records_to_string() {
 }
 
 #[test]
-fn unsigned_sort() {
-    assert!(Value::UInt64Value(100) < Value::UInt32Value(10000));
+fn kind_cmp() {
+    assert_eq!(ValueKind::Int32, ValueKind::Int32);
+    assert!(ValueKind::Int32 < ValueKind::Int64);
+    assert!(ValueKind::Int64 > ValueKind::Int32);
+    assert!(ValueKind::Int32 < ValueKind::Float64);
+    assert!(ValueKind::Float64 > ValueKind::Int32);
+    assert!(ValueKind::Int32 < ValueKind::BigInt);
+    assert!(ValueKind::BigInt > ValueKind::Int32);
+
+    assert_eq!(ValueKind::Int64, ValueKind::Int64);
+    assert!(ValueKind::Int64 > ValueKind::UInt32);
+    assert!(ValueKind::UInt32 < ValueKind::Int64);
+    assert!(ValueKind::Int64 < ValueKind::BigInt);
+    assert!(ValueKind::BigInt > ValueKind::Int64);
+
+    assert_eq!(ValueKind::UInt32, ValueKind::UInt32);
+    assert!(ValueKind::UInt32 < ValueKind::UInt64);
+    assert!(ValueKind::UInt64 > ValueKind::UInt32);
+    assert!(ValueKind::UInt32 < ValueKind::Float64);
+    assert!(ValueKind::Float64 > ValueKind::UInt32);
+    assert!(ValueKind::UInt32 < ValueKind::BigInt);
+    assert!(ValueKind::BigInt > ValueKind::UInt32);
+    assert!(ValueKind::UInt32 < ValueKind::BigUint);
+    assert!(ValueKind::BigUint > ValueKind::UInt32);
+
+    assert_eq!(ValueKind::UInt64, ValueKind::UInt64);
+    assert!(ValueKind::UInt64 < ValueKind::BigInt);
+    assert!(ValueKind::BigInt > ValueKind::UInt64);
+    assert!(ValueKind::UInt64 < ValueKind::BigUint);
+    assert!(ValueKind::BigUint > ValueKind::UInt64);
+
+    assert_eq!(ValueKind::BigInt, ValueKind::BigInt);
+    assert!(ValueKind::BigInt > ValueKind::BigUint);
+    assert!(ValueKind::BigUint < ValueKind::BigInt);
+
+    assert_eq!(ValueKind::BigUint, ValueKind::BigUint);
+}
+
+#[test]
+fn int32_cmp() {
+    assert!(Value::Int32Value(50) > Value::Int32Value(49));
+    assert!(Value::Int32Value(10) < Value::Int32Value(15));
     assert_eq!(
-        Value::UInt64Value(1000).cmp(&Value::UInt32Value(1000)),
+        Value::Int32Value(13).cmp(&Value::Int32Value(13)),
         Ordering::Equal
     );
-    assert!(Value::UInt64Value(u64::max_value()) > Value::UInt32Value(u32::max_value()));
+
+    assert!(Value::Int32Value(50) > Value::Int64Value(49));
+    assert!(Value::Int32Value(10) < Value::Int64Value(15));
     assert_eq!(
-        Value::Float64Value(1.0).cmp(&Value::UInt32Value(100)),
-        Ordering::Less
-    );
-    assert_eq!(
-        Value::Float64Value(100.0).cmp(&Value::UInt32Value(1)),
-        Ordering::Greater
-    );
-}
-
-#[test]
-fn bigint_i32_cmp() {
-    let mut rng = rand::thread_rng();
-
-    let vi32 = Value::Int32Value(100);
-    let bi_value = Value::BigInt(rng.gen_bigint(1));
-    assert!(vi32 > bi_value);
-
-    let bi_value = Value::BigInt(rng.gen_bigint_range(&1000.into(), &10000.into()));
-    assert!(vi32 < bi_value);
-
-    let bi_value = Value::BigInt(100.into());
-    assert_eq!(vi32.cmp(&bi_value), Ordering::Equal);
-}
-
-#[test]
-fn bigint_i64_cmp() {
-    let mut rng = rand::thread_rng();
-
-    let i64 = Value::Int64Value(100);
-    let bi_value = Value::BigInt(rng.gen_bigint(1));
-    assert!(i64 > bi_value);
-
-    let bi_value = Value::BigInt(rng.gen_bigint_range(&1000.into(), &10000.into()));
-    assert!(i64 < bi_value);
-
-    let bi_value = Value::BigInt(100.into());
-    assert_eq!(i64.cmp(&bi_value), Ordering::Equal);
-}
-
-#[test]
-fn bigint_f64_cmp() {
-    let mut rng = rand::thread_rng();
-
-    let bi_value = Value::BigInt(rng.gen_bigint(1));
-    assert!(Value::Float64Value(100.0) > bi_value);
-
-    let bi_value = Value::BigInt(rng.gen_bigint(1));
-    assert!(Value::Float64Value(-100.0) < bi_value);
-
-    let bi_value = Value::BigInt(rng.gen_bigint_range(&BigInt::from(0), &BigInt::from(1000)));
-    assert!(Value::Float64Value(-100.0) < bi_value);
-
-    assert_eq!(
-        Value::Float64Value(100.0).cmp(&Value::BigInt(100.into())),
+        Value::Int32Value(13).cmp(&Value::Int64Value(13)),
         Ordering::Equal
     );
-}
 
-#[test]
-fn biguint_i32_cmp() {
-    let mut rng = rand::thread_rng();
-
-    let vi32 = Value::Int32Value(100);
-    let bi_value = Value::BigUint(rng.gen_biguint(1));
-    assert!(vi32 > bi_value);
-
-    let bi_value = Value::BigUint(rng.gen_biguint_range(&1000u32.into(), &10000u32.into()));
-    assert!(vi32 < bi_value);
-
-    let bi_value = Value::BigUint(100u32.into());
-    assert_eq!(vi32.cmp(&bi_value), Ordering::Equal);
-}
-
-#[test]
-fn biguint_i64_cmp() {
-    let mut rng = rand::thread_rng();
-
-    let i64 = Value::Int64Value(100);
-    let bi_value = Value::BigUint(rng.gen_biguint(1));
-    assert!(i64 > bi_value);
-
-    let bi_value = Value::BigUint(rng.gen_biguint_range(&1000u32.into(), &10000u32.into()));
-    assert!(i64 < bi_value);
-
-    let bi_value = Value::BigUint(100u32.into());
-    assert_eq!(i64.cmp(&bi_value), Ordering::Equal);
-}
-
-#[test]
-fn biguint_f64_cmp() {
-    let mut rng = rand::thread_rng();
-
-    let bi_value = Value::BigUint(rng.gen_biguint(1));
-    assert!(Value::Float64Value(100.0) > bi_value);
-
-    let bi_value = Value::BigUint(rng.gen_biguint(1));
-    assert!(Value::Float64Value(-100.0) < bi_value);
-
-    let bi_value = Value::BigUint(rng.gen_biguint(1000));
-    assert!(Value::Float64Value(-100.0) < bi_value);
-
+    assert!(Value::Int32Value(50) > Value::UInt32Value(49));
+    assert!(Value::Int32Value(-5) < Value::UInt32Value(15));
     assert_eq!(
-        Value::Float64Value(100.0).cmp(&Value::BigUint(100u32.into())),
+        Value::Int32Value(13).cmp(&Value::UInt32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int32Value(50) > Value::UInt64Value(49));
+    assert!(Value::Int32Value(-100) < Value::UInt64Value(0));
+    assert_eq!(
+        Value::Int32Value(13).cmp(&Value::UInt64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int32Value(50) > Value::Float64Value(49.50));
+    assert!(Value::Int32Value(-100) < Value::Float64Value(-10.12));
+    assert_eq!(
+        Value::Int32Value(13).cmp(&Value::Float64Value(13.0)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int32Value(50) > Value::BigInt(BigInt::from(49)));
+    assert!(Value::Int32Value(-100) < Value::BigInt(BigInt::from(-10)));
+    assert_eq!(
+        Value::Int32Value(13).cmp(&Value::BigInt(BigInt::from(13))),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int32Value(50) > Value::BigUint(BigUint::from(49u32)));
+    assert!(Value::Int32Value(-100) < Value::BigUint(BigUint::from(10u32)));
+    assert_eq!(
+        Value::Int32Value(13).cmp(&Value::BigUint(BigUint::from(13u32))),
         Ordering::Equal
     );
 }
 
 #[test]
-fn bigint_cmp() {
-    assert!(Value::BigInt(BigInt::from(1000)) < Value::BigInt(BigInt::from(10000)));
-    assert!(Value::BigInt(BigInt::from(1)) < Value::Int32Value(100));
-    assert!(Value::BigInt(BigInt::from(1)) < Value::Int64Value(100));
-    assert!(Value::BigInt(BigInt::from(1)) < Value::Float64Value(100.0));
-    assert!(Value::BigInt(BigInt::from(1000)) < Value::BigUint(BigUint::from(10000u32)));
+fn int64_cmp() {
+    assert!(Value::Int64Value(50) > Value::Int32Value(49));
+    assert!(Value::Int64Value(10) < Value::Int32Value(15));
+    assert_eq!(
+        Value::Int64Value(13).cmp(&Value::Int32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int64Value(50) > Value::Int64Value(49));
+    assert!(Value::Int64Value(10) < Value::Int64Value(15));
+    assert_eq!(
+        Value::Int64Value(13).cmp(&Value::Int64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int64Value(50) > Value::UInt32Value(49));
+    assert!(Value::Int64Value(-5) < Value::UInt32Value(15));
+    assert_eq!(
+        Value::Int64Value(13).cmp(&Value::UInt32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int64Value(50) > Value::UInt64Value(49));
+    assert!(Value::Int64Value(-100) < Value::UInt64Value(0));
+    assert_eq!(
+        Value::Int64Value(13).cmp(&Value::UInt64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int64Value(50) > Value::Float64Value(49.50));
+    assert!(Value::Int64Value(-100) < Value::Float64Value(-10.12));
+    assert_eq!(
+        Value::Int64Value(13).cmp(&Value::Float64Value(13.0)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int64Value(50) > Value::BigInt(BigInt::from(49)));
+    assert!(Value::Int64Value(-100) < Value::BigInt(BigInt::from(-10)));
+    assert_eq!(
+        Value::Int64Value(13).cmp(&Value::BigInt(BigInt::from(13))),
+        Ordering::Equal
+    );
+
+    assert!(Value::Int64Value(50) > Value::BigUint(BigUint::from(49u32)));
+    assert!(Value::Int64Value(-100) < Value::BigUint(BigUint::from(10u32)));
+    assert_eq!(
+        Value::Int64Value(13).cmp(&Value::BigUint(BigUint::from(13u32))),
+        Ordering::Equal
+    );
 }
 
 #[test]
-fn biguint_cmp() {
-    assert!(Value::BigUint(BigUint::from(1000u32)) < Value::BigInt(BigInt::from(10000)));
-    assert!(Value::BigUint(BigUint::from(1u32)) < Value::Int32Value(100));
-    assert!(Value::BigUint(BigUint::from(1u32)) < Value::Int64Value(100));
-    assert!(Value::BigUint(BigUint::from(1u32)) < Value::Float64Value(100.0));
-    assert!(Value::BigUint(BigUint::from(1000u32)) < Value::BigInt(BigInt::from(10000)));
+fn uint32_cmp() {
+    assert!(Value::UInt32Value(50) > Value::Int32Value(-49));
+    assert!(Value::UInt32Value(10) < Value::Int32Value(15));
+    assert_eq!(
+        Value::UInt32Value(13).cmp(&Value::Int32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt32Value(50) > Value::Int64Value(-49));
+    assert!(Value::UInt32Value(10) < Value::Int64Value(15));
+    assert_eq!(
+        Value::UInt32Value(13).cmp(&Value::Int64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt32Value(50) > Value::UInt32Value(49));
+    assert!(Value::UInt32Value(5) < Value::UInt32Value(15));
+    assert_eq!(
+        Value::UInt32Value(13).cmp(&Value::UInt32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt32Value(50) > Value::UInt64Value(49));
+    assert!(Value::UInt32Value(0) < Value::UInt64Value(100));
+    assert_eq!(
+        Value::UInt32Value(13).cmp(&Value::UInt64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt32Value(50) > Value::Float64Value(49.50));
+    assert!(Value::UInt32Value(0) < Value::Float64Value(10.12));
+    assert_eq!(
+        Value::UInt32Value(13).cmp(&Value::Float64Value(13.0)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt32Value(50) > Value::BigInt(BigInt::from(-49)));
+    assert!(Value::UInt32Value(10) < Value::BigInt(BigInt::from(100)));
+    assert_eq!(
+        Value::UInt32Value(13).cmp(&Value::BigInt(BigInt::from(13))),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt32Value(50) > Value::BigUint(BigUint::from(49u32)));
+    assert!(Value::UInt32Value(10) < Value::BigUint(BigUint::from(100u32)));
+    assert_eq!(
+        Value::UInt32Value(13).cmp(&Value::BigUint(BigUint::from(13u32))),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn uint64_cmp() {
+    assert!(Value::UInt64Value(50) > Value::Int32Value(-49));
+    assert!(Value::UInt64Value(10) < Value::Int32Value(15));
+    assert_eq!(
+        Value::UInt64Value(13).cmp(&Value::Int32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt64Value(50) > Value::Int64Value(-49));
+    assert!(Value::UInt64Value(10) < Value::Int64Value(15));
+    assert_eq!(
+        Value::UInt64Value(13).cmp(&Value::Int64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt64Value(50) > Value::UInt32Value(49));
+    assert!(Value::UInt64Value(5) < Value::UInt32Value(15));
+    assert_eq!(
+        Value::UInt64Value(13).cmp(&Value::UInt32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt64Value(50) > Value::UInt64Value(49));
+    assert!(Value::UInt64Value(0) < Value::UInt64Value(100));
+    assert_eq!(
+        Value::UInt64Value(13).cmp(&Value::UInt64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt64Value(50) > Value::Float64Value(49.50));
+    assert!(Value::UInt64Value(0) < Value::Float64Value(10.12));
+    assert_eq!(
+        Value::UInt64Value(13).cmp(&Value::Float64Value(13.0)),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt64Value(50) > Value::BigInt(BigInt::from(-49)));
+    assert!(Value::UInt64Value(10) < Value::BigInt(BigInt::from(100)));
+    assert_eq!(
+        Value::UInt64Value(13).cmp(&Value::BigInt(BigInt::from(13))),
+        Ordering::Equal
+    );
+
+    assert!(Value::UInt64Value(50) > Value::BigUint(BigUint::from(49u32)));
+    assert!(Value::UInt64Value(10) < Value::BigUint(BigUint::from(100u32)));
+    assert_eq!(
+        Value::UInt64Value(13).cmp(&Value::BigUint(BigUint::from(13u32))),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn f64_cmp() {
+    assert!(Value::Float64Value(50.50) > Value::Int32Value(50));
+    assert!(Value::Float64Value(-10.10) < Value::Int32Value(-10));
+    assert_eq!(
+        Value::Float64Value(13.0).cmp(&Value::Int32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Float64Value(50.50) > Value::Int64Value(50));
+    assert!(Value::Float64Value(-10.10) < Value::Int64Value(-10));
+    assert_eq!(
+        Value::Float64Value(13.0).cmp(&Value::Int64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Float64Value(49.49) > Value::UInt32Value(49));
+    assert!(Value::Float64Value(-15.15) < Value::UInt32Value(15));
+    assert_eq!(
+        Value::Float64Value(13.0).cmp(&Value::UInt32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Float64Value(49.49) > Value::UInt64Value(49));
+    assert!(Value::Float64Value(-15.5) < Value::UInt64Value(15));
+    assert_eq!(
+        Value::Float64Value(13.0).cmp(&Value::UInt64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Float64Value(50.50) > Value::Float64Value(50.40));
+    assert!(Value::Float64Value(-10.50) < Value::Float64Value(-10.40));
+    assert_eq!(
+        Value::Float64Value(13.0).cmp(&Value::Float64Value(13.0)),
+        Ordering::Equal
+    );
+
+    assert!(Value::Float64Value(50.50) > Value::BigInt(BigInt::from(-49)));
+    assert!(Value::Float64Value(10.10) < Value::BigInt(BigInt::from(100)));
+    assert_eq!(
+        Value::Float64Value(13.0).cmp(&Value::BigInt(BigInt::from(13))),
+        Ordering::Equal
+    );
+
+    assert!(Value::Float64Value(50.50) > Value::BigUint(BigUint::from(49u32)));
+    assert!(Value::Float64Value(-15.15) < Value::BigUint(BigUint::from(15u32)));
+    assert_eq!(
+        Value::Float64Value(13.0).cmp(&Value::BigUint(BigUint::from(13u32))),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn big_int_cmp() {
+    assert!(Value::BigInt(BigInt::from(50)) > Value::Int32Value(49));
+    assert!(Value::BigInt(BigInt::from(10)) < Value::Int32Value(15));
+    assert_eq!(
+        Value::BigInt(BigInt::from(13)).cmp(&Value::Int32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigInt(BigInt::from(50)) > Value::Int64Value(49));
+    assert!(Value::BigInt(BigInt::from(10)) < Value::Int64Value(15));
+    assert_eq!(
+        Value::BigInt(BigInt::from(13)).cmp(&Value::Int64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigInt(BigInt::from(50)) > Value::UInt32Value(49));
+    assert!(Value::BigInt(BigInt::from(-5)) < Value::UInt32Value(15));
+    assert_eq!(
+        Value::BigInt(BigInt::from(13)).cmp(&Value::UInt32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigInt(BigInt::from(50)) > Value::UInt64Value(49));
+    assert!(Value::BigInt(BigInt::from(-100)) < Value::UInt64Value(0));
+    assert_eq!(
+        Value::BigInt(BigInt::from(13)).cmp(&Value::UInt64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigInt(BigInt::from(50)) > Value::Float64Value(49.50));
+    assert!(Value::BigInt(BigInt::from(-100)) < Value::Float64Value(-10.12));
+    assert_eq!(
+        Value::BigInt(BigInt::from(13)).cmp(&Value::Float64Value(13.0)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigInt(BigInt::from(50)) > Value::BigInt(BigInt::from(49)));
+    assert!(Value::BigInt(BigInt::from(-100)) < Value::BigInt(BigInt::from(-10)));
+    assert_eq!(
+        Value::BigInt(BigInt::from(13)).cmp(&Value::BigInt(BigInt::from(13))),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigInt(BigInt::from(50)) > Value::BigUint(BigUint::from(49u32)));
+    assert!(Value::BigInt(BigInt::from(-100)) < Value::BigUint(BigUint::from(10u32)));
+    assert_eq!(
+        Value::BigInt(BigInt::from(13)).cmp(&Value::BigUint(BigUint::from(13u32))),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn big_uint_cmp() {
+    assert!(Value::BigUint(BigUint::from(50u32)) > Value::Int32Value(-49));
+    assert!(Value::BigUint(BigUint::from(10u32)) < Value::Int32Value(15));
+    assert_eq!(
+        Value::BigUint(BigUint::from(13u32)).cmp(&Value::Int32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigUint(BigUint::from(50u32)) > Value::Int64Value(-49));
+    assert!(Value::BigUint(BigUint::from(10u32)) < Value::Int64Value(15));
+    assert_eq!(
+        Value::BigUint(BigUint::from(13u32)).cmp(&Value::Int64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigUint(BigUint::from(50u32)) > Value::UInt32Value(49));
+    assert!(Value::BigUint(BigUint::from(5u32)) < Value::UInt32Value(15));
+    assert_eq!(
+        Value::BigUint(BigUint::from(13u32)).cmp(&Value::UInt32Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigUint(BigUint::from(50u32)) > Value::UInt64Value(49));
+    assert!(Value::BigUint(BigUint::from(0u32)) < Value::UInt64Value(100));
+    assert_eq!(
+        Value::BigUint(BigUint::from(13u32)).cmp(&Value::UInt64Value(13)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigUint(BigUint::from(50u32)) > Value::Float64Value(49.50));
+    assert!(Value::BigUint(BigUint::from(0u32)) < Value::Float64Value(10.12));
+    assert_eq!(
+        Value::BigUint(BigUint::from(13u32)).cmp(&Value::Float64Value(13.0)),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigUint(BigUint::from(50u32)) > Value::BigInt(BigInt::from(-49)));
+    assert!(Value::BigUint(BigUint::from(10u32)) < Value::BigInt(BigInt::from(100)));
+    assert_eq!(
+        Value::BigUint(BigUint::from(13u32)).cmp(&Value::BigInt(BigInt::from(13))),
+        Ordering::Equal
+    );
+
+    assert!(Value::BigUint(BigUint::from(50u32)) > Value::BigUint(BigUint::from(49u32)));
+    assert!(Value::BigUint(BigUint::from(10u32)) < Value::BigUint(BigUint::from(100u32)));
+    assert_eq!(
+        Value::BigUint(BigUint::from(13u32)).cmp(&Value::BigUint(BigUint::from(13u32))),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn int_32_eq() {
+    assert_eq!(Value::Int32Value(10), Value::Int32Value(10));
+    assert_eq!(Value::Int32Value(10), Value::Int64Value(10));
+    assert_eq!(Value::Int32Value(10), Value::UInt32Value(10));
+    assert_eq!(Value::Int32Value(10), Value::UInt64Value(10));
+    assert_eq!(Value::Int32Value(10), Value::BigInt(BigInt::from(10)));
+    assert_eq!(Value::Int32Value(10), Value::BigUint(BigUint::from(10u32)));
+
+    assert_ne!(Value::Int32Value(10), Value::Int32Value(12));
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::Int64Value(2_147_483_648)
+    );
+    assert_ne!(Value::Int32Value(-1), Value::UInt32Value(4_294_967_295));
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::UInt64Value(2_147_483_648)
+    );
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::BigInt(BigInt::from(2_147_483_648i64))
+    );
+    assert_ne!(
+        Value::Int32Value(-2_147_483_648),
+        Value::BigUint(BigUint::from(2_147_483_648u32))
+    );
+}
+
+#[test]
+fn int_64_eq() {
+    assert_eq!(Value::Int64Value(11), Value::Int32Value(11));
+    assert_eq!(Value::Int64Value(11), Value::Int64Value(11));
+    assert_eq!(Value::Int64Value(11), Value::UInt32Value(11));
+    assert_eq!(Value::Int64Value(11), Value::UInt64Value(11));
+    assert_eq!(Value::Int64Value(11), Value::BigInt(BigInt::from(11)));
+    assert_eq!(Value::Int64Value(11), Value::BigUint(BigUint::from(11u32)));
+
+    assert_ne!(Value::Int64Value(11), Value::Int32Value(12));
+    assert_ne!(Value::Int64Value(11), Value::Int64Value(12));
+    assert_ne!(Value::Int64Value(11), Value::UInt32Value(12));
+    assert_ne!(
+        Value::Int64Value(-9_223_372_036_854_775_808),
+        Value::UInt64Value(9_223_372_036_854_775_808)
+    );
+    assert_ne!(
+        Value::Int64Value(-9_223_372_036_854_775_808),
+        Value::BigInt(BigInt::from(9_223_372_036_854_775_808i128))
+    );
+    assert_ne!(
+        Value::Int64Value(-9_223_372_036_854_775_808),
+        Value::BigUint(BigUint::from(9_223_372_036_854_775_808u64))
+    );
+}
+
+#[test]
+fn uint_32_eq() {
+    assert_eq!(Value::UInt32Value(12), Value::Int32Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::Int64Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::UInt32Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::UInt64Value(12));
+    assert_eq!(Value::UInt32Value(12), Value::BigInt(BigInt::from(12)));
+    assert_eq!(Value::UInt32Value(12), Value::BigUint(BigUint::from(12u32)));
+
+    assert_ne!(Value::UInt32Value(4_294_967_295), Value::Int32Value(-1));
+    assert_ne!(Value::UInt32Value(4_294_967_295), Value::Int64Value(-1));
+    assert_ne!(Value::UInt32Value(12), Value::UInt32Value(13));
+    assert_ne!(Value::UInt32Value(0), Value::UInt64Value(4_294_967_296));
+    assert_ne!(
+        Value::UInt32Value(0),
+        Value::BigInt(BigInt::from(4_294_967_296i64))
+    );
+    assert_ne!(
+        Value::UInt32Value(0),
+        Value::BigUint(BigUint::from(4_294_967_296u64))
+    );
+}
+
+#[test]
+fn uint_64_eq() {
+    assert_eq!(Value::UInt64Value(13), Value::Int32Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::Int64Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::UInt32Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::UInt64Value(13));
+    assert_eq!(Value::UInt64Value(13), Value::BigInt(BigInt::from(13)));
+    assert_eq!(Value::UInt64Value(13), Value::BigUint(BigUint::from(13u32)));
+
+    assert_ne!(
+        Value::UInt64Value(18_446_744_073_709_551_615),
+        Value::Int32Value(-1)
+    );
+    assert_ne!(
+        Value::UInt64Value(18_446_744_073_709_551_615),
+        Value::Int64Value(-1)
+    );
+    assert_ne!(Value::UInt64Value(13), Value::UInt32Value(14));
+    assert_ne!(Value::UInt64Value(13), Value::UInt64Value(14));
+    assert_ne!(
+        Value::UInt64Value(18_446_744_073_709_551_615),
+        Value::BigInt(BigInt::from(-1))
+    );
+    assert_ne!(
+        Value::UInt64Value(0),
+        Value::BigUint(BigUint::from(18_446_744_073_709_551_616u128))
+    );
+}
+
+#[test]
+fn big_int_eq() {
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::Int32Value(14));
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::Int64Value(14));
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::UInt32Value(14));
+    assert_eq!(Value::BigInt(BigInt::from(14)), Value::UInt64Value(14));
+    assert_eq!(
+        Value::BigInt(BigInt::from(14)),
+        Value::BigInt(BigInt::from(14))
+    );
+    assert_eq!(
+        Value::BigInt(BigInt::from(14)),
+        Value::BigUint(BigUint::from(14u32))
+    );
+
+    assert_ne!(
+        Value::BigInt(BigInt::from(2_147_483_648i64)),
+        Value::Int32Value(-2_147_483_648)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(9_223_372_036_854_775_808i128)),
+        Value::Int64Value(-9_223_372_036_854_775_808)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(4_294_967_296u64)),
+        Value::UInt32Value(0)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(18_446_744_073_709_551_616u128)),
+        Value::UInt64Value(0)
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(14)),
+        Value::BigInt(BigInt::from(15))
+    );
+    assert_ne!(
+        Value::BigInt(BigInt::from(-1)),
+        Value::BigUint(BigUint::from(0u32))
+    );
+}
+
+#[test]
+fn big_uint_eq() {
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::Int32Value(15));
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::Int64Value(15));
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::UInt32Value(15));
+    assert_eq!(Value::BigUint(BigUint::from(15u32)), Value::UInt64Value(15));
+    assert_eq!(
+        Value::BigUint(BigUint::from(15u32)),
+        Value::BigInt(BigInt::from(15))
+    );
+    assert_eq!(
+        Value::BigUint(BigUint::from(15u32)),
+        Value::BigUint(BigUint::from(15u32))
+    );
+
+    assert_ne!(
+        Value::BigUint(BigUint::from(2_147_483_648u64)),
+        Value::Int32Value(-2_147_483_648)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(9_223_372_036_854_775_808u128)),
+        Value::Int64Value(-9_223_372_036_854_775_808)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(4_294_967_296u64)),
+        Value::UInt32Value(0)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(18_446_744_073_709_551_616u128)),
+        Value::UInt64Value(0)
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(14u32)),
+        Value::BigInt(BigInt::from(15u32))
+    );
+    assert_ne!(
+        Value::BigUint(BigUint::from(14u32)),
+        Value::BigUint(BigUint::from(15u32))
+    );
+}
+
+#[test]
+fn test_i32_hash() {
+    let i32_hash = calculate_hash(&Value::Int32Value(10));
+
+    assert_eq!(i32_hash, calculate_hash(&Value::Int32Value(10)));
+    assert_eq!(i32_hash, calculate_hash(&Value::Int64Value(10)));
+    assert_eq!(i32_hash, calculate_hash(&Value::UInt32Value(10)));
+    assert_eq!(i32_hash, calculate_hash(&Value::UInt64Value(10)));
+    assert_eq!(i32_hash, calculate_hash(&Value::BigInt(BigInt::from(10))));
+    assert_eq!(
+        i32_hash,
+        calculate_hash(&Value::BigUint(BigUint::from(10u32)))
+    );
+}
+
+#[test]
+fn test_i64_hash() {
+    let i64_hash = calculate_hash(&Value::Int64Value(20));
+
+    assert_eq!(i64_hash, calculate_hash(&Value::Int32Value(20)));
+    assert_eq!(i64_hash, calculate_hash(&Value::Int64Value(20)));
+    assert_eq!(i64_hash, calculate_hash(&Value::UInt32Value(20)));
+    assert_eq!(i64_hash, calculate_hash(&Value::UInt64Value(20)));
+    assert_eq!(i64_hash, calculate_hash(&Value::BigInt(BigInt::from(20))));
+    assert_eq!(
+        i64_hash,
+        calculate_hash(&Value::BigUint(BigUint::from(20u32)))
+    );
+}
+
+#[test]
+fn test_u32_hash() {
+    let u32_hash = calculate_hash(&Value::UInt32Value(30));
+
+    assert_eq!(u32_hash, calculate_hash(&Value::Int32Value(30)));
+    assert_eq!(u32_hash, calculate_hash(&Value::Int64Value(30)));
+    assert_eq!(u32_hash, calculate_hash(&Value::UInt32Value(30)));
+    assert_eq!(u32_hash, calculate_hash(&Value::UInt64Value(30)));
+    assert_eq!(u32_hash, calculate_hash(&Value::BigInt(BigInt::from(30))));
+    assert_eq!(
+        u32_hash,
+        calculate_hash(&Value::BigUint(BigUint::from(30u32)))
+    );
+}
+
+#[test]
+fn test_u64_hash() {
+    let u64_hash = calculate_hash(&Value::UInt64Value(40));
+
+    assert_eq!(u64_hash, calculate_hash(&Value::Int32Value(40)));
+    assert_eq!(u64_hash, calculate_hash(&Value::Int64Value(40)));
+    assert_eq!(u64_hash, calculate_hash(&Value::UInt32Value(40)));
+    assert_eq!(u64_hash, calculate_hash(&Value::UInt64Value(40)));
+    assert_eq!(u64_hash, calculate_hash(&Value::BigInt(BigInt::from(40))));
+    assert_eq!(
+        u64_hash,
+        calculate_hash(&Value::BigUint(BigUint::from(40u32)))
+    );
+}
+
+#[test]
+fn test_big_int_hash() {
+    let big_int_hash = calculate_hash(&Value::BigInt(BigInt::from(50)));
+
+    assert_eq!(big_int_hash, calculate_hash(&Value::Int32Value(50)));
+    assert_eq!(big_int_hash, calculate_hash(&Value::Int64Value(50)));
+    assert_eq!(big_int_hash, calculate_hash(&Value::UInt32Value(50)));
+    assert_eq!(big_int_hash, calculate_hash(&Value::UInt64Value(50)));
+    assert_eq!(
+        big_int_hash,
+        calculate_hash(&Value::BigInt(BigInt::from(50)))
+    );
+    assert_eq!(
+        big_int_hash,
+        calculate_hash(&Value::BigUint(BigUint::from(50u32)))
+    );
+
+    let big_int_hash = calculate_hash(&Value::BigInt(
+        BigInt::from(170_141_183_460_469_231_731_687_303_715_884_105_727i128) + 1,
+    ));
+
+    assert_eq!(
+        big_int_hash,
+        calculate_hash(&Value::BigUint(
+            BigUint::try_from(
+                BigInt::from(170_141_183_460_469_231_731_687_303_715_884_105_727i128) + 1
+            )
+            .unwrap()
+        ))
+    );
+}
+
+#[test]
+fn test_big_uint_hash() {
+    let big_uint_hash = calculate_hash(&Value::BigUint(BigUint::from(60u32)));
+
+    assert_eq!(big_uint_hash, calculate_hash(&Value::Int32Value(60)));
+    assert_eq!(big_uint_hash, calculate_hash(&Value::Int64Value(60)));
+    assert_eq!(big_uint_hash, calculate_hash(&Value::UInt32Value(60)));
+    assert_eq!(big_uint_hash, calculate_hash(&Value::UInt64Value(60)));
+    assert_eq!(
+        big_uint_hash,
+        calculate_hash(&Value::BigInt(BigInt::from(60)))
+    );
+    assert_eq!(
+        big_uint_hash,
+        calculate_hash(&Value::BigUint(BigUint::from(60u32)))
+    );
+
+    let big_uint_hash = calculate_hash(&Value::BigUint(
+        BigUint::try_from(
+            BigInt::from(170_141_183_460_469_231_731_687_303_715_884_105_727i128) + 1,
+        )
+        .unwrap(),
+    ));
+
+    assert_eq!(
+        big_uint_hash,
+        calculate_hash(&Value::BigInt(
+            BigInt::from(170_141_183_460_469_231_731_687_303_715_884_105_727i128) + 1,
+        ))
+    );
+}
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
 }

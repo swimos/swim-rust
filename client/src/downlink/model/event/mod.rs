@@ -165,7 +165,7 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
             },
             Operation::Error(e) => {
                 if e.is_fatal() {
-                    error!("Fatal operation error occured: {:?}", e);
+                    error!("Fatal operation error occurred: {:?}", e);
 
                     Err(e.into())
                 } else {
