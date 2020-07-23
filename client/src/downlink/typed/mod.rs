@@ -106,14 +106,14 @@ where
             Err(ValueViewError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
-                link_type: LinkType::ReadOnly,
+                mode: ViewMode::ReadOnly,
             })
         }
     }
 
     pub async fn write_only_view<ViewType: ValidatedForm>(
         &mut self,
-    ) -> Result<ValueActions<Inner::DlSink, ViewType>, ViewError> {
+    ) -> Result<ValueActions<Inner::DlSink, ViewType>, ValueViewError> {
         let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
@@ -121,26 +121,26 @@ where
             let sink = ValueActions::new(sink);
             Ok(sink)
         } else {
-            Err(ViewError::ValueSchemaError {
+            Err(ValueViewError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
-                link_type: LinkType::WriteOnly,
+                mode: ViewMode::WriteOnly,
             })
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum LinkType {
+pub enum ViewMode {
     ReadOnly,
     WriteOnly,
 }
 
-impl Display for LinkType {
+impl Display for ViewMode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinkType::ReadOnly => write!(f, "read-only"),
-            LinkType::WriteOnly => write!(f, "write-only"),
+            ViewMode::ReadOnly => write!(f, "read-only"),
+            ViewMode::WriteOnly => write!(f, "write-only"),
         }
     }
 }
@@ -153,8 +153,8 @@ pub struct ValueViewError {
     existing: StandardSchema,
     // A validation schema for the type of the requested view.
     requested: StandardSchema,
-    // The type of the link.
-    link_type: LinkType,
+    // The mode of the view.
+    mode: ViewMode,
 }
 
 /// Error types returned when creating a view
@@ -167,7 +167,8 @@ pub enum MapViewError {
         existing: StandardSchema,
         // A validation schema for the key type of the requested view.
         requested: StandardSchema,
-        link_type: LinkType,
+        // The mode of the view.
+        mode: ViewMode,
     },
     // Error returned when the value schemas are incompatible
     SchemaValueError {
@@ -175,13 +176,14 @@ pub enum MapViewError {
         existing: StandardSchema,
         // A validation schema for the value type of the requested view.
         requested: StandardSchema,
-        link_type: LinkType,
+        // The mode of the view.
+        mode: ViewMode,
     },
 }
 
 impl Display for ValueViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.link_type, self.requested, self.existing)
+        write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.mode, self.requested, self.existing)
     }
 }
 
@@ -189,15 +191,15 @@ impl Display for MapViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             MapViewError::SchemaKeyError {
-                link_type
                 existing,
                 requested,
-            } => write!(f, "A {} map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", requested, existing),
+                mode
+            } => write!(f, "A {} map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", mode, requested, existing),
             MapViewError::SchemaValueError {
-                link_type,
                 existing,
                 requested,
-            } => write!(f, "A {} map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", requested, existing),
+                mode,
+            } => write!(f, "A {} map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", mode, requested, existing),
         }
     }
 }
@@ -341,14 +343,14 @@ where
                 Err(MapViewError::SchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
-                    link_type: LinkType::ReadOnly,
+                    mode: ViewMode::ReadOnly,
                 })
             }
         } else {
             Err(MapViewError::SchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
-                link_type: LinkType::ReadOnly,
+                mode: ViewMode::ReadOnly,
             })
         }
     }
