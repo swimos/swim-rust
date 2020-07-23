@@ -766,3 +766,41 @@ async fn multiple_writes_waiting_on_multiple_reads_threaded() {
         assert_eq!(i, 3);
     }
 }
+
+#[tokio::test]
+async fn try_take_read_lock() {
+    let rw_lock = RwLock::new(0);
+
+    let read_lock1 = rw_lock.try_read();
+    assert!(read_lock1.is_some());
+
+    let read_lock2 = rw_lock.try_read();
+    assert!(read_lock2.is_some());
+
+    drop(read_lock1);
+    drop(read_lock2);
+
+    let _write_lock = rw_lock.write().await;
+
+    let read_lock3 = rw_lock.try_read();
+    assert!(read_lock3.is_none());
+}
+
+#[tokio::test]
+async fn try_take_write_lock() {
+    let rw_lock = RwLock::new(0);
+
+    let write_lock1 = rw_lock.try_write();
+    assert!(write_lock1.is_some());
+
+    let write_lock2 = rw_lock.try_write();
+    assert!(write_lock2.is_none());
+
+    drop(write_lock1);
+    drop(write_lock2);
+
+    let _read_lock = rw_lock.read().await;
+
+    let write_lock3 = rw_lock.try_write();
+    assert!(write_lock3.is_none());
+}
