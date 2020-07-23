@@ -15,9 +15,11 @@
 #[cfg(feature = "test_server")]
 mod tests {
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
-    use client::downlink::model::map::{MapAction, MapEvent, MapModification, UntypedMapModification};
-    use client::downlink::typed::event::TypedViewWithEvent;
+    use client::downlink::model::map::{
+        MapAction, MapEvent, MapModification, UntypedMapModification,
+    };
     use client::downlink::model::value::Action;
+    use client::downlink::typed::event::TypedViewWithEvent;
     use client::downlink::Event;
     use client::interface::SwimClient;
     use common::model::{Attr, Item, Value};
