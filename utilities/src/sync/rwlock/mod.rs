@@ -400,9 +400,9 @@ impl<T> Drop for ReadFuture<T> {
         let ReadFuture { inner, slot, .. } = self;
         if let Some(inner) = inner.take() {
             if let Some(i) = slot.take() {
-                let lock = inner.read_waiters.lock();
+                let mut lock = inner.read_waiters.lock();
                 if lock.contains(i) {
-                    inner.read_waiters.lock().remove(i);
+                    lock.remove(i);
                 }
             }
         }
