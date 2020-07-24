@@ -95,3 +95,21 @@ async fn observe_var_store() {
 
     assert_eq!(observed, Some(Arc::new(-34)));
 }
+
+#[tokio::test]
+async fn join_observers() {
+    let observer1 = TestObserver::new(None);
+    let observer2 = TestObserver::new(None);
+
+    let mut observer = super::observer::join(observer1.clone(), observer2.clone());
+
+    let v = Arc::new(4);
+
+    observer.notify(v.clone()).await;
+
+    let observed1 = observer1.get();
+    assert!(matches!(observed1, Some(v1) if Arc::ptr_eq(&v1, &v)));
+
+    let observed2 = observer2.get();
+    assert!(matches!(observed2, Some(v2) if Arc::ptr_eq(&v2, &v)));
+}

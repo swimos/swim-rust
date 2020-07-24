@@ -51,10 +51,15 @@ pub struct TransformedFuture<Fut, Trans> {
     transform: Option<Trans>,
 }
 
-/// Trans forms a stream of [`T`] into a stream of [`Result<T, Never>`].
+/// Transforms a stream of [`T`] into a stream of [`Result<T, Never>`].
 #[pin_project]
 #[derive(Debug)]
 pub struct NeverErrorStream<Str>(#[pin] Str);
+
+/// A future that discards the result of another future.
+#[pin_project]
+#[derive(Debug)]
+pub struct Unit<F>(#[pin] F);
 
 impl<F, T> FutureInto<F, T>
 where
@@ -259,6 +264,14 @@ pub trait SwimFutureExt: Future {
         Trans: TransformOnce<Self::Output>,
     {
         TransformedFuture::new(self, transform)
+    }
+
+    /// Discard the result of this future.
+    fn unit(self) -> Unit<Self>
+    where
+        Self: Sized,
+    {
+        Unit(self)
     }
 }
 
@@ -520,6 +533,15 @@ impl<S, Trans> TransformedSink<S, Trans> {
             inner: sink,
             transformer,
         }
+    }
+}
+
+impl<F: Future> Future for Unit<F> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let projected = self.project();
+        projected.0.poll(cx).map(|_| ())
     }
 }
 
