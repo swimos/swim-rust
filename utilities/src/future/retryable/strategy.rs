@@ -215,7 +215,7 @@ mod tests {
         let retries = 5;
         let expected_duration = Duration::from_secs(1);
         let strategy =
-            RetryStrategy::interval(expected_duration, Some(NonZeroUsize::new(retries).unwrap()));
+            RetryStrategy::interval(expected_duration, NonZeroUsize::new(retries).unwrap());
         let mut it = strategy.into_iter();
         let count = it.count();
 

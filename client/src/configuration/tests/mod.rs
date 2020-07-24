@@ -1,9 +1,10 @@
-use crate::model::parser::parse_document;
+use crate::configuration::downlink::ConfigHierarchy;
+use common::model::parser::parse_single;
 use std::fs;
 
 #[test]
 fn from_string() {
-    let config = parse_document(
+    let config = parse_single(
         "@config {
     @client {
         buffer_size: 2
@@ -30,13 +31,17 @@ fn from_string() {
 
 #[test]
 fn from_file() {
-    let contents = fs::read_to_string("common/src/model/parser/tests/configuration/client_config.recon")
+    let contents = fs::read_to_string("client/src/configuration/tests/client_config.recon")
         .expect("Something went wrong reading the file");
 
-    let config = parse_document(&contents);
+    let config = parse_single(&contents).unwrap();
+
+    let config = ConfigHierarchy::try_from_value(config);
 
     println!("{:?}", config)
 }
+
+// fn parse_config()
 
 // use std::env;
 // let path = env::current_dir().unwrap();

@@ -14,13 +14,27 @@
 
 pub mod router;
 
+#[cfg(test)]
+mod tests;
+
 pub mod downlink {
     use crate::configuration::router::RouterParams;
+    use common::model::{Item, Value};
     use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
+    use std::convert::TryFrom;
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
+    use swim_form::Form;
     use tokio::time::Duration;
+
+    const CONFIG_TAG: &str = "config";
+    const CLIENT_TAG: &str = "client";
+    const DOWNLINKS_TAG: &str = "downlinks";
+    const HOST_TAG: &str = "host";
+    const LANE_TAG: &str = "lane";
+    const BUFFER_SIZE_TAG: &str = "buffer_size";
+    const ROUTER_TAG: &str = "router";
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum DownlinkKind {
@@ -216,17 +230,48 @@ pub mod downlink {
     const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
     impl ClientParams {
-        pub fn new(
-            dl_req_buffer_size: usize,
-            router_params: RouterParams,
-        ) -> Result<ClientParams, String> {
-            match NonZeroUsize::new(dl_req_buffer_size) {
-                Some(nz) => Ok(ClientParams {
-                    dl_req_buffer_size: nz,
-                    router_params,
-                }),
-                _ => Err(BAD_BUFFER_SIZE.to_string()),
+        pub fn new(dl_req_buffer_size: NonZeroUsize, router_params: RouterParams) -> ClientParams {
+            ClientParams {
+                dl_req_buffer_size,
+                router_params,
             }
+        }
+
+        fn try_from_items(items: Vec<Item>) -> Result<Self, ConfigParseError> {
+            let mut buffer_size: Option<NonZeroUsize> = None;
+            let mut router_params: Option<RouterParams> = None;
+
+            for item in items {
+                match item {
+                    Item::Slot(Value::Text(name), value) => match name.as_str() {
+                        BUFFER_SIZE_TAG => {
+                            //Todo replace with direct conversion
+                            let size_as_i32 =
+                                i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                            let size =
+                                usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                            buffer_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                        }
+                        ROUTER_TAG => {
+                            if let Value::Record(_, items) = value {
+                                router_params = Some(RouterParams::try_from_items(items)?);
+                            } else {
+                                return Err(ConfigParseError {});
+                            }
+                        }
+                        _ => return Err(ConfigParseError {}),
+                    },
+                    _ => return Err(ConfigParseError {}),
+                }
+            }
+
+            //Todo add defaults
+            return match (buffer_size, router_params) {
+                (Some(buffer_size), Some(router_params)) => {
+                    Ok(ClientParams::new(buffer_size, router_params))
+                }
+                _ => Err(ConfigParseError {}),
+            };
         }
     }
 
@@ -261,7 +306,58 @@ pub mod downlink {
         pub fn for_lane(&mut self, lane: &AbsolutePath, params: DownlinkParams) {
             self.by_lane.insert(lane.clone(), params);
         }
+
+        pub fn try_from_value(value: Value) -> Result<Self, ConfigParseError> {
+            let (mut attrs, items) = match value {
+                Value::Record(attrs, items) => (attrs, items),
+                _ => return Err(ConfigParseError {}),
+            };
+
+            if attrs.pop().ok_or(ConfigParseError {})?.name == CONFIG_TAG {
+                ConfigHierarchy::try_from_items(items)
+            } else {
+                return Err(ConfigParseError {});
+            }
+        }
+
+        fn try_from_items(items: Vec<Item>) -> Result<Self, ConfigParseError> {
+            let mut client_params: Option<ClientParams> = None;
+            let mut downlink_params: Option<DownlinkParams> = None;
+
+            for item in items {
+                match item {
+                    Item::ValueItem(value) => {
+                        let (mut attrs, items) = match value {
+                            Value::Record(attrs, items) => (attrs, items),
+                            _ => return Err(ConfigParseError {}),
+                        };
+
+                        match attrs.pop().ok_or(ConfigParseError {})?.name.as_str() {
+                            CLIENT_TAG => {
+                                client_params = Some(ClientParams::try_from_items(items)?);
+                            }
+                            // DOWNLINKS_TAG => println!("2"),
+                            // HOST_TAG => println!("3"),
+                            // LANE_TAG => println!("4"),
+                            _ => return Err(ConfigParseError {}),
+                        }
+                    }
+                    _ => return Err(ConfigParseError {}),
+                }
+            }
+
+            //Todo add defaults
+            return match (client_params, downlink_params) {
+                (Some(client_params), Some(downlink_params)) => {
+                    Ok(ConfigHierarchy::new(client_params, downlink_params))
+                }
+                _ => Err(ConfigParseError {}),
+            };
+        }
     }
+
+    #[derive(Debug, PartialEq)]
+    pub struct ConfigParseError {}
 
     impl Config for ConfigHierarchy {
         fn config_for(&self, path: &AbsolutePath) -> DownlinkParams {
@@ -293,7 +389,8 @@ pub mod downlink {
 
     impl Default for ConfigHierarchy {
         fn default() -> Self {
-            let client_params = ClientParams::new(2, Default::default()).unwrap();
+            let client_params =
+                ClientParams::new(NonZeroUsize::new(2).unwrap(), Default::default());
             let timeout = Duration::from_secs(60000);
             let default_params = DownlinkParams::new_queue(
                 BackpressureMode::Propagate,

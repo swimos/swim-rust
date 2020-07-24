@@ -29,6 +29,7 @@ mod tests {
     use common::sink::item::ItemSink;
     use common::topic::Topic;
     use common::warp::path::AbsolutePath;
+    use std::num::NonZeroUsize;
     use swim_form::Form;
     use test_server::clients::Cli;
     use test_server::Docker;
@@ -37,7 +38,7 @@ mod tests {
     use tokio::time::Duration;
 
     fn config() -> ConfigHierarchy {
-        let client_params = ClientParams::new(2, Default::default()).unwrap();
+        let client_params = ClientParams::new(NonZeroUsize(2), Default::default()).unwrap();
         let timeout = Duration::from_secs(60000);
         let default_params = DownlinkParams::new_queue(
             BackpressureMode::Propagate,
