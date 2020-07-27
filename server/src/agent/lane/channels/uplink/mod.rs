@@ -15,6 +15,7 @@
 use std::fmt::{Display, Formatter};
 use std::error::Error;
 
+pub mod map;
 pub mod value;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

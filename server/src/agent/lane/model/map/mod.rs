@@ -34,7 +34,7 @@ use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
 use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
 use futures::stream::{iter, Flatten, Iter, StreamExt};
 use futures::Stream;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use stm::var::observer::StaticObserver;
@@ -130,6 +130,8 @@ where
 /// A single event that occurred during a transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MapLaneEvent<K, V> {
+    /// A coordination checkpoint was encountered in the stream.
+    Checkpoint(u64),
     /// The map as cleared.
     Clear,
     /// An entry was updated.
@@ -142,6 +144,7 @@ impl<V> MapLaneEvent<Value, V> {
     /// Attempt to type the key of a [`MapLaneEvent`] using a form.
     pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormDeserializeErr> {
         match self {
+            MapLaneEvent::Checkpoint(id) => Ok(MapLaneEvent::Checkpoint(id)),
             MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),
             MapLaneEvent::Update(k, v) => Ok(MapLaneEvent::Update(K::try_convert(k)?, v)),
             MapLaneEvent::Remove(k) => Ok(MapLaneEvent::Remove(K::try_convert(k)?)),
@@ -310,13 +313,17 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         DirectClear(self)
     }
 
-    /// Get the value associated with a key in the map, in a transaction.
-    pub fn get(&self, key: K) -> impl Stm<Result = Option<Arc<V>>> + '_ {
-        let k = key.into_value();
-        self.map_state.get().and_then(move |map| match map.get(&k) {
+    pub(crate) fn get_value(&self, key: Value) -> impl Stm<Result = Option<Arc<V>>> + '_ {
+        self.map_state.get().and_then(move |map| match map.get(&key) {
             Some(var) => left(var.get().map(Option::Some)),
             _ => right(Constant(None)),
         })
+    }
+
+    /// Get the value associated with a key in the map, in a transaction.
+    pub fn get(&self, key: K) -> impl Stm<Result = Option<Arc<V>>> + '_ {
+        let k = key.into_value();
+        self.get_value(k)
     }
 
     /// Determine if a key is contained in the map, in a transaction.
@@ -416,6 +423,17 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         });
 
         compound_map_transaction(transaction_started, summary, action)
+    }
+
+    /// Get a view of the internal map, without resolving the values, and emit a checkpoint in the
+    /// event stream.
+    pub(crate) fn checkpoint(&self, coordination_id: u64) -> impl Stm<Result = OrdMap<Value, TVar<V>>> + '_ {
+
+        let put_id = self.summary.put(TransactionSummary::with_id(coordination_id));
+        let chk = self.map_state.get().map(|map| {
+            (*map).clone()
+        });
+        put_id.followed_by(chk)
     }
 }
 
