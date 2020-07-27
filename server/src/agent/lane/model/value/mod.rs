@@ -73,6 +73,16 @@ impl<T: Any + Send + Sync> ValueLane<T> {
     pub fn set(&self, value: T) -> impl Stm<Result = ()> {
         self.value.put(value)
     }
+
+    /// Get the current value, outside of a transaction.
+    pub async fn load(&self) -> Arc<T> {
+        self.value.load().await
+    }
+
+    /// Store a value to the lane, outside of a transaction.
+    pub async fn store(&self, value: T) {
+        self.value.store(value).await;
+    }
 }
 
 /// Adapts a watch strategy for use with a [`ValueLane`].
