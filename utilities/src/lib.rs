@@ -26,6 +26,12 @@ pub mod ptr;
 pub mod sync;
 pub mod trace;
 
+#[allow(unused_imports)]
+#[macro_use]
+extern crate macro_helpers;
+#[doc(hidden)]
+pub use macro_helpers::*;
+
 /// Error thrown by methods that required a usize to be positive.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ZeroUsize;

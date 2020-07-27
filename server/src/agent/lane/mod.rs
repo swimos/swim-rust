@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use common::form::FormErr;
 use futures::{ready, Stream};
 use pin_project::pin_project;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use swim_form::FormDeserializeErr;
 use tokio::sync::broadcast;
 
 pub mod map;
@@ -28,7 +28,7 @@ pub mod tests;
 pub mod value;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct InvalidForm(FormDeserializeErr);
+pub struct InvalidForm(FormErr);
 
 impl Display for InvalidForm {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

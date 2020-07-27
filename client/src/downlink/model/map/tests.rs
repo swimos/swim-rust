@@ -1586,7 +1586,7 @@ pub fn clear_to_value() {
     );
 }
 
-type MapModResult = Result<UntypedMapModification<Value>, FormDeserializeErr>;
+type MapModResult = Result<UntypedMapModification<Value>, FormErr>;
 
 #[test]
 pub fn clear_from_value() {

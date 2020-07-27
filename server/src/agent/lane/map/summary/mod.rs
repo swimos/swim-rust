@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use common::form::{Form, FormErr};
 use common::model::Value;
 use im::HashMap;
 use std::any::Any;
@@ -22,7 +23,6 @@ use std::hash::Hash;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::TVar;
-use swim_form::{Form, FormDeserializeErr};
 
 /// Representation of the modification to the value of an entry in a map lane.
 #[derive(Debug)]
@@ -64,7 +64,7 @@ pub enum MapLaneEvent<K, V> {
 
 impl<V> MapLaneEvent<Value, V> {
     /// Attempt to type the key of a [`MapLaneEvent`] using a form.
-    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormDeserializeErr> {
+    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormErr> {
         match self {
             MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),
             MapLaneEvent::Update(k, v) => Ok(MapLaneEvent::Update(K::try_convert(k)?, v)),

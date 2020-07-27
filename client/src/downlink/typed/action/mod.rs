@@ -19,11 +19,11 @@ use crate::downlink::model::map::{MapAction, ValMap};
 use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::typed::event::TypedMapView;
 use crate::downlink::{DownlinkError, UpdateFailure};
+use common::form::{Form, ValidatedForm};
 use common::model::Value;
 use common::request::Request;
 use common::sink::item::{ItemSender, ItemSink};
 use std::marker::PhantomData;
-use swim_form::{Form, ValidatedForm};
 use tokio::sync::oneshot;
 
 /// Wraps a sender of updates to a value downlink, providing typed, asynchronous operations

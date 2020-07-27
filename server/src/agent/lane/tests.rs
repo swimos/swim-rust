@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use crate::agent::lane::{BroadcastStream, InvalidForm};
+use common::form::FormErr;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::StreamExt;
 use stm::transaction::RetryManager;
-use swim_form::FormDeserializeErr;
 use tokio::sync::broadcast;
 
 pub struct ExactlyOnce;
@@ -37,7 +37,7 @@ impl RetryManager for ExactlyOnce {
 
 #[test]
 fn format_invalid_form() {
-    let err = InvalidForm(FormDeserializeErr::Malformatted);
+    let err = InvalidForm(FormErr::Malformatted);
     let str = format!("{}", err);
     assert_eq!(
         str,
