@@ -35,39 +35,37 @@ pub enum MapLaneSyncError {
     InconsistentForm(FormDeserializeErr),
 }
 
-type TResult<T> = Result<T, MapLaneSyncError>;
+type EventResult<K, V> = Result<MapLaneEvent<K, V>, MapLaneSyncError>;
 type Checkpoint<V> = OrdMap<Value, TVar<V>>;
 
-enum MapLaneSyncState<Retries, CheckpointFut, GetValueFut> {
-    Init(Retries),
-    Checkpointing(CheckpointFut),
+enum MapLaneSyncState<R, CF, GF> {
+    Init(R),
+    Checkpointing(CF),
     Awaiting {
-        pending: FuturesUnordered<GetValueFut>,
+        pending: FuturesUnordered<GF>,
         cancellers: HashMap<Value, trigger::Sender>,
     },
     Complete,
 }
 
-fn yield_event<R, CF, GF, Ev, K, V>(
-    state: MapLaneSyncState<R, CF, GF>,
-    events: &mut Ev,
-    event: MapLaneEvent<K, V>,
-) -> Option<(
-    TResult<MapLaneEvent<K, V>>,
-    (&mut Ev, MapLaneSyncState<R, CF, GF>),
-)> {
-    Some((Ok(event), (events, state)))
-}
+type UnfoldResult<'a, R, Ev, State> = Option<(R, (&'a mut Ev, State))>;
 
-fn yield_error<R, CF, GF, Ev, K, V>(
-    state: MapLaneSyncState<R, CF, GF>,
-    events: &mut Ev,
-    error: MapLaneSyncError,
-) -> Option<(
-    TResult<MapLaneEvent<K, V>>,
-    (&mut Ev, MapLaneSyncState<R, CF, GF>),
-)> {
-    Some((Err(error), (events, state)))
+impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
+    fn yield_event<K, V, Ev>(
+        self,
+        events: &mut Ev,
+        event: MapLaneEvent<K, V>,
+    ) -> UnfoldResult<EventResult<K, V>, Ev, Self> {
+        Some((Ok(event), (events, self)))
+    }
+
+    fn yield_error<K, V, Ev>(
+        self,
+        events: &mut Ev,
+        error: MapLaneSyncError,
+    ) -> UnfoldResult<EventResult<K, V>, Ev, Self> {
+        Some((Err(error), (events, self)))
+    }
 }
 
 fn from_checkpoint<'a, Retries, V, CheckpointFut>(
@@ -101,7 +99,7 @@ fn initialize<'a, K, V, Retries>(
     id: u64,
     lane: &'a MapLane<K, V>,
     retry: Retries,
-) -> impl Future<Output = TResult<Checkpoint<V>>> + 'a
+) -> impl Future<Output = Result<Checkpoint<V>, MapLaneSyncError>> + 'a
 where
     K: Form + Send + Sync,
     V: Any + Send + Sync,
@@ -115,10 +113,8 @@ where
     .map_err(MapLaneSyncError::FailedTransaction)
 }
 
-fn handle_event<'a, K, V>(
-    event: &MapLaneEvent<K, V>,
-    cancellers: &mut HashMap<Value, trigger::Sender>,
-) where
+fn handle_event<K, V>(event: &MapLaneEvent<K, V>, cancellers: &mut HashMap<Value, trigger::Sender>)
+where
     K: Form + Send + Sync,
     V: Any + Send + Sync,
 {
@@ -143,7 +139,7 @@ pub fn sync_map_lane<'a, K, V, Events, Retries>(
     lane: &'a MapLane<K, V>,
     events: &'a mut Events,
     retry: Retries,
-) -> impl Stream<Item = TResult<MapLaneEvent<K, V>>> + 'a
+) -> impl Stream<Item = EventResult<K, V>> + 'a
 where
     K: Form + Send + Sync + 'static,
     V: Any + Send + Sync,
@@ -168,16 +164,12 @@ where
                             match chk_fut.await {
                                 Ok(cp) => from_checkpoint(cp),
                                 Err(err) => {
-                                    break yield_error(MapLaneSyncState::Complete, events, err);
+                                    break MapLaneSyncState::Complete.yield_error(events, err);
                                 }
                             }
                         }
                         Either::Left(Some(ev)) => {
-                            break yield_event(
-                                MapLaneSyncState::Checkpointing(chk_fut),
-                                events,
-                                ev,
-                            );
+                            break MapLaneSyncState::Checkpointing(chk_fut).yield_event(events, ev);
                         }
                         Either::Left(_) => {
                             //No more events.
@@ -185,7 +177,7 @@ where
                         }
                         Either::Right(Ok(cp)) => from_checkpoint(cp),
                         Either::Right(Err(err)) => {
-                            break yield_error(MapLaneSyncState::Complete, events, err);
+                            break MapLaneSyncState::Complete.yield_error(events, err);
                         }
                     }
                 }
@@ -208,7 +200,7 @@ where
                                     cancellers,
                                 }
                             };
-                            break 'outer yield_event(new_state, events, event);
+                            break 'outer new_state.yield_event(events, event);
                         }
                         Either::Right(Some(Some((key, value)))) => {
                             cancellers.remove(&key);
@@ -219,13 +211,10 @@ where
                                         pending,
                                         cancellers,
                                     };
-                                    yield_event(new_state, events, event)
+                                    new_state.yield_event(events, event)
                                 }
-                                Err(err) => yield_error(
-                                    MapLaneSyncState::Complete,
-                                    events,
-                                    MapLaneSyncError::InconsistentForm(err),
-                                ),
+                                Err(err) => MapLaneSyncState::Complete
+                                    .yield_error(events, MapLaneSyncError::InconsistentForm(err)),
                             };
                             break 'outer result;
                         }
