@@ -73,8 +73,9 @@ where
         loop {
             if state == UplinkState::Opened {
                 let action = actions.next().await;
-                if let Some(new_state) =
-                    self.handle_action(UplinkState::Opened, &mut updates, sender, action).await?
+                if let Some(new_state) = self
+                    .handle_action(UplinkState::Opened, &mut updates, sender, action)
+                    .await?
                 {
                     state = new_state;
                 } else {
@@ -113,9 +114,9 @@ where
         sender: &mut Sender,
         action: Option<UplinkAction>,
     ) -> Result<Option<UplinkState>, UplinkError>
-        where
-            Updates: FusedStream<Item = Arc<T>>,
-            Sender: ItemSender<UplinkMessage<Arc<T>>, SendErr>,
+    where
+        Updates: FusedStream<Item = Arc<T>>,
+        Sender: ItemSender<UplinkMessage<Arc<T>>, SendErr>,
     {
         match action {
             Some(UplinkAction::Link) => {
@@ -127,9 +128,9 @@ where
                     send_msg(sender, UplinkMessage::Linked).await?;
                 }
                 let lane_state: Option<Arc<T>> = select! {
-                v = self.lane.load().fuse() => Some(v),
-                maybe_v = updates.next() => maybe_v,
-            };
+                    v = self.lane.load().fuse() => Some(v),
+                    maybe_v = updates.next() => maybe_v,
+                };
                 if let Some(v) = lane_state {
                     send_msg(sender, UplinkMessage::Event(v)).await?;
                     send_msg(sender, UplinkMessage::Synced).await?;
@@ -146,5 +147,3 @@ where
         }
     }
 }
-
-

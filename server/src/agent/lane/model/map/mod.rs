@@ -314,10 +314,12 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     }
 
     pub(crate) fn get_value(&self, key: Value) -> impl Stm<Result = Option<Arc<V>>> + '_ {
-        self.map_state.get().and_then(move |map| match map.get(&key) {
-            Some(var) => left(var.get().map(Option::Some)),
-            _ => right(Constant(None)),
-        })
+        self.map_state
+            .get()
+            .and_then(move |map| match map.get(&key) {
+                Some(var) => left(var.get().map(Option::Some)),
+                _ => right(Constant(None)),
+            })
     }
 
     /// Get the value associated with a key in the map, in a transaction.
@@ -427,12 +429,14 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
 
     /// Get a view of the internal map, without resolving the values, and emit a checkpoint in the
     /// event stream.
-    pub(crate) fn checkpoint(&self, coordination_id: u64) -> impl Stm<Result = OrdMap<Value, TVar<V>>> + '_ {
-
-        let put_id = self.summary.put(TransactionSummary::with_id(coordination_id));
-        let chk = self.map_state.get().map(|map| {
-            (*map).clone()
-        });
+    pub(crate) fn checkpoint(
+        &self,
+        coordination_id: u64,
+    ) -> impl Stm<Result = OrdMap<Value, TVar<V>>> + '_ {
+        let put_id = self
+            .summary
+            .put(TransactionSummary::with_id(coordination_id));
+        let chk = self.map_state.get().map(|map| (*map).clone());
         put_id.followed_by(chk)
     }
 }

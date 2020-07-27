@@ -212,7 +212,7 @@ where
                         }
                         Either::Right(Some(Some((key, value)))) => {
                             cancellers.remove(&key);
-                            let result =  match Form::try_convert(key) {
+                            let result = match Form::try_convert(key) {
                                 Ok(typed_key) => {
                                     let event = MapLaneEvent::Update(typed_key, value);
                                     let new_state = MapLaneSyncState::Awaiting {
@@ -221,13 +221,11 @@ where
                                     };
                                     yield_event(new_state, events, event)
                                 }
-                                Err(err) => {
-                                    yield_error(
-                                        MapLaneSyncState::Complete,
-                                        events,
-                                        MapLaneSyncError::InconsistentForm(err),
-                                    )
-                                }
+                                Err(err) => yield_error(
+                                    MapLaneSyncState::Complete,
+                                    events,
+                                    MapLaneSyncError::InconsistentForm(err),
+                                ),
                             };
                             break 'outer result;
                         }

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod uplink;
 pub mod update;
+pub mod uplink;
 
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum UpdateError {
@@ -26,7 +26,9 @@ pub enum UpdateError {
 impl Display for UpdateError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            UpdateError::FailedTransaction => write!(f, "Failed to apply a transaction to the lane."),
+            UpdateError::FailedTransaction => {
+                write!(f, "Failed to apply a transaction to the lane.")
+            }
         }
     }
 }

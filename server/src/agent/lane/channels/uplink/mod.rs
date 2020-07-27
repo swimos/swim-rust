@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 pub mod map;
 pub mod value;
@@ -56,4 +56,3 @@ impl Display for UplinkError {
 }
 
 impl Error for UplinkError {}
-

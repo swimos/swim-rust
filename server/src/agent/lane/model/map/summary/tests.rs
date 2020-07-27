@@ -219,7 +219,11 @@ async fn clear_summary_transaction() {
 
     let after = var.load().await;
     match after.as_ref() {
-        TransactionSummary { coordination_id, clear, changes } => {
+        TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } => {
             assert_eq!(*coordination_id, 0);
             assert!(*clear);
             assert!(changes.is_empty());
@@ -248,7 +252,11 @@ async fn update_summary_transaction() {
 
     let after = var.load().await;
     match after.as_ref() {
-        TransactionSummary { coordination_id, clear, changes } => {
+        TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } => {
             assert_eq!(*coordination_id, 0);
             assert!(!*clear);
             assert_eq!(changes.len(), 2);
@@ -281,7 +289,11 @@ async fn remove_summary_transaction() {
 
     let after = var.load().await;
     match after.as_ref() {
-        TransactionSummary { coordination_id, clear, changes } => {
+        TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } => {
             assert_eq!(*coordination_id, 0);
             assert!(!*clear);
             assert_eq!(changes.len(), 2);

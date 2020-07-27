@@ -57,7 +57,11 @@ impl<K: Hash + Eq + Clone, V> TransactionSummary<K, V> {
     /// arbitrary order as the are considered to have happened simultaneously. However, if the
     /// map was cleared during the transaction this event will always occur first.
     pub fn to_events(&self) -> Vec<MapLaneEvent<K, V>> {
-        let TransactionSummary { coordination_id, clear, changes } = self;
+        let TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } = self;
         let mut n = changes.len();
         if *clear {
             n += 1;
@@ -156,7 +160,11 @@ impl<V> TransactionSummary<Value, V> {
 
     /// Create a new summary, based on this one, with a further update.
     fn update(&self, key: Value, value: Arc<V>) -> Self {
-        let TransactionSummary { coordination_id, clear, changes } = self;
+        let TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } = self;
         TransactionSummary {
             coordination_id: *coordination_id,
             clear: *clear,
@@ -166,7 +174,11 @@ impl<V> TransactionSummary<Value, V> {
 
     /// Create a new summary, based on this one, with a further removal.
     fn remove(&self, key: Value) -> Self {
-        let TransactionSummary { coordination_id, clear, changes } = self;
+        let TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } = self;
         TransactionSummary {
             coordination_id: *coordination_id,
             clear: *clear,

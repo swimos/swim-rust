@@ -13,33 +13,27 @@
 // limitations under the License.
 
 use crate::agent::lane::model::value::ValueLane;
-use std::any::Any;
 use futures::{Stream, StreamExt};
+use std::any::Any;
 
 pub struct ValueLaneUpdateTask<T> {
     lane: ValueLane<T>,
 }
 
 impl<T> ValueLaneUpdateTask<T> {
-
     pub fn new(lane: ValueLane<T>) -> Self {
-        ValueLaneUpdateTask {
-            lane,
-        }
+        ValueLaneUpdateTask { lane }
     }
-
 }
 
 impl<T> ValueLaneUpdateTask<T>
 where
     T: Any + Send + Sync,
 {
-
     pub async fn run<Updates>(self, updates: Updates)
     where
         Updates: Stream<Item = T>,
     {
         updates.for_each(|value| self.lane.store(value)).await;
     }
-
 }
