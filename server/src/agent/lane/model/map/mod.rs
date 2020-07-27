@@ -34,7 +34,7 @@ use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
 use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
 use futures::stream::{iter, Flatten, Iter, StreamExt};
 use futures::Stream;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use stm::var::observer::StaticObserver;
