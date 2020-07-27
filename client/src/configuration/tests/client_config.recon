@@ -9,25 +9,25 @@
         }
     }
     @downlinks {
-        back_pressure: "propagate"
-        queue_size: 5
+        back_pressure: @release(input_buffer_size: 5, bridge_buffer_size: 5, max_active_keys: 5, yield_after: 5),
+        mux_mode: @buffered(queue_size: 5),
         idle_timeout: 60000
         buffer_size: 5
         on_invalid: "terminate"
         yield_after: 256
     }
     @host {
-        "foo/bar": {
-            back_pressure: "propagate"
-            queue_size: 5
+        "ws://127.0.0.1": {
+            back_pressure: @propagate(),
+            mux_mode: @queue(queue_size: 5),
             idle_timeout: 60000
             buffer_size: 5
             on_invalid: "terminate"
             yield_after: 256
         }
-        "foo/baz": {
-            back_pressure: "propagate"
-            queue_size: 5
+        "ws://127.0.0.2": {
+            back_pressure: @propagate(),
+            mux_mode: @dropping(),
             idle_timeout: 60000
             buffer_size: 5
             on_invalid: "terminate"
@@ -35,17 +35,17 @@
         }
     }
     @lane {
-        "qux": {
-            back_pressure: "propagate"
-            queue_size: 5
+        @path(host: "ws://127.0.0.1", node: "bar", lane: "baz"){
+            back_pressure: @propagate(),
+            mux_mode: @buffered(queue_size: 5),
             idle_timeout: 60000
             buffer_size: 5
             on_invalid: "terminate"
             yield_after: 256
         }
-        "quz": {
-            back_pressure: "propagate"
-            queue_size: 5
+        @path(host: "ws://127.0.0.1", node: "qux", lane: "quz"){
+            back_pressure: @propagate(),
+            mux_mode: @buffered(queue_size: 5),
             idle_timeout: 60000
             buffer_size: 5
             on_invalid: "terminate"

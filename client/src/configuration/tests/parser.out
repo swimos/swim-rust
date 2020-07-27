@@ -1,25 +1,67 @@
-[ValueItem(
-Record(
-[Attr { name: "config", value: Extant }],
-
-    [ValueItem(Record([Attr { name: "client", value: Extant }],
-    [Slot(Text("buffer_size"), Int32Value(2)),
-    Slot(Text("router"), Record(
-        [Attr { name: "params", value: Extant }],
-        [Slot(Text("retry_strategy"), Record(
-            [Attr { name: "exponential", value: Record([],
-            [Slot(Text("max_interval"), Int32Value(16)),
-            Slot(Text("max_backoff"), Int32Value(300)),
-            Slot(Text("retry_no"), Int32Value(0))]) }], [])),
-        Slot(Text("idle_timeout"), Int32Value(60)),
-        Slot(Text("conn_reaper_frequency"), Int32Value(60)),
-        Slot(Text("buffer_size"), Int32Value(100))]))])),
-
-
-    ValueItem(Record([Attr { name: "downlinks", value: Extant }],
-    [Slot(Text("back_pressure"), Text("propagate")),
-    Slot(Text("queue_size"), Int32Value(5)),
-    Slot(Text("idle_timeout"), Int32Value(60000)),
-    Slot(Text("buffer_size"), Int32Value(5)),
-    Slot(Text("on_invalid"), Text("terminate")),
-    Slot(Text("yield_after"), Int32Value(256))]))]))]
+Ok(
+    ConfigHierarchy {
+        client_params: ClientParams {
+            dl_req_buffer_size: 2,
+            router_params: RouterParams {
+                retry_strategy: Exponential(ExponentialStrategy {
+                    start: None,
+                    max_interval: 16s,
+                    max_backoff: Some(300s),
+                    retry_no: 0
+                }),
+                idle_timeout: 60s,
+                conn_reaper_frequency: 60s,
+                buffer_size: 100
+            }
+        },
+        default: DownlinkParams {
+            back_pressure: Release {
+                input_buffer_size: 5,
+                bridge_buffer_size: 5,
+                max_active_keys: 5,
+                yield_after: 5
+            },
+            mux_mode: Buffered(5),
+            idle_timeout: 60000s,
+            buffer_size: 5,
+            on_invalid: Terminate,
+            yield_after: 256
+        },
+        by_host: {
+            "ws://127.0.0.1/": DownlinkParams {
+                back_pressure: Propagate,
+                mux_mode: Dropping,
+                idle_timeout: 60000s,
+                buffer_size: 5,
+                on_invalid: Terminate,
+                yield_after: 256
+            }
+        },
+        by_lane: {
+            AbsolutePath {
+                host: "ws://127.0.0.1/",
+                node: "bar",
+                lane: "baz"
+            }: DownlinkParams {
+                back_pressure: Propagate,
+                mux_mode: Buffered(5),
+                idle_timeout: 60000s,
+                buffer_size: 5,
+                on_invalid: Terminate,
+                yield_after: 256
+            },
+            AbsolutePath {
+                host: "ws://127.0.0.1/",
+                node: "qux",
+                lane: "quz"
+            }: DownlinkParams {
+                back_pressure: Propagate,
+                mux_mode: Buffered(5),
+                idle_timeout: 60000s,
+                buffer_size: 5,
+                on_invalid: Terminate,
+                yield_after: 256
+            }
+        }
+    }
+)
