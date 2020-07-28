@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::form::Form;
-use crate::form::FormErr;
 use crate::model::{Attr, Item, Value};
 use form_derive::*;
 

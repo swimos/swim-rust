@@ -17,7 +17,6 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashSet, LinkedList, VecD
 use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
 
 use crate::form::Form;
-use crate::form::FormErr;
 use crate::model::{Attr, Item, Value};
 
 mod primitive {

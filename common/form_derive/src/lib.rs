@@ -98,11 +98,11 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
     let ts = quote! {
         impl #impl_generics crate::form::Form for #structure_name #ty_generics #where_clause
         {
-            fn as_value(&self) -> Value {
+            fn as_value(&self) -> crate::model::Value {
                 #as_value_body
             }
 
-            fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+            fn try_from_value(value: &crate::model::Value) -> Result<Self, crate::form::FormErr> {
                 unimplemented!()
             }
         }
@@ -129,10 +129,10 @@ fn build_struct_as_value(
     quote! {
         let #structure_name #self_deconstruction = self;
         let hlist = #hcon_elems;
-        let mut attrs = vec![Attr::of((#structure_name_str #headers))];
+        let mut attrs = vec![crate::model::Attr::of((#structure_name_str #headers))];
         attrs.append(&mut #attributes);
 
-        Value::Record(attrs, #items)
+        crate::model::Value::Record(attrs, #items)
     }
 }
 
@@ -153,10 +153,10 @@ fn build_variant_as_value(
     quote! {
         #structure_name::#variant_name #self_deconstruction => {
             let hlist = #hcon_elems;
-            let mut attrs = vec![Attr::of((#variant_name_str #headers))];
+            let mut attrs = vec![crate::model::Attr::of((#variant_name_str #headers))];
             attrs.append(&mut #attributes);
 
-            Value::Record(attrs, #items)
+            crate::model::Value::Record(attrs, #items)
         },
     }
 }
@@ -262,15 +262,15 @@ fn compute_record(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            (headers, attrs, quote!(#items Item::Slot(Value::Text(#name_str.to_string()), #ident.as_value()),))
+                            (headers, attrs, quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),))
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            (headers, attrs, quote!(#items Item::Slot(Value::Text(#name_str.to_string()), #old.as_value()),))
+                            (headers, attrs, quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),))
                         }
                         un@ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
-                            (headers, attrs, quote!(#items Item::ValueItem(#ident.as_value()),))
+                            (headers, attrs, quote!(#items crate::model::Item::ValueItem(#ident.as_value()),))
                         }
                     }
                 }
@@ -278,15 +278,15 @@ fn compute_record(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            (quote!(#headers Item::Slot(Value::Text(#name_str.to_string()), #ident.as_value()),), attrs, items)
+                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),), attrs, items)
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            (quote!(#headers Item::Slot(Value::Text(#name_str.to_string()), #old.as_value()),), attrs, items)
+                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),), attrs, items)
                         }
                         un @ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
-                            (quote!(#headers Item::ValueItem(#ident.as_value()),), attrs, items)
+                            (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
                         }
                     }
                 }
@@ -294,11 +294,11 @@ fn compute_record(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            (headers, quote!(#attrs Attr::of((#name_str.to_string(), #ident.as_value())),), items)
+                            (headers, quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #ident.as_value())),), items)
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            (headers, quote!(#attrs Attr::of((#name_str.to_string(), #old.as_value())),), items)
+                            (headers, quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #old.as_value())),), items)
                         }
                         FieldName::Unnamed(_index) => {
                             // This has bene checked already when parsing the AST.
@@ -312,8 +312,8 @@ fn compute_record(
 
                     (headers, attrs, quote!({
                         match #ident.as_value() {
-                            Value::Record(_attrs, items) => items,
-                            v => vec![Item::ValueItem(v)]
+                            crate::model::Value::Record(_attrs, items) => items,
+                            v => vec![crate::model::Item::ValueItem(v)]
                         }
                     }))
                 }
@@ -321,11 +321,11 @@ fn compute_record(
                     if manifest.has_header_fields {
                         match name {
                             FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                (quote!(#headers Item::ValueItem(#ident.as_value()),), attrs, items)
+                                (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
                             }
                             un @ FieldName::Unnamed(_) => {
                                 let ident = un.as_ident();
-                                (quote!(#headers Item::ValueItem(#ident.as_value()),), attrs, items)
+                                (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
                             }
                         }
                     } else {
@@ -344,15 +344,15 @@ fn compute_record(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            (quote!(#headers Item::Slot(Value::Text(#name_str.to_string()), #ident.as_value()),), attrs, items)
+                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),), attrs, items)
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            (quote!(#headers Item::Slot(Value::Text(#name_str.to_string()), #old.as_value()),), attrs, items)
+                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),), attrs, items)
                         }
                         un@ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
-                            (quote!(#headers Item::ValueItem(#ident.as_value()),), attrs, items)
+                            (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
                         }
                     }
                 }
@@ -360,7 +360,7 @@ fn compute_record(
         });
 
     if manifest.has_header_fields || manifest.replaces_body {
-        headers = quote!(, Value::Record(Vec::new(), vec![#headers]));
+        headers = quote!(, crate::model::Value::Record(Vec::new(), vec![#headers]));
     }
 
     if !descriptor.has_body_replaced() {
