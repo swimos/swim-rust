@@ -43,10 +43,12 @@ fn regex_match() {
     assert!(!schema.matches_str("abca"));
 }
 
-const KINDS: [ValueKind; 8] = [
+const KINDS: [ValueKind; 10] = [
     ValueKind::Extant,
     ValueKind::Int32,
     ValueKind::Int64,
+    ValueKind::UInt32,
+    ValueKind::UInt64,
     ValueKind::Float64,
     ValueKind::Boolean,
     ValueKind::Text,
@@ -59,6 +61,8 @@ fn arbitrary() -> HashMap<ValueKind, Value> {
     map.insert(ValueKind::Extant, Value::Extant);
     map.insert(ValueKind::Int32, Value::Int32Value(23));
     map.insert(ValueKind::Int64, Value::Int64Value(-4569847476726364i64));
+    map.insert(ValueKind::UInt32, Value::UInt32Value(u32::max_value()));
+    map.insert(ValueKind::UInt64, Value::UInt64Value(u64::max_value()));
     map.insert(ValueKind::Float64, Value::Float64Value(-0.5));
     map.insert(ValueKind::Boolean, Value::BooleanValue(true));
     map.insert(ValueKind::Text, Value::text("Hello"));
@@ -82,7 +86,8 @@ fn kind_schema() {
         let schema = StandardSchema::OfKind(*schema_kind);
         for input_kind in KINDS.iter() {
             let input = examples.get(input_kind).unwrap();
-            if input_kind == schema_kind {
+
+            if input.is_coercible_to(*schema_kind) {
                 assert!(schema.matches(input));
             } else {
                 assert!(!schema.matches(input));
@@ -121,6 +126,31 @@ fn int_range_schema() {
     assert!(!schema.matches(&Value::Int64Value(5)));
     assert!(!schema.matches(&Value::BigInt(BigInt::from(5))));
     assert!(!schema.matches(&Value::BigUint(BigUint::from(5u32))));
+}
+
+#[test]
+fn uint_range_schema() {
+    let schema = StandardSchema::uint_range(2, 13);
+
+    let bad_kinds = arbitrary_without(vec![ValueKind::UInt32, ValueKind::UInt64]);
+    for value in bad_kinds.values() {
+        assert!(!schema.matches(value));
+    }
+
+    assert!(!schema.matches(&Value::UInt32Value(1)));
+    assert!(!schema.matches(&Value::UInt64Value(1)));
+
+    assert!(schema.matches(&Value::UInt32Value(2)));
+    assert!(schema.matches(&Value::UInt64Value(2)));
+
+    assert!(schema.matches(&Value::UInt32Value(7)));
+    assert!(schema.matches(&Value::UInt64Value(7)));
+
+    assert!(!schema.matches(&Value::UInt32Value(13)));
+    assert!(!schema.matches(&Value::UInt64Value(13)));
+
+    assert!(!schema.matches(&Value::UInt32Value(100)));
+    assert!(!schema.matches(&Value::UInt64Value(100)));
 }
 
 #[test]
@@ -1450,7 +1480,7 @@ fn array_of_values() {
 
     assert!(schema.matches(&Value::empty_record()));
     assert!(schema.matches(&Value::from_vec(vec![1, 2, 3, 4])));
-    assert!(!schema.matches(&Value::from_vec(vec![1i64, 2i64, 3i64, 4i64])));
+    assert!(schema.matches(&Value::from_vec(vec![1i64, 2i64, 3i64, 4i64])));
     assert!(!schema.matches(&Value::from_vec(vec![Item::of(1), Item::of("hello")])));
 
     let with_attr = Value::Record(vec![Attr::of("name")], vec![Item::of(1), Item::of(10)]);
@@ -1508,6 +1538,14 @@ fn of_kind_to_value() {
     assert_that!(
         StandardSchema::OfKind(ValueKind::Int64).to_value(),
         eq(Value::of_attr(Attr::of(("kind", "int64"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::UInt32).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "uint32"))))
+    );
+    assert_that!(
+        StandardSchema::OfKind(ValueKind::UInt64).to_value(),
+        eq(Value::of_attr(Attr::of(("kind", "uint64"))))
     );
     assert_that!(
         StandardSchema::OfKind(ValueKind::Float64).to_value(),

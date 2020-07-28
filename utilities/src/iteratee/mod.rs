@@ -407,7 +407,7 @@ pub trait Iteratee<In> {
     fn fold<State, F>(self, init: State, fold: F) -> IterateeFold<Self, State, F>
     where
         Self: Sized,
-        F: FnMut(&mut State, Self::Item) -> (),
+        F: FnMut(&mut State, Self::Item),
     {
         IterateeFold::new(self, init, fold)
     }
@@ -1397,7 +1397,7 @@ impl<I, State, F> IterateeFold<I, State, F> {
 impl<In, State, I, F> Iteratee<In> for IterateeFold<I, State, F>
 where
     I: Iteratee<In>,
-    F: FnMut(&mut State, I::Item) -> (),
+    F: FnMut(&mut State, I::Item),
 {
     type Item = State;
 

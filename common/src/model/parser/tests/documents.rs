@@ -49,7 +49,7 @@ fn iteratee_empty_document() {
 }
 
 fn single_value_document(read_doc: ReadDocument) {
-    assert_that!(read_doc("3"), eq(Ok(vec![Item::of(3)])));
+    assert_that!(read_doc("3"), eq(Ok(vec![Item::of(3u32)])));
     assert_that!(read_doc("name"), eq(Ok(vec![Item::of("name")])));
     assert_that!(
         read_doc("@name"),
@@ -57,19 +57,19 @@ fn single_value_document(read_doc: ReadDocument) {
     );
     assert_that!(
         read_doc("{1, 2, 3}"),
-        eq(Ok(vec![Item::of(Value::from_vec(vec![1, 2, 3]))]))
+        eq(Ok(vec![Item::of(Value::from_vec(vec![1u32, 2u32, 3u32]))]))
     );
     let complex = Value::Record(
-        vec![Attr::of(("name", 0))],
-        vec![Item::slot("a", 1), Item::slot("b", 2)],
+        vec![Attr::of(("name", 0u32))],
+        vec![Item::slot("a", 1u32), Item::slot("b", 2u32)],
     );
     assert_that!(
         read_doc("@name(0){a:1, b:2}"),
         eq(Ok(vec![Item::of(complex.clone())]))
     );
 
-    assert_that!(read_doc("3  "), eq(Ok(vec![Item::of(3)])));
-    assert_that!(read_doc("3\n "), eq(Ok(vec![Item::of(3)])));
+    assert_that!(read_doc("3  "), eq(Ok(vec![Item::of(3u32)])));
+    assert_that!(read_doc("3\n "), eq(Ok(vec![Item::of(3u32)])));
     assert_that!(
         read_doc(" @name(0){a:1, b:2} "),
         eq(Ok(vec![Item::of(complex.clone())]))
@@ -91,17 +91,23 @@ fn iteratee_single_value_document() {
 }
 
 fn single_slot_document(read_doc: ReadDocument) {
-    assert_that!(read_doc("a:3"), eq(Ok(vec![Item::slot("a", 3)])));
+    assert_that!(read_doc("a:3"), eq(Ok(vec![Item::slot("a", 3u32)])));
     assert_that!(
         read_doc("\"a\":"),
         eq(Ok(vec![Item::slot("a", Value::Extant)]))
     );
     assert_that!(
         read_doc("my_slot:@name(1)"),
-        eq(Ok(vec![Item::slot("my_slot", Value::of_attr(("name", 1)))]))
+        eq(Ok(vec![Item::slot(
+            "my_slot",
+            Value::of_attr(("name", 1u32))
+        )]))
     );
-    assert_that!(read_doc("  a :3   "), eq(Ok(vec![Item::slot("a", 3)])));
-    assert_that!(read_doc("  a :   3   \n"), eq(Ok(vec![Item::slot("a", 3)])));
+    assert_that!(read_doc("  a :3   "), eq(Ok(vec![Item::slot("a", 3u32)])));
+    assert_that!(
+        read_doc("  a :   3   \n"),
+        eq(Ok(vec![Item::slot("a", 3u32)]))
+    );
 }
 
 #[test]
@@ -117,7 +123,7 @@ fn iteratee_single_slot_document() {
 fn multiple_value_document(read_doc: ReadDocument) {
     assert_that!(
         read_doc("1, 2, hello"),
-        eq(Ok(vec![Item::of(1), Item::of(2), Item::of("hello")]))
+        eq(Ok(vec![Item::of(1u32), Item::of(2u32), Item::of("hello")]))
     );
     assert_that!(
         read_doc("simple,\n @medium,\n @complex(3) { a, b, c }"),
@@ -125,7 +131,7 @@ fn multiple_value_document(read_doc: ReadDocument) {
             Item::of("simple"),
             Item::of(Value::of_attr("medium")),
             Item::of(Value::Record(
-                vec![Attr::of(("complex", 3))],
+                vec![Attr::of(("complex", 3u32))],
                 vec![Item::of("a"), Item::of("b"), Item::of("c")]
             ))
         ]))
@@ -146,8 +152,8 @@ fn mixed_document(read_doc: ReadDocument) {
     assert_that!(
         read_doc("1, name: 2, hello"),
         eq(Ok(vec![
-            Item::of(1),
-            Item::slot("name", 2),
+            Item::of(1u32),
+            Item::slot("name", 2u32),
             Item::of("hello")
         ]))
     );
@@ -159,7 +165,7 @@ fn mixed_document(read_doc: ReadDocument) {
             Item::slot(
                 "last",
                 Value::Record(
-                    vec![Attr::of(("complex", 3))],
+                    vec![Attr::of(("complex", 3u32))],
                     vec![Item::of("a"), Item::of("b"), Item::of("c")]
                 )
             )
@@ -178,7 +184,7 @@ fn iteratee_mixed_document() {
 }
 
 fn no_extant_after_trailing_sep(read_doc: ReadDocument) {
-    assert_that!(read_doc("3,"), eq(Ok(vec![Item::of(3)])));
+    assert_that!(read_doc("3,"), eq(Ok(vec![Item::of(3u32)])));
 
     assert_that!(
         read_doc("name: true,\n"),

@@ -35,6 +35,8 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
                 }
                 Value::Int32Value(_) => self.deserialize_i32(visitor),
                 Value::Int64Value(_) => self.deserialize_i64(visitor),
+                Value::UInt32Value(_) => self.deserialize_u32(visitor),
+                Value::UInt64Value(_) => self.deserialize_u64(visitor),
                 Value::Extant => self.deserialize_option(visitor),
                 Value::Text(_) => self.deserialize_string(visitor),
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
@@ -84,22 +86,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Int32Value(i)) = &self.current_state.value {
-            visitor.visit_i32(*i)
-        } else {
-            self.err_incorrect_type("Value::Int32Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Int64Value(i)) = &self.current_state.value {
-            visitor.visit_i64(*i)
-        } else {
-            self.err_incorrect_type("Value::Int64Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value>
@@ -116,18 +110,18 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         self.err_unsupported("u16")
     }
 
-    fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.err_unsupported("u32")
+        self.deserialize_int(visitor)
     }
 
-    fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.err_unsupported("u64")
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
