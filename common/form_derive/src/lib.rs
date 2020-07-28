@@ -24,9 +24,7 @@ use proc_macro::TokenStream;
 use syn::export::TokenStream2;
 use syn::{Data, DeriveInput, Lit, Meta, NestedMeta};
 
-use macro_helpers::{
-    deconstruct_type, fold_quote, to_compile_errors, CompoundType, Context, FieldName,
-};
+use macro_helpers::{deconstruct_type, to_compile_errors, CompoundType, Context, FieldName};
 
 use crate::parser::{
     parse_struct, Attributes, EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor,
@@ -108,8 +106,6 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
         }
     };
 
-    // println!("{}", ts.to_string());
-
     ts.into()
 }
 
@@ -122,13 +118,11 @@ fn build_struct_as_value(
 ) -> TokenStream2 {
     let structure_name_str = descriptor.name.tag_ident.to_string();
     let (headers, attributes, items) = compute_record(&fields, &mut descriptor, &mut manifest);
-    let hcon_elems = build_hcons(fields);
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
     quote! {
         let #structure_name #self_deconstruction = self;
-        let hlist = #hcon_elems;
         let mut attrs = vec![crate::model::Attr::of((#structure_name_str #headers))];
         attrs.append(&mut #attributes);
 
@@ -146,13 +140,11 @@ fn build_variant_as_value(
     let variant_name_str = variant_name.to_string();
     let (headers, attributes, items) = compute_record(&fields, &mut descriptor, &mut manifest);
     let structure_name = &descriptor.name.original_ident;
-    let hcon_elems = build_hcons(fields);
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
     quote! {
         #structure_name::#variant_name #self_deconstruction => {
-            let hlist = #hcon_elems;
             let mut attrs = vec![crate::model::Attr::of((#variant_name_str #headers))];
             attrs.append(&mut #attributes);
 
@@ -233,17 +225,6 @@ impl<'t> FormRepr<'t> {
 
         Some(Self { type_contents })
     }
-}
-
-fn build_hcons(fields: &[Field]) -> TokenStream2 {
-    fold_quote(
-        quote!(crate::datastructures::hlist::HNil),
-        fields.iter().map(|f| {
-            let ty = &f.name;
-            quote!(#ty)
-        }),
-        |item, result| quote! { crate::datastructures::hlist::HCons { head: #item, tail: #result }},
-    )
 }
 
 fn compute_record(

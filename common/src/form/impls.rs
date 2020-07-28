@@ -461,6 +461,25 @@ macro_rules! impl_seq_form {
     }
 }
 
+macro_rules! impl_map_form {
+    ($ty:ident < K $(: $kbound1:ident $(+ $kbound2:ident)*)*, V $(, $typaram:ident : $bound:ident)* >) => {
+        impl<K, V $(, $typaram)*> Form for $ty<K, V $(, $typaram)*>
+        where
+            K: Form $(+ $kbound1 $(+ $kbound2)*)*,
+            V: Form,
+            $($typaram: $bound,)*
+        {
+            fn as_value(&self) -> Value {
+                map_to_record(self.iter())
+            }
+
+            fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
+                unimplemented!()
+            }
+        }
+    }
+}
+
 impl_seq_form!(Vec<V>);
 impl_seq_form!(ImHashSet<V, L: BuildHasher>);
 impl_seq_form!(ImHashSet<V>);
@@ -491,25 +510,6 @@ where
         }
         v
     })
-}
-
-macro_rules! impl_map_form {
-    ($ty:ident < K $(: $kbound1:ident $(+ $kbound2:ident)*)*, V $(, $typaram:ident : $bound:ident)* >) => {
-        impl<K, V $(, $typaram)*> Form for $ty<K, V $(, $typaram)*>
-        where
-            K: Form $(+ $kbound1 $(+ $kbound2)*)*,
-            V: Form,
-            $($typaram: $bound,)*
-        {
-            fn as_value(&self) -> Value {
-                map_to_record(self.iter())
-            }
-
-            fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
-                unimplemented!()
-            }
-        }
-    }
 }
 
 impl_map_form!(BTreeMap<K: Ord, V>);

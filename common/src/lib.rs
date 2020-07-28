@@ -16,7 +16,6 @@
 
 pub mod configuration;
 pub mod connections;
-pub mod datastructures;
 pub mod form;
 pub mod model;
 pub mod request;

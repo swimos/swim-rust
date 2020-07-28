@@ -54,40 +54,37 @@ impl Display for FormErr {
 /// deserialisation. As a result, Serde must be included as a dependency with the [`derive`] feature
 /// enabled.
 ///
-/// # Examples
-///
-/// ```no_run
-/// use form_derive::*;
-/// use common::form::Form;
-/// use common::model::{Value, Attr, Item};
-///
-/// #[derive(PartialEq, Debug, Form)]
-/// struct Message {
-///     id: i32,
-///     msg: String
-/// }
-///
-/// let record = Value::Record(
-///     vec![Attr::of("Message")],
-///     vec![
-///         Item::from(("id", 1)),
-///         Item::from(("msg", "Hello"))
-///     ]
-/// );
-/// let msg = Message {
-///     id: 1,
-///     msg: String::from("Hello"),
-/// };
-///
-/// let result = msg.as_value();
-/// assert_eq!(record, result);
-///
-/// let result = Message::try_from_value(&record).unwrap();
-/// assert_eq!(result, msg);
-/// ```
-///
-/// The [`Form`] trait is implemented for: `i32`, `u32`, `i64`, `u64`, `String`, `f64`, `bool`,
-/// `Option<V>`.
+// # Examples
+//
+// ```no_run
+// use form_derive::*;
+// use common::form::Form;
+// use common::model::{Value, Attr, Item};
+//
+// #[derive(PartialEq, Debug, Form)]
+// struct Message {
+//     id: i32,
+//     msg: String
+// }
+//
+// let record = Value::Record(
+//     vec![Attr::of("Message")],
+//     vec![
+//         Item::from(("id", 1)),
+//         Item::from(("msg", "Hello"))
+//     ]
+// );
+// let msg = Message {
+//     id: 1,
+//     msg: String::from("Hello"),
+// };
+//
+// let result = msg.as_value();
+// assert_eq!(record, result);
+//
+// let result = Message::try_from_value(&record).unwrap();
+// assert_eq!(result, msg);
+// ```
 pub trait Form: Sized {
     fn as_value(&self) -> Value;
 
