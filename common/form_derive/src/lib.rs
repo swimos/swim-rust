@@ -136,7 +136,7 @@ impl<'t> HconFields<'t> {
 }
 
 fn compute_record(
-    fields: &Vec<FieldWrapper>,
+    fields: &[FieldWrapper],
     descriptor: &mut FormDescriptor,
     manifest: &mut FieldManifest,
 ) -> (TokenStream2, TokenStream2, TokenStream2) {

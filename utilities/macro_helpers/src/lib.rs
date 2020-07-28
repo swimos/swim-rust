@@ -141,6 +141,7 @@ pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
     quote!(#(#compile_errors)*)
 }
 
+#[allow(clippy::ptr_arg)]
 pub fn deconstruct_type<'t>(
     compound_type: &CompoundType,
     fields: &Vec<&Field<'t>>,

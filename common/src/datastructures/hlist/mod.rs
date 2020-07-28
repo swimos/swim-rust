@@ -22,6 +22,10 @@ pub trait HList: Sized {
         Self::LEN
     }
 
+    fn is_empty(&self) -> bool {
+        Self::LEN == 0
+    }
+
     fn prepend<H>(self, h: H) -> HCons<H, Self> {
         HCons {
             head: h,
