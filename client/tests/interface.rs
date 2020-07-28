@@ -14,9 +14,6 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use client::configuration::downlink::{
-        BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-    };
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
     use client::downlink::model::map::{
         MapAction, MapEvent, MapModification, UntypedMapModification,
@@ -29,28 +26,12 @@ mod tests {
     use common::sink::item::ItemSink;
     use common::topic::Topic;
     use common::warp::path::AbsolutePath;
-    use std::num::NonZeroUsize;
     use swim_form::Form;
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;
     use tokio::stream::StreamExt;
     use tokio::time::Duration;
-
-    fn config() -> ConfigHierarchy {
-        let client_params = ClientParams::new(NonZeroUsize(2), Default::default()).unwrap();
-        let timeout = Duration::from_secs(60000);
-        let default_params = DownlinkParams::new_queue(
-            BackpressureMode::Propagate,
-            5,
-            timeout,
-            5,
-            OnInvalidMessage::Terminate,
-            256,
-        )
-        .unwrap();
-        ConfigHierarchy::new(client_params, default_params)
-    }
 
     #[tokio::test]
     async fn test_value_dl_recv() {
@@ -197,7 +178,6 @@ mod tests {
         let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
-
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
         let mut event_dl = client
@@ -206,9 +186,12 @@ mod tests {
             .unwrap();
         tokio::time::delay_for(Duration::from_secs(1)).await;
 
-        let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+        let mut command_dl = client
+            .command_downlink::<String>(command_path)
+            .await
+            .unwrap();
         command_dl
-            .send_item("Hello, from Rust!".into())
+            .send_item("Hello, from Rust!".to_string())
             .await
             .unwrap();
 
@@ -227,7 +210,6 @@ mod tests {
         let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
-
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
         let mut event_dl = client
@@ -277,7 +259,7 @@ mod tests {
         let incoming = event_dl.recv().await.unwrap();
 
         let header = Attr::of(("update", Value::record(vec![Item::slot("key", "milk")])));
-        let body = Item::of(6);
+        let body = Item::of(6u32);
         let expected = Value::Record(vec![header], vec![body]);
 
         assert_eq!(incoming, expected);
@@ -305,18 +287,18 @@ mod tests {
 
         tokio::time::delay_for(Duration::from_secs(1)).await;
 
-        let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
-        command_dl
-            .send_item(
-                UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
-                    .as_value(),
-            )
+        let mut command_dl = client
+            .command_downlink::<MapModification<String, i32>>(command_path)
             .await
             .unwrap();
 
+        let item = MapModification::Insert("milk".to_string(), 6i32);
+
+        command_dl.send_item(item).await.unwrap();
+
         let incoming = event_dl.recv().await.unwrap();
 
-        assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6));
+        assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6i32));
     }
 
     #[tokio::test]
@@ -455,13 +437,131 @@ mod tests {
         let (mut dl, _) = client.value_downlink(path.clone(), 0i64).await.unwrap();
 
         if let Err(view_error) = dl.read_only_view::<String>().await {
-            assert_eq!(view_error.to_string(),  "A read-only downlink with schema @kind(text) was requested but the original downlink is running with schema @kind(int64).")
+            assert_eq!(view_error.to_string(),  "A read-only value downlink with schema @kind(text) was requested but the original value downlink is running with schema @kind(int64).")
         } else {
             panic!("Expected a ViewError!")
         }
 
         if let Err(view_error) = dl.read_only_view::<i32>().await {
-            assert_eq!(view_error.to_string(),  "A read-only downlink with schema @kind(int32) was requested but the original downlink is running with schema @kind(int64).")
+            assert_eq!(view_error.to_string(),  "A read-only value downlink with schema @kind(int32) was requested but the original value downlink is running with schema @kind(int64).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_only_map() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+
+        let mut command_dl = client
+            .command_downlink::<MapModification<String, i32>>(path.clone())
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        command_dl
+            .send_item(MapModification::Insert("milk".to_string(), 1))
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        let (mut dl, mut recv) = client.map_downlink::<String, i32>(path).await.unwrap();
+
+        let message = recv.next().await.unwrap();
+        if let Event::Remote(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(view.get(&String::from("milk")).unwrap(), 1);
+            assert_eq!(event, MapEvent::Initial);
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+
+        let mut recv_view = dl
+            .read_only_view::<Value, Value>()
+            .await
+            .unwrap()
+            .subscribe()
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        command_dl
+            .send_item(MapModification::Insert("eggs".to_string(), 2))
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        let message = recv.next().await.unwrap();
+        if let Event::Remote(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(view.get(&String::from("milk")).unwrap(), 1);
+            assert_eq!(view.get(&String::from("eggs")).unwrap(), 2);
+            assert_eq!(event, MapEvent::Insert(String::from("eggs")));
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+
+        let message = recv_view.next().await.unwrap();
+        if let Event::Remote(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(
+                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                Value::UInt32Value(1)
+            );
+            assert_eq!(
+                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                Value::UInt32Value(2)
+            );
+            assert_eq!(event, MapEvent::Insert(Value::Text(String::from("eggs"))));
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_only_map_schema_error() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
+
+        let (mut dl, _) = client.map_downlink::<i64, i64>(path).await.unwrap();
+
+        if let Err(view_error) = dl.read_only_view::<String, String>().await {
+            assert_eq!(view_error.to_string(),  "A read-only map downlink with key schema @kind(text) was requested but the original map downlink is running with key schema @kind(int64).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.read_only_view::<i64, String>().await {
+            assert_eq!(view_error.to_string(),  "A read-only map downlink with value schema @kind(text) was requested but the original map downlink is running with value schema @kind(int64).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.read_only_view::<i32, i64>().await {
+            assert_eq!(view_error.to_string(),  "A read-only map downlink with key schema @kind(int32) was requested but the original map downlink is running with key schema @kind(int64).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.read_only_view::<i64, i32>().await {
+            assert_eq!(view_error.to_string(),  "A read-only map downlink with value schema @kind(int32) was requested but the original map downlink is running with value schema @kind(int64).")
         } else {
             panic!("Expected a ViewError!")
         }

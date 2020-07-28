@@ -931,6 +931,7 @@ dependencies = [
  "im",
  "serde",
  "serialize",
+ "utilities",
 ]
 
 [[package]]

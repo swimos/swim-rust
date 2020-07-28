@@ -11,6 +11,7 @@ common = { path = "../common" }
 deserialize = { path = "deserialize" }
 form_derive = { path = "form_derive" }
 serialize = { path = "serialize" }
+utilities = { path = "../utilities" }
 num-bigint = { version = "0.3" }
 num-traits = "0.2.12"
 

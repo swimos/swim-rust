@@ -128,7 +128,7 @@ impl TVarInner {
                 let mut lock = guard.wakers.lock();
                 match slot.as_ref().and_then(|i| lock.get_mut(*i)) {
                     Some(existing) => {
-                        std::mem::replace(existing, waker.clone());
+                        *existing = waker.clone();
                     }
                     _ => *slot = Some(lock.insert(waker.clone())),
                 };
