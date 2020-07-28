@@ -22,7 +22,6 @@ pub mod downlink {
     use common::model::{Attr, Item, Value};
     use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
-    use std::convert::TryFrom;
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
     use swim_form::Form;
@@ -82,14 +81,12 @@ pub mod downlink {
             let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
 
             match name.as_str() {
-                PROPAGATE_TAG => {
-                    return Ok(BackpressureMode::Propagate);
-                }
+                PROPAGATE_TAG => Ok(BackpressureMode::Propagate),
                 RELEASE_TAG => {
                     if let Value::Record(_, items) = value {
                         try_release_mode_from_items(items)
                     } else {
-                        return Err(ConfigParseError {});
+                        Err(ConfigParseError {})
                     }
                 }
                 _ => Err(ConfigParseError {}),
@@ -112,36 +109,28 @@ pub mod downlink {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     INPUT_BUFFER_SIZE => {
-                        //Todo replace with direct conversion
-                        let size_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let size = usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                        let size =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         input_buffer_size =
                             Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                     }
 
                     BRIDGE_BUFFER_SIZE => {
-                        //Todo replace with direct conversion
-                        let size_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let size = usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                        let size =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         bridge_buffer_size =
                             Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                     }
 
                     MAX_ACTIVE_KEYS => {
-                        //Todo replace with direct conversion
-                        let size_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let size = usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                        let size =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         max_active_keys = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                     }
 
                     YIELD_AFTER => {
-                        //Todo replace with direct conversion
-                        let size_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let size = usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                        let size =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         yield_after = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                     }
 
@@ -153,7 +142,7 @@ pub mod downlink {
         }
 
         //Todo add defaults
-        return match (
+        match (
             input_buffer_size,
             bridge_buffer_size,
             max_active_keys,
@@ -171,7 +160,7 @@ pub mod downlink {
                 yield_after,
             }),
             _ => Err(ConfigParseError {}),
-        };
+        }
     }
 
     /// Configuration for the creation and management of downlinks for a Warp client.
@@ -211,7 +200,7 @@ pub mod downlink {
                     if let Value::Record(_, items) = value {
                         try_queue_mode_from_items(items)
                     } else {
-                        return Err(ConfigParseError {});
+                        Err(ConfigParseError {})
                     }
                 }
                 DROPPING_TAG => Ok(MuxMode::Dropping),
@@ -219,7 +208,7 @@ pub mod downlink {
                     if let Value::Record(_, items) = value {
                         try_buffered_mode_from_items(items)
                     } else {
-                        return Err(ConfigParseError {});
+                        Err(ConfigParseError {})
                     }
                 }
                 _ => Err(ConfigParseError {}),
@@ -234,10 +223,8 @@ pub mod downlink {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     QUEUE_SIZE_TAG => {
-                        //Todo replace with direct conversion
-                        let size_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let size = usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                        let size =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         queue_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                     }
 
@@ -249,10 +236,10 @@ pub mod downlink {
         }
 
         //Todo add defaults
-        return match queue_size {
+        match queue_size {
             Some(queue_size) => Ok(MuxMode::Queue(queue_size)),
             _ => Err(ConfigParseError {}),
-        };
+        }
     }
 
     fn try_buffered_mode_from_items(items: Vec<Item>) -> Result<MuxMode, ConfigParseError> {
@@ -262,10 +249,8 @@ pub mod downlink {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     QUEUE_SIZE_TAG => {
-                        //Todo replace with direct conversion
-                        let size_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let size = usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                        let size =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         queue_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                     }
 
@@ -277,10 +262,10 @@ pub mod downlink {
         }
 
         //Todo add defaults
-        return match queue_size {
+        match queue_size {
             Some(queue_size) => Ok(MuxMode::Buffered(queue_size)),
             _ => Err(ConfigParseError {}),
-        };
+        }
     }
 
     /// Instruction on how to respond when an invalid message is received for a downlink.
@@ -438,19 +423,13 @@ pub mod downlink {
                             }
                         }
                         IDLE_TIMEOUT_TAG => {
-                            //Todo replace with direct conversion
-                            let timeout_as_i32 =
-                                i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                             let timeout =
-                                u64::try_from(timeout_as_i32).map_err(|_| ConfigParseError {})?;
+                                u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                             idle_timeout = Some(Duration::from_secs(timeout))
                         }
                         BUFFER_SIZE_TAG => {
-                            //Todo replace with direct conversion
-                            let size_as_i32 =
-                                i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                             let size =
-                                usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                                usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                             buffer_size = Some(size);
                         }
                         ON_INVALID_TAG => {
@@ -464,12 +443,9 @@ pub mod downlink {
                             }
                         }
                         YIELD_AFTER_TAG => {
-                            //Todo replace with direct conversion
-                            let yield_as_i32 =
-                                i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                            let yield_size =
-                                usize::try_from(yield_as_i32).map_err(|_| ConfigParseError {})?;
-                            yield_after = Some(yield_size);
+                            let size =
+                                usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                            yield_after = Some(size);
                         }
 
                         _ => return Err(ConfigParseError {}),
@@ -479,7 +455,7 @@ pub mod downlink {
             }
 
             //Todo add defaults
-            return match (
+            match (
                 back_pressure,
                 mux_mode,
                 idle_timeout,
@@ -504,7 +480,7 @@ pub mod downlink {
                 )
                 .map_err(|_| ConfigParseError {})?),
                 _ => Err(ConfigParseError {}),
-            };
+            }
         }
     }
 
@@ -537,11 +513,8 @@ pub mod downlink {
                 match item {
                     Item::Slot(Value::Text(name), value) => match name.as_str() {
                         BUFFER_SIZE_TAG => {
-                            //Todo replace with direct conversion
-                            let size_as_i32 =
-                                i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                             let size =
-                                usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                                usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                             buffer_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                         }
                         ROUTER_TAG => {
@@ -558,12 +531,12 @@ pub mod downlink {
             }
 
             //Todo add defaults
-            return match (buffer_size, router_params) {
+            match (buffer_size, router_params) {
                 (Some(buffer_size), Some(router_params)) => {
                     Ok(ClientParams::new(buffer_size, router_params))
                 }
                 _ => Err(ConfigParseError {}),
-            };
+            }
         }
     }
 
@@ -608,7 +581,7 @@ pub mod downlink {
             if attrs.pop().ok_or(ConfigParseError {})?.name == CONFIG_TAG {
                 ConfigHierarchy::try_from_items(items)
             } else {
-                return Err(ConfigParseError {});
+                Err(ConfigParseError {})
             }
         }
 
@@ -653,7 +626,7 @@ pub mod downlink {
             }
 
             //Todo add defaults
-            return match (client_params, downlink_params) {
+            match (client_params, downlink_params) {
                 (Some(client_params), Some(downlink_params)) => Ok(ConfigHierarchy {
                     client_params,
                     default: downlink_params,
@@ -661,7 +634,7 @@ pub mod downlink {
                     by_lane: lane_params,
                 }),
                 _ => Err(ConfigParseError {}),
-            };
+            }
         }
     }
 
@@ -688,7 +661,7 @@ pub mod downlink {
                     let downlink_params = DownlinkParams::try_from_items(items)?;
                     Ok((path, downlink_params))
                 } else {
-                    return Err(ConfigParseError {});
+                    Err(ConfigParseError {})
                 }
             }
             _ => Err(ConfigParseError {}),

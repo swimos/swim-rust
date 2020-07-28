@@ -18,9 +18,8 @@ use tokio::time::Duration;
 
 use crate::configuration::downlink::ConfigParseError;
 use common::model::{Attr, Item, Value};
-use std::convert::TryFrom;
 use swim_form::Form;
-use utilities::future::retryable::strategy::RetryStrategy;
+use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
@@ -109,25 +108,17 @@ impl RouterParams {
                         }
                     }
                     IDLE_TIMEOUT_TAG => {
-                        //Todo replace with direct conversion
-                        let timeout_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         let timeout =
-                            u64::try_from(timeout_as_i32).map_err(|_| ConfigParseError {})?;
+                            u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         idle_timeout = Some(Duration::from_secs(timeout))
                     }
                     CONN_REAPER_FREQ_TAG => {
-                        //Todo replace with direct conversion
-                        let freq_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let freq = u64::try_from(freq_as_i32).map_err(|_| ConfigParseError {})?;
+                        let freq = u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         conn_reaper_frequency = Some(Duration::from_secs(freq))
                     }
                     BUFFER_SIZE_TAG => {
-                        //Todo replace with direct conversion
-                        let size_as_i32 =
-                            i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        let size = usize::try_from(size_as_i32).map_err(|_| ConfigParseError {})?;
+                        let size =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                         buffer_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
                     }
                     _ => return Err(ConfigParseError {}),
@@ -137,7 +128,7 @@ impl RouterParams {
         }
 
         //Todo add defaults
-        return match (
+        match (
             retry_strategy,
             idle_timeout,
             conn_reaper_frequency,
@@ -155,7 +146,7 @@ impl RouterParams {
                 buffer_size,
             )),
             _ => Err(ConfigParseError {}),
-        };
+        }
     }
 }
 
@@ -167,6 +158,7 @@ const RETRIES_TAG: &str = "retries";
 const DELAY_TAG: &str = "delay";
 const MAX_INTERVAL_TAG: &str = "max_interval";
 const MAX_BACKOFF_TAG: &str = "max_backoff";
+const INDEFINITE_TAG: &str = "indefinite";
 
 fn try_retry_strat_from_value(mut attrs: Vec<Attr>) -> Result<RetryStrategy, ConfigParseError> {
     let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
@@ -176,21 +168,21 @@ fn try_retry_strat_from_value(mut attrs: Vec<Attr>) -> Result<RetryStrategy, Con
             if let Value::Record(_, items) = value {
                 try_immediate_strat_from_items(items)
             } else {
-                return Err(ConfigParseError {});
+                Err(ConfigParseError {})
             }
         }
         RETRY_INTERVAL_TAG => {
             if let Value::Record(_, items) = value {
                 try_interval_strat_from_items(items)
             } else {
-                return Err(ConfigParseError {});
+                Err(ConfigParseError {})
             }
         }
         RETRY_EXPONENTIAL_TAG => {
             if let Value::Record(_, items) = value {
                 try_exponential_strat_from_items(items)
             } else {
-                return Err(ConfigParseError {});
+                Err(ConfigParseError {})
             }
         }
         RETRY_NONE_TAG => Ok(RetryStrategy::none()),
@@ -205,11 +197,8 @@ fn try_immediate_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, Con
         match item {
             Item::Slot(Value::Text(name), value) => match name.as_str() {
                 RETRIES_TAG => {
-                    //Todo replace with direct conversion
-                    let retries_as_i32 =
-                        i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                     let num_tries =
-                        usize::try_from(retries_as_i32).map_err(|_| ConfigParseError {})?;
+                        usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                     retries = Some(NonZeroUsize::new(num_tries).ok_or(ConfigParseError {})?);
                 }
                 _ => return Err(ConfigParseError {}),
@@ -227,26 +216,29 @@ fn try_immediate_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, Con
 
 fn try_interval_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, ConfigParseError> {
     let mut delay: Option<Duration> = None;
-    let mut retries: Option<NonZeroUsize> = None;
+    let mut retries: Option<Quantity<NonZeroUsize>> = None;
 
     for item in items {
         match item {
             Item::Slot(Value::Text(name), value) => match name.as_str() {
                 DELAY_TAG => {
-                    //Todo replace with direct conversion
-                    let delay_as_i32 =
-                        i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                    let delay_len = u64::try_from(delay_as_i32).map_err(|_| ConfigParseError {})?;
+                    let delay_len = u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                     delay = Some(Duration::from_secs(delay_len));
                 }
                 RETRIES_TAG => {
-                    // Todo INF if None
-                    //Todo replace with direct conversion
-                    let retries_as_i32 =
-                        i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                    let num_tries =
-                        usize::try_from(retries_as_i32).map_err(|_| ConfigParseError {})?;
-                    retries = Some(NonZeroUsize::new(num_tries).ok_or(ConfigParseError {})?);
+                    if let Value::Text(text_value) = value {
+                        if text_value == INDEFINITE_TAG {
+                            retries = Some(Quantity::Infinite)
+                        } else {
+                            return Err(ConfigParseError {});
+                        }
+                    } else {
+                        let num_tries =
+                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        retries = Some(Quantity::Finite(
+                            NonZeroUsize::new(num_tries).ok_or(ConfigParseError {})?,
+                        ));
+                    }
                 }
                 _ => return Err(ConfigParseError {}),
             },
@@ -256,33 +248,34 @@ fn try_interval_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, Conf
 
     //Todo add defaults
     match (retries, delay) {
-        (Some(retries), Some(delay)) => Ok(RetryStrategy::interval(delay, Some(retries))),
+        (Some(retries), Some(delay)) => Ok(RetryStrategy::interval(delay, retries)),
         _ => Err(ConfigParseError {}),
     }
 }
 
 fn try_exponential_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, ConfigParseError> {
     let mut max_interval: Option<Duration> = None;
-    let mut max_backoff: Option<Duration> = None;
+    let mut max_backoff: Option<Quantity<Duration>> = None;
 
     for item in items {
         match item {
             Item::Slot(Value::Text(name), value) => match name.as_str() {
                 MAX_INTERVAL_TAG => {
-                    //Todo replace with direct conversion
-                    let interval_as_i32 =
-                        i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                    let interval =
-                        u64::try_from(interval_as_i32).map_err(|_| ConfigParseError {})?;
+                    let interval = u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
                     max_interval = Some(Duration::from_secs(interval));
                 }
                 MAX_BACKOFF_TAG => {
-                    // INF if None
-                    //Todo replace with direct conversion
-                    let backoff_as_i32 =
-                        i32::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                    let backoff = u64::try_from(backoff_as_i32).map_err(|_| ConfigParseError {})?;
-                    max_backoff = Some(Duration::from_secs(backoff));
+                    if let Value::Text(text_value) = value {
+                        if text_value == INDEFINITE_TAG {
+                            max_backoff = Some(Quantity::Infinite)
+                        } else {
+                            return Err(ConfigParseError {});
+                        }
+                    } else {
+                        let backoff =
+                            u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        max_backoff = Some(Quantity::Finite(Duration::from_secs(backoff)));
+                    }
                 }
                 _ => return Err(ConfigParseError {}),
             },
@@ -293,7 +286,7 @@ fn try_exponential_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, C
     //Todo add defaults
     match (max_interval, max_backoff) {
         (Some(max_interval), Some(max_backoff)) => {
-            Ok(RetryStrategy::exponential(max_interval, Some(max_backoff)))
+            Ok(RetryStrategy::exponential(max_interval, max_backoff))
         }
         _ => Err(ConfigParseError {}),
     }

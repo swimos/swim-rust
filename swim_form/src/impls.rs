@@ -346,6 +346,40 @@ impl ValidatedForm for u64 {
     }
 }
 
+impl Form for usize {
+    fn as_value(&self) -> Value {
+        Value::UInt64Value(*self as u64)
+    }
+
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormDeserializeErr> {
+        match value {
+            Value::Int32Value(i) => usize::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::Int64Value(i) => usize::try_from(*i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::UInt32Value(i) => Ok(*i as usize),
+            Value::UInt64Value(i) => Ok(*i as usize),
+            Value::BigInt(i) => usize::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::BigInt".into(),
+                )
+            }),
+            Value::BigUint(i) => usize::try_from(i).map_err(|_| {
+                FormDeserializeErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::BigUint".into(),
+                )
+            }),
+            v => de_incorrect_type("Value::UInt64Value", v),
+        }
+    }
+}
+
 impl Form for bool {
     fn as_value(&self) -> Value {
         Value::BooleanValue(*self)
