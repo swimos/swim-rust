@@ -16,11 +16,14 @@ use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
 use crate::model::schema::StandardSchema;
 use crate::model::{Item, Value, ValueKind};
+use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
+use num_bigint::{BigInt, BigUint};
+use num_traits::FromPrimitive;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
+use std::convert::TryFrom;
 use std::hash::BuildHasher;
 use std::hash::Hash;
-
-use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
+use std::str::FromStr;
 
 impl<'a, F> Form for &'a F
 where
@@ -80,6 +83,102 @@ impl ValidatedForm for Blob {
     }
 }
 
+impl Form for BigInt {
+    fn as_value(&self) -> Value {
+        Value::BigInt(self.clone())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::BigInt(bi) => Ok(bi.clone()),
+            Value::Int32Value(v) => Ok(BigInt::from(*v)),
+            Value::Int64Value(v) => Ok(BigInt::from(*v)),
+            Value::UInt32Value(v) => BigInt::from_u32(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse u32 into big unsigned integer",
+                ))
+            }),
+            Value::UInt64Value(v) => BigInt::from_u64(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse u64 into big unsigned integer",
+                ))
+            }),
+            Value::Float64Value(v) => BigInt::from_f64(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse float into big unsigned integer",
+                ))
+            }),
+            Value::Text(t) => BigInt::from_str(&t).map_err(|_| {
+                FormErr::Message(String::from(
+                    "Failed to parse text into big unsigned integer",
+                ))
+            }),
+            Value::BigUint(uint) => Ok(BigInt::from(uint.clone())),
+            v => de_incorrect_type("Value::Float64Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for BigInt {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::BigInt)
+    }
+}
+
+impl Form for BigUint {
+    fn as_value(&self) -> Value {
+        Value::BigUint(self.clone())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::BigInt(bi) => BigUint::try_from(bi).map_err(|_| {
+                FormErr::Message(String::from(
+                    "Failed to parse big integer into big unsigned integer",
+                ))
+            }),
+            Value::Int32Value(v) => BigUint::from_i32(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse int32 into big unsigned integer",
+                ))
+            }),
+            Value::Int64Value(v) => BigUint::from_i64(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse int64 into big unsigned integer",
+                ))
+            }),
+            Value::UInt32Value(v) => BigUint::from_u32(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse int32 into big unsigned integer",
+                ))
+            }),
+            Value::UInt64Value(v) => BigUint::from_u64(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse int64 into big unsigned integer",
+                ))
+            }),
+            Value::Float64Value(v) => BigUint::from_f64(*v).ok_or_else(|| {
+                FormErr::Message(String::from(
+                    "Failed to parse float64 into big unsigned integer",
+                ))
+            }),
+            Value::Text(t) => BigUint::from_str(&t).map_err(|_| {
+                FormErr::Message(String::from(
+                    "Failed to parse text into big unsigned integer",
+                ))
+            }),
+            Value::BigUint(uint) => Ok(uint.clone()),
+            v => de_incorrect_type("Value::Float64Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for BigUint {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::BigUint)
+    }
+}
+
 impl Form for f64 {
     fn as_value(&self) -> Value {
         Value::Float64Value(*self)
@@ -115,6 +214,25 @@ impl Form for i32 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
         match value {
             Value::Int32Value(i) => Ok(*i),
+            Value::Int64Value(i) => i32::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::Int32Value, found Value::Int64Value".into())
+            }),
+            Value::UInt32Value(i) => i32::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::Int32Value, found Value::UInt32Value".into(),
+                )
+            }),
+            Value::UInt64Value(i) => i32::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::Int32Value, found Value::UInt64Value".into(),
+                )
+            }),
+            Value::BigInt(i) => i32::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::Int32Value, found Value::BigInt".into())
+            }),
+            Value::BigUint(i) => i32::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::Int32Value, found Value::BigUint".into())
+            }),
             v => de_incorrect_type("Value::Int32Value", v),
         }
     }
@@ -133,7 +251,24 @@ impl Form for i64 {
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
         match value {
+            Value::Int32Value(i) => Ok(*i as i64),
             Value::Int64Value(i) => Ok(*i),
+            Value::UInt32Value(i) => i64::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::Int64Value, found Value::UInt32Value".into(),
+                )
+            }),
+            Value::UInt64Value(i) => i64::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::Int64Value, found Value::UInt64Value".into(),
+                )
+            }),
+            Value::BigInt(i) => i64::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::Int64Value, found Value::BigInt".into())
+            }),
+            Value::BigUint(i) => i64::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::Int64Value, found Value::BigUint".into())
+            }),
             v => de_incorrect_type("Value::Int64Value", v),
         }
     }
@@ -142,6 +277,82 @@ impl Form for i64 {
 impl ValidatedForm for i64 {
     fn schema() -> StandardSchema {
         StandardSchema::OfKind(ValueKind::Int64)
+    }
+}
+
+impl Form for u32 {
+    fn as_value(&self) -> Value {
+        Value::UInt32Value(*self)
+    }
+
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Int32Value(i) => u32::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::Int64Value(i) => u32::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::Int64Value".into(),
+                )
+            }),
+            Value::UInt32Value(i) => Ok(*i),
+            Value::UInt64Value(i) => u32::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::UInt32Value, found Value::UInt64Value".into(),
+                )
+            }),
+            Value::BigInt(i) => u32::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::UInt32Value, found Value::BigInt".into())
+            }),
+            Value::BigUint(i) => u32::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::UInt32Value, found Value::BigUint".into())
+            }),
+            v => de_incorrect_type("Value::UInt32Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for u32 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt32)
+    }
+}
+
+impl Form for u64 {
+    fn as_value(&self) -> Value {
+        Value::UInt64Value(*self)
+    }
+
+    fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Int32Value(i) => u64::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::Int64Value(i) => u64::try_from(*i).map_err(|_| {
+                FormErr::IncorrectType(
+                    "Expected Value::UInt64Value, found Value::Int32Value".into(),
+                )
+            }),
+            Value::UInt32Value(i) => Ok(*i as u64),
+            Value::UInt64Value(i) => Ok(*i),
+            Value::BigInt(i) => u64::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::UInt64Value, found Value::BigInt".into())
+            }),
+            Value::BigUint(i) => u64::try_from(i).map_err(|_| {
+                FormErr::IncorrectType("Expected Value::UInt64Value, found Value::BigUint".into())
+            }),
+            v => de_incorrect_type("Value::UInt64Value", v),
+        }
+    }
+}
+
+impl ValidatedForm for u64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt64)
     }
 }
 

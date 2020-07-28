@@ -19,6 +19,34 @@ use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
 use crate::form::Form;
 use crate::model::{Attr, Item, Value};
 
+use form_derive::*;
+use num_bigint::{BigInt, BigUint};
+
+#[test]
+fn transmute_bigint() {
+    #[derive(Form)]
+    struct S {
+        a: BigInt,
+        b: BigUint,
+    }
+
+    let s = S {
+        a: BigInt::from(100),
+        b: BigUint::from(100u32),
+    };
+
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::from("S")],
+            vec![
+                Item::from(("a", Value::BigInt(BigInt::from(100)))),
+                Item::from(("b", Value::BigUint(BigUint::from(100u32)))),
+            ],
+        )
+    )
+}
+
 mod primitive {
     use super::*;
 

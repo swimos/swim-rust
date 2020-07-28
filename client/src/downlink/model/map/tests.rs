@@ -14,13 +14,15 @@
 
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use num_bigint::{BigInt, BigUint};
 use tokio::sync::oneshot;
 
-use super::*;
-use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
 use common::model::schema::Schema;
 use common::request::Request;
-use swim_form::{BigInt, BigUint};
+
+use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
+
+use super::*;
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);
