@@ -24,7 +24,7 @@ use im::OrdMap;
 use common::model::Value;
 use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
-use stm::transaction::{atomically, RetryManager, TransactionError};
+use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 use swim_form::{Form, FormDeserializeErr};
@@ -125,6 +125,25 @@ where
         _key_type: PhantomData,
     };
     (lane, view)
+}
+
+/// Updates that can be applied to a [`MapLane`].
+/// TODO Add take/drop.
+pub enum MapUpdate<K, V> {
+    Update(K, Arc<V>),
+    Remove(K),
+    Clear,
+}
+
+impl<K, V> MapUpdate<K, V> {
+    pub fn make(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
+        match event {
+            MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
+            MapLaneEvent::Clear => Some(MapUpdate::Clear),
+            MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key)),
+            MapLaneEvent::Checkpoint(_) => None,
+        }
+    }
 }
 
 /// A single event that occurred during a transaction.
@@ -578,9 +597,23 @@ where
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, UPDATING, key = ?self.key, value = ?self.value);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
+    }
 }
 
-/// Returned by the `rmove_direct` method of [`MapLane`]. This wraps the removal transaction
+/// Returned by the `remove_direct` method of [`MapLane`]. This wraps the removal transaction
 /// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectRemove<'a, K, V> {
@@ -615,6 +648,20 @@ where
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, REMOVING, key = ?self.key);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
+    }
 }
 
 /// Returned by the `clear_direct` method of [`MapLane`]. This wraps the clear transaction
@@ -646,6 +693,20 @@ where
         event!(Level::TRACE, CLEARING);
         let stm = self.into_stm();
         atomically(&stm, retries).await
+    }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, CLEARING);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
     }
 }
 
@@ -716,6 +777,20 @@ where
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
+    }
 }
 
 /// Returned by the `modify_direct_if_defined` method of [`MapLane`]. This wraps the modification
@@ -764,5 +839,19 @@ where
         event!(Level::TRACE, MODIFYING, key = ?self.key);
         let stm = self.into_stm();
         atomically(&stm, retries).await
+    }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
     }
 }

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::map::{MapLaneSyncError, MapUpdate};
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::LaneModel;
 use common::sink::item::ItemSender;
