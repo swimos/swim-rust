@@ -77,14 +77,17 @@ pub mod downlink {
     }
 
     impl BackpressureMode {
-        fn try_from_value(mut attrs: Vec<Attr>) -> Result<Self, ConfigParseError> {
+        fn try_from_value(
+            mut attrs: Vec<Attr>,
+            use_defaults: bool,
+        ) -> Result<Self, ConfigParseError> {
             let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
 
             match name.as_str() {
                 PROPAGATE_TAG => Ok(BackpressureMode::Propagate),
                 RELEASE_TAG => {
                     if let Value::Record(_, items) = value {
-                        try_release_mode_from_items(items)
+                        try_release_mode_from_items(items, use_defaults)
                     } else {
                         Err(ConfigParseError {})
                     }
@@ -99,7 +102,14 @@ pub mod downlink {
     const MAX_ACTIVE_KEYS: &str = "max_active_keys";
     const YIELD_AFTER: &str = "yield_after";
 
-    fn try_release_mode_from_items(items: Vec<Item>) -> Result<BackpressureMode, ConfigParseError> {
+    const DEFAULT_INPUT_BUFFER_SIZE: usize = 5;
+    const DEFAULT_BRIDGE_BUFFER_SIZE: usize = 5;
+    const DEFAULT_MAX_ACTIVE_KEYS: usize = 20;
+
+    fn try_release_mode_from_items(
+        items: Vec<Item>,
+        use_defaults: bool,
+    ) -> Result<BackpressureMode, ConfigParseError> {
         let mut input_buffer_size: Option<NonZeroUsize> = None;
         let mut bridge_buffer_size: Option<NonZeroUsize> = None;
         let mut max_active_keys: Option<NonZeroUsize> = None;
@@ -141,26 +151,28 @@ pub mod downlink {
             };
         }
 
-        //Todo add defaults
-        match (
-            input_buffer_size,
-            bridge_buffer_size,
-            max_active_keys,
-            yield_after,
-        ) {
-            (
-                Some(input_buffer_size),
-                Some(bridge_buffer_size),
-                Some(max_active_keys),
-                Some(yield_after),
-            ) => Ok(BackpressureMode::Release {
-                input_buffer_size,
-                bridge_buffer_size,
-                max_active_keys,
-                yield_after,
-            }),
-            _ => Err(ConfigParseError {}),
+        if input_buffer_size.is_none() && use_defaults {
+            input_buffer_size = Some(NonZeroUsize::new(DEFAULT_INPUT_BUFFER_SIZE).unwrap())
         }
+
+        if bridge_buffer_size.is_none() && use_defaults {
+            bridge_buffer_size = Some(NonZeroUsize::new(DEFAULT_BRIDGE_BUFFER_SIZE).unwrap())
+        }
+
+        if max_active_keys.is_none() && use_defaults {
+            max_active_keys = Some(NonZeroUsize::new(DEFAULT_MAX_ACTIVE_KEYS).unwrap())
+        }
+
+        if yield_after.is_none() && use_defaults {
+            yield_after = Some(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap())
+        }
+
+        Ok(BackpressureMode::Release {
+            input_buffer_size: input_buffer_size.ok_or(ConfigParseError {})?,
+            bridge_buffer_size: bridge_buffer_size.ok_or(ConfigParseError {})?,
+            max_active_keys: max_active_keys.ok_or(ConfigParseError {})?,
+            yield_after: yield_after.ok_or(ConfigParseError {})?,
+        })
     }
 
     /// Configuration for the creation and management of downlinks for a Warp client.
@@ -177,6 +189,8 @@ pub mod downlink {
     const BUFFERED_TAG: &str = "buffered";
     const QUEUE_SIZE_TAG: &str = "queue_size";
 
+    const DEFAULT_QUEUE_SIZE: usize = 5;
+
     /// Multiplexing strategy for the topic of events produced by a downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub enum MuxMode {
@@ -191,14 +205,23 @@ pub mod downlink {
         Buffered(NonZeroUsize),
     }
 
+    impl Default for MuxMode {
+        fn default() -> Self {
+            MuxMode::Queue(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
+        }
+    }
+
     impl MuxMode {
-        fn try_from_value(mut attrs: Vec<Attr>) -> Result<Self, ConfigParseError> {
+        fn try_from_value(
+            mut attrs: Vec<Attr>,
+            use_defaults: bool,
+        ) -> Result<Self, ConfigParseError> {
             let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
 
             match name.as_str() {
                 QUEUE_TAG => {
                     if let Value::Record(_, items) = value {
-                        try_queue_mode_from_items(items)
+                        try_queue_mode_from_items(items, use_defaults)
                     } else {
                         Err(ConfigParseError {})
                     }
@@ -206,7 +229,7 @@ pub mod downlink {
                 DROPPING_TAG => Ok(MuxMode::Dropping),
                 BUFFERED_TAG => {
                     if let Value::Record(_, items) = value {
-                        try_buffered_mode_from_items(items)
+                        try_buffered_mode_from_items(items, use_defaults)
                     } else {
                         Err(ConfigParseError {})
                     }
@@ -216,7 +239,10 @@ pub mod downlink {
         }
     }
 
-    fn try_queue_mode_from_items(items: Vec<Item>) -> Result<MuxMode, ConfigParseError> {
+    fn try_queue_mode_from_items(
+        items: Vec<Item>,
+        use_defaults: bool,
+    ) -> Result<MuxMode, ConfigParseError> {
         let mut queue_size: Option<NonZeroUsize> = None;
 
         for item in items {
@@ -235,14 +261,17 @@ pub mod downlink {
             }
         }
 
-        //Todo add defaults
-        match queue_size {
-            Some(queue_size) => Ok(MuxMode::Queue(queue_size)),
-            _ => Err(ConfigParseError {}),
+        if queue_size.is_none() && use_defaults {
+            queue_size = Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
         }
+
+        Ok(MuxMode::Queue(queue_size.ok_or(ConfigParseError {})?))
     }
 
-    fn try_buffered_mode_from_items(items: Vec<Item>) -> Result<MuxMode, ConfigParseError> {
+    fn try_buffered_mode_from_items(
+        items: Vec<Item>,
+        use_defaults: bool,
+    ) -> Result<MuxMode, ConfigParseError> {
         let mut queue_size: Option<NonZeroUsize> = None;
 
         for item in items {
@@ -261,11 +290,11 @@ pub mod downlink {
             };
         }
 
-        //Todo add defaults
-        match queue_size {
-            Some(queue_size) => Ok(MuxMode::Buffered(queue_size)),
-            _ => Err(ConfigParseError {}),
+        if queue_size.is_none() && use_defaults {
+            queue_size = Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
         }
+
+        Ok(MuxMode::Buffered(queue_size.ok_or(ConfigParseError {})?))
     }
 
     /// Instruction on how to respond when an invalid message is received for a downlink.
@@ -285,6 +314,12 @@ pub mod downlink {
     const YIELD_AFTER_TAG: &str = "yield_after";
     const TERMINATE_TAG: &str = "terminate";
     const IGNORE_TAG: &str = "ignore";
+
+    const DEFAULT_BACK_PRESSURE: BackpressureMode = BackpressureMode::Propagate;
+    const DEFAULT_IDLE_TIMEOUT: u64 = 60000;
+    const DEFAULT_DOWNLINK_BUFFER_SIZE: usize = 5;
+    const DEFAULT_ON_INVALID: OnInvalidMessage = OnInvalidMessage::Terminate;
+    const DEFAULT_YIELD_AFTER: usize = 256;
 
     /// Configuration parameters for a single downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -397,7 +432,7 @@ pub mod downlink {
             }
         }
 
-        fn try_from_items(items: Vec<Item>) -> Result<Self, ConfigParseError> {
+        fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
             let mut back_pressure: Option<BackpressureMode> = None;
             let mut mux_mode: Option<MuxMode> = None;
             let mut idle_timeout: Option<Duration> = None;
@@ -410,14 +445,15 @@ pub mod downlink {
                     Item::Slot(Value::Text(name), value) => match name.as_str() {
                         BACK_PRESSURE_TAG => {
                             if let Value::Record(attrs, _) = value {
-                                back_pressure = Some(BackpressureMode::try_from_value(attrs)?);
+                                back_pressure =
+                                    Some(BackpressureMode::try_from_value(attrs, use_defaults)?);
                             } else {
                                 return Err(ConfigParseError {});
                             }
                         }
                         MUX_MODE_TAG => {
                             if let Value::Record(attrs, _) = value {
-                                mux_mode = Some(MuxMode::try_from_value(attrs)?);
+                                mux_mode = Some(MuxMode::try_from_value(attrs, use_defaults)?);
                             } else {
                                 return Err(ConfigParseError {});
                             }
@@ -454,33 +490,53 @@ pub mod downlink {
                 }
             }
 
-            //Todo add defaults
-            match (
-                back_pressure,
-                mux_mode,
-                idle_timeout,
-                buffer_size,
-                on_invalid,
-                yield_after,
-            ) {
-                (
-                    Some(back_pressure),
-                    Some(mux_mode),
-                    Some(idle_timeout),
-                    Some(buffer_size),
-                    Some(on_invalid),
-                    Some(yield_after),
-                ) => Ok(DownlinkParams::new(
-                    back_pressure,
-                    mux_mode,
-                    idle_timeout,
-                    buffer_size,
-                    on_invalid,
-                    yield_after,
-                )
-                .map_err(|_| ConfigParseError {})?),
-                _ => Err(ConfigParseError {}),
+            if back_pressure.is_none() && use_defaults {
+                back_pressure = Some(DEFAULT_BACK_PRESSURE)
             }
+
+            if mux_mode.is_none() && use_defaults {
+                mux_mode = Some(MuxMode::default())
+            }
+
+            if idle_timeout.is_none() && use_defaults {
+                idle_timeout = Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT))
+            }
+
+            if buffer_size.is_none() && use_defaults {
+                buffer_size = Some(DEFAULT_DOWNLINK_BUFFER_SIZE)
+            }
+
+            if on_invalid.is_none() && use_defaults {
+                on_invalid = Some(DEFAULT_ON_INVALID)
+            }
+
+            if yield_after.is_none() && use_defaults {
+                yield_after = Some(DEFAULT_YIELD_AFTER)
+            }
+
+            Ok(DownlinkParams::new(
+                back_pressure.ok_or(ConfigParseError {})?,
+                mux_mode.ok_or(ConfigParseError {})?,
+                idle_timeout.ok_or(ConfigParseError {})?,
+                buffer_size.ok_or(ConfigParseError {})?,
+                on_invalid.ok_or(ConfigParseError {})?,
+                yield_after.ok_or(ConfigParseError {})?,
+            )
+            .map_err(|_| ConfigParseError {})?)
+        }
+    }
+
+    impl Default for DownlinkParams {
+        fn default() -> Self {
+            DownlinkParams::new(
+                DEFAULT_BACK_PRESSURE,
+                Default::default(),
+                Duration::from_secs(DEFAULT_IDLE_TIMEOUT),
+                DEFAULT_DOWNLINK_BUFFER_SIZE,
+                DEFAULT_ON_INVALID,
+                DEFAULT_YIELD_AFTER,
+            )
+            .unwrap()
         }
     }
 
@@ -492,6 +548,8 @@ pub mod downlink {
 
         pub router_params: RouterParams,
     }
+
+    const DEFAULT_CLIENT_BUFFER_SIZE: usize = 2;
 
     const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
     const BAD_YIELD_AFTER: &str = "Yield after count must be positive..";
@@ -505,7 +563,7 @@ pub mod downlink {
             }
         }
 
-        fn try_from_items(items: Vec<Item>) -> Result<Self, ConfigParseError> {
+        fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
             let mut buffer_size: Option<NonZeroUsize> = None;
             let mut router_params: Option<RouterParams> = None;
 
@@ -519,7 +577,8 @@ pub mod downlink {
                         }
                         ROUTER_TAG => {
                             if let Value::Record(_, items) = value {
-                                router_params = Some(RouterParams::try_from_items(items)?);
+                                router_params =
+                                    Some(RouterParams::try_from_items(items, use_defaults)?);
                             } else {
                                 return Err(ConfigParseError {});
                             }
@@ -530,19 +589,33 @@ pub mod downlink {
                 }
             }
 
-            //Todo add defaults
-            match (buffer_size, router_params) {
-                (Some(buffer_size), Some(router_params)) => {
-                    Ok(ClientParams::new(buffer_size, router_params))
-                }
-                _ => Err(ConfigParseError {}),
+            if buffer_size.is_none() && use_defaults {
+                buffer_size = Some(NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap())
             }
+
+            if router_params.is_none() && use_defaults {
+                router_params = Some(RouterParams::default())
+            }
+
+            Ok(ClientParams::new(
+                buffer_size.ok_or(ConfigParseError {})?,
+                router_params.ok_or(ConfigParseError {})?,
+            ))
+        }
+    }
+
+    impl Default for ClientParams {
+        fn default() -> Self {
+            ClientParams::new(
+                NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap(),
+                Default::default(),
+            )
         }
     }
 
     /// Basic [`Config`] implementation which allows for configuration to be specified by absolute
     /// path or host and provides a default fallback.
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, PartialEq)]
     pub struct ConfigHierarchy {
         client_params: ClientParams,
         default: DownlinkParams,
@@ -572,20 +645,20 @@ pub mod downlink {
             self.by_lane.insert(lane.clone(), params);
         }
 
-        pub fn try_from_value(value: Value) -> Result<Self, ConfigParseError> {
+        pub fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
             let (mut attrs, items) = match value {
                 Value::Record(attrs, items) => (attrs, items),
                 _ => return Err(ConfigParseError {}),
             };
 
             if attrs.pop().ok_or(ConfigParseError {})?.name == CONFIG_TAG {
-                ConfigHierarchy::try_from_items(items)
+                ConfigHierarchy::try_from_items(items, use_defaults)
             } else {
                 Err(ConfigParseError {})
             }
         }
 
-        fn try_from_items(items: Vec<Item>) -> Result<Self, ConfigParseError> {
+        fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
             let mut client_params: Option<ClientParams> = None;
             let mut downlink_params: Option<DownlinkParams> = None;
             let mut host_params: HashMap<Url, DownlinkParams> = HashMap::new();
@@ -601,20 +674,24 @@ pub mod downlink {
 
                         match attrs.pop().ok_or(ConfigParseError {})?.name.as_str() {
                             CLIENT_TAG => {
-                                client_params = Some(ClientParams::try_from_items(items)?);
+                                client_params =
+                                    Some(ClientParams::try_from_items(items, use_defaults)?);
                             }
                             DOWNLINKS_TAG => {
-                                downlink_params = Some(DownlinkParams::try_from_items(items)?);
+                                downlink_params =
+                                    Some(DownlinkParams::try_from_items(items, use_defaults)?);
                             }
                             HOST_TAG => {
                                 for item in items {
-                                    let (url, params) = try_host_params_from_item(item)?;
+                                    let (url, params) =
+                                        try_host_params_from_item(item, use_defaults)?;
                                     host_params.insert(url, params);
                                 }
                             }
                             LANE_TAG => {
                                 for item in items {
-                                    let (path, params) = try_lane_params_from_item(item)?;
+                                    let (path, params) =
+                                        try_lane_params_from_item(item, use_defaults)?;
                                     lane_params.insert(path, params);
                                 }
                             }
@@ -625,24 +702,31 @@ pub mod downlink {
                 }
             }
 
-            //Todo add defaults
-            match (client_params, downlink_params) {
-                (Some(client_params), Some(downlink_params)) => Ok(ConfigHierarchy {
-                    client_params,
-                    default: downlink_params,
-                    by_host: host_params,
-                    by_lane: lane_params,
-                }),
-                _ => Err(ConfigParseError {}),
+            if client_params.is_none() && use_defaults {
+                client_params = Some(ClientParams::default())
             }
+
+            if downlink_params.is_none() && use_defaults {
+                downlink_params = Some(DownlinkParams::default())
+            }
+
+            Ok(ConfigHierarchy {
+                client_params: client_params.ok_or(ConfigParseError {})?,
+                default: downlink_params.ok_or(ConfigParseError {})?,
+                by_host: host_params,
+                by_lane: lane_params,
+            })
         }
     }
 
-    fn try_host_params_from_item(item: Item) -> Result<(Url, DownlinkParams), ConfigParseError> {
+    fn try_host_params_from_item(
+        item: Item,
+        use_defaults: bool,
+    ) -> Result<(Url, DownlinkParams), ConfigParseError> {
         match item {
             Item::Slot(Value::Text(name), Value::Record(_, items)) => {
-                let downlink_params = DownlinkParams::try_from_items(items)?;
                 let host = Url::parse(&name).map_err(|_| ConfigParseError {})?;
+                let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
                 Ok((host, downlink_params))
             }
             _ => Err(ConfigParseError {}),
@@ -651,6 +735,7 @@ pub mod downlink {
 
     fn try_lane_params_from_item(
         item: Item,
+        use_defaults: bool,
     ) -> Result<(AbsolutePath, DownlinkParams), ConfigParseError> {
         match item {
             Item::ValueItem(Value::Record(mut attrs, items)) => {
@@ -658,7 +743,7 @@ pub mod downlink {
 
                 if name == PATH_TAG {
                     let path = try_absolute_path_from_record(value)?;
-                    let downlink_params = DownlinkParams::try_from_items(items)?;
+                    let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
                     Ok((path, downlink_params))
                 } else {
                     Err(ConfigParseError {})
@@ -692,11 +777,11 @@ pub mod downlink {
             _ => return Err(ConfigParseError {}),
         };
 
-        //Todo add defaults
-        match (host, node, lane) {
-            (Some(host), Some(node), Some(lane)) => Ok(AbsolutePath::new(host, &node, &lane)),
-            _ => Err(ConfigParseError {}),
-        }
+        Ok(AbsolutePath::new(
+            host.ok_or(ConfigParseError {})?,
+            &node.ok_or(ConfigParseError {})?,
+            &lane.ok_or(ConfigParseError {})?,
+        ))
     }
 
     #[derive(Debug, PartialEq)]
@@ -732,18 +817,9 @@ pub mod downlink {
 
     impl Default for ConfigHierarchy {
         fn default() -> Self {
-            let client_params =
-                ClientParams::new(NonZeroUsize::new(2).unwrap(), Default::default());
-            let timeout = Duration::from_secs(60000);
-            let default_params = DownlinkParams::new_queue(
-                BackpressureMode::Propagate,
-                5,
-                timeout,
-                5,
-                OnInvalidMessage::Terminate,
-                256,
-            )
-            .unwrap();
+            let client_params = Default::default();
+            let default_params = Default::default();
+
             ConfigHierarchy::new(client_params, default_params)
         }
     }

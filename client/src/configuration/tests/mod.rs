@@ -1,6 +1,7 @@
 use crate::configuration::downlink::ConfigHierarchy;
 use common::model::parser::parse_single;
 use std::fs;
+use std::io::Read;
 
 #[test]
 fn from_string() {
@@ -31,14 +32,21 @@ fn from_string() {
 
 #[test]
 fn from_file() {
-    let contents = fs::read_to_string("client/src/configuration/tests/client_config.recon")
-        .expect("Something went wrong reading the file");
+    let mut file = fs::File::open("client/src/configuration/tests/test_config.recon").unwrap();
+
+    let mut contents = String::new();
+
+    file.read_to_string(&mut contents).unwrap();
 
     let config = parse_single(&contents).unwrap();
 
-    let config = ConfigHierarchy::try_from_value(config);
+    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
 
-    println!("{:?}", config)
+    let default_config = ConfigHierarchy::default();
+
+    println!("{:?}", config);
+    println!("{:?}", default_config);
+    assert_eq!(config, default_config)
 }
 
 // fn parse_config()

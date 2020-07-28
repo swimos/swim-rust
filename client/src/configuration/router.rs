@@ -91,7 +91,7 @@ impl RouterParams {
         )
     }
 
-    pub fn try_from_items(items: Vec<Item>) -> Result<Self, ConfigParseError> {
+    pub fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
         let mut retry_strategy: Option<RetryStrategy> = None;
         let mut idle_timeout: Option<Duration> = None;
         let mut conn_reaper_frequency: Option<Duration> = None;
@@ -102,7 +102,7 @@ impl RouterParams {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     RETRY_STRATEGY_TAG => {
                         if let Value::Record(attrs, _) = value {
-                            retry_strategy = Some(try_retry_strat_from_value(attrs)?);
+                            retry_strategy = Some(try_retry_strat_from_value(attrs, use_defaults)?);
                         } else {
                             return Err(ConfigParseError {});
                         }
@@ -127,26 +127,28 @@ impl RouterParams {
             }
         }
 
-        //Todo add defaults
-        match (
-            retry_strategy,
-            idle_timeout,
-            conn_reaper_frequency,
-            buffer_size,
-        ) {
-            (
-                Some(retry_strategy),
-                Some(idle_timeout),
-                Some(conn_reaper_frequency),
-                Some(buffer_size),
-            ) => Ok(RouterParams::new(
-                retry_strategy,
-                idle_timeout,
-                conn_reaper_frequency,
-                buffer_size,
-            )),
-            _ => Err(ConfigParseError {}),
+        if retry_strategy.is_none() && use_defaults {
+            retry_strategy = Some(RetryStrategy::default())
         }
+
+        if idle_timeout.is_none() && use_defaults {
+            idle_timeout = Some(DEFAULT_IDLE_TIMEOUT)
+        }
+
+        if conn_reaper_frequency.is_none() && use_defaults {
+            conn_reaper_frequency = Some(DEFAULT_CONN_REAPER_FREQUENCY)
+        }
+
+        if buffer_size.is_none() && use_defaults {
+            buffer_size = Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap())
+        }
+
+        Ok(RouterParams::new(
+            retry_strategy.ok_or(ConfigParseError {})?,
+            idle_timeout.ok_or(ConfigParseError {})?,
+            conn_reaper_frequency.ok_or(ConfigParseError {})?,
+            buffer_size.ok_or(ConfigParseError {})?,
+        ))
     }
 }
 
@@ -160,27 +162,35 @@ const MAX_INTERVAL_TAG: &str = "max_interval";
 const MAX_BACKOFF_TAG: &str = "max_backoff";
 const INDEFINITE_TAG: &str = "indefinite";
 
-fn try_retry_strat_from_value(mut attrs: Vec<Attr>) -> Result<RetryStrategy, ConfigParseError> {
+const DEFAULT_RETRIES: usize = 5;
+const DEFAULT_INTERVAL: u64 = 5;
+const DEFAULT_MAX_INTERVAL: u64 = 16;
+const DEFAULT_BACKOFF: u64 = 32;
+
+fn try_retry_strat_from_value(
+    mut attrs: Vec<Attr>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
     let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
 
     match name.as_str() {
         RETRY_IMMEDIATE_TAG => {
             if let Value::Record(_, items) = value {
-                try_immediate_strat_from_items(items)
+                try_immediate_strat_from_items(items, use_defaults)
             } else {
                 Err(ConfigParseError {})
             }
         }
         RETRY_INTERVAL_TAG => {
             if let Value::Record(_, items) = value {
-                try_interval_strat_from_items(items)
+                try_interval_strat_from_items(items, use_defaults)
             } else {
                 Err(ConfigParseError {})
             }
         }
         RETRY_EXPONENTIAL_TAG => {
             if let Value::Record(_, items) = value {
-                try_exponential_strat_from_items(items)
+                try_exponential_strat_from_items(items, use_defaults)
             } else {
                 Err(ConfigParseError {})
             }
@@ -190,7 +200,10 @@ fn try_retry_strat_from_value(mut attrs: Vec<Attr>) -> Result<RetryStrategy, Con
     }
 }
 
-fn try_immediate_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, ConfigParseError> {
+fn try_immediate_strat_from_items(
+    items: Vec<Item>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
     let mut retries: Option<NonZeroUsize> = None;
 
     for item in items {
@@ -207,14 +220,19 @@ fn try_immediate_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, Con
         }
     }
 
-    //Todo add defaults
-    match retries {
-        Some(retries) => Ok(RetryStrategy::immediate(retries)),
-        _ => Err(ConfigParseError {}),
+    if retries.is_none() && use_defaults {
+        retries = Some(NonZeroUsize::new(DEFAULT_RETRIES).unwrap())
     }
+
+    Ok(RetryStrategy::immediate(
+        retries.ok_or(ConfigParseError {})?,
+    ))
 }
 
-fn try_interval_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, ConfigParseError> {
+fn try_interval_strat_from_items(
+    items: Vec<Item>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
     let mut delay: Option<Duration> = None;
     let mut retries: Option<Quantity<NonZeroUsize>> = None;
 
@@ -246,14 +264,26 @@ fn try_interval_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, Conf
         }
     }
 
-    //Todo add defaults
-    match (retries, delay) {
-        (Some(retries), Some(delay)) => Ok(RetryStrategy::interval(delay, retries)),
-        _ => Err(ConfigParseError {}),
+    if retries.is_none() && use_defaults {
+        retries = Some(Quantity::Finite(
+            NonZeroUsize::new(DEFAULT_RETRIES).unwrap(),
+        ))
     }
+
+    if delay.is_none() && use_defaults {
+        delay = Some(Duration::from_secs(DEFAULT_INTERVAL))
+    }
+
+    Ok(RetryStrategy::interval(
+        delay.ok_or(ConfigParseError {})?,
+        retries.ok_or(ConfigParseError {})?,
+    ))
 }
 
-fn try_exponential_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, ConfigParseError> {
+fn try_exponential_strat_from_items(
+    items: Vec<Item>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
     let mut max_interval: Option<Duration> = None;
     let mut max_backoff: Option<Quantity<Duration>> = None;
 
@@ -283,13 +313,18 @@ fn try_exponential_strat_from_items(items: Vec<Item>) -> Result<RetryStrategy, C
         }
     }
 
-    //Todo add defaults
-    match (max_interval, max_backoff) {
-        (Some(max_interval), Some(max_backoff)) => {
-            Ok(RetryStrategy::exponential(max_interval, max_backoff))
-        }
-        _ => Err(ConfigParseError {}),
+    if max_interval.is_none() && use_defaults {
+        max_interval = Some(Duration::from_secs(DEFAULT_MAX_INTERVAL))
     }
+
+    if max_backoff.is_none() && use_defaults {
+        max_backoff = Some(Quantity::Finite(Duration::from_secs(DEFAULT_BACKOFF)))
+    }
+
+    Ok(RetryStrategy::exponential(
+        max_interval.ok_or(ConfigParseError {})?,
+        max_backoff.ok_or(ConfigParseError {})?,
+    ))
 }
 
 pub struct RouterParamBuilder {
