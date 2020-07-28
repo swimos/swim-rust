@@ -116,11 +116,10 @@ dependencies = [
  "either",
  "futures 0.3.5",
  "futures-util",
- "im 15.0.0",
+ "im",
  "pin-project",
  "pin-utils",
  "rand",
- "swim_form",
  "swim_runtime",
  "tokio",
  "tracing",
@@ -146,12 +145,12 @@ dependencies = [
  "base64",
  "bytes",
  "either",
+ "form_derive",
  "futures 0.3.5",
  "futures-util",
  "pin-project",
  "pin-utils",
  "regex",
- "serde",
  "swim_runtime",
  "tokio",
  "tokio-util",
@@ -170,14 +169,6 @@ checksum = "b8d976903543e0c48546a91908f21588a680a8c8f984df9a5d69feccb2b2a211"
 dependencies = [
  "cfg-if",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "deserialize"
-version = "0.1.0"
-dependencies = [
- "common",
- "serde",
 ]
 
 [[package]]
@@ -202,6 +193,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 name = "form_derive"
 version = "0.1.0"
 dependencies = [
+ "macro_helpers",
  "proc-macro2 1.0.18",
  "quote 1.0.7",
  "syn",
@@ -345,20 +337,6 @@ dependencies = [
 
 [[package]]
 name = "im"
-version = "14.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "696059c87b83c5a258817ecd67c3af915e3ed141891fc35a1e79908801cf0ce7"
-dependencies = [
- "bitmaps",
- "rand_core",
- "rand_xoshiro",
- "sized-chunks 0.5.3",
- "typenum",
- "version_check",
-]
-
-[[package]]
-name = "im"
 version = "15.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "111c1983f3c5bb72732df25cddacee9b546d08325fb584b5ebd38148be7b0246"
@@ -366,7 +344,7 @@ dependencies = [
  "bitmaps",
  "rand_core",
  "rand_xoshiro",
- "sized-chunks 0.6.2",
+ "sized-chunks",
  "typenum",
  "version_check",
 ]
@@ -425,6 +403,15 @@ dependencies = [
  "cfg-if",
  "generator",
  "scoped-tls 0.1.2",
+]
+
+[[package]]
+name = "macro_helpers"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.18",
+ "quote 1.0.7",
+ "syn",
 ]
 
 [[package]]
@@ -783,14 +770,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serialize"
-version = "0.1.0"
-dependencies = [
- "common",
- "serde",
-]
-
-[[package]]
 name = "sha1"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -803,16 +782,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06d5a3f5166fb5b42a5439f2eee8b9de149e235961e3eb21c5808fc3ea17ff3e"
 dependencies = [
  "lazy_static",
-]
-
-[[package]]
-name = "sized-chunks"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d59044ea371ad781ff976f7b06480b9f0180e834eda94114f2afb4afc12b7718"
-dependencies = [
- "bitmaps",
- "typenum",
 ]
 
 [[package]]
@@ -916,18 +885,6 @@ dependencies = [
  "wasm-bindgen-futures 0.4.13",
  "wasm-bindgen-test",
  "web-sys",
-]
-
-[[package]]
-name = "swim_form"
-version = "0.1.0"
-dependencies = [
- "common",
- "deserialize",
- "form_derive",
- "im 14.3.0",
- "serde",
- "serialize",
 ]
 
 [[package]]
@@ -1191,9 +1148,12 @@ version = "0.1.0"
 dependencies = [
  "futures 0.3.5",
  "futures-util",
+ "macro_helpers",
+ "parking_lot",
  "pin-project",
  "pin-utils",
  "rand",
+ "slab",
  "swim_runtime",
  "tokio",
  "tracing",

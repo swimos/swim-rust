@@ -17,6 +17,8 @@ use crate::form::FormErr;
 use crate::model::{Attr, Item, Value};
 use form_derive::*;
 
+mod impls;
+
 #[test]
 fn test_transmute() {
     #[derive(Form)]

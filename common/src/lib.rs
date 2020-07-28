@@ -23,3 +23,9 @@ pub mod request;
 pub mod sink;
 pub mod topic;
 pub mod warp;
+
+#[allow(unused_imports)]
+#[macro_use]
+extern crate form_derive;
+#[doc(hidden)]
+pub use form_derive::*;

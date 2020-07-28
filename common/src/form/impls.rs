@@ -15,7 +15,38 @@
 use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
 use crate::model::schema::StandardSchema;
-use crate::model::{Value, ValueKind};
+use crate::model::{Item, Value, ValueKind};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
+use std::hash::BuildHasher;
+use std::hash::Hash;
+
+use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
+
+impl<'a, F> Form for &'a F
+where
+    F: Form,
+{
+    fn as_value(&self) -> Value {
+        (**self).as_value()
+    }
+
+    fn try_from_value<'f>(_value: &Value) -> Result<Self, FormErr> {
+        unimplemented!()
+    }
+}
+
+impl<'a, F> Form for &'a mut F
+where
+    F: Form,
+{
+    fn as_value(&self) -> Value {
+        (**self).as_value()
+    }
+
+    fn try_from_value<'f>(_value: &Value) -> Result<Self, FormErr> {
+        unimplemented!()
+    }
+}
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
@@ -180,5 +211,119 @@ where
 impl ValidatedForm for String {
     fn schema() -> StandardSchema {
         StandardSchema::OfKind(ValueKind::Text)
+    }
+}
+
+fn seq_to_record<V>(it: V) -> Value
+where
+    V: Iterator,
+    <V as Iterator>::Item: Form,
+{
+    let vec = match it.size_hint() {
+        (u, Some(r)) if u == r => Vec::with_capacity(r),
+        _ => Vec::new(),
+    };
+
+    let items = it.fold(vec, |mut items, i| {
+        items.push(Item::of(i.as_value()));
+        items
+    });
+
+    Value::Record(Vec::new(), items)
+}
+
+macro_rules! impl_seq_form {
+    ($ty:ident < V $(: $tbound1:ident $(+ $tbound2:ident)*)* $(, $typaram:ident : $bound:ident)* >) => {
+        impl<V $(, $typaram)*> Form for $ty<V $(, $typaram)*>
+        where
+            V: Form $(+ $tbound1 $(+ $tbound2)*)*,
+            $($typaram: Form + $bound,)*
+        {
+            fn as_value(&self) -> Value {
+                seq_to_record(self.iter())
+            }
+
+            fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
+                unimplemented!()
+            }
+        }
+    }
+}
+
+impl_seq_form!(Vec<V>);
+impl_seq_form!(ImHashSet<V, L: BuildHasher>);
+impl_seq_form!(ImHashSet<V>);
+impl_seq_form!(OrdSet<V: Ord>);
+impl_seq_form!(VecDeque<V>);
+impl_seq_form!(BinaryHeap<V: Ord>);
+impl_seq_form!(BTreeSet<V>);
+impl_seq_form!(HashSet<V: Eq + Hash, L: BuildHasher>);
+impl_seq_form!(HashSet<V: Eq + Hash>);
+impl_seq_form!(LinkedList<V>);
+
+fn map_to_record<Iter, K, V>(it: Iter) -> Value
+where
+    Iter: Iterator<Item = (K, V)>,
+    K: Form,
+    V: Form,
+{
+    let vec = match it.size_hint() {
+        (u, Some(r)) if u == r => Vec::with_capacity(r),
+        _ => Vec::new(),
+    };
+
+    it.fold(Value::Record(vec![], vec), |mut v, (key, value)| {
+        if let Value::Record(_, items) = &mut v {
+            items.push(Item::slot(key.as_value(), value.as_value()))
+        } else {
+            unreachable!()
+        }
+        v
+    })
+}
+
+macro_rules! impl_map_form {
+    ($ty:ident < K $(: $kbound1:ident $(+ $kbound2:ident)*)*, V $(, $typaram:ident : $bound:ident)* >) => {
+        impl<K, V $(, $typaram)*> Form for $ty<K, V $(, $typaram)*>
+        where
+            K: Form $(+ $kbound1 $(+ $kbound2)*)*,
+            V: Form,
+            $($typaram: $bound,)*
+        {
+            fn as_value(&self) -> Value {
+                map_to_record(self.iter())
+            }
+
+            fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
+                unimplemented!()
+            }
+        }
+    }
+}
+
+impl_map_form!(BTreeMap<K: Ord, V>);
+impl_map_form!(HashMap<K: Eq + Hash, V, H: BuildHasher>);
+
+impl<K, V> Form for ImHashMap<K, V>
+where
+    K: Form,
+    V: Form,
+{
+    fn as_value(&self) -> Value {
+        self.iter().fold(
+            Value::Record(vec![], Vec::with_capacity(self.len())),
+            |mut v, (key, value)| {
+                if let Value::Record(_, items) = &mut v {
+                    items.push(Item::slot(key.as_value(), value.as_value()))
+                } else {
+                    unreachable!()
+                }
+                v
+            },
+        )
+    }
+
+    fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
+        unimplemented!()
     }
 }
