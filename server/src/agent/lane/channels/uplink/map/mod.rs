@@ -30,6 +30,23 @@ use stm::var::TVar;
 use swim_form::{Form, FormDeserializeErr};
 use utilities::sync::trigger;
 
+pub enum MapUpdate<K, V> {
+    Update(K, Arc<V>),
+    Remove(K),
+    Clear,
+}
+
+impl<K, V> MapUpdate<K, V> {
+    pub fn make(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
+        match event {
+            MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
+            MapLaneEvent::Clear => Some(MapUpdate::Clear),
+            MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key)),
+            MapLaneEvent::Checkpoint(_) => None,
+        }
+    }
+}
+
 pub enum MapLaneSyncError {
     FailedTransaction(TransactionError),
     InconsistentForm(FormDeserializeErr),

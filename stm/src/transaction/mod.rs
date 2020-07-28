@@ -655,8 +655,8 @@ impl Error for TransactionError {
 
 /// A strategy for retrying transactions.
 pub trait RetryManager {
-    type ContentionManager: Stream<Item = ()> + Unpin;
-    type RetryFut: Future<Output = bool> + Unpin;
+    type ContentionManager: Stream<Item = ()> + Send + Unpin;
+    type RetryFut: Future<Output = bool> + Send + Unpin;
 
     /// A stream of (potential) delays between attempts to apply the transaction that fail
     /// due to contention. If this stream terminates, the transaction will also.
