@@ -123,10 +123,10 @@ impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
 
     fn try_from(view: ViewWithEvent) -> Result<Self, Self::Error> {
         let ViewWithEvent { view, event } = view;
-        let typed_view = TypedMapView::new(view);
+
         let typed_event = type_event(event);
         typed_event.map(|ev| TypedViewWithEvent {
-            view: typed_view,
+            view: TypedMapView::new(view),
             event: ev,
         })
     }

@@ -20,6 +20,7 @@ use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
 use common::model::schema::Schema;
 use common::request::Request;
+use swim_form::{BigInt, BigUint};
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);
@@ -2702,4 +2703,396 @@ fn try_update_action_with_dropped_receiver() {
     assert_that!(&old_result, some());
     let old_val = old_result.unwrap();
     assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+}
+
+#[test]
+fn test_val_map_i32() {
+    let mut map = ValMap::new();
+
+    map.insert(Value::Int32Value(1), Arc::new(Value::Int32Value(10)));
+    map.insert(Value::Int32Value(2), Arc::new(Value::Int32Value(20)));
+    map.insert(Value::Int32Value(3), Arc::new(Value::Int32Value(30)));
+
+    assert_eq!(
+        map.get(&Value::Int32Value(1)).unwrap(),
+        &Arc::new(Value::Int32Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Int64Value(2)).unwrap(),
+        &Arc::new(Value::Int32Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt32Value(3)).unwrap(),
+        &Arc::new(Value::Int32Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt64Value(1)).unwrap(),
+        &Arc::new(Value::Int32Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Float64Value(2.0)).unwrap(),
+        &Arc::new(Value::Int32Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(3))).unwrap(),
+        &Arc::new(Value::Int32Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::Int32Value(10))
+    );
+}
+
+#[test]
+fn test_val_map_i64() {
+    let mut map = ValMap::new();
+
+    map.insert(Value::Int64Value(1), Arc::new(Value::Int64Value(10)));
+    map.insert(Value::Int64Value(2), Arc::new(Value::Int64Value(20)));
+    map.insert(Value::Int64Value(3), Arc::new(Value::Int64Value(30)));
+
+    assert_eq!(
+        map.get(&Value::Int32Value(1)).unwrap(),
+        &Arc::new(Value::Int64Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Int64Value(2)).unwrap(),
+        &Arc::new(Value::Int64Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt32Value(3)).unwrap(),
+        &Arc::new(Value::Int64Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt64Value(1)).unwrap(),
+        &Arc::new(Value::Int64Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Float64Value(2.0)).unwrap(),
+        &Arc::new(Value::Int64Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(3))).unwrap(),
+        &Arc::new(Value::Int64Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::Int64Value(10))
+    );
+}
+
+#[test]
+fn test_val_map_u32() {
+    let mut map = ValMap::new();
+
+    map.insert(Value::UInt32Value(1), Arc::new(Value::UInt32Value(10)));
+    map.insert(Value::UInt32Value(2), Arc::new(Value::UInt32Value(20)));
+    map.insert(Value::UInt32Value(3), Arc::new(Value::UInt32Value(30)));
+
+    assert_eq!(
+        map.get(&Value::Int32Value(1)).unwrap(),
+        &Arc::new(Value::UInt32Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Int64Value(2)).unwrap(),
+        &Arc::new(Value::UInt32Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt32Value(3)).unwrap(),
+        &Arc::new(Value::UInt32Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt64Value(1)).unwrap(),
+        &Arc::new(Value::UInt32Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Float64Value(2.0)).unwrap(),
+        &Arc::new(Value::UInt32Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(3))).unwrap(),
+        &Arc::new(Value::UInt32Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::UInt32Value(10))
+    );
+}
+
+#[test]
+fn test_val_map_u64() {
+    let mut map = ValMap::new();
+
+    map.insert(Value::UInt64Value(1), Arc::new(Value::UInt64Value(10)));
+    map.insert(Value::UInt64Value(2), Arc::new(Value::UInt64Value(20)));
+    map.insert(Value::UInt64Value(3), Arc::new(Value::UInt64Value(30)));
+
+    assert_eq!(
+        map.get(&Value::Int32Value(1)).unwrap(),
+        &Arc::new(Value::UInt64Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Int64Value(2)).unwrap(),
+        &Arc::new(Value::UInt64Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt32Value(3)).unwrap(),
+        &Arc::new(Value::UInt64Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt64Value(1)).unwrap(),
+        &Arc::new(Value::UInt64Value(10))
+    );
+
+    assert_eq!(
+        map.get(&Value::Float64Value(2.0)).unwrap(),
+        &Arc::new(Value::UInt64Value(20))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(3))).unwrap(),
+        &Arc::new(Value::UInt64Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::UInt64Value(10))
+    );
+}
+
+#[test]
+fn test_val_map_f64() {
+    let mut map = ValMap::new();
+
+    map.insert(
+        Value::Float64Value(1.0),
+        Arc::new(Value::Float64Value(10.0)),
+    );
+    map.insert(
+        Value::Float64Value(2.0),
+        Arc::new(Value::Float64Value(20.0)),
+    );
+    map.insert(
+        Value::Float64Value(3.0),
+        Arc::new(Value::Float64Value(30.0)),
+    );
+
+    assert_eq!(
+        map.get(&Value::Int32Value(1)).unwrap(),
+        &Arc::new(Value::Float64Value(10.0))
+    );
+
+    assert_eq!(
+        map.get(&Value::Int64Value(2)).unwrap(),
+        &Arc::new(Value::Float64Value(20.0))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt32Value(3)).unwrap(),
+        &Arc::new(Value::Float64Value(30.0))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt64Value(1)).unwrap(),
+        &Arc::new(Value::Float64Value(10.0))
+    );
+
+    assert_eq!(
+        map.get(&Value::Float64Value(2.0)).unwrap(),
+        &Arc::new(Value::Float64Value(20.0))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(3))).unwrap(),
+        &Arc::new(Value::Float64Value(30.0))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::Float64Value(10.0))
+    );
+}
+
+#[test]
+fn test_val_map_big_int() {
+    let mut map = ValMap::new();
+
+    map.insert(
+        Value::BigInt(BigInt::from(1)),
+        Arc::new(Value::BigInt(BigInt::from(10))),
+    );
+    map.insert(
+        Value::BigInt(BigInt::from(2)),
+        Arc::new(Value::BigInt(BigInt::from(20))),
+    );
+    map.insert(
+        Value::BigInt(BigInt::from(3)),
+        Arc::new(Value::BigInt(BigInt::from(30))),
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(1))).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(10)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(2))).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(20)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(3))).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(30)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(1))).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(10)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(2))).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(20)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(3))).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(30)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(1))).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(10)))
+    );
+}
+
+#[test]
+fn test_val_map_big_uint() {
+    let mut map = ValMap::new();
+
+    map.insert(
+        Value::BigUint(BigUint::from(1u32)),
+        Arc::new(Value::BigUint(BigUint::from(10u32))),
+    );
+    map.insert(
+        Value::BigUint(BigUint::from(2u32)),
+        Arc::new(Value::BigUint(BigUint::from(20u32))),
+    );
+    map.insert(
+        Value::BigUint(BigUint::from(3u32)),
+        Arc::new(Value::BigUint(BigUint::from(30u32))),
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(10u32)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(2u32))).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(20u32)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(3u32))).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(30u32)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(10u32)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(2u32))).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(20u32)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(3u32))).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(30u32)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(1u32))).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(10u32)))
+    );
+}
+
+#[test]
+fn test_val_map_mixed() {
+    let mut map = ValMap::new();
+
+    map.insert(Value::UInt64Value(3), Arc::new(Value::UInt64Value(30)));
+    map.insert(Value::Int32Value(6), Arc::new(Value::Int32Value(60)));
+    map.insert(
+        Value::BigInt(BigInt::from(1)),
+        Arc::new(Value::BigInt(BigInt::from(10))),
+    );
+    map.insert(Value::UInt32Value(7), Arc::new(Value::UInt32Value(70)));
+    map.insert(
+        Value::BigUint(BigUint::from(5u32)),
+        Arc::new(Value::BigUint(BigUint::from(50u32))),
+    );
+    map.insert(
+        Value::Float64Value(2.0),
+        Arc::new(Value::Float64Value(20.0)),
+    );
+    map.insert(Value::Int64Value(4), Arc::new(Value::Int64Value(40)));
+
+    assert_eq!(
+        map.get(&Value::Float64Value(1.0)).unwrap(),
+        &Arc::new(Value::BigInt(BigInt::from(10)))
+    );
+
+    assert_eq!(
+        map.get(&Value::Int32Value(2)).unwrap(),
+        &Arc::new(Value::Float64Value(20.0))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt32Value(3)).unwrap(),
+        &Arc::new(Value::UInt64Value(30))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigInt(BigInt::from(4))).unwrap(),
+        &Arc::new(Value::Int64Value(40))
+    );
+
+    assert_eq!(
+        map.get(&Value::UInt64Value(5)).unwrap(),
+        &Arc::new(Value::BigUint(BigUint::from(50u32)))
+    );
+
+    assert_eq!(
+        map.get(&Value::BigUint(BigUint::from(6u32))).unwrap(),
+        &Arc::new(Value::Int32Value(60))
+    );
+
+    assert_eq!(
+        map.get(&Value::Int64Value(7)).unwrap(),
+        &Arc::new(Value::UInt32Value(70))
+    );
 }

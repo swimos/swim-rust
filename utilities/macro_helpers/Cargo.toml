@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 proc-macro2 = "1.0"
-syn = { version = "1.0", features = ["printing", "visit-mut", "parsing"] }
+syn = { version = "1.0.34", features = ["printing", "visit-mut", "parsing"] }
 quote = "1.0.3"
