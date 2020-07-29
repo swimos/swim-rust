@@ -15,7 +15,7 @@
 use proc_macro2::Ident;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::Attribute;
+use syn::{Attribute, Data};
 use syn::{Lit, Meta, NestedMeta};
 
 use macro_helpers::{get_attribute_meta, StructureKind, Symbol};
@@ -34,6 +34,76 @@ pub const SKIP_PATH: Symbol = Symbol("skip");
 pub enum TypeContents<'t> {
     Enum(Vec<EnumVariant<'t>>),
     Struct(StructRepr<'t>),
+}
+
+impl<'t> TypeContents<'t> {
+    pub fn from(
+        context: &Context,
+        input: &'t syn::DeriveInput,
+        _descriptor: &mut FormDescriptor,
+    ) -> Option<Self> {
+        let type_contents = match &input.data {
+            Data::Enum(data) => {
+                let variants = data
+                    .variants
+                    .iter()
+                    .map(|variant| {
+                        let mut name_opt = None;
+
+                        variant
+                            .attrs
+                            .get_attributes(context, FORM_PATH)
+                            .iter()
+                            .for_each(|meta| match meta {
+                                NestedMeta::Meta(Meta::NameValue(name))
+                                    if name.path == TAG_PATH =>
+                                {
+                                    match &name.lit {
+                                        Lit::Str(s) => {
+                                            name_opt = Some(FieldName::Renamed(
+                                                s.value(),
+                                                variant.ident.clone(),
+                                            ));
+                                        }
+                                        _ => context
+                                            .error_spanned_by(meta, "Expected string argument"),
+                                    }
+                                }
+                                _ => context.error_spanned_by(meta, "Unknown attribute"),
+                            });
+
+                        let (compound_type, fields, manifest) =
+                            parse_struct(context, &variant.fields);
+
+                        EnumVariant {
+                            name: name_opt
+                                .unwrap_or_else(|| FieldName::Named(variant.ident.clone())),
+                            compound_type,
+                            fields,
+                            manifest,
+                        }
+                    })
+                    .collect();
+
+                TypeContents::Enum(variants)
+            }
+            Data::Struct(data) => {
+                let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
+
+                TypeContents::Struct(StructRepr {
+                    compound_type,
+                    fields,
+                    manifest,
+                })
+            }
+            Data::Union(_) => {
+                context.error_spanned_by(input, "Unions are not supported");
+                return None;
+            }
+        };
+
+        Some(type_contents)
+    }
 }
 
 pub struct StructRepr<'t> {

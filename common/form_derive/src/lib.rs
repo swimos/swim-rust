@@ -23,13 +23,12 @@ use proc_macro::TokenStream;
 
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
-use syn::{Data, DeriveInput, Lit, Meta, NestedMeta};
+use syn::DeriveInput;
 
 use macro_helpers::{deconstruct_type, to_compile_errors, CompoundType, Context, FieldName};
 
 use crate::parser::{
-    parse_struct, Attributes, EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor,
-    StructRepr, TypeContents, FORM_PATH, TAG_PATH,
+    EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents,
 };
 
 mod parser;
@@ -39,7 +38,7 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let context = Context::default();
     let mut descriptor = FormDescriptor::from_ast(&context, &input);
-    let field_bindings = match FormRepr::from(&context, &input, &mut descriptor) {
+    let type_contents = match TypeContents::from(&context, &input, &mut descriptor) {
         Some(cont) => cont,
         None => return to_compile_errors(context.check().unwrap_err()).into(),
     };
@@ -47,7 +46,7 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
     let structure_name = descriptor.name.original_ident.clone();
     let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
 
-    let as_value_body = match field_bindings.type_contents {
+    let as_value_body = match type_contents {
         TypeContents::Struct(StructRepr {
             compound_type,
             fields,
@@ -117,15 +116,17 @@ fn build_struct_as_value(
     fields: &[Field],
 ) -> TokenStream2 {
     let structure_name_str = descriptor.name.tag_ident.to_string();
-    let (headers, attributes, items) = compute_record(&fields, &mut descriptor, &mut manifest);
+    let RecordTokenStreams {
+        headers,
+        attributes,
+        items,
+    } = compute_record(&fields, &mut descriptor, &mut manifest);
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
     quote! {
         let #structure_name #self_deconstruction = self;
-        let mut attrs = vec![crate::model::Attr::of((#structure_name_str #headers))];
-        attrs.append(&mut #attributes);
-
+        let mut attrs = vec![crate::model::Attr::of((#structure_name_str #headers)), #attributes];
         crate::model::Value::Record(attrs, #items)
     }
 }
@@ -138,92 +139,53 @@ fn build_variant_as_value(
     fields: &[Field],
 ) -> TokenStream2 {
     let variant_name_str = variant_name.to_string();
-    let (headers, attributes, items) = compute_record(&fields, &mut descriptor, &mut manifest);
+    let RecordTokenStreams {
+        headers,
+        attributes,
+        items,
+    } = compute_record(&fields, &mut descriptor, &mut manifest);
     let structure_name = &descriptor.name.original_ident;
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
     quote! {
         #structure_name::#variant_name #self_deconstruction => {
-            let mut attrs = vec![crate::model::Attr::of((#variant_name_str #headers))];
-            attrs.append(&mut #attributes);
-
+            let mut attrs = vec![crate::model::Attr::of((#variant_name_str #headers)), #attributes];
             crate::model::Value::Record(attrs, #items)
         },
     }
 }
 
-struct FormRepr<'t> {
-    pub type_contents: TypeContents<'t>,
+#[derive(Default)]
+struct RecordTokenStreams {
+    headers: TokenStream2,
+    attributes: TokenStream2,
+    items: TokenStream2,
 }
 
-impl<'t> FormRepr<'t> {
-    pub fn from(
-        context: &Context,
-        input: &'t syn::DeriveInput,
-        _descriptor: &mut FormDescriptor,
-    ) -> Option<Self> {
-        let type_contents = match &input.data {
-            Data::Enum(data) => {
-                let variants = data
-                    .variants
-                    .iter()
-                    .map(|variant| {
-                        let mut name_opt = None;
+impl RecordTokenStreams {
+    fn transform_items<F>(&mut self, f: F)
+    where
+        F: FnOnce(&TokenStream2) -> TokenStream2,
+    {
+        let items = &self.items;
+        self.items = f(items);
+    }
 
-                        variant
-                            .attrs
-                            .get_attributes(context, FORM_PATH)
-                            .iter()
-                            .for_each(|meta| match meta {
-                                NestedMeta::Meta(Meta::NameValue(name))
-                                    if name.path == TAG_PATH =>
-                                {
-                                    match &name.lit {
-                                        Lit::Str(s) => {
-                                            name_opt = Some(FieldName::Renamed(
-                                                s.value(),
-                                                variant.ident.clone(),
-                                            ));
-                                        }
-                                        _ => context
-                                            .error_spanned_by(meta, "Expected string argument"),
-                                    }
-                                }
-                                _ => context.error_spanned_by(meta, "Unknown attribute"),
-                            });
+    fn transform_attrs<F>(&mut self, f: F)
+    where
+        F: FnOnce(&TokenStream2) -> TokenStream2,
+    {
+        let attrs = &self.attributes;
+        self.attributes = f(attrs);
+    }
 
-                        let (compound_type, fields, manifest) =
-                            parse_struct(context, &variant.fields);
-
-                        EnumVariant {
-                            name: name_opt
-                                .unwrap_or_else(|| FieldName::Named(variant.ident.clone())),
-                            compound_type,
-                            fields,
-                            manifest,
-                        }
-                    })
-                    .collect();
-
-                TypeContents::Enum(variants)
-            }
-            Data::Struct(data) => {
-                let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
-
-                TypeContents::Struct(StructRepr {
-                    compound_type,
-                    fields,
-                    manifest,
-                })
-            }
-            Data::Union(_) => {
-                context.error_spanned_by(input, "Unions are not supported");
-                return None;
-            }
-        };
-
-        Some(Self { type_contents })
+    fn transform_headers<F>(&mut self, f: F)
+    where
+        F: FnOnce(&TokenStream2) -> TokenStream2,
+    {
+        let headers = &self.headers;
+        self.headers = f(headers);
     }
 }
 
@@ -231,44 +193,27 @@ fn compute_record(
     fields: &[Field],
     descriptor: &mut FormDescriptor,
     manifest: &mut FieldManifest,
-) -> (TokenStream2, TokenStream2, TokenStream2) {
-    let (mut headers, attrs, mut items) = fields
+) -> RecordTokenStreams {
+    let mut as_value_ts = fields
         .iter()
-        // Headers, attributes, items
-        .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(headers, attrs, items), f| {
+        .fold(RecordTokenStreams::default(), |mut as_value_ts, f| {
             let name = &f.name;
 
             match &f.kind {
-                FieldKind::Skip => (headers, attrs, items),
+                FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            (headers, attrs, quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),))
+                            as_value_ts.transform_items(|items| quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            (headers, attrs, quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),))
+                            as_value_ts.transform_items(|items| quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),));
                         }
                         un @ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
-                            (headers, attrs, quote!(#items crate::model::Item::ValueItem(#ident.as_value()),))
-                        }
-                    }
-                }
-                FieldKind::Slot if manifest.replaces_body => {
-                    match name {
-                        FieldName::Named(ident) => {
-                            let name_str = ident.to_string();
-                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),), attrs, items)
-                        }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),), attrs, items)
-                        }
-                        un @ FieldName::Unnamed(_) => {
-                            let ident = un.as_ident();
-                            (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
+                            as_value_ts.transform_items(|items| quote!(#items crate::model::Item::ValueItem(#ident.as_value()),));
                         }
                     }
                 }
@@ -276,11 +221,11 @@ fn compute_record(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            (headers, quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #ident.as_value())),), items)
+                            as_value_ts.transform_attrs(|attrs| quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #ident.as_value())),));
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            (headers, quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #old.as_value())),), items)
+                            as_value_ts.transform_attrs(|attrs| quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #old.as_value())),));
                         }
                         FieldName::Unnamed(_index) => {
                             // This has bene checked already when parsing the AST.
@@ -292,32 +237,32 @@ fn compute_record(
                     descriptor.body_replaced = true;
                     let ident = f.name.as_ident();
 
-                    (headers, attrs, quote!({
+                    as_value_ts.transform_items(|_items| quote!({
                         match #ident.as_value() {
                             crate::model::Value::Record(_attrs, items) => items,
                             v => vec![crate::model::Item::ValueItem(v)]
                         }
-                    }))
+                    }));
                 }
                 FieldKind::HeaderBody => {
                     if manifest.has_header_fields {
                         match name {
                             FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
+                                as_value_ts.transform_headers(|headers| quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),));
                             }
                             un @ FieldName::Unnamed(_) => {
                                 let ident = un.as_ident();
-                                (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
+                                as_value_ts.transform_headers(|headers| quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),));
                             }
                         }
                     } else {
                         match name {
                             FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                (quote!(, #ident.as_value()), attrs, items)
+                                as_value_ts.transform_headers(|_headers| quote!(, #ident.as_value()));
                             }
                             un @ FieldName::Unnamed(_) => {
                                 let ident = un.as_ident();
-                                (quote!(, #ident.as_value()), attrs, items)
+                                as_value_ts.transform_headers(|_headers| quote!(, #ident.as_value()));
                             }
                         }
                     }
@@ -326,28 +271,32 @@ fn compute_record(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),), attrs, items)
+                            as_value_ts.transform_headers(|headers|quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),), attrs, items)
+                            as_value_ts.transform_headers(|headers| quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),));
                         }
                         un @ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
-                            (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
+                            as_value_ts.transform_headers(|headers|quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),));
                         }
                     }
                 }
             }
+
+            as_value_ts
         });
 
     if manifest.has_header_fields || manifest.replaces_body {
-        headers = quote!(, crate::model::Value::Record(Vec::new(), vec![#headers]));
+        as_value_ts.transform_headers(
+            |headers| quote!(, crate::model::Value::Record(Vec::new(), vec![#headers])),
+        );
     }
 
     if !descriptor.has_body_replaced() {
-        items = quote!(vec![#items]);
+        as_value_ts.transform_items(|items| quote!(vec![#items]));
     }
 
-    (headers, quote!(vec![#attrs]), items)
+    as_value_ts
 }
