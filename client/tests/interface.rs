@@ -591,7 +591,7 @@ mod tests {
         let message = recv.next().await.unwrap();
         assert_eq!(message, Event::Remote(Value::Text(String::from("milk"))));
 
-        let mut sender_view = dl.write_only_view::<String>().await.unwrap();
+        let mut sender_view = dl.write_only_sender::<String>().await.unwrap();
         let (_, mut sink) = dl.split();
 
         sink.set(String::from("bread").into()).await.unwrap();
@@ -617,13 +617,13 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
         let (mut dl, _) = client.value_downlink(path.clone(), 0i32).await.unwrap();
 
-        if let Err(view_error) = dl.write_only_view::<String>().await {
+        if let Err(view_error) = dl.write_only_sender::<String>().await {
             assert_eq!(view_error.to_string(),  "A write-only value downlink with schema @kind(text) was requested but the original value downlink is running with schema @kind(int32).")
         } else {
             panic!("Expected a ViewError!")
         }
 
-        if let Err(view_error) = dl.write_only_view::<i64>().await {
+        if let Err(view_error) = dl.write_only_sender::<i64>().await {
             assert_eq!(view_error.to_string(),  "A write-only value downlink with schema @kind(int64) was requested but the original value downlink is running with schema @kind(int32).")
         } else {
             panic!("Expected a ViewError!")

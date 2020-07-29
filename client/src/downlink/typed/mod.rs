@@ -92,6 +92,8 @@ where
     Inner: Downlink<Action, Event<SharedValue>> + Clone,
     T: ValidatedForm + Send + 'static,
 {
+    /// Create a read-only view for a value downlink that converts all received values to a new type.
+    /// The type of the view must have an equal or greater schema than the original downlink.
     pub async fn read_only_view<ViewType: ValidatedForm>(
         &mut self,
     ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ValueViewError>
@@ -111,7 +113,9 @@ where
         }
     }
 
-    pub async fn write_only_view<ViewType: ValidatedForm>(
+    /// Create a write-only sender for a value downlink that converts all sent values to a new type.
+    /// The type of the sender must have an equal or lesser schema than the original downlink.
+    pub async fn write_only_sender<ViewType: ValidatedForm>(
         &mut self,
     ) -> Result<ValueActions<Inner::DlSink, ViewType>, ValueViewError> {
         let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
@@ -322,6 +326,8 @@ where
     K: ValidatedForm + Send + 'static,
     V: ValidatedForm + Send + 'static,
 {
+    /// Create a read-only view for a map downlink that converts all received keys and values to new types.
+    /// The types of the view must have an equal or greater schemas than the original downlink.
     pub async fn read_only_view<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
         &mut self,
     ) -> Result<
