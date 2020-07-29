@@ -14,30 +14,3 @@
 
 pub mod update;
 pub mod uplink;
-
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use stm::transaction::TransactionError;
-
-#[derive(Debug)]
-pub enum UpdateError {
-    FailedTransaction(TransactionError),
-}
-
-impl Display for UpdateError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UpdateError::FailedTransaction(err) => {
-                write!(f, "Failed to apply a transaction to the lane: {}", err)
-            }
-        }
-    }
-}
-
-impl Error for UpdateError {}
-
-impl From<TransactionError> for UpdateError {
-    fn from(err: TransactionError) -> Self {
-        UpdateError::FailedTransaction(err)
-    }
-}

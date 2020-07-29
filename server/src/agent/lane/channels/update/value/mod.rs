@@ -16,6 +16,7 @@ use crate::agent::lane::model::value::ValueLane;
 use futures::{Stream, StreamExt};
 use std::any::Any;
 
+/// Asynchronous task to set a stream of values into a [`ValueLane`].
 pub struct ValueLaneUpdateTask<T> {
     lane: ValueLane<T>,
 }

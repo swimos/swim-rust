@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::UpdateError;
+use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::model::map::{MapLane, MapUpdate};
 use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -21,6 +21,7 @@ use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
 use swim_form::Form;
 
+/// Asynchronous task to apply a stream of [`MapUpdate`]s to a [`MapLane`].
 pub struct MapLaneUpdateTask<K, V, F> {
     lane: MapLane<K, V>,
     retries: F,

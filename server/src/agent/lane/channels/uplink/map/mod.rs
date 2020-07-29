@@ -38,19 +38,29 @@ pub enum MapLaneSyncError {
 type EventResult<K, V> = Result<MapLaneEvent<K, V>, MapLaneSyncError>;
 type Checkpoint<V> = OrdMap<Value, TVar<V>>;
 
+/// State type for the state machine that tracks the synchronization of a [`MapLane`]. The
+/// future types `CF` and `GF` are not actually free, however the actual types are not
+/// nameable and it must be left to the compiler to infer them.
 enum MapLaneSyncState<R, CF, GF> {
+    /// Initial state, containing the retry strategy for initiating the checkpoint transaction.
     Init(R),
+    /// State for while the checkpoint transaction is executing.
     Checkpointing(CF),
+    /// Waiting to observe a complete, consistent view of the map, after observing the checkpoint.
     Awaiting {
+        /// Pending retrievals of values from the map.
         pending: FuturesUnordered<GF>,
+        /// Triggers to allow us to cancel futures in `pending` if we no longer need th results.
         cancellers: HashMap<Value, trigger::Sender>,
     },
+    /// Final state which will cause the stream to terminate the next time it is polled.
     Complete,
 }
 
 type UnfoldResult<'a, R, Ev, State> = Option<(R, (&'a mut Ev, State))>;
 
 impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
+    //Create a return value for the unfold function causing the stream to yield a map event.
     fn yield_event<K, V, Ev>(
         self,
         events: &mut Ev,
@@ -59,6 +69,7 @@ impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
         Some((Ok(event), (events, self)))
     }
 
+    // Create a return value for an unfold function causing the stream to terminate with an error.
     fn yield_error<K, V, Ev>(
         self,
         events: &mut Ev,
@@ -68,6 +79,7 @@ impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
     }
 }
 
+// Update the state from a checkpoint (map from keys in the map the the variables holding the values).
 fn from_checkpoint<'a, Retries, V, CheckpointFut>(
     checkpoint: Checkpoint<V>,
 ) -> MapLaneSyncState<Retries, CheckpointFut, impl Future<Output = Option<(Value, Arc<V>)>> + 'a>
@@ -95,6 +107,7 @@ where
     }
 }
 
+//Move from the initial state, initiatig a checkpoint transaction.
 fn initialize<'a, K, V, Retries>(
     id: u64,
     lane: &'a MapLane<K, V>,
@@ -113,6 +126,7 @@ where
     .map_err(MapLaneSyncError::FailedTransaction)
 }
 
+// Handle an event from the lane, cancelling the load of any values that become irrelevant.
 fn handle_event<K, V>(event: &MapLaneEvent<K, V>, cancellers: &mut HashMap<Value, trigger::Sender>)
 where
     K: Form + Send + Sync,
@@ -134,6 +148,9 @@ where
     }
 }
 
+/// Run the sync state machine for a map lane. The returned stream will emit updates to the lane
+/// until the synchronization process is complete, after which it will terminate. When this stream
+/// terminates, the sync message can be sent to the consumer.
 pub fn sync_map_lane<'a, K, V, Events, Retries>(
     id: u64,
     lane: &'a MapLane<K, V>,

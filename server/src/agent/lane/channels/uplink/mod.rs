@@ -30,6 +30,7 @@ use swim_form::{Form, FormDeserializeErr};
 
 pub mod map;
 
+/// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum UplinkAction {
     Link,
@@ -37,6 +38,7 @@ pub enum UplinkAction {
     Unlink,
 }
 
+/// Tracks the state of an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum UplinkState {
     Opened,
@@ -44,6 +46,7 @@ pub enum UplinkState {
     Synced,
 }
 
+/// Responses from a lane uplink to its subscriber.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum UplinkMessage<Ev> {
     Linked,
@@ -52,11 +55,16 @@ pub enum UplinkMessage<Ev> {
     Event(Ev),
 }
 
+/// Error conditions for the task running an uplink.
 #[derive(Debug)]
 pub enum UplinkError {
+    /// The subscriber to the uplink has stopped listening.
     SenderDropped,
+    /// The lane stopped reporting its state changes.
     LaneStoppedReporting,
+    /// The uplink attempted to execute a transaction against its lane but failed.
     FailedTransaction(TransactionError),
+    /// The form used by the lane is inconsistent.
     InconsistentForm(FormDeserializeErr),
 }
 
@@ -88,6 +96,7 @@ impl Display for UplinkError {
 
 impl Error for UplinkError {}
 
+// Yield a message to the subscriber.
 async fn send_msg<Msg, Sender, SendErr>(
     sender: &mut Sender,
     msg: UplinkMessage<Msg>,
@@ -102,9 +111,13 @@ where
         .map_err(|_| UplinkError::SenderDropped)
 }
 
+/// Date required to run an uplink.
 pub struct Uplink<Lane, Actions, Updates> {
+    /// The lane being uplinked.
     lane: Lane,
+    /// Stream of requested state changes.
     actions: Actions,
+    /// Stream of updates to the lane.
     updates: Updates,
 }
 
@@ -114,6 +127,7 @@ where
     Actions: FusedStream<Item = UplinkAction> + Unpin,
     Updates: FusedStream<Item = Lane::Event> + Send + Unpin,
 {
+    /// Run the uplink as an asynchronous task.
     pub async fn run_uplink<Sender, SendErr>(self, mut sender: Sender) -> Result<(), UplinkError>
     where
         Sender: ItemSender<UplinkMessage<Lane::Msg>, SendErr>,
@@ -130,7 +144,14 @@ where
 
         loop {
             if state == UplinkState::Opened {
-                let action = actions.next().await;
+                let action = loop {
+                    select_biased! {
+                        action = actions.next() => {
+                            break action;
+                        },
+                        _ = updates.next() => {}, //Ignore updates until linked.
+                    }
+                };
                 if let Some(new_state) =
                     handle_action(&lane, UplinkState::Opened, &mut updates, sender, action).await?
                 {
@@ -168,6 +189,7 @@ where
     }
 }
 
+// Change the state of the uplink based on an action.
 async fn handle_action<Lane, Updates, Sender, SendErr>(
     lane: &Lane,
     prev_state: UplinkState,
@@ -182,6 +204,7 @@ where
 {
     match action {
         Some(UplinkAction::Link) => {
+            //Move into the linked state which will caused updates to be sent.
             send_msg(sender, UplinkMessage::Linked).await?;
             Ok(Some(UplinkState::Linked))
         }
@@ -189,6 +212,7 @@ where
             if prev_state == UplinkState::Opened {
                 send_msg(sender, UplinkMessage::Linked).await?;
             }
+            // Run the sync state machine until it completes then enter the synced state.
             let sync_stream = lane.sync_lane(updates);
             pin_mut!(sync_stream);
             while let Some(result) = sync_stream.next().await {
@@ -198,17 +222,23 @@ where
             Ok(Some(UplinkState::Synced))
         }
         _ => {
+            // When an unlink is requested, send the unlinked response and terminate the uplink.
             send_msg(sender, UplinkMessage::Unlinked).await?;
             Ok(None)
         }
     }
 }
 
+/// Trait encoding the differences in uplink behaviour for different kinds of lanes.
 pub trait UplinkStateMachine: LaneModel {
     type Msg: Any + Send + Sync;
 
+    /// Create a message to send to the subscriber from a lane event (where appropriate).
     fn message_for(&self, event: Self::Event) -> Result<Option<Self::Msg>, UplinkError>;
 
+    /// Create a sync state machine for the lane, this will create a stream that emits messages
+    /// until the sync is complete (which should be forwarded to the subscriber) an then terminates,
+    /// after which the synced message can be sent.
     fn sync_lane<'a, Updates>(
         &'a self,
         updates: &'a mut Updates,
@@ -250,9 +280,14 @@ where
     }
 }
 
+/// Wrapper around a [`MapLane`] for a map lane uplink.
 pub struct MapLaneUplink<K, V, Retries> {
+    /// The underlying lane.
     lane: MapLane<K, V>,
+    /// A unique (for this lane) ID for this uplink. This is used to identify events corresponding
+    /// to checkpoint transactions that were initiated by this uplink.
     id: u64,
+    /// A factory for retry strategies to be used for the checkpoint transactions.
     retries: Retries,
 }
 
