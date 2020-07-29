@@ -21,16 +21,19 @@ use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
 use swim_form::Form;
 
+#[cfg(test)]
+mod tests;
+
 /// Asynchronous task to apply a stream of [`MapUpdate`]s to a [`MapLane`].
 pub struct MapLaneUpdateTask<K, V, F> {
     lane: MapLane<K, V>,
     retries: F,
 }
 
-impl<K, V, F> MapLaneUpdateTask<K, V, F>
+impl<K, V, F, Ret> MapLaneUpdateTask<K, V, F>
 where
-    F: Fn(),
-    F::Output: RetryManager,
+    F: Fn() -> Ret,
+    Ret: RetryManager,
 {
     pub fn new(lane: MapLane<K, V>, retries: F) -> Self {
         MapLaneUpdateTask { lane, retries }
