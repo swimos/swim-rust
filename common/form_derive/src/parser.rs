@@ -29,6 +29,7 @@ pub const BODY_PATH: Symbol = Symbol("body");
 pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
 pub const RENAME_PATH: Symbol = Symbol("rename");
 pub const TAG_PATH: Symbol = Symbol("tag");
+pub const SKIP_PATH: Symbol = Symbol("skip");
 
 pub enum TypeContents<'t> {
     Enum(Vec<EnumVariant<'t>>),
@@ -155,8 +156,12 @@ pub fn fields_from_ast<'t>(
                                 _ => ctx.error_spanned_by(meta, "Expected string argument"),
                             }
                         }
+                        NestedMeta::Meta(Meta::Path(path)) if path == SKIP_PATH => {
+                            set_kind(FieldKind::Skip);
+                        }
                         _ => ctx.error_spanned_by(meta, "Unknown attribute"),
                     }
+
                     manifest
                 },
             );
@@ -278,6 +283,9 @@ pub enum FieldKind {
     /// header fields it will form the entire body of the tag, otherwise it will be the first item
     /// of the tag body. At most one field may be marked with this.
     HeaderBody,
+    /// The field will be ignored during transformations. The decorated field must implement
+    /// [`Default`].
+    Skip,
 }
 
 impl Default for FieldKind {

@@ -38,6 +38,93 @@ fn test_transmute() {
 }
 
 #[test]
+fn test_transmute_newtype() {
+    #[derive(Form)]
+    struct S(i32);
+
+    let s = S(1);
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::ValueItem(Value::Int32Value(1))]
+        )
+    )
+}
+
+#[test]
+fn test_transmute_tuple() {
+    #[derive(Form)]
+    struct S(i32, i64);
+
+    let s = S(1, 2);
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("S")],
+            vec![
+                Item::ValueItem(Value::Int32Value(1)),
+                Item::ValueItem(Value::Int32Value(2))
+            ]
+        )
+    )
+}
+
+#[test]
+fn test_transmute_unit() {
+    #[derive(Form)]
+    struct S;
+
+    let s = S;
+    assert_eq!(s.as_value(), Value::Record(vec![Attr::of("S")], vec![]))
+}
+
+#[test]
+fn test_skip_field() {
+    {
+        #[derive(Form)]
+        struct S {
+            a: i32,
+            #[form(skip)]
+            b: i64,
+        }
+
+        let s = S { a: 1, b: 2 };
+        assert_eq!(
+            s.as_value(),
+            Value::Record(
+                vec![Attr::of("S")],
+                vec![Item::Slot(
+                    Value::Text(String::from("a")),
+                    Value::Int32Value(1)
+                ),]
+            )
+        );
+    }
+
+    {
+        #[derive(Form)]
+        struct S(#[form(skip)] i32);
+
+        let s = S(1);
+        assert_eq!(s.as_value(), Value::Record(vec![Attr::of("S")], vec![]));
+    }
+    {
+        #[derive(Form)]
+        struct S(#[form(skip)] i32, i64);
+
+        let s = S(1, 2);
+        assert_eq!(
+            s.as_value(),
+            Value::Record(
+                vec![Attr::of("S")],
+                vec![Item::ValueItem(Value::Int64Value(2))]
+            )
+        )
+    }
+}
+
+#[test]
 fn test_tag() {
     #[derive(Form)]
     #[form(tag = "Structure")]

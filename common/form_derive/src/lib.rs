@@ -21,6 +21,7 @@ extern crate syn;
 
 use proc_macro::TokenStream;
 
+use proc_macro2::Ident;
 use syn::export::TokenStream2;
 use syn::{Data, DeriveInput, Lit, Meta, NestedMeta};
 
@@ -30,7 +31,6 @@ use crate::parser::{
     parse_struct, Attributes, EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor,
     StructRepr, TypeContents, FORM_PATH, TAG_PATH,
 };
-use proc_macro2::Ident;
 
 mod parser;
 
@@ -239,6 +239,7 @@ fn compute_record(
             let name = &f.name;
 
             match &f.kind {
+                FieldKind::Skip => (headers, attrs, items),
                 FieldKind::Slot if !manifest.replaces_body => {
                     match name {
                         FieldName::Named(ident) => {
@@ -249,7 +250,7 @@ fn compute_record(
                             let name_str = new.to_string();
                             (headers, attrs, quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),))
                         }
-                        un@ FieldName::Unnamed(_) => {
+                        un @ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
                             (headers, attrs, quote!(#items crate::model::Item::ValueItem(#ident.as_value()),))
                         }
@@ -284,7 +285,7 @@ fn compute_record(
                         FieldName::Unnamed(_index) => {
                             // This has bene checked already when parsing the AST.
                             unreachable!()
-                        },
+                        }
                     }
                 }
                 FieldKind::Body => {
@@ -314,7 +315,7 @@ fn compute_record(
                             FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
                                 (quote!(, #ident.as_value()), attrs, items)
                             }
-                            un@ FieldName::Unnamed(_) => {
+                            un @ FieldName::Unnamed(_) => {
                                 let ident = un.as_ident();
                                 (quote!(, #ident.as_value()), attrs, items)
                             }
@@ -331,7 +332,7 @@ fn compute_record(
                             let name_str = new.to_string();
                             (quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),), attrs, items)
                         }
-                        un@ FieldName::Unnamed(_) => {
+                        un @ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
                             (quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),), attrs, items)
                         }

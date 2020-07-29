@@ -38,6 +38,59 @@ fn test_transmute_single_variant() {
 }
 
 #[test]
+fn test_skip() {
+    {
+        #[derive(Form)]
+        enum S {
+            A(#[form(skip)] i32),
+        }
+
+        let s = S::A(2);
+
+        assert_eq!(s.as_value(), Value::Record(vec![Attr::of("A")], vec![]))
+    }
+    {
+        #[derive(Form)]
+        enum S {
+            A(#[form(skip)] i32, i64),
+        }
+
+        let s = S::A(2, 3);
+
+        assert_eq!(
+            s.as_value(),
+            Value::Record(
+                vec![Attr::of("A")],
+                vec![Item::ValueItem(Value::Int64Value(3)),]
+            )
+        )
+    }
+    {
+        #[derive(Form)]
+        enum S {
+            A {
+                #[form(skip)]
+                a: i32,
+                b: i64,
+            },
+        }
+
+        let s = S::A { a: 1, b: 2 };
+
+        assert_eq!(
+            s.as_value(),
+            Value::Record(
+                vec![Attr::of("A")],
+                vec![Item::Slot(
+                    Value::Text(String::from("b")),
+                    Value::Int64Value(2)
+                ),]
+            )
+        )
+    }
+}
+
+#[test]
 fn test_transmute_multiple_variants() {
     #[derive(Form)]
     #[allow(dead_code)]
@@ -351,12 +404,15 @@ fn annotated() {
             count: i64,
             #[form(attr)]
             name: String,
+            #[form(skip)]
+            age: i32,
         },
     }
 
     let ex = ExampleAnnotated::A {
         count: 1033,
         name: String::from("bob"),
+        age: i32::max_value(),
     };
 
     let expected = Value::Record(
