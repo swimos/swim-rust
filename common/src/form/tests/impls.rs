@@ -96,6 +96,16 @@ mod primitive {
         String::from("test"),
         Value::Text(String::from("test"))
     );
+    test_impl!(
+        test_bigint,
+        BigInt::from(100),
+        Value::BigInt(BigInt::from(100))
+    );
+    test_impl!(
+        test_biguint,
+        BigUint::from(100u32),
+        Value::BigUint(BigUint::from(100u32))
+    );
 }
 
 mod collections {
@@ -108,11 +118,18 @@ mod collections {
         assert_eq!(value, Value::Extant);
     }
 
+    #[test]
+    fn test_opt_some() {
+        let r = Some(100);
+        let value = r.as_value();
+        assert_eq!(value, Value::Int32Value(100));
+    }
+
     fn sort_record(value: &mut Value) {
         if let Value::Record(_, items) = value {
             items.sort()
         } else {
-            panic!()
+            panic!("Expected record, found: {:?}", value)
         };
     }
 
@@ -294,7 +311,7 @@ mod field_collections {
     }
 
     macro_rules! test_impl {
-        ($name:ident, $typ:ty, $initial:expr, $expected:expr) => {
+        ($name:ident, $typ:ty, $initial:expr) => {
             #[test]
             fn $name() {
                 #[derive(Form)]
@@ -305,7 +322,7 @@ mod field_collections {
                 let val = Test { member: $initial };
                 let rec = Value::Record(
                     vec![Attr::of("Test")],
-                    vec![Item::Slot(Value::Text(String::from("member")), $expected())],
+                    vec![Item::Slot(Value::Text(String::from("member")), expected())],
                 );
 
                 assert_eq!(val.as_value(), rec);
@@ -313,61 +330,41 @@ mod field_collections {
         };
     }
 
-    test_impl!(vec, Vec::<i32>, vec![1, 2, 3, 4, 5], expected);
-    test_impl!(
-        im_ordered_set,
-        OrdSet::<i32>,
-        {
-            let mut os = OrdSet::new();
-            os.insert(1);
-            os.insert(2);
-            os.insert(3);
-            os.insert(4);
-            os.insert(5);
-            os
-        },
-        expected
-    );
-    test_impl!(
-        vecdeque,
-        VecDeque::<i32>,
-        {
-            let mut vec = VecDeque::new();
-            vec.push_back(1);
-            vec.push_back(2);
-            vec.push_back(3);
-            vec.push_back(4);
-            vec.push_back(5);
-            vec
-        },
-        expected
-    );
-    test_impl!(
-        btreeset,
-        BTreeSet::<i32>,
-        {
-            let mut bts = BTreeSet::new();
-            bts.insert(1);
-            bts.insert(2);
-            bts.insert(3);
-            bts.insert(4);
-            bts.insert(5);
-            bts
-        },
-        expected
-    );
-    test_impl!(
-        linkedlist,
-        LinkedList::<i32>,
-        {
-            let mut ll = LinkedList::new();
-            ll.push_back(1);
-            ll.push_back(2);
-            ll.push_back(3);
-            ll.push_back(4);
-            ll.push_back(5);
-            ll
-        },
-        expected
-    );
+    test_impl!(vec, Vec::<i32>, vec![1, 2, 3, 4, 5]);
+    test_impl!(im_ordered_set, OrdSet::<i32>, {
+        let mut os = OrdSet::new();
+        os.insert(1);
+        os.insert(2);
+        os.insert(3);
+        os.insert(4);
+        os.insert(5);
+        os
+    });
+    test_impl!(vecdeque, VecDeque::<i32>, {
+        let mut vec = VecDeque::new();
+        vec.push_back(1);
+        vec.push_back(2);
+        vec.push_back(3);
+        vec.push_back(4);
+        vec.push_back(5);
+        vec
+    });
+    test_impl!(btreeset, BTreeSet::<i32>, {
+        let mut bts = BTreeSet::new();
+        bts.insert(1);
+        bts.insert(2);
+        bts.insert(3);
+        bts.insert(4);
+        bts.insert(5);
+        bts
+    });
+    test_impl!(linkedlist, LinkedList::<i32>, {
+        let mut ll = LinkedList::new();
+        ll.push_back(1);
+        ll.push_back(2);
+        ll.push_back(3);
+        ll.push_back(4);
+        ll.push_back(5);
+        ll
+    });
 }
