@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::agent::lane::model::value::ValueLane;
 use futures::{Stream, StreamExt};
 use std::any::Any;
