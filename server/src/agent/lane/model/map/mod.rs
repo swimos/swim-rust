@@ -347,6 +347,16 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         self.get_value(k)
     }
 
+    /// Locks an entry in the map, preventing it from being read from or written to. This is
+    /// required to force the ordering of events in some unit tests.
+    #[cfg(test)]
+    pub async fn lock(&self, key: &K) -> Option<stm::var::TVarLock> {
+        match self.map_state.load().await.get(&key.as_value()) {
+            Some(var) => Some(var.lock().await),
+            _ => None,
+        }
+    }
+
     /// Determine if a key is contained in the map, in a transaction.
     pub fn contains(&self, key: K) -> impl Stm<Result = bool> + '_ {
         let k = key.into_value();
