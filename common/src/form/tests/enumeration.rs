@@ -38,6 +38,55 @@ fn test_transmute_single_variant() {
 }
 
 #[test]
+fn test_generic() {
+    #[derive(Form)]
+    enum S<F>
+    where
+        F: Form,
+    {
+        A { f: F },
+    }
+
+    let s = S::A { f: 1 };
+
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("A")],
+            vec![Item::Slot(
+                Value::Text(String::from("f")),
+                Value::Int32Value(1)
+            ),]
+        )
+    )
+}
+
+#[test]
+fn test_generic_lifetime() {
+    #[derive(Form)]
+    enum S<'l, F>
+    where
+        F: Form,
+    {
+        A { f: &'l F },
+    }
+
+    let int = 1;
+    let s = S::A { f: &int };
+
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("A")],
+            vec![Item::Slot(
+                Value::Text(String::from("f")),
+                Value::Int32Value(1)
+            ),]
+        )
+    )
+}
+
+#[test]
 fn test_skip() {
     {
         #[derive(Form)]

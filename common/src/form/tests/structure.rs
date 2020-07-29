@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::Form;
+use crate::form::{Form, FormErr};
 use crate::model::{Attr, Item, Value};
 use form_derive::*;
 
@@ -33,6 +33,56 @@ fn test_transmute() {
                 Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
                 Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
             ]
+        )
+    )
+}
+
+#[test]
+fn test_transmute_generic() {
+    #[derive(Form)]
+    struct S<F>
+    where
+        F: Form,
+    {
+        f: F,
+    }
+
+    let s = S { f: 1 };
+
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::Slot(
+                Value::Text(String::from("f")),
+                Value::Int32Value(1)
+            ),]
+        )
+    )
+}
+
+#[test]
+#[ignore] // todo
+fn test_transmute_generic_lifetime() {
+    #[derive(Form)]
+    struct S<'l, F>
+    where
+        F: Form,
+    {
+        f: &'l F,
+    }
+
+    let int = 1;
+    let s = S { f: &int };
+
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::Slot(
+                Value::Text(String::from("f")),
+                Value::Int32Value(1)
+            )]
         )
     )
 }
@@ -423,4 +473,52 @@ fn header_body_replace() {
     );
 
     assert_eq!(ex.as_value(), expected);
+}
+
+#[test]
+fn t() {
+    #[derive(Debug)]
+    struct S {
+        a: i32,
+    }
+
+    impl Form for S {
+        fn as_value(&self) -> Value {
+            unimplemented!()
+        }
+
+        fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+            match value {
+                Value::Record(attrs, items) => match attrs.first() {
+                    Some(attr) if &attr.name == "S" => {
+                        let mut a_opt: Option<i32> = None;
+                        let mut it = items.iter();
+
+                        while let Some(item) = it.next() {
+                            match item {
+                                Item::Slot(Value::Text(name), v) if name == "a" => {
+                                    a_opt = Some(i32::try_from_value(v)?);
+                                }
+                                _ => return Err(FormErr::Malformatted),
+                            }
+                        }
+
+                        Ok(S {
+                            a: a_opt.ok_or(FormErr::Malformatted)?,
+                        })
+                    }
+                    _ => return Err(FormErr::Malformatted),
+                },
+                _ => return Err(FormErr::Malformatted),
+            }
+        }
+    }
+
+    let expected = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::Slot(Value::text("a"), Value::Int32Value(1))],
+    );
+
+    let s = S::try_from_value(&expected);
+    println!("{:?}", s);
 }

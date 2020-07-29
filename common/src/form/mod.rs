@@ -26,6 +26,7 @@ mod tests;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
 pub enum FormErr {
+    MismatchedTag,
     IncorrectType(String),
     Malformatted,
     Message(String),
@@ -39,6 +40,7 @@ impl Display for FormErr {
             FormErr::IncorrectType(s) => write!(f, "Incorrect type: {}", s),
             FormErr::Malformatted => write!(f, "Malformatted"),
             FormErr::Message(msg) => write!(f, "{}", msg),
+            FormErr::MismatchedTag => write!(f, "Incorrect tag"),
         }
     }
 }

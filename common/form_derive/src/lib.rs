@@ -25,6 +25,10 @@ use proc_macro2::Ident;
 use syn::export::TokenStream2;
 use syn::DeriveInput;
 
+#[allow(warnings)]
+mod from_value;
+use from_value::from_value;
+
 use macro_helpers::{deconstruct_type, to_compile_errors, CompoundType, Context, FieldName};
 
 use crate::parser::{
@@ -38,13 +42,13 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let context = Context::default();
     let mut descriptor = FormDescriptor::from_ast(&context, &input);
+    let structure_name = descriptor.name.original_ident.clone();
     let type_contents = match TypeContents::from(&context, &input, &mut descriptor) {
         Some(cont) => cont,
         None => return to_compile_errors(context.check().unwrap_err()).into(),
     };
 
-    let structure_name = descriptor.name.original_ident.clone();
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
+    let from_value_body = from_value(&type_contents, &structure_name, &descriptor);
 
     let as_value_body = match type_contents {
         TypeContents::Struct(StructRepr {
@@ -59,26 +63,28 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
             &fields,
         ),
         TypeContents::Enum(variants) => {
-            let arms = variants.into_iter().fold(Vec::new(), |mut ts, variant| {
-                let EnumVariant {
-                    name,
-                    compound_type,
-                    fields,
-                    manifest,
-                } = variant;
+            let arms = variants
+                .into_iter()
+                .fold(Vec::new(), |mut as_value_arms, variant| {
+                    let EnumVariant {
+                        name,
+                        compound_type,
+                        fields,
+                        manifest,
+                    } = variant;
 
-                let as_value = build_variant_as_value(
-                    descriptor.clone(),
-                    manifest,
-                    &name,
-                    &compound_type,
-                    &fields,
-                );
+                    let as_value = build_variant_as_value(
+                        descriptor.clone(),
+                        manifest,
+                        &name,
+                        &compound_type,
+                        &fields,
+                    );
 
-                ts.push(as_value);
+                    as_value_arms.push(as_value);
 
-                ts
-            });
+                    as_value_arms
+                });
 
             quote! {
                 match *self {
@@ -92,6 +98,8 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
         return to_compile_errors(e).into();
     }
 
+    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
+
     let ts = quote! {
         impl #impl_generics crate::form::Form for #structure_name #ty_generics #where_clause
         {
@@ -100,10 +108,12 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
             }
 
             fn try_from_value(value: &crate::model::Value) -> Result<Self, crate::form::FormErr> {
-                unimplemented!()
+                #from_value_body
             }
         }
     };
+
+    // println!("{}", ts.to_string());
 
     ts.into()
 }
@@ -120,7 +130,7 @@ fn build_struct_as_value(
         headers,
         attributes,
         items,
-    } = compute_record(&fields, &mut descriptor, &mut manifest);
+    } = compute_as_value(&fields, &mut descriptor, &mut manifest);
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
@@ -143,7 +153,7 @@ fn build_variant_as_value(
         headers,
         attributes,
         items,
-    } = compute_record(&fields, &mut descriptor, &mut manifest);
+    } = compute_as_value(&fields, &mut descriptor, &mut manifest);
     let structure_name = &descriptor.name.original_ident;
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
@@ -189,7 +199,7 @@ impl RecordTokenStreams {
     }
 }
 
-fn compute_record(
+fn compute_as_value(
     fields: &[Field],
     descriptor: &mut FormDescriptor,
     manifest: &mut FieldManifest,
