@@ -19,9 +19,11 @@ mod tests;
 
 pub mod downlink {
     use crate::configuration::router::RouterParams;
+    use common::model::parser::ParseFailure;
     use common::model::{Attr, Item, Value};
     use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
+    use std::error::Error;
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
     use swim_form::Form;
@@ -36,7 +38,7 @@ pub mod downlink {
     const LANE_TAG: &str = "lane";
     const NODE_TAG: &str = "node";
     const BUFFER_SIZE_TAG: &str = "buffer_size";
-    const ROUTER_TAG: &str = "router";
+    pub const ROUTER_TAG: &str = "router";
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum DownlinkKind {
@@ -81,7 +83,7 @@ pub mod downlink {
             mut attrs: Vec<Attr>,
             use_defaults: bool,
         ) -> Result<Self, ConfigParseError> {
-            let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
+            let Attr { name, value } = attrs.pop().ok_or(ConfigParseError::OtherError)?;
 
             match name.as_str() {
                 PROPAGATE_TAG => Ok(BackpressureMode::Propagate),
@@ -89,10 +91,10 @@ pub mod downlink {
                     if let Value::Record(_, items) = value {
                         try_release_mode_from_items(items, use_defaults)
                     } else {
-                        Err(ConfigParseError {})
+                        Err(ConfigParseError::OtherError)
                     }
                 }
-                _ => Err(ConfigParseError {}),
+                _ => Err(ConfigParseError::OtherError),
             }
         }
     }
@@ -119,35 +121,37 @@ pub mod downlink {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     INPUT_BUFFER_SIZE => {
-                        let size =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
                         input_buffer_size =
-                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError::OtherError)?);
                     }
 
                     BRIDGE_BUFFER_SIZE => {
-                        let size =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
                         bridge_buffer_size =
-                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError::OtherError)?);
                     }
 
                     MAX_ACTIVE_KEYS => {
-                        let size =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        max_active_keys = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
+                        max_active_keys =
+                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError::OtherError)?);
                     }
 
                     YIELD_AFTER => {
-                        let size =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        yield_after = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
+                        yield_after =
+                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError::OtherError)?);
                     }
 
-                    _ => return Err(ConfigParseError {}),
+                    _ => return Err(ConfigParseError::OtherError),
                 },
 
-                _ => return Err(ConfigParseError {}),
+                _ => return Err(ConfigParseError::OtherError),
             };
         }
 
@@ -168,10 +172,10 @@ pub mod downlink {
         }
 
         Ok(BackpressureMode::Release {
-            input_buffer_size: input_buffer_size.ok_or(ConfigParseError {})?,
-            bridge_buffer_size: bridge_buffer_size.ok_or(ConfigParseError {})?,
-            max_active_keys: max_active_keys.ok_or(ConfigParseError {})?,
-            yield_after: yield_after.ok_or(ConfigParseError {})?,
+            input_buffer_size: input_buffer_size.ok_or(ConfigParseError::OtherError)?,
+            bridge_buffer_size: bridge_buffer_size.ok_or(ConfigParseError::OtherError)?,
+            max_active_keys: max_active_keys.ok_or(ConfigParseError::OtherError)?,
+            yield_after: yield_after.ok_or(ConfigParseError::OtherError)?,
         })
     }
 
@@ -216,14 +220,14 @@ pub mod downlink {
             mut attrs: Vec<Attr>,
             use_defaults: bool,
         ) -> Result<Self, ConfigParseError> {
-            let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
+            let Attr { name, value } = attrs.pop().ok_or(ConfigParseError::OtherError)?;
 
             match name.as_str() {
                 QUEUE_TAG => {
                     if let Value::Record(_, items) = value {
                         try_queue_mode_from_items(items, use_defaults)
                     } else {
-                        Err(ConfigParseError {})
+                        Err(ConfigParseError::OtherError)
                     }
                 }
                 DROPPING_TAG => Ok(MuxMode::Dropping),
@@ -231,10 +235,10 @@ pub mod downlink {
                     if let Value::Record(_, items) = value {
                         try_buffered_mode_from_items(items, use_defaults)
                     } else {
-                        Err(ConfigParseError {})
+                        Err(ConfigParseError::OtherError)
                     }
                 }
-                _ => Err(ConfigParseError {}),
+                _ => Err(ConfigParseError::OtherError),
             }
         }
     }
@@ -249,15 +253,16 @@ pub mod downlink {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     QUEUE_SIZE_TAG => {
-                        let size =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        queue_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
+                        queue_size =
+                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError::OtherError)?);
                     }
 
-                    _ => return Err(ConfigParseError {}),
+                    _ => return Err(ConfigParseError::OtherError),
                 },
 
-                _ => return Err(ConfigParseError {}),
+                _ => return Err(ConfigParseError::OtherError),
             }
         }
 
@@ -265,7 +270,9 @@ pub mod downlink {
             queue_size = Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
         }
 
-        Ok(MuxMode::Queue(queue_size.ok_or(ConfigParseError {})?))
+        Ok(MuxMode::Queue(
+            queue_size.ok_or(ConfigParseError::OtherError)?,
+        ))
     }
 
     fn try_buffered_mode_from_items(
@@ -278,15 +285,16 @@ pub mod downlink {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     QUEUE_SIZE_TAG => {
-                        let size =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        queue_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
+                        queue_size =
+                            Some(NonZeroUsize::new(size).ok_or(ConfigParseError::OtherError)?);
                     }
 
-                    _ => return Err(ConfigParseError {}),
+                    _ => return Err(ConfigParseError::OtherError),
                 },
 
-                _ => return Err(ConfigParseError {}),
+                _ => return Err(ConfigParseError::OtherError),
             };
         }
 
@@ -294,7 +302,9 @@ pub mod downlink {
             queue_size = Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
         }
 
-        Ok(MuxMode::Buffered(queue_size.ok_or(ConfigParseError {})?))
+        Ok(MuxMode::Buffered(
+            queue_size.ok_or(ConfigParseError::OtherError)?,
+        ))
     }
 
     /// Instruction on how to respond when an invalid message is received for a downlink.
@@ -448,45 +458,45 @@ pub mod downlink {
                                 back_pressure =
                                     Some(BackpressureMode::try_from_value(attrs, use_defaults)?);
                             } else {
-                                return Err(ConfigParseError {});
+                                return Err(ConfigParseError::OtherError);
                             }
                         }
                         MUX_MODE_TAG => {
                             if let Value::Record(attrs, _) = value {
                                 mux_mode = Some(MuxMode::try_from_value(attrs, use_defaults)?);
                             } else {
-                                return Err(ConfigParseError {});
+                                return Err(ConfigParseError::OtherError);
                             }
                         }
                         IDLE_TIMEOUT_TAG => {
-                            let timeout =
-                                u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                            let timeout = u64::try_from_value(&value)
+                                .map_err(|_| ConfigParseError::OtherError)?;
                             idle_timeout = Some(Duration::from_secs(timeout))
                         }
                         BUFFER_SIZE_TAG => {
-                            let size =
-                                usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                            let size = usize::try_from_value(&value)
+                                .map_err(|_| ConfigParseError::OtherError)?;
                             buffer_size = Some(size);
                         }
                         ON_INVALID_TAG => {
-                            let on_invalid_str =
-                                String::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                            let on_invalid_str = String::try_from_value(&value)
+                                .map_err(|_| ConfigParseError::OtherError)?;
 
                             match on_invalid_str.as_str() {
                                 IGNORE_TAG => on_invalid = Some(OnInvalidMessage::Ignore),
                                 TERMINATE_TAG => on_invalid = Some(OnInvalidMessage::Terminate),
-                                _ => return Err(ConfigParseError {}),
+                                _ => return Err(ConfigParseError::OtherError),
                             }
                         }
                         YIELD_AFTER_TAG => {
-                            let size =
-                                usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                            let size = usize::try_from_value(&value)
+                                .map_err(|_| ConfigParseError::OtherError)?;
                             yield_after = Some(size);
                         }
 
-                        _ => return Err(ConfigParseError {}),
+                        _ => return Err(ConfigParseError::OtherError),
                     },
-                    _ => return Err(ConfigParseError {}),
+                    _ => return Err(ConfigParseError::OtherError),
                 }
             }
 
@@ -515,14 +525,14 @@ pub mod downlink {
             }
 
             Ok(DownlinkParams::new(
-                back_pressure.ok_or(ConfigParseError {})?,
-                mux_mode.ok_or(ConfigParseError {})?,
-                idle_timeout.ok_or(ConfigParseError {})?,
-                buffer_size.ok_or(ConfigParseError {})?,
-                on_invalid.ok_or(ConfigParseError {})?,
-                yield_after.ok_or(ConfigParseError {})?,
+                back_pressure.ok_or(ConfigParseError::OtherError)?,
+                mux_mode.ok_or(ConfigParseError::OtherError)?,
+                idle_timeout.ok_or(ConfigParseError::OtherError)?,
+                buffer_size.ok_or(ConfigParseError::OtherError)?,
+                on_invalid.ok_or(ConfigParseError::OtherError)?,
+                yield_after.ok_or(ConfigParseError::OtherError)?,
             )
-            .map_err(|_| ConfigParseError {})?)
+            .map_err(|_| ConfigParseError::OtherError)?)
         }
     }
 
@@ -571,21 +581,23 @@ pub mod downlink {
                 match item {
                     Item::Slot(Value::Text(name), value) => match name.as_str() {
                         BUFFER_SIZE_TAG => {
-                            let size =
-                                usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                            buffer_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                            let size = usize::try_from_value(&value).map_err(|_| {
+                                ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG)
+                            })?;
+                            buffer_size = Some(NonZeroUsize::new(size).unwrap());
                         }
                         ROUTER_TAG => {
                             if let Value::Record(_, items) = value {
                                 router_params =
                                     Some(RouterParams::try_from_items(items, use_defaults)?);
                             } else {
-                                return Err(ConfigParseError {});
+                                return Err(ConfigParseError::UnexpectedValue(value));
                             }
                         }
-                        _ => return Err(ConfigParseError {}),
+                        _ => return Err(ConfigParseError::OtherError),
                     },
-                    _ => return Err(ConfigParseError {}),
+                    Item::Slot(value, _) => return Err(ConfigParseError::UnexpectedValue(value)),
+                    Item::ValueItem(value) => return Err(ConfigParseError::UnexpectedValue(value)),
                 }
             }
 
@@ -598,8 +610,8 @@ pub mod downlink {
             }
 
             Ok(ClientParams::new(
-                buffer_size.ok_or(ConfigParseError {})?,
-                router_params.ok_or(ConfigParseError {})?,
+                buffer_size.ok_or(ConfigParseError::OtherError)?,
+                router_params.ok_or(ConfigParseError::OtherError)?,
             ))
         }
     }
@@ -648,13 +660,17 @@ pub mod downlink {
         pub fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
             let (mut attrs, items) = match value {
                 Value::Record(attrs, items) => (attrs, items),
-                _ => return Err(ConfigParseError {}),
+                _ => return Err(ConfigParseError::UnexpectedValue(value)),
             };
 
-            if attrs.pop().ok_or(ConfigParseError {})?.name == CONFIG_TAG {
+            let Attr { name, value: _ } = attrs
+                .pop()
+                .ok_or(ConfigParseError::MissingAttribute(CONFIG_TAG))?;
+
+            if name == CONFIG_TAG {
                 ConfigHierarchy::try_from_items(items, use_defaults)
             } else {
-                Err(ConfigParseError {})
+                Err(ConfigParseError::InvalidAttribute(name))
             }
         }
 
@@ -669,10 +685,14 @@ pub mod downlink {
                     Item::ValueItem(value) => {
                         let (mut attrs, items) = match value {
                             Value::Record(attrs, items) => (attrs, items),
-                            _ => return Err(ConfigParseError {}),
+                            _ => return Err(ConfigParseError::UnexpectedValue(value)),
                         };
 
-                        match attrs.pop().ok_or(ConfigParseError {})?.name.as_str() {
+                        let Attr { name, value: _ } = attrs
+                            .pop()
+                            .ok_or(ConfigParseError::MissingAttribute(CONFIG_TAG))?;
+
+                        match name.as_str() {
                             CLIENT_TAG => {
                                 client_params =
                                     Some(ClientParams::try_from_items(items, use_defaults)?);
@@ -695,10 +715,10 @@ pub mod downlink {
                                     lane_params.insert(path, params);
                                 }
                             }
-                            _ => return Err(ConfigParseError {}),
+                            _ => return Err(ConfigParseError::InvalidKey(name, CONFIG_TAG)),
                         }
                     }
-                    _ => return Err(ConfigParseError {}),
+                    _ => return Err(ConfigParseError::UnexpectedSlot(item)),
                 }
             }
 
@@ -711,8 +731,10 @@ pub mod downlink {
             }
 
             Ok(ConfigHierarchy {
-                client_params: client_params.ok_or(ConfigParseError {})?,
-                default: downlink_params.ok_or(ConfigParseError {})?,
+                client_params: client_params
+                    .ok_or(ConfigParseError::MissingAttribute(CLIENT_TAG))?,
+                default: downlink_params
+                    .ok_or(ConfigParseError::MissingAttribute(DOWNLINKS_TAG))?,
                 by_host: host_params,
                 by_lane: lane_params,
             })
@@ -725,11 +747,11 @@ pub mod downlink {
     ) -> Result<(Url, DownlinkParams), ConfigParseError> {
         match item {
             Item::Slot(Value::Text(name), Value::Record(_, items)) => {
-                let host = Url::parse(&name).map_err(|_| ConfigParseError {})?;
+                let host = Url::parse(&name).map_err(|_| ConfigParseError::OtherError)?;
                 let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
                 Ok((host, downlink_params))
             }
-            _ => Err(ConfigParseError {}),
+            _ => Err(ConfigParseError::OtherError),
         }
     }
 
@@ -739,17 +761,17 @@ pub mod downlink {
     ) -> Result<(AbsolutePath, DownlinkParams), ConfigParseError> {
         match item {
             Item::ValueItem(Value::Record(mut attrs, items)) => {
-                let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
+                let Attr { name, value } = attrs.pop().ok_or(ConfigParseError::OtherError)?;
 
                 if name == PATH_TAG {
                     let path = try_absolute_path_from_record(value)?;
                     let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
                     Ok((path, downlink_params))
                 } else {
-                    Err(ConfigParseError {})
+                    Err(ConfigParseError::OtherError)
                 }
             }
-            _ => Err(ConfigParseError {}),
+            _ => Err(ConfigParseError::OtherError),
         }
     }
 
@@ -764,28 +786,73 @@ pub mod downlink {
                     match item {
                         Item::Slot(Value::Text(name), Value::Text(value)) => match name.as_str() {
                             HOST_TAG => {
-                                host = Some(Url::parse(&value).map_err(|_| ConfigParseError {})?)
+                                host = Some(
+                                    Url::parse(&value).map_err(|_| ConfigParseError::OtherError)?,
+                                )
                             }
                             NODE_TAG => node = Some(value),
                             LANE_TAG => lane = Some(value),
-                            _ => return Err(ConfigParseError {}),
+                            _ => return Err(ConfigParseError::OtherError),
                         },
-                        _ => return Err(ConfigParseError {}),
+                        _ => return Err(ConfigParseError::OtherError),
                     }
                 }
             }
-            _ => return Err(ConfigParseError {}),
+            _ => return Err(ConfigParseError::OtherError),
         };
 
         Ok(AbsolutePath::new(
-            host.ok_or(ConfigParseError {})?,
-            &node.ok_or(ConfigParseError {})?,
-            &lane.ok_or(ConfigParseError {})?,
+            host.ok_or(ConfigParseError::OtherError)?,
+            &node.ok_or(ConfigParseError::OtherError)?,
+            &lane.ok_or(ConfigParseError::OtherError)?,
         ))
     }
 
-    #[derive(Debug, PartialEq)]
-    pub struct ConfigParseError {}
+    type Key = String;
+    type Tag = &'static str;
+
+    #[derive(Debug)]
+    pub enum ConfigParseError {
+        FileError(std::io::Error),
+        ReconError(ParseFailure),
+        MissingAttribute(&'static str),
+        InvalidAttribute(String),
+        InvalidKey(Key, Tag),
+        InvalidValue(Value, Tag),
+        UnexpectedValue(Value),
+        UnexpectedSlot(Item),
+        OtherError,
+    }
+
+    impl Error for ConfigParseError {}
+
+    impl Display for ConfigParseError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                ConfigParseError::FileError(e) => write!(f, "File error: {}", e.to_string()),
+                ConfigParseError::ReconError(e) => write!(f, "Recon error: {}", e.to_string()),
+                ConfigParseError::MissingAttribute(expected) => {
+                    write!(f, "Missing \"@{}\" attribute.", expected)
+                }
+                ConfigParseError::InvalidAttribute(invalid) => {
+                    write!(f, "Invalid attribute \"@{}\".", invalid)
+                }
+                ConfigParseError::InvalidKey(key, tag) => {
+                    write!(f, "Invalid key \"{}\" for \"{}\".", key, tag)
+                }
+                ConfigParseError::InvalidValue(value, tag) => {
+                    write!(f, "Invalid value \"{}\" for \"{}\".", value, tag)
+                }
+                ConfigParseError::UnexpectedValue(unexpected) => {
+                    write!(f, "Unexpected value \"{}\".", unexpected)
+                }
+                ConfigParseError::UnexpectedSlot(unexpected) => {
+                    write!(f, "Unexpected slot \"{}\".", unexpected)
+                }
+                ConfigParseError::OtherError => write!(f, "Other"),
+            }
+        }
+    }
 
     impl Config for ConfigHierarchy {
         fn config_for(&self, path: &AbsolutePath) -> DownlinkParams {

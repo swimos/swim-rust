@@ -17,6 +17,7 @@ use std::num::NonZeroUsize;
 use tokio::time::Duration;
 
 use crate::configuration::downlink::ConfigParseError;
+use crate::configuration::downlink::ROUTER_TAG;
 use common::model::{Attr, Item, Value};
 use swim_form::Form;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
@@ -104,26 +105,29 @@ impl RouterParams {
                         if let Value::Record(attrs, _) = value {
                             retry_strategy = Some(try_retry_strat_from_value(attrs, use_defaults)?);
                         } else {
-                            return Err(ConfigParseError {});
+                            return Err(ConfigParseError::InvalidValue(value, RETRY_STRATEGY_TAG));
                         }
                     }
                     IDLE_TIMEOUT_TAG => {
-                        let timeout =
-                            u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        let timeout = u64::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG))?;
                         idle_timeout = Some(Duration::from_secs(timeout))
                     }
                     CONN_REAPER_FREQ_TAG => {
-                        let freq = u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        let freq = u64::try_from_value(&value).map_err(|_| {
+                            ConfigParseError::InvalidValue(value, CONN_REAPER_FREQ_TAG)
+                        })?;
                         conn_reaper_frequency = Some(Duration::from_secs(freq))
                     }
                     BUFFER_SIZE_TAG => {
-                        let size =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                        buffer_size = Some(NonZeroUsize::new(size).ok_or(ConfigParseError {})?);
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG))?;
+                        buffer_size = Some(NonZeroUsize::new(size).unwrap());
                     }
-                    _ => return Err(ConfigParseError {}),
+                    _ => return Err(ConfigParseError::InvalidKey(name, ROUTER_TAG)),
                 },
-                _ => return Err(ConfigParseError {}),
+                Item::Slot(value, _) => return Err(ConfigParseError::UnexpectedValue(value)),
+                Item::ValueItem(value) => return Err(ConfigParseError::UnexpectedValue(value)),
             }
         }
 
@@ -144,10 +148,10 @@ impl RouterParams {
         }
 
         Ok(RouterParams::new(
-            retry_strategy.ok_or(ConfigParseError {})?,
-            idle_timeout.ok_or(ConfigParseError {})?,
-            conn_reaper_frequency.ok_or(ConfigParseError {})?,
-            buffer_size.ok_or(ConfigParseError {})?,
+            retry_strategy.ok_or(ConfigParseError::OtherError)?,
+            idle_timeout.ok_or(ConfigParseError::OtherError)?,
+            conn_reaper_frequency.ok_or(ConfigParseError::OtherError)?,
+            buffer_size.ok_or(ConfigParseError::OtherError)?,
         ))
     }
 }
@@ -171,32 +175,32 @@ fn try_retry_strat_from_value(
     mut attrs: Vec<Attr>,
     use_defaults: bool,
 ) -> Result<RetryStrategy, ConfigParseError> {
-    let Attr { name, value } = attrs.pop().ok_or(ConfigParseError {})?;
+    let Attr { name, value } = attrs.pop().ok_or(ConfigParseError::OtherError)?;
 
     match name.as_str() {
         RETRY_IMMEDIATE_TAG => {
             if let Value::Record(_, items) = value {
                 try_immediate_strat_from_items(items, use_defaults)
             } else {
-                Err(ConfigParseError {})
+                Err(ConfigParseError::OtherError)
             }
         }
         RETRY_INTERVAL_TAG => {
             if let Value::Record(_, items) = value {
                 try_interval_strat_from_items(items, use_defaults)
             } else {
-                Err(ConfigParseError {})
+                Err(ConfigParseError::OtherError)
             }
         }
         RETRY_EXPONENTIAL_TAG => {
             if let Value::Record(_, items) = value {
                 try_exponential_strat_from_items(items, use_defaults)
             } else {
-                Err(ConfigParseError {})
+                Err(ConfigParseError::OtherError)
             }
         }
         RETRY_NONE_TAG => Ok(RetryStrategy::none()),
-        _ => Err(ConfigParseError {}),
+        _ => Err(ConfigParseError::OtherError),
     }
 }
 
@@ -211,12 +215,13 @@ fn try_immediate_strat_from_items(
             Item::Slot(Value::Text(name), value) => match name.as_str() {
                 RETRIES_TAG => {
                     let num_tries =
-                        usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
-                    retries = Some(NonZeroUsize::new(num_tries).ok_or(ConfigParseError {})?);
+                        usize::try_from_value(&value).map_err(|_| ConfigParseError::OtherError)?;
+                    retries =
+                        Some(NonZeroUsize::new(num_tries).ok_or(ConfigParseError::OtherError)?);
                 }
-                _ => return Err(ConfigParseError {}),
+                _ => return Err(ConfigParseError::OtherError),
             },
-            _ => return Err(ConfigParseError {}),
+            _ => return Err(ConfigParseError::OtherError),
         }
     }
 
@@ -225,7 +230,7 @@ fn try_immediate_strat_from_items(
     }
 
     Ok(RetryStrategy::immediate(
-        retries.ok_or(ConfigParseError {})?,
+        retries.ok_or(ConfigParseError::OtherError)?,
     ))
 }
 
@@ -240,7 +245,8 @@ fn try_interval_strat_from_items(
         match item {
             Item::Slot(Value::Text(name), value) => match name.as_str() {
                 DELAY_TAG => {
-                    let delay_len = u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                    let delay_len =
+                        u64::try_from_value(&value).map_err(|_| ConfigParseError::OtherError)?;
                     delay = Some(Duration::from_secs(delay_len));
                 }
                 RETRIES_TAG => {
@@ -248,19 +254,19 @@ fn try_interval_strat_from_items(
                         if text_value == INDEFINITE_TAG {
                             retries = Some(Quantity::Infinite)
                         } else {
-                            return Err(ConfigParseError {});
+                            return Err(ConfigParseError::OtherError);
                         }
                     } else {
-                        let num_tries =
-                            usize::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        let num_tries = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
                         retries = Some(Quantity::Finite(
-                            NonZeroUsize::new(num_tries).ok_or(ConfigParseError {})?,
+                            NonZeroUsize::new(num_tries).ok_or(ConfigParseError::OtherError)?,
                         ));
                     }
                 }
-                _ => return Err(ConfigParseError {}),
+                _ => return Err(ConfigParseError::OtherError),
             },
-            _ => return Err(ConfigParseError {}),
+            _ => return Err(ConfigParseError::OtherError),
         }
     }
 
@@ -275,8 +281,8 @@ fn try_interval_strat_from_items(
     }
 
     Ok(RetryStrategy::interval(
-        delay.ok_or(ConfigParseError {})?,
-        retries.ok_or(ConfigParseError {})?,
+        delay.ok_or(ConfigParseError::OtherError)?,
+        retries.ok_or(ConfigParseError::OtherError)?,
     ))
 }
 
@@ -291,7 +297,8 @@ fn try_exponential_strat_from_items(
         match item {
             Item::Slot(Value::Text(name), value) => match name.as_str() {
                 MAX_INTERVAL_TAG => {
-                    let interval = u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                    let interval =
+                        u64::try_from_value(&value).map_err(|_| ConfigParseError::OtherError)?;
                     max_interval = Some(Duration::from_secs(interval));
                 }
                 MAX_BACKOFF_TAG => {
@@ -299,17 +306,17 @@ fn try_exponential_strat_from_items(
                         if text_value == INDEFINITE_TAG {
                             max_backoff = Some(Quantity::Infinite)
                         } else {
-                            return Err(ConfigParseError {});
+                            return Err(ConfigParseError::OtherError);
                         }
                     } else {
-                        let backoff =
-                            u64::try_from_value(&value).map_err(|_| ConfigParseError {})?;
+                        let backoff = u64::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::OtherError)?;
                         max_backoff = Some(Quantity::Finite(Duration::from_secs(backoff)));
                     }
                 }
-                _ => return Err(ConfigParseError {}),
+                _ => return Err(ConfigParseError::OtherError),
             },
-            _ => return Err(ConfigParseError {}),
+            _ => return Err(ConfigParseError::OtherError),
         }
     }
 
@@ -322,8 +329,8 @@ fn try_exponential_strat_from_items(
     }
 
     Ok(RetryStrategy::exponential(
-        max_interval.ok_or(ConfigParseError {})?,
-        max_backoff.ok_or(ConfigParseError {})?,
+        max_interval.ok_or(ConfigParseError::OtherError)?,
+        max_backoff.ok_or(ConfigParseError::OtherError)?,
     ))
 }
 

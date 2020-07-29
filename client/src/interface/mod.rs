@@ -23,7 +23,7 @@ use common::model::Value;
 use common::warp::path::AbsolutePath;
 use swim_form::ValidatedForm;
 
-use crate::configuration::downlink::{Config, ConfigHierarchy};
+use crate::configuration::downlink::{Config, ConfigHierarchy, ConfigParseError};
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
@@ -35,10 +35,13 @@ use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::connections::WebsocketFactory;
+use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
+use std::fs::File;
+use std::io::Read;
 
 /// Represents errors that can occur in the client.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ClientError {
     /// An error that occurred when subscribing to a downlink.
     SubscriptionError(SubscriptionError),
@@ -46,6 +49,8 @@ pub enum ClientError {
     RoutingError(RoutingError),
     /// An error that occurred in a downlink.
     DownlinkError(DownlinkError),
+    /// An error that occurred when parsing the client configuration.
+    ConfigError(ConfigParseError),
     /// An error that occurred when closing the client.
     CloseError,
 }
@@ -65,6 +70,7 @@ impl Error for ClientError {
             ClientError::SubscriptionError(e) => Some(e),
             ClientError::RoutingError(e) => Some(e),
             ClientError::DownlinkError(e) => Some(e),
+            ClientError::ConfigError(e) => Some(e),
             ClientError::CloseError => None,
         }
     }
@@ -104,6 +110,30 @@ impl SwimClient {
         Fac: WebsocketFactory + 'static,
     {
         SwimClient::new(ConfigHierarchy::default(), connection_factory).await
+    }
+
+    /// Creates a new SWIM Client using configuration from a Recon file.
+    pub async fn new_with_file<Fac>(
+        mut config_file: File,
+        use_defaults: bool,
+        connection_factory: Fac,
+    ) -> Result<Self, ClientError>
+    where
+        Fac: WebsocketFactory + 'static,
+    {
+        let mut contents = String::new();
+        config_file
+            .read_to_string(&mut contents)
+            .map_err(|err| ClientError::ConfigError(ConfigParseError::FileError(err)))?;
+
+        let config = ConfigHierarchy::try_from_value(
+            parse_single(&contents)
+                .map_err(|err| ClientError::ConfigError(ConfigParseError::ReconError(err)))?,
+            use_defaults,
+        )
+        .map_err(|err| ClientError::ConfigError(err))?;
+
+        Ok(SwimClient::new(config, connection_factory).await)
     }
 
     /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.

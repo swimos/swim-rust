@@ -1,6 +1,9 @@
 use crate::configuration::downlink::ConfigHierarchy;
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::interface::SwimClient;
 use common::model::parser::parse_single;
 use std::fs;
+use std::fs::File;
 use std::io::Read;
 
 #[test]
@@ -32,7 +35,8 @@ fn from_string() {
 
 #[test]
 fn from_file() {
-    let mut file = fs::File::open("client/src/configuration/tests/test_config.recon").unwrap();
+    let mut file =
+        fs::File::open("client/src/configuration/tests/resources/test_config.recon").unwrap();
 
     let mut contents = String::new();
 
@@ -47,6 +51,125 @@ fn from_file() {
     println!("{:?}", config);
     println!("{:?}", default_config);
     assert_eq!(config, default_config)
+}
+
+#[test]
+fn test_from_file_unexpected_slot() {
+    let mut file =
+        fs::File::open("client/src/configuration/tests/resources/unexpected-slot.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Unexpected slot \"\"@client\":{\"32\"}\".")
+    } else {
+        panic!("Expected configuration parser error!")
+    }
+}
+
+#[test]
+fn test_from_file_invalid_key() {
+    let mut file =
+        fs::File::open("client/src/configuration/tests/resources/invalid-key.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Invalid key \"hello\" for \"config\".")
+    } else {
+        panic!("Expected configuration parser error!")
+    }
+}
+
+#[test]
+fn test_from_file_unexpected_value() {
+    let mut file =
+        fs::File::open("client/src/configuration/tests/resources/unexpected-value.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Unexpected value \"2\".")
+    } else {
+        panic!("Expected configuration parser error!")
+    }
+}
+
+#[test]
+fn test_from_file_missing_config_attr() {
+    let mut file =
+        fs::File::open("client/src/configuration/tests/resources/missing-attr.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Missing \"@config\" attribute.")
+    } else {
+        panic!("Expected configuration parser error!")
+    }
+}
+
+#[test]
+fn test_from_file_invalid_config_attr() {
+    let mut file =
+        fs::File::open("client/src/configuration/tests/resources/invalid-config-attr.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Invalid attribute \"@configuration\".")
+    } else {
+        panic!("Expected configuration parser error!")
+    }
+}
+
+#[tokio::test]
+async fn test_client_file_conf_non_utf8_error() {
+    let file =
+        File::open("client/src/configuration/tests/resources/non-utf-8-config.recon").unwrap();
+    let result = SwimClient::new_with_file(file, false, TungsteniteWsFactory::new(5).await).await;
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Client error. Caused by: File error: stream did not contain valid UTF-8"
+        )
+    } else {
+        panic!("Expected file error!")
+    }
+}
+
+#[tokio::test]
+async fn test_client_file_conf_recon_error() {
+    let file =
+        File::open("client/src/configuration/tests/resources/parse-err-config.recon").unwrap();
+    let result = SwimClient::new_with_file(file, false, TungsteniteWsFactory::new(5).await).await;
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Client error. Caused by: Recon error: Bad token at offset: 63"
+        )
+    } else {
+        panic!("Expected file error!")
+    }
 }
 
 // fn parse_config()
