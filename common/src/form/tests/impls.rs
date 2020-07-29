@@ -19,6 +19,7 @@ use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
 use crate::form::Form;
 use crate::model::{Attr, Item, Value};
 
+use crate::model::blob::Blob;
 use form_derive::*;
 use num_bigint::{BigInt, BigUint};
 
@@ -47,6 +48,29 @@ fn transmute_bigint() {
     )
 }
 
+#[test]
+fn blob() {
+    #[derive(Form)]
+    struct S {
+        b: Blob,
+    }
+
+    let s = S {
+        b: Blob::encode("blobby"),
+    };
+
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::Slot(
+                Value::Text(String::from("b")),
+                Value::Data(Blob::from_vec(vec![89, 109, 120, 118, 89, 109, 74, 53]))
+            )]
+        )
+    )
+}
+
 mod primitive {
     use super::*;
 
@@ -63,6 +87,8 @@ mod primitive {
     test_impl!(test_bool, true, Value::BooleanValue(true));
     test_impl!(test_i32, 100i32, Value::Int32Value(100));
     test_impl!(test_i64, 100i64, Value::Int64Value(100));
+    test_impl!(test_u32, 100u32, Value::UInt32Value(100));
+    test_impl!(test_u64, 100u64, Value::UInt64Value(100));
     test_impl!(test_f64, 100.0f64, Value::Float64Value(100.0));
     test_impl!(test_opt_some, Some(100i32), Value::Int32Value(100));
     test_impl!(
