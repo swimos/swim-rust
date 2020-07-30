@@ -28,6 +28,9 @@ use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_form::{Form, FormDeserializeErr};
 
+#[cfg(test)]
+mod tests;
+
 pub mod map;
 
 /// State change requests to an uplink.
@@ -119,6 +122,16 @@ pub struct Uplink<Lane, Actions, Updates> {
     actions: Actions,
     /// Stream of updates to the lane.
     updates: Updates,
+}
+
+impl<Lane, Actions, Updates> Uplink<Lane, Actions, Updates> {
+    pub fn new(lane: Lane, actions: Actions, updates: Updates) -> Self {
+        Uplink {
+            lane,
+            actions,
+            updates,
+        }
+    }
 }
 
 impl<Lane, Actions, Updates> Uplink<Lane, Actions, Updates>
