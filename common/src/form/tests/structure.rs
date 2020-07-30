@@ -12,34 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use form_derive::*;
+
 use crate::form::{Form, FormErr};
 use crate::model::{Attr, Item, Value};
-use form_derive::*;
 
 #[test]
 fn test_transmute() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S {
         a: i32,
         b: i64,
     }
 
     let s = S { a: 1, b: 2 };
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_transmute_generic() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S<F>
     where
         F: Form,
@@ -48,23 +48,21 @@ fn test_transmute_generic() {
     }
 
     let s = S { f: 1 };
-
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![Item::Slot(
-                Value::Text(String::from("f")),
-                Value::Int32Value(1)
-            ),]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::Slot(
+            Value::Text(String::from("f")),
+            Value::Int32Value(1),
+        )],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 #[ignore] // todo
 fn test_transmute_generic_lifetime() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S<'l, F>
     where
         F: Form,
@@ -74,65 +72,64 @@ fn test_transmute_generic_lifetime() {
 
     let int = 1;
     let s = S { f: &int };
-
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![Item::Slot(
-                Value::Text(String::from("f")),
-                Value::Int32Value(1)
-            )]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::Slot(
+            Value::Text(String::from("f")),
+            Value::Int32Value(1),
+        )],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_transmute_newtype() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S(i32);
 
     let s = S(1);
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![Item::ValueItem(Value::Int32Value(1))]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::ValueItem(Value::Int32Value(1))],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_transmute_tuple() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S(i32, i64);
 
     let s = S(1, 2);
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![
-                Item::ValueItem(Value::Int32Value(1)),
-                Item::ValueItem(Value::Int32Value(2))
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![
+            Item::ValueItem(Value::Int32Value(1)),
+            Item::ValueItem(Value::Int32Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_transmute_unit() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S;
 
     let s = S;
-    assert_eq!(s.as_value(), Value::Record(vec![Attr::of("S")], vec![]))
+    let rec = Value::Record(vec![Attr::of("S")], vec![]);
+
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_skip_field() {
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         struct S {
             a: i32,
             #[form(skip)]
@@ -140,43 +137,42 @@ fn test_skip_field() {
         }
 
         let s = S { a: 1, b: 2 };
-        assert_eq!(
-            s.as_value(),
-            Value::Record(
-                vec![Attr::of("S")],
-                vec![Item::Slot(
-                    Value::Text(String::from("a")),
-                    Value::Int32Value(1)
-                ),]
-            )
+        let rec = Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::Slot(
+                Value::Text(String::from("a")),
+                Value::Int32Value(1),
+            )],
         );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S { a: 1, b: 0 }));
     }
-
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         struct S(#[form(skip)] i32);
 
         let s = S(1);
-        assert_eq!(s.as_value(), Value::Record(vec![Attr::of("S")], vec![]));
+        let rec = Value::Record(vec![Attr::of("S")], vec![]);
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S(0)));
     }
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         struct S(#[form(skip)] i32, i64);
 
         let s = S(1, 2);
-        assert_eq!(
-            s.as_value(),
-            Value::Record(
-                vec![Attr::of("S")],
-                vec![Item::ValueItem(Value::Int64Value(2))]
-            )
-        )
+        let rec = Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::ValueItem(Value::Int64Value(2))],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S(0, 2)));
     }
 }
 
 #[test]
 fn test_tag() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     #[form(tag = "Structure")]
     struct S {
         a: i32,
@@ -184,21 +180,20 @@ fn test_tag() {
     }
 
     let s = S { a: 1, b: 2 };
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("Structure")],
-            vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("Structure")],
+        vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_rename() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     #[form(tag = "Structure")]
     struct S {
         #[form(rename = "field_a")]
@@ -207,16 +202,15 @@ fn test_rename() {
     }
 
     let s = S { a: 1, b: 2 };
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("Structure")],
-            vec![
-                Item::Slot(Value::Text(String::from("field_a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("Structure")],
+        vec![
+            Item::Slot(Value::Text(String::from("field_a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]

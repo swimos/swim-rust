@@ -17,7 +17,7 @@ use syn::export::TokenStream2;
 
 use macro_helpers::{CompoundType, FieldName};
 
-use crate::parser::{FieldKind, FormDescriptor, StructRepr, TypeContents};
+use crate::parser::{Field, FieldKind, FormDescriptor, StructRepr, TypeContents};
 use crate::RecordTokenStreams;
 
 pub fn from_value(
@@ -27,79 +27,16 @@ pub fn from_value(
 ) -> TokenStream2 {
     match type_contents {
         TypeContents::Struct(repr) => {
-            let streams = RecordTokenStreams::default();
             let structure_name_str = descriptor.name.tag_ident.to_string();
-
-            let (field_opts, field_assignments) = repr.fields.iter().fold(
-                (TokenStream2::new(), TokenStream2::new()),
-                |(field_opts, field_assignments), f| {
-                    let name = f.name.as_ident();
-                    match &f.kind {
-                        FieldKind::Skip => {
-                            match &repr.compound_type {
-                                CompoundType::Struct => {
-                                    (field_opts, quote! {
-                                        #field_assignments
-                                       #name: std::default::Default::default(),
-                                    })
-                                }
-                                _ => {
-                                    (field_opts, quote! {
-                                        #field_assignments
-                                        std::default::Default::default(),
-                                    })
-                                }
-                            }
-                        }
-                        _ => {
-                            let ty = &f.original.ty;
-                            let field_opts = quote! {
-                                #field_opts
-                                let mut #name: std::option::Option<#ty> = None;
-                            };
-
-                            let field_assignment = match &repr.compound_type {
-                                CompoundType::Struct => {
-                                    let name_str = format!("Missing field: {}", name);
-
-                                    quote! {
-                                        #field_assignments
-                                        #name : #name.ok_or(crate::form::FormErr::Message(String::from(#name_str)))?,
-                                    }
-                                }
-                                _ => {
-                                    quote! {
-                                        #field_assignments
-                                        #name.ok_or(crate::form::FormErr::Malformatted)?,
-                                    }
-                                }
-                            };
-
-                            (field_opts, field_assignment)
-                        }
-                    }
-                },
-            );
+            let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
 
             let RecordTokenStreams {
                 mut headers,
                 mut attributes,
                 mut items,
-            } = parse_kinds(repr);
+            } = parse_elements(&repr.fields);
 
-            if !items.is_empty() {
-                items = quote! {
-                    let mut items_iter = items.iter();
-                    while let Some(item) = items_iter.next() {
-                        match item {
-                            #items
-                            _ => return Err(crate::form::FormErr::Malformatted),
-                        }
-                    }
-                };
-            }
-
-            let self_construction = match &repr.compound_type {
+            let self_members = match &repr.compound_type {
                 CompoundType::Struct => {
                     quote! {
                         Ok(#structure_name {
@@ -116,10 +53,8 @@ pub fn from_value(
                     crate::model::Value::Record(attrs, items) => match attrs.first() {
                         Some(attr) if &attr.name == #structure_name_str => {
                             #field_opts
-
                             #items
-
-                            #self_construction
+                            #self_members
                         },
                         _ => return Err(crate::form::FormErr::MismatchedTag),
                     }
@@ -127,12 +62,106 @@ pub fn from_value(
                 }
             }
         }
-        TypeContents::Enum(_variants) => TokenStream2::new(),
+        TypeContents::Enum(variants) => {
+            let arms = variants.iter().fold(TokenStream2::new(), |ts, variant| {
+                let variant_name_str = variant.name.to_string();
+                let variant_ident = variant.name.as_ident();
+                let (field_opts, field_assignments) =
+                    parse_fields(&variant.fields, &variant.compound_type);
+
+                let RecordTokenStreams {
+                    mut headers,
+                    mut attributes,
+                    mut items,
+                } = parse_elements(&variant.fields);
+
+                let self_members = match &variant.compound_type {
+                    CompoundType::Struct => {
+                        quote! {{#field_assignments}}
+                    }
+                    CompoundType::Unit => quote!(),
+                    _ => quote!((#field_assignments)),
+                };
+
+                quote! {
+                    #ts
+                    Some(attr) if &attr.name == #variant_name_str => {
+                        #field_opts
+                        #items
+                        Ok(#structure_name::#variant_ident#self_members)
+                    },
+                }
+            });
+            quote! {
+                match value {
+                    crate::model::Value::Record(attrs, items) => match attrs.first() {
+                            #arms
+                            _ => return Err(crate::form::FormErr::MismatchedTag),
+                        }
+                        _ => return Err(crate::form::FormErr::Message(String::from("Expected record"))),
+                }
+            }
+        }
     }
 }
 
-fn parse_kinds(repr: &StructRepr) -> RecordTokenStreams {
-    repr.fields
+fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2, TokenStream2) {
+    fields.iter().fold(
+        (TokenStream2::new(), TokenStream2::new()),
+        |(field_opts, field_assignments), f| {
+            let name = f.name.as_ident();
+            match &f.kind {
+                FieldKind::Skip => {
+                    match compound_type {
+                        CompoundType::Struct => {
+                            (field_opts,
+                             quote! {
+                                #field_assignments
+                               #name: std::default::Default::default(),
+                            })
+                        }
+                        _ => {
+                            (field_opts,
+                             quote! {
+                                #field_assignments
+                                std::default::Default::default(),
+                            })
+                        }
+                    }
+                }
+                _ => {
+                    let ty = &f.original.ty;
+                    let field_opts = quote! {
+                        #field_opts
+                        let mut #name: std::option::Option<#ty> = None;
+                    };
+
+                    let field_assignment = match compound_type {
+                        CompoundType::Struct => {
+                            let name_str = format!("Missing field: {}", name);
+
+                            quote! {
+                                #field_assignments
+                                #name : #name.ok_or(crate::form::FormErr::Message(String::from(#name_str)))?,
+                            }
+                        }
+                        _ => {
+                            quote! {
+                                #field_assignments
+                                #name.ok_or(crate::form::FormErr::Malformatted)?,
+                            }
+                        }
+                    };
+
+                    (field_opts, field_assignment)
+                }
+            }
+        },
+    )
+}
+
+fn parse_elements(fields: &[Field]) -> RecordTokenStreams {
+    let mut streams = fields
         .iter()
         .fold(RecordTokenStreams::default(), |mut streams, f| {
             let ty = &f.original.ty;
@@ -186,5 +215,21 @@ fn parse_kinds(repr: &StructRepr) -> RecordTokenStreams {
                 _ => {}
             }
             streams
-        })
+        });
+
+    if !streams.items.is_empty() {
+        streams.transform_items(|items| {
+            quote! {
+                let mut items_iter = items.iter();
+                while let Some(item) = items_iter.next() {
+                    match item {
+                        #items
+                        _ => return Err(crate::form::FormErr::Malformatted),
+                    }
+                }
+            }
+        });
+    }
+
+    streams
 }
