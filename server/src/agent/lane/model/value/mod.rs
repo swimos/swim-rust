@@ -83,6 +83,13 @@ impl<T: Any + Send + Sync> ValueLane<T> {
     pub async fn store(&self, value: T) {
         self.value.store(value).await;
     }
+
+    /// Locks the variable, preventing it from being read from or written to. This is
+    /// required to force the ordering of events in some unit tests.
+    #[cfg(test)]
+    pub async fn lock(&self) -> stm::var::TVarLock {
+        self.value.lock().await
+    }
 }
 
 /// Adapts a watch strategy for use with a [`ValueLane`].

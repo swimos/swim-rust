@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::{Uplink, UplinkAction, UplinkMessage};
+use crate::agent::lane::channels::uplink::{
+    Uplink, UplinkAction, UplinkMessage, UplinkStateMachine,
+};
 use crate::agent::lane::model::value;
 use crate::agent::lane::strategy::Queue;
 use futures::future::join;
@@ -20,6 +22,7 @@ use futures::ready;
 use futures::{Stream, StreamExt};
 use std::collections::VecDeque;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -182,4 +185,63 @@ async fn uplink_open_to_synced() {
             UplinkMessage::Unlinked
         ] if **v == 12
     ));
+}
+
+#[tokio::test]
+async fn value_state_machine_message_for() {
+    let (lane, _events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
+
+    let event = Arc::new(4);
+
+    let msg = lane.message_for(event.clone());
+
+    assert!(matches!(msg, Ok(Some(v)) if Arc::ptr_eq(&v, &event)));
+}
+
+#[tokio::test]
+async fn value_state_machine_sync_from_var() {
+    let (lane, events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
+
+    let mut events = events.fuse();
+
+    let sync_events = timeout(
+        Duration::from_secs(10),
+        lane.sync_lane(&mut events).collect::<Vec<_>>(),
+    )
+    .await;
+
+    assert!(sync_events.is_ok());
+
+    let event_vec = sync_events.unwrap();
+
+    assert!(matches!(event_vec.as_slice(), [Ok(v)] if **v == 7));
+}
+
+#[tokio::test]
+async fn value_state_machine_sync_from_events() {
+    let (lane, _events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
+
+    let (mut tx_fake, rx_fake) = mpsc::channel(5);
+
+    let mut rx_fake = rx_fake.fuse();
+
+    let _lock = lane.lock().await;
+
+    let sync_task = timeout(
+        Duration::from_secs(10),
+        lane.sync_lane(&mut rx_fake).collect::<Vec<_>>(),
+    );
+
+    let event = Arc::new(87);
+
+    let send_task = tx_fake.send(event.clone());
+
+    let (sync_result, send_result) = join(sync_task, send_task).await;
+
+    assert!(send_result.is_ok());
+    assert!(sync_result.is_ok());
+
+    let event_vec = sync_result.unwrap();
+
+    assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v, &event)));
 }
