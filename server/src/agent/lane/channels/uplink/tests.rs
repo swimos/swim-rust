@@ -13,20 +13,24 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::{
-    Uplink, UplinkAction, UplinkMessage, UplinkStateMachine,
+    MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
 };
-use crate::agent::lane::model::value;
+use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
+use crate::agent::lane::model::{map, value};
 use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::tests::ExactlyOnce;
 use futures::future::join;
 use futures::ready;
+use futures::sink::drain;
 use futures::{Stream, StreamExt};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
 struct ReportingStream<S> {
@@ -244,4 +248,91 @@ async fn value_state_machine_sync_from_events() {
     let event_vec = sync_result.unwrap();
 
     assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v, &event)));
+}
+
+#[tokio::test]
+async fn map_state_machine_message_for() {
+    let (lane, _events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+
+    let map_uplink = MapLaneUplink::new(lane, 1, ExactlyOnce);
+
+    let value = Arc::new(4);
+
+    let update = map_uplink.message_for(MapLaneEvent::Update(3, value.clone()));
+    assert!(matches!(update, Ok(Some(MapUpdate::Update(3, v))) if Arc::ptr_eq(&v, &value)));
+
+    let remove = map_uplink.message_for(MapLaneEvent::Remove(2));
+    assert!(matches!(remove, Ok(Some(MapUpdate::Remove(2)))));
+
+    let clear = map_uplink.message_for(MapLaneEvent::Clear);
+    assert!(matches!(clear, Ok(Some(MapUpdate::Clear))));
+
+    let checkpoint = map_uplink.message_for(MapLaneEvent::Checkpoint(7));
+    assert!(matches!(checkpoint, Ok(None)));
+}
+
+fn into_map(
+    events: Vec<Result<MapUpdate<i32, i32>, UplinkError>>,
+) -> Result<HashMap<i32, i32>, UplinkError> {
+    let mut map = HashMap::new();
+
+    for event in events.into_iter() {
+        match event? {
+            MapUpdate::Update(k, v) => {
+                map.insert(k, *v);
+            }
+            MapUpdate::Remove(k) => {
+                map.remove(&k);
+            }
+            MapUpdate::Clear => {
+                map.clear();
+            }
+        }
+    }
+    Ok(map)
+}
+
+#[tokio::test]
+async fn map_state_machine_sync() {
+    let (lane, events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+
+    let mut events = events.fuse();
+
+    assert!(lane
+        .update_direct(1, Arc::new(2))
+        .apply(ExactlyOnce)
+        .await
+        .is_ok());
+    assert!(lane
+        .update_direct(2, Arc::new(5))
+        .apply(ExactlyOnce)
+        .await
+        .is_ok());
+    assert!((&mut events)
+        .take(2)
+        .never_error()
+        .forward(drain())
+        .await
+        .is_ok());
+
+    let map_uplink = MapLaneUplink::new(lane, 1, ExactlyOnce);
+
+    let sync_events = timeout(
+        Duration::from_secs(10),
+        map_uplink.sync_lane(&mut events).collect::<Vec<_>>(),
+    )
+    .await;
+
+    assert!(sync_events.is_ok());
+
+    let sync_vec = sync_events.unwrap();
+
+    let results = into_map(sync_vec);
+
+    assert!(results.is_ok());
+
+    let mut expected = HashMap::new();
+    expected.insert(1, 2);
+    expected.insert(2, 5);
+    assert_eq!(results.unwrap(), expected);
 }

@@ -304,6 +304,17 @@ pub struct MapLaneUplink<K, V, Retries> {
     retries: Retries,
 }
 
+impl<K, V, Retries> MapLaneUplink<K, V, Retries>
+where
+    K: Form + Any + Send + Sync,
+    V: Any + Send + Sync,
+    Retries: RetryManager + Clone + Send,
+{
+    pub fn new(lane: MapLane<K, V>, id: u64, retries: Retries) -> Self {
+        MapLaneUplink { lane, id, retries }
+    }
+}
+
 impl<K, V, Retries> LaneModel for MapLaneUplink<K, V, Retries>
 where
     K: Form + Any + Send + Sync,
