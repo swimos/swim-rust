@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::channels::uplink::{
     MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
 };
@@ -28,6 +29,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
+use stm::transaction::TransactionError;
+use swim_form::FormDeserializeErr;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
@@ -335,4 +338,41 @@ async fn map_state_machine_sync() {
     expected.insert(1, 2);
     expected.insert(2, 5);
     assert_eq!(results.unwrap(), expected);
+}
+
+#[test]
+fn uplink_error_display() {
+    assert_eq!(
+        format!("{}", UplinkError::SenderDropped),
+        "Uplink send channel was dropped."
+    );
+    assert_eq!(
+        format!("{}", UplinkError::LaneStoppedReporting),
+        "The lane stopped reporting its state."
+    );
+    assert_eq!(format!("{}", UplinkError::FailedTransaction(TransactionError::InvalidRetry)), 
+               "The uplink failed to execute a transaction: Retry on transaction with no data dependencies.");
+    assert_eq!(
+        format!(
+            "{}",
+            UplinkError::InconsistentForm(FormDeserializeErr::Malformatted)
+        ),
+        "A form implementation used by a lane is inconsistent: Malformatted"
+    );
+}
+
+#[test]
+fn uplink_error_from_map_sync_error() {
+    let err1: UplinkError =
+        MapLaneSyncError::FailedTransaction(TransactionError::InvalidRetry).into();
+    assert!(matches!(
+        err1,
+        UplinkError::FailedTransaction(TransactionError::InvalidRetry)
+    ));
+    let err2: UplinkError =
+        MapLaneSyncError::InconsistentForm(FormDeserializeErr::Malformatted).into();
+    assert!(matches!(
+        err2,
+        UplinkError::InconsistentForm(FormDeserializeErr::Malformatted)
+    ));
 }

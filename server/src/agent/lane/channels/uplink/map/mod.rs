@@ -33,6 +33,7 @@ use stm::var::TVar;
 use swim_form::{Form, FormDeserializeErr};
 use utilities::sync::trigger;
 
+#[derive(Debug)]
 pub enum MapLaneSyncError {
     FailedTransaction(TransactionError),
     InconsistentForm(FormDeserializeErr),

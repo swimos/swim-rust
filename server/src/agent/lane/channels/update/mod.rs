@@ -19,6 +19,9 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use stm::transaction::TransactionError;
 
+#[cfg(test)]
+mod tests;
+
 /// The error type for tasks that apply remote updates to lanes.
 #[derive(Debug)]
 pub enum UpdateError {
