@@ -16,7 +16,8 @@ use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::item::ItemSchema;
 use crate::model::schema::range::{
     big_int_range_to_value, float_64_range, float_range_to_value, in_big_int_range, in_float_range,
-    in_int_range, in_range, int_32_range, int_64_range, int_range_to_value, Bound, Range,
+    in_int_range, in_range, in_uint_range, int_32_range, int_64_range, int_range_to_value, Bound,
+    Range,
 };
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;
@@ -194,6 +195,8 @@ pub enum StandardSchema {
     Equal(Value),
     /// Asserts that a [`Value`] is an integer and within a specified range.
     InRangeInt(Range<i64>),
+    /// Asserts that a [`Value`] is an unsigned integer and within a specified range.
+    InRangeUint(Range<u64>),
     /// Asserts that a [`Value`] is a floating point number and in a specified range.
     InRangeFloat(Range<f64>),
     /// Asserts that a [`Value`] is a big integer and in a specified range.
@@ -1022,8 +1025,9 @@ fn matches_head_attr<'a>(
 impl Schema<Value> for StandardSchema {
     fn matches(&self, value: &Value) -> bool {
         match self {
-            StandardSchema::OfKind(kind) => &value.kind() == kind,
+            StandardSchema::OfKind(kind) => value.is_coercible_to(*kind),
             StandardSchema::InRangeInt(range) => in_int_range(value, range),
+            StandardSchema::InRangeUint(range) => in_uint_range(value, range),
             StandardSchema::InRangeFloat(range) => in_float_range(value, range),
             StandardSchema::InRangeBigInt { min, max } => in_big_int_range(value, min, max),
             StandardSchema::NonNan => as_f64(value).map(|x| !f64::is_nan(x)).unwrap_or(false),
@@ -1100,6 +1104,14 @@ impl StandardSchema {
 
     /// Matches integer values, inclusive below and exclusive above.
     pub fn int_range(min: i64, max: i64) -> Self {
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(min),
+            Bound::exclusive(max),
+        ))
+    }
+
+    /// Matches unsigned integer values, inclusive below and exclusive above.
+    pub fn uint_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt(Range::<i64>::bounded(
             Bound::inclusive(min),
             Bound::exclusive(max),
@@ -1204,6 +1216,7 @@ impl ToValue for StandardSchema {
             StandardSchema::OfKind(kind) => Value::of_attr(("kind", kind_to_str(*kind))),
             StandardSchema::Equal(v) => Value::of_attr(("equal", v.clone())),
             StandardSchema::InRangeInt(range) => int_range_to_value("in_range_int", *range),
+            StandardSchema::InRangeUint(range) => int_range_to_value("in_range_uint", *range),
             StandardSchema::InRangeFloat(range) => float_range_to_value("in_range_float", *range),
             StandardSchema::InRangeBigInt { min, max } => {
                 big_int_range_to_value("in_range_big_int", min.clone(), max.clone())
@@ -1298,10 +1311,22 @@ fn layout_item(schema: &ItemSchema, required: bool) -> Item {
 
 fn as_i64(value: &Value) -> Option<i64> {
     match value {
+        Value::UInt32Value(n) => i64::try_from(*n).ok(),
+        Value::UInt64Value(n) => i64::try_from(*n).ok(),
         Value::Int32Value(n) => Some((*n).into()),
         Value::Int64Value(n) => Some(*n),
         Value::BigInt(bi) => bi.to_i64(),
         Value::BigUint(bi) => bi.to_i64(),
+        _ => None,
+    }
+}
+
+fn as_u64(value: &Value) -> Option<u64> {
+    match value {
+        Value::UInt32Value(n) => Some((*n).into()),
+        Value::UInt64Value(n) => Some(*n),
+        Value::Int32Value(n) => u64::try_from(*n).ok(),
+        Value::Int64Value(n) => u64::try_from(*n).ok(),
         _ => None,
     }
 }
@@ -1325,6 +1350,8 @@ fn kind_to_str(kind: ValueKind) -> &'static str {
         ValueKind::Extant => "extant",
         ValueKind::Int32 => "int32",
         ValueKind::Int64 => "int64",
+        ValueKind::UInt32 => "uint32",
+        ValueKind::UInt64 => "uint64",
         ValueKind::Float64 => "float64",
         ValueKind::Boolean => "boolean",
         ValueKind::Text => "text",

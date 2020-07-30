@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{FormSerializeErr, ValueSerializer};
+use crate::ValueSerializer;
 use common::model::Value;
 
 #[cfg(test)]
@@ -38,18 +38,5 @@ where
     match value.serialize(&mut serializer) {
         Ok(_) => Ok(serializer.output()),
         Err(e) => Err(e),
-    }
-}
-
-pub fn assert_err(
-    parsed: ::std::result::Result<Value, FormSerializeErr>,
-    expected: FormSerializeErr,
-) {
-    match parsed {
-        Ok(v) => {
-            eprintln!("Expected error: {:?}", v);
-            panic!();
-        }
-        Err(e) => assert_eq!(e, expected),
     }
 }
