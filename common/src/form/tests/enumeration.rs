@@ -58,32 +58,32 @@ fn test_generic() {
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s));
 }
-//
-// #[test]
-// fn test_generic_lifetime() {
-//     #[derive(Form)]
-//     enum S<'l, F>
-//     where
-//         F: Form,
-//     {
-//         A { f: &'l F },
-//     }
-//
-//     let int = 1;
-//     let s = S::A { f: &int };
-//
-//     assert_eq!(
-//         s.as_value(),
-//         Value::Record(
-//             vec![Attr::of("A")],
-//             vec![Item::Slot(
-//                 Value::Text(String::from("f")),
-//                 Value::Int32Value(1)
-//             ),]
-//         )
-//     )
-// }
-//
+
+#[test]
+fn test_generic_lifetime() {
+    #[derive(Form)]
+    enum S<'l, F>
+    where
+        F: Form,
+    {
+        A { f: &'l F },
+    }
+
+    let int = 1;
+    let s = S::A { f: &int };
+
+    assert_eq!(
+        s.as_value(),
+        Value::Record(
+            vec![Attr::of("A")],
+            vec![Item::Slot(
+                Value::Text(String::from("f")),
+                Value::Int32Value(1)
+            ),]
+        )
+    )
+}
+
 #[test]
 fn test_skip() {
     {
@@ -284,228 +284,228 @@ fn test_rename() {
         assert_eq!(S::try_from_value(&rec), Ok(s));
     }
 }
-//
-// #[test]
-// fn body_replaces() {
-//     #[derive(Form)]
-//     enum BodyReplace {
-//         A(i32, #[form(body)] Value),
-//     }
-//
-//     let body = vec![
-//         Item::ValueItem(Value::Int32Value(7)),
-//         Item::ValueItem(Value::BooleanValue(true)),
-//     ];
-//
-//     let rec = Value::Record(
-//         vec![Attr::of((
-//             "A",
-//             Value::Record(Vec::new(), vec![Item::ValueItem(Value::Int32Value(1033))]),
-//         ))],
-//         body.clone(),
-//     );
-//
-//     let br = BodyReplace::A(1033, Value::Record(Vec::new(), body));
-//
-//     assert_eq!(br.as_value(), rec)
-// }
-//
-// #[test]
-// fn complex_header() {
-//     #[derive(Form)]
-//     enum ComplexHeader {
-//         A {
-//             #[form(header_body)]
-//             n: i32,
-//             #[form(header)]
-//             name: String,
-//             other: i32,
-//         },
-//     }
-//
-//     let header_body = Value::Record(
-//         Vec::new(),
-//         vec![
-//             Item::ValueItem(Value::Int32Value(17)),
-//             Item::Slot(
-//                 Value::Text(String::from("name")),
-//                 Value::Text(String::from("hello")),
-//             ),
-//         ],
-//     );
-//
-//     let rec = Value::Record(
-//         vec![Attr::of(("A", header_body))],
-//         vec![Item::Slot(
-//             Value::Text(String::from("other")),
-//             Value::Int32Value(-4),
-//         )],
-//     );
-//
-//     let ch = ComplexHeader::A {
-//         n: 17,
-//         name: "hello".to_string(),
-//         other: -4,
-//     };
-//
-//     assert_eq!(ch.as_value(), rec);
-// }
-//
-// #[test]
-// fn nested() {
-//     #[derive(Form)]
-//     enum Outer {
-//         A { inner: Inner, opt: Option<i32> },
-//     }
-//
-//     #[derive(Form)]
-//     enum Inner {
-//         #[form(tag = "custom")]
-//         B { a: i32, b: String },
-//     }
-//
-//     let outer = Outer::A {
-//         inner: Inner::B {
-//             a: 4,
-//             b: "s".to_string(),
-//         },
-//         opt: Some(1),
-//     };
-//
-//     let expected = Value::Record(
-//         vec![Attr::of("A")],
-//         vec![
-//             Item::Slot(
-//                 Value::Text(String::from("inner")),
-//                 Value::Record(
-//                     vec![Attr::of("custom")],
-//                     vec![
-//                         Item::Slot(Value::Text(String::from("a")), Value::Int32Value(4)),
-//                         Item::Slot(
-//                             Value::Text(String::from("b")),
-//                             Value::Text(String::from("s")),
-//                         ),
-//                     ],
-//                 ),
-//             ),
-//             Item::Slot(Value::Text(String::from("opt")), Value::Int32Value(1)),
-//         ],
-//     );
-//
-//     assert_eq!(outer.as_value(), expected);
-// }
-//
-// #[test]
-// fn header() {
-//     #[derive(Form)]
-//     enum Example {
-//         A {
-//             a: String,
-//             #[form(header)]
-//             b: Option<i64>,
-//         },
-//     }
-//
-//     let struct_none = Example::A {
-//         a: "hello".to_string(),
-//         b: None,
-//     };
-//
-//     let rec_none = Value::Record(
-//         vec![Attr::of((
-//             "A",
-//             Value::Record(
-//                 Vec::new(),
-//                 vec![Item::Slot(Value::Text(String::from("b")), Value::Extant)],
-//             ),
-//         ))],
-//         vec![Item::Slot(
-//             Value::Text(String::from("a")),
-//             Value::Text(String::from("hello")),
-//         )],
-//     );
-//
-//     assert_eq!(struct_none.as_value(), rec_none);
-//
-//     let struct_some = Example::A {
-//         a: "hello".to_string(),
-//         b: Some(7),
-//     };
-//
-//     let rec_some = Value::Record(
-//         vec![Attr::of((
-//             "A",
-//             Value::Record(
-//                 Vec::new(),
-//                 vec![Item::Slot(
-//                     Value::Text(String::from("b")),
-//                     Value::Int64Value(7),
-//                 )],
-//             ),
-//         ))],
-//         vec![Item::Slot(
-//             Value::Text(String::from("a")),
-//             Value::Text(String::from("hello")),
-//         )],
-//     );
-//
-//     assert_eq!(struct_some.as_value(), rec_some);
-// }
-//
-// #[test]
-// fn annotated() {
-//     #[derive(Form)]
-//     enum ExampleAnnotated {
-//         #[form(tag = "example")]
-//         A {
-//             #[form(header)]
-//             count: i64,
-//             #[form(attr)]
-//             name: String,
-//             #[form(skip)]
-//             age: i32,
-//         },
-//     }
-//
-//     let ex = ExampleAnnotated::A {
-//         count: 1033,
-//         name: String::from("bob"),
-//         age: i32::max_value(),
-//     };
-//
-//     let expected = Value::Record(
-//         vec![
-//             Attr::of((
-//                 "example",
-//                 Value::Record(
-//                     Vec::new(),
-//                     vec![Item::Slot(
-//                         Value::Text(String::from("count")),
-//                         Value::Int64Value(1033),
-//                     )],
-//                 ),
-//             )),
-//             Attr::of(("name", Value::Text(String::from("bob")))),
-//         ],
-//         vec![],
-//     );
-//
-//     assert_eq!(ex.as_value(), expected);
-// }
-//
-// #[test]
-// fn header_body_replace() {
-//     #[derive(Form)]
-//     enum HeaderBodyReplace {
-//         A {
-//             #[form(header_body)]
-//             n: i64,
-//         },
-//     }
-//
-//     let ex = HeaderBodyReplace::A { n: 16 };
-//
-//     let expected = Value::Record(vec![Attr::of(("A", Value::Int64Value(16)))], Vec::new());
-//
-//     assert_eq!(ex.as_value(), expected);
-// }
+
+#[test]
+fn body_replaces() {
+    #[derive(Form)]
+    enum BodyReplace {
+        A(i32, #[form(body)] Value),
+    }
+
+    let body = vec![
+        Item::ValueItem(Value::Int32Value(7)),
+        Item::ValueItem(Value::BooleanValue(true)),
+    ];
+
+    let rec = Value::Record(
+        vec![Attr::of((
+            "A",
+            Value::Record(Vec::new(), vec![Item::ValueItem(Value::Int32Value(1033))]),
+        ))],
+        body.clone(),
+    );
+
+    let br = BodyReplace::A(1033, Value::Record(Vec::new(), body));
+
+    assert_eq!(br.as_value(), rec)
+}
+
+#[test]
+fn complex_header() {
+    #[derive(Form)]
+    enum ComplexHeader {
+        A {
+            #[form(header_body)]
+            n: i32,
+            #[form(header)]
+            name: String,
+            other: i32,
+        },
+    }
+
+    let header_body = Value::Record(
+        Vec::new(),
+        vec![
+            Item::ValueItem(Value::Int32Value(17)),
+            Item::Slot(
+                Value::Text(String::from("name")),
+                Value::Text(String::from("hello")),
+            ),
+        ],
+    );
+
+    let rec = Value::Record(
+        vec![Attr::of(("A", header_body))],
+        vec![Item::Slot(
+            Value::Text(String::from("other")),
+            Value::Int32Value(-4),
+        )],
+    );
+
+    let ch = ComplexHeader::A {
+        n: 17,
+        name: "hello".to_string(),
+        other: -4,
+    };
+
+    assert_eq!(ch.as_value(), rec);
+}
+
+#[test]
+fn nested() {
+    #[derive(Form)]
+    enum Outer {
+        A { inner: Inner, opt: Option<i32> },
+    }
+
+    #[derive(Form)]
+    enum Inner {
+        #[form(tag = "custom")]
+        B { a: i32, b: String },
+    }
+
+    let outer = Outer::A {
+        inner: Inner::B {
+            a: 4,
+            b: "s".to_string(),
+        },
+        opt: Some(1),
+    };
+
+    let expected = Value::Record(
+        vec![Attr::of("A")],
+        vec![
+            Item::Slot(
+                Value::Text(String::from("inner")),
+                Value::Record(
+                    vec![Attr::of("custom")],
+                    vec![
+                        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(4)),
+                        Item::Slot(
+                            Value::Text(String::from("b")),
+                            Value::Text(String::from("s")),
+                        ),
+                    ],
+                ),
+            ),
+            Item::Slot(Value::Text(String::from("opt")), Value::Int32Value(1)),
+        ],
+    );
+
+    assert_eq!(outer.as_value(), expected);
+}
+
+#[test]
+fn header() {
+    #[derive(Form)]
+    enum Example {
+        A {
+            a: String,
+            #[form(header)]
+            b: Option<i64>,
+        },
+    }
+
+    let struct_none = Example::A {
+        a: "hello".to_string(),
+        b: None,
+    };
+
+    let rec_none = Value::Record(
+        vec![Attr::of((
+            "A",
+            Value::Record(
+                Vec::new(),
+                vec![Item::Slot(Value::Text(String::from("b")), Value::Extant)],
+            ),
+        ))],
+        vec![Item::Slot(
+            Value::Text(String::from("a")),
+            Value::Text(String::from("hello")),
+        )],
+    );
+
+    assert_eq!(struct_none.as_value(), rec_none);
+
+    let struct_some = Example::A {
+        a: "hello".to_string(),
+        b: Some(7),
+    };
+
+    let rec_some = Value::Record(
+        vec![Attr::of((
+            "A",
+            Value::Record(
+                Vec::new(),
+                vec![Item::Slot(
+                    Value::Text(String::from("b")),
+                    Value::Int64Value(7),
+                )],
+            ),
+        ))],
+        vec![Item::Slot(
+            Value::Text(String::from("a")),
+            Value::Text(String::from("hello")),
+        )],
+    );
+
+    assert_eq!(struct_some.as_value(), rec_some);
+}
+
+#[test]
+fn annotated() {
+    #[derive(Form)]
+    enum ExampleAnnotated {
+        #[form(tag = "example")]
+        A {
+            #[form(header)]
+            count: i64,
+            #[form(attr)]
+            name: String,
+            #[form(skip)]
+            age: i32,
+        },
+    }
+
+    let ex = ExampleAnnotated::A {
+        count: 1033,
+        name: String::from("bob"),
+        age: i32::max_value(),
+    };
+
+    let expected = Value::Record(
+        vec![
+            Attr::of((
+                "example",
+                Value::Record(
+                    Vec::new(),
+                    vec![Item::Slot(
+                        Value::Text(String::from("count")),
+                        Value::Int64Value(1033),
+                    )],
+                ),
+            )),
+            Attr::of(("name", Value::Text(String::from("bob")))),
+        ],
+        vec![],
+    );
+
+    assert_eq!(ex.as_value(), expected);
+}
+
+#[test]
+fn header_body_replace() {
+    #[derive(Form)]
+    enum HeaderBodyReplace {
+        A {
+            #[form(header_body)]
+            n: i64,
+        },
+    }
+
+    let ex = HeaderBodyReplace::A { n: 16 };
+
+    let expected = Value::Record(vec![Attr::of(("A", Value::Int64Value(16)))], Vec::new());
+
+    assert_eq!(ex.as_value(), expected);
+}

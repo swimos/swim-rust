@@ -117,8 +117,6 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
         }
     };
 
-    println!("{}", ts.to_string());
-
     ts.into()
 }
 

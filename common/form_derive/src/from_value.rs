@@ -107,12 +107,35 @@ pub fn from_value(
                     _ => quote!((#field_assignments)),
                 };
 
+                let attrs = quote! {
+                    let mut attr_it = attrs.iter();
+                    while let Some(Attr { name, ref value }) = attr_it.next() {
+                        match name.as_ref() {
+                             #variant_name_str => match value {
+                                crate::model::Value::Record(_attrs, items) => {
+                                    let mut iter_items = items.iter();
+                                    while let Some(item) = iter_items.next() {
+                                        match item {
+                                            #headers
+                                            i => return Err(crate::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
+                                        }
+                                    }
+                                }
+                                crate::model::Value::Extant => {},
+                                _ => return Err(crate::form::FormErr::Malformatted),
+                            },
+                            #attributes
+                            _ => return Err(crate::form::FormErr::MismatchedTag),
+                        }
+                    }
+                };
+
                 quote! {
                     #ts
-                    Some(crate::model::Attr { name, value }) if &attr.name == #variant_name_str => {
+                    Some(crate::model::Attr { name, value }) if name == #variant_name_str => {
                         #field_opts
+                        #attrs
                         #items
-                        #headers
                         Ok(#structure_name::#variant_ident#self_members)
                     },
                 }
