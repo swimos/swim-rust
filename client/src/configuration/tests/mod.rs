@@ -54,6 +54,26 @@ fn from_file() {
 }
 
 #[test]
+fn test_from_file_invalid_value() {
+    let mut file =
+        fs::File::open("client/src/configuration/tests/resources/invalid-value.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Invalid value \"test\" for \"buffer_size\"."
+        )
+    } else {
+        panic!("Expected configuration parser error!")
+    }
+}
+
+#[test]
 fn test_from_file_unexpected_slot() {
     let mut file =
         fs::File::open("client/src/configuration/tests/resources/unexpected-slot.recon").unwrap();
@@ -71,9 +91,9 @@ fn test_from_file_unexpected_slot() {
 }
 
 #[test]
-fn test_from_file_invalid_key() {
+fn test_from_file_unexpected_key() {
     let mut file =
-        fs::File::open("client/src/configuration/tests/resources/invalid-key.recon").unwrap();
+        fs::File::open("client/src/configuration/tests/resources/unexpected-key.recon").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
@@ -81,7 +101,7 @@ fn test_from_file_invalid_key() {
     let result = ConfigHierarchy::try_from_value(config, false);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Invalid key \"hello\" for \"config\".")
+        assert_eq!(err.to_string(), "Unexpected attribute \"@hello\".")
     } else {
         panic!("Expected configuration parser error!")
     }
@@ -105,10 +125,9 @@ fn test_from_file_unexpected_value() {
 }
 
 #[test]
-fn test_from_file_missing_config_attr() {
+fn test_from_file_unnamed_record() {
     let mut file =
-        fs::File::open("client/src/configuration/tests/resources/missing-attr.recon")
-            .unwrap();
+        fs::File::open("client/src/configuration/tests/resources/unnamed-attr.recon").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
@@ -116,17 +135,19 @@ fn test_from_file_missing_config_attr() {
     let result = ConfigHierarchy::try_from_value(config, false);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Missing \"@config\" attribute.")
+        assert_eq!(
+            err.to_string(),
+            "Unnamed record \"{@client{buffer_size:2}}\"."
+        )
     } else {
         panic!("Expected configuration parser error!")
     }
 }
 
 #[test]
-fn test_from_file_invalid_config_attr() {
+fn test_from_file_unexpected_attr() {
     let mut file =
-        fs::File::open("client/src/configuration/tests/resources/invalid-config-attr.recon")
-            .unwrap();
+        fs::File::open("client/src/configuration/tests/resources/unexpected-attr.recon").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
@@ -134,7 +155,7 @@ fn test_from_file_invalid_config_attr() {
     let result = ConfigHierarchy::try_from_value(config, false);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Invalid attribute \"@configuration\".")
+        assert_eq!(err.to_string(), "Unexpected attribute \"@configuration\".")
     } else {
         panic!("Expected configuration parser error!")
     }
