@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod derive;
-mod enumeration;
-mod impls;
-mod structure;
+use form_derive::*;
+
+fn main() {
+    #[derive(Form)]
+    struct S {
+        #[form(swim)]
+        a: i32,
+    }
+}
