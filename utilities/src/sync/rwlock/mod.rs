@@ -251,6 +251,21 @@ impl<T> RwLockInner<T> {
 #[derive(Debug)]
 pub struct RwLock<T>(Arc<RwLockInner<T>>);
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RwLockId(usize);
+
+impl<T: Send + Sync> RwLock<T> {
+    /// Get an opaque address for the contents of the lock.
+    pub fn addr(&self) -> *const u8 {
+        self.0.as_ref() as *const RwLockInner<T> as *const u8
+    }
+
+    /// Determine if two handles are for the same lock.
+    pub fn same_lock(this: &Self, other: &Self) -> bool {
+        Arc::ptr_eq(&this.0, &other.0)
+    }
+}
+
 impl<T: Send + Sync> RwLock<T> {
     /// Create a new read/write lock with the specified initial value.
     pub fn new(init: T) -> Self {
