@@ -31,3 +31,4 @@ hamcrest2 = "0.3"
 tokio = { version = "0.2.21", features = ["fs", "macros"] }
 rand = "0.7"
 num-bigint = { version = "0.3", features = ["rand"] }
+trybuild = "1.0.17"

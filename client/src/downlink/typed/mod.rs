@@ -92,6 +92,8 @@ where
     Inner: Downlink<Action, Event<SharedValue>> + Clone,
     T: ValidatedForm + Send + 'static,
 {
+    /// Create a read-only view for a value downlink that converts all received values to a new type.
+    /// The type of the view must have an equal or greater schema than the original downlink.
     pub async fn read_only_view<ViewType: ValidatedForm>(
         &mut self,
     ) -> Result<TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<ViewType>>, ValueViewError>
@@ -106,7 +108,43 @@ where
             Err(ValueViewError {
                 existing: T::schema(),
                 requested: ViewType::schema(),
+                mode: ViewMode::ReadOnly,
             })
+        }
+    }
+
+    /// Create a write-only sender for a value downlink that converts all sent values to a new type.
+    /// The type of the sender must have an equal or lesser schema than the original downlink.
+    pub async fn write_only_sender<ViewType: ValidatedForm>(
+        &mut self,
+    ) -> Result<ValueActions<Inner::DlSink, ViewType>, ValueViewError> {
+        let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
+
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
+            let (_, sink) = self.inner.clone().split();
+            let sink = ValueActions::new(sink);
+            Ok(sink)
+        } else {
+            Err(ValueViewError {
+                existing: T::schema(),
+                requested: ViewType::schema(),
+                mode: ViewMode::WriteOnly,
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ViewMode {
+    ReadOnly,
+    WriteOnly,
+}
+
+impl Display for ViewMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewMode::ReadOnly => write!(f, "read-only"),
+            ViewMode::WriteOnly => write!(f, "write-only"),
         }
     }
 }
@@ -119,6 +157,8 @@ pub struct ValueViewError {
     existing: StandardSchema,
     // A validation schema for the type of the requested view.
     requested: StandardSchema,
+    // The mode of the view.
+    mode: ViewMode,
 }
 
 /// Error types returned when creating a view
@@ -131,6 +171,8 @@ pub enum MapViewError {
         existing: StandardSchema,
         // A validation schema for the key type of the requested view.
         requested: StandardSchema,
+        // The mode of the view.
+        mode: ViewMode,
     },
     // Error returned when the value schemas are incompatible
     SchemaValueError {
@@ -138,12 +180,14 @@ pub enum MapViewError {
         existing: StandardSchema,
         // A validation schema for the value type of the requested view.
         requested: StandardSchema,
+        // The mode of the view.
+        mode: ViewMode,
     },
 }
 
 impl Display for ValueViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "A read-only value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.requested, self.existing)
+        write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.mode, self.requested, self.existing)
     }
 }
 
@@ -153,11 +197,13 @@ impl Display for MapViewError {
             MapViewError::SchemaKeyError {
                 existing,
                 requested,
-            } => write!(f, "A read-only map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", requested, existing),
+                mode
+            } => write!(f, "A {} map downlink with key schema {} was requested but the original map downlink is running with key schema {}.", mode, requested, existing),
             MapViewError::SchemaValueError {
                 existing,
                 requested,
-            } => write!(f, "A read-only map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", requested, existing),
+                mode,
+            } => write!(f, "A {} map downlink with value schema {} was requested but the original map downlink is running with value schema {}.", mode, requested, existing),
         }
     }
 }
@@ -280,6 +326,8 @@ where
     K: ValidatedForm + Send + 'static,
     V: ValidatedForm + Send + 'static,
 {
+    /// Create a read-only view for a map downlink that converts all received keys and values to new types.
+    /// The types of the view must have an equal or greater schemas than the original downlink.
     pub async fn read_only_view<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
         &mut self,
     ) -> Result<
@@ -301,12 +349,14 @@ where
                 Err(MapViewError::SchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
+                    mode: ViewMode::ReadOnly,
                 })
             }
         } else {
             Err(MapViewError::SchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
+                mode: ViewMode::ReadOnly,
             })
         }
     }
