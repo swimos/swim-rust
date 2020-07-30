@@ -365,7 +365,7 @@ where
     /// The types of the sender must have an equal or lesser schemas than the original downlink.
     pub async fn write_only_sender<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
         &mut self,
-    ) -> Result<MapActions<Inner::DlSink, ViewKeyType, ViewValueType>, ViewError> {
+    ) -> Result<MapActions<Inner::DlSink, ViewKeyType, ViewValueType>, MapViewError> {
         let key_schema_cmp = ViewKeyType::schema().partial_cmp(&K::schema());
         let value_schema_cmp = ViewValueType::schema().partial_cmp(&V::schema());
 
@@ -375,17 +375,17 @@ where
                 let sink = MapActions::new(sink);
                 Ok(sink)
             } else {
-                Err(ViewError::MapSchemaValueError {
+                Err(MapViewError::SchemaValueError {
                     existing: V::schema(),
                     requested: ViewValueType::schema(),
-                    link_type: LinkType::WriteOnly,
+                    mode: ViewMode::WriteOnly,
                 })
             }
         } else {
-            Err(ViewError::MapSchemaKeyError {
+            Err(MapViewError::SchemaKeyError {
                 existing: K::schema(),
                 requested: ViewKeyType::schema(),
-                link_type: LinkType::WriteOnly,
+                mode: ViewMode::WriteOnly,
             })
         }
     }
