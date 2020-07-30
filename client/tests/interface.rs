@@ -20,7 +20,7 @@ mod tests {
     };
     use client::downlink::model::value::Action;
     use client::downlink::typed::event::TypedViewWithEvent;
-    use client::downlink::Event;
+    use client::downlink::{Downlink, Event};
     use client::interface::SwimClient;
     use common::model::{Attr, Item, Value};
     use common::sink::item::ItemSink;
@@ -562,6 +562,69 @@ mod tests {
 
         if let Err(view_error) = dl.read_only_view::<i64, i32>().await {
             assert_eq!(view_error.to_string(),  "A read-only map downlink with value schema @kind(int32) was requested but the original map downlink is running with value schema @kind(int64).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_write_only_value() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+
+        let mut command_dl = client
+            .command_downlink::<String>(path.clone())
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+        command_dl.send_item(String::from("milk")).await.unwrap();
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        let (mut dl, mut recv) = client.value_downlink(path, Value::Extant).await.unwrap();
+
+        let message = recv.next().await.unwrap();
+        assert_eq!(message, Event::Remote(Value::Text(String::from("milk"))));
+
+        let mut sender_view = dl.write_only_sender::<String>().await.unwrap();
+        let (_, mut sink) = dl.split();
+
+        sink.set(String::from("bread").into()).await.unwrap();
+        let message = recv.next().await.unwrap();
+        assert_eq!(message, Event::Local(Value::Text(String::from("bread"))));
+
+        sender_view.set(String::from("chocolate")).await.unwrap();
+        let message = recv.next().await.unwrap();
+        assert_eq!(
+            message,
+            Event::Local(Value::Text(String::from("chocolate")))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_write_only_value_schema_error() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
+        let (mut dl, _) = client.value_downlink(path.clone(), 0i32).await.unwrap();
+
+        if let Err(view_error) = dl.write_only_sender::<String>().await {
+            assert_eq!(view_error.to_string(),  "A write-only value downlink with schema @kind(text) was requested but the original value downlink is running with schema @kind(int32).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.write_only_sender::<i64>().await {
+            assert_eq!(view_error.to_string(),  "A write-only value downlink with schema @kind(int64) was requested but the original value downlink is running with schema @kind(int32).")
         } else {
             panic!("Expected a ViewError!")
         }
