@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::blob::Blob;
+use crate::model::parser::is_identifier;
 use bytes::*;
 use either::Either;
+use num_bigint::{BigInt, BigUint, ToBigInt};
+use num_traits::Signed;
+use num_traits::ToPrimitive;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
-use tokio_util::codec::Encoder;
-
-use crate::model::blob::Blob;
-use crate::model::parser::is_identifier;
-use num_bigint::{BigInt, BigUint, ToBigInt};
-use num_traits::sign::Signed;
-use num_traits::ToPrimitive;
 use std::str::FromStr;
+use tokio_util::codec::Encoder;
 
 pub mod blob;
 pub mod parser;
@@ -35,6 +34,7 @@ pub mod schema;
 
 #[cfg(test)]
 mod tests;
+pub mod text;
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
@@ -1504,35 +1504,25 @@ impl ValueEncoder {
     }
 
     fn estimate_size(value: &Value) -> usize {
+        let int_size = |n: &i64| -> usize {
+            let mut a = (*n).abs();
+            let mut i = 0;
+            while a > 0 {
+                a /= 10;
+                i += 1;
+            }
+            if *n < 0 {
+                i + 1
+            } else {
+                i
+            }
+        };
+
         match value {
             Value::Data(b) => b.as_ref().len(),
             Value::Extant => 0,
-            Value::Int32Value(n) => {
-                let mut a = (*n).abs();
-                let mut i = 0;
-                while a > 0 {
-                    a /= 10;
-                    i += 1;
-                }
-                if *n < 0 {
-                    i + 1
-                } else {
-                    i
-                }
-            }
-            Value::Int64Value(n) => {
-                let mut a = (*n).abs();
-                let mut i = 0;
-                while a > 0 {
-                    a /= 10;
-                    i += 1;
-                }
-                if *n < 0 {
-                    i + 1
-                } else {
-                    i
-                }
-            }
+            Value::Int32Value(n) => int_size(&(*n as i64)),
+            Value::Int64Value(n) => int_size(n),
             Value::UInt32Value(n) => {
                 let mut a = *n;
                 let mut i = 0;
