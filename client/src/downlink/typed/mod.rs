@@ -361,7 +361,9 @@ where
         }
     }
 
-    pub async fn write_only_view<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
+    /// Create a write-only sender for a map downlink that converts all sent keys and values to a new type.
+    /// The types of the sender must have an equal or lesser schemas than the original downlink.
+    pub async fn write_only_sender<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
         &mut self,
     ) -> Result<MapActions<Inner::DlSink, ViewKeyType, ViewValueType>, ViewError> {
         let key_schema_cmp = ViewKeyType::schema().partial_cmp(&K::schema());

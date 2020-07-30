@@ -672,7 +672,7 @@ mod tests {
             panic!("The map downlink did not receive the correct message!")
         }
 
-        let mut sender_view = dl.write_only_view::<String, i32>().await.unwrap();
+        let mut sender_view = dl.write_only_sender::<String, i32>().await.unwrap();
         let (_, mut sink) = dl.split();
 
         sink.insert(String::from("eggs").into(), 3.into())
@@ -737,25 +737,25 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
         let (mut dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();
 
-        if let Err(view_error) = dl.write_only_view::<String, String>().await {
+        if let Err(view_error) = dl.write_only_sender::<String, String>().await {
             assert_eq!(view_error.to_string(),  "A write-only map downlink with key schema @kind(text) was requested but the original map downlink is running with key schema @kind(int32).")
         } else {
             panic!("Expected a ViewError!")
         }
 
-        if let Err(view_error) = dl.write_only_view::<i32, String>().await {
+        if let Err(view_error) = dl.write_only_sender::<i32, String>().await {
             assert_eq!(view_error.to_string(),  "A write-only map downlink with value schema @kind(text) was requested but the original map downlink is running with value schema @kind(int32).")
         } else {
             panic!("Expected a ViewError!")
         }
 
-        if let Err(view_error) = dl.write_only_view::<i64, i32>().await {
+        if let Err(view_error) = dl.write_only_sender::<i64, i32>().await {
             assert_eq!(view_error.to_string(),  "A write-only map downlink with key schema @kind(int64) was requested but the original map downlink is running with key schema @kind(int32).")
         } else {
             panic!("Expected a ViewError!")
         }
 
-        if let Err(view_error) = dl.write_only_view::<i32, i64>().await {
+        if let Err(view_error) = dl.write_only_sender::<i32, i64>().await {
             assert_eq!(view_error.to_string(),  "A write-only map downlink with value schema @kind(int64) was requested but the original map downlink is running with value schema @kind(int32).")
         } else {
             panic!("Expected a ViewError!")
