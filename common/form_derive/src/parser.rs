@@ -364,6 +364,7 @@ impl Default for FieldKind {
     }
 }
 
+#[derive(Debug)]
 pub struct FieldManifest {
     pub field_kind: FieldKind,
     pub replaces_body: bool,

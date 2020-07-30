@@ -14,7 +14,7 @@
 
 use form_derive::*;
 
-use crate::form::{Form, FormErr};
+use crate::form::Form;
 use crate::model::{Attr, Item, Value};
 
 #[test]
@@ -215,7 +215,7 @@ fn test_rename() {
 
 #[test]
 fn body_replaces() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct BodyReplace {
         n: i32,
         #[form(body)]
@@ -246,7 +246,8 @@ fn body_replaces() {
         body: Value::Record(Vec::new(), body),
     };
 
-    assert_eq!(br.as_value(), rec)
+    assert_eq!(br.as_value(), rec);
+    assert_eq!(BodyReplace::try_from_value(&rec), Ok(br));
 }
 
 #[test]
@@ -467,52 +468,4 @@ fn header_body_replace() {
     );
 
     assert_eq!(ex.as_value(), expected);
-}
-
-#[test]
-fn t() {
-    #[derive(Debug)]
-    struct S {
-        a: i32,
-    }
-
-    impl Form for S {
-        fn as_value(&self) -> Value {
-            unimplemented!()
-        }
-
-        fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-            match value {
-                Value::Record(attrs, items) => match attrs.first() {
-                    Some(attr) if &attr.name == "S" => {
-                        let mut a_opt: Option<i32> = None;
-                        let mut it = items.iter();
-
-                        while let Some(item) = it.next() {
-                            match item {
-                                Item::Slot(Value::Text(name), v) if name == "a" => {
-                                    a_opt = Some(i32::try_from_value(v)?);
-                                }
-                                _ => return Err(FormErr::Malformatted),
-                            }
-                        }
-
-                        Ok(S {
-                            a: a_opt.ok_or(FormErr::Malformatted)?,
-                        })
-                    }
-                    _ => return Err(FormErr::Malformatted),
-                },
-                _ => return Err(FormErr::Malformatted),
-            }
-        }
-    }
-
-    let expected = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("a"), Value::Int32Value(1))],
-    );
-
-    let s = S::try_from_value(&expected);
-    println!("{:?}", s);
 }

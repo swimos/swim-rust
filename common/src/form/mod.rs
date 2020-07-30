@@ -30,6 +30,7 @@ pub enum FormErr {
     IncorrectType(String),
     Malformatted,
     Message(String),
+    DuplicateField(String),
 }
 
 impl Error for FormErr {}
@@ -41,6 +42,7 @@ impl Display for FormErr {
             FormErr::Malformatted => write!(f, "Malformatted"),
             FormErr::Message(msg) => write!(f, "{}", msg),
             FormErr::MismatchedTag => write!(f, "Incorrect tag"),
+            FormErr::DuplicateField(field) => write!(f, "Duplicate field {}", field),
         }
     }
 }

@@ -13,11 +13,14 @@
 // limitations under the License.
 
 use proc_macro2::Ident;
+use quote::ToTokens;
 use syn::export::TokenStream2;
+use syn::spanned::Spanned;
 
 use macro_helpers::{CompoundType, FieldName};
 
-use crate::parser::{Field, FieldKind, FormDescriptor, StructRepr, TypeContents};
+use crate::parser::FieldKind::Attr;
+use crate::parser::{Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents};
 use crate::RecordTokenStreams;
 
 pub fn from_value(
@@ -28,13 +31,13 @@ pub fn from_value(
     match type_contents {
         TypeContents::Struct(repr) => {
             let structure_name_str = descriptor.name.tag_ident.to_string();
+            let field_manifest = &repr.manifest;
             let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
-
             let RecordTokenStreams {
                 mut headers,
                 mut attributes,
                 mut items,
-            } = parse_elements(&repr.fields);
+            } = parse_elements(&repr.fields, &descriptor.name.tag_ident, field_manifest);
 
             let self_members = match &repr.compound_type {
                 CompoundType::Struct => {
@@ -48,15 +51,36 @@ pub fn from_value(
                 _ => quote!(Ok(#structure_name(#field_assignments))),
             };
 
+            let attrs = quote! {
+                let mut attr_it = attrs.iter();
+                while let Some(Attr { name, ref value }) = attr_it.next() {
+                    match name.as_ref() {
+                         #structure_name_str => match value {
+                            crate::model::Value::Record(_attrs, items) => {
+                                let mut iter_items = items.iter();
+                                while let Some(item) = iter_items.next() {
+                                    match item {
+                                        #headers
+                                        i => return Err(crate::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
+                                    }
+                                }
+                            }
+                            crate::model::Value::Extant => {},
+                            _ => return Err(crate::form::FormErr::Malformatted),
+                        },
+                        #attributes
+                        _ => return Err(crate::form::FormErr::MismatchedTag),
+                    }
+                }
+            };
+
             quote! {
                 match value {
-                    crate::model::Value::Record(attrs, items) => match attrs.first() {
-                        Some(attr) if &attr.name == #structure_name_str => {
-                            #field_opts
-                            #items
-                            #self_members
-                        },
-                        _ => return Err(crate::form::FormErr::MismatchedTag),
+                    crate::model::Value::Record(attrs, items) => {
+                        #field_opts
+                        #attrs
+                        #items
+                        #self_members
                     }
                     _ => return Err(crate::form::FormErr::Message(String::from("Expected record"))),
                 }
@@ -73,7 +97,7 @@ pub fn from_value(
                     mut headers,
                     mut attributes,
                     mut items,
-                } = parse_elements(&variant.fields);
+                } = parse_elements(&variant.fields, &variant_ident, &variant.manifest);
 
                 let self_members = match &variant.compound_type {
                     CompoundType::Struct => {
@@ -85,9 +109,10 @@ pub fn from_value(
 
                 quote! {
                     #ts
-                    Some(attr) if &attr.name == #variant_name_str => {
+                    Some(crate::model::Attr { name, value }) if &attr.name == #variant_name_str => {
                         #field_opts
                         #items
+                        #headers
                         Ok(#structure_name::#variant_ident#self_members)
                     },
                 }
@@ -95,10 +120,10 @@ pub fn from_value(
             quote! {
                 match value {
                     crate::model::Value::Record(attrs, items) => match attrs.first() {
-                            #arms
-                            _ => return Err(crate::form::FormErr::MismatchedTag),
-                        }
-                        _ => return Err(crate::form::FormErr::Message(String::from("Expected record"))),
+                        #arms
+                        _ => return Err(crate::form::FormErr::MismatchedTag),
+                    }
+                    _ => return Err(crate::form::FormErr::Message(String::from("Expected record"))),
                 }
             }
         }
@@ -109,7 +134,10 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
     fields.iter().fold(
         (TokenStream2::new(), TokenStream2::new()),
         |(field_opts, field_assignments), f| {
-            let name = f.name.as_ident();
+            let ident = f.name.as_ident();
+            let name = f.name.as_ident().to_string();
+            let name = Ident::new(&format!("__opt_{}", name), f.original.span());
+
             match &f.kind {
                 FieldKind::Skip => {
                     match compound_type {
@@ -117,7 +145,7 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
                             (field_opts,
                              quote! {
                                 #field_assignments
-                               #name: std::default::Default::default(),
+                                #ident: std::default::Default::default(),
                             })
                         }
                         _ => {
@@ -142,7 +170,7 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
 
                             quote! {
                                 #field_assignments
-                                #name : #name.ok_or(crate::form::FormErr::Message(String::from(#name_str)))?,
+                                #ident: #name.ok_or(crate::form::FormErr::Message(String::from(#name_str)))?,
                             }
                         }
                         _ => {
@@ -160,71 +188,150 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
     )
 }
 
-fn parse_elements(fields: &[Field]) -> RecordTokenStreams {
+fn parse_elements(
+    fields: &[Field],
+    structure_name: &Ident,
+    field_manifest: &FieldManifest,
+) -> RecordTokenStreams {
     let mut streams = fields
         .iter()
         .fold(RecordTokenStreams::default(), |mut streams, f| {
             let ty = &f.original.ty;
+            let name = f.name.as_ident();
+            let ident = Ident::new(&format!("__opt_{}", name), f.original.span());
 
             match f.kind {
                 FieldKind::Attr => {
-                    match &f.name {
-                        FieldName::Named(ident) => {}
-                        FieldName::Renamed(_, _) => {}
-                        FieldName::Unnamed(_) => {}
-                    }
-                }
-                FieldKind::Skip => {}
-                FieldKind::Slot => match &f.name {
-                    FieldName::Named(ident) => {
-                        let name_str = ident.to_string();
+                    // Unnamed fields won't compile so there's no need in checking the name variant
+                    let name_str = f.name.to_string();
 
+                    streams.transform_attrs(|attrs| quote! {
+                        #attrs
+
+                         #name_str => {
+                            if #ident.is_some() {
+                                return Err(crate::form::FormErr::DuplicateField(String::from(#name_str)));
+                            } else {
+                                #ident = std::option::Option::Some(crate::form::Form::try_from_value(value)?);
+                            }
+                        }
+                    });
+                }
+                FieldKind::Slot if !field_manifest.replaces_body => {
+                    let mut build_named_ident = |name_str, ident| {
                         streams.transform_items(|items| {
                             quote! {
                                 #items
                                 crate::model::Item::Slot(crate::model::Value::Text(name), v) if name == #name_str => {
-                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                    if #ident.is_some() {
+                                        return Err(crate::form::FormErr::DuplicateField(String::from(#name_str)));
+                                    } else {
+                                        #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                    }
                                 }
                             }
                         });
-                    }
-                    FieldName::Renamed(name, ident) => {
-                        streams.transform_items(|items| {
-                            quote! {
-                                #items
-                                crate::model::Item::Slot(crate::model::Value::Text(name), v) if name == #name => {
-                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
-                                }
-                            }
-                        });
-                    }
-                    un @ FieldName::Unnamed(_) => {
-                        let ident = un.as_ident();
+                    };
 
-                        streams.transform_items(|items| {
-                            // todo: don't iterate over unnamed fields
-                            quote! {
-                                #items
-                                crate::model::Item::ValueItem(v) if #ident.is_none() => {
+                    match &f.name {
+                        FieldName::Named(name) => {
+                            build_named_ident(name.to_string(), ident);
+                        }
+                        FieldName::Renamed(name, _) => {
+                            build_named_ident(name.to_string(), ident);
+                        }
+                        un @ FieldName::Unnamed(_) => {
+
+                            // todo: remove from iterator block to remove option checks.
+                            streams.transform_items(|items| {
+                                quote! {
+                                    #items
+                                    crate::model::Item::ValueItem(v) if #ident.is_none() => {
+                                        #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+                FieldKind::HeaderBody => {
+                    let structure_name_str = structure_name.to_string();
+                    let missing_field_msg = format!("Missing field: {}", "name");
+
+                    // Unnamed fields won't compile so there's no point in checking.
+                    let field_name = f.name.as_ident();
+                    let field_name_str = f.name.to_string();
+
+                    let ty = f.original.ty.to_token_stream().to_string();
+
+                    streams.transform_headers(|headers|
+                        quote! {
+                            crate::model::Item::ValueItem(v) => {
+                                if #ident.is_some() {
+                                    return Err(crate::form::FormErr::DuplicateField(String::from(#field_name_str)));
+                                } else {
                                     #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
                                 }
                             }
-                        });
+                    });
+                }
+                FieldKind::Body => {
+                    let ty = f.original.ty.to_token_stream().to_string();
+
+                    streams.transform_items(|items| quote! {
+                        #ident = {
+                            let rec = crate::model::Value::Record(Vec::new(), items.to_vec());
+                            std::option::Option::Some(crate::form::Form::try_from_value(&rec)?)
+                        };
+                    })
+                }
+                FieldKind::Skip => {}
+                _ => {
+                    let structure_name_str = structure_name.to_string();
+                    let missing_field_msg = format!("Missing field: {}", "name");
+                    // Unnamed fields won't compile so there's no need in checking the name variant
+                    let field_name_str = f.name.to_string();
+
+                    match &f.name {
+                        FieldName::Renamed(name, _) => {
+                            streams.transform_headers(|headers| quote! {
+                                crate::model::Item::Slot(crate::model::Value::Text(name), ref v) if name == #name => {
+                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                }
+                                #headers
+                            });
+                        }
+                        FieldName::Named(field_ident) => {
+                            let ident_str = field_ident.to_string();
+                            streams.transform_headers(|headers| quote! {
+                                crate::model::Item::Slot(crate::model::Value::Text(name), ref v) if name == #ident_str => {
+                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                }
+                                #headers
+                            });
+                        }
+                        un @ FieldName::Unnamed(_) => {
+                            streams.transform_headers(|headers| quote! {
+                                crate::model::Item::Slot(crate::model::Value::Text(name), ref v) if name == #field_name_str => {
+                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                }
+                                #headers
+                            });
+                        }
                     }
-                },
-                _ => {}
+                }
             }
             streams
         });
 
-    if !streams.items.is_empty() {
+    if !streams.items.is_empty() && !field_manifest.replaces_body {
         streams.transform_items(|items| {
             quote! {
                 let mut items_iter = items.iter();
                 while let Some(item) = items_iter.next() {
                     match item {
                         #items
-                        _ => return Err(crate::form::FormErr::Malformatted),
+                        i => return Err(crate::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
                     }
                 }
             }

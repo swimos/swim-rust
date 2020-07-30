@@ -103,17 +103,21 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
     let ts = quote! {
         impl #impl_generics crate::form::Form for #structure_name #ty_generics #where_clause
         {
+            #[inline]
+            #[allow(non_snake_case)]
             fn as_value(&self) -> crate::model::Value {
                 #as_value_body
             }
 
+            #[inline]
+            #[allow(non_snake_case)]
             fn try_from_value(value: &crate::model::Value) -> Result<Self, crate::form::FormErr> {
                 #from_value_body
             }
         }
     };
 
-    // println!("{}", ts.to_string());
+    println!("{}", ts.to_string());
 
     ts.into()
 }
