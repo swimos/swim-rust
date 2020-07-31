@@ -835,7 +835,7 @@ fn update_and_notify<Upd>(
     request: Option<DownlinkRequest<ValMap>>,
 ) -> Result<(), ()>
 where
-    Upd: FnOnce(&mut ValMap) -> (),
+    Upd: FnOnce(&mut ValMap),
 {
     match request {
         Some(req) => {
@@ -857,7 +857,7 @@ fn update_and_notify_prev<Upd>(
     request: Option<DownlinkRequest<Option<Arc<Value>>>>,
 ) -> Result<(), ()>
 where
-    Upd: FnOnce(&mut ValMap) -> (),
+    Upd: FnOnce(&mut ValMap),
 {
     match request {
         Some(req) => {
