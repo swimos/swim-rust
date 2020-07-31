@@ -20,7 +20,7 @@ use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
     StoppedFuture,
 };
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
 use futures::future::Ready;

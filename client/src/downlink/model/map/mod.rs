@@ -39,7 +39,7 @@ use crate::downlink::{
     BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message, SyncStateMachine,
     TransitionError,
 };
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use std::num::NonZeroUsize;
 
 #[cfg(test)]

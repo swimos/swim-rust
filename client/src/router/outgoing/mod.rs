@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
+use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
+use common::routing::RoutingError;
 use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;

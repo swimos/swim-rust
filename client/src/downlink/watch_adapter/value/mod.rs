@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::sink::item::{ItemSender, ItemSink};
 use futures::future::{ready, Ready};
 use std::num::NonZeroUsize;

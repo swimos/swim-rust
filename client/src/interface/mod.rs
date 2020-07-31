@@ -33,7 +33,8 @@ use crate::downlink::subscription::{
 };
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
-use crate::router::{RoutingError, SwimRouter};
+use crate::router::SwimRouter;
+use common::routing::RoutingError;
 use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
 

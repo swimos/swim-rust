@@ -21,7 +21,7 @@ use crate::downlink::{
     Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
     StateMachine, StoppedFuture,
 };
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::request::request_future::SendAndAwait;
 use common::request::Request;
 use common::sink::item::{self, ItemSender, ItemSink, MpscSend};

@@ -17,7 +17,7 @@ mod tests;
 
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::model::Value;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use either::Either;

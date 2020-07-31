@@ -15,8 +15,9 @@
 use std::collections::HashMap;
 
 use crate::router::{
-    CloseReceiver, CloseResponseSender, RouterEvent, RoutingError, SubscriberRequest,
+    CloseReceiver, CloseResponseSender, RouterEvent, SubscriberRequest,
 };
+use common::routing::RoutingError;
 use common::connections::WsMessage;
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;

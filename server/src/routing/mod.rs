@@ -12,13 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+use common::warp::envelope::Envelope;
+use common::sink::item::ItemSender;
+use common::routing::RoutingError;
 
-pub mod configuration;
-pub mod connections;
-pub mod model;
-pub mod request;
-pub mod routing;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Location {
+    RemoteEndpoint(u32),
+    Local(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RoutingAddr(Location);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
+
+pub trait ServerRouter {
+
+    type Sender: ItemSender<Envelope, RoutingError>;
+
+    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError>;
+
+}

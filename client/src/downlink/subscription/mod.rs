@@ -27,7 +27,8 @@ use crate::downlink::typed::{
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{raw, Command, DownlinkError, Message, StoppedFuture};
-use crate::router::{Router, RouterEvent, RoutingError};
+use crate::router::{Router, RouterEvent};
+use common::routing::RoutingError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::request::request_future::RequestError;

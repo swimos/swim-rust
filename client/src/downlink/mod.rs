@@ -33,7 +33,7 @@ pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::connections::error::ConnectionError;
 use common::model::schema::StandardSchema;
 use common::model::Value;

@@ -21,7 +21,7 @@ use crate::downlink::{
     buffered, dropping, queue, Command, DownlinkError, DownlinkState, Event, Message, Operation,
     Response, StateMachine,
 };
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
 use common::sink::item::ItemSender;

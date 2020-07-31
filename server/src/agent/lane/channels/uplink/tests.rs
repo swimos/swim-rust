@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
-use crate::agent::lane::channels::uplink::{
-    MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
-};
+use crate::agent::lane::channels::uplink::{MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine, ValueLaneUplink};
 use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::{map, value};
 use crate::agent::lane::strategy::Queue;
@@ -79,7 +77,7 @@ async fn uplink_not_linked() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(lane.clone(), rx_action.fuse(), events.fuse());
+    let uplink = Uplink::new(ValueLaneUplink::new(lane.clone()), rx_action.fuse(), events.fuse());
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -117,7 +115,7 @@ async fn uplink_open_to_linked() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(lane.clone(), rx_action.fuse(), events.fuse());
+    let uplink = Uplink::new(ValueLaneUplink::new(lane.clone()), rx_action.fuse(), events.fuse());
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -161,7 +159,7 @@ async fn uplink_open_to_synced() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(lane.clone(), rx_action.fuse(), events.fuse());
+    let uplink = Uplink::new(ValueLaneUplink::new(lane.clone()), rx_action.fuse(), events.fuse());
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -198,9 +196,11 @@ async fn uplink_open_to_synced() {
 async fn value_state_machine_message_for() {
     let (lane, _events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
 
+    let uplink = ValueLaneUplink::new(lane);
+
     let event = Arc::new(4);
 
-    let msg = lane.message_for(event.clone());
+    let msg = uplink.message_for(event.clone());
 
     assert!(matches!(msg, Ok(Some(v)) if Arc::ptr_eq(&v, &event)));
 }
@@ -209,11 +209,13 @@ async fn value_state_machine_message_for() {
 async fn value_state_machine_sync_from_var() {
     let (lane, events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
 
+    let uplink = ValueLaneUplink::new(lane);
+
     let mut events = events.fuse();
 
     let sync_events = timeout(
         Duration::from_secs(10),
-        lane.sync_lane(&mut events).collect::<Vec<_>>(),
+        uplink.sync_lane(&mut events).collect::<Vec<_>>(),
     )
     .await;
 
@@ -228,6 +230,8 @@ async fn value_state_machine_sync_from_var() {
 async fn value_state_machine_sync_from_events() {
     let (lane, _events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
 
+    let uplink = ValueLaneUplink::new(lane.clone());
+
     let (mut tx_fake, rx_fake) = mpsc::channel(5);
 
     let mut rx_fake = rx_fake.fuse();
@@ -236,7 +240,7 @@ async fn value_state_machine_sync_from_events() {
 
     let sync_task = timeout(
         Duration::from_secs(10),
-        lane.sync_lane(&mut rx_fake).collect::<Vec<_>>(),
+        uplink.sync_lane(&mut rx_fake).collect::<Vec<_>>(),
     );
 
     let event = Arc::new(87);

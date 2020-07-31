@@ -27,7 +27,7 @@ use crate::downlink::{
     create_downlink, BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message,
     SyncStateMachine, TransitionError, UpdateFailure,
 };
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
 use common::sink::item::ItemSender;

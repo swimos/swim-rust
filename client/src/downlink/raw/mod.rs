@@ -17,7 +17,7 @@ use crate::downlink::{
     Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
     Operation, Response, StateMachine, StoppedFuture,
 };
-use crate::router::RoutingError;
+use common::routing::RoutingError;
 use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
