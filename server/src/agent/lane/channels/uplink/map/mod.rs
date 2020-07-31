@@ -162,6 +162,31 @@ where
 /// Run the sync state machine for a map lane. The returned stream will emit updates to the lane
 /// until the synchronization process is complete, after which it will terminate. When this stream
 /// terminates, the sync message can be sent to the consumer.
+///
+/// #Notes
+///
+/// The naive way to synchronize a map lane would be to execute a `snapshot` transaction against
+/// the lane, loading the underlying map of variables and all of the values in a single transaction.
+/// However, as this reads a very large number of [`TVar`]s, when the lane is under high load, this
+/// transaction could take a very long time to complete or fail entirely. To avoid this, we employ
+/// the following scheme:
+///
+/// 1. When a Sync is requested, a special `checkpoint` transaction is executed against the lane.
+/// This reads the structure of the map and causes a special checkpoint [`MapLaneEvent`] to be
+/// emitted on the event stream of the lane.
+/// 2. After executing the `checkpoint` transaction, the Sync state machine waits for the
+/// checkpoint indicator (containing its unique ID) on the event stream. It now knows that the
+/// map of variables that it obtained in the transaction is consistent with its current offset
+/// in the event stream.
+/// 3. Now it starts concurrent, asynchronous reads of all of the variables in the map that it
+/// received, adding a mechanism for them to be cancelled. Simultaneously, it continues to watch
+/// the event stream.
+/// 4. Then it races the reads of the variables with information received on the event stream until
+/// it is aware of the state of the value for every key in the map. For example, if it is waiting
+/// for the value associated with a key `k` and that key is later removed it will cancel that read.
+/// In the special case that the map is cleared, all of the reads will be cancelled.
+/// 5. As it receives evidence about the value for each key, records are emitted on Sync stream which
+/// then terminates when a complete, consistent view of the map has been emitted.
 pub fn sync_map_lane<'a, K, V, Events, Retries>(
     id: u64,
     lane: &'a MapLane<K, V>,
