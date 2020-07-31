@@ -45,6 +45,13 @@ type Checkpoint<V> = OrdMap<Value, TVar<V>>;
 /// State type for the state machine that tracks the synchronization of a [`MapLane`]. The
 /// future types `CF` and `GF` are not actually free, however the actual types are not
 /// nameable and it must be left to the compiler to infer them.
+///
+/// #Type Parameters
+///
+/// * `R` - Type of the retry strategy for the checkpoint transaction.
+/// * `CF` - Type of the future that executes the checkpoint transaction against the lane.
+/// * `GF` - Type of the futures that read a single value from the map with a kill switch that
+/// allows them to be cancelled if they become irrelevant.
 enum MapLaneSyncState<R, CF, GF> {
     /// Initial state, containing the retry strategy for initiating the checkpoint transaction.
     Init(R),
