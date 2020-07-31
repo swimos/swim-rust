@@ -12,13 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::{Form, FormErr, ValidatedForm};
-use crate::model::blob::Blob;
-use crate::model::schema::StandardSchema;
-use crate::model::{Item, Value, ValueKind};
-use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
-use num_bigint::{BigInt, BigUint};
-use num_traits::FromPrimitive;
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
@@ -27,6 +20,15 @@ use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::str::FromStr;
 use std::sync::Arc;
+
+use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
+use num_bigint::{BigInt, BigUint};
+use num_traits::FromPrimitive;
+
+use crate::form::{Form, FormErr, ValidatedForm};
+use crate::model::blob::Blob;
+use crate::model::schema::StandardSchema;
+use crate::model::{Item, Value, ValueKind};
 
 impl<'a, F> Form for &'a F
 where

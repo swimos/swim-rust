@@ -14,7 +14,10 @@
 
 use crate::form::Form;
 use crate::model::{Attr, Item, Value};
-use form_derive::*;
+
+mod swim_common {
+    pub use crate::*;
+}
 
 #[test]
 fn test_transmute() {

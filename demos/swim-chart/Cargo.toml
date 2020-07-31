@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 swim_client = { package = "client", path = "../../client", default-features = false }
+swim_common = { package = "common", path = "../../common" }
 swim_wasm = { path = "../../swim_wasm" }
 wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
 console_error_panic_hook = "0.1.1"
