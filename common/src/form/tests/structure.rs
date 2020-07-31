@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use form_derive::*;
-
 use crate::form::Form;
 use crate::model::{Attr, Item, Value};
+
+mod swim_common {
+    pub use crate::*;
+}
 
 #[test]
 fn test_transmute() {

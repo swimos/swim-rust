@@ -12,18 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::{Form, FormErr, ValidatedForm};
-use crate::model::blob::Blob;
-use crate::model::schema::StandardSchema;
-use crate::model::{Item, Value, ValueKind};
-use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
-use num_bigint::{BigInt, BigUint};
-use num_traits::FromPrimitive;
+use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::convert::TryFrom;
 use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::str::FromStr;
+use std::sync::Arc;
+
+use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
+use num_bigint::{BigInt, BigUint};
+use num_traits::FromPrimitive;
+
+use crate::form::{Form, FormErr, ValidatedForm};
+use crate::model::blob::Blob;
+use crate::model::schema::StandardSchema;
+use crate::model::{Item, Value, ValueKind};
 
 impl<'a, F> Form for &'a F
 where
@@ -536,5 +541,112 @@ where
 
     fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
         unimplemented!()
+    }
+}
+
+impl Form for () {
+    fn as_value(&self) -> Value {
+        Value::Extant
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Extant => Ok(()),
+            _ => Err(FormErr::IncorrectType("Expected ()".to_string())),
+        }
+    }
+}
+
+impl ValidatedForm for () {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Extant)
+    }
+}
+
+impl<F> Form for Cell<F>
+where
+    F: Form + Copy,
+{
+    fn as_value(&self) -> Value {
+        self.get().as_value()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        F::try_from_value(value).map(Cell::new)
+    }
+}
+
+impl<V> ValidatedForm for Cell<V>
+where
+    V: ValidatedForm + Copy,
+{
+    fn schema() -> StandardSchema {
+        StandardSchema::Or(vec![V::schema(), StandardSchema::OfKind(ValueKind::Extant)])
+    }
+}
+
+impl<F> Form for Box<F>
+where
+    F: Form,
+{
+    fn as_value(&self) -> Value {
+        (**self).as_value()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        F::try_from_value(value).map(Box::new)
+    }
+}
+
+impl<V> ValidatedForm for Box<V>
+where
+    V: ValidatedForm,
+{
+    fn schema() -> StandardSchema {
+        V::schema()
+    }
+}
+
+impl<F> Form for Arc<F>
+where
+    F: Form,
+{
+    fn as_value(&self) -> Value {
+        (**self).as_value()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        F::try_from_value(value).map(Arc::new)
+    }
+}
+
+impl<V> ValidatedForm for Arc<V>
+where
+    V: ValidatedForm,
+{
+    fn schema() -> StandardSchema {
+        V::schema()
+    }
+}
+
+impl<'l, F> Form for Cow<'l, F>
+where
+    F: Form + Clone,
+{
+    fn as_value(&self) -> Value {
+        (**self).as_value()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        F::try_from_value(value).map(Cow::Owned)
+    }
+}
+
+impl<'l, F> ValidatedForm for Cow<'l, F>
+where
+    F: ValidatedForm + Clone,
+{
+    fn schema() -> StandardSchema {
+        F::schema()
     }
 }

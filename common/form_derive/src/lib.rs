@@ -101,17 +101,17 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
 
     let ts = quote! {
-        impl #impl_generics crate::form::Form for #structure_name #ty_generics #where_clause
+        impl #impl_generics swim_common::form::Form for #structure_name #ty_generics #where_clause
         {
             #[inline]
             #[allow(non_snake_case)]
-            fn as_value(&self) -> crate::model::Value {
+            fn as_value(&self) -> swim_common::model::Value {
                 #as_value_body
             }
 
             #[inline]
             #[allow(non_snake_case)]
-            fn try_from_value(value: &crate::model::Value) -> Result<Self, crate::form::FormErr> {
+            fn try_from_value(value: &swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
                 #from_value_body
             }
         }
@@ -138,8 +138,8 @@ fn build_struct_as_value(
 
     quote! {
         let #structure_name #self_deconstruction = self;
-        let mut attrs = vec![crate::model::Attr::of((#structure_name_str #headers)), #attributes];
-        crate::model::Value::Record(attrs, #items)
+        let mut attrs = vec![swim_common::model::Attr::of((#structure_name_str #headers)), #attributes];
+        swim_common::model::Value::Record(attrs, #items)
     }
 }
 
@@ -162,8 +162,8 @@ fn build_variant_as_value(
 
     quote! {
         #structure_name::#variant_name #self_deconstruction => {
-            let mut attrs = vec![crate::model::Attr::of((#variant_name_str #headers)), #attributes];
-            crate::model::Value::Record(attrs, #items)
+            let mut attrs = vec![swim_common::model::Attr::of((#variant_name_str #headers)), #attributes];
+            swim_common::model::Value::Record(attrs, #items)
         },
     }
 }
@@ -217,15 +217,15 @@ fn compute_as_value(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            as_value_ts.transform_items(|items| quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
+                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            as_value_ts.transform_items(|items| quote!(#items crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),));
+                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),));
                         }
                         un @ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
-                            as_value_ts.transform_items(|items| quote!(#items crate::model::Item::ValueItem(#ident.as_value()),));
+                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::ValueItem(#ident.as_value()),));
                         }
                     }
                 }
@@ -233,11 +233,11 @@ fn compute_as_value(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            as_value_ts.transform_attrs(|attrs| quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #ident.as_value())),));
+                            as_value_ts.transform_attrs(|attrs| quote!(#attrs swim_common::model::Attr::of((#name_str.to_string(), #ident.as_value())),));
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            as_value_ts.transform_attrs(|attrs| quote!(#attrs crate::model::Attr::of((#name_str.to_string(), #old.as_value())),));
+                            as_value_ts.transform_attrs(|attrs| quote!(#attrs swim_common::model::Attr::of((#name_str.to_string(), #old.as_value())),));
                         }
                         FieldName::Unnamed(_index) => {
                             // This has bene checked already when parsing the AST.
@@ -251,8 +251,8 @@ fn compute_as_value(
 
                     as_value_ts.transform_items(|_items| quote!({
                         match #ident.as_value() {
-                            crate::model::Value::Record(_attrs, items) => items,
-                            v => vec![crate::model::Item::ValueItem(v)]
+                            swim_common::model::Value::Record(_attrs, items) => items,
+                            v => vec![swim_common::model::Item::ValueItem(v)]
                         }
                     }));
                 }
@@ -260,11 +260,11 @@ fn compute_as_value(
                     if manifest.has_header_fields {
                         match name {
                             FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                as_value_ts.transform_headers(|headers| quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),));
+                                as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
                             }
                             un @ FieldName::Unnamed(_) => {
                                 let ident = un.as_ident();
-                                as_value_ts.transform_headers(|headers| quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),));
+                                as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
                             }
                         }
                     } else {
@@ -283,15 +283,15 @@ fn compute_as_value(
                     match name {
                         FieldName::Named(ident) => {
                             let name_str = ident.to_string();
-                            as_value_ts.transform_headers(|headers|quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
+                            as_value_ts.transform_headers(|headers|quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
                         }
                         FieldName::Renamed(new, old) => {
                             let name_str = new.to_string();
-                            as_value_ts.transform_headers(|headers| quote!(#headers crate::model::Item::Slot(crate::model::Value::Text(#name_str.to_string()), #old.as_value()),));
+                            as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),));
                         }
                         un @ FieldName::Unnamed(_) => {
                             let ident = un.as_ident();
-                            as_value_ts.transform_headers(|headers|quote!(#headers crate::model::Item::ValueItem(#ident.as_value()),));
+                            as_value_ts.transform_headers(|headers|quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
                         }
                     }
                 }
@@ -302,7 +302,7 @@ fn compute_as_value(
 
     if manifest.has_header_fields || manifest.replaces_body {
         as_value_ts.transform_headers(
-            |headers| quote!(, crate::model::Value::Record(Vec::new(), vec![#headers])),
+            |headers| quote!(, swim_common::model::Value::Record(Vec::new(), vec![#headers])),
         );
     }
 

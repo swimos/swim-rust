@@ -20,8 +20,11 @@ use crate::form::Form;
 use crate::model::{Attr, Item, Value};
 
 use crate::model::blob::Blob;
-use form_derive::*;
 use num_bigint::{BigInt, BigUint};
+
+mod swim_common {
+    pub use crate::*;
+}
 
 #[test]
 fn transmute_bigint() {

@@ -360,6 +360,35 @@ where
             })
         }
     }
+
+    /// Create a write-only sender for a map downlink that converts all sent keys and values to a new type.
+    /// The types of the sender must have an equal or lesser schemas than the original downlink.
+    pub async fn write_only_sender<ViewKeyType: ValidatedForm, ViewValueType: ValidatedForm>(
+        &mut self,
+    ) -> Result<MapActions<Inner::DlSink, ViewKeyType, ViewValueType>, MapViewError> {
+        let key_schema_cmp = ViewKeyType::schema().partial_cmp(&K::schema());
+        let value_schema_cmp = ViewValueType::schema().partial_cmp(&V::schema());
+
+        if key_schema_cmp.is_some() && key_schema_cmp != Some(Ordering::Greater) {
+            if value_schema_cmp.is_some() && value_schema_cmp != Some(Ordering::Greater) {
+                let (_, sink) = self.inner.clone().split();
+                let sink = MapActions::new(sink);
+                Ok(sink)
+            } else {
+                Err(MapViewError::SchemaValueError {
+                    existing: V::schema(),
+                    requested: ViewValueType::schema(),
+                    mode: ViewMode::WriteOnly,
+                })
+            }
+        } else {
+            Err(MapViewError::SchemaKeyError {
+                existing: K::schema(),
+                requested: ViewKeyType::schema(),
+                mode: ViewMode::WriteOnly,
+            })
+        }
+    }
 }
 
 impl<'a, Inner, T> ItemSink<'a, Action> for ValueDownlink<Inner, T>

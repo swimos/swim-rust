@@ -629,4 +629,136 @@ mod tests {
             panic!("Expected a ViewError!")
         }
     }
+
+    #[tokio::test]
+    async fn test_write_only_map() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+
+        let mut command_dl = client
+            .command_downlink::<MapModification<String, i32>>(path.clone())
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        command_dl
+            .send_item(MapModification::Insert(
+                String::from("milk").into(),
+                5.into(),
+            ))
+            .await
+            .unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(1)).await;
+
+        let (mut dl, mut recv) = client.map_downlink::<Value, Value>(path).await.unwrap();
+
+        let message = recv.next().await.unwrap();
+        if let Event::Remote(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(
+                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                Value::UInt32Value(5)
+            );
+            assert_eq!(event, MapEvent::Initial);
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+
+        let mut sender_view = dl.write_only_sender::<String, i32>().await.unwrap();
+        let (_, mut sink) = dl.split();
+
+        sink.insert(String::from("eggs").into(), 3.into())
+            .await
+            .unwrap();
+
+        let message = recv.next().await.unwrap();
+        if let Event::Local(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(
+                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                Value::UInt32Value(5)
+            );
+            assert_eq!(
+                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                Value::UInt32Value(3)
+            );
+            assert_eq!(event, MapEvent::Insert(Value::Text(String::from("eggs"))));
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+
+        sender_view
+            .insert(String::from("chocolate"), 10)
+            .await
+            .unwrap();
+
+        let message = recv.next().await.unwrap();
+        if let Event::Local(event) = message {
+            let TypedViewWithEvent { view, event } = event;
+
+            assert_eq!(
+                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                Value::UInt32Value(5)
+            );
+            assert_eq!(
+                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                Value::UInt32Value(3)
+            );
+            assert_eq!(
+                view.get(&Value::Text(String::from("chocolate"))).unwrap(),
+                Value::UInt32Value(10)
+            );
+            assert_eq!(
+                event,
+                MapEvent::Insert(Value::Text(String::from("chocolate")))
+            );
+        } else {
+            panic!("The map downlink did not receive the correct message!")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_write_only_map_schema_error() {
+        let docker = Cli::default();
+        let container = docker.run(SwimTestServer);
+        let port = container.get_host_port(9001).unwrap();
+        let host = format!("ws://127.0.0.1:{}", port);
+        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
+        let (mut dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();
+
+        if let Err(view_error) = dl.write_only_sender::<String, String>().await {
+            assert_eq!(view_error.to_string(),  "A write-only map downlink with key schema @kind(text) was requested but the original map downlink is running with key schema @kind(int32).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.write_only_sender::<i32, String>().await {
+            assert_eq!(view_error.to_string(),  "A write-only map downlink with value schema @kind(text) was requested but the original map downlink is running with value schema @kind(int32).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.write_only_sender::<i64, i32>().await {
+            assert_eq!(view_error.to_string(),  "A write-only map downlink with key schema @kind(int64) was requested but the original map downlink is running with key schema @kind(int32).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+
+        if let Err(view_error) = dl.write_only_sender::<i32, i64>().await {
+            assert_eq!(view_error.to_string(),  "A write-only map downlink with value schema @kind(int64) was requested but the original map downlink is running with value schema @kind(int32).")
+        } else {
+            panic!("Expected a ViewError!")
+        }
+    }
 }
