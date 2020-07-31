@@ -17,8 +17,6 @@ use crate::downlink::model::value::SharedValue;
 use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap, TryTransformTopic};
 use crate::downlink::Event;
-use common::model::Value;
-use common::topic::{Topic, TopicError};
 use futures::future::{ready, Ready};
 use futures::stream::StreamExt;
 use futures_util::stream::{iter, Iter};
@@ -28,6 +26,8 @@ use im::OrdMap;
 use std::num::ParseIntError;
 use std::sync::Arc;
 use std::vec::IntoIter;
+use swim_common::model::Value;
+use swim_common::topic::{Topic, TopicError};
 use utilities::future::Transform;
 
 #[test]

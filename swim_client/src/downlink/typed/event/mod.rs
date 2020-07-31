@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
-use common::model::Value;
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use swim_common::model::Value;
 use swim_form::Form;
 use swim_form::FormDeserializeErr;
 

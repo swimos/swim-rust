@@ -18,10 +18,10 @@ mod tests {
     use client::connections::factory::tungstenite::TungsteniteWsFactory;
     use client::connections::SwimConnPool;
     use client::router::{Router, SwimRouter};
-    use common::model::Value;
-    use common::sink::item::ItemSink;
-    use common::warp::envelope::Envelope;
-    use common::warp::path::AbsolutePath;
+    use swim_common::model::Value;
+    use swim_common::sink::item::ItemSink;
+    use swim_common::warp::envelope::Envelope;
+    use swim_common::warp::path::AbsolutePath;
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;

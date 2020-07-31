@@ -26,11 +26,11 @@ pub mod async_factory {
     use futures::{Future, Sink, Stream};
     use tokio::sync::{mpsc, oneshot};
 
-    use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
-    use common::request::Request;
+    use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
+    use swim_common::request::Request;
 
-    use common::connections::error::ConnectionError;
-    use common::connections::{WebsocketFactory, WsMessage};
+    use swim_common::connections::error::ConnectionError;
+    use swim_common::connections::{WebsocketFactory, WsMessage};
     use swim_runtime::task::{spawn, TaskHandle};
     use utilities::errors::FlattenErrors;
 

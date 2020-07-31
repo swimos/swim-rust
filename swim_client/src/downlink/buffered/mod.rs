@@ -21,8 +21,6 @@ use crate::downlink::{
     StoppedFuture,
 };
 use crate::router::RoutingError;
-use common::sink::item::{ItemSender, ItemSink, MpscSend};
-use common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
@@ -30,6 +28,8 @@ use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
+use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
+use swim_common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
 use tracing::trace_span;

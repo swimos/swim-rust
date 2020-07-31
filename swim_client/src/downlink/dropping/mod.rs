@@ -21,13 +21,13 @@ use crate::downlink::{
     StateMachine, StoppedFuture,
 };
 use crate::router::RoutingError;
-use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
-use common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
+use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use swim_common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
 use utilities::future::{SwimFutureExt, TransformedFuture};

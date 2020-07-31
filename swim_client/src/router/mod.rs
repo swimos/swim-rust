@@ -28,18 +28,18 @@ use tracing::trace_span;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
 
-use common::request::request_future::{RequestError, RequestFuture, Sequenced};
-use common::sink::item::map_err::SenderErrInto;
-use common::sink::item::ItemSender;
-use common::warp::envelope::{Envelope, IncomingLinkMessage};
-use common::warp::path::{AbsolutePath, RelativePath};
+use swim_common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use swim_common::sink::item::map_err::SenderErrInto;
+use swim_common::sink::item::ItemSender;
+use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
+use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_runtime::task::*;
 
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender, SwimConnPool};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
-use common::connections::error::ConnectionError;
+use swim_common::connections::error::ConnectionError;
 
 pub mod incoming;
 pub mod outgoing;

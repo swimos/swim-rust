@@ -22,13 +22,13 @@ use tokio_tungstenite::tungstenite::Error;
 use tokio_tungstenite::*;
 use url::Url;
 
-use common::request::request_future::SendAndAwait;
+use swim_common::request::request_future::SendAndAwait;
 
 use super::async_factory;
-use common::connections::error::{ConnectionError, WebSocketError};
-use common::connections::{WebsocketFactory, WsMessage};
 use std::io::ErrorKind;
 use std::ops::Deref;
+use swim_common::connections::error::{ConnectionError, WebSocketError};
+use swim_common::connections::{WebsocketFactory, WsMessage};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
@@ -174,7 +174,7 @@ mod tests {
     use crate::connections::factory::tungstenite::TungsteniteWsFactory;
     use crate::connections::{ConnectionPool, SwimConnPool};
 
-    use common::connections::error::ConnectionError;
+    use swim_common::connections::error::ConnectionError;
 
     #[tokio::test]
     async fn invalid_protocol() {

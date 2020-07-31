@@ -15,9 +15,9 @@
 use super::*;
 use crate::configuration::downlink::{ConfigHierarchy, DownlinkParams, OnInvalidMessage};
 use crate::downlink::any::TopicKind;
-use common::warp::path::AbsolutePath;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use swim_common::warp::path::AbsolutePath;
 use tokio::time::Duration;
 
 mod harness;

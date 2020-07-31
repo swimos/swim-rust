@@ -17,16 +17,16 @@ use std::collections::HashMap;
 use crate::router::{
     CloseReceiver, CloseResponseSender, RouterEvent, RoutingError, SubscriberRequest,
 };
-use common::connections::WsMessage;
-use common::model::parser::parse_single;
-use common::warp::envelope::Envelope;
-use common::warp::path::RelativePath;
 use futures::future::ready;
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
+use swim_common::connections::WsMessage;
+use swim_common::model::parser::parse_single;
+use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};

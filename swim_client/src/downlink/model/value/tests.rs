@@ -18,8 +18,8 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
-use common::model::ValueKind;
-use common::request::Request;
+use swim_common::model::ValueKind;
+use swim_common::request::Request;
 
 const STATES: [DownlinkState; 3] = [
     DownlinkState::Unlinked,

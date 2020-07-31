@@ -13,13 +13,13 @@
 // limitations under the License.
 
 use super::async_factory::*;
-use common::connections::error::ConnectionError;
-use common::connections::{WebsocketFactory, WsMessage};
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::pin::Pin;
+use swim_common::connections::error::ConnectionError;
+use swim_common::connections::{WebsocketFactory, WsMessage};
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);

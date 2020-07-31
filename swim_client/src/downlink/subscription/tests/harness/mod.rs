@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::router::{Router, RouterEvent, RoutingError};
-use common::request::request_future::RequestError;
-use common::sink::item::drop_all::{drop_all, DropAll};
-use common::warp::envelope::Envelope;
-use common::warp::path::AbsolutePath;
 use futures::future::{ready, Ready};
 use futures::stream::{pending, Pending};
+use swim_common::request::request_future::RequestError;
+use swim_common::sink::item::drop_all::{drop_all, DropAll};
+use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::AbsolutePath;
 
 /// A mock [`Router`] where connections produce no data and all outputs are silently dropped.
 pub struct StubRouter {}

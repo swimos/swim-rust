@@ -21,11 +21,11 @@ use futures::Stream;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
-use common::model::schema::attr::AttrSchema;
-use common::model::schema::slot::SlotSchema;
-use common::model::schema::{FieldSpec, Schema, StandardSchema};
-use common::model::{Attr, Item, Value, ValueKind};
-use common::sink::item::ItemSender;
+use swim_common::model::schema::attr::AttrSchema;
+use swim_common::model::schema::slot::SlotSchema;
+use swim_common::model::schema::{FieldSpec, Schema, StandardSchema};
+use swim_common::model::{Attr, Item, Value, ValueKind};
+use swim_common::sink::item::ItemSender;
 use swim_form::FormDeserializeErr;
 use swim_form::{Form, ValidatedForm};
 

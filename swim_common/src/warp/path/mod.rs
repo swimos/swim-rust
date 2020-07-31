@@ -35,7 +35,7 @@ impl AbsolutePath {
     ///
     /// # Examples
     /// ```
-    /// use common::warp::path::*;
+    /// use swim_common::warp::path::*;
     ///
     /// let abs = AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane");
     ///
@@ -83,7 +83,7 @@ impl RelativePath {
     ///
     /// # Examples
     /// ```
-    /// use common::warp::path::*;
+    /// use swim_common::warp::path::*;
     ///
     /// let rel = RelativePath::new("node", "lane");
     ///

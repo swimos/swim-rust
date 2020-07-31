@@ -22,16 +22,16 @@ use crate::downlink::{
     StateMachine, StoppedFuture,
 };
 use crate::router::RoutingError;
-use common::request::request_future::SendAndAwait;
-use common::request::Request;
-use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
-use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
+use swim_common::request::request_future::SendAndAwait;
+use swim_common::request::Request;
+use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use swim_common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
 use utilities::future::TransformedFuture;

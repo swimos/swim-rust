@@ -14,13 +14,13 @@
 
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use crate::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
-use common::model::Value;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::sync::Arc;
+use swim_common::model::Value;
 use swim_form::FormDeserializeErr;
 
 fn make_raw() -> ValMap {

@@ -21,12 +21,12 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
-use common::model::Value;
 use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
+use swim_common::model::Value;
 use swim_form::Form;
 
 use crate::agent::lane::map::summary::{MapLaneEvent, TransactionSummary};

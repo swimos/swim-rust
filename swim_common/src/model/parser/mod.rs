@@ -39,7 +39,7 @@ mod token_buffer;
 /// #Examples
 ///
 /// ```
-/// use common::model::parser::is_identifier_start;
+/// use swim_common::model::parser::is_identifier_start;
 ///
 /// assert!(is_identifier_start('a'));
 /// assert!(is_identifier_start('ℵ'));
@@ -74,7 +74,7 @@ pub fn is_identifier_start(c: char) -> bool {
 ///
 /// ```
 ///
-/// use common::model::parser::is_identifier_char;
+/// use swim_common::model::parser::is_identifier_char;
 /// assert!(is_identifier_char('a'));
 /// assert!(is_identifier_char('ℵ'));
 /// assert!(is_identifier_char('_'));
@@ -92,7 +92,7 @@ pub fn is_identifier_char(c: char) -> bool {
 /// #Examples
 ///
 /// ```
-/// use common::model::parser::is_identifier;
+/// use swim_common::model::parser::is_identifier;
 ///
 /// assert!(is_identifier("name"));
 /// assert!(is_identifier("name2"));

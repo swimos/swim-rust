@@ -28,11 +28,11 @@ use crate::downlink::{
     SyncStateMachine, TransitionError, UpdateFailure,
 };
 use crate::router::RoutingError;
-use common::model::schema::{Schema, StandardSchema};
-use common::model::Value;
-use common::sink::item::ItemSender;
 use std::fmt;
 use std::num::NonZeroUsize;
+use swim_common::model::schema::{Schema, StandardSchema};
+use swim_common::model::Value;
+use swim_common::sink::item::ItemSender;
 
 #[cfg(test)]
 mod tests;

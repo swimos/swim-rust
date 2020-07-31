@@ -16,10 +16,10 @@ pub mod router;
 
 pub mod downlink {
     use crate::configuration::router::RouterParams;
-    use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
+    use swim_common::warp::path::AbsolutePath;
     use tokio::time::Duration;
 
     #[derive(Clone, Debug, PartialEq, Eq)]

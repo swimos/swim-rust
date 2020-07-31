@@ -14,9 +14,9 @@
 
 use tokio::sync::mpsc;
 
-use common::sink::item;
 use futures::StreamExt;
 use std::fmt::{Debug, Display, Formatter};
+use swim_common::sink::item;
 use tokio::sync::broadcast;
 use tokio::sync::watch;
 
@@ -34,15 +34,15 @@ pub mod watch_adapter;
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
 use crate::router::RoutingError;
-use common::connections::error::ConnectionError;
-use common::model::schema::StandardSchema;
-use common::model::Value;
-use common::request::TryRequest;
-use common::sink::item::ItemSender;
-use common::topic::Topic;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
+use swim_common::connections::error::ConnectionError;
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::Value;
+use swim_common::request::TryRequest;
+use swim_common::sink::item::ItemSender;
+use swim_common::topic::Topic;
 use tracing::{instrument, trace};
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
@@ -523,8 +523,8 @@ impl<T> From<broadcast::SendError<T>> for DroppedError {
     }
 }
 
-impl From<common::sink::item::SendError> for DroppedError {
-    fn from(_: common::sink::item::SendError) -> Self {
+impl From<swim_common::sink::item::SendError> for DroppedError {
+    fn from(_: swim_common::sink::item::SendError) -> Self {
         DroppedError
     }
 }

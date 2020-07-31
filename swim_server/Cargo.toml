@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "swim_server"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
@@ -23,7 +23,7 @@ im = "15.0.0"
 pin-project = "0.4.20"
 tokio = { version = "0.2.21", features = ["stream", "rt-core"] }
 url = "2.1.1"
-common = { path = "../swim_common" }
+swim_common = { path = "../swim_common" }
 utilities = { path = "../utilities" }
 swim_form = { path = "../swim_form" }
 stm = { path = "../stm" }

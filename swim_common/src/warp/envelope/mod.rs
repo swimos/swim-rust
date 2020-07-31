@@ -587,8 +587,8 @@ pub enum EnvelopeParseErr {
 /// # Examples
 /// ```
 /// use std::convert::TryFrom;
-/// use common::model::{Value, Attr, Item};
-/// use common::warp::envelope::Envelope;
+/// use swim_common::model::{Value, Attr, Item};
+/// use swim_common::warp::envelope::Envelope;
 ///
 /// let record = Value::Record(
 ///         vec![

@@ -15,10 +15,10 @@
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
-use common::model::Value;
-use common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
-use common::warp::path::AbsolutePath;
 use std::sync::Arc;
+use swim_common::model::Value;
+use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
+use swim_common::warp::path::AbsolutePath;
 
 #[cfg(test)]
 mod tests;
@@ -87,8 +87,8 @@ pub fn command_envelope(
 pub(in crate::downlink) mod value {
     use crate::downlink::model::value::SharedValue;
     use crate::downlink::Message;
-    use common::model::Value;
-    use common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
+    use swim_common::model::Value;
+    use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
 
     pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Option<Value> {
         Some((*v).clone())
@@ -121,9 +121,9 @@ pub(in crate::downlink) mod value {
 pub(in crate::downlink) mod map {
     use crate::downlink::model::map::UntypedMapModification;
     use crate::downlink::Message;
-    use common::model::Value;
-    use common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
     use std::sync::Arc;
+    use swim_common::model::Value;
+    use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
     use swim_form::Form;
     use tracing::warn;
 

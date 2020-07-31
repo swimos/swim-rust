@@ -33,7 +33,7 @@ use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
 
-use common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use swim_common::request::request_future::{RequestError, RequestFuture, Sequenced};
 
 use crate::configuration::router::ConnectionPoolParams;
 
@@ -461,8 +461,8 @@ impl SwimConnection {
     }
 }
 
-use common::connections::error::ConnectionError;
-use common::connections::{WebsocketFactory, WsMessage};
+use swim_common::connections::error::ConnectionError;
+use swim_common::connections::{WebsocketFactory, WsMessage};
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;

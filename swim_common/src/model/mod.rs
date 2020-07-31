@@ -80,7 +80,7 @@ pub enum Value {
     ///
     /// ```
     ///
-    /// use common::model::Value;
+    /// use swim_common::model::Value;
     ///
     /// assert_eq!(Value::text("an_identifier").to_string(), "an_identifier");
     /// assert_eq!(Value::text("2morrow").to_string(), r#""2morrow""#);
@@ -873,7 +873,7 @@ impl Attr {
     /// #Examples
     ///
     /// ```
-    /// use common::model::{Attr, Value};
+    /// use swim_common::model::{Attr, Value};
     ///
     /// assert_eq!(Attr::of("name"), Attr { name: String::from("name"), value: Value::Extant, });
     /// assert_eq!(Attr::of(("key", 1)), Attr { name: String::from("key"), value: Value::Int32Value(1), });
@@ -887,7 +887,7 @@ impl Attr {
     /// #Examples
     ///
     /// ```
-    /// use common::model::{Attr, Value};
+    /// use swim_common::model::{Attr, Value};
     ///
     /// assert_eq!(Attr::with_value("name", 1), Attr { name: String::from("name"), value: Value::Int32Value(1), });
     ///
@@ -901,7 +901,7 @@ impl Attr {
     /// #Examples
     ///
     /// ```
-    /// use common::model::{Attr, Value, Item};
+    /// use swim_common::model::{Attr, Value, Item};
     ///
     /// assert_eq!(
     ///     Attr::with_field("name", "inner", 1),
@@ -921,7 +921,7 @@ impl Attr {
     /// #Examples
     ///
     /// ```
-    /// use common::model::{Attr, Value, Item};
+    /// use swim_common::model::{Attr, Value, Item};
     ///
     /// assert_eq!(
     ///     Attr::with_item("name", 1),
@@ -941,7 +941,7 @@ impl Attr {
     /// #Examples
     ///
     /// ```
-    /// use common::model::{Attr, Value, Item};
+    /// use swim_common::model::{Attr, Value, Item};
     ///
     /// assert_eq!(
     ///     Attr::with_items("name", vec![0, 1]),
@@ -1036,7 +1036,7 @@ impl Item {
     /// #Examples
     ///
     /// ```
-    /// use common::model::{Attr, Item, Value};
+    /// use swim_common::model::{Attr, Item, Value};
     ///
     /// assert_eq!(Item::of("name"), Item::ValueItem(Value::text("name")));
     /// assert_eq!(Item::of(("key", 1)), Item::Slot(Value::text("key"), Value::Int32Value(1)));
@@ -1051,7 +1051,7 @@ impl Item {
     /// #Examples
     ///
     /// ```
-    /// use common::model::{Value, Item};
+    /// use swim_common::model::{Value, Item};
     ///
     /// assert_eq!(Item::slot("key", 1), Item::Slot(Value::text("key"), Value::Int32Value(1)));
     /// ```

@@ -23,7 +23,7 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 use url::Url;
 
-use common::request::request_future::SendAndAwait;
+use swim_common::request::request_future::SendAndAwait;
 
 use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;

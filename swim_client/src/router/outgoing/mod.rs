@@ -14,9 +14,9 @@
 
 use crate::configuration::router::RouterParams;
 use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
-use common::warp::envelope::Envelope;
 use futures::stream;
 use futures::StreamExt;
+use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
 

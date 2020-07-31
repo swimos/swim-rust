@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::sink::item::MpscSend;
 use futures::future::{ready, Either, Ready};
 use futures::ready;
 use pin_project::pin_project;
@@ -23,6 +22,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use stm::var::observer::Observer;
+use swim_common::sink::item::MpscSend;
 use tokio::sync::{broadcast, mpsc, watch};
 
 #[cfg(test)]

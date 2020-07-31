@@ -18,8 +18,8 @@ use swim_form::Form;
 
 use super::*;
 use crate::downlink::Message;
-use common::model::Value::Int32Value;
-use common::warp::envelope::LinkMessage;
+use swim_common::model::Value::Int32Value;
+use swim_common::warp::envelope::LinkMessage;
 
 fn path() -> AbsolutePath {
     AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane")

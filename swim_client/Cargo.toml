@@ -1,5 +1,5 @@
 [package]
-name = "client"
+name = "swim_client"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
@@ -32,7 +32,7 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-common = { path = "../common" }
+swim_common = { path = "../swim_common" }
 utilities = { path = "../utilities" }
 swim_form = { path = "../swim_form" }
 swim_runtime = { path = "../swim_runtime" }

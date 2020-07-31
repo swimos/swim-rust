@@ -17,11 +17,11 @@ mod value {
     use crate::downlink::model::value::{Action, SharedValue};
     use crate::downlink::typed::action::ValueActions;
     use crate::downlink::DownlinkError;
-    use common::model::Value;
-    use common::sink::item::ItemSink;
     use futures::future::{ready, Ready};
     use hamcrest2::assert_that;
     use hamcrest2::prelude::*;
+    use swim_common::model::Value;
+    use swim_common::sink::item::ItemSink;
 
     struct TestValueDl(SharedValue);
 
@@ -171,13 +171,13 @@ mod map {
     use crate::downlink::model::map::{MapAction, ValMap};
     use crate::downlink::typed::action::MapActions;
     use crate::downlink::DownlinkError;
-    use common::model::Value;
-    use common::sink::item::ItemSink;
     use futures::future::{ready, Ready};
     use hamcrest2::assert_that;
     use hamcrest2::prelude::*;
     use im::OrdMap;
     use std::sync::Arc;
+    use swim_common::model::Value;
+    use swim_common::sink::item::ItemSink;
 
     struct TestMapDl(ValMap);
 

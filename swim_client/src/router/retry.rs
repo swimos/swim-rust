@@ -25,7 +25,7 @@ use pin_project::pin_project;
 use std::pin::Pin;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
-use common::connections::WsMessage;
+use swim_common::connections::WsMessage;
 use tracing::trace;
 
 #[pin_project]
@@ -179,8 +179,8 @@ mod tests {
 
     use crate::router::retry::MpscRetryErr;
     use crate::router::RoutingError;
-    use common::connections::WsMessage;
     use futures::Future;
+    use swim_common::connections::WsMessage;
     use tokio::sync::mpsc;
     use utilities::future::retryable::request::{RetryableRequest, SendResult};
 

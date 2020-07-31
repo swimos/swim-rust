@@ -19,8 +19,8 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use common::model::Value;
-use common::warp::path::AbsolutePath;
+use swim_common::model::Value;
+use swim_common::warp::path::AbsolutePath;
 use swim_form::ValidatedForm;
 
 use crate::configuration::downlink::{Config, ConfigHierarchy};
@@ -34,8 +34,8 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
-use common::connections::WebsocketFactory;
-use common::warp::envelope::Envelope;
+use swim_common::connections::WebsocketFactory;
+use swim_common::warp::envelope::Envelope;
 
 /// Represents errors that can occur in the client.
 #[derive(Debug, PartialEq)]

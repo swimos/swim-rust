@@ -22,11 +22,11 @@ use crate::downlink::{
     Response, StateMachine,
 };
 use crate::router::RoutingError;
-use common::model::schema::{Schema, StandardSchema};
-use common::model::Value;
-use common::sink::item::ItemSender;
 use futures::Stream;
 use std::num::NonZeroUsize;
+use swim_common::model::schema::{Schema, StandardSchema};
+use swim_common::model::Value;
+use swim_common::sink::item::ItemSender;
 use tracing::{error, instrument, trace};
 
 #[cfg(test)]

@@ -17,8 +17,8 @@ use crate::downlink::model::map::MapModification;
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::Event;
 use crate::downlink::{Command, DownlinkState, Message, Operation, Response, StateMachine};
-use common::model::schema::StandardSchema;
-use common::model::{Attr, Item, Value};
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::{Attr, Item, Value};
 use swim_form::{Form, ValidatedForm};
 
 #[test]
