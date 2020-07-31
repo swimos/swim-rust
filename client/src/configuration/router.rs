@@ -127,8 +127,12 @@ impl RouterParams {
                     }
                     _ => return Err(ConfigParseError::UnexpectedKey(name, ROUTER_TAG)),
                 },
-                Item::Slot(value, _) => return Err(ConfigParseError::UnexpectedValue(value)),
-                Item::ValueItem(value) => return Err(ConfigParseError::UnexpectedValue(value)),
+                Item::Slot(value, _) => {
+                    return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
+                }
+                Item::ValueItem(value) => {
+                    return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
+                }
             }
         }
 
@@ -209,16 +213,26 @@ fn try_retry_strat_from_value(
                     Err(ConfigParseError::InvalidValue(value, RETRY_EXPONENTIAL_TAG))
                 }
             }
-            RETRY_NONE_TAG => Ok(RetryStrategy::none()),
-            _ => {
-                return Err(ConfigParseError::UnexpectedAttribute(
-                    name,
-                    Some(RETRY_STRATEGY_TAG),
-                ))
+            RETRY_NONE_TAG => {
+                if let Value::Extant = value {
+                    Ok(RetryStrategy::none())
+                } else {
+                    Err(ConfigParseError::UnexpectedValue(
+                        value,
+                        Some(RETRY_NONE_TAG),
+                    ))
+                }
             }
+            _ => Err(ConfigParseError::UnexpectedAttribute(
+                name,
+                Some(RETRY_STRATEGY_TAG),
+            )),
         }
     } else {
-        Err(ConfigParseError::UnnamedRecord(Value::Record(attrs, items)))
+        Err(ConfigParseError::UnnamedRecord(
+            Value::Record(attrs, items),
+            Some(RETRY_STRATEGY_TAG),
+        ))
     }
 }
 
@@ -238,8 +252,18 @@ fn try_immediate_strat_from_items(
                 }
                 _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_IMMEDIATE_TAG)),
             },
-            Item::Slot(value, _) => return Err(ConfigParseError::UnexpectedValue(value)),
-            Item::ValueItem(value) => return Err(ConfigParseError::UnexpectedValue(value)),
+            Item::Slot(value, _) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_IMMEDIATE_TAG),
+                ))
+            }
+            Item::ValueItem(value) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_IMMEDIATE_TAG),
+                ))
+            }
         }
     }
 
@@ -285,8 +309,18 @@ fn try_interval_strat_from_items(
                 }
                 _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_INTERVAL_TAG)),
             },
-            Item::Slot(value, _) => return Err(ConfigParseError::UnexpectedValue(value)),
-            Item::ValueItem(value) => return Err(ConfigParseError::UnexpectedValue(value)),
+            Item::Slot(value, _) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_INTERVAL_TAG),
+                ))
+            }
+            Item::ValueItem(value) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_INTERVAL_TAG),
+                ))
+            }
         }
     }
 
@@ -342,8 +376,18 @@ fn try_exponential_strat_from_items(
                 }
                 _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_EXPONENTIAL_TAG)),
             },
-            Item::Slot(value, _) => return Err(ConfigParseError::UnexpectedValue(value)),
-            Item::ValueItem(value) => return Err(ConfigParseError::UnexpectedValue(value)),
+            Item::Slot(value, _) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_EXPONENTIAL_TAG),
+                ))
+            }
+            Item::ValueItem(value) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_EXPONENTIAL_TAG),
+                ))
+            }
         }
     }
 

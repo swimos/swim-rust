@@ -1,170 +1,302 @@
-use crate::configuration::downlink::ConfigHierarchy;
+use crate::configuration::downlink::{
+    BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, MuxMode, OnInvalidMessage,
+};
+use crate::configuration::router::RouterParams;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::interface::SwimClient;
 use common::model::parser::parse_single;
+use common::warp::path::AbsolutePath;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::num::NonZeroUsize;
+use tokio::time::Duration;
+use url::Url;
+use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 #[test]
-fn from_string() {
-    let config = parse_single(
-        "@config {
-    @client {
-        buffer_size: 2
-        router: @params {
-            retry_strategy: @exponential(max_interval: 16, max_backoff: 300, retry_no: 0),
-            idle_timeout: 60
-            conn_reaper_frequency: 60
-            buffer_size: 100
-        }
-    }
-    @downlinks {
-        back_pressure: \"propagate\"
-        queue_size: 5
-        idle_timeout: 60000
-        buffer_size: 5
-        on_invalid: \"terminate\"
-        yield_after: 256
-    }
-}",
-    );
+fn test_conf_from_file_default_manual() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/valid/default-config-manual.recon")
+            .unwrap();
 
-    println!("{:?}", config)
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, false).unwrap();
+
+    let expected = ConfigHierarchy::default();
+
+    assert_eq!(config, expected)
 }
 
 #[test]
-fn from_file() {
+fn test_conf_from_file_default_automatic() {
     let mut file =
-        fs::File::open("client/src/configuration/tests/resources/test_config.recon").unwrap();
+        fs::File::open("src/configuration/tests/resources/valid/default-config-manual.recon")
+            .unwrap();
 
     let mut contents = String::new();
-
     file.read_to_string(&mut contents).unwrap();
-
     let config = parse_single(&contents).unwrap();
-
     let config = ConfigHierarchy::try_from_value(config, true).unwrap();
 
-    let default_config = ConfigHierarchy::default();
+    let expected = ConfigHierarchy::default();
 
-    println!("{:?}", config);
-    println!("{:?}", default_config);
-    assert_eq!(config, default_config)
+    assert_eq!(config, expected)
 }
 
 #[test]
-fn test_from_file_invalid_value() {
+fn test_conf_from_file_default_mixed() {
     let mut file =
-        fs::File::open("client/src/configuration/tests/resources/invalid-value.recon").unwrap();
+        fs::File::open("src/configuration/tests/resources/valid/default-config-manual.recon")
+            .unwrap();
+
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let expected = ConfigHierarchy::default();
 
-    if let Err(err) = result {
-        assert_eq!(
-            err.to_string(),
-            "Invalid value \"test\" for \"buffer_size\"."
+    assert_eq!(config, expected)
+}
+
+#[test]
+fn test_conf_from_file_retry_exponential() {
+    let mut file = fs::File::open(
+        "src/configuration/tests/resources/valid/client-config-retry-exponential.recon",
+    )
+    .unwrap();
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+
+    let expected = ConfigHierarchy::new(
+        ClientParams::new(
+            NonZeroUsize::new(2).unwrap(),
+            RouterParams::new(
+                RetryStrategy::exponential(Duration::from_secs(30), Quantity::Infinite),
+                Duration::from_secs(100),
+                Duration::from_secs(6000),
+                NonZeroUsize::new(15).unwrap(),
+            ),
+        ),
+        Default::default(),
+    );
+
+    assert_eq!(config, expected)
+}
+
+#[test]
+fn test_conf_from_file_retry_immediate() {
+    let mut file = fs::File::open(
+        "src/configuration/tests/resources/valid/client-config-retry-immediate.recon",
+    )
+    .unwrap();
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+
+    let expected = ConfigHierarchy::new(
+        ClientParams::new(
+            NonZeroUsize::new(2).unwrap(),
+            RouterParams::new(
+                RetryStrategy::immediate(NonZeroUsize::new(10).unwrap()),
+                Duration::from_secs(100),
+                Duration::from_secs(6000),
+                NonZeroUsize::new(15).unwrap(),
+            ),
+        ),
+        Default::default(),
+    );
+
+    assert_eq!(config, expected)
+}
+
+#[test]
+fn test_conf_from_file_retry_interval() {
+    let mut file = fs::File::open(
+        "src/configuration/tests/resources/valid/client-config-retry-interval.recon",
+    )
+    .unwrap();
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+
+    let expected = ConfigHierarchy::new(
+        ClientParams::new(
+            NonZeroUsize::new(2).unwrap(),
+            RouterParams::new(
+                RetryStrategy::interval(Duration::from_secs(5), Quantity::Infinite),
+                Duration::from_secs(100),
+                Duration::from_secs(6000),
+                NonZeroUsize::new(15).unwrap(),
+            ),
+        ),
+        Default::default(),
+    );
+
+    assert_eq!(config, expected)
+}
+
+#[test]
+fn test_conf_from_file_retry_none() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/valid/client-config-retry-none.recon")
+            .unwrap();
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+
+    let expected = ConfigHierarchy::new(
+        ClientParams::new(
+            NonZeroUsize::new(2).unwrap(),
+            RouterParams::new(
+                RetryStrategy::none(),
+                Duration::from_secs(100),
+                Duration::from_secs(6000),
+                NonZeroUsize::new(15).unwrap(),
+            ),
+        ),
+        Default::default(),
+    );
+
+    assert_eq!(config, expected)
+}
+
+fn create_full_config() -> ConfigHierarchy {
+    let mut config = ConfigHierarchy::new(
+        ClientParams::new(
+            NonZeroUsize::new(5).unwrap(),
+            RouterParams::new(
+                RetryStrategy::immediate(NonZeroUsize::new(10).unwrap()),
+                Duration::from_secs(15),
+                Duration::from_secs(22),
+                NonZeroUsize::new(50).unwrap(),
+            ),
+        ),
+        DownlinkParams::new(
+            BackpressureMode::Release {
+                input_buffer_size: NonZeroUsize::new(15).unwrap(),
+                bridge_buffer_size: NonZeroUsize::new(15).unwrap(),
+                max_active_keys: NonZeroUsize::new(15).unwrap(),
+                yield_after: NonZeroUsize::new(15).unwrap(),
+            },
+            MuxMode::Buffered(NonZeroUsize::new(10).unwrap()),
+            Duration::from_secs(30000),
+            10,
+            OnInvalidMessage::Ignore,
+            512,
         )
-    } else {
-        panic!("Expected configuration parser error!")
-    }
-}
+        .unwrap(),
+    );
 
-#[test]
-fn test_from_file_unexpected_slot() {
-    let mut file =
-        fs::File::open("client/src/configuration/tests/resources/unexpected-slot.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
-
-    let result = ConfigHierarchy::try_from_value(config, false);
-
-    if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected slot \"\"@client\":{\"32\"}\".")
-    } else {
-        panic!("Expected configuration parser error!")
-    }
-}
-
-#[test]
-fn test_from_file_unexpected_key() {
-    let mut file =
-        fs::File::open("client/src/configuration/tests/resources/unexpected-key.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
-
-    let result = ConfigHierarchy::try_from_value(config, false);
-
-    if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected attribute \"@hello\".")
-    } else {
-        panic!("Expected configuration parser error!")
-    }
-}
-
-#[test]
-fn test_from_file_unexpected_value() {
-    let mut file =
-        fs::File::open("client/src/configuration/tests/resources/unexpected-value.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
-
-    let result = ConfigHierarchy::try_from_value(config, false);
-
-    if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected value \"2\".")
-    } else {
-        panic!("Expected configuration parser error!")
-    }
-}
-
-#[test]
-fn test_from_file_unnamed_record() {
-    let mut file =
-        fs::File::open("client/src/configuration/tests/resources/unnamed-attr.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
-
-    let result = ConfigHierarchy::try_from_value(config, false);
-
-    if let Err(err) = result {
-        assert_eq!(
-            err.to_string(),
-            "Unnamed record \"{@client{buffer_size:2}}\"."
+    config.for_host(
+        Url::parse("ws://127.0.0.1").unwrap(),
+        DownlinkParams::new(
+            BackpressureMode::Propagate,
+            MuxMode::Queue(NonZeroUsize::new(15).unwrap()),
+            Duration::from_secs(40000),
+            15,
+            OnInvalidMessage::Ignore,
+            200,
         )
-    } else {
-        panic!("Expected configuration parser error!")
-    }
+        .unwrap(),
+    );
+
+    config.for_host(
+        Url::parse("ws://127.0.0.2").unwrap(),
+        DownlinkParams::new(
+            BackpressureMode::Propagate,
+            MuxMode::Dropping,
+            Duration::from_secs(50000),
+            25,
+            OnInvalidMessage::Terminate,
+            300,
+        )
+        .unwrap(),
+    );
+
+    config.for_lane(
+        &AbsolutePath::new(Url::parse("ws://192.168.0.1").unwrap(), "bar", "baz"),
+        DownlinkParams::new(
+            BackpressureMode::Propagate,
+            MuxMode::Buffered(NonZeroUsize::new(10).unwrap()),
+            Duration::from_secs(90000),
+            40,
+            OnInvalidMessage::Ignore,
+            100,
+        )
+        .unwrap(),
+    );
+
+    config.for_lane(
+        &AbsolutePath::new(Url::parse("ws://192.168.0.2").unwrap(), "qux", "quz"),
+        DownlinkParams::new(
+            BackpressureMode::Release {
+                input_buffer_size: NonZeroUsize::new(20).unwrap(),
+                bridge_buffer_size: NonZeroUsize::new(20).unwrap(),
+                max_active_keys: NonZeroUsize::new(20).unwrap(),
+                yield_after: NonZeroUsize::new(20).unwrap(),
+            },
+            MuxMode::Buffered(NonZeroUsize::new(5).unwrap()),
+            Duration::from_secs(100000),
+            50,
+            OnInvalidMessage::Terminate,
+            600,
+        )
+        .unwrap(),
+    );
+
+    config
 }
 
 #[test]
-fn test_from_file_unexpected_attr() {
+fn test_conf_from_file_full_ordered() {
     let mut file =
-        fs::File::open("client/src/configuration/tests/resources/unexpected-attr.recon").unwrap();
+        fs::File::open("src/configuration/tests/resources/valid/client-config-full-ordered.recon")
+            .unwrap();
+
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, false).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let expected = create_full_config();
 
-    if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected attribute \"@configuration\".")
-    } else {
-        panic!("Expected configuration parser error!")
-    }
+    assert_eq!(config, expected)
+}
+
+#[test]
+fn test_conf_from_file_full_unordered() {
+    let mut file = fs::File::open(
+        "src/configuration/tests/resources/valid/client-config-full-unordered.recon",
+    )
+    .unwrap();
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+    let config = ConfigHierarchy::try_from_value(config, false).unwrap();
+
+    let expected = create_full_config();
+
+    assert_eq!(config, expected)
 }
 
 #[tokio::test]
 async fn test_client_file_conf_non_utf8_error() {
     let file =
-        File::open("client/src/configuration/tests/resources/non-utf-8-config.recon").unwrap();
+        File::open("src/configuration/tests/resources/invalid/non-utf-8-config.recon").unwrap();
     let result = SwimClient::new_with_file(file, false, TungsteniteWsFactory::new(5).await).await;
 
     if let Err(err) = result {
@@ -180,7 +312,7 @@ async fn test_client_file_conf_non_utf8_error() {
 #[tokio::test]
 async fn test_client_file_conf_recon_error() {
     let file =
-        File::open("client/src/configuration/tests/resources/parse-err-config.recon").unwrap();
+        File::open("src/configuration/tests/resources/invalid/parse-err-config.recon").unwrap();
     let result = SwimClient::new_with_file(file, false, TungsteniteWsFactory::new(5).await).await;
 
     if let Err(err) = result {
@@ -193,8 +325,247 @@ async fn test_client_file_conf_recon_error() {
     }
 }
 
-// fn parse_config()
+#[test]
+fn test_conf_from_file_downlink_error() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/downlink-error.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
 
-// use std::env;
-// let path = env::current_dir().unwrap();
-// println!("The current directory is {}", path.display());
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Downlink error: Timeout must be positive.")
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_missing_attribute() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/missing-attr.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Missing \"@downlinks\" attribute in \"@config\"."
+        )
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_missing_key() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/missing-key.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Missing \"router\" key in \"@client\".")
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_invalid_key() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/invalid-key.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Invalid key \"foo-url\" in \"host\".")
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_invalid_value() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/invalid-value.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Invalid value \"test\" in \"buffer_size\"."
+        )
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unexpected_attr_top() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unexpected-attr-top.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Unexpected attribute \"@configuration\".")
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unexpected_attr_nested() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unexpected-attr-nested.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Unexpected attribute \"@hello\" in \"config\"."
+        )
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unexpected_slot() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unexpected-slot.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Unexpected slot \"\"@client\":{\"32\"}\" in \"config\"."
+        )
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unexpected_key() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unexpected-key.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Unexpected key \"hello\" in \"client\".")
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unexpected_value_top() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unexpected-value-top.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Unexpected value \"2\".")
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unexpected_value_nested() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unexpected-value-nested.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(err.to_string(), "Unexpected value \"2\" in \"client\".")
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unnamed_record_top() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unnamed-record-top.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Unnamed record \"{@client{buffer_size:2}}\"."
+        )
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_unnamed_record_nested() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/unnamed-record-nested.recon")
+            .unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Unnamed record \"{back_pressure:@propagate,mux_mode:@queue(queue_size:5),idle_timeout:60000,buffer_size:5,on_invalid:terminate,yield_after:256}\" in \"config\"."
+        )
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}

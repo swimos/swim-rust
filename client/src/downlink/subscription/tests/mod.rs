@@ -36,7 +36,7 @@ fn per_host_config() -> ConfigHierarchy {
     .unwrap();
 
     let mut conf = ConfigHierarchy::default();
-    conf.for_host(Url::parse("127.0.0.2").unwrap(), special_params);
+    conf.for_host(Url::parse("ws://127.0.0.2").unwrap(), special_params);
     conf
 }
 

@@ -131,7 +131,7 @@ impl SwimClient {
                 .map_err(|err| ClientError::ConfigError(ConfigParseError::ReconError(err)))?,
             use_defaults,
         )
-        .map_err(|err| ClientError::ConfigError(err))?;
+        .map_err(ClientError::ConfigError)?;
 
         Ok(SwimClient::new(config, connection_factory).await)
     }
