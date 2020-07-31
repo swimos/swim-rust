@@ -56,33 +56,33 @@ pub fn from_value(
                 while let Some(Attr { name, ref value }) = attr_it.next() {
                     match name.as_ref() {
                          #structure_name_str => match value {
-                            crate::model::Value::Record(_attrs, items) => {
+                            swim_common::model::Value::Record(_attrs, items) => {
                                 let mut iter_items = items.iter();
                                 while let Some(item) = iter_items.next() {
                                     match item {
                                         #headers
-                                        i => return Err(crate::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
+                                        i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
                                     }
                                 }
                             }
-                            crate::model::Value::Extant => {},
-                            _ => return Err(crate::form::FormErr::Malformatted),
+                            swim_common::model::Value::Extant => {},
+                            _ => return Err(swim_common::form::FormErr::Malformatted),
                         },
                         #attributes
-                        _ => return Err(crate::form::FormErr::MismatchedTag),
+                        _ => return Err(swim_common::form::FormErr::MismatchedTag),
                     }
                 }
             };
 
             quote! {
                 match value {
-                    crate::model::Value::Record(attrs, items) => {
+                    swim_common::model::Value::Record(attrs, items) => {
                         #field_opts
                         #attrs
                         #items
                         #self_members
                     }
-                    _ => return Err(crate::form::FormErr::Message(String::from("Expected record"))),
+                    _ => return Err(swim_common::form::FormErr::Message(String::from("Expected record"))),
                 }
             }
         }
@@ -112,27 +112,27 @@ pub fn from_value(
                     while let Some(Attr { name, ref value }) = attr_it.next() {
                         match name.as_ref() {
                              #variant_name_str => match value {
-                                crate::model::Value::Record(_attrs, items) => {
+                                swim_common::model::Value::Record(_attrs, items) => {
                                     let mut iter_items = items.iter();
                                     while let Some(item) = iter_items.next() {
                                         match item {
                                             #headers
-                                            i => return Err(crate::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
+                                            i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
                                         }
                                     }
                                 }
-                                crate::model::Value::Extant => {},
-                                _ => return Err(crate::form::FormErr::Malformatted),
+                                swim_common::model::Value::Extant => {},
+                                _ => return Err(swim_common::form::FormErr::Malformatted),
                             },
                             #attributes
-                            _ => return Err(crate::form::FormErr::MismatchedTag),
+                            _ => return Err(swim_common::form::FormErr::MismatchedTag),
                         }
                     }
                 };
 
                 quote! {
                     #ts
-                    Some(crate::model::Attr { name, value }) if name == #variant_name_str => {
+                    Some(swim_common::model::Attr { name, value }) if name == #variant_name_str => {
                         #field_opts
                         #attrs
                         #items
@@ -142,11 +142,11 @@ pub fn from_value(
             });
             quote! {
                 match value {
-                    crate::model::Value::Record(attrs, items) => match attrs.first() {
+                    swim_common::model::Value::Record(attrs, items) => match attrs.first() {
                         #arms
-                        _ => return Err(crate::form::FormErr::MismatchedTag),
+                        _ => return Err(swim_common::form::FormErr::MismatchedTag),
                     }
-                    _ => return Err(crate::form::FormErr::Message(String::from("Expected record"))),
+                    _ => return Err(swim_common::form::FormErr::Message(String::from("Expected record"))),
                 }
             }
         }
@@ -193,13 +193,13 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
 
                             quote! {
                                 #field_assignments
-                                #ident: #name.ok_or(crate::form::FormErr::Message(String::from(#name_str)))?,
+                                #ident: #name.ok_or(swim_common::form::FormErr::Message(String::from(#name_str)))?,
                             }
                         }
                         _ => {
                             quote! {
                                 #field_assignments
-                                #name.ok_or(crate::form::FormErr::Malformatted)?,
+                                #name.ok_or(swim_common::form::FormErr::Malformatted)?,
                             }
                         }
                     };
@@ -233,9 +233,9 @@ fn parse_elements(
 
                          #name_str => {
                             if #ident.is_some() {
-                                return Err(crate::form::FormErr::DuplicateField(String::from(#name_str)));
+                                return Err(swim_common::form::FormErr::DuplicateField(String::from(#name_str)));
                             } else {
-                                #ident = std::option::Option::Some(crate::form::Form::try_from_value(value)?);
+                                #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(value)?);
                             }
                         }
                     });
@@ -245,11 +245,11 @@ fn parse_elements(
                         streams.transform_items(|items| {
                             quote! {
                                 #items
-                                crate::model::Item::Slot(crate::model::Value::Text(name), v) if name == #name_str => {
+                                swim_common::model::Item::Slot(swim_common::model::Value::Text(name), v) if name == #name_str => {
                                     if #ident.is_some() {
-                                        return Err(crate::form::FormErr::DuplicateField(String::from(#name_str)));
+                                        return Err(swim_common::form::FormErr::DuplicateField(String::from(#name_str)));
                                     } else {
-                                        #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                        #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                     }
                                 }
                             }
@@ -269,8 +269,8 @@ fn parse_elements(
                             streams.transform_items(|items| {
                                 quote! {
                                     #items
-                                    crate::model::Item::ValueItem(v) if #ident.is_none() => {
-                                        #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                    swim_common::model::Item::ValueItem(v) if #ident.is_none() => {
+                                        #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                     }
                                 }
                             });
@@ -289,11 +289,11 @@ fn parse_elements(
 
                     streams.transform_headers(|headers|
                         quote! {
-                            crate::model::Item::ValueItem(v) => {
+                            swim_common::model::Item::ValueItem(v) => {
                                 if #ident.is_some() {
-                                    return Err(crate::form::FormErr::DuplicateField(String::from(#field_name_str)));
+                                    return Err(swim_common::form::FormErr::DuplicateField(String::from(#field_name_str)));
                                 } else {
-                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                    #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                 }
                             }
                     });
@@ -303,8 +303,8 @@ fn parse_elements(
 
                     streams.transform_items(|items| quote! {
                         #ident = {
-                            let rec = crate::model::Value::Record(Vec::new(), items.to_vec());
-                            std::option::Option::Some(crate::form::Form::try_from_value(&rec)?)
+                            let rec = swim_common::model::Value::Record(Vec::new(), items.to_vec());
+                            std::option::Option::Some(swim_common::form::Form::try_from_value(&rec)?)
                         };
                     })
                 }
@@ -318,8 +318,8 @@ fn parse_elements(
                     match &f.name {
                         FieldName::Renamed(name, _) => {
                             streams.transform_headers(|headers| quote! {
-                                crate::model::Item::Slot(crate::model::Value::Text(name), ref v) if name == #name => {
-                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #name => {
+                                    #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                 }
                                 #headers
                             });
@@ -327,16 +327,16 @@ fn parse_elements(
                         FieldName::Named(field_ident) => {
                             let ident_str = field_ident.to_string();
                             streams.transform_headers(|headers| quote! {
-                                crate::model::Item::Slot(crate::model::Value::Text(name), ref v) if name == #ident_str => {
-                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #ident_str => {
+                                    #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                 }
                                 #headers
                             });
                         }
                         un @ FieldName::Unnamed(_) => {
                             streams.transform_headers(|headers| quote! {
-                                crate::model::Item::Slot(crate::model::Value::Text(name), ref v) if name == #field_name_str => {
-                                    #ident = std::option::Option::Some(crate::form::Form::try_from_value(v)?);
+                                swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #field_name_str => {
+                                    #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                 }
                                 #headers
                             });
@@ -354,7 +354,7 @@ fn parse_elements(
                 while let Some(item) = items_iter.next() {
                     match item {
                         #items
-                        i => return Err(crate::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
+                        i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
                     }
                 }
             }
