@@ -149,7 +149,8 @@ impl<K, V> MapUpdate<K, V> {
 /// A single event that occurred during a transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MapLaneEvent<K, V> {
-    /// A coordination checkpoint was encountered in the stream.
+    /// A coordination checkpoint was encountered in the stream. For an explanation of checkpoints,
+    /// see [`crate::agent::lane::channels::uplink::map::sync_map_lane`].
     Checkpoint(u64),
     /// The map as cleared.
     Clear,
