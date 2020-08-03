@@ -38,6 +38,12 @@ pub enum FormErr {
     DuplicateField(String),
 }
 
+impl FormErr {
+    pub fn incorrect_type(expected: &'static str, actual: &Value) -> FormErr {
+        FormErr::IncorrectType(format!("Expected: {}, found: {}", expected, actual.kind()))
+    }
+}
+
 impl Error for FormErr {}
 
 impl Display for FormErr {

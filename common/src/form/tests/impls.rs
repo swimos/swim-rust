@@ -113,6 +113,7 @@ mod primitive {
 
 mod collections {
     use super::*;
+    use im::HashMap;
 
     #[test]
     fn test_opt_none() {
@@ -142,6 +143,7 @@ mod collections {
         let value = vec.as_value();
 
         assert_eq!(value, expected());
+        assert_eq!(Vec::try_from_value(&value), Ok(vec))
     }
 
     #[test]
@@ -157,6 +159,7 @@ mod collections {
         sort_record(&mut value);
 
         assert_eq!(value, expected());
+        assert_eq!(ImHashSet::try_from_value(&value), Ok(hs))
     }
 
     #[test]
@@ -169,7 +172,9 @@ mod collections {
         os.insert(5);
 
         let value = os.as_value();
+
         assert_eq!(value, expected());
+        assert_eq!(OrdSet::try_from_value(&value), Ok(os));
     }
 
     #[test]
@@ -182,7 +187,9 @@ mod collections {
         vec.push_back(5);
 
         let value = vec.as_value();
+
         assert_eq!(value, expected());
+        assert_eq!(VecDeque::try_from_value(&value), Ok(vec));
     }
 
     #[test]
@@ -210,7 +217,9 @@ mod collections {
         bts.insert(5);
 
         let value = bts.as_value();
+
         assert_eq!(value, expected());
+        assert_eq!(BTreeSet::try_from_value(&value), Ok(bts));
     }
 
     #[test]
@@ -226,6 +235,7 @@ mod collections {
         sort_record(&mut value);
 
         assert_eq!(value, expected());
+        assert_eq!(HashSet::try_from_value(&value), Ok(hs));
     }
 
     #[test]
@@ -240,6 +250,7 @@ mod collections {
         let value = ll.as_value();
 
         assert_eq!(value, expected());
+        assert_eq!(LinkedList::try_from_value(&value), Ok(ll))
     }
 
     #[test]
@@ -263,6 +274,7 @@ mod collections {
         sort_record(&mut value);
 
         assert_eq!(value, expected);
+        assert_eq!(HashMap::try_from_value(&value), Ok(hm));
     }
 
     #[test]
@@ -285,6 +297,7 @@ mod collections {
         ]);
 
         assert_eq!(value, expected);
+        assert_eq!(BTreeMap::try_from_value(&value), Ok(btm));
     }
 
     fn expected() -> Value {
