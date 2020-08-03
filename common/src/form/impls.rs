@@ -456,19 +456,19 @@ macro_rules! impl_seq_form {
                 match value {
                     Value::Record(_attrs, items) => {
                         let elems =
-                            items
-                                .iter()
-                                .try_fold(Vec::with_capacity(items.len()), |mut items, i| {
-                                    let value = match i {
-                                        Item::Slot(_key, value) => value,
-                                        Item::ValueItem(value) => value,
-                                    };
+                                items
+                                    .iter()
+                                    .try_fold(Vec::with_capacity(items.len()), |mut items, i| {
+                                        let value = match i {
+                                            Item::Slot(_key, value) => value,
+                                            Item::ValueItem(value) => value,
+                                        };
 
-                                    let v = V::try_from_value(value)?;
-                                    items.push(v);
+                                        let v = V::try_from_value(value)?;
+                                        items.push(v);
 
-                                    Ok(items)
-                                })?;
+                                        Ok(items)
+                                    })?;
 
                         Ok($ty::from_iter(elems))
                     }
@@ -502,13 +502,13 @@ macro_rules! impl_map_form {
                 let it = self.iter();
 
                 let vec = match it.size_hint() {
-                 (l, Some(u)) if l == u => Vec::with_capacity(u),
-                 _ => Vec::new(),
+                    (l, Some(u)) if l == u => Vec::with_capacity(u),
+                    _ => Vec::new(),
                 };
 
                 let items = it.fold(vec, |mut items, (key, value)| {
-                 items.push(Item::slot(key.as_value(), value.as_value()));
-                 items
+                    items.push(Item::slot(key.as_value(), value.as_value()));
+                    items
                 });
 
                 Value::Record(Vec::new(), items)
@@ -518,22 +518,22 @@ macro_rules! impl_map_form {
                 match value {
                     Value::Record(_attrs, items) => {
                         let elems =
-                            items
-                                .iter()
-                                .try_fold(Vec::with_capacity(items.len()), |mut items, i| {
-                                    match i {
-                                        Item::Slot(key, value) => {
-                                            let k = K::try_from_value(key)?;
-                                            let v = V::try_from_value(value)?;
-                                            items.push((k, v));
+                                items
+                                    .iter()
+                                    .try_fold(Vec::with_capacity(items.len()), |mut items, i| {
+                                        match i {
+                                            Item::Slot(key, value) => {
+                                                let k = K::try_from_value(key)?;
+                                                let v = V::try_from_value(value)?;
+                                                items.push((k, v));
 
-                                            Ok(items)
-                                        },
-                                        Item::ValueItem(_) => {
-                                            Err(FormErr::IncorrectType(String::from("Expected a key-value pair")))
-                                        },
-                                    }
-                                })?;
+                                                Ok(items)
+                                            },
+                                            Item::ValueItem(_) => {
+                                                Err(FormErr::IncorrectType(String::from("Expected a key-value pair")))
+                                            },
+                                        }
+                                    })?;
 
                         Ok($ty::from_iter(elems))
                     }
