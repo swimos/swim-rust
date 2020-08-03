@@ -20,6 +20,7 @@ use syn::{Lit, Meta, NestedMeta};
 
 use macro_helpers::{get_attribute_meta, StructureKind, Symbol};
 use macro_helpers::{CompoundType, Context, FieldName};
+use syn::export::TokenStream2;
 
 pub const FORM_PATH: Symbol = Symbol("form");
 pub const HEADER_PATH: Symbol = Symbol("header");
@@ -30,6 +31,39 @@ pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
 pub const RENAME_PATH: Symbol = Symbol("rename");
 pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
+
+#[derive(Default)]
+pub struct RecordTokenStreams {
+    pub headers: TokenStream2,
+    pub attributes: TokenStream2,
+    pub items: TokenStream2,
+}
+
+impl RecordTokenStreams {
+    pub fn transform_items<F>(&mut self, f: F)
+    where
+        F: FnOnce(&TokenStream2) -> TokenStream2,
+    {
+        let items = &self.items;
+        self.items = f(items);
+    }
+
+    pub fn transform_attrs<F>(&mut self, f: F)
+    where
+        F: FnOnce(&TokenStream2) -> TokenStream2,
+    {
+        let attrs = &self.attributes;
+        self.attributes = f(attrs);
+    }
+
+    pub fn transform_headers<F>(&mut self, f: F)
+    where
+        F: FnOnce(&TokenStream2) -> TokenStream2,
+    {
+        let headers = &self.headers;
+        self.headers = f(headers);
+    }
+}
 
 pub enum TypeContents<'t> {
     Enum(Vec<EnumVariant<'t>>),

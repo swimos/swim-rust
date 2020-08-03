@@ -13,15 +13,14 @@
 // limitations under the License.
 
 use proc_macro2::Ident;
-use quote::ToTokens;
 use syn::export::TokenStream2;
 use syn::spanned::Spanned;
 
 use macro_helpers::{CompoundType, FieldName};
 
-use crate::parser::FieldKind::Attr;
-use crate::parser::{Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents};
-use crate::RecordTokenStreams;
+use crate::parser::{
+    Field, FieldKind, FieldManifest, FormDescriptor, RecordTokenStreams, TypeContents,
+};
 
 pub fn from_value(
     type_contents: &TypeContents,
@@ -34,10 +33,10 @@ pub fn from_value(
             let field_manifest = &repr.manifest;
             let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
             let RecordTokenStreams {
-                mut headers,
-                mut attributes,
-                mut items,
-            } = parse_elements(&repr.fields, &descriptor.name.tag_ident, field_manifest);
+                headers,
+                attributes,
+                items,
+            } = parse_elements(&repr.fields, field_manifest);
 
             let self_members = match &repr.compound_type {
                 CompoundType::Struct => {
@@ -51,28 +50,7 @@ pub fn from_value(
                 _ => quote!(Ok(#structure_name(#field_assignments))),
             };
 
-            let attrs = quote! {
-                let mut attr_it = attrs.iter();
-                while let Some(Attr { name, ref value }) = attr_it.next() {
-                    match name.as_ref() {
-                         #structure_name_str => match value {
-                            swim_common::model::Value::Record(_attrs, items) => {
-                                let mut iter_items = items.iter();
-                                while let Some(item) = iter_items.next() {
-                                    match item {
-                                        #headers
-                                        i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
-                                    }
-                                }
-                            }
-                            swim_common::model::Value::Extant => {},
-                            _ => return Err(swim_common::form::FormErr::Malformatted),
-                        },
-                        #attributes
-                        _ => return Err(swim_common::form::FormErr::MismatchedTag),
-                    }
-                }
-            };
+            let attrs = build_attr_quote(&structure_name_str, &headers, &attributes);
 
             quote! {
                 match value {
@@ -94,10 +72,10 @@ pub fn from_value(
                     parse_fields(&variant.fields, &variant.compound_type);
 
                 let RecordTokenStreams {
-                    mut headers,
-                    mut attributes,
-                    mut items,
-                } = parse_elements(&variant.fields, &variant_ident, &variant.manifest);
+                    headers,
+                    attributes,
+                    items,
+                } = parse_elements(&variant.fields, &variant.manifest);
 
                 let self_members = match &variant.compound_type {
                     CompoundType::Struct => {
@@ -107,28 +85,7 @@ pub fn from_value(
                     _ => quote!((#field_assignments)),
                 };
 
-                let attrs = quote! {
-                    let mut attr_it = attrs.iter();
-                    while let Some(Attr { name, ref value }) = attr_it.next() {
-                        match name.as_ref() {
-                             #variant_name_str => match value {
-                                swim_common::model::Value::Record(_attrs, items) => {
-                                    let mut iter_items = items.iter();
-                                    while let Some(item) = iter_items.next() {
-                                        match item {
-                                            #headers
-                                            i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
-                                        }
-                                    }
-                                }
-                                swim_common::model::Value::Extant => {},
-                                _ => return Err(swim_common::form::FormErr::Malformatted),
-                            },
-                            #attributes
-                            _ => return Err(swim_common::form::FormErr::MismatchedTag),
-                        }
-                    }
-                };
+                let attrs = build_attr_quote(&variant_name_str, &headers, &attributes);
 
                 quote! {
                     #ts
@@ -148,6 +105,35 @@ pub fn from_value(
                     }
                     _ => return Err(swim_common::form::FormErr::Message(String::from("Expected record"))),
                 }
+            }
+        }
+    }
+}
+
+fn build_attr_quote(
+    name_str: &String,
+    headers: &TokenStream2,
+    attributes: &TokenStream2,
+) -> TokenStream2 {
+    quote! {
+        let mut attr_it = attrs.iter();
+        while let Some(Attr { name, ref value }) = attr_it.next() {
+            match name.as_ref() {
+                 #name_str => match value {
+                    swim_common::model::Value::Record(_attrs, items) => {
+                        let mut iter_items = items.iter();
+                        while let Some(item) = iter_items.next() {
+                            match item {
+                                #headers
+                                i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
+                            }
+                        }
+                    }
+                    swim_common::model::Value::Extant => {},
+                    _ => return Err(swim_common::form::FormErr::Malformatted),
+                },
+                #attributes
+                _ => return Err(swim_common::form::FormErr::MismatchedTag),
             }
         }
     }
@@ -211,15 +197,10 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
     )
 }
 
-fn parse_elements(
-    fields: &[Field],
-    structure_name: &Ident,
-    field_manifest: &FieldManifest,
-) -> RecordTokenStreams {
+fn parse_elements(fields: &[Field], field_manifest: &FieldManifest) -> RecordTokenStreams {
     let mut streams = fields
         .iter()
         .fold(RecordTokenStreams::default(), |mut streams, f| {
-            let ty = &f.original.ty;
             let name = f.name.as_ident();
             let ident = Ident::new(&format!("__opt_{}", name), f.original.span());
 
@@ -263,7 +244,7 @@ fn parse_elements(
                         FieldName::Renamed(name, _) => {
                             build_named_ident(name.to_string(), ident);
                         }
-                        un @ FieldName::Unnamed(_) => {
+                        FieldName::Unnamed(_) => {
 
                             // todo: remove from iterator block to remove option checks.
                             streams.transform_items(|items| {
@@ -278,16 +259,9 @@ fn parse_elements(
                     }
                 }
                 FieldKind::HeaderBody => {
-                    let structure_name_str = structure_name.to_string();
-                    let missing_field_msg = format!("Missing field: {}", "name");
-
-                    // Unnamed fields won't compile so there's no point in checking.
-                    let field_name = f.name.as_ident();
                     let field_name_str = f.name.to_string();
 
-                    let ty = f.original.ty.to_token_stream().to_string();
-
-                    streams.transform_headers(|headers|
+                    streams.transform_headers(|_headers|
                         quote! {
                             swim_common::model::Item::ValueItem(v) => {
                                 if #ident.is_some() {
@@ -299,9 +273,7 @@ fn parse_elements(
                     });
                 }
                 FieldKind::Body => {
-                    let ty = f.original.ty.to_token_stream().to_string();
-
-                    streams.transform_items(|items| quote! {
+                    streams.transform_items(|_items| quote! {
                         #ident = {
                             let rec = swim_common::model::Value::Record(Vec::new(), items.to_vec());
                             std::option::Option::Some(swim_common::form::Form::try_from_value(&rec)?)
@@ -310,8 +282,6 @@ fn parse_elements(
                 }
                 FieldKind::Skip => {}
                 _ => {
-                    let structure_name_str = structure_name.to_string();
-                    let missing_field_msg = format!("Missing field: {}", "name");
                     // Unnamed fields won't compile so there's no need in checking the name variant
                     let field_name_str = f.name.to_string();
 
@@ -333,7 +303,7 @@ fn parse_elements(
                                 #headers
                             });
                         }
-                        un @ FieldName::Unnamed(_) => {
+                         FieldName::Unnamed(_) => {
                             streams.transform_headers(|headers| quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #field_name_str => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
