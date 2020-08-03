@@ -270,11 +270,8 @@ pub fn fields_from_ast<'t>(
                 },
             );
 
-            match &original.ty {
-                Type::Reference(_) => {
-                    ctx.error_spanned_by(original, "Borrowed fields are not allowed by forms")
-                }
-                _ => {}
+            if let Type::Reference(_) = &original.ty {
+                ctx.error_spanned_by(original, "Borrowed fields are not allowed by forms")
             }
 
             let name = renamed.unwrap_or_else(|| match &original.ident {

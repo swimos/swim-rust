@@ -111,7 +111,7 @@ pub fn from_value(
 }
 
 fn build_attr_quote(
-    name_str: &String,
+    name_str: &str,
     headers: &TokenStream2,
     attributes: &TokenStream2,
 ) -> TokenStream2 {
