@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use core::iter::FromIterator;
-use std::borrow::Cow;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::convert::TryFrom;
 use std::hash::BuildHasher;
@@ -31,8 +30,9 @@ use crate::model::blob::Blob;
 use crate::model::schema::StandardSchema;
 use crate::model::{Item, Value, ValueKind};
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
-impl<T: ?Sized> Form for PhantomData<T> {
+impl<F: ?Sized> Form for PhantomData<F> {
     fn as_value(&self) -> Value {
         Value::Extant
     }
@@ -42,6 +42,15 @@ impl<T: ?Sized> Form for PhantomData<T> {
             Value::Extant => Ok(Default::default()),
             v => Err(FormErr::incorrect_type("Value::Extant", v)),
         }
+    }
+}
+
+impl<F> ValidatedForm for PhantomData<F>
+where
+    F: ValidatedForm,
+{
+    fn schema() -> StandardSchema {
+        F::schema()
     }
 }
 
@@ -571,6 +580,28 @@ where
     }
 }
 
+impl<F> Form for RefCell<F>
+where
+    F: Form + Copy,
+{
+    fn as_value(&self) -> Value {
+        self.borrow_mut().as_value()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        F::try_from_value(value).map(RefCell::new)
+    }
+}
+
+impl<V> ValidatedForm for RefCell<V>
+where
+    V: ValidatedForm + Copy,
+{
+    fn schema() -> StandardSchema {
+        StandardSchema::Or(vec![V::schema(), StandardSchema::OfKind(ValueKind::Extant)])
+    }
+}
+
 impl<F> Form for Box<F>
 where
     F: Form,
@@ -615,24 +646,85 @@ where
     }
 }
 
-impl<'l, F> Form for Cow<'l, F>
-where
-    F: Form + Clone,
-{
+impl Form for AtomicBool {
     fn as_value(&self) -> Value {
-        (**self).as_value()
+        Value::BooleanValue(self.load(Ordering::SeqCst))
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        F::try_from_value(value).map(Cow::Owned)
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::BooleanValue(b) => Ok(AtomicBool::new(*b)),
+            v => Err(FormErr::incorrect_type("Value::BooleanValue", v)),
+        }
     }
 }
 
-impl<'l, F> ValidatedForm for Cow<'l, F>
-where
-    F: ValidatedForm + Clone,
-{
+impl ValidatedForm for AtomicBool {
     fn schema() -> StandardSchema {
-        F::schema()
+        StandardSchema::OfKind(ValueKind::Boolean)
+    }
+}
+
+impl Form for AtomicI32 {
+    fn as_value(&self) -> Value {
+        Value::Int32Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        i32::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicI32 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Int32)
+    }
+}
+
+impl Form for AtomicI64 {
+    fn as_value(&self) -> Value {
+        Value::Int64Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        i64::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicI64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Int64)
+    }
+}
+
+impl Form for AtomicU32 {
+    fn as_value(&self) -> Value {
+        Value::UInt32Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        u32::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicU32 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt32)
+    }
+}
+
+impl Form for AtomicU64 {
+    fn as_value(&self) -> Value {
+        Value::UInt64Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        u64::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicU64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt64)
     }
 }

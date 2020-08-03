@@ -21,6 +21,7 @@ use crate::model::{Attr, Item, Value};
 
 use crate::model::blob::Blob;
 use num_bigint::{BigInt, BigUint};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64};
 
 mod swim_common {
     pub use crate::*;
@@ -76,39 +77,143 @@ fn blob() {
 
 mod primitive {
     use super::*;
+    use std::cell::{Cell, RefCell};
+    use std::marker::PhantomData;
+    use std::sync::Arc;
 
     macro_rules! test_impl {
-        ($test_name:ident, $typ:expr, $expected:expr) => {
+        ($test_name:ident, $id:ident, $typ:expr, $expected:expr) => {
             #[test]
             fn $test_name() {
                 let value = $typ.as_value();
                 assert_eq!(value, $expected);
+                assert_eq!($id::try_from_value(&value), Ok($typ))
             }
         };
     }
 
-    test_impl!(test_bool, true, Value::BooleanValue(true));
-    test_impl!(test_i32, 100i32, Value::Int32Value(100));
-    test_impl!(test_i64, 100i64, Value::Int64Value(100));
-    test_impl!(test_u32, 100u32, Value::UInt32Value(100));
-    test_impl!(test_u64, 100u64, Value::UInt64Value(100));
-    test_impl!(test_f64, 100.0f64, Value::Float64Value(100.0));
-    test_impl!(test_opt_some, Some(100i32), Value::Int32Value(100));
+    test_impl!(test_bool, bool, true, Value::BooleanValue(true));
+    test_impl!(test_i32, i32, 100i32, Value::Int32Value(100));
+    test_impl!(test_i64, i64, 100i64, Value::Int64Value(100));
+    test_impl!(test_u32, u32, 100u32, Value::UInt32Value(100));
+    test_impl!(test_u64, u64, 100u64, Value::UInt64Value(100));
+    test_impl!(test_f64, f64, 100.0f64, Value::Float64Value(100.0));
+    test_impl!(test_opt_some, Option, Some(100i32), Value::Int32Value(100));
     test_impl!(
         test_string,
+        String,
         String::from("test"),
         Value::Text(String::from("test"))
     );
     test_impl!(
         test_bigint,
+        BigInt,
         BigInt::from(100),
         Value::BigInt(BigInt::from(100))
     );
     test_impl!(
         test_biguint,
+        BigUint,
         BigUint::from(100u32),
         Value::BigUint(BigUint::from(100u32))
     );
+
+    #[test]
+    fn test_atomic_bool() {
+        let value = AtomicBool::new(false).as_value();
+
+        assert_eq!(value, Value::BooleanValue(false));
+        assert_eq!(
+            *AtomicBool::try_from_value(&value).unwrap().get_mut(),
+            false
+        );
+    }
+
+    #[test]
+    fn test_atomic_i32() {
+        let value = AtomicI32::new(123).as_value();
+
+        assert_eq!(value, Value::Int32Value(123));
+        assert_eq!(*AtomicI32::try_from_value(&value).unwrap().get_mut(), 123);
+    }
+
+    #[test]
+    fn test_atomic_u32() {
+        let value = AtomicU32::new(123).as_value();
+
+        assert_eq!(value, Value::UInt32Value(123));
+        assert_eq!(*AtomicU32::try_from_value(&value).unwrap().get_mut(), 123);
+    }
+
+    #[test]
+    fn test_atomic_i64() {
+        let value = AtomicI64::new(-123).as_value();
+
+        assert_eq!(value, Value::Int64Value(-123));
+        assert_eq!(*AtomicI64::try_from_value(&value).unwrap().get_mut(), -123);
+
+        assert_eq!(
+            *AtomicI64::try_from_value(&Value::BigInt(BigInt::from(-10)))
+                .unwrap()
+                .get_mut(),
+            -10
+        );
+    }
+
+    #[test]
+    fn test_atomic_u64() {
+        let value = AtomicU64::new(123).as_value();
+
+        assert_eq!(value, Value::UInt64Value(123));
+        assert_eq!(*AtomicU64::try_from_value(&value).unwrap().get_mut(), 123);
+    }
+
+    #[test]
+    fn test_phantomdata() {
+        let pd: PhantomData<i32> = PhantomData::default();
+        let value = pd.as_value();
+
+        assert_eq!(value, Value::Extant);
+        assert_eq!(
+            PhantomData::<i32>::try_from_value(&value),
+            Ok(PhantomData::default())
+        );
+    }
+
+    #[test]
+    fn test_unit() {
+        let value = ().as_value();
+        assert_eq!(value, Value::Extant);
+        assert_eq!(<()>::try_from_value(&value), Ok(()));
+    }
+
+    #[test]
+    fn test_cell() {
+        let value = Cell::new(100).as_value();
+        assert_eq!(value, Value::Int32Value(100));
+        assert_eq!(Cell::try_from_value(&value), Ok(Cell::new(100)));
+    }
+
+    #[test]
+    fn test_refcell() {
+        let value = RefCell::new(100).as_value();
+        assert_eq!(value, Value::Int32Value(100));
+        assert_eq!(RefCell::try_from_value(&value), Ok(RefCell::new(100)));
+    }
+
+    #[test]
+    fn test_box() {
+        let value = Box::new(100).as_value();
+        assert_eq!(value, Value::Int32Value(100));
+        assert_eq!(Box::try_from_value(&value), Ok(Box::new(100)));
+    }
+
+    #[test]
+    fn test_arc() {
+        let value = Arc::new(100).as_value();
+        assert_eq!(value, Value::Int32Value(100));
+        assert_eq!(Arc::try_from_value(&value), Ok(Arc::new(100)));
+    }
 }
 
 mod collections {
