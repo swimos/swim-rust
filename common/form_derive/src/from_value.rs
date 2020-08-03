@@ -245,8 +245,6 @@ fn parse_elements(fields: &[Field], field_manifest: &FieldManifest) -> RecordTok
                             build_named_ident(name.to_string(), ident);
                         }
                         FieldName::Unnamed(_) => {
-
-                            // todo: remove from iterator block to remove option checks.
                             streams.transform_items(|items| {
                                 quote! {
                                     #items
@@ -282,7 +280,6 @@ fn parse_elements(fields: &[Field], field_manifest: &FieldManifest) -> RecordTok
                 }
                 FieldKind::Skip => {}
                 _ => {
-                    // Unnamed fields won't compile so there's no need in checking the name variant
                     let field_name_str = f.name.to_string();
 
                     match &f.name {

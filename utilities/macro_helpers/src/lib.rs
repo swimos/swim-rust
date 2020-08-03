@@ -117,6 +117,7 @@ impl ToTokens for FieldName {
     }
 }
 
+/// An error context for building errors while parsing a token stream.
 pub struct Context {
     errors: RefCell<Option<Vec<syn::Error>>>,
 }
@@ -130,6 +131,7 @@ impl Context {
 }
 
 impl Context {
+    /// Pushes an error into the context.
     pub fn error_spanned_by<A: ToTokens, T: Display>(&self, obj: A, msg: T) {
         self.errors
             .borrow_mut()
@@ -138,6 +140,7 @@ impl Context {
             .push(syn::Error::new_spanned(obj.into_token_stream(), msg));
     }
 
+    /// Consumes the context and returns the underlying errors.
     pub fn check(self) -> Result<(), Vec<syn::Error>> {
         let errors = self.errors.borrow_mut().take().unwrap();
         match errors.len() {
@@ -147,22 +150,25 @@ impl Context {
     }
 }
 
-pub fn fold_quote<L: IntoIterator, F>(init: TokenStream2, items: L, mut f: F) -> TokenStream2
-where
-    L::Item: ToTokens,
-    L::IntoIter: IntoIterator,
-    F: FnMut(L::Item, proc_macro2::TokenStream) -> proc_macro2::TokenStream,
-{
-    items.into_iter().fold(init, |result, item| f(item, result))
-}
-
+/// Consumes a vector of errors and produces a compiler error.
 pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
     let compile_errors = errors.iter().map(syn::Error::to_compile_error);
     quote!(#(#compile_errors)*)
 }
 
-#[allow(clippy::ptr_arg)]
-pub fn deconstruct_type(compound_type: &CompoundType, fields: &Vec<&FieldName>) -> TokenStream2 {
+/// Deconstructs a structure or enumeration into its fields. For example:
+/// ```
+/// struct S {
+///     a: i32,
+///     b: i32
+/// }
+/// ```
+///
+/// Will produce the following:
+/// ```compile_fail
+/// { a, b }
+/// ```
+pub fn deconstruct_type(compound_type: &CompoundType, fields: &[&FieldName]) -> TokenStream2 {
     let fields: Vec<_> = fields
         .iter()
         .map(|name| match &name {
@@ -187,12 +193,13 @@ pub fn deconstruct_type(compound_type: &CompoundType, fields: &Vec<&FieldName>) 
     }
 }
 
+/// Returns a vector of metadata that matches the provided path.
 pub fn get_attribute_meta(
     ctx: &Context,
     attr: &syn::Attribute,
-    symbol: Symbol,
+    path: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
-    if attr.path != symbol {
+    if attr.path != path {
         Ok(Vec::new())
     } else {
         match attr.parse_meta() {
@@ -200,7 +207,7 @@ pub fn get_attribute_meta(
             Ok(other) => {
                 ctx.error_spanned_by(
                     other,
-                    &format!("Invalid attribute. Expected #[{}(...)]", symbol),
+                    &format!("Invalid attribute. Expected #[{}(...)]", path),
                 );
                 Err(())
             }
