@@ -15,7 +15,7 @@
 use proc_macro2::Ident;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, Data};
+use syn::{Attribute, Data, Type};
 use syn::{Lit, Meta, NestedMeta};
 
 use macro_helpers::{get_attribute_meta, StructureKind, Symbol};
@@ -235,6 +235,13 @@ pub fn fields_from_ast<'t>(
                     manifest
                 },
             );
+
+            match &original.ty {
+                Type::Reference(_) => {
+                    ctx.error_spanned_by(original, "Borrowed fields are not allowed by forms")
+                }
+                _ => {}
+            }
 
             let name = renamed.unwrap_or_else(|| match &original.ident {
                 Some(ident) => FieldName::Named(ident.clone()),

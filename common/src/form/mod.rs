@@ -358,7 +358,7 @@ pub trait Form: Sized {
     }
 
     /// Attempt to create a new instance of this object from the provided [`Value`] instance.
-    fn try_from_value(value: &Value) -> Result<Self, FormErr>;
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr>;
 
     /// Consume the [`Value`] and attempt to create a new instance of this object from it.
     fn try_convert(value: Value) -> Result<Self, FormErr> {

@@ -30,30 +30,18 @@ use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
 use crate::model::schema::StandardSchema;
 use crate::model::{Item, Value, ValueKind};
+use std::marker::PhantomData;
 
-impl<'a, F> Form for &'a F
-where
-    F: Form,
-{
+impl<T: ?Sized> Form for PhantomData<T> {
     fn as_value(&self) -> Value {
-        (**self).as_value()
+        Value::Extant
     }
 
-    fn try_from_value<'f>(_value: &Value) -> Result<Self, FormErr> {
-        unimplemented!()
-    }
-}
-
-impl<'a, F> Form for &'a mut F
-where
-    F: Form,
-{
-    fn as_value(&self) -> Value {
-        (**self).as_value()
-    }
-
-    fn try_from_value<'f>(_value: &Value) -> Result<Self, FormErr> {
-        unimplemented!()
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Extant => Ok(Default::default()),
+            v => Err(FormErr::incorrect_type("Value::Extant", v)),
+        }
     }
 }
 
@@ -423,24 +411,6 @@ impl ValidatedForm for String {
     }
 }
 
-fn seq_to_record<V>(it: V) -> Value
-where
-    V: Iterator,
-    <V as Iterator>::Item: Form,
-{
-    let vec = match it.size_hint() {
-        (u, Some(r)) if u == r => Vec::with_capacity(r),
-        _ => Vec::new(),
-    };
-
-    let items = it.fold(vec, |mut items, i| {
-        items.push(Item::of(i.as_value()));
-        items
-    });
-
-    Value::Record(Vec::new(), items)
-}
-
 macro_rules! impl_seq_form {
     ($ty:ident < V $(: $tbound1:ident $(+ $tbound2:ident)*)* $(, $typaram:ident : $bound:ident $(+ $bound2:ident)*)* >) => {
         impl<V $(, $typaram)*> Form for $ty<V $(, $typaram)*>
@@ -449,7 +419,19 @@ macro_rules! impl_seq_form {
             $($typaram: Form + $bound $(+ $bound2)*,)*
         {
             fn as_value(&self) -> Value {
-                seq_to_record(self.iter())
+                let it = self.iter();
+
+                let vec = match it.size_hint() {
+                    (u, Some(r)) if u == r => Vec::with_capacity(r),
+                    _ => Vec::new(),
+                };
+
+                let items = it.fold(vec, |mut items, i| {
+                    items.push(Item::of(i.as_value()));
+                    items
+                });
+
+                Value::Record(Vec::new(), items)
             }
 
             fn try_from_value(value: &Value) -> Result<Self, FormErr> {

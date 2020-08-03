@@ -62,30 +62,30 @@ fn test_generic() {
     assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
-#[test]
-fn test_generic_lifetime() {
-    #[derive(Form)]
-    enum S<'l, F>
-    where
-        F: Form,
-    {
-        A { f: &'l F },
-    }
-
-    let int = 1;
-    let s = S::A { f: &int };
-
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("A")],
-            vec![Item::Slot(
-                Value::Text(String::from("f")),
-                Value::Int32Value(1)
-            ),]
-        )
-    )
-}
+// #[test]
+// fn test_generic_lifetime() {
+//     #[derive(Form)]
+//     enum S<'l, F>
+//     where
+//         F: Form,
+//     {
+//         A { f: &'l F },
+//     }
+//
+//     let int = 1;
+//     let s = S::A { f: &int };
+//
+//     assert_eq!(
+//         s.as_value(),
+//         Value::Record(
+//             vec![Attr::of("A")],
+//             vec![Item::Slot(
+//                 Value::Text(String::from("f")),
+//                 Value::Int32Value(1)
+//             ),]
+//         )
+//     )
+// }
 
 #[test]
 fn test_skip() {
