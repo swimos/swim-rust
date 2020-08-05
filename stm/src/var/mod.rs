@@ -312,7 +312,14 @@ impl<T> TVar<T> {
     pub fn same_var(this: &Self, other: &Self) -> bool {
         RwLock::same_lock(&this.0.guarded, &other.0.guarded)
     }
+
+    /// Lock the variable so no reads, writes or transactions can make progress.
+    pub async fn lock(&self) -> TVarLock {
+        TVarLock(self.0.guarded.write().await)
+    }
 }
+
+pub struct TVarLock(WriteGuard<TVarGuarded>);
 
 impl<T: Any + Send + Sync> TVar<T> {
     /// Load the value of the variable outside of a transaction.

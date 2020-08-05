@@ -21,6 +21,7 @@ use std::task::{Context, Poll};
 use swim_form::FormDeserializeErr;
 use tokio::sync::broadcast;
 
+pub mod channels;
 pub mod lifecycle;
 pub mod model;
 pub mod strategy;

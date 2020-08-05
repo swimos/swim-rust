@@ -19,13 +19,23 @@ use stm::transaction::atomically;
 #[test]
 fn default_summary() {
     let default: TransactionSummary<i32, String> = Default::default();
+    assert_eq!(default.coordination_id, 0);
     assert!(!default.clear);
     assert!(default.changes.is_empty());
 }
 
 #[test]
+fn summary_with_id() {
+    let with_id: TransactionSummary<i32, String> = TransactionSummary::with_id(67);
+    assert_eq!(with_id.coordination_id, 67);
+    assert!(!with_id.clear);
+    assert!(with_id.changes.is_empty());
+}
+
+#[test]
 fn create_clear_summary() {
     let summary: TransactionSummary<Value, String> = TransactionSummary::clear();
+    assert_eq!(summary.coordination_id, 0);
     assert!(summary.clear);
     assert!(summary.changes.is_empty());
 }
@@ -35,6 +45,7 @@ fn make_update() {
     let key = Value::Int32Value(2);
     let value = Arc::new(4);
     let summary = TransactionSummary::make_update(key.clone(), value.clone());
+    assert_eq!(summary.coordination_id, 0);
     assert!(!summary.clear);
     assert_eq!(summary.changes.len(), 1);
     assert!(
@@ -46,6 +57,7 @@ fn make_update() {
 fn make_removal() {
     let key = Value::Int32Value(2);
     let summary: TransactionSummary<Value, i32> = TransactionSummary::make_removal(key.clone());
+    assert_eq!(summary.coordination_id, 0);
     assert!(!summary.clear);
     assert_eq!(summary.changes.len(), 1);
     assert!(matches!(
@@ -60,6 +72,7 @@ fn update_existing_no_clear() {
     let value = Arc::new(4);
     let summary = TransactionSummary::default();
     let updated = summary.update(key.clone(), value.clone());
+    assert_eq!(updated.coordination_id, 0);
     assert!(!updated.clear);
     assert_eq!(updated.changes.len(), 1);
     assert!(
@@ -73,6 +86,7 @@ fn update_existing_clear() {
     let value = Arc::new(4);
     let summary = TransactionSummary::clear();
     let updated = summary.update(key.clone(), value.clone());
+    assert_eq!(updated.coordination_id, 0);
     assert!(updated.clear);
     assert_eq!(updated.changes.len(), 1);
     assert!(
@@ -89,6 +103,7 @@ fn remove_existing_no_clear() {
     let updated = summary
         .update(key.clone(), value.clone())
         .remove(key.clone());
+    assert_eq!(updated.coordination_id, 0);
     assert!(!updated.clear);
     assert_eq!(updated.changes.len(), 1);
     assert!(matches!(
@@ -106,6 +121,7 @@ fn remove_existing_clear() {
     let updated = summary
         .update(key.clone(), value.clone())
         .remove(key.clone());
+    assert_eq!(updated.coordination_id, 0);
     assert!(updated.clear);
     assert_eq!(updated.changes.len(), 1);
     assert!(matches!(
@@ -120,6 +136,7 @@ fn remove_non_existent_no_clear() {
 
     let summary: TransactionSummary<Value, i32> = TransactionSummary::default();
     let updated = summary.remove(key.clone());
+    assert_eq!(updated.coordination_id, 0);
     assert!(!updated.clear);
     assert_eq!(updated.changes.len(), 1);
     assert!(matches!(
@@ -134,12 +151,20 @@ fn remove_non_existent_clear() {
 
     let summary: TransactionSummary<Value, i32> = TransactionSummary::clear();
     let updated = summary.remove(key.clone());
+    assert_eq!(updated.coordination_id, 0);
     assert!(updated.clear);
     assert_eq!(updated.changes.len(), 1);
     assert!(matches!(
         updated.changes.get(&key),
         Some(EntryModification::Remove)
     ));
+}
+
+#[test]
+fn to_events_checkpoint() {
+    let with_id: TransactionSummary<i32, String> = TransactionSummary::with_id(67);
+    let events = with_id.to_events();
+    assert!(matches!(events.as_slice(), [MapLaneEvent::Checkpoint(67)]));
 }
 
 #[test]
@@ -194,7 +219,12 @@ async fn clear_summary_transaction() {
 
     let after = var.load().await;
     match after.as_ref() {
-        TransactionSummary { clear, changes } => {
+        TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } => {
+            assert_eq!(*coordination_id, 0);
             assert!(*clear);
             assert!(changes.is_empty());
         }
@@ -222,7 +252,12 @@ async fn update_summary_transaction() {
 
     let after = var.load().await;
     match after.as_ref() {
-        TransactionSummary { clear, changes } => {
+        TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } => {
+            assert_eq!(*coordination_id, 0);
             assert!(!*clear);
             assert_eq!(changes.len(), 2);
             assert!(
@@ -254,7 +289,12 @@ async fn remove_summary_transaction() {
 
     let after = var.load().await;
     match after.as_ref() {
-        TransactionSummary { clear, changes } => {
+        TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } => {
+            assert_eq!(*coordination_id, 0);
             assert!(!*clear);
             assert_eq!(changes.len(), 2);
             assert!(

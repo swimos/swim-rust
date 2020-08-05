@@ -666,3 +666,21 @@ async fn modify_direct_none_buffered() {
     let (lane, events) = make_lane_model(Buffered::default());
     modify_direct_none(lane, events).await;
 }
+
+#[tokio::test]
+async fn checkpoint_map() {
+    let (lane, mut events) = make_lane_model(Queue::default());
+
+    populate(&lane, &mut events).await;
+
+    let result = atomically(&lane.checkpoint(12), ExactlyOnce).await;
+
+    assert!(result.is_ok());
+    let result_map = result.unwrap();
+    assert_eq!(result_map.len(), 2);
+    assert!(result_map.contains_key(&Value::Int32Value(1)));
+    assert!(result_map.contains_key(&Value::Int32Value(8)));
+
+    let event = events.next().await;
+    assert!(matches!(event, Some(MapLaneEvent::Checkpoint(12))));
+}

@@ -655,8 +655,8 @@ impl Error for TransactionError {
 
 /// A strategy for retrying transactions.
 pub trait RetryManager {
-    type ContentionManager: Stream<Item = ()> + Unpin;
-    type RetryFut: Future<Output = bool> + Unpin;
+    type ContentionManager: Stream<Item = ()> + Send + Unpin;
+    type RetryFut: Future<Output = bool> + Send + Unpin;
 
     /// A stream of (potential) delays between attempts to apply the transaction that fail
     /// due to contention. If this stream terminates, the transaction will also.
@@ -666,23 +666,24 @@ pub trait RetryManager {
     fn retry(&mut self) -> Self::RetryFut;
 }
 
-/// Attempt to run an [`Stm`] instance within a transaction, using the provided retry strategy.
-pub async fn atomically<S, Retries>(
+/// Attempt to run an [`Stm`] instance within a provided transaction and using a provided retry strategy.
+pub async fn atomically_with<S, Retries>(
     stm: &S,
     mut retries: Retries,
+    transaction: &mut Transaction,
 ) -> Result<S::Result, TransactionError>
 where
     S: Stm,
     Retries: RetryManager,
 {
     let mut contention_manager = retries.contention_manager();
-    let mut transaction = Transaction::new(S::required_stack().unwrap_or(DEFAULT_STACK_SIZE));
+
     let mut failed_commits: usize = 0;
     let mut num_attempts: usize = 0;
 
     loop {
         num_attempts = num_attempts.saturating_add(1);
-        let exec_result = RunIn::new(&mut transaction, stm.runner()).await;
+        let exec_result = RunIn::new(transaction, stm.runner()).await;
         match exec_result {
             ExecResult::Done(t) => {
                 if transaction.try_commit().await {
@@ -707,12 +708,25 @@ where
                 } else if !retries.retry().await {
                     return Err(TransactionError::TooManyAttempts { num_attempts });
                 } else {
-                    AwaitChanged::new(&mut transaction).await;
+                    AwaitChanged::new(transaction).await;
                 }
             }
         }
         transaction.reset();
     }
+}
+
+/// Attempt to run an [`Stm`] instance within a transaction, using the provided retry strategy.
+pub async fn atomically<S, Retries>(
+    stm: &S,
+    retries: Retries,
+) -> Result<S::Result, TransactionError>
+where
+    S: Stm,
+    Retries: RetryManager,
+{
+    let mut transaction = Transaction::new(S::required_stack().unwrap_or(DEFAULT_STACK_SIZE));
+    atomically_with(stm, retries, &mut transaction).await
 }
 
 /// A future that awaits changes in any of the variables that were read in a transaction.
@@ -812,5 +826,32 @@ impl<T: Any + Send + Sync> TransactionFuture for VarReadFuture<T> {
                 }
             }
         }
+    }
+}
+
+/// A reusable transaction for running a sequence of similar [`Stm`] instances.
+pub struct TransactionRunner<F> {
+    retries: F,
+    transaction: Transaction,
+}
+
+impl<F, Ret> TransactionRunner<F>
+where
+    F: Fn() -> Ret,
+    Ret: RetryManager,
+{
+    pub fn new(stack_size: usize, retries: F) -> Self {
+        TransactionRunner {
+            retries,
+            transaction: Transaction::new(stack_size),
+        }
+    }
+
+    pub async fn atomically<S: Stm>(&mut self, stm: &S) -> Result<S::Result, TransactionError> {
+        let TransactionRunner {
+            retries,
+            transaction,
+        } = self;
+        atomically_with(stm, retries(), transaction).await
     }
 }
