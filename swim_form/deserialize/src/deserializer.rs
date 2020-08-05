@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use serde::de::Visitor;
 use serde::Deserializer;
 
 use common::model::{Item, Value};
@@ -20,6 +19,7 @@ use common::model::{Item, Value};
 use crate::enum_access::Enum;
 use crate::map_access::RecordMap;
 use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
+use serde::de::Visitor;
 
 impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     type Error = FormDeserializeErr;
@@ -30,13 +30,20 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     {
         match self.current_state.value {
             Some(value) => match value {
-                Value::Record(_attrs, _items) => panic!(),
+                Value::Record(_attrs, _items) => {
+                    unreachable!("Deserializer entered an illegal state")
+                }
                 Value::Int32Value(_) => self.deserialize_i32(visitor),
                 Value::Int64Value(_) => self.deserialize_i64(visitor),
+                Value::UInt32Value(_) => self.deserialize_u32(visitor),
+                Value::UInt64Value(_) => self.deserialize_u64(visitor),
                 Value::Extant => self.deserialize_option(visitor),
                 Value::Text(_) => self.deserialize_string(visitor),
                 Value::Float64Value(_) => self.deserialize_f64(visitor),
                 Value::BooleanValue(_) => self.deserialize_bool(visitor),
+                Value::BigInt(_) => self.deserialize_string(visitor),
+                Value::BigUint(_) => self.deserialize_string(visitor),
+                Value::Data(_) => self.deserialize_string(visitor),
             },
             None => {
                 if let DeserializerState::ReadingAttribute(a) =
@@ -79,22 +86,14 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Int32Value(i)) = &self.current_state.value {
-            visitor.visit_i32(*i)
-        } else {
-            self.err_incorrect_type("Value::Int32Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Int64Value(i)) = &self.current_state.value {
-            visitor.visit_i64(*i)
-        } else {
-            self.err_incorrect_type("Value::Int64Value", self.current_state.value)
-        }
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value>
@@ -111,18 +110,18 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
         self.err_unsupported("u16")
     }
 
-    fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.err_unsupported("u32")
+        self.deserialize_int(visitor)
     }
 
-    fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.err_unsupported("u64")
+        self.deserialize_int(visitor)
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
@@ -165,10 +164,12 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if let Some(Value::Text(t)) = &self.current_state.value {
-            visitor.visit_string(t.to_owned())
-        } else {
-            self.err_incorrect_type("Value::Text", self.current_state.value)
+        match &self.current_state.value {
+            Some(Value::Text(t)) => visitor.visit_string(t.to_owned()),
+            Some(Value::BigInt(bi)) => visitor.visit_string(bi.to_string()),
+            Some(Value::BigUint(bui)) => visitor.visit_string(bui.to_string()),
+            Some(Value::Data(b)) => visitor.visit_string(b.to_string()),
+            _ => self.err_incorrect_type("Value::Text", self.current_state.value),
         }
     }
 
@@ -257,7 +258,11 @@ impl<'de, 'a> Deserializer<'de> for &'a mut ValueDeserializer<'de> {
             result
         } else {
             match self.current_state.value {
-                Some(v) => self.err_incorrect_type("Value::Record", Some(v)),
+                Some(v) => match v {
+                    Value::BigInt(_) => self.deserialize_string(visitor),
+                    Value::BigUint(_) => self.deserialize_string(visitor),
+                    _ => self.err_incorrect_type("Value::Record", Some(v)),
+                },
                 None => Err(FormDeserializeErr::Message(String::from("Missing value"))),
             }
         }

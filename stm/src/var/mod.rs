@@ -19,13 +19,15 @@ use crate::ptr::Addressed;
 use crate::var::observer::{DynObserver, RawWrapper, StaticObserver};
 use futures::future::FutureExt;
 use futures::ready;
+use parking_lot::Mutex;
+use slab::Slab;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use utilities::ptr::data_ptr_eq;
 use utilities::sync::rwlock::{ReadFuture, ReadGuard, RwLock, WriteGuard};
@@ -39,7 +41,7 @@ pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 pub(crate) struct TVarGuarded {
     content: Contents,
     observer: Option<DynObserver>,
-    wakers: Mutex<Vec<Waker>>,
+    wakers: Mutex<Slab<Waker>>,
 }
 
 impl TVarGuarded {
@@ -48,11 +50,7 @@ impl TVarGuarded {
         if let Some(observer) = &mut self.observer {
             observer.notify_raw(self.content.clone()).await;
         }
-        self.wakers
-            .lock()
-            .expect("Locked twice by the same thread.")
-            .drain(..)
-            .for_each(|w| w.wake());
+        self.wakers.lock().drain().for_each(|w| w.wake());
     }
 }
 
@@ -88,7 +86,7 @@ impl TVarInner {
             guarded: RwLock::new(TVarGuarded {
                 content: value,
                 observer: None,
-                wakers: Mutex::new(vec![]),
+                wakers: Default::default(),
             }),
         }
     }
@@ -104,7 +102,7 @@ impl TVarInner {
             guarded: RwLock::new(TVarGuarded {
                 content: value,
                 observer: Some(Box::new(RawWrapper::new(observer))),
-                wakers: Mutex::new(vec![]),
+                wakers: Default::default(),
             }),
         }
     }
@@ -137,11 +135,16 @@ impl TVarInner {
 
     /// Determine if the contents of the variable have changed and register a waker if they
     /// have not.
-    pub fn add_waker(&self, ptr: &Contents, waker: &Waker) -> bool {
-        if let Some(guard) = self.guarded.try_read() {
+    pub fn add_waker(&self, ptr: &Contents, slot: &mut Option<usize>, waker: &Waker) -> bool {
+        if let Some(guard) = self.guarded.read().now_or_never() {
             if data_ptr_eq(guard.deref().content.as_ref(), ptr.as_ref()) {
-                let mut lock = guard.wakers.lock().unwrap();
-                lock.push(waker.clone());
+                let mut lock = guard.wakers.lock();
+                match slot.as_ref().and_then(|i| lock.get_mut(*i)) {
+                    Some(existing) => {
+                        *existing = waker.clone();
+                    }
+                    _ => *slot = Some(lock.insert(waker.clone())),
+                };
                 false
             } else {
                 true

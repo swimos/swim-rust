@@ -15,12 +15,17 @@
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::item::ItemSchema;
 use crate::model::schema::range::{
-    float_64_range, float_range_to_value, in_float_range, in_int_range, in_range, int_32_range,
-    int_64_range, int_range_to_value, Bound, Range,
+    float_64_range, float_range_to_value, i32_range_as_big_int, i32_range_as_i64,
+    i64_range_as_big_int, i64_range_as_i64, i64_range_to_big_int_range, in_big_int_range,
+    in_float_range, in_int_range, in_range, in_uint_range, int_range_to_value,
+    u32_range_as_big_int, u32_range_as_i64, u32_range_as_u64, u64_range_as_big_int,
+    u64_range_as_u64, u64_range_to_big_int_range, Bound, Range,
 };
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;
 use crate::model::{Attr, Item, ToValue, Value, ValueKind};
+use num_bigint::{BigInt, ToBigInt};
+use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -192,6 +197,10 @@ pub enum StandardSchema {
     Equal(Value),
     /// Asserts that a [`Value`] is an integer and within a specified range.
     InRangeInt(Range<i64>),
+    /// Asserts that a [`Value`] is an unsigned integer and within a specified range.
+    InRangeUint(Range<u64>),
+    /// Asserts that a [`Value`] is a big integer and in a specified range.
+    InRangeBigInt(Range<BigInt>),
     /// Asserts that a [`Value`] is a floating point number and in a specified range.
     InRangeFloat(Range<f64>),
     /// Asserts that a [`Value`] is a non-NaN floating point number.
@@ -238,6 +247,8 @@ pub enum StandardSchema {
     Anything,
     /// Matches nothing.
     Nothing,
+    /// Asserts a BLOB's data length.
+    DataLength(usize),
 }
 
 // Very basic partial ordering for schemas. This could be significantly extended if desirable.
@@ -258,6 +269,14 @@ impl PartialOrd for StandardSchema {
                 (StandardSchema::InRangeInt(range), _) => in_range_int_cmp(range, other),
                 (_, StandardSchema::InRangeInt(range)) => {
                     Some(in_range_int_cmp(range, self)?.reverse())
+                }
+                (StandardSchema::InRangeUint(range), _) => in_range_uint_cmp(range, other),
+                (_, StandardSchema::InRangeUint(range)) => {
+                    Some(in_range_uint_cmp(range, self)?.reverse())
+                }
+                (StandardSchema::InRangeBigInt(range), _) => in_range_big_int_cmp(range, other),
+                (_, StandardSchema::InRangeBigInt(range)) => {
+                    Some(in_range_big_int_cmp(range, self)?.reverse())
                 }
                 (StandardSchema::InRangeFloat(range), _) => in_range_float_cmp(range, other),
                 (_, StandardSchema::InRangeFloat(range)) => {
@@ -324,21 +343,189 @@ impl PartialOrd for StandardSchema {
 
 fn of_kind_cmp(this_kind: &ValueKind, other: &StandardSchema) -> Option<Ordering> {
     match (this_kind, other) {
+        (this_kind, StandardSchema::OfKind(other_kind)) => this_kind.partial_cmp(other_kind),
         (ValueKind::Extant, StandardSchema::Equal(Value::Extant)) => Some(Ordering::Equal),
-        (ValueKind::Int32, StandardSchema::OfKind(ValueKind::Int64)) => Some(Ordering::Less),
         (ValueKind::Int32, StandardSchema::Equal(Value::Int32Value(_))) => Some(Ordering::Greater),
         (ValueKind::Int32, StandardSchema::Equal(Value::Int64Value(value))) => {
-            if in_range(*value, &int_32_range()) {
+            value.to_i32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int32, StandardSchema::Equal(Value::UInt32Value(value))) => {
+            value.to_i32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int32, StandardSchema::Equal(Value::UInt64Value(value))) => {
+            value.to_i32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int32, StandardSchema::Equal(Value::BigInt(value))) => {
+            value.to_i32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int32, StandardSchema::Equal(Value::BigUint(value))) => {
+            value.to_i32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int32, StandardSchema::InRangeInt(range)) => {
+            i32_range_as_i64().partial_cmp(range)
+        }
+        (ValueKind::Int32, StandardSchema::InRangeUint(range)) => {
+            let max = *range.get_max();
+            max?.get_value().to_i32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int32, StandardSchema::InRangeBigInt(range)) => {
+            i32_range_as_big_int().partial_cmp(range)
+        }
+        (ValueKind::Int64, StandardSchema::Equal(Value::Int32Value(_))) => Some(Ordering::Greater),
+        (ValueKind::Int64, StandardSchema::Equal(Value::Int64Value(_))) => Some(Ordering::Greater),
+        (ValueKind::Int64, StandardSchema::Equal(Value::UInt32Value(_))) => Some(Ordering::Greater),
+        (ValueKind::Int64, StandardSchema::Equal(Value::UInt64Value(value))) => {
+            value.to_i64()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int64, StandardSchema::Equal(Value::BigInt(value))) => {
+            value.to_i64()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int64, StandardSchema::Equal(Value::BigUint(value))) => {
+            value.to_i64()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int64, StandardSchema::InRangeInt(range)) => {
+            i64_range_as_i64().partial_cmp(range)
+        }
+        (ValueKind::Int64, StandardSchema::InRangeUint(range)) => {
+            let max = *range.get_max();
+            i64::try_from(*max?.get_value()).ok()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::Int64, StandardSchema::InRangeBigInt(range)) => {
+            i64_range_as_big_int().partial_cmp(range)
+        }
+        (ValueKind::UInt32, StandardSchema::Equal(Value::Int32Value(value))) => {
+            value.to_u32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt32, StandardSchema::Equal(Value::Int64Value(value))) => {
+            value.to_u32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt32, StandardSchema::Equal(Value::UInt32Value(_))) => {
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt32, StandardSchema::Equal(Value::UInt64Value(value))) => {
+            value.to_u32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt32, StandardSchema::Equal(Value::BigInt(value))) => {
+            value.to_u32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt32, StandardSchema::Equal(Value::BigUint(value))) => {
+            value.to_u32()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt32, StandardSchema::InRangeInt(range)) => {
+            u32_range_as_i64().partial_cmp(range)
+        }
+        (ValueKind::UInt32, StandardSchema::InRangeUint(range)) => {
+            u32_range_as_u64().partial_cmp(range)
+        }
+        (ValueKind::UInt32, StandardSchema::InRangeBigInt(range)) => {
+            u32_range_as_big_int().partial_cmp(range)
+        }
+        (ValueKind::UInt64, StandardSchema::Equal(Value::Int32Value(value))) => {
+            value.to_u64()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt64, StandardSchema::Equal(Value::Int64Value(value))) => {
+            value.to_u64()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt64, StandardSchema::Equal(Value::UInt32Value(_))) => {
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt64, StandardSchema::Equal(Value::UInt64Value(_))) => {
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt64, StandardSchema::Equal(Value::BigInt(value))) => {
+            value.to_u64()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt64, StandardSchema::Equal(Value::BigUint(value))) => {
+            value.to_u64()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt64, StandardSchema::InRangeInt(range)) => {
+            let min = *range.get_min();
+            u64::try_from(*min?.get_value()).ok()?;
+            Some(Ordering::Greater)
+        }
+        (ValueKind::UInt64, StandardSchema::InRangeUint(range)) => {
+            u64_range_as_u64().partial_cmp(range)
+        }
+        (ValueKind::UInt64, StandardSchema::InRangeBigInt(range)) => {
+            u64_range_as_big_int().partial_cmp(range)
+        }
+        (ValueKind::BigInt, StandardSchema::Equal(Value::Int32Value(_))) => Some(Ordering::Greater),
+        (ValueKind::BigInt, StandardSchema::Equal(Value::Int64Value(_))) => Some(Ordering::Greater),
+        (ValueKind::BigInt, StandardSchema::Equal(Value::UInt32Value(_))) => {
+            Some(Ordering::Greater)
+        }
+        (ValueKind::BigInt, StandardSchema::Equal(Value::UInt64Value(_))) => {
+            Some(Ordering::Greater)
+        }
+        (ValueKind::BigInt, StandardSchema::Equal(Value::BigInt(_))) => Some(Ordering::Greater),
+        (ValueKind::BigInt, StandardSchema::Equal(Value::BigUint(_))) => Some(Ordering::Greater),
+        (ValueKind::BigInt, StandardSchema::InRangeInt(_)) => Some(Ordering::Greater),
+        (ValueKind::BigInt, StandardSchema::InRangeUint(_)) => Some(Ordering::Greater),
+        (ValueKind::BigInt, StandardSchema::InRangeBigInt(_)) => Some(Ordering::Greater),
+        (ValueKind::BigUint, StandardSchema::Equal(Value::Int32Value(value))) => {
+            if *value >= 0 {
                 Some(Ordering::Greater)
             } else {
                 None
             }
         }
-        (ValueKind::Int32, StandardSchema::InRangeInt(range)) => int_32_range().partial_cmp(range),
-        (ValueKind::Int64, StandardSchema::OfKind(ValueKind::Int32)) => Some(Ordering::Greater),
-        (ValueKind::Int64, StandardSchema::Equal(Value::Int32Value(_))) => Some(Ordering::Greater),
-        (ValueKind::Int64, StandardSchema::Equal(Value::Int64Value(_))) => Some(Ordering::Greater),
-        (ValueKind::Int64, StandardSchema::InRangeInt(range)) => int_64_range().partial_cmp(range),
+        (ValueKind::BigUint, StandardSchema::Equal(Value::Int64Value(value))) => {
+            if *value >= 0 {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+        (ValueKind::BigUint, StandardSchema::Equal(Value::UInt32Value(_))) => {
+            Some(Ordering::Greater)
+        }
+        (ValueKind::BigUint, StandardSchema::Equal(Value::UInt64Value(_))) => {
+            Some(Ordering::Greater)
+        }
+        (ValueKind::BigUint, StandardSchema::Equal(Value::BigInt(value))) => {
+            if *value >= BigInt::from(0) {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+        (ValueKind::BigUint, StandardSchema::Equal(Value::BigUint(_))) => Some(Ordering::Greater),
+        (ValueKind::BigUint, StandardSchema::InRangeInt(range)) => {
+            let min = *range.get_min();
+            if *min?.get_value() >= 0 {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
+        (ValueKind::BigUint, StandardSchema::InRangeUint(_)) => Some(Ordering::Greater),
+        (ValueKind::BigUint, StandardSchema::InRangeBigInt(range)) => {
+            let min = range.get_min().clone()?.get_value().clone();
+            if !min.is_negative() {
+                Some(Ordering::Greater)
+            } else {
+                None
+            }
+        }
         (ValueKind::Float64, StandardSchema::Equal(Value::Float64Value(_))) => {
             Some(Ordering::Greater)
         }
@@ -367,23 +554,100 @@ fn of_kind_cmp(this_kind: &ValueKind, other: &StandardSchema) -> Option<Ordering
 
 fn equal_cmp(this: &Value, other: &StandardSchema) -> Option<Ordering> {
     match (this, other) {
-        (Value::Int32Value(this_val), StandardSchema::Equal(Value::Int64Value(other_val)))
-            if *this_val as i64 == *other_val =>
-        {
-            Some(Ordering::Equal)
+        (this_value, StandardSchema::Equal(other_value)) => {
+            if this_value.eq(other_value) {
+                Some(Ordering::Equal)
+            } else {
+                None
+            }
         }
         (Value::Int32Value(this_val), StandardSchema::InRangeInt(range))
-            if in_range(*this_val as i64, range) =>
+            if in_range(this_val.to_i64()?, range) =>
         {
             Some(Ordering::Less)
         }
-        (Value::Int64Value(this_val), StandardSchema::Equal(Value::Int32Value(other_val)))
-            if *this_val == *other_val as i64 =>
+        (Value::Int32Value(this_val), StandardSchema::InRangeUint(range))
+            if in_range(this_val.to_u64()?, range) =>
         {
-            Some(Ordering::Equal)
+            Some(Ordering::Less)
+        }
+        (Value::Int32Value(this_val), StandardSchema::InRangeBigInt(range))
+            if in_range(this_val.to_bigint()?, range) =>
+        {
+            Some(Ordering::Less)
         }
         (Value::Int64Value(this_val), StandardSchema::InRangeInt(range))
             if in_range(*this_val, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::Int64Value(this_val), StandardSchema::InRangeUint(range))
+            if in_range(this_val.to_u64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::Int64Value(this_val), StandardSchema::InRangeBigInt(range))
+            if in_range(this_val.to_bigint()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::UInt32Value(this_val), StandardSchema::InRangeInt(range))
+            if in_range(this_val.to_i64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::UInt32Value(this_val), StandardSchema::InRangeUint(range))
+            if in_range(this_val.to_u64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::UInt32Value(this_val), StandardSchema::InRangeBigInt(range))
+            if in_range(this_val.to_bigint()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::UInt64Value(this_val), StandardSchema::InRangeInt(range))
+            if in_range(this_val.to_i64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::UInt64Value(this_val), StandardSchema::InRangeUint(range))
+            if in_range(this_val.to_u64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::UInt64Value(this_val), StandardSchema::InRangeBigInt(range))
+            if in_range(this_val.to_bigint()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::BigInt(this_val), StandardSchema::InRangeInt(range))
+            if in_range(this_val.to_i64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::BigInt(this_val), StandardSchema::InRangeUint(range))
+            if in_range(this_val.to_u64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::BigInt(this_val), StandardSchema::InRangeBigInt(range))
+            if in_range(this_val.clone(), range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::BigUint(this_val), StandardSchema::InRangeInt(range))
+            if in_range(this_val.to_i64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::BigUint(this_val), StandardSchema::InRangeUint(range))
+            if in_range(this_val.to_u64()?, range) =>
+        {
+            Some(Ordering::Less)
+        }
+        (Value::BigUint(this_val), StandardSchema::InRangeBigInt(range))
+            if in_range(this_val.to_bigint()?, range) =>
         {
             Some(Ordering::Less)
         }
@@ -428,6 +692,29 @@ fn equal_cmp(this: &Value, other: &StandardSchema) -> Option<Ordering> {
 fn in_range_int_cmp(this: &Range<i64>, other: &StandardSchema) -> Option<Ordering> {
     match other {
         StandardSchema::InRangeInt(other_range) => this.partial_cmp(&other_range),
+        StandardSchema::InRangeUint(other_range) => {
+            i64_range_to_big_int_range(this).partial_cmp(&u64_range_to_big_int_range(other_range))
+        }
+        StandardSchema::InRangeBigInt(other_range) => {
+            i64_range_to_big_int_range(this).partial_cmp(other_range)
+        }
+        _ => None,
+    }
+}
+
+fn in_range_uint_cmp(this: &Range<u64>, other: &StandardSchema) -> Option<Ordering> {
+    match other {
+        StandardSchema::InRangeUint(other_range) => this.partial_cmp(&other_range),
+        StandardSchema::InRangeBigInt(other_range) => {
+            u64_range_to_big_int_range(this).partial_cmp(other_range)
+        }
+        _ => None,
+    }
+}
+
+fn in_range_big_int_cmp(this: &Range<BigInt>, other: &StandardSchema) -> Option<Ordering> {
+    match other {
+        StandardSchema::InRangeBigInt(other_range) => this.partial_cmp(&other_range),
         _ => None,
     }
 }
@@ -1013,9 +1300,11 @@ fn matches_head_attr<'a>(
 impl Schema<Value> for StandardSchema {
     fn matches(&self, value: &Value) -> bool {
         match self {
-            StandardSchema::OfKind(kind) => &value.kind() == kind,
+            StandardSchema::OfKind(kind) => value.is_coercible_to(*kind),
             StandardSchema::InRangeInt(range) => in_int_range(value, range),
+            StandardSchema::InRangeUint(range) => in_uint_range(value, range),
             StandardSchema::InRangeFloat(range) => in_float_range(value, range),
+            StandardSchema::InRangeBigInt(range) => in_big_int_range(value, range),
             StandardSchema::NonNan => as_f64(value).map(|x| !f64::is_nan(x)).unwrap_or(false),
             StandardSchema::Finite => as_f64(value).map(f64::is_finite).unwrap_or(false),
             StandardSchema::Not(p) => !p.matches(value),
@@ -1058,6 +1347,10 @@ impl Schema<Value> for StandardSchema {
             } => as_record(value)
                 .map(|(_, items)| check_in_order(item_schemas.as_slice(), items, *exhaustive))
                 .unwrap_or(false),
+            StandardSchema::DataLength(len) => match value {
+                Value::Data(b) => b.as_ref().len() == *len,
+                _ => false,
+            },
         }
     }
 }
@@ -1087,6 +1380,22 @@ impl StandardSchema {
     /// Matches integer values, inclusive below and exclusive above.
     pub fn int_range(min: i64, max: i64) -> Self {
         StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(min),
+            Bound::exclusive(max),
+        ))
+    }
+
+    /// Matches unsigned integer values, inclusive below and exclusive above.
+    pub fn uint_range(min: i64, max: i64) -> Self {
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(min),
+            Bound::exclusive(max),
+        ))
+    }
+
+    /// Matches big integer values, inclusive below and exclusive above.
+    pub fn big_int_range(min: BigInt, max: BigInt) -> Self {
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
             Bound::inclusive(min),
             Bound::exclusive(max),
         ))
@@ -1156,6 +1465,11 @@ impl StandardSchema {
         StandardSchema::Text(TextSchema::exact(string))
     }
 
+    /// A schema that matches the length of a BLOB.
+    pub fn binary_length(len: usize) -> Self {
+        StandardSchema::DataLength(len)
+    }
+
     /// A schema for records with items that all match a schema.
     pub fn array(elements: StandardSchema) -> Self {
         StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(elements)))
@@ -1177,7 +1491,11 @@ impl ToValue for StandardSchema {
             StandardSchema::OfKind(kind) => Value::of_attr(("kind", kind_to_str(*kind))),
             StandardSchema::Equal(v) => Value::of_attr(("equal", v.clone())),
             StandardSchema::InRangeInt(range) => int_range_to_value("in_range_int", *range),
+            StandardSchema::InRangeUint(range) => int_range_to_value("in_range_uint", *range),
             StandardSchema::InRangeFloat(range) => float_range_to_value("in_range_float", *range),
+            StandardSchema::InRangeBigInt(range) => {
+                int_range_to_value("in_range_big_int", range.clone())
+            }
             StandardSchema::NonNan => Value::of_attr("non_nan"),
             StandardSchema::Finite => Value::of_attr("finite"),
             StandardSchema::Text(text_schema) => text_schema.to_value().prepend(Attr::of("text")),
@@ -1222,6 +1540,7 @@ impl ToValue for StandardSchema {
             }
             StandardSchema::Anything => Value::of_attr("anything"),
             StandardSchema::Nothing => Value::of_attr("nothing"),
+            StandardSchema::DataLength(len) => Value::of_attr(("binary_length", *len as i32)),
         }
     }
 }
@@ -1267,8 +1586,36 @@ fn layout_item(schema: &ItemSchema, required: bool) -> Item {
 
 fn as_i64(value: &Value) -> Option<i64> {
     match value {
+        Value::UInt32Value(n) => i64::try_from(*n).ok(),
+        Value::UInt64Value(n) => i64::try_from(*n).ok(),
         Value::Int32Value(n) => Some((*n).into()),
         Value::Int64Value(n) => Some(*n),
+        Value::BigInt(bi) => bi.to_i64(),
+        Value::BigUint(bi) => bi.to_i64(),
+        _ => None,
+    }
+}
+
+fn as_u64(value: &Value) -> Option<u64> {
+    match value {
+        Value::UInt32Value(n) => Some((*n).into()),
+        Value::UInt64Value(n) => Some(*n),
+        Value::Int32Value(n) => u64::try_from(*n).ok(),
+        Value::Int64Value(n) => u64::try_from(*n).ok(),
+        Value::BigInt(bi) => bi.to_u64(),
+        Value::BigUint(bi) => bi.to_u64(),
+        _ => None,
+    }
+}
+
+fn as_big_int(value: &Value) -> Option<BigInt> {
+    match value {
+        Value::UInt32Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
+        Value::UInt64Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
+        Value::Int32Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
+        Value::Int64Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
+        Value::BigInt(n) => Some(n.clone()),
+        Value::BigUint(n) => n.to_bigint(),
         _ => None,
     }
 }
@@ -1292,9 +1639,14 @@ fn kind_to_str(kind: ValueKind) -> &'static str {
         ValueKind::Extant => "extant",
         ValueKind::Int32 => "int32",
         ValueKind::Int64 => "int64",
+        ValueKind::UInt32 => "uint32",
+        ValueKind::UInt64 => "uint64",
         ValueKind::Float64 => "float64",
         ValueKind::Boolean => "boolean",
         ValueKind::Text => "text",
         ValueKind::Record => "record",
+        ValueKind::BigInt => "bigint",
+        ValueKind::BigUint => "biguint",
+        ValueKind::Data => "data",
     }
 }

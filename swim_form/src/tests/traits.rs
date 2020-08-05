@@ -22,7 +22,7 @@ use common::model::{Item, Value};
 use deserialize::FormDeserializeErr;
 
 use super::super::Form;
-use crate::primitives::de_incorrect_type;
+use crate::impls::de_incorrect_type;
 
 fn assert_success<T: PartialEq + Debug>(r: Result<T, FormDeserializeErr>, expected: T) {
     match r {
@@ -84,8 +84,26 @@ fn from_f64() {
 }
 
 #[test]
+fn from_i32() {
+    let r = i32::try_from_value(&Value::Int32Value(1));
+    assert_success(r, 1);
+}
+
+#[test]
 fn from_i64() {
     let r = i64::try_from_value(&Value::Int64Value(1));
+    assert_success(r, 1);
+}
+
+#[test]
+fn from_u32() {
+    let r = u32::try_from_value(&Value::UInt32Value(101));
+    assert_success(r, 101);
+}
+
+#[test]
+fn from_u64() {
+    let r = u64::try_from_value(&Value::UInt64Value(1));
     assert_success(r, 1);
 }
 
