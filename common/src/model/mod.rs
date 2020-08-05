@@ -198,7 +198,6 @@ impl Display for ValueKind {
     }
 }
 
-#[allow(clippy::float_cmp, clippy::cognitive_complexity)]
 impl Value {
     /// Checks if the a [`Value`] is coercible into the [`ValueKind`] provided.
     pub fn is_coercible_to(&self, kind: ValueKind) -> bool {
@@ -479,7 +478,7 @@ impl Value {
                         }
                     } else if y.is_nan() {
                         Ordering::Greater
-                    } else if *x == *y {
+                    } else if (*x - *y).abs() < f64::EPSILON {
                         Ordering::Equal
                     } else if *x < *y {
                         Ordering::Less
