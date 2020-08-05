@@ -1,5 +1,6 @@
 use crate::{flush, get_input, show_help};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 const INDEFINITE_VALUE: &str = "\"indefinite\"";
 
@@ -59,12 +60,55 @@ pub(crate) fn number_menu(
     }
 }
 
+pub(crate) fn url_menu() -> Option<String> {
+    loop {
+        print!("Enter a value for host URI, `h` for help or `b` to go back: ",);
+        flush();
+
+        let input = get_input();
+
+        match input.as_str() {
+            "h" => show_help(
+                "An absolute URI for a remote host. The URI must include the scheme.",
+                "Absolute URI",
+                "ws://127.0.0.1/",
+            ),
+            "b" => return None,
+            _ => match url::Url::parse(&input) {
+                Ok(url) => return Some(url.to_string()),
+                _ => println!("Invalid value \"{}\" for host URI!", input),
+            },
+        }
+    }
+}
+
+pub(crate) fn text_menu(name: &str, info: &str, value: &str, default: &str) -> Option<String> {
+    loop {
+        print!(
+            "Enter a value for {}, `h` for help or `b` to go back: ",
+            name
+        );
+        flush();
+
+        let input = get_input();
+
+        match input.as_str() {
+            "h" => show_help(info, value, default),
+            "b" => return None,
+            _ => match input.is_empty() {
+                false => return Some(input),
+                true => println!("Cannot have empty value for \"{}\"!", name),
+            },
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Config {
     pub(crate) client: ClientConfig,
     pub(crate) downlinks: DownlinkConfig,
     pub(crate) hosts: HashMap<String, DownlinkConfig>,
-    pub(crate) lanes: HashMap<LaneConfig, DownlinkConfig>,
+    pub(crate) lanes: HashMap<LanePath, DownlinkConfig>,
 }
 
 impl Config {
@@ -174,9 +218,19 @@ pub(crate) enum MuxMode {
     Buffered { queue_size: Option<String> },
 }
 
-#[derive(Debug)]
-pub(crate) struct LaneConfig {
-    host: String,
-    node: String,
-    lane: String,
+#[derive(Debug, Hash, PartialEq, Eq)]
+pub(crate) struct LanePath {
+    pub(crate) host: String,
+    pub(crate) node: String,
+    pub(crate) lane: String,
+}
+
+impl Display for LanePath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Path(host: \"{}\", node: \"{}\", lane: \"{}\")",
+            self.host, self.node, self.lane
+        )
+    }
 }
