@@ -1,7 +1,7 @@
-use crate::utils::number_menu;
+use crate::utils::{number_menu, ClientConfig, RetryStrategy};
 use crate::{flush, get_input, print_title, show_help};
 
-pub(crate) fn router_params_menu() {
+pub(crate) fn router_params_menu(client_config: &mut ClientConfig) {
     loop {
         print_title("Router parameters");
         println!("1. Retry strategy");
@@ -14,17 +14,17 @@ pub(crate) fn router_params_menu() {
         let input = get_input();
 
         match input.as_str() {
-            "1" => router_retry_strategy(),
-            "2" => router_idle_timeout(),
-            "3" => router_conn_reaper_freq(),
-            "4" => router_buffer_size(),
+            "1" => router_retry_strategy(client_config),
+            "2" => router_idle_timeout(client_config),
+            "3" => router_conn_reaper_freq(client_config),
+            "4" => router_buffer_size(client_config),
             "b" => break,
             _ => println!("Invalid selection \"{}\"!", input),
         }
     }
 }
 
-fn router_retry_strategy() {
+fn router_retry_strategy(client_config: &mut ClientConfig) {
     loop {
         print!("Enter a value for retry strategy, `h` for help or `b` to go back: ");
         flush();
@@ -48,18 +48,17 @@ fn router_retry_strategy() {
                 "exponential",
             ),
             "b" => break,
-            "immediate" => {retry_immediate(); break},
-            "interval" => {retry_interval(); break},
-            "exponential" => {retry_exponential(); break},
-            "none" => {retry_none(); break},
+            "immediate" => {retry_immediate(client_config); break},
+            "interval" => {retry_interval(client_config); break},
+            "exponential" => {retry_exponential(client_config); break},
+            "none" => {retry_none(client_config); break},
             _ => println!("Invalid value \"{}\" for retry strategy!", input),
         }
     }
 }
 
-fn retry_immediate() {
-    //Todo
-    number_menu(
+fn retry_immediate(client_config: &mut ClientConfig) {
+    let retries = number_menu(
         "number of retries",
         "The maximum number of retry attempts that will be made.",
         "5",
@@ -67,11 +66,12 @@ fn retry_immediate() {
         true,
         false,
     );
+
+    client_config.router_config.retry_strategy = Some(RetryStrategy::Immediate { retries });
 }
 
-fn retry_interval() {
-    // Todo
-    number_menu(
+fn retry_interval(client_config: &mut ClientConfig) {
+    let delay = number_menu(
         "delay between retries",
         "The delay between consecutive retries in seconds.",
         "5",
@@ -80,7 +80,7 @@ fn retry_interval() {
         true,
     );
 
-    number_menu(
+    let retries = number_menu(
         "number of retries",
         "The maximum number of retry attempts that will be made.",
         "5",
@@ -88,11 +88,12 @@ fn retry_interval() {
         true,
         false,
     );
+
+    client_config.router_config.retry_strategy = Some(RetryStrategy::Interval { delay, retries });
 }
 
-fn retry_exponential() {
-    // Todo
-    number_menu(
+fn retry_exponential(client_config: &mut ClientConfig) {
+    let max_interval = number_menu(
         "maximum interval between requests",
         "The delay between consecutive retries in seconds.",
         "16",
@@ -101,7 +102,7 @@ fn retry_exponential() {
         true,
     );
 
-    number_menu(
+    let max_backoff = number_menu(
         "maximum backoff duration",
         "The maximum backoff duration that the requests will be attempted for in seconds.",
         "32",
@@ -109,44 +110,64 @@ fn retry_exponential() {
         false,
         true,
     );
+
+    client_config.router_config.retry_strategy = Some(RetryStrategy::Exponential {
+        max_interval,
+        max_backoff,
+    });
 }
 
-fn retry_none() {
-    // Todo
+fn retry_none(client_config: &mut ClientConfig) {
+    client_config.router_config.retry_strategy = Some(RetryStrategy::None);
 }
 
-fn router_idle_timeout() {
-    // Todo
-    number_menu(
+fn router_idle_timeout(client_config: &mut ClientConfig) {
+    match number_menu(
         "idle timeout",
         "The maximum amount of time, in seconds, that a connection can be inactive before it is closed.",
         "60",
         true,
         false,
         true,
-    );
+    ) {
+        Some(value) => {
+            client_config.router_config.idle_timeout = Some(value);
+        }
+
+        _ => (),
+    }
 }
 
-fn router_conn_reaper_freq() {
-    // Todo
-    number_menu(
+fn router_conn_reaper_freq(client_config: &mut ClientConfig) {
+    match number_menu(
         "connection reaper frequency",
         "How often, in seconds, to check for inactive connections and close them.",
         "60",
         true,
         false,
         true,
-    );
+    ) {
+        Some(value) => {
+            client_config.router_config.conn_reaper_frequency = Some(value);
+        }
+
+        _ => (),
+    }
 }
 
-fn router_buffer_size() {
-    // Todo
-    number_menu(
+fn router_buffer_size(client_config: &mut ClientConfig) {
+    match number_menu(
         "buffer size",
         "The size of the router buffer for routing messages from and to remote connections.",
         "100",
         true,
         true,
         false,
-    );
+    ) {
+        Some(value) => {
+            client_config.router_config.buffer_size = Some(value);
+        }
+
+        _ => (),
+    }
 }
