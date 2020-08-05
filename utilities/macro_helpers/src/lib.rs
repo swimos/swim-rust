@@ -10,7 +10,6 @@ extern crate syn;
 use core::fmt;
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
-use std::cell::RefCell;
 use std::fmt::Display;
 use syn::export::TokenStream2;
 use syn::{Data, Index, Meta, Path};
@@ -66,7 +65,7 @@ impl From<&syn::Data> for StructureKind {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum CompoundType {
+pub enum CompoundTypeKind {
     Struct,
     Tuple,
     NewType,
@@ -118,31 +117,21 @@ impl ToTokens for FieldName {
 }
 
 /// An error context for building errors while parsing a token stream.
+#[derive(Default)]
 pub struct Context {
-    errors: RefCell<Option<Vec<syn::Error>>>,
-}
-
-impl Context {
-    pub fn default() -> Context {
-        Context {
-            errors: RefCell::new(Some(Vec::new())),
-        }
-    }
+    errors: Vec<syn::Error>,
 }
 
 impl Context {
     /// Pushes an error into the context.
-    pub fn error_spanned_by<A: ToTokens, T: Display>(&self, obj: A, msg: T) {
+    pub fn error_spanned_by<A: ToTokens, T: Display>(&mut self, obj: A, msg: T) {
         self.errors
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
             .push(syn::Error::new_spanned(obj.into_token_stream(), msg));
     }
 
     /// Consumes the context and returns the underlying errors.
     pub fn check(self) -> Result<(), Vec<syn::Error>> {
-        let errors = self.errors.borrow_mut().take().unwrap();
+        let errors = self.errors;
         match errors.len() {
             0 => Ok(()),
             _ => Err(errors),
@@ -168,7 +157,7 @@ pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
 /// ```compile_fail
 /// { a, b }
 /// ```
-pub fn deconstruct_type(compound_type: &CompoundType, fields: &[&FieldName]) -> TokenStream2 {
+pub fn deconstruct_type(compound_type: &CompoundTypeKind, fields: &[&FieldName]) -> TokenStream2 {
     let fields: Vec<_> = fields
         .iter()
         .map(|name| match &name {
@@ -186,16 +175,16 @@ pub fn deconstruct_type(compound_type: &CompoundType, fields: &[&FieldName]) -> 
         .collect();
 
     match compound_type {
-        CompoundType::Struct => quote! { { #(ref #fields,)* } },
-        CompoundType::Tuple => quote! { ( #(ref #fields,)* ) },
-        CompoundType::NewType => quote! { ( #(ref #fields,)* ) },
-        CompoundType::Unit => quote!(),
+        CompoundTypeKind::Struct => quote! { { #(ref #fields,)* } },
+        CompoundTypeKind::Tuple => quote! { ( #(ref #fields,)* ) },
+        CompoundTypeKind::NewType => quote! { ( #(ref #fields,)* ) },
+        CompoundTypeKind::Unit => quote!(),
     }
 }
 
 /// Returns a vector of metadata that matches the provided path.
 pub fn get_attribute_meta(
-    ctx: &Context,
+    ctx: &mut Context,
     attr: &syn::Attribute,
     path: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
