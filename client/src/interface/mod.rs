@@ -38,7 +38,7 @@ use common::routing::RoutingError;
 use common::connections::WebsocketFactory;
 use common::warp::envelope::Envelope;
 
-/// Respresents errors that can occur in the client.
+/// Represents errors that can occur in the client.
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
     /// An error that occurred when subscribing to a downlink.
@@ -147,17 +147,17 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
-    /// Opens a new typed value downlink at the provided path and initialises it with [`default`].
+    /// Opens a new typed value downlink at the provided path and initialises it with [`initial`].
     pub async fn value_downlink<T>(
         &mut self,
         path: AbsolutePath,
-        default: T,
+        initial: T,
     ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>), ClientError>
     where
         T: ValidatedForm + Send + 'static,
     {
         self.downlinks
-            .subscribe_value(default, path)
+            .subscribe_value(initial, path)
             .await
             .map_err(ClientError::SubscriptionError)
     }
@@ -206,14 +206,14 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
-    /// Opens a new untyped value downlink at the provided path and initialises it with [`default`] value.
+    /// Opens a new untyped value downlink at the provided path and initialises it with [`initial`] value.
     pub async fn untyped_value_downlink(
         &mut self,
         path: AbsolutePath,
-        default: Value,
+        initial: Value,
     ) -> Result<(AnyValueDownlink, ValueReceiver), ClientError> {
         self.downlinks
-            .subscribe_value_untyped(default, path)
+            .subscribe_value_untyped(initial, path)
             .await
             .map_err(ClientError::SubscriptionError)
     }

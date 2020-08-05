@@ -403,6 +403,8 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
                 tokio::task::yield_now().await;
             }
         };
+
+        let _ = cmd_sink.send_item(Command::Unlink).await;
         completed.store(true, Ordering::Release);
         let _ = stop_event.broadcast(Some(result.clone()));
         result

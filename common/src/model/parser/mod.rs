@@ -14,9 +14,11 @@
 
 use std::borrow::Borrow;
 use std::io;
+use std::str::FromStr;
 use std::str::{from_utf8, from_utf8_unchecked, Utf8Error};
 
 use bytes::{Buf, BytesMut};
+use num_bigint::{BigInt, BigUint};
 
 use token_buffer::*;
 
@@ -509,6 +511,10 @@ enum ReconToken<S> {
     StringLiteral(S),
     Int32Literal(i32),
     Int64Literal(i64),
+    UInt32Literal(u32),
+    UInt64Literal(u64),
+    BigInt(BigInt),
+    BigUint(BigUint),
     Float64Literal(f64),
     BoolLiteral(bool),
 }
@@ -529,6 +535,10 @@ impl ReconToken<&str> {
             ReconToken::StringLiteral(s) => ReconToken::StringLiteral(s.to_owned()),
             ReconToken::Int32Literal(n) => ReconToken::Int32Literal(n),
             ReconToken::Int64Literal(n) => ReconToken::Int64Literal(n),
+            ReconToken::UInt32Literal(n) => ReconToken::UInt32Literal(n),
+            ReconToken::UInt64Literal(n) => ReconToken::UInt64Literal(n),
+            ReconToken::BigInt(ref n) => ReconToken::BigInt(n.clone()),
+            ReconToken::BigUint(ref n) => ReconToken::BigUint(n.clone()),
             ReconToken::Float64Literal(x) => ReconToken::Float64Literal(x),
             ReconToken::BoolLiteral(p) => ReconToken::BoolLiteral(p),
         }
@@ -536,14 +546,18 @@ impl ReconToken<&str> {
 }
 
 impl<S: TokenStr> ReconToken<S> {
-    /// True iff the token constitutes a ['Value'] in itself.
+    /// True if, and only if, the token constitutes a ['Value'] in itself.
     fn is_value(&self) -> bool {
         match self {
             ReconToken::Identifier(_)
             | ReconToken::StringLiteral(_)
             | ReconToken::Int32Literal(_)
             | ReconToken::Int64Literal(_)
+            | ReconToken::UInt32Literal(_)
+            | ReconToken::UInt64Literal(_)
             | ReconToken::Float64Literal(_)
+            | ReconToken::BigInt(_)
+            | ReconToken::BigUint(_)
             | ReconToken::BoolLiteral(_) => true,
             _ => false,
         }
@@ -556,8 +570,12 @@ impl<S: TokenStr> ReconToken<S> {
             ReconToken::StringLiteral(name) => Some(unescape(name.borrow()).map(Value::Text)),
             ReconToken::Int32Literal(n) => Some(Ok(Value::Int32Value(n))),
             ReconToken::Int64Literal(n) => Some(Ok(Value::Int64Value(n))),
+            ReconToken::UInt32Literal(n) => Some(Ok(Value::UInt32Value(n))),
+            ReconToken::UInt64Literal(n) => Some(Ok(Value::UInt64Value(n))),
             ReconToken::Float64Literal(x) => Some(Ok(Value::Float64Value(x))),
             ReconToken::BoolLiteral(p) => Some(Ok(Value::BooleanValue(p))),
+            ReconToken::BigInt(bi) => Some(Ok(Value::BigInt(bi))),
+            ReconToken::BigUint(bi) => Some(Ok(Value::BigUint(bi))),
             _ => None,
         }
     }
@@ -761,21 +779,45 @@ fn parse_int_token<T: TokenStr>(
     offset: usize,
     rep: &str,
 ) -> Result<LocatedReconToken<T>, BadToken> {
-    match rep.parse::<i64>() {
+    match rep.parse::<u64>() {
         Ok(n) => {
             *state = TokenParseState::None;
             Ok(loc(
-                match i32::try_from(n) {
-                    Ok(m) => ReconToken::Int32Literal(m),
-                    Err(_) => ReconToken::Int64Literal(n),
+                match u32::try_from(n) {
+                    Ok(m) => ReconToken::UInt32Literal(m),
+                    Err(_) => ReconToken::UInt64Literal(n),
                 },
                 offset,
             ))
         }
-        Err(_) => {
-            *state = TokenParseState::Failed(offset, TokenError::InvalidInteger);
-            Err(BadToken(offset, TokenError::InvalidInteger))
-        }
+        Err(_) => match rep.parse::<i64>() {
+            Ok(m) => {
+                *state = TokenParseState::None;
+                Ok(loc(
+                    match i32::try_from(m) {
+                        Ok(m) => ReconToken::Int32Literal(m),
+                        Err(_) => ReconToken::Int64Literal(m),
+                    },
+                    offset,
+                ))
+            }
+            Err(_) => match BigUint::from_str(rep) {
+                Ok(n) => {
+                    *state = TokenParseState::None;
+                    Ok(loc(ReconToken::BigUint(n), offset))
+                }
+                Err(_) => match BigInt::from_str(rep) {
+                    Ok(n) => {
+                        *state = TokenParseState::None;
+                        Ok(loc(ReconToken::BigInt(n), offset))
+                    }
+                    Err(_) => {
+                        *state = TokenParseState::Failed(offset, TokenError::InvalidInteger);
+                        Err(BadToken(offset, TokenError::InvalidInteger))
+                    }
+                },
+            },
+        },
     }
 }
 
@@ -865,7 +907,7 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
                 None
             }
             _ => Some(Result::Ok(loc(
-                ReconToken::Int32Literal(c.to_digit(10).unwrap() as i32),
+                ReconToken::UInt32Literal(c.to_digit(10).unwrap() as u32),
                 index,
             ))),
         },

@@ -22,10 +22,12 @@ use common::connections::WsMessage;
 use common::model::parser::parse_single;
 use common::warp::envelope::Envelope;
 use common::warp::path::RelativePath;
+use futures::future::ready;
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use std::convert::TryFrom;
+use std::iter::FromIterator;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
@@ -166,7 +168,9 @@ impl IncomingHostTask {
                     trace!("Connection closed");
                     connection = None;
 
-                    broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
+                    let unreachable =
+                        broadcast_all(&mut subscribers, RouterEvent::ConnectionClosed).await?;
+                    remove_unreachable(&mut subscribers, unreachable)?;
                 }
 
                 IncomingRequest::Close(close_rx) => {
@@ -193,19 +197,44 @@ impl IncomingHostTask {
 async fn broadcast_all(
     subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     event: RouterEvent,
-) -> Result<(), RoutingError> {
-    let futures = FuturesUnordered::new();
+) -> Result<Vec<(RelativePath, usize)>, RoutingError> {
+    if subscribers.len() == 1 {
+        let (dest, dest_subs) = subscribers
+            .iter_mut()
+            .next()
+            .ok_or(RoutingError::ConnectionError)?;
 
-    subscribers
-        .iter_mut()
-        .flat_map(|(_, dest)| dest)
-        .for_each(|subscriber| futures.push(subscriber.send(event.clone())));
+        if dest_subs.len() == 1 {
+            let result = dest_subs
+                .get_mut(0)
+                .ok_or(RoutingError::ConnectionError)?
+                .send(event)
+                .await;
 
-    for result in futures.collect::<Vec<_>>().await {
-        result?
+            return if result.is_err() {
+                Ok(vec![(dest.clone(), 0)])
+            } else {
+                Ok(vec![])
+            };
+        }
     }
 
-    Ok(())
+    let futures = FuturesUnordered::new();
+
+    for (dest, dest_subs) in subscribers {
+        for (index, sender) in dest_subs.iter_mut().enumerate() {
+            futures.push(index_path_sender(
+                sender,
+                event.clone(),
+                dest.clone(),
+                index,
+            ))
+        }
+    }
+
+    let results = futures.filter_map(ready).collect::<Vec<_>>().await;
+
+    Ok(results)
 }
 
 /// Broadcasts an event to all subscribers of the task that are subscribed to a given path.
@@ -221,23 +250,36 @@ async fn broadcast_destination(
     destination: RelativePath,
     event: RouterEvent,
 ) -> Result<(), RoutingError> {
-    let futures = FuturesUnordered::new();
-
     if subscribers.contains_key(&destination) {
         let destination_subs = subscribers
             .get_mut(&destination)
             .ok_or(RoutingError::ConnectionError)?;
 
-        for subscriber in destination_subs.iter_mut() {
-            futures.push(subscriber.send(event.clone()));
+        if destination_subs.len() == 1 {
+            let result = destination_subs
+                .get_mut(0)
+                .ok_or(RoutingError::ConnectionError)?
+                .send(event)
+                .await;
+
+            if result.is_err() {
+                destination_subs.remove(0);
+            }
+        } else {
+            let futures = FuturesUnordered::from_iter(
+                destination_subs
+                    .iter_mut()
+                    .enumerate()
+                    .map(|(index, sender)| index_sender(sender, event.clone(), index)),
+            );
+
+            for index in futures.filter_map(ready).collect::<Vec<_>>().await {
+                destination_subs.remove(index);
+            }
         }
     } else {
         trace!("No downlink interested in event: {:?}", event);
     };
-
-    for result in futures.collect::<Vec<_>>().await {
-        result?
-    }
 
     Ok(())
 }
@@ -248,4 +290,48 @@ fn combine_incoming_streams(
 ) -> impl stream::Stream<Item = IncomingRequest> + Send + 'static {
     let close_requests = close_rx.map(IncomingRequest::Close);
     stream::select(task_rx, close_requests)
+}
+
+fn remove_unreachable(
+    subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
+    unreachable: Vec<(RelativePath, usize)>,
+) -> Result<(), RoutingError> {
+    for (path, index) in unreachable {
+        let subs_dest = subscribers
+            .get_mut(&path)
+            .ok_or(RoutingError::ConnectionError)?;
+
+        subs_dest.remove(index);
+
+        if subs_dest.is_empty() {
+            subscribers.remove(&path);
+        }
+    }
+
+    Ok(())
+}
+
+async fn index_sender(
+    sender: &mut mpsc::Sender<RouterEvent>,
+    event: RouterEvent,
+    index: usize,
+) -> Option<usize> {
+    if sender.send(event).await.is_err() {
+        Some(index)
+    } else {
+        None
+    }
+}
+
+async fn index_path_sender<'a>(
+    sender: &mut mpsc::Sender<RouterEvent>,
+    event: RouterEvent,
+    path: RelativePath,
+    index: usize,
+) -> Option<(RelativePath, usize)> {
+    if sender.send(event).await.is_err() {
+        Some((path, index))
+    } else {
+        None
+    }
 }

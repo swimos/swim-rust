@@ -14,12 +14,16 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
+pub extern crate deserialize as _deserialize;
 #[macro_use]
 #[allow(unused_imports)]
 pub extern crate form_derive;
-pub extern crate deserialize as _deserialize;
 pub extern crate serialize as _serialize;
 
+pub use num_bigint::{self, BigInt, BigUint};
+
+pub use _deserialize::{deserialize_bigint, deserialize_biguint};
+pub use _serialize::bigint::{self, serialize_big_uint, serialize_bigint};
 use common::model::schema::StandardSchema;
 use common::model::Value;
 
@@ -27,11 +31,14 @@ pub use deserialize::FormDeserializeErr;
 pub use form_derive::*;
 pub use serialize::FormSerializeErr;
 
+#[allow(unused_imports)]
+use common::model::blob::{self, serialize_blob_as_value};
+
 #[cfg(test)]
 mod tests;
 
 pub mod collections;
-pub mod primitives;
+pub mod impls;
 
 /// A [`Form`] transforms between a Rust object and a structurally typed [`Value`]. Decorating a
 /// Rust object with [`#[form(Value)`] derives a method to serialise the object to a [`Value`] and to
@@ -76,6 +83,30 @@ pub mod primitives;
 /// let result = Message::try_from_value(&record).unwrap();
 /// assert_eq!(result, msg);
 /// ```
+///
+/// The [`Form`] trait is implemented for: `i32`, `u32`, `i64`, `u64`, `String`, `f64`, `bool`,
+/// `Option<V>`.
+///
+/// # Big Integers
+/// The [`Form`] trait also implemented for the `num_traits`'s `BigInt` and `BigUint` structures but
+/// requires additional decoration for serialization and deserialization to work correctly:
+/// ```
+/// use swim_form::{BigInt, BigUint, Form, form_derive::*};
+/// use common::model::Value;
+///
+/// #[form(Value)]
+/// struct S {
+///      #[form(bigint)]
+///      a: BigInt,
+///      #[form(biguint)]
+///      b: BigUint,
+/// }
+/// ```
+/// Swim forms do not support serializing and deserializing a single `BigInt` or `BigUint` structure
+/// as there is no way to provide the serializer or deserializer with the correct implementation to use
+/// as the `num-bigint` crate has its own implementation for serialize and deserialize that Swim forms
+/// do not use. As `num-bigint` is a remote crate, the instance must be wrapped and provided with the
+/// correct serializer and deserializer to use.
 pub trait Form: Sized {
     fn as_value(&self) -> Value;
 

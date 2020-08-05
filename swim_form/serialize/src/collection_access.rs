@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{FormSerializeErr, Result, SerializerState, ValueSerializer};
+use crate::{FormSerializeErr, SerializerResult, SerializerState, ValueSerializer};
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::Serialize;
 
@@ -20,14 +20,14 @@ impl<'a> SerializeSeq for &'a mut ValueSerializer {
     type Ok = ();
     type Error = FormSerializeErr;
 
-    fn serialize_element<T>(&mut self, value: &T) -> Result<()>
+    fn serialize_element<T>(&mut self, value: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> SerializerResult<()> {
         self.exit_nested();
         Ok(())
     }
@@ -37,7 +37,7 @@ impl<'a> SerializeMap for &'a mut ValueSerializer {
     type Ok = ();
     type Error = FormSerializeErr;
 
-    fn serialize_key<T>(&mut self, key: &T) -> Result<()>
+    fn serialize_key<T>(&mut self, key: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
@@ -49,7 +49,7 @@ impl<'a> SerializeMap for &'a mut ValueSerializer {
         key.serialize(&mut **self)
     }
 
-    fn serialize_value<T>(&mut self, value: &T) -> Result<()>
+    fn serialize_value<T>(&mut self, value: &T) -> SerializerResult<()>
     where
         T: ?Sized + Serialize,
     {
@@ -62,7 +62,7 @@ impl<'a> SerializeMap for &'a mut ValueSerializer {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> SerializerResult<()> {
         self.exit_nested();
         Ok(())
     }

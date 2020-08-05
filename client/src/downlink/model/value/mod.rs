@@ -271,6 +271,8 @@ impl SyncStateMachine<ValueModel, Value, Action> for ValueStateMachine {
         if self.schema.matches(&upd_value) {
             state.state = Arc::new(upd_value);
             Ok(())
+        } else if upd_value == Value::Extant {
+            Ok(())
         } else {
             Err(DownlinkError::SchemaViolation(
                 upd_value,

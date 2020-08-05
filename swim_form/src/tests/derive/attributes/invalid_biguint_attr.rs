@@ -16,19 +16,9 @@ use common::model::Value;
 use form_derive::*;
 
 #[form(Value)]
-struct Parent {
+struct S {
+    #[form(biguint)]
     a: i32,
-    b: Child,
 }
 
-#[form(Value)]
-struct Child {
-    c: u32,
-}
-
-fn main() {
-    let _ = Parent {
-        a: 1,
-        b: Child { c: 1 },
-    };
-}
+fn main() {}
