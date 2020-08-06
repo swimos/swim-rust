@@ -64,7 +64,7 @@ impl<'t> TypeContents<'t> {
                                     match &name.lit {
                                         Lit::Str(s) => {
                                             name_opt = Some(FieldIdentity::Renamed {
-                                                new_identity: Ident::new(&*s.value(), s.span()),
+                                                new_identity: s.value(),
                                                 old_identity: variant.ident.clone(),
                                             });
                                         }
@@ -242,7 +242,7 @@ pub fn fields_from_ast<'t>(
                                     });
 
                                     renamed = Some(FieldIdentity::Renamed {
-                                        new_identity: Ident::new(&*s.value(), s.span()),
+                                        new_identity: s.value(),
                                         old_identity: old_ident,
                                     });
                                 }
