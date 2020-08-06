@@ -21,282 +21,55 @@ extern crate syn;
 
 use proc_macro::TokenStream;
 
-use proc_macro2::Ident;
-use syn::export::TokenStream2;
 use syn::DeriveInput;
 
-use macro_helpers::{deconstruct_type, to_compile_errors, CompoundType, Context, FieldName};
+use macro_helpers::{to_compile_errors, Context};
 
-use crate::parser::{
-    EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents,
-};
+use crate::parser::{FormDescriptor, TypeContents};
 
 mod parser;
+mod to_value;
+use to_value::to_value;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    build_derive_form(input)
+        .unwrap_or_else(to_compile_errors)
+        .into()
+}
+
+fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let context = Context::default();
     let mut descriptor = FormDescriptor::from_ast(&context, &input);
-    let type_contents = match TypeContents::from(&context, &input, &mut descriptor) {
-        Some(cont) => cont,
-        None => return to_compile_errors(context.check().unwrap_err()).into(),
-    };
-
     let structure_name = descriptor.name.original_ident.clone();
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
-
-    let as_value_body = match type_contents {
-        TypeContents::Struct(StructRepr {
-            compound_type,
-            fields,
-            manifest,
-        }) => build_struct_as_value(
-            descriptor,
-            manifest,
-            &structure_name,
-            &compound_type,
-            &fields,
-        ),
-        TypeContents::Enum(variants) => {
-            let arms = variants.into_iter().fold(Vec::new(), |mut ts, variant| {
-                let EnumVariant {
-                    name,
-                    compound_type,
-                    fields,
-                    manifest,
-                } = variant;
-
-                let as_value = build_variant_as_value(
-                    descriptor.clone(),
-                    manifest,
-                    &name,
-                    &compound_type,
-                    &fields,
-                );
-
-                ts.push(as_value);
-
-                ts
-            });
-
-            quote! {
-                match *self {
-                    #(#arms)*
-                }
-            }
-        }
+    let type_contents = match TypeContents::from(&context, &input) {
+        Some(cont) => cont,
+        None => return Err(context.check().unwrap_err()),
     };
 
-    if let Err(e) = context.check() {
-        return to_compile_errors(e).into();
-    }
+    let as_value_body = to_value(type_contents, &structure_name, descriptor);
+
+    context.check()?;
+
+    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
 
     let ts = quote! {
         impl #impl_generics swim_common::form::Form for #structure_name #ty_generics #where_clause
         {
+            #[inline]
+            #[allow(non_snake_case)]
             fn as_value(&self) -> swim_common::model::Value {
                 #as_value_body
             }
 
+            #[inline]
+            #[allow(non_snake_case)]
             fn try_from_value(value: &swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
                 unimplemented!()
             }
         }
     };
 
-    ts.into()
-}
-
-fn build_struct_as_value(
-    mut descriptor: FormDescriptor,
-    mut manifest: FieldManifest,
-    structure_name: &Ident,
-    compound_type: &CompoundType,
-    fields: &[Field],
-) -> TokenStream2 {
-    let structure_name_str = descriptor.name.tag_ident.to_string();
-    let RecordTokenStreams {
-        headers,
-        attributes,
-        items,
-    } = compute_record(&fields, &mut descriptor, &mut manifest);
-    let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
-    let self_deconstruction = deconstruct_type(compound_type, &field_names);
-
-    quote! {
-        let #structure_name #self_deconstruction = self;
-        let mut attrs = vec![swim_common::model::Attr::of((#structure_name_str #headers)), #attributes];
-        swim_common::model::Value::Record(attrs, #items)
-    }
-}
-
-fn build_variant_as_value(
-    mut descriptor: FormDescriptor,
-    mut manifest: FieldManifest,
-    variant_name: &FieldName,
-    compound_type: &CompoundType,
-    fields: &[Field],
-) -> TokenStream2 {
-    let variant_name_str = variant_name.to_string();
-    let RecordTokenStreams {
-        headers,
-        attributes,
-        items,
-    } = compute_record(&fields, &mut descriptor, &mut manifest);
-    let structure_name = &descriptor.name.original_ident;
-    let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
-    let self_deconstruction = deconstruct_type(compound_type, &field_names);
-
-    quote! {
-        #structure_name::#variant_name #self_deconstruction => {
-            let mut attrs = vec![swim_common::model::Attr::of((#variant_name_str #headers)), #attributes];
-            swim_common::model::Value::Record(attrs, #items)
-        },
-    }
-}
-
-#[derive(Default)]
-struct RecordTokenStreams {
-    headers: TokenStream2,
-    attributes: TokenStream2,
-    items: TokenStream2,
-}
-
-impl RecordTokenStreams {
-    fn transform_items<F>(&mut self, f: F)
-    where
-        F: FnOnce(&TokenStream2) -> TokenStream2,
-    {
-        let items = &self.items;
-        self.items = f(items);
-    }
-
-    fn transform_attrs<F>(&mut self, f: F)
-    where
-        F: FnOnce(&TokenStream2) -> TokenStream2,
-    {
-        let attrs = &self.attributes;
-        self.attributes = f(attrs);
-    }
-
-    fn transform_headers<F>(&mut self, f: F)
-    where
-        F: FnOnce(&TokenStream2) -> TokenStream2,
-    {
-        let headers = &self.headers;
-        self.headers = f(headers);
-    }
-}
-
-fn compute_record(
-    fields: &[Field],
-    descriptor: &mut FormDescriptor,
-    manifest: &mut FieldManifest,
-) -> RecordTokenStreams {
-    let mut as_value_ts = fields
-        .iter()
-        .fold(RecordTokenStreams::default(), |mut as_value_ts, f| {
-            let name = &f.name;
-
-            match &f.kind {
-                FieldKind::Skip => {}
-                FieldKind::Slot if !manifest.replaces_body => {
-                    match name {
-                        FieldName::Named(ident) => {
-                            let name_str = ident.to_string();
-                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
-                        }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),));
-                        }
-                        un @ FieldName::Unnamed(_) => {
-                            let ident = un.as_ident();
-                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::ValueItem(#ident.as_value()),));
-                        }
-                    }
-                }
-                FieldKind::Attr => {
-                    match name {
-                        FieldName::Named(ident) => {
-                            let name_str = ident.to_string();
-                            as_value_ts.transform_attrs(|attrs| quote!(#attrs swim_common::model::Attr::of((#name_str.to_string(), #ident.as_value())),));
-                        }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            as_value_ts.transform_attrs(|attrs| quote!(#attrs swim_common::model::Attr::of((#name_str.to_string(), #old.as_value())),));
-                        }
-                        FieldName::Unnamed(_index) => {
-                            // This has bene checked already when parsing the AST.
-                            unreachable!()
-                        }
-                    }
-                }
-                FieldKind::Body => {
-                    descriptor.body_replaced = true;
-                    let ident = f.name.as_ident();
-
-                    as_value_ts.transform_items(|_items| quote!({
-                        match #ident.as_value() {
-                            swim_common::model::Value::Record(_attrs, items) => items,
-                            v => vec![swim_common::model::Item::ValueItem(v)]
-                        }
-                    }));
-                }
-                FieldKind::HeaderBody => {
-                    if manifest.has_header_fields {
-                        match name {
-                            FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
-                            }
-                            un @ FieldName::Unnamed(_) => {
-                                let ident = un.as_ident();
-                                as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
-                            }
-                        }
-                    } else {
-                        match name {
-                            FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                as_value_ts.transform_headers(|_headers| quote!(, #ident.as_value()));
-                            }
-                            un @ FieldName::Unnamed(_) => {
-                                let ident = un.as_ident();
-                                as_value_ts.transform_headers(|_headers| quote!(, #ident.as_value()));
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    match name {
-                        FieldName::Named(ident) => {
-                            let name_str = ident.to_string();
-                            as_value_ts.transform_headers(|headers|quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
-                        }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),));
-                        }
-                        un @ FieldName::Unnamed(_) => {
-                            let ident = un.as_ident();
-                            as_value_ts.transform_headers(|headers|quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
-                        }
-                    }
-                }
-            }
-
-            as_value_ts
-        });
-
-    if manifest.has_header_fields || manifest.replaces_body {
-        as_value_ts.transform_headers(
-            |headers| quote!(, swim_common::model::Value::Record(Vec::new(), vec![#headers])),
-        );
-    }
-
-    if !descriptor.has_body_replaced() {
-        as_value_ts.transform_items(|items| quote!(vec![#items]));
-    }
-
-    as_value_ts
+    Ok(ts)
 }

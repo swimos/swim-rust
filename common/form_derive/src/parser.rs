@@ -31,17 +31,19 @@ pub const RENAME_PATH: Symbol = Symbol("rename");
 pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
 
+/// An enumeration representing the contents of an input.
 pub enum TypeContents<'t> {
+    /// An enumeration input. Containing a vector of enumeration variants.
     Enum(Vec<EnumVariant<'t>>),
+    /// A struct input containing its respresentation.
     Struct(StructRepr<'t>),
 }
 
 impl<'t> TypeContents<'t> {
-    pub fn from(
-        context: &Context,
-        input: &'t syn::DeriveInput,
-        _descriptor: &mut FormDescriptor,
-    ) -> Option<Self> {
+    /// Build a [`TypeContents`] input from an abstract syntax tree. Returns [`Option::None`] if
+    /// there was an error that was encountered while parsing the tree. The underlying error is
+    /// added to the [`Context]`.
+    pub fn from(context: &Context, input: &'t syn::DeriveInput) -> Option<Self> {
         let type_contents = match &input.data {
             Data::Enum(data) => {
                 let variants = data
@@ -106,25 +108,41 @@ impl<'t> TypeContents<'t> {
     }
 }
 
+/// A representation of a parsed struct from the AST.
 pub struct StructRepr<'t> {
+    /// The struct's type: tuple, named, unit.
     pub compound_type: CompoundType,
+    /// The field members of the struct.
     pub fields: Vec<Field<'t>>,
+    /// A derived [`FieldManifest`] from the attributes on the members.
     pub manifest: FieldManifest,
 }
 
+/// A representation of a parsed enumeration from the AST.
 pub struct EnumVariant<'a> {
+    /// The name of the variant.
     pub name: FieldName,
+    /// The variant's type: tuple, named, unit.
     pub compound_type: CompoundType,
+    /// The field members of the variant.
     pub fields: Vec<Field<'a>>,
+    /// A derived [`FieldManifest`] from the attributes on the members.
     pub manifest: FieldManifest,
 }
 
+/// A representation of a parsed field from the AST.
 pub struct Field<'a> {
+    /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
+    /// The name of the field.
     pub name: FieldName,
+    /// The kind of the field from its attribute.
     pub kind: FieldKind,
 }
 
+/// Parse a structure's fields from the [`DeriveInput`]'s fields. Returns the type of the fields,
+/// parsed fields that contain a name and kind, and a derived [`FieldManifest]`. Any errors
+/// encountered are added to the [`Context]`.
 pub fn parse_struct<'a>(
     context: &Context,
     fields: &'a syn::Fields,
@@ -146,6 +164,7 @@ pub fn parse_struct<'a>(
     }
 }
 
+/// Parses an AST of fields
 pub fn fields_from_ast<'t>(
     ctx: &Context,
     fields: &'t Punctuated<syn::Field, syn::Token![,]>,
