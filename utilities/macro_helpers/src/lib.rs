@@ -8,9 +8,10 @@ extern crate quote;
 extern crate syn;
 
 use core::fmt;
+use std::fmt::Display;
+
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
-use std::fmt::Display;
 use syn::export::TokenStream2;
 use syn::{Data, Index, Meta, Path};
 
@@ -196,7 +197,9 @@ pub fn deconstruct_type(
     }
 }
 
-/// Returns a vector of metadata that matches the provided path.
+/// Returns a vector of metadata for the provided [`Attribute`] that matches the provided
+/// [`Symbol`]. An error that is encountered is added to the [`Context`] and a [`Result::Err`] is
+/// returned.
 pub fn get_attribute_meta(
     ctx: &mut Context,
     attr: &syn::Attribute,

@@ -165,7 +165,8 @@ pub fn parse_struct<'a>(
     }
 }
 
-/// Parses an AST of fields
+/// Parses an AST of fields and produces a vector of fields that contain their final identities
+/// and their kind as well as producing a [`FieldManifest`].
 pub fn fields_from_ast<'t>(
     ctx: &mut Context,
     fields: &'t Punctuated<syn::Field, syn::Token![,]>,
@@ -284,13 +285,6 @@ pub fn fields_from_ast<'t>(
 }
 
 #[derive(Debug, Clone)]
-pub struct FormDescriptor {
-    pub body_replaced: bool,
-    pub header_body_field: Option<Ident>,
-    pub name: Name,
-}
-
-#[derive(Debug, Clone)]
 pub struct Name {
     /// The original name of the structure.
     pub original_ident: Ident,
@@ -298,7 +292,19 @@ pub struct Name {
     pub tag_ident: Ident,
 }
 
+/// A trait for retrieving attributes on a field or compound type that are prefixed by the provided
+/// [`symbol`]. For example calling this on a [`DeriveInput`] that represents the following:
+///```
+///struct Person {
+///    #[form(skip)]
+///    name: String,
+///    age: i32,
+/// }
+///```
+/// will return a [`Vector`] that contains the [`NestedMeta`] for the field [`name`].
 pub trait Attributes {
+    /// Returns a vector of [`NestedMeta`] for all attributes that contain a path that matches the
+    /// provided symbol or an empty vector if there are no matches.
     fn get_attributes(&self, ctx: &mut Context, symbol: Symbol) -> Vec<NestedMeta>;
 }
 
@@ -311,13 +317,28 @@ impl Attributes for Vec<Attribute> {
     }
 }
 
+/// A [`FormDescriptor`] is a representation of a [`Form`] that is built from a [`DeriveInput`],
+/// containing the name of the compound type that it represents and whether or not the body of the
+/// produced [`Value`] is replaced. A field annotated with [`[form(body)]` will cause this to
+/// happen. A compound type annotated with [`[form(tag = "name")]` will set the structure's output
+/// value to be replaced with the provided literal.
+#[derive(Debug, Clone)]
+pub struct FormDescriptor {
+    /// Denotes whether or not the body of the produced record is replaced by a field in the
+    /// compound type.
+    pub body_replaced: bool,
+    /// The name that the compound type will be transmuted with.
+    pub name: Name,
+}
+
 impl FormDescriptor {
+    /// Builds a [`FormDescriptor`] for the provided [`DeriveInput`]. An errors encountered while
+    /// parsing the [`DeriveInput`] will be added to the [`Context`].
     pub fn from_ast(ctx: &mut Context, input: &syn::DeriveInput) -> FormDescriptor {
         let kind = StructureKind::from(&input.data);
 
         let mut desc = FormDescriptor {
             body_replaced: false,
-            header_body_field: None,
             name: Name {
                 original_ident: input.ident.clone(),
                 tag_ident: input.ident.clone(),
@@ -387,24 +408,18 @@ impl Default for FieldKind {
     }
 }
 
+/// A structure representing what fields in the compound type are annotated with.
+#[derive(Default)]
 pub struct FieldManifest {
-    pub field_kind: FieldKind,
+    /// Whether or not there is a field in the compound type that replaces the body of the output
+    /// record.
     pub replaces_body: bool,
+    /// Whether or not there is a field in the compound type that is promoted to the header's body.
     pub header_body: bool,
+    /// Whether or not there are fields that are written to the attributes vector in the record.
     pub has_attr_fields: bool,
+    /// Whether or not there are fields that are written to the slot vector in the record.
     pub has_slot_fields: bool,
+    /// Whether or not there are fields tha are written as headers in the record.
     pub has_header_fields: bool,
-}
-
-impl Default for FieldManifest {
-    fn default() -> FieldManifest {
-        FieldManifest {
-            field_kind: FieldKind::Slot,
-            replaces_body: false,
-            header_body: false,
-            has_attr_fields: false,
-            has_slot_fields: false,
-            has_header_fields: false,
-        }
-    }
 }
