@@ -122,7 +122,6 @@ impl PartialOrd for ValueKind {
         } else {
             match (self, other) {
                 (ValueKind::Int32, ValueKind::Int64) => Some(Ordering::Less),
-                (ValueKind::Int32, ValueKind::Float64) => Some(Ordering::Less),
                 (ValueKind::Int32, ValueKind::BigInt) => Some(Ordering::Less),
 
                 (ValueKind::Int64, ValueKind::Int32) => Some(Ordering::Greater),
@@ -131,16 +130,12 @@ impl PartialOrd for ValueKind {
 
                 (ValueKind::UInt32, ValueKind::Int64) => Some(Ordering::Less),
                 (ValueKind::UInt32, ValueKind::UInt64) => Some(Ordering::Less),
-                (ValueKind::UInt32, ValueKind::Float64) => Some(Ordering::Less),
                 (ValueKind::UInt32, ValueKind::BigInt) => Some(Ordering::Less),
                 (ValueKind::UInt32, ValueKind::BigUint) => Some(Ordering::Less),
 
                 (ValueKind::UInt64, ValueKind::UInt32) => Some(Ordering::Greater),
                 (ValueKind::UInt64, ValueKind::BigInt) => Some(Ordering::Less),
                 (ValueKind::UInt64, ValueKind::BigUint) => Some(Ordering::Less),
-
-                (ValueKind::Float64, ValueKind::Int32) => Some(Ordering::Greater),
-                (ValueKind::Float64, ValueKind::UInt32) => Some(Ordering::Greater),
 
                 (ValueKind::BigInt, ValueKind::Int32) => Some(Ordering::Greater),
                 (ValueKind::BigInt, ValueKind::Int64) => Some(Ordering::Greater),
@@ -203,7 +198,6 @@ impl Display for ValueKind {
     }
 }
 
-#[allow(clippy::float_cmp, clippy::cognitive_complexity)]
 impl Value {
     /// Checks if the a [`Value`] is coercible into the [`ValueKind`] provided.
     pub fn is_coercible_to(&self, kind: ValueKind) -> bool {
@@ -484,7 +478,7 @@ impl Value {
                         }
                     } else if y.is_nan() {
                         Ordering::Greater
-                    } else if *x == *y {
+                    } else if (*x - *y).abs() < f64::EPSILON {
                         Ordering::Equal
                     } else if *x < *y {
                         Ordering::Less

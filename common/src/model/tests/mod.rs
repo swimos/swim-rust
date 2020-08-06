@@ -199,8 +199,6 @@ fn kind_cmp() {
     assert_eq!(ValueKind::Int32, ValueKind::Int32);
     assert!(ValueKind::Int32 < ValueKind::Int64);
     assert!(ValueKind::Int64 > ValueKind::Int32);
-    assert!(ValueKind::Int32 < ValueKind::Float64);
-    assert!(ValueKind::Float64 > ValueKind::Int32);
     assert!(ValueKind::Int32 < ValueKind::BigInt);
     assert!(ValueKind::BigInt > ValueKind::Int32);
 
@@ -213,8 +211,6 @@ fn kind_cmp() {
     assert_eq!(ValueKind::UInt32, ValueKind::UInt32);
     assert!(ValueKind::UInt32 < ValueKind::UInt64);
     assert!(ValueKind::UInt64 > ValueKind::UInt32);
-    assert!(ValueKind::UInt32 < ValueKind::Float64);
-    assert!(ValueKind::Float64 > ValueKind::UInt32);
     assert!(ValueKind::UInt32 < ValueKind::BigInt);
     assert!(ValueKind::BigInt > ValueKind::UInt32);
     assert!(ValueKind::UInt32 < ValueKind::BigUint);

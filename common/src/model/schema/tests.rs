@@ -3486,20 +3486,37 @@ fn compare_of_kind_extant() {
 #[test]
 fn compare_of_kind_i32() {
     let schema = StandardSchema::OfKind(ValueKind::Int32);
+
     let greater_schemas = vec![
         StandardSchema::OfKind(ValueKind::Int64),
         StandardSchema::InRangeInt(Range::<i64>::bounded(
             Bound::inclusive(i32::MIN as i64 - 1),
             Bound::inclusive(i32::MAX as i64 + 1),
         )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(i32::MIN as i64 - 1)),
+            Bound::inclusive(BigInt::from(i32::MAX as i64 + 1)),
+        )),
     ];
 
     let lesser_schemas = vec![
         StandardSchema::Equal(Value::Int32Value(10)),
         StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::Equal(Value::UInt32Value(30)),
+        StandardSchema::Equal(Value::UInt64Value(40)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(50))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(60u32))),
         StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-10),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
             Bound::inclusive(10),
             Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(10)),
+            Bound::inclusive(BigInt::from(20)),
         )),
     ];
 
@@ -3509,14 +3526,41 @@ fn compare_of_kind_i32() {
             Bound::inclusive(i32::MIN as i64),
             Bound::inclusive(i32::MAX as i64),
         )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(i32::MIN as i64)),
+            Bound::inclusive(BigInt::from(i32::MAX as i64)),
+        )),
     ];
 
     let not_related_schemas = vec![
         StandardSchema::Equal(Value::Int64Value(i32::MAX as i64 + 1)),
+        StandardSchema::Equal(Value::UInt32Value(i32::MAX as u32 + 1)),
+        StandardSchema::Equal(Value::UInt64Value(i32::MAX as u64 + 1)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(i32::MIN) - 1)),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(i32::MAX as u64 + 1))),
         StandardSchema::InRangeInt(Range::<i64>::bounded(
             Bound::inclusive(i32::MIN as i64 - 1),
             Bound::inclusive(20),
         )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(i32::MAX as u64 + 1),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::lower_bounded(Bound::inclusive(10))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(i32::MIN as i64 - 1)),
+            Bound::inclusive(BigInt::from(20)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(10)),
+            Bound::inclusive(BigInt::from(i32::MAX as i64 + 1)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::upper_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::lower_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
     ];
 
     assert_less_than(schema.clone(), greater_schemas);
@@ -3529,13 +3573,30 @@ fn compare_of_kind_i32() {
 fn compare_of_kind_i64() {
     let schema = StandardSchema::OfKind(ValueKind::Int64);
 
+    let greater_schemas = vec![StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+        Bound::inclusive(BigInt::from(i64::MIN as i128 - 1)),
+        Bound::inclusive(BigInt::from(i64::MAX as i128 + 1)),
+    ))];
+
     let lesser_schemas = vec![
         StandardSchema::OfKind(ValueKind::Int32),
         StandardSchema::Equal(Value::Int32Value(10)),
         StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::Equal(Value::UInt32Value(30)),
+        StandardSchema::Equal(Value::UInt64Value(40)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(50))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(60u32))),
         StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-10),
+            Bound::inclusive(10),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
             Bound::inclusive(0),
             Bound::inclusive(10),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(-10)),
+            Bound::inclusive(BigInt::from(20)),
         )),
     ];
 
@@ -3545,10 +3606,289 @@ fn compare_of_kind_i64() {
             Bound::inclusive(i64::MIN),
             Bound::inclusive(i64::MAX),
         )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(i64::MIN)),
+            Bound::inclusive(BigInt::from(i64::MAX)),
+        )),
     ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Equal(Value::UInt64Value(i64::MAX as u64 + 1)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(i64::MIN as i128 - 1))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(i64::MAX as u64 + 1))),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(0),
+            Bound::inclusive(i64::MAX as u64 + 1),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::lower_bounded(Bound::inclusive(0))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(10)),
+            Bound::inclusive(BigInt::from(i64::MAX as i128 + 1)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(i64::MIN as i128 - 1)),
+            Bound::inclusive(BigInt::from(20)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::upper_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::lower_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema.clone(), equal_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_of_kind_u32() {
+    let schema = StandardSchema::OfKind(ValueKind::UInt32);
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(i64::MIN),
+            Bound::inclusive(i64::MAX),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(u64::MIN),
+            Bound::inclusive(u64::MAX),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(i64::MIN)),
+            Bound::inclusive(BigInt::from(i64::MAX)),
+        )),
+    ];
+
+    let lesser_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::Equal(Value::UInt32Value(30)),
+        StandardSchema::Equal(Value::UInt64Value(40)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(50))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(60u32))),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(15),
+            Bound::inclusive(25),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(35)),
+            Bound::inclusive(BigInt::from(45)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::OfKind(ValueKind::UInt32),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(0),
+            Bound::inclusive(u32::MAX as i64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(u32::MIN as u64),
+            Bound::inclusive(u32::MAX as u64),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(u32::MIN)),
+            Bound::inclusive(BigInt::from(u32::MAX)),
+        )),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(-1)),
+        StandardSchema::Equal(Value::Int64Value(-2)),
+        StandardSchema::Equal(Value::UInt64Value(u32::MAX as u64 + 1)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(-1))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(u32::MAX as u64 + 1))),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-1),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(i64::MAX),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(u64::MAX as u64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::lower_bounded(Bound::inclusive(10))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(-10)),
+            Bound::inclusive(BigInt::from(20)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(10)),
+            Bound::inclusive(BigInt::from(u32::MAX as u64 + 1)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::lower_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::upper_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema.clone(), equal_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_of_kind_u64() {
+    let schema = StandardSchema::OfKind(ValueKind::UInt64);
+
+    let greater_schemas = vec![StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+        Bound::inclusive(BigInt::from(i128::MIN)),
+        Bound::inclusive(BigInt::from(i128::MAX)),
+    ))];
+
+    let lesser_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::Equal(Value::UInt32Value(30)),
+        StandardSchema::Equal(Value::UInt64Value(40)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(50))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(60u32))),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(15),
+            Bound::inclusive(25),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(35)),
+            Bound::inclusive(BigInt::from(45)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::OfKind(ValueKind::UInt64),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(u64::MIN),
+            Bound::inclusive(u64::MAX),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(u64::MIN)),
+            Bound::inclusive(BigInt::from(u64::MAX)),
+        )),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(-1)),
+        StandardSchema::Equal(Value::Int64Value(-2)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(-1))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(u64::MAX as u128 + 1))),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-1),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(-10)),
+            Bound::inclusive(BigInt::from(20)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(10)),
+            Bound::inclusive(BigInt::from(u64::MAX as u128 + 1)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::lower_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::upper_bounded(Bound::inclusive(
+            BigInt::from(10),
+        ))),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_equal(schema.clone(), equal_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_of_kind_big_int() {
+    let schema = StandardSchema::OfKind(ValueKind::BigInt);
+
+    let lesser_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::Equal(Value::UInt32Value(30)),
+        StandardSchema::Equal(Value::UInt64Value(40)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(50))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(60u32))),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(15),
+            Bound::inclusive(25),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(35)),
+            Bound::inclusive(BigInt::from(45)),
+        )),
+    ];
+
+    let equal_schemas = vec![StandardSchema::OfKind(ValueKind::BigInt)];
 
     assert_greater_than(schema.clone(), lesser_schemas);
     assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_of_kind_big_uint() {
+    let schema = StandardSchema::OfKind(ValueKind::BigUint);
+
+    let lesser_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(10)),
+        StandardSchema::Equal(Value::Int64Value(20)),
+        StandardSchema::Equal(Value::UInt32Value(30)),
+        StandardSchema::Equal(Value::UInt64Value(40)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(50))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(60u32))),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(15),
+            Bound::inclusive(25),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(35)),
+            Bound::inclusive(BigInt::from(45)),
+        )),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(-1)),
+        StandardSchema::Equal(Value::Int64Value(-2)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(-1))),
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(-1),
+            Bound::inclusive(20),
+        )),
+        StandardSchema::InRangeInt(Range::<i64>::upper_bounded(Bound::inclusive(20))),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(-10)),
+            Bound::inclusive(BigInt::from(20)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::upper_bounded(Bound::inclusive(
+            BigInt::from(20),
+        ))),
+    ];
+
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]
@@ -3647,13 +3987,28 @@ fn compare_of_kind_record() {
 fn compare_equal_i32() {
     let schema = StandardSchema::Equal(Value::Int32Value(42));
 
-    let greater_schemas = vec![StandardSchema::InRangeInt(Range::<i64>::bounded(
-        Bound::inclusive(10),
-        Bound::exclusive(55),
-    ))];
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(10),
+            Bound::exclusive(55),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(10),
+            Bound::exclusive(55),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(10)),
+            Bound::exclusive(BigInt::from(55)),
+        )),
+    ];
+
     let equal_schemas = vec![
         StandardSchema::Equal(Value::Int32Value(42)),
         StandardSchema::Equal(Value::Int64Value(42)),
+        StandardSchema::Equal(Value::UInt32Value(42)),
+        StandardSchema::Equal(Value::UInt64Value(42)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(42))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(42u32))),
     ];
 
     assert_less_than(schema.clone(), greater_schemas);
@@ -3664,13 +4019,156 @@ fn compare_equal_i32() {
 fn compare_equal_i64() {
     let schema = StandardSchema::Equal(Value::Int64Value(24));
 
-    let greater_schemas = vec![StandardSchema::InRangeInt(Range::<i64>::bounded(
-        Bound::inclusive(24),
-        Bound::exclusive(30),
-    ))];
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(24),
+            Bound::exclusive(30),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(24),
+            Bound::exclusive(30),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(24)),
+            Bound::exclusive(BigInt::from(30)),
+        )),
+    ];
+
     let equal_schemas = vec![
         StandardSchema::Equal(Value::Int32Value(24)),
         StandardSchema::Equal(Value::Int64Value(24)),
+        StandardSchema::Equal(Value::UInt32Value(24)),
+        StandardSchema::Equal(Value::UInt64Value(24)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(24))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(24u32))),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_equal_u32() {
+    let schema = StandardSchema::Equal(Value::UInt32Value(44));
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(44),
+            Bound::exclusive(55),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(44),
+            Bound::exclusive(55),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(44)),
+            Bound::exclusive(BigInt::from(55)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(44)),
+        StandardSchema::Equal(Value::Int64Value(44)),
+        StandardSchema::Equal(Value::UInt32Value(44)),
+        StandardSchema::Equal(Value::UInt64Value(44)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(44))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(44u32))),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_equal_u64() {
+    let schema = StandardSchema::Equal(Value::UInt64Value(55));
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(55),
+            Bound::exclusive(66),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(55),
+            Bound::exclusive(66),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(55)),
+            Bound::exclusive(BigInt::from(66)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(55)),
+        StandardSchema::Equal(Value::Int64Value(55)),
+        StandardSchema::Equal(Value::UInt32Value(55)),
+        StandardSchema::Equal(Value::UInt64Value(55)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(55))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(55u32))),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_equal_big_int() {
+    let schema = StandardSchema::Equal(Value::BigInt(BigInt::from(66)));
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(66),
+            Bound::exclusive(77),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(66),
+            Bound::exclusive(77),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(66)),
+            Bound::exclusive(BigInt::from(77)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(66)),
+        StandardSchema::Equal(Value::Int64Value(66)),
+        StandardSchema::Equal(Value::UInt32Value(66)),
+        StandardSchema::Equal(Value::UInt64Value(66)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(66))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(66u32))),
+    ];
+
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_equal(schema, equal_schemas);
+}
+
+#[test]
+fn compare_equal_big_uint() {
+    let schema = StandardSchema::Equal(Value::BigUint(BigUint::from(77u32)));
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeInt(Range::<i64>::bounded(
+            Bound::inclusive(77),
+            Bound::exclusive(88),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(77),
+            Bound::exclusive(88),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(77)),
+            Bound::exclusive(BigInt::from(88)),
+        )),
+    ];
+
+    let equal_schemas = vec![
+        StandardSchema::Equal(Value::Int32Value(77)),
+        StandardSchema::Equal(Value::Int64Value(77)),
+        StandardSchema::Equal(Value::UInt32Value(77)),
+        StandardSchema::Equal(Value::UInt64Value(77)),
+        StandardSchema::Equal(Value::BigInt(BigInt::from(77))),
+        StandardSchema::Equal(Value::BigUint(BigUint::from(77u32))),
     ];
 
     assert_less_than(schema.clone(), greater_schemas);
@@ -3832,6 +4330,22 @@ fn compare_in_range_int() {
             Bound::exclusive(4),
             Bound::exclusive(16),
         )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(5u64),
+            Bound::inclusive(15u64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(4u64),
+            Bound::exclusive(16u64),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(5)),
+            Bound::inclusive(BigInt::from(15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(4)),
+            Bound::exclusive(BigInt::from(16)),
+        )),
     ];
 
     let greater_schemas = vec![
@@ -3840,6 +4354,16 @@ fn compare_in_range_int() {
             Bound::inclusive(16),
         )),
         StandardSchema::InRangeInt(Range::<i64>::unbounded()),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(4u64),
+            Bound::inclusive(16u64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::unbounded()),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(4)),
+            Bound::inclusive(BigInt::from(16)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::unbounded()),
     ];
 
     let lesser_schemas = vec![
@@ -3851,6 +4375,22 @@ fn compare_in_range_int() {
             Bound::exclusive(6),
             Bound::exclusive(11),
         )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(5u64),
+            Bound::exclusive(15u64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(6u64),
+            Bound::exclusive(11u64),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(5)),
+            Bound::exclusive(BigInt::from(15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(6)),
+            Bound::exclusive(BigInt::from(11)),
+        )),
     ];
 
     let not_related_schemas = vec![
@@ -3861,6 +4401,159 @@ fn compare_in_range_int() {
         StandardSchema::InRangeInt(Range::<i64>::bounded(
             Bound::exclusive(6),
             Bound::exclusive(255),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(1),
+            Bound::exclusive(10),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(6u64),
+            Bound::exclusive(255u64),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(-5)),
+            Bound::exclusive(BigInt::from(-15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(6)),
+            Bound::exclusive(BigInt::from(255)),
+        )),
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_in_range_uint() {
+    let schema = StandardSchema::InRangeUint(Range::<u64>::bounded(
+        Bound::inclusive(5),
+        Bound::inclusive(15),
+    ));
+
+    let equal_schemas = vec![
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(5u64),
+            Bound::inclusive(15u64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(4u64),
+            Bound::exclusive(16u64),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(5)),
+            Bound::inclusive(BigInt::from(15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(4)),
+            Bound::exclusive(BigInt::from(16)),
+        )),
+    ];
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(4u64),
+            Bound::inclusive(16u64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::unbounded()),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(4)),
+            Bound::inclusive(BigInt::from(16)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::unbounded()),
+    ];
+
+    let lesser_schemas = vec![
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(5u64),
+            Bound::exclusive(15u64),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(6u64),
+            Bound::exclusive(11u64),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(5)),
+            Bound::exclusive(BigInt::from(15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(6)),
+            Bound::exclusive(BigInt::from(11)),
+        )),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(1),
+            Bound::exclusive(10),
+        )),
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(6u64),
+            Bound::exclusive(255u64),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(-5)),
+            Bound::exclusive(BigInt::from(-15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(6)),
+            Bound::exclusive(BigInt::from(255)),
+        )),
+    ];
+
+    assert_equal(schema.clone(), equal_schemas);
+    assert_less_than(schema.clone(), greater_schemas);
+    assert_greater_than(schema.clone(), lesser_schemas);
+    assert_not_related(schema, not_related_schemas);
+}
+
+#[test]
+fn compare_in_range_big_int() {
+    let schema = StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+        Bound::inclusive(BigInt::from(5)),
+        Bound::inclusive(BigInt::from(15)),
+    ));
+
+    let equal_schemas = vec![
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(5)),
+            Bound::inclusive(BigInt::from(15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(4)),
+            Bound::exclusive(BigInt::from(16)),
+        )),
+    ];
+
+    let greater_schemas = vec![
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(BigInt::from(4)),
+            Bound::inclusive(BigInt::from(16)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::unbounded()),
+    ];
+
+    let lesser_schemas = vec![
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(5)),
+            Bound::exclusive(BigInt::from(15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(6)),
+            Bound::exclusive(BigInt::from(11)),
+        )),
+    ];
+
+    let not_related_schemas = vec![
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(-5)),
+            Bound::exclusive(BigInt::from(-15)),
+        )),
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(BigInt::from(6)),
+            Bound::exclusive(BigInt::from(255)),
         )),
     ];
 

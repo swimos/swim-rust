@@ -20,7 +20,7 @@ use tokio::sync::mpsc::error::TryRecvError;
 
 #[tokio::test]
 async fn value_lane_get() {
-    let (lane, mut events) = make_lane(0, Queue::default());
+    let (lane, mut events) = make_lane_model(0, Queue::default());
 
     let result = atomically(&lane.get(), ExactlyOnce).await;
 
@@ -32,7 +32,7 @@ async fn value_lane_get() {
 
 #[tokio::test]
 async fn value_lane_set_queue() {
-    let (lane, mut events) = make_lane(0, Queue::default());
+    let (lane, mut events) = make_lane_model(0, Queue::default());
 
     let result = atomically(&lane.set(1), ExactlyOnce).await;
 
@@ -44,7 +44,7 @@ async fn value_lane_set_queue() {
 
 #[tokio::test]
 async fn value_lane_set_dropping() {
-    let (lane, mut events) = make_lane(3, Dropping);
+    let (lane, mut events) = make_lane_model(3, Dropping);
 
     let init_event = events.recv().await;
     assert!(matches!(init_event, Some(v) if *v == 3));
@@ -59,7 +59,7 @@ async fn value_lane_set_dropping() {
 
 #[tokio::test]
 async fn value_lane_set_buffered() {
-    let (lane, mut events) = make_lane(0, Buffered::default());
+    let (lane, mut events) = make_lane_model(0, Buffered::default());
 
     let result = atomically(&lane.set(1), ExactlyOnce).await;
 
@@ -71,7 +71,7 @@ async fn value_lane_set_buffered() {
 
 #[tokio::test]
 async fn value_lane_compound_transaction_queue() {
-    let (lane, mut events) = make_lane(5, Queue::default());
+    let (lane, mut events) = make_lane_model(5, Queue::default());
 
     let stm = lane
         .get()
@@ -90,7 +90,7 @@ async fn value_lane_compound_transaction_queue() {
 
 #[tokio::test]
 async fn value_lane_compound_transaction_dropping() {
-    let (lane, mut events) = make_lane(5, Dropping);
+    let (lane, mut events) = make_lane_model(5, Dropping);
 
     let init_event = events.recv().await;
     assert!(matches!(init_event, Some(v) if *v == 5));
@@ -112,7 +112,7 @@ async fn value_lane_compound_transaction_dropping() {
 
 #[tokio::test]
 async fn value_lane_compound_transaction_buffered() {
-    let (lane, mut events) = make_lane(5, Buffered::default());
+    let (lane, mut events) = make_lane_model(5, Buffered::default());
 
     let stm = lane
         .get()

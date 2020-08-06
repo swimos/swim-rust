@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
-use crate::agent::lane::BroadcastStream;
+use crate::agent::lane::{BroadcastStream, LaneModel};
 use futures::Stream;
 use std::any::Any;
 use std::sync::Arc;
@@ -26,12 +26,32 @@ use tokio::sync::{broadcast, mpsc, watch};
 mod tests;
 
 /// A lane containing a single value.
+#[derive(Clone, Debug)]
 pub struct ValueLane<T> {
     value: TVar<T>,
 }
 
+impl<T: Any + Send + Sync> ValueLane<T> {
+    pub fn new(init: T) -> Self {
+        ValueLane {
+            value: TVar::new(init),
+        }
+    }
+}
+
+impl<T> LaneModel for ValueLane<T>
+where
+    T: Send + Sync + 'static,
+{
+    type Event = Arc<T>;
+
+    fn same_lane(this: &Self, other: &Self) -> bool {
+        TVar::same_var(&this.value, &other.value)
+    }
+}
+
 /// Create a new value lane with the specified watch strategy.
-pub fn make_lane<T, W>(init: T, watch: W) -> (ValueLane<T>, W::View)
+pub fn make_lane_model<T, W>(init: T, watch: W) -> (ValueLane<T>, W::View)
 where
     T: Any + Send + Sync,
     W: ValueLaneWatch<T>,
@@ -52,6 +72,23 @@ impl<T: Any + Send + Sync> ValueLane<T> {
     /// Update the current value.
     pub fn set(&self, value: T) -> impl Stm<Result = ()> {
         self.value.put(value)
+    }
+
+    /// Get the current value, outside of a transaction.
+    pub async fn load(&self) -> Arc<T> {
+        self.value.load().await
+    }
+
+    /// Store a value to the lane, outside of a transaction.
+    pub async fn store(&self, value: T) {
+        self.value.store(value).await;
+    }
+
+    /// Locks the variable, preventing it from being read from or written to. This is
+    /// required to force the ordering of events in some unit tests.
+    #[cfg(test)]
+    pub async fn lock(&self) -> stm::var::TVarLock {
+        self.value.lock().await
     }
 }
 
