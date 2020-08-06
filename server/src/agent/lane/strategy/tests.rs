@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::strategy::ChannelObserver;
+use crate::agent::lane::strategy::{ChannelObserver, DeferredChannelObserver};
 use std::sync::Arc;
 use stm::var::observer::Observer;
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 #[tokio::test]
 async fn channel_observer_send_mpsc() {
@@ -102,4 +102,79 @@ async fn channel_observer_send_after_drop_broadcast() {
 
     //No assertion is needed as we merely need to ensure that this does not panic.
     observer.notify(value).await;
+}
+
+#[tokio::test]
+async fn deferred_mpsc_observer_nominal() {
+    let (channel_tx, channel_rx) = oneshot::channel();
+
+    let mut observer = DeferredChannelObserver::new(channel_rx);
+
+    let v1 = Arc::new(7);
+
+    observer.notify(v1).await;
+
+    let (tx, mut rx) = mpsc::channel(5);
+    assert!(channel_tx.send(tx).is_ok());
+
+    let v2 = Arc::new(13);
+    observer.notify(v2.clone()).await;
+
+    assert!(matches!(rx.try_recv(), Ok(v) if Arc::ptr_eq(&v, &v2)));
+}
+
+#[tokio::test]
+async fn deferred_mpsc_dropped_sender() {
+    let (channel_tx, channel_rx) = oneshot::channel::<mpsc::Sender<Arc<i32>>>();
+
+    let mut observer = DeferredChannelObserver::new(channel_rx);
+
+    let v1 = Arc::new(7);
+
+    observer.notify(v1).await;
+
+    drop(channel_tx);
+
+    let v2 = Arc::new(13);
+    observer.notify(v2.clone()).await;
+
+    assert!(matches!(observer, DeferredChannelObserver::Closed));
+}
+
+#[tokio::test]
+async fn deferred_watch_observer_nominal() {
+    let (channel_tx, channel_rx) = oneshot::channel();
+
+    let mut observer = DeferredChannelObserver::new(channel_rx);
+
+    let v1 = Arc::new(7);
+
+    observer.notify(v1).await;
+
+    let (tx, mut rx) = watch::channel(Arc::new(0));
+    let _ = rx.recv().await;
+
+    assert!(channel_tx.send(tx).is_ok());
+
+    let v2 = Arc::new(13);
+    observer.notify(v2.clone()).await;
+
+    assert!(matches!(rx.recv().await, Some(v) if Arc::ptr_eq(&v, &v2)));
+}
+
+#[tokio::test]
+async fn deferred_watch_dropped_sender() {
+    let (channel_tx, channel_rx) = oneshot::channel::<watch::Sender<Arc<i32>>>();
+
+    let mut observer = DeferredChannelObserver::new(channel_rx);
+
+    let v1 = Arc::new(7);
+
+    observer.notify(v1).await;
+
+    drop(channel_tx);
+    let v2 = Arc::new(13);
+    observer.notify(v2.clone()).await;
+
+    assert!(matches!(observer, DeferredChannelObserver::Closed));
 }

@@ -121,3 +121,10 @@ async fn take_until() {
 
     assert!(stream_task.await.is_ok());
 }
+
+#[tokio::test]
+async fn unit_future() {
+    let fut = async { 5 };
+
+    assert_eq!(fut.unit().await, ());
+}

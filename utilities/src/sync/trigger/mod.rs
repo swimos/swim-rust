@@ -46,6 +46,13 @@ pub struct Receiver {
     slot: Option<usize>,
 }
 
+impl Receiver {
+    /// Determine if two triggers are the same.
+    pub fn same_receiver(this: &Self, other: &Self) -> bool {
+        Arc::ptr_eq(&this.inner, &other.inner)
+    }
+}
+
 /// Create a simple one to many asynchronous trigger. Every copy of the receiver will complete
 /// successfully (when the sender is triggered) or with an error (if the sender is dropped).
 pub fn trigger() -> (Sender, Receiver) {
