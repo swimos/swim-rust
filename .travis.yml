@@ -21,7 +21,7 @@ jobs:
       script:
         - cd client
         # Features aren't allowed in the root of a virtual workspace
-        - cargo test --all-targets --package client --features test-server
+        - cargo test --all-targets --package swim_client --features test-server
         - cd ..
 
     - os: linux
