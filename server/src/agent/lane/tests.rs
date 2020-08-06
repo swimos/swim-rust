@@ -20,6 +20,7 @@ use stm::transaction::RetryManager;
 use swim_form::FormDeserializeErr;
 use tokio::sync::broadcast;
 
+#[derive(Clone, Debug)]
 pub struct ExactlyOnce;
 
 impl RetryManager for ExactlyOnce {

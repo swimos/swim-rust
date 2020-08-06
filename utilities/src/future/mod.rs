@@ -17,6 +17,7 @@ pub mod retryable;
 #[cfg(test)]
 mod tests;
 
+use futures::never::Never;
 use futures::task::{Context, Poll};
 use futures::{Future, Sink, Stream, TryFuture};
 use pin_project::pin_project;
@@ -49,6 +50,16 @@ pub struct TransformedFuture<Fut, Trans> {
     future: Fut,
     transform: Option<Trans>,
 }
+
+/// Transforms a stream of [`T`] into a stream of [`Result<T, Never>`].
+#[pin_project]
+#[derive(Debug)]
+pub struct NeverErrorStream<Str>(#[pin] Str);
+
+/// A future that discards the result of another future.
+#[pin_project]
+#[derive(Debug)]
+pub struct Unit<F>(#[pin] F);
 
 impl<F, T> FutureInto<F, T>
 where
@@ -138,6 +149,18 @@ where
             Some(trans) => trans.transform(input),
             _ => panic!("Transformed future used more than once."),
         })
+    }
+}
+
+impl<T, Str> Stream for NeverErrorStream<Str>
+where
+    Str: Stream<Item = T>,
+{
+    type Item = Result<T, Never>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let projected = self.project();
+        projected.0.poll_next(cx).map(|t| t.map(Ok))
     }
 }
 
@@ -241,6 +264,14 @@ pub trait SwimFutureExt: Future {
         Trans: TransformOnce<Self::Output>,
     {
         TransformedFuture::new(self, transform)
+    }
+
+    /// Discard the result of this future.
+    fn unit(self) -> Unit<Self>
+    where
+        Self: Sized,
+    {
+        Unit(self)
     }
 }
 
@@ -443,6 +474,15 @@ pub trait SwimStreamExt: Stream {
         UntilFailure::new(self, transform)
     }
 
+    /// Transform this stream into an infallible [`TryStream`].
+    ///
+    fn never_error(self) -> NeverErrorStream<Self>
+    where
+        Self: Sized,
+    {
+        NeverErrorStream(self)
+    }
+
     /// Creates a new stream that will produce the values that this stream would produce until
     /// a future completes.
     ///
@@ -493,6 +533,15 @@ impl<S, Trans> TransformedSink<S, Trans> {
             inner: sink,
             transformer,
         }
+    }
+}
+
+impl<F: Future> Future for Unit<F> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let projected = self.project();
+        projected.0.poll(cx).map(|_| ())
     }
 }
 
