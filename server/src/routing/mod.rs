@@ -12,26 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::warp::envelope::Envelope;
-use common::sink::item::ItemSender;
 use common::routing::RoutingError;
+use common::sink::item::ItemSender;
+use common::warp::envelope::Envelope;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Location {
     RemoteEndpoint(u32),
     Local(u32),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RoutingAddr(Location);
+
+impl RoutingAddr {
+    pub fn remote(id: u32) -> Self {
+        RoutingAddr(Location::RemoteEndpoint(id))
+    }
+
+    pub fn local(id: u32) -> Self {
+        RoutingAddr(Location::Local(id))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 
 pub trait ServerRouter {
-
-    type Sender: ItemSender<Envelope, RoutingError>;
+    type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
     fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError>;
-
 }

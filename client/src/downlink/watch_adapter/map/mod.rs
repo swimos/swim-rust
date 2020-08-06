@@ -17,8 +17,8 @@ mod tests;
 
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
-use common::routing::RoutingError;
 use common::model::Value;
+use common::routing::RoutingError;
 use common::sink::item::{ItemSender, ItemSink, MpscSend};
 use either::Either;
 use futures::stream::SelectAll;

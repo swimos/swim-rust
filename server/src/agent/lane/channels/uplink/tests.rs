@@ -13,7 +13,10 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
-use crate::agent::lane::channels::uplink::{MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine, ValueLaneUplink};
+use crate::agent::lane::channels::uplink::{
+    MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
+    ValueLaneUplink,
+};
 use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::{map, value};
 use crate::agent::lane::strategy::Queue;
@@ -77,7 +80,11 @@ async fn uplink_not_linked() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(ValueLaneUplink::new(lane.clone()), rx_action.fuse(), events.fuse());
+    let uplink = Uplink::new(
+        ValueLaneUplink::new(lane.clone()),
+        rx_action.fuse(),
+        events.fuse(),
+    );
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -115,7 +122,11 @@ async fn uplink_open_to_linked() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(ValueLaneUplink::new(lane.clone()), rx_action.fuse(), events.fuse());
+    let uplink = Uplink::new(
+        ValueLaneUplink::new(lane.clone()),
+        rx_action.fuse(),
+        events.fuse(),
+    );
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -159,7 +170,11 @@ async fn uplink_open_to_synced() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(ValueLaneUplink::new(lane.clone()), rx_action.fuse(), events.fuse());
+    let uplink = Uplink::new(
+        ValueLaneUplink::new(lane.clone()),
+        rx_action.fuse(),
+        events.fuse(),
+    );
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -261,7 +276,7 @@ async fn value_state_machine_sync_from_events() {
 async fn map_state_machine_message_for() {
     let (lane, _events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
 
-    let map_uplink = MapLaneUplink::new(lane, 1, ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
 
     let value = Arc::new(4);
 
@@ -322,7 +337,7 @@ async fn map_state_machine_sync() {
         .await
         .is_ok());
 
-    let map_uplink = MapLaneUplink::new(lane, 1, ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
 
     let sync_events = timeout(
         Duration::from_secs(10),

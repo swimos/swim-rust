@@ -14,12 +14,10 @@
 
 use std::collections::HashMap;
 
-use crate::router::{
-    CloseReceiver, CloseResponseSender, RouterEvent, SubscriberRequest,
-};
-use common::routing::RoutingError;
+use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, SubscriberRequest};
 use common::connections::WsMessage;
 use common::model::parser::parse_single;
+use common::routing::RoutingError;
 use common::warp::envelope::Envelope;
 use common::warp::path::RelativePath;
 use futures::future::ready;

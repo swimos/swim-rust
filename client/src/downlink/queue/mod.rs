@@ -21,9 +21,9 @@ use crate::downlink::{
     Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
     StateMachine, StoppedFuture,
 };
-use common::routing::RoutingError;
 use common::request::request_future::SendAndAwait;
 use common::request::Request;
+use common::routing::RoutingError;
 use common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use futures::future::ErrInto;

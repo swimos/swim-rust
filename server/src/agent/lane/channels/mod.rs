@@ -12,5 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::ServerRouter;
+use pin_utils::core_reexport::num::NonZeroUsize;
+use futures::future::BoxFuture;
+use tokio::sync::mpsc;
+
+pub mod task;
 pub mod update;
 pub mod uplink;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentExecutionConfig {
+    pub max_concurrency: usize,
+    pub action_buffer: NonZeroUsize,
+    pub update_buffer: NonZeroUsize,
+}
+
+pub trait AgentExecutionContext {
+    type Router: ServerRouter;
+
+    fn router_handle(&self) -> Self::Router;
+
+    fn configuration(&self) -> &AgentExecutionConfig;
+
+    fn spawner(&self) -> mpsc::Sender<BoxFuture<'static, ()>>;
+}

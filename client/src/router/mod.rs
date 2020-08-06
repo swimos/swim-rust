@@ -579,4 +579,3 @@ impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
         self.router_sink_tx.clone().map_err_into::<RoutingError>()
     }
 }
-

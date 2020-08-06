@@ -33,11 +33,11 @@ pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
-use common::routing::RoutingError;
 use common::connections::error::ConnectionError;
 use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::request::TryRequest;
+use common::routing::RoutingError;
 use common::sink::item::ItemSender;
 use common::topic::Topic;
 use futures::task::{Context, Poll};

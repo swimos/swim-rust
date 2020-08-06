@@ -16,9 +16,9 @@ use crate::configuration::downlink::DownlinkParams;
 use crate::downlink::{
     raw, Command, DownlinkError, DownlinkState, Operation, Response, StateMachine,
 };
-use common::routing::RoutingError;
 use common::model::schema::{Schema, StandardSchema};
 use common::model::Value;
+use common::routing::RoutingError;
 use common::sink::item::ItemSender;
 use tokio::sync::mpsc::Sender;
 
