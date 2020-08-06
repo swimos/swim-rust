@@ -40,10 +40,10 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
 }
 
 fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
-    let context = Context::default();
-    let mut descriptor = FormDescriptor::from_ast(&context, &input);
+    let mut context = Context::default();
+    let descriptor = FormDescriptor::from_ast(&mut context, &input);
     let structure_name = descriptor.name.original_ident.clone();
-    let type_contents = match TypeContents::from(&context, &input) {
+    let type_contents = match TypeContents::from(&mut context, &input) {
         Some(cont) => cont,
         None => return Err(context.check().unwrap_err()),
     };

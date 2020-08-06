@@ -18,8 +18,9 @@ use syn::spanned::Spanned;
 use syn::{Attribute, Data};
 use syn::{Lit, Meta, NestedMeta};
 
-use macro_helpers::{get_attribute_meta, StructureKind, Symbol};
-use macro_helpers::{CompoundType, Context, FieldName};
+use macro_helpers::{
+    get_attribute_meta, CompoundTypeKind, Context, FieldIdentity, StructureKind, Symbol,
+};
 
 pub const FORM_PATH: Symbol = Symbol("form");
 pub const HEADER_PATH: Symbol = Symbol("header");
@@ -43,7 +44,7 @@ impl<'t> TypeContents<'t> {
     /// Build a [`TypeContents`] input from an abstract syntax tree. Returns [`Option::None`] if
     /// there was an error that was encountered while parsing the tree. The underlying error is
     /// added to the [`Context]`.
-    pub fn from(context: &Context, input: &'t syn::DeriveInput) -> Option<Self> {
+    pub fn from(context: &mut Context, input: &'t syn::DeriveInput) -> Option<Self> {
         let type_contents = match &input.data {
             Data::Enum(data) => {
                 let variants = data
@@ -62,10 +63,10 @@ impl<'t> TypeContents<'t> {
                                 {
                                     match &name.lit {
                                         Lit::Str(s) => {
-                                            name_opt = Some(FieldName::Renamed(
-                                                s.value(),
-                                                variant.ident.clone(),
-                                            ));
+                                            name_opt = Some(FieldIdentity::Renamed {
+                                                new_identity: Ident::new(&*s.value(), s.span()),
+                                                old_identity: variant.ident.clone(),
+                                            });
                                         }
                                         _ => context
                                             .error_spanned_by(meta, "Expected string argument"),
@@ -79,7 +80,7 @@ impl<'t> TypeContents<'t> {
 
                         EnumVariant {
                             name: name_opt
-                                .unwrap_or_else(|| FieldName::Named(variant.ident.clone())),
+                                .unwrap_or_else(|| FieldIdentity::Named(variant.ident.clone())),
                             compound_type,
                             fields,
                             manifest,
@@ -111,7 +112,7 @@ impl<'t> TypeContents<'t> {
 /// A representation of a parsed struct from the AST.
 pub struct StructRepr<'t> {
     /// The struct's type: tuple, named, unit.
-    pub compound_type: CompoundType,
+    pub compound_type: CompoundTypeKind,
     /// The field members of the struct.
     pub fields: Vec<Field<'t>>,
     /// A derived [`FieldManifest`] from the attributes on the members.
@@ -121,9 +122,9 @@ pub struct StructRepr<'t> {
 /// A representation of a parsed enumeration from the AST.
 pub struct EnumVariant<'a> {
     /// The name of the variant.
-    pub name: FieldName,
+    pub name: FieldIdentity,
     /// The variant's type: tuple, named, unit.
-    pub compound_type: CompoundType,
+    pub compound_type: CompoundTypeKind,
     /// The field members of the variant.
     pub fields: Vec<Field<'a>>,
     /// A derived [`FieldManifest`] from the attributes on the members.
@@ -135,7 +136,7 @@ pub struct Field<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
     /// The name of the field.
-    pub name: FieldName,
+    pub name: FieldIdentity,
     /// The kind of the field from its attribute.
     pub kind: FieldKind,
 }
@@ -144,29 +145,29 @@ pub struct Field<'a> {
 /// parsed fields that contain a name and kind, and a derived [`FieldManifest]`. Any errors
 /// encountered are added to the [`Context]`.
 pub fn parse_struct<'a>(
-    context: &Context,
+    context: &mut Context,
     fields: &'a syn::Fields,
-) -> (CompoundType, Vec<Field<'a>>, FieldManifest) {
+) -> (CompoundTypeKind, Vec<Field<'a>>, FieldManifest) {
     match fields {
         syn::Fields::Named(fields) => {
             let (fields, manifest) = fields_from_ast(context, &fields.named);
-            (CompoundType::Struct, fields, manifest)
+            (CompoundTypeKind::Struct, fields, manifest)
         }
         syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
             let (fields, manifest) = fields_from_ast(context, &fields.unnamed);
-            (CompoundType::NewType, fields, manifest)
+            (CompoundTypeKind::NewType, fields, manifest)
         }
         syn::Fields::Unnamed(fields) => {
             let (fields, manifest) = fields_from_ast(context, &fields.unnamed);
-            (CompoundType::Tuple, fields, manifest)
+            (CompoundTypeKind::Tuple, fields, manifest)
         }
-        syn::Fields::Unit => (CompoundType::Unit, Vec::new(), FieldManifest::default()),
+        syn::Fields::Unit => (CompoundTypeKind::Unit, Vec::new(), FieldManifest::default()),
     }
 }
 
 /// Parses an AST of fields
 pub fn fields_from_ast<'t>(
-    ctx: &Context,
+    ctx: &mut Context,
     fields: &'t Punctuated<syn::Field, syn::Token![,]>,
 ) -> (Vec<Field<'t>>, FieldManifest) {
     let mut manifest = FieldManifest::default();
@@ -175,7 +176,7 @@ pub fn fields_from_ast<'t>(
         .enumerate()
         .map(|(index, original)| {
             let mut kind_opt = None;
-            let mut set_kind = |kind| match kind_opt {
+            let mut set_kind = |kind, ctx: &mut Context| match kind_opt {
                 Some(_) => {
                     ctx.error_spanned_by(original, "A field can be marked by at most one kind.")
                 }
@@ -190,14 +191,14 @@ pub fn fields_from_ast<'t>(
                     match meta {
                         NestedMeta::Meta(Meta::Path(path)) if path == HEADER_PATH => {
                             manifest.has_header_fields = true;
-                            set_kind(FieldKind::Header);
+                            set_kind(FieldKind::Header, ctx);
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == ATTR_PATH => {
-                            set_kind(FieldKind::Attr);
+                            set_kind(FieldKind::Attr, ctx);
                             manifest.has_attr_fields = true;
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == SLOT_PATH => {
-                            set_kind(FieldKind::Slot);
+                            set_kind(FieldKind::Slot, ctx);
 
                             if manifest.replaces_body {
                                 manifest.has_header_fields = true;
@@ -206,7 +207,7 @@ pub fn fields_from_ast<'t>(
                             }
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == BODY_PATH => {
-                            set_kind(FieldKind::Body);
+                            set_kind(FieldKind::Body, ctx);
 
                             if manifest.replaces_body {
                                 ctx.error_spanned_by(
@@ -222,7 +223,7 @@ pub fn fields_from_ast<'t>(
                             }
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == HEADER_BODY_PATH => {
-                            set_kind(FieldKind::HeaderBody);
+                            set_kind(FieldKind::HeaderBody, ctx);
 
                             if manifest.header_body {
                                 ctx.error_spanned_by(
@@ -240,13 +241,16 @@ pub fn fields_from_ast<'t>(
                                         Ident::new(&format!("__self_{}", index), original.span())
                                     });
 
-                                    renamed = Some(FieldName::Renamed(s.value(), old_ident));
+                                    renamed = Some(FieldIdentity::Renamed {
+                                        new_identity: Ident::new(&*s.value(), s.span()),
+                                        old_identity: old_ident,
+                                    });
                                 }
                                 _ => ctx.error_spanned_by(meta, "Expected string argument"),
                             }
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == SKIP_PATH => {
-                            set_kind(FieldKind::Skip);
+                            set_kind(FieldKind::Skip, ctx);
                         }
                         _ => ctx.error_spanned_by(meta, "Unknown attribute"),
                     }
@@ -256,12 +260,12 @@ pub fn fields_from_ast<'t>(
             );
 
             let name = renamed.unwrap_or_else(|| match &original.ident {
-                Some(ident) => FieldName::Named(ident.clone()),
-                None => FieldName::Unnamed(index.into()),
+                Some(ident) => FieldIdentity::Named(ident.clone()),
+                None => FieldIdentity::Anonymous(index.into()),
             });
             let kind = kind_opt.unwrap_or(FieldKind::Slot);
 
-            if let (FieldName::Unnamed(_), FieldKind::Attr) = (&name, &kind) {
+            if let (FieldIdentity::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
                 ctx.error_spanned_by(
                     original,
                     "An unnamed field cannot be promoted to an attribute.",
@@ -295,11 +299,11 @@ pub struct Name {
 }
 
 pub trait Attributes {
-    fn get_attributes(&self, ctx: &Context, symbol: Symbol) -> Vec<NestedMeta>;
+    fn get_attributes(&self, ctx: &mut Context, symbol: Symbol) -> Vec<NestedMeta>;
 }
 
 impl Attributes for Vec<Attribute> {
-    fn get_attributes(&self, ctx: &Context, symbol: Symbol) -> Vec<NestedMeta> {
+    fn get_attributes(&self, ctx: &mut Context, symbol: Symbol) -> Vec<NestedMeta> {
         self.iter()
             .flat_map(|a| get_attribute_meta(ctx, a, symbol))
             .flatten()
@@ -308,7 +312,7 @@ impl Attributes for Vec<Attribute> {
 }
 
 impl FormDescriptor {
-    pub fn from_ast(ctx: &Context, input: &syn::DeriveInput) -> FormDescriptor {
+    pub fn from_ast(ctx: &mut Context, input: &syn::DeriveInput) -> FormDescriptor {
         let kind = StructureKind::from(&input.data);
 
         let mut desc = FormDescriptor {

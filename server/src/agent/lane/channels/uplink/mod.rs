@@ -16,6 +16,7 @@ use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::LaneModel;
+use common::form::{Form, FormErr};
 use common::sink::item::ItemSender;
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
@@ -26,7 +27,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_form::{Form, FormDeserializeErr};
 
 #[cfg(test)]
 mod tests;
@@ -68,7 +68,7 @@ pub enum UplinkError {
     /// The uplink attempted to execute a transaction against its lane but failed.
     FailedTransaction(TransactionError),
     /// The form used by the lane is inconsistent.
-    InconsistentForm(FormDeserializeErr),
+    InconsistentForm(FormErr),
 }
 
 impl From<MapLaneSyncError> for UplinkError {

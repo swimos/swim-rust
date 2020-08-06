@@ -15,7 +15,7 @@
 use crate::parser::{
     EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents,
 };
-use macro_helpers::{deconstruct_type, CompoundType, FieldName};
+use macro_helpers::{deconstruct_type, CompoundTypeKind, FieldIdentity};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
 
@@ -72,7 +72,7 @@ fn build_struct_as_value(
     mut descriptor: FormDescriptor,
     mut manifest: FieldManifest,
     structure_name: &Ident,
-    compound_type: &CompoundType,
+    compound_type: &CompoundTypeKind,
     fields: &[Field],
 ) -> TokenStream2 {
     let structure_name_str = descriptor.name.tag_ident.to_string();
@@ -90,8 +90,8 @@ fn build_struct_as_value(
 fn build_variant_as_value(
     mut descriptor: FormDescriptor,
     mut manifest: FieldManifest,
-    variant_name: &FieldName,
-    compound_type: &CompoundType,
+    variant_name: &FieldIdentity,
+    compound_type: &CompoundTypeKind,
     fields: &[Field],
 ) -> TokenStream2 {
     let variant_name_str = variant_name.to_string();
@@ -122,15 +122,15 @@ fn compute_as_value(
                 FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
                     match name {
-                        FieldName::Named(ident) => {
+                        FieldIdentity::Named(ident) => {
                             let name_str = ident.to_string();
                             items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),) ;
                         }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),);
+                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                            let name_str = new_identity.to_string();
+                            items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ FieldName::Unnamed(_) => {
+                        un @ FieldIdentity::Anonymous(_) => {
                             let ident = un.as_ident();
                             items =  quote!(#items swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }
@@ -138,15 +138,15 @@ fn compute_as_value(
                 }
                 FieldKind::Attr => {
                     match name {
-                        FieldName::Named(ident) => {
+                        FieldIdentity::Named(ident) => {
                             let name_str = ident.to_string();
                             attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #ident.as_value())),);
                         }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #old.as_value())),);
+                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                            let name_str = new_identity.to_string();
+                            attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #old_identity.as_value())),);
                         }
-                        FieldName::Unnamed(_index) => {
+                        FieldIdentity::Anonymous(_index) => {
                             // This has been checked already when parsing the AST.
                             unreachable!()
                         }
@@ -166,20 +166,20 @@ fn compute_as_value(
                 FieldKind::HeaderBody => {
                     if manifest.has_header_fields {
                         match name {
-                            FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
+                            FieldIdentity::Renamed{old_identity:ident,..} | FieldIdentity::Named(ident) => {
                                 headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
-                            un @ FieldName::Unnamed(_) => {
+                            un @ FieldIdentity::Anonymous(_) => {
                                 let ident = un.as_ident();
                                 headers= quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
                         }
                     } else {
                         match name {
-                            FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
+                            FieldIdentity::Renamed{old_identity:ident,..} | FieldIdentity::Named(ident) => {
                                 headers = quote!(, #ident.as_value());
                             }
-                            un @ FieldName::Unnamed(_) => {
+                            un @ FieldIdentity::Anonymous(_) => {
                                 let ident = un.as_ident();
                                 headers = quote!(, #ident.as_value());
                             }
@@ -188,15 +188,15 @@ fn compute_as_value(
                 }
                 _ => {
                     match name {
-                        FieldName::Named(ident) => {
+                        FieldIdentity::Named(ident) => {
                             let name_str = ident.to_string();
                             headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),);
                         }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),);
+                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                            let name_str = new_identity.to_string();
+                            headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ FieldName::Unnamed(_) => {
+                        un @ FieldIdentity::Anonymous(_) => {
                             let ident = un.as_ident();
                             headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }
