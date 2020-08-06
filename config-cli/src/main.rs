@@ -1,9 +1,11 @@
+use crate::file::save_to_file;
 use crate::host_lane::{host_menu, lane_menu};
 use crate::router::router_params_menu;
 use crate::utils::{number_menu, BackPressure, ClientConfig, Config, DownlinkConfig, MuxMode};
 use std::io::stdout;
 use std::io::{stdin, Write};
 
+mod file;
 mod host_lane;
 mod router;
 mod utils;
@@ -11,7 +13,7 @@ mod utils;
 fn main() {
     let mut config = Config::new();
     main_menu(&mut config);
-    config.save_to_file();
+    save_to_file(config);
 }
 
 fn get_input() -> String {
@@ -315,11 +317,11 @@ fn downlinks_on_invalid(downlinks_config: &mut DownlinkConfig) {
 
         match input.as_str() {
             "terminate" => {
-                downlinks_config.on_invalid = Some(input);
+                downlinks_config.on_invalid = Some(format!("\"{}\"", input));
                 break;
             }
             "ignore" => {
-                downlinks_config.on_invalid = Some(input);
+                downlinks_config.on_invalid = Some(format!("\"{}\"", input));
                 break;
             }
             "h" => show_help(

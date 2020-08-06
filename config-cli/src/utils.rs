@@ -75,7 +75,7 @@ pub(crate) fn url_menu() -> Option<String> {
             ),
             "b" => return None,
             _ => match url::Url::parse(&input) {
-                Ok(url) => return Some(url.to_string()),
+                Ok(url) => return Some(format!("\"{}\"", url.to_string())),
                 _ => println!("Invalid value \"{}\" for host URI!", input),
             },
         }
@@ -96,7 +96,7 @@ pub(crate) fn text_menu(name: &str, info: &str, value: &str, default: &str) -> O
             "h" => show_help(info, value, default),
             "b" => return None,
             _ => match input.is_empty() {
-                false => return Some(input),
+                false => return Some(format!("\"{}\"", input)),
                 true => println!("Cannot have empty value for \"{}\"!", name),
             },
         }
@@ -119,11 +119,6 @@ impl Config {
             hosts: HashMap::new(),
             lanes: HashMap::new(),
         }
-    }
-
-    pub(crate) fn save_to_file(self) {
-        // Todo
-        println!("{:?}", self);
     }
 }
 
@@ -229,7 +224,7 @@ impl Display for LanePath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Path(host: \"{}\", node: \"{}\", lane: \"{}\")",
+            "Path(host: {}, node: {}, lane: {})",
             self.host, self.node, self.lane
         )
     }
