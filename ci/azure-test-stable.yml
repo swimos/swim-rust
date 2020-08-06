@@ -38,4 +38,4 @@ jobs:
         env:
           RUST_BACKTRACE: 1
         displayName: Client WASM build
-        workingDirectory: $(Build.SourcesDirectory)/client
+        workingDirectory: $(Build.SourcesDirectory)/swim_client
