@@ -5,7 +5,7 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
-common = { path = "../../common" }
+swim_common = { path = "../../swim_common" }
 serde = { version = "1.0", features = ["derive"] }
 num-bigint = { version = "0.3", default-features = false }
 num-traits = "0.2.12"

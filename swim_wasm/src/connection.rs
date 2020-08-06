@@ -20,12 +20,12 @@ use url::Url;
 use wasm_bindgen_futures::spawn_local;
 use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 
-use common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
-use common::request::Request;
+use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
+use swim_common::request::Request;
 
-use common::connections::error::{ConnectionError, WebSocketError};
-use common::connections::{WebsocketFactory, WsMessage};
 use std::ops::Deref;
+use swim_common::connections::error::{ConnectionError, WebSocketError};
+use swim_common::connections::{WebsocketFactory, WsMessage};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 

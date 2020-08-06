@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "client",
+    "swim_client",
     "swim_form",
     "swim_wasm",
     "swim_runtime",
-    "common",
-    "server",
+    "swim_common",
+    "swim_server",
     "stm",
     "utilities",
 ]

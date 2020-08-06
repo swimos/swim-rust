@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::ValueSerializer;
-use common::model::Value;
+use swim_common::model::Value;
 
 #[cfg(test)]
 mod simple_data_types;
