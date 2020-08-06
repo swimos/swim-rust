@@ -81,7 +81,7 @@ pub enum FieldIdentity {
     /// A renamed field containing its new identifier and original identifier. This field may have
     /// previously been named or anonymous.
     Renamed {
-        new_identity: Ident,
+        new_identity: String,
         old_identity: Ident,
     },
     /// An anonymous field containing its index in the parent structure.
@@ -96,7 +96,10 @@ impl FieldIdentity {
     pub fn as_ident(&self) -> Ident {
         match self {
             FieldIdentity::Named(ident) => ident.clone(),
-            FieldIdentity::Renamed { new_identity, .. } => new_identity.clone(),
+            FieldIdentity::Renamed {
+                new_identity,
+                old_identity,
+            } => Ident::new(&new_identity, old_identity.span()),
             FieldIdentity::Anonymous(index) => {
                 Ident::new(&format!("__self_{}", index.index), index.span)
             }
