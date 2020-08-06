@@ -13,12 +13,14 @@
 // limitations under the License.
 
 use crate::var::Contents;
+use futures::future;
 use futures_util::future::ready;
 use std::any::Any;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+use utilities::future::{SwimFutureExt, Unit};
 
 /// An observer to watch for changes to the value of a [`TVar`].
 pub trait Observer<'a, T> {
@@ -66,5 +68,33 @@ where
             Ok(t) => Box::pin(observer.notify(t)),
             Err(_) => Box::pin(ready(())),
         }
+    }
+}
+
+/// An observer that forwards to two other observers.
+pub struct JoinObserver<Obs1, Obs2>(Obs1, Obs2);
+
+/// Where the observed type is cloneable, create an observer that will forward copies to two other
+/// observers.
+pub fn join<T, Obs1, Obs2>(obs1: Obs1, obs2: Obs2) -> JoinObserver<Obs1, Obs2>
+where
+    T: Clone,
+    Obs1: for<'a> Observer<'a, T>,
+    Obs2: for<'a> Observer<'a, T>,
+{
+    JoinObserver(obs1, obs2)
+}
+
+impl<'a, T, Obs1, Obs2> Observer<'a, T> for JoinObserver<Obs1, Obs2>
+where
+    T: Clone,
+    Obs1: Observer<'a, T>,
+    Obs2: Observer<'a, T>,
+{
+    type RecFuture = Unit<future::Join<Obs1::RecFuture, Obs2::RecFuture>>;
+
+    fn notify(&'a mut self, value: T) -> Self::RecFuture {
+        let JoinObserver(first, second) = self;
+        future::join(first.notify(value.clone()), second.notify(value)).unit()
     }
 }
