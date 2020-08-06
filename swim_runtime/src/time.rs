@@ -153,3 +153,37 @@ pub mod instant {
         }
     }
 }
+
+pub mod clock {
+
+    use super::delay;
+    use std::fmt::Debug;
+    use std::future::Future;
+    use std::time::Duration;
+
+    /// Trait for tracking the passage of time in asynchronous code. Implementations should ensure that
+    /// time is monotonically non-decreasing.
+    pub trait Clock: Debug + Clone + Send + Sync + 'static {
+        /// The type of futures tracking a delay.
+        type DelayFuture: Future<Output = ()> + Send + 'static;
+
+        /// Create a future that will complete after a fixed delay.
+        fn delay(&self, duration: Duration) -> Self::DelayFuture;
+    }
+
+    #[derive(Debug, Clone)]
+    struct RuntimeClock;
+
+    impl Clock for RuntimeClock {
+        type DelayFuture = delay::Delay;
+
+        fn delay(&self, duration: Duration) -> Self::DelayFuture {
+            delay::delay_for(duration)
+        }
+    }
+
+    /// A clock that uses delays as provided by the runtime.
+    pub fn runtime_clock() -> impl Clock {
+        RuntimeClock
+    }
+}

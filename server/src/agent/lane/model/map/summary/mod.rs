@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::agent::lane::model::map::MapLaneEvent;
 use common::model::Value;
 use im::HashMap;
 use std::any::Any;
@@ -22,7 +23,6 @@ use std::hash::Hash;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::TVar;
-use swim_form::{Form, FormDeserializeErr};
 
 /// Representation of the modification to the value of an entry in a map lane.
 #[derive(Debug)]
@@ -45,32 +45,11 @@ impl<V> Clone for EntryModification<V> {
 /// A summary of the result of a transaction that was applied to a map lane.
 #[derive(Debug)]
 pub struct TransactionSummary<K: Hash + Eq, V> {
+    coordination_id: u64,
     /// At some point in the transaction, the map was cleared.
     clear: bool,
     /// Modifications applied to entries in the map during the transaction (after the last clear).
     changes: HashMap<K, EntryModification<V>>,
-}
-
-/// A single event that occured during a transaction.
-#[derive(Debug)]
-pub enum MapLaneEvent<K, V> {
-    /// The map as cleared.
-    Clear,
-    /// An entry was updated.
-    Update(K, Arc<V>),
-    /// An entry was removed.
-    Remove(K),
-}
-
-impl<V> MapLaneEvent<Value, V> {
-    /// Attempt to type the key of a [`MapLaneEvent`] using a form.
-    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormDeserializeErr> {
-        match self {
-            MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),
-            MapLaneEvent::Update(k, v) => Ok(MapLaneEvent::Update(K::try_convert(k)?, v)),
-            MapLaneEvent::Remove(k) => Ok(MapLaneEvent::Remove(K::try_convert(k)?)),
-        }
-    }
 }
 
 impl<K: Hash + Eq + Clone, V> TransactionSummary<K, V> {
@@ -78,12 +57,23 @@ impl<K: Hash + Eq + Clone, V> TransactionSummary<K, V> {
     /// arbitrary order as the are considered to have happened simultaneously. However, if the
     /// map was cleared during the transaction this event will always occur first.
     pub fn to_events(&self) -> Vec<MapLaneEvent<K, V>> {
-        let TransactionSummary { clear, changes } = self;
+        let TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } = self;
         let mut n = changes.len();
         if *clear {
             n += 1;
         }
+        if *coordination_id > 0 {
+            n += 1;
+        }
         let mut events = Vec::with_capacity(n);
+        //If this summary contains a checkpoint, add it.
+        if *coordination_id > 0 {
+            events.push(MapLaneEvent::Checkpoint(*coordination_id));
+        }
         //If the lane was cleared, that event must come first.
         if *clear {
             events.push(MapLaneEvent::Clear);
@@ -97,6 +87,14 @@ impl<K: Hash + Eq + Clone, V> TransactionSummary<K, V> {
             events.push(event);
         }
         events
+    }
+
+    pub(crate) fn with_id(id: u64) -> Self {
+        TransactionSummary {
+            coordination_id: id,
+            clear: false,
+            changes: HashMap::default(),
+        }
     }
 }
 
@@ -132,6 +130,7 @@ impl<V> TransactionSummary<Value, V> {
     /// Create an empty summary with the clear flag set.
     pub fn clear() -> Self {
         TransactionSummary {
+            coordination_id: 0,
             clear: true,
             changes: Default::default(),
         }
@@ -142,6 +141,7 @@ impl<V> TransactionSummary<Value, V> {
         let mut map = HashMap::new();
         map.insert(key, EntryModification::Update(value));
         TransactionSummary {
+            coordination_id: 0,
             clear: false,
             changes: map,
         }
@@ -152,6 +152,7 @@ impl<V> TransactionSummary<Value, V> {
         let mut map = HashMap::new();
         map.insert(key, EntryModification::Remove);
         TransactionSummary {
+            coordination_id: 0,
             clear: false,
             changes: map,
         }
@@ -159,8 +160,13 @@ impl<V> TransactionSummary<Value, V> {
 
     /// Create a new summary, based on this one, with a further update.
     fn update(&self, key: Value, value: Arc<V>) -> Self {
-        let TransactionSummary { clear, changes } = self;
+        let TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } = self;
         TransactionSummary {
+            coordination_id: *coordination_id,
             clear: *clear,
             changes: changes.update(key, EntryModification::Update(value)),
         }
@@ -168,8 +174,13 @@ impl<V> TransactionSummary<Value, V> {
 
     /// Create a new summary, based on this one, with a further removal.
     fn remove(&self, key: Value) -> Self {
-        let TransactionSummary { clear, changes } = self;
+        let TransactionSummary {
+            coordination_id,
+            clear,
+            changes,
+        } = self;
         TransactionSummary {
+            coordination_id: *coordination_id,
             clear: *clear,
             changes: changes.update(key, EntryModification::Remove),
         }
@@ -179,6 +190,7 @@ impl<V> TransactionSummary<Value, V> {
 impl<K: Hash + Eq, V> Default for TransactionSummary<K, V> {
     fn default() -> Self {
         TransactionSummary {
+            coordination_id: 0,
             clear: false,
             changes: HashMap::default(),
         }

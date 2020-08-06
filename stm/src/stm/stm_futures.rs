@@ -256,12 +256,12 @@ where
 
 /// A transaction future for writing a value of type `T` to a transactional variable.
 pub struct WriteFuture<T> {
-    inner: Arc<TVarInner>,
+    inner: TVarInner,
     value: Option<Arc<T>>,
 }
 
 impl<T: Any + Send + Sync> WriteFuture<T> {
-    pub(crate) fn new(inner: Arc<TVarInner>, value: Arc<T>) -> Self {
+    pub(crate) fn new(inner: TVarInner, value: Arc<T>) -> Self {
         WriteFuture {
             inner,
             value: Some(value),
