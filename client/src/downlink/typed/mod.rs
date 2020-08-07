@@ -28,6 +28,7 @@ use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
 use crate::downlink::{Downlink, Event, StoppedFuture};
+use common::form::{Form, ValidatedForm};
 use common::model::schema::StandardSchema;
 use common::model::Value;
 use common::sink::item::ItemSink;
@@ -36,7 +37,6 @@ use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
-use swim_form::{Form, ValidatedForm};
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.

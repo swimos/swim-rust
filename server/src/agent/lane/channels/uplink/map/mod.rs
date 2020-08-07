@@ -16,6 +16,7 @@
 mod tests;
 
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use common::form::{Form, FormErr};
 use common::model::Value;
 use either::Either;
 use futures::stream::{unfold, FusedStream};
@@ -30,13 +31,12 @@ use std::sync::Arc;
 use stm::transaction;
 use stm::transaction::{RetryManager, TransactionError};
 use stm::var::TVar;
-use swim_form::{Form, FormDeserializeErr};
 use utilities::sync::trigger;
 
 #[derive(Debug)]
 pub enum MapLaneSyncError {
     FailedTransaction(TransactionError),
-    InconsistentForm(FormDeserializeErr),
+    InconsistentForm(FormErr),
 }
 
 type EventResult<K, V> = Result<MapLaneEvent<K, V>, MapLaneSyncError>;

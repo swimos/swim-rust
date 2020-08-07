@@ -13,14 +13,13 @@
 // limitations under the License.
 
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
+use common::form::{Form, FormErr};
 use common::model::Value;
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use swim_form::Form;
-use swim_form::FormDeserializeErr;
 
 #[cfg(test)]
 mod tests;
@@ -120,7 +119,7 @@ impl<K: Form + Ord + Clone, V: Form + Clone> TypedMapView<K, V> {
 }
 
 impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
-    type Error = FormDeserializeErr;
+    type Error = FormErr;
 
     fn try_from(view: ViewWithEvent) -> Result<Self, Self::Error> {
         let ViewWithEvent { view, event } = view;
@@ -133,7 +132,7 @@ impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
     }
 }
 
-fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormDeserializeErr> {
+fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
     match event {
         MapEvent::Initial => Ok(MapEvent::Initial),
         MapEvent::Insert(k) => K::try_convert(k).map(MapEvent::Insert),

@@ -21,7 +21,6 @@ use tracing::info;
 
 use common::model::Value;
 use common::warp::path::AbsolutePath;
-use swim_form::ValidatedForm;
 
 use crate::configuration::downlink::{Config, ConfigHierarchy};
 use crate::configuration::router::RouterParamBuilder;
@@ -35,6 +34,7 @@ use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::{RoutingError, SwimRouter};
 use common::connections::WebsocketFactory;
+use common::form::ValidatedForm;
 use common::warp::envelope::Envelope;
 
 /// Represents errors that can occur in the client.
