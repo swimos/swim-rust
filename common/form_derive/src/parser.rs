@@ -18,9 +18,6 @@ use syn::spanned::Spanned;
 use syn::{Attribute, Data, Type};
 use syn::{Lit, Meta, NestedMeta};
 
-use macro_helpers::{get_attribute_meta, StructureKind, Symbol};
-use macro_helpers::{CompoundType, Context, FieldName};
-use syn::export::TokenStream2;
 use macro_helpers::{
     get_attribute_meta, CompoundTypeKind, Context, FieldIdentity, StructureKind, Symbol,
 };
@@ -301,12 +298,12 @@ pub struct Name {
 
 /// A trait for retrieving attributes on a field or compound type that are prefixed by the provided
 /// [`symbol`]. For example calling this on a [`DeriveInput`] that represents the following:
-///```
+///```compile_fail
 ///struct Person {
 ///    #[form(skip)]
 ///    name: String,
 ///    age: i32,
-/// }
+///}
 ///```
 /// will return a [`Vector`] that contains the [`NestedMeta`] for the field [`name`].
 pub trait Attributes {

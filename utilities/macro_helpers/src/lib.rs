@@ -97,10 +97,7 @@ impl FieldIdentity {
     pub fn as_ident(&self) -> Ident {
         match self {
             FieldIdentity::Named(ident) => ident.clone(),
-            FieldIdentity::Renamed {
-                new_identity,
-                old_identity,
-            } => Ident::new(&new_identity, old_identity.span()),
+            FieldIdentity::Renamed { old_identity, .. } => old_identity.clone(),
             FieldIdentity::Anonymous(index) => {
                 Ident::new(&format!("__self_{}", index.index), index.span)
             }

@@ -16,11 +16,9 @@ use proc_macro2::Ident;
 use syn::export::TokenStream2;
 use syn::spanned::Spanned;
 
-use macro_helpers::{CompoundType, FieldName};
+use macro_helpers::{CompoundTypeKind, FieldIdentity};
 
-use crate::parser::{
-    Field, FieldKind, FieldManifest, FormDescriptor, RecordTokenStreams, TypeContents,
-};
+use crate::parser::{Field, FieldKind, FieldManifest, FormDescriptor, TypeContents};
 
 pub fn from_value(
     type_contents: &TypeContents,
@@ -32,21 +30,17 @@ pub fn from_value(
             let structure_name_str = descriptor.name.tag_ident.to_string();
             let field_manifest = &repr.manifest;
             let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
-            let RecordTokenStreams {
-                headers,
-                attributes,
-                items,
-            } = parse_elements(&repr.fields, field_manifest);
+            let (headers, items, attributes) = parse_elements(&repr.fields, field_manifest);
 
             let self_members = match &repr.compound_type {
-                CompoundType::Struct => {
+                CompoundTypeKind::Struct => {
                     quote! {
                         Ok(#structure_name {
                             #field_assignments
                         })
                     }
                 }
-                CompoundType::Unit => quote!(Ok(#structure_name)),
+                CompoundTypeKind::Unit => quote!(Ok(#structure_name)),
                 _ => quote!(Ok(#structure_name(#field_assignments))),
             };
 
@@ -71,17 +65,14 @@ pub fn from_value(
                 let (field_opts, field_assignments) =
                     parse_fields(&variant.fields, &variant.compound_type);
 
-                let RecordTokenStreams {
-                    headers,
-                    attributes,
-                    items,
-                } = parse_elements(&variant.fields, &variant.manifest);
+                let (headers, items, attributes) =
+                    parse_elements(&variant.fields, &variant.manifest);
 
                 let self_members = match &variant.compound_type {
-                    CompoundType::Struct => {
+                    CompoundTypeKind::Struct => {
                         quote! {{#field_assignments}}
                     }
-                    CompoundType::Unit => quote!(),
+                    CompoundTypeKind::Unit => quote!(),
                     _ => quote!((#field_assignments)),
                 };
 
@@ -139,7 +130,10 @@ fn build_attr_quote(
     }
 }
 
-fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2, TokenStream2) {
+fn parse_fields(
+    fields: &[Field],
+    compound_type: &CompoundTypeKind,
+) -> (TokenStream2, TokenStream2) {
     fields.iter().fold(
         (TokenStream2::new(), TokenStream2::new()),
         |(field_opts, field_assignments), f| {
@@ -150,7 +144,7 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
             match &f.kind {
                 FieldKind::Skip => {
                     match compound_type {
-                        CompoundType::Struct => {
+                        CompoundTypeKind::Struct => {
                             (field_opts,
                              quote! {
                                 #field_assignments
@@ -174,7 +168,7 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
                     };
 
                     let field_assignment = match compound_type {
-                        CompoundType::Struct => {
+                        CompoundTypeKind::Struct => {
                             let name_str = format!("Missing field: {}", name);
 
                             quote! {
@@ -197,10 +191,13 @@ fn parse_fields(fields: &[Field], compound_type: &CompoundType) -> (TokenStream2
     )
 }
 
-fn parse_elements(fields: &[Field], field_manifest: &FieldManifest) -> RecordTokenStreams {
-    let mut streams = fields
+fn parse_elements(
+    fields: &[Field],
+    field_manifest: &FieldManifest,
+) -> (TokenStream2, TokenStream2, TokenStream2) {
+    let (headers, mut items, attributes) = fields
         .iter()
-        .fold(RecordTokenStreams::default(), |mut streams, f| {
+        .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut items, mut attrs), f| {
             let name = f.name.as_ident();
             let ident = Ident::new(&format!("__opt_{}", name), f.original.span());
 
@@ -209,7 +206,7 @@ fn parse_elements(fields: &[Field], field_manifest: &FieldManifest) -> RecordTok
                     // Unnamed fields won't compile so there's no need in checking the name variant
                     let name_str = f.name.to_string();
 
-                    streams.transform_attrs(|attrs| quote! {
+                    attrs = quote! {
                         #attrs
 
                          #name_str => {
@@ -219,12 +216,11 @@ fn parse_elements(fields: &[Field], field_manifest: &FieldManifest) -> RecordTok
                                 #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(value)?);
                             }
                         }
-                    });
+                    };
                 }
                 FieldKind::Slot if !field_manifest.replaces_body => {
                     let mut build_named_ident = |name_str, ident| {
-                        streams.transform_items(|items| {
-                            quote! {
+                        items = quote! {
                                 #items
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), v) if name == #name_str => {
                                     if #ident.is_some() {
@@ -234,99 +230,92 @@ fn parse_elements(fields: &[Field], field_manifest: &FieldManifest) -> RecordTok
                                     }
                                 }
                             }
-                        });
                     };
 
                     match &f.name {
-                        FieldName::Named(name) => {
+                        FieldIdentity::Named(name) => {
                             build_named_ident(name.to_string(), ident);
                         }
-                        FieldName::Renamed(name, _) => {
-                            build_named_ident(name.to_string(), ident);
+                        FieldIdentity::Renamed{new_identity, ..} => {
+                            build_named_ident(new_identity.to_string(), ident);
                         }
-                        FieldName::Unnamed(_) => {
-                            streams.transform_items(|items| {
-                                quote! {
+                        FieldIdentity::Anonymous(_) => {
+                            items = quote! {
                                     #items
                                     swim_common::model::Item::ValueItem(v) if #ident.is_none() => {
                                         #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                     }
-                                }
-                            });
+                                };
                         }
                     }
                 }
                 FieldKind::HeaderBody => {
                     let field_name_str = f.name.to_string();
 
-                    streams.transform_headers(|_headers|
-                        quote! {
-                            swim_common::model::Item::ValueItem(v) => {
-                                if #ident.is_some() {
-                                    return Err(swim_common::form::FormErr::DuplicateField(String::from(#field_name_str)));
-                                } else {
-                                    #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
-                                }
+                    headers = quote! {
+                        swim_common::model::Item::ValueItem(v) => {
+                            if #ident.is_some() {
+                                return Err(swim_common::form::FormErr::DuplicateField(String::from(#field_name_str)));
+                            } else {
+                                #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                             }
-                    });
+                        }};
                 }
                 FieldKind::Body => {
-                    streams.transform_items(|_items| quote! {
+                    items = quote! {
                         #ident = {
                             let rec = swim_common::model::Value::Record(Vec::new(), items.to_vec());
                             std::option::Option::Some(swim_common::form::Form::try_from_value(&rec)?)
                         };
-                    })
+                    };
                 }
                 FieldKind::Skip => {}
                 _ => {
                     let field_name_str = f.name.to_string();
 
                     match &f.name {
-                        FieldName::Renamed(name, _) => {
-                            streams.transform_headers(|headers| quote! {
-                                swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #name => {
+                        FieldIdentity::Renamed{new_identity, ..} => {
+                            headers = quote! {
+                                swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #new_identity => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                 }
                                 #headers
-                            });
+                            };
                         }
-                        FieldName::Named(field_ident) => {
+                        FieldIdentity::Named(field_ident) => {
                             let ident_str = field_ident.to_string();
-                            streams.transform_headers(|headers| quote! {
+                            headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #ident_str => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                 }
                                 #headers
-                            });
+                            };
                         }
-                         FieldName::Unnamed(_) => {
-                            streams.transform_headers(|headers| quote! {
+                        FieldIdentity::Anonymous(_) => {
+                            headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #field_name_str => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
                                 }
                                 #headers
-                            });
+                            };
                         }
                     }
                 }
             }
-            streams
+            (headers, items, attrs)
         });
 
-    if !streams.items.is_empty() && !field_manifest.replaces_body {
-        streams.transform_items(|items| {
-            quote! {
-                let mut items_iter = items.iter();
-                while let Some(item) = items_iter.next() {
-                    match item {
-                        #items
-                        i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
-                    }
+    if !items.is_empty() && !field_manifest.replaces_body {
+        items = quote! {
+            let mut items_iter = items.iter();
+            while let Some(item) = items_iter.next() {
+                match item {
+                    #items
+                    i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item: {:?}", i))),
                 }
             }
-        });
+        };
     }
 
-    streams
+    (headers, items, attributes)
 }

@@ -37,10 +37,10 @@ mod parser;
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let context = Context::default();
-    let mut descriptor = FormDescriptor::from_ast(&context, &input);
+    let mut context = Context::default();
+    let descriptor = FormDescriptor::from_ast(&mut context, &input);
     let structure_name = descriptor.name.original_ident.clone();
-    let type_contents = match TypeContents::from(&context, &input, &mut descriptor) {
+    let type_contents = match TypeContents::from(&mut context, &input) {
         Some(cont) => cont,
         None => return to_compile_errors(context.check().unwrap_err()).into(),
     };
