@@ -113,7 +113,7 @@ impl SwimClient {
     }
 
     /// Creates a new SWIM Client using configuration from a Recon file.
-    pub async fn new_with_file<Fac>(
+    pub async fn new_from_file<Fac>(
         mut config_file: File,
         use_defaults: bool,
         connection_factory: Fac,

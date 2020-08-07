@@ -101,14 +101,13 @@ impl RouterParams {
         for item in items {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
-                    RETRY_STRATEGY_TAG => {
-                        if let Value::Record(attrs, items) = value {
+                    RETRY_STRATEGY_TAG => match value {
+                        Value::Record(attrs, items) if attrs.len() <= 1 => {
                             retry_strategy =
-                                Some(try_retry_strat_from_value(attrs, items, use_defaults)?);
-                        } else {
-                            return Err(ConfigParseError::InvalidValue(value, RETRY_STRATEGY_TAG));
+                                Some(try_retry_strat_from_value(attrs, items, use_defaults)?)
                         }
-                    }
+                        _ => return Err(ConfigParseError::InvalidValue(value, RETRY_STRATEGY_TAG)),
+                    },
                     IDLE_TIMEOUT_TAG => {
                         let timeout = u64::try_from_value(&value)
                             .map_err(|_| ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG))?;

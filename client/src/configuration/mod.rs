@@ -505,28 +505,28 @@ pub mod downlink {
             for item in items {
                 match item {
                     Item::Slot(Value::Text(name), value) => match name.as_str() {
-                        BACK_PRESSURE_TAG => {
-                            if let Value::Record(attrs, items) = value {
+                        BACK_PRESSURE_TAG => match value {
+                            Value::Record(attrs, items) if attrs.len() <= 1 => {
                                 back_pressure = Some(BackpressureMode::try_from_value(
                                     attrs,
                                     items,
                                     use_defaults,
-                                )?);
-                            } else {
+                                )?)
+                            }
+                            _ => {
                                 return Err(ConfigParseError::InvalidValue(
                                     value,
                                     BACK_PRESSURE_TAG,
-                                ));
+                                ))
                             }
-                        }
-                        MUX_MODE_TAG => {
-                            if let Value::Record(attrs, items) = value {
+                        },
+                        MUX_MODE_TAG => match value {
+                            Value::Record(attrs, items) if attrs.len() <= 1 => {
                                 mux_mode =
-                                    Some(MuxMode::try_from_value(attrs, items, use_defaults)?);
-                            } else {
-                                return Err(ConfigParseError::InvalidValue(value, MUX_MODE_TAG));
+                                    Some(MuxMode::try_from_value(attrs, items, use_defaults)?)
                             }
-                        }
+                            _ => return Err(ConfigParseError::InvalidValue(value, MUX_MODE_TAG)),
+                        },
                         IDLE_TIMEOUT_TAG => {
                             let timeout = u64::try_from_value(&value).map_err(|_| {
                                 ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG)
@@ -751,7 +751,7 @@ pub mod downlink {
 
         pub fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
             let (mut attrs, items) = match value {
-                Value::Record(attrs, items) => (attrs, items),
+                Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
                 _ => return Err(ConfigParseError::UnexpectedValue(value, None)),
             };
 
@@ -779,7 +779,7 @@ pub mod downlink {
                 match item {
                     Item::ValueItem(value) => {
                         let (mut attrs, items) = match value {
-                            Value::Record(attrs, items) => (attrs, items),
+                            Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
                             _ => {
                                 return Err(ConfigParseError::UnexpectedValue(
                                     value,
@@ -872,7 +872,7 @@ pub mod downlink {
         use_defaults: bool,
     ) -> Result<(AbsolutePath, DownlinkParams), ConfigParseError> {
         match item {
-            Item::ValueItem(Value::Record(mut attrs, items)) => {
+            Item::ValueItem(Value::Record(mut attrs, items)) if attrs.len() <= 1 => {
                 if let Some(Attr { name, value }) = attrs.pop() {
                     if name == PATH_TAG {
                         let path = try_absolute_path_from_record(value)?;

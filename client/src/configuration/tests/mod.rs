@@ -297,7 +297,7 @@ fn test_conf_from_file_full_unordered() {
 async fn test_client_file_conf_non_utf8_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/non-utf-8-config.recon").unwrap();
-    let result = SwimClient::new_with_file(file, false, TungsteniteWsFactory::new(5).await).await;
+    let result = SwimClient::new_from_file(file, false, TungsteniteWsFactory::new(5).await).await;
 
     if let Err(err) = result {
         assert_eq!(
@@ -313,12 +313,12 @@ async fn test_client_file_conf_non_utf8_error() {
 async fn test_client_file_conf_recon_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/parse-err-config.recon").unwrap();
-    let result = SwimClient::new_with_file(file, false, TungsteniteWsFactory::new(5).await).await;
+    let result = SwimClient::new_from_file(file, false, TungsteniteWsFactory::new(5).await).await;
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Client error. Caused by: Recon error: Bad token at offset: 63"
+            "Client error. Caused by: Recon error: Bad token at offset: 66"
         )
     } else {
         panic!("Expected file error!")
@@ -564,6 +564,26 @@ fn test_conf_from_file_unnamed_record_nested() {
         assert_eq!(
             err.to_string(),
             "Unnamed record \"{back_pressure:@propagate,mux_mode:@queue(queue_size:5),idle_timeout:60000,buffer_size:5,on_invalid:terminate,yield_after:256}\" in \"config\"."
+        )
+    } else {
+        panic!("Expected configuration parsing error!")
+    }
+}
+
+#[test]
+fn test_conf_from_file_double_attr() {
+    let mut file =
+        fs::File::open("src/configuration/tests/resources/invalid/double-attr.recon").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let config = parse_single(&contents).unwrap();
+
+    let result = ConfigHierarchy::try_from_value(config, false);
+
+    if let Err(err) = result {
+        assert_eq!(
+            err.to_string(),
+            "Unexpected value \"@attribute@client{buffer_size:2,router:{retry_strategy:@exponential(max_interval:16,max_backoff:300),idle_timeout:60,conn_reaper_frequency:60,buffer_size:100}}\" in \"config\"."
         )
     } else {
         panic!("Expected configuration parsing error!")
