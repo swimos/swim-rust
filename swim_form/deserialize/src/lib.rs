@@ -19,8 +19,8 @@ use std::fmt::{Debug, Display, Formatter};
 
 use serde::de;
 
-use common::model::{Attr, Item, Value};
 use serde::de::Visitor;
+use swim_common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod tests;

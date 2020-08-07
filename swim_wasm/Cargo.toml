@@ -16,5 +16,5 @@ pin-utils = "0.1.0"
 pin-project = "0.4.8"
 url = "2.1.1"
 
-common = { path = "../common" }
+swim_common = { path = "../swim_common" }
 utilities = { path = "../utilities" }

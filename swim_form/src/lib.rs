@@ -24,15 +24,15 @@ pub use num_bigint::{self, BigInt, BigUint};
 
 pub use _deserialize::{deserialize_bigint, deserialize_biguint};
 pub use _serialize::bigint::{self, serialize_big_uint, serialize_bigint};
-use common::model::schema::StandardSchema;
-use common::model::Value;
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::Value;
 
 pub use deserialize::FormDeserializeErr;
 pub use form_derive::*;
 pub use serialize::FormSerializeErr;
 
 #[allow(unused_imports)]
-use common::model::blob::{self, serialize_blob_as_value};
+use swim_common::model::blob::{self, serialize_blob_as_value};
 
 #[cfg(test)]
 mod tests;
@@ -56,7 +56,7 @@ pub mod impls;
 /// ```
 /// use swim_form::form_derive::*;
 /// use swim_form::Form;
-/// use common::model::{Value, Attr, Item};
+/// use swim_common::model::{Value, Attr, Item};
 ///
 /// #[form(Value)]
 /// #[derive(PartialEq, Debug)]
@@ -92,7 +92,7 @@ pub mod impls;
 /// requires additional decoration for serialization and deserialization to work correctly:
 /// ```
 /// use swim_form::{BigInt, BigUint, Form, form_derive::*};
-/// use common::model::Value;
+/// use swim_common::model::Value;
 ///
 /// #[form(Value)]
 /// struct S {

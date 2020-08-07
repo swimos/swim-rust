@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::blob::Blob;
-use common::model::schema::StandardSchema;
-use common::model::{Value, ValueKind};
 use deserialize::FormDeserializeErr;
+use swim_common::model::blob::Blob;
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::{Value, ValueKind};
 
 use crate::{Form, ValidatedForm};
 use num_bigint::{BigInt, BigUint};
