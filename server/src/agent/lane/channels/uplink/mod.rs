@@ -34,6 +34,7 @@ use tracing::{event, Level};
 mod tests;
 
 pub mod map;
+pub(crate) mod spawn;
 
 /// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

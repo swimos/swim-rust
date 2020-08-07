@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::ServerRouter;
+use crate::agent::lane::channels::update::LaneUpdate;
+use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
+use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::BoxFuture;
 use pin_utils::core_reexport::num::NonZeroUsize;
 use tokio::sync::mpsc;
@@ -38,3 +40,22 @@ pub trait AgentExecutionContext {
 
     fn spawner(&self) -> mpsc::Sender<BoxFuture<'static, ()>>;
 }
+
+pub trait LaneMessageHandler {
+    type Event: Send;
+    type Uplink: UplinkStateMachine<Self::Event> + Send + Sync + 'static;
+    type Update: LaneUpdate;
+
+    fn make_uplink(&self) -> Self::Uplink;
+
+    fn make_update(&self) -> Self::Update;
+}
+
+pub type OutputMessage<Handler> = <<Handler as LaneMessageHandler>::Uplink as UplinkStateMachine<
+    <Handler as LaneMessageHandler>::Event,
+>>::Msg;
+
+pub type InputMessage<Handler> = <<Handler as LaneMessageHandler>::Update as LaneUpdate>::Msg;
+
+#[derive(Debug)]
+pub struct TaggedAction(RoutingAddr, UplinkAction);

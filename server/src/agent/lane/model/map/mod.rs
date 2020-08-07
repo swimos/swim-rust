@@ -136,29 +136,37 @@ pub enum MapUpdate<K, V> {
     Clear,
 }
 
+const UPDATE_TAG: &str = "update";
+const REMOVE_TAG: &str = "remove";
+const CLEAR_TAG: &str = "clear";
+const KEY_SLOT: &str = "key";
+
+const REMOVE_WITH_BODY: &str = "Remove updates should not have a body.";
+const CLEAR_WITH_BODY: &str = "Clear updates should not have a body.";
+
 impl<K: Form, V: Form> Form for MapUpdate<K, V> {
     fn as_value(&self) -> Value {
         match self {
             MapUpdate::Update(k, v) => {
-                let key_slot = ("key", k.as_value());
-                let header = Attr::with_item("update", key_slot);
+                let key_slot = (KEY_SLOT, k.as_value());
+                let header = Attr::with_item(UPDATE_TAG, key_slot);
                 let body = v.as_value();
                 body.prepend(header)
             }
             MapUpdate::Remove(k) => {
-                let key_slot = ("key", k.as_value());
-                let header = Attr::with_item("remove", key_slot);
+                let key_slot = (KEY_SLOT, k.as_value());
+                let header = Attr::with_item(REMOVE_TAG, key_slot);
                 Value::of_attr(header)
             }
-            MapUpdate::Clear => Value::of_attr("clear"),
+            MapUpdate::Clear => Value::of_attr(CLEAR_TAG),
         }
     }
 
     fn into_value(self) -> Value {
         match self {
             MapUpdate::Update(k, v) => {
-                let key_slot = ("key", k.into_value());
-                let header = Attr::with_item("update", key_slot);
+                let key_slot = (KEY_SLOT, k.into_value());
+                let header = Attr::with_item(UPDATE_TAG, key_slot);
                 let body = match Arc::try_unwrap(v) {
                     Ok(v) => v.into_value(),
                     Err(v) => v.as_value(),
@@ -166,39 +174,35 @@ impl<K: Form, V: Form> Form for MapUpdate<K, V> {
                 body.prepend(header)
             }
             MapUpdate::Remove(k) => {
-                let key_slot = ("key", k.into_value());
-                let header = Attr::with_item("remove", key_slot);
+                let key_slot = (KEY_SLOT, k.into_value());
+                let header = Attr::with_item(REMOVE_TAG, key_slot);
                 Value::of_attr(header)
             }
-            MapUpdate::Clear => Value::of_attr("clear"),
+            MapUpdate::Clear => Value::of_attr(CLEAR_TAG),
         }
     }
 
     fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
         let (head, remainder) = try_decompose_ref(value)?;
         match head.name.as_str() {
-            "update" => {
+            UPDATE_TAG => {
                 let key = key_by_ref(head)?;
                 let value = remainder.try_to_value()?;
                 Ok(MapUpdate::Update(key, Arc::new(value)))
             }
-            "remove" => {
+            REMOVE_TAG => {
                 let key = key_by_ref(head)?;
                 if remainder == BodyType::Missing {
                     Ok(MapUpdate::Remove(key))
                 } else {
-                    Err(FormDeserializeErr::Message(
-                        "Remove updates should not have a body.".to_string(),
-                    ))
+                    Err(FormDeserializeErr::Message(REMOVE_WITH_BODY.to_string()))
                 }
             }
-            "clear" => {
+            CLEAR_TAG => {
                 if remainder == BodyType::Missing {
                     Ok(MapUpdate::Clear)
                 } else {
-                    Err(FormDeserializeErr::Message(
-                        "Clear updates should not have a body.".to_string(),
-                    ))
+                    Err(FormDeserializeErr::Message(CLEAR_WITH_BODY.to_string()))
                 }
             }
             ow => Err(FormDeserializeErr::IncorrectType(format!(
@@ -211,32 +215,28 @@ impl<K: Form, V: Form> Form for MapUpdate<K, V> {
     fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
         let (head, remainder) = try_decompose(value)?;
         match head.name.as_str() {
-            "update" => {
+            UPDATE_TAG => {
                 let key = take_key(head)?;
                 let value = V::try_convert(remainder)?;
                 Ok(MapUpdate::Update(key, Arc::new(value)))
             }
-            "remove" => {
+            REMOVE_TAG => {
                 let key = take_key(head)?;
                 if remainder == Value::Extant {
                     Ok(MapUpdate::Remove(key))
                 } else {
-                    Err(FormDeserializeErr::Message(
-                        "Remove updates should not have a body.".to_string(),
-                    ))
+                    Err(FormDeserializeErr::Message(REMOVE_WITH_BODY.to_string()))
                 }
             }
-            "clear" => {
+            CLEAR_TAG => {
                 if remainder == Value::Extant {
                     Ok(MapUpdate::Clear)
                 } else {
-                    Err(FormDeserializeErr::Message(
-                        "Clear updates should not have a body.".to_string(),
-                    ))
+                    Err(FormDeserializeErr::Message(CLEAR_WITH_BODY.to_string()))
                 }
             }
             ow => Err(FormDeserializeErr::IncorrectType(format!(
-                "Not a map update: {}",
+                "Invalid tag for map update of kind {}.",
                 ow
             ))),
         }
@@ -321,19 +321,19 @@ fn try_decompose(value: Value) -> Result<(Attr, Value), FormDeserializeErr> {
 }
 
 fn take_key<K: Form>(attr: Attr) -> Result<K, FormDeserializeErr> {
-    let Attr { name, value } = attr;
+    let Attr { value, .. } = attr;
     match value {
         Value::Record(attrs, mut items) if attrs.is_empty() && items.len() == 1 => {
             match items.remove(0) {
-                Item::Slot(Value::Text(name), key_value) if name == "key" => {
+                Item::Slot(Value::Text(name), key_value) if name == KEY_SLOT => {
                     K::try_convert(key_value)
                 }
                 ow => Err(FormDeserializeErr::IllegalItem(ow)),
             }
         }
-        _ => Err(FormDeserializeErr::Message(format!(
-            "Invalid tag for map update of kind {}.",
-            name
+        ow => Err(FormDeserializeErr::Message(format!(
+            "Invalid ket specifier: {}.",
+            ow
         ))),
     }
 }
@@ -343,7 +343,7 @@ fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormDeserializeErr> {
     match value {
         Value::Record(attrs, items) if attrs.is_empty() && items.len() <= 1 => {
             match items.first() {
-                Some(Item::Slot(Value::Text(name), key_value)) if name == "key" => {
+                Some(Item::Slot(Value::Text(name), key_value)) if name == KEY_SLOT => {
                     K::try_from_value(key_value)
                 }
                 Some(ow) => Err(FormDeserializeErr::IllegalItem(ow.clone())),
@@ -353,9 +353,9 @@ fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormDeserializeErr> {
                 ))),
             }
         }
-        _ => Err(FormDeserializeErr::Message(format!(
-            "Invalid tag for map update of kind {}.",
-            name
+        ow => Err(FormDeserializeErr::Message(format!(
+            "Invalid ket specifier: {}.",
+            ow
         ))),
     }
 }
