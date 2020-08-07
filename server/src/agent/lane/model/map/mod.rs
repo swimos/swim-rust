@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
-use common::model::Value;
+use common::model::{Attr, Item, Value};
 use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
@@ -129,10 +129,241 @@ where
 
 /// Updates that can be applied to a [`MapLane`].
 /// TODO Add take/drop.
+#[derive(Debug, PartialEq, Eq)]
 pub enum MapUpdate<K, V> {
     Update(K, Arc<V>),
     Remove(K),
     Clear,
+}
+
+impl<K: Form, V: Form> Form for MapUpdate<K, V> {
+    fn as_value(&self) -> Value {
+        match self {
+            MapUpdate::Update(k, v) => {
+                let key_slot = ("key", k.as_value());
+                let header = Attr::with_item("update", key_slot);
+                let body = v.as_value();
+                body.prepend(header)
+            }
+            MapUpdate::Remove(k) => {
+                let key_slot = ("key", k.as_value());
+                let header = Attr::with_item("remove", key_slot);
+                Value::of_attr(header)
+            }
+            MapUpdate::Clear => Value::of_attr("clear"),
+        }
+    }
+
+    fn into_value(self) -> Value {
+        match self {
+            MapUpdate::Update(k, v) => {
+                let key_slot = ("key", k.into_value());
+                let header = Attr::with_item("update", key_slot);
+                let body = match Arc::try_unwrap(v) {
+                    Ok(v) => v.into_value(),
+                    Err(v) => v.as_value(),
+                };
+                body.prepend(header)
+            }
+            MapUpdate::Remove(k) => {
+                let key_slot = ("key", k.into_value());
+                let header = Attr::with_item("remove", key_slot);
+                Value::of_attr(header)
+            }
+            MapUpdate::Clear => Value::of_attr("clear"),
+        }
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+        let (head, remainder) = try_decompose_ref(value)?;
+        match head.name.as_str() {
+            "update" => {
+                let key = key_by_ref(head)?;
+                let value = remainder.try_to_value()?;
+                Ok(MapUpdate::Update(key, Arc::new(value)))
+            }
+            "remove" => {
+                let key = key_by_ref(head)?;
+                if remainder == BodyType::Missing {
+                    Ok(MapUpdate::Remove(key))
+                } else {
+                    Err(FormDeserializeErr::Message(
+                        "Remove updates should not have a body.".to_string(),
+                    ))
+                }
+            }
+            "clear" => {
+                if remainder == BodyType::Missing {
+                    Ok(MapUpdate::Clear)
+                } else {
+                    Err(FormDeserializeErr::Message(
+                        "Clear updates should not have a body.".to_string(),
+                    ))
+                }
+            }
+            ow => Err(FormDeserializeErr::IncorrectType(format!(
+                "Not a map update: {}",
+                ow
+            ))),
+        }
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
+        let (head, remainder) = try_decompose(value)?;
+        match head.name.as_str() {
+            "update" => {
+                let key = take_key(head)?;
+                let value = V::try_convert(remainder)?;
+                Ok(MapUpdate::Update(key, Arc::new(value)))
+            }
+            "remove" => {
+                let key = take_key(head)?;
+                if remainder == Value::Extant {
+                    Ok(MapUpdate::Remove(key))
+                } else {
+                    Err(FormDeserializeErr::Message(
+                        "Remove updates should not have a body.".to_string(),
+                    ))
+                }
+            }
+            "clear" => {
+                if remainder == Value::Extant {
+                    Ok(MapUpdate::Clear)
+                } else {
+                    Err(FormDeserializeErr::Message(
+                        "Clear updates should not have a body.".to_string(),
+                    ))
+                }
+            }
+            ow => Err(FormDeserializeErr::IncorrectType(format!(
+                "Not a map update: {}",
+                ow
+            ))),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum BodyType<'a> {
+    Missing,
+    Single(&'a Value),
+    Record(&'a [Attr], &'a [Item]),
+}
+
+impl<'a> BodyType<'a> {
+    fn try_to_value<V: Form>(self) -> Result<V, FormDeserializeErr> {
+        match self {
+            BodyType::Missing => Form::try_convert(Value::Extant),
+            BodyType::Single(v) => Form::try_from_value(v),
+            BodyType::Record(attrs, items) => {
+                let mut rec_attrs = Vec::with_capacity(attrs.len());
+                rec_attrs.extend_from_slice(attrs);
+                let mut rec_items = Vec::with_capacity(items.len());
+                rec_items.extend_from_slice(items);
+                V::try_convert(Value::Record(rec_attrs, rec_items))
+            }
+        }
+    }
+}
+
+fn try_decompose_ref(value: &Value) -> Result<(&Attr, BodyType), FormDeserializeErr> {
+    match value {
+        Value::Record(attrs, items) => {
+            if let Some((head, tail)) = attrs.split_first() {
+                let remainder = if tail.is_empty() {
+                    if items.is_empty() {
+                        BodyType::Missing
+                    } else {
+                        match items.first() {
+                            Some(Item::ValueItem(v)) => BodyType::Single(v),
+                            _ => BodyType::Record(tail, items.as_slice()),
+                        }
+                    }
+                } else {
+                    BodyType::Record(tail, items.as_slice())
+                };
+                Ok((head, remainder))
+            } else {
+                Err(FormDeserializeErr::Malformatted)
+            }
+        }
+        _ => Err(FormDeserializeErr::Malformatted),
+    }
+}
+
+fn try_decompose(value: Value) -> Result<(Attr, Value), FormDeserializeErr> {
+    match value {
+        Value::Record(attrs, mut items) => {
+            let mut attr_it = attrs.into_iter();
+            if let Some(head) = attr_it.next() {
+                let tail = attr_it.collect::<Vec<_>>();
+                let remainder = if tail.is_empty() {
+                    if items.is_empty() {
+                        Value::Extant
+                    } else if matches!(items.first(), Some(Item::ValueItem(_))) {
+                        match items.remove(0) {
+                            Item::ValueItem(v) => v,
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        Value::Record(tail, items)
+                    }
+                } else {
+                    Value::Record(tail, items)
+                };
+                Ok((head, remainder))
+            } else {
+                Err(FormDeserializeErr::Malformatted)
+            }
+        }
+        _ => Err(FormDeserializeErr::Malformatted),
+    }
+}
+
+fn take_key<K: Form>(attr: Attr) -> Result<K, FormDeserializeErr> {
+    let Attr { name, value } = attr;
+    match value {
+        Value::Record(attrs, mut items) if attrs.is_empty() && items.len() == 1 => {
+            match items.remove(0) {
+                Item::Slot(Value::Text(name), key_value) if name == "key" => {
+                    K::try_convert(key_value)
+                }
+                ow => Err(FormDeserializeErr::IllegalItem(ow)),
+            }
+        }
+        _ => Err(FormDeserializeErr::Message(format!(
+            "Invalid tag for map update of kind {}.",
+            name
+        ))),
+    }
+}
+
+fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormDeserializeErr> {
+    let Attr { name, value } = attr;
+    match value {
+        Value::Record(attrs, items) if attrs.is_empty() && items.len() <= 1 => {
+            match items.first() {
+                Some(Item::Slot(Value::Text(name), key_value)) if name == "key" => {
+                    K::try_from_value(key_value)
+                }
+                Some(ow) => Err(FormDeserializeErr::IllegalItem(ow.clone())),
+                _ => Err(FormDeserializeErr::Message(format!(
+                    "Invalid tag for map update of kind {}.",
+                    name
+                ))),
+            }
+        }
+        _ => Err(FormDeserializeErr::Message(format!(
+            "Invalid tag for map update of kind {}.",
+            name
+        ))),
+    }
+}
+
+impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
+    fn from(event: MapUpdate<K, V>) -> Self {
+        event.into_value()
+    }
 }
 
 impl<K, V> MapUpdate<K, V> {

@@ -15,6 +15,7 @@
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
+use common::model::Value;
 use common::sink::item::ItemSender;
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
@@ -23,6 +24,7 @@ use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_form::{Form, FormDeserializeErr};
@@ -327,14 +329,47 @@ where
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ValueLaneEvent<T>(pub Arc<T>);
+
+impl<T> Clone for ValueLaneEvent<T> {
+    fn clone(&self) -> Self {
+        ValueLaneEvent(self.0.clone())
+    }
+}
+
+impl<T> From<Arc<T>> for ValueLaneEvent<T> {
+    fn from(t: Arc<T>) -> Self {
+        ValueLaneEvent(t)
+    }
+}
+
+impl<T: Form> From<ValueLaneEvent<T>> for Value {
+    fn from(event: ValueLaneEvent<T>) -> Self {
+        let ValueLaneEvent(inner) = event;
+        match Arc::try_unwrap(inner) {
+            Ok(t) => t.into_value(),
+            Err(t) => t.as_value(),
+        }
+    }
+}
+
+impl<T> Deref for ValueLaneEvent<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
 impl<T> UplinkStateMachine<Arc<T>> for ValueLaneUplink<T>
 where
     T: Any + Send + Sync,
 {
-    type Msg = Arc<T>;
+    type Msg = ValueLaneEvent<T>;
 
     fn message_for(&self, event: Arc<T>) -> Result<Option<Self::Msg>, UplinkError> {
-        Ok(Some(event))
+        Ok(Some(event.into()))
     }
 
     fn sync_lane<'a, Updates>(
@@ -351,7 +386,7 @@ where
                 maybe_v = updates.next() => maybe_v,
             };
             if let Some(v) = lane_state {
-                Ok(v)
+                Ok(v.into())
             } else {
                 Err(UplinkError::LaneStoppedReporting)
             }

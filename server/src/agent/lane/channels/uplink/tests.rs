@@ -217,7 +217,7 @@ async fn value_state_machine_message_for() {
 
     let msg = uplink.message_for(event.clone());
 
-    assert!(matches!(msg, Ok(Some(v)) if Arc::ptr_eq(&v, &event)));
+    assert!(matches!(msg, Ok(Some(v)) if Arc::ptr_eq(&v.0, &event)));
 }
 
 #[tokio::test]
@@ -269,7 +269,7 @@ async fn value_state_machine_sync_from_events() {
 
     let event_vec = sync_result.unwrap();
 
-    assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v, &event)));
+    assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v.0, &event)));
 }
 
 #[tokio::test]
