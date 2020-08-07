@@ -18,11 +18,11 @@ use core::fmt;
 use serde::ser;
 use std::fmt::{Debug, Display, Formatter};
 
-use common::model::blob::Blob;
-use common::model::{Attr, Item, Value, ValueKind};
+use swim_common::model::blob::Blob;
+use swim_common::model::{Attr, Item, Value, ValueKind};
 
 pub type SerializerResult<T> = ::std::result::Result<T, FormSerializeErr>;
-const EXT_BLOB: &str = common::model::blob::EXT_BLOB;
+const EXT_BLOB: &str = swim_common::model::blob::EXT_BLOB;
 
 #[cfg(test)]
 mod tests;

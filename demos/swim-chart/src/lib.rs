@@ -17,10 +17,10 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use serde::{Deserialize, Serialize};
-use swim_client::common::model::Value;
-use swim_client::common::warp::path::AbsolutePath;
 use swim_client::downlink::model::map::MapEvent;
 use swim_client::interface::SwimClient;
+use swim_common::model::Value;
+use swim_common::warp::path::AbsolutePath;
 use swim_wasm::connection::WasmWsFactory;
 
 #[wasm_bindgen]

@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use super::*;
-use common::model::schema::Schema;
-use common::model::{Attr, Value};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::collections::HashSet;
+use swim_common::model::schema::Schema;
+use swim_common::model::{Attr, Value};
 
 #[test]
 fn value_to_vector() {

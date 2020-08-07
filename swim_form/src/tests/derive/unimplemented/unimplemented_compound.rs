@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use common::model::Value;
 use form_derive::*;
+use swim_common::model::Value;
 
 #[form(Value)]
 struct FormStruct {

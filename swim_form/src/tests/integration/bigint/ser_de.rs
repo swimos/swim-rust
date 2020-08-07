@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use crate::Form;
-use common::model::Value;
 use form_derive::*;
 use num_bigint::{BigInt, BigUint};
+use swim_common::model::Value;
 
 #[form(Value)]
 struct S {

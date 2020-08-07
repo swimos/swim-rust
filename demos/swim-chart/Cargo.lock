@@ -109,28 +109,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "client"
-version = "0.1.0"
-dependencies = [
- "common",
- "either",
- "futures 0.3.5",
- "futures-util",
- "im",
- "pin-project",
- "pin-utils",
- "rand",
- "swim_form",
- "swim_runtime",
- "tokio",
- "tracing",
- "tracing-futures",
- "tracing-subscriber",
- "url",
- "utilities",
-]
-
-[[package]]
 name = "cloudabi"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -149,29 +127,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common"
-version = "0.1.0"
-dependencies = [
- "base64",
- "bytes",
- "either",
- "futures 0.3.5",
- "futures-util",
- "pin-project",
- "pin-utils",
- "regex",
- "serde",
- "swim_runtime",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-futures",
- "tracing-subscriber",
- "url",
- "utilities",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -185,8 +140,10 @@ dependencies = [
 name = "deserialize"
 version = "0.1.0"
 dependencies = [
- "common",
+ "num-bigint",
+ "num-traits",
  "serde",
+ "swim_common",
 ]
 
 [[package]]
@@ -463,6 +420,18 @@ name = "memchr"
 version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
+
+[[package]]
+name = "num-bigint"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f3fc75e3697059fb1bc465e3d8cca6cf92f56854f201158b3f9c77d5a3cfa0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+ "serde",
+]
 
 [[package]]
 name = "num-integer"
@@ -822,8 +791,9 @@ dependencies = [
 name = "serialize"
 version = "0.1.0"
 dependencies = [
- "common",
+ "num-bigint",
  "serde",
+ "swim_common",
 ]
 
 [[package]]
@@ -928,13 +898,14 @@ name = "swim-chart"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "client",
  "console_error_panic_hook",
  "futures 0.3.5",
  "futures-util",
  "js-sys",
  "serde",
  "stdweb",
+ "swim_client",
+ "swim_common",
  "swim_wasm",
  "tokio",
  "url",
@@ -945,15 +916,64 @@ dependencies = [
 ]
 
 [[package]]
+name = "swim_client"
+version = "0.1.0"
+dependencies = [
+ "either",
+ "futures 0.3.5",
+ "futures-util",
+ "im",
+ "pin-project",
+ "pin-utils",
+ "rand",
+ "swim_common",
+ "swim_form",
+ "swim_runtime",
+ "tokio",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber",
+ "url",
+ "utilities",
+]
+
+[[package]]
+name = "swim_common"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bytes",
+ "either",
+ "futures 0.3.5",
+ "futures-util",
+ "num-bigint",
+ "num-traits",
+ "pin-project",
+ "pin-utils",
+ "regex",
+ "serde",
+ "swim_runtime",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber",
+ "url",
+ "utilities",
+]
+
+[[package]]
 name = "swim_form"
 version = "0.1.0"
 dependencies = [
- "common",
  "deserialize",
  "form_derive",
  "im",
+ "num-bigint",
+ "num-traits",
  "serde",
  "serialize",
+ "swim_common",
  "utilities",
 ]
 
@@ -974,11 +994,11 @@ dependencies = [
 name = "swim_wasm"
 version = "0.1.0"
 dependencies = [
- "common",
  "futures 0.3.5",
  "futures-util",
  "pin-project",
  "pin-utils",
+ "swim_common",
  "tokio",
  "url",
  "utilities",
@@ -1219,6 +1239,7 @@ dependencies = [
  "futures 0.3.5",
  "futures-util",
  "parking_lot 0.11.0",
+ "parking_lot_core 0.8.0",
  "pin-project",
  "pin-utils",
  "rand",

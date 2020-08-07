@@ -15,7 +15,7 @@
 use serde::de::{DeserializeSeed, EnumAccess, VariantAccess, Visitor};
 use serde::Deserializer;
 
-use common::model::Value;
+use swim_common::model::Value;
 
 use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
 

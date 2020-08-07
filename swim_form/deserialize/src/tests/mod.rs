@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::ValueDeserializer;
-use common::model::Value;
 use serde::Deserialize;
+use swim_common::model::Value;
 
 #[cfg(test)]
 mod nested;
