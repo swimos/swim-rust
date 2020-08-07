@@ -14,14 +14,14 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use client::connections::factory::tungstenite::TungsteniteWsFactory;
-    use client::downlink::model::map::{
+    use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
+    use swim_client::downlink::model::map::{
         MapAction, MapEvent, MapModification, UntypedMapModification,
     };
-    use client::downlink::model::value::Action;
-    use client::downlink::typed::event::TypedViewWithEvent;
-    use client::downlink::{Downlink, Event};
-    use client::interface::SwimClient;
+    use swim_client::downlink::model::value::Action;
+    use swim_client::downlink::typed::event::TypedViewWithEvent;
+    use swim_client::downlink::{Downlink, Event};
+    use swim_client::interface::SwimClient;
     use swim_common::model::{Attr, Item, Value};
     use swim_common::sink::item::ItemSink;
     use swim_common::topic::Topic;

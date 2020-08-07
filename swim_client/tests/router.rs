@@ -14,10 +14,10 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
-    use client::connections::factory::tungstenite::TungsteniteWsFactory;
-    use client::connections::SwimConnPool;
-    use client::router::{Router, SwimRouter};
+    use swim_client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
+    use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
+    use swim_client::connections::SwimConnPool;
+    use swim_client::router::{Router, SwimRouter};
     use swim_common::model::Value;
     use swim_common::sink::item::ItemSink;
     use swim_common::warp::envelope::Envelope;
