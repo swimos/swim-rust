@@ -5,8 +5,8 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
-swim_client = { package = "client", path = "../../client" }
-swim_common = { package = "common", path = "../../common" }
+swim_client = { path = "../../swim_client" }
+swim_common = { path = "../../swim_common" }
 tokio = { version = "0.2.21", features = ["sync", "stream", "macros"] }
 url = "2.1.1"
 futures = "0.3.4"
