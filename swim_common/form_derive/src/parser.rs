@@ -294,7 +294,7 @@ pub struct Name {
 
 /// A trait for retrieving attributes on a field or compound type that are prefixed by the provided
 /// [`symbol`]. For example calling this on a [`DeriveInput`] that represents the following:
-///```
+///```compile_fail
 ///struct Person {
 ///    #[form(skip)]
 ///    name: String,

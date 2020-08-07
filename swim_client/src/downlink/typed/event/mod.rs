@@ -18,9 +18,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::form::Form;
-use swim_common::form::FormDeserializeErr;
 
 #[cfg(test)]
 mod tests;

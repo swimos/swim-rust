@@ -14,12 +14,12 @@
 
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::model::map::{MapLane, MapUpdate};
-use common::form::Form;
 use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
+use swim_common::form::Form;
 
 #[cfg(test)]
 mod tests;

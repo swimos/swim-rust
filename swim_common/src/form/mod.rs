@@ -26,6 +26,7 @@ use crate::model::schema::StandardSchema;
 use crate::model::Value;
 
 pub mod impls;
+
 #[cfg(test)]
 mod tests;
 
@@ -62,9 +63,6 @@ impl Display for FormErr {
 /// provided tag name.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -90,9 +88,6 @@ impl Display for FormErr {
 /// with the provided tag name.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -116,9 +111,6 @@ impl Display for FormErr {
 /// [`Default`].
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -147,9 +139,6 @@ impl Display for FormErr {
 /// and are renamed will be written as [`Item::Slot`] in the output record.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -178,9 +167,6 @@ impl Display for FormErr {
 /// structures and enumerations or renamed fields.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -210,9 +196,6 @@ impl Display for FormErr {
 /// slot in the output record.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -241,9 +224,6 @@ impl Display for FormErr {
 /// as slots will be promoted to headers. At most one field may be marked with this.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -275,9 +255,6 @@ impl Display for FormErr {
 /// The field should be written as a slot in the tag attribute.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
@@ -316,9 +293,6 @@ impl Display for FormErr {
 /// the tag body. At most one field may be marked with this.
 ///
 /// ```
-/// # mod swim_common {
-/// #   pub use common::*;
-/// # }
 /// use swim_common::model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///

@@ -21,7 +21,6 @@ use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
 use swim_common::model::schema::Schema;
 use swim_common::request::Request;
-use swim_form::{BigInt, BigUint};
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);

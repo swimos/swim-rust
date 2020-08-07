@@ -32,11 +32,11 @@ use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::Topic;
-use swim_common::form::{Form, ValidatedForm};
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.

@@ -20,8 +20,8 @@ use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::sync::Arc;
+use swim_common::form::FormErr;
 use swim_common::model::Value;
-use swim_common::form::FormDeserializeErr;
 
 fn make_raw() -> ValMap {
     let mut map = ValMap::new();

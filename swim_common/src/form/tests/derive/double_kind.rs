@@ -13,12 +13,11 @@
 // limitations under the License.
 
 use form_derive::*;
-use swim_common::model::Value;
 
 fn main() {
     #[derive(Form)]
     struct S {
-        #[form(rename = 13)]
+        #[form(skip, body)]
         a: i32,
     }
 }

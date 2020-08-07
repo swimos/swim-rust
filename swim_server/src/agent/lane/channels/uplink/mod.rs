@@ -16,8 +16,6 @@ use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::LaneModel;
-use common::form::{Form, FormErr};
-use common::sink::item::ItemSender;
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, StreamExt};
@@ -27,6 +25,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
+use swim_common::form::{Form, FormErr};
+use swim_common::sink::item::ItemSender;
 
 #[cfg(test)]
 mod tests;

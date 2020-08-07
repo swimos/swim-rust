@@ -21,13 +21,12 @@ use futures::Stream;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
+use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::schema::attr::AttrSchema;
 use swim_common::model::schema::slot::SlotSchema;
 use swim_common::model::schema::{FieldSpec, Schema, StandardSchema};
 use swim_common::model::{Attr, Item, Value, ValueKind};
 use swim_common::sink::item::ItemSender;
-use swim_form::FormDeserializeErr;
-use swim_form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};

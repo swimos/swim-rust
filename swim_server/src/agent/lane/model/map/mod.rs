@@ -21,15 +21,13 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
-use swim_common::form::{Form, FormErr};
-use swim_common::model::Value;
 use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_form::{Form, FormDeserializeErr};
 
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};

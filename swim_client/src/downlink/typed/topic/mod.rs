@@ -22,9 +22,8 @@ use crate::downlink::Event;
 use futures::Stream;
 use std::convert::TryInto;
 use std::marker::PhantomData;
+use swim_common::form::{Form, FormErr};
 use swim_common::topic::{Topic, TopicError};
-use swim_form::Form;
-use swim_form::FormErr;
 use utilities::future::{SwimFutureExt, Transform, TransformedFuture, UntilFailure};
 
 /// A transformation that attempts to apply a form to an [`Event<Value>`].

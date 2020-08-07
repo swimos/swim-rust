@@ -16,8 +16,6 @@
 mod tests;
 
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_common::form::{Form, FormErr};
-use swim_common::model::Value;
 use either::Either;
 use futures::stream::{unfold, FusedStream};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -31,6 +29,7 @@ use std::sync::Arc;
 use stm::transaction;
 use stm::transaction::{RetryManager, TransactionError};
 use stm::var::TVar;
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use utilities::sync::trigger;
 
