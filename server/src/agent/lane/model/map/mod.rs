@@ -21,28 +21,31 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
-use common::form::Form;
+use common::form::{Form, FormErr};
 use common::model::Value;
 use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
-use stm::transaction::{atomically, RetryManager, TransactionError};
+use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 
-use crate::agent::lane::map::summary::{MapLaneEvent, TransactionSummary};
+use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
-use crate::agent::lane::{BroadcastStream, InvalidForm};
+use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
 use futures::stream::{iter, Flatten, Iter, StreamExt};
 use futures::Stream;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use stm::var::observer::StaticObserver;
 use tokio::sync::{broadcast, mpsc, watch};
+use tracing::{event, Level};
 use utilities::future::{SwimStreamExt, Transform, TransformedStream};
 
 mod summary;
 
 /// A lane consisting of a map from keys to values.
+#[derive(Debug)]
 pub struct MapLane<K, V> {
     // Transactional variable containing the current state of the map where the value of each entry
     // is stored in its own variable. The keys are stored as recon values as the map ordering
@@ -57,8 +60,56 @@ pub struct MapLane<K, V> {
     _key_type: PhantomData<K>,
 }
 
+impl<K, V> MapLane<K, V>
+where
+    K: Form + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    pub fn new() -> MapLane<K, V> {
+        MapLane {
+            map_state: Default::default(),
+            summary: Default::default(),
+            transaction_started: TLocal::new(false),
+            _key_type: PhantomData,
+        }
+    }
+}
+
+impl<K, V> Default for MapLane<K, V>
+where
+    K: Form + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V> LaneModel for MapLane<K, V>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    type Event = MapLaneEvent<K, V>;
+
+    fn same_lane(this: &Self, other: &Self) -> bool {
+        TVar::same_var(&this.map_state, &other.map_state)
+    }
+}
+
+impl<K, V> Clone for MapLane<K, V> {
+    fn clone(&self) -> Self {
+        MapLane {
+            map_state: self.map_state.clone(),
+            summary: self.summary.clone(),
+            transaction_started: self.transaction_started.clone(),
+            _key_type: PhantomData,
+        }
+    }
+}
+
 /// Create a new map lane with the specified watch strategy.
-pub fn make_lane<K, V, W>(watch: W) -> (MapLane<K, V>, W::View)
+pub fn make_lane_model<K, V, W>(watch: W) -> (MapLane<K, V>, W::View)
 where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
@@ -74,6 +125,51 @@ where
         _key_type: PhantomData,
     };
     (lane, view)
+}
+
+/// Updates that can be applied to a [`MapLane`].
+/// TODO Add take/drop.
+pub enum MapUpdate<K, V> {
+    Update(K, Arc<V>),
+    Remove(K),
+    Clear,
+}
+
+impl<K, V> MapUpdate<K, V> {
+    pub fn make(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
+        match event {
+            MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
+            MapLaneEvent::Clear => Some(MapUpdate::Clear),
+            MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key)),
+            MapLaneEvent::Checkpoint(_) => None,
+        }
+    }
+}
+
+/// A single event that occurred during a transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MapLaneEvent<K, V> {
+    /// A coordination checkpoint was encountered in the stream. For an explanation of checkpoints,
+    /// see [`crate::agent::lane::channels::uplink::map::sync_map_lane`].
+    Checkpoint(u64),
+    /// The map as cleared.
+    Clear,
+    /// An entry was updated.
+    Update(K, Arc<V>),
+    /// An entry was removed.
+    Remove(K),
+}
+
+impl<V> MapLaneEvent<Value, V> {
+    /// Attempt to type the key of a [`MapLaneEvent`] using a form.
+    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormErr> {
+        match self {
+            MapLaneEvent::Checkpoint(id) => Ok(MapLaneEvent::Checkpoint(id)),
+            MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),
+            MapLaneEvent::Update(k, v) => Ok(MapLaneEvent::Update(K::try_convert(k)?, v)),
+            MapLaneEvent::Remove(k) => Ok(MapLaneEvent::Remove(K::try_convert(k)?)),
+        }
+    }
 }
 
 /// Adapts a watch strategy for use with a [`ValueLane`].
@@ -237,13 +333,29 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         DirectClear(self)
     }
 
+    pub(crate) fn get_value(&self, key: Value) -> impl Stm<Result = Option<Arc<V>>> + '_ {
+        self.map_state
+            .get()
+            .and_then(move |map| match map.get(&key) {
+                Some(var) => left(var.get().map(Option::Some)),
+                _ => right(Constant(None)),
+            })
+    }
+
     /// Get the value associated with a key in the map, in a transaction.
     pub fn get(&self, key: K) -> impl Stm<Result = Option<Arc<V>>> + '_ {
         let k = key.into_value();
-        self.map_state.get().and_then(move |map| match map.get(&k) {
-            Some(var) => left(var.get().map(Option::Some)),
-            _ => right(Constant(None)),
-        })
+        self.get_value(k)
+    }
+
+    /// Locks an entry in the map, preventing it from being read from or written to. This is
+    /// required to force the ordering of events in some unit tests.
+    #[cfg(test)]
+    pub async fn lock(&self, key: &K) -> Option<stm::var::TVarLock> {
+        match self.map_state.load().await.get(&key.as_value()) {
+            Some(var) => Some(var.lock().await),
+            _ => None,
+        }
     }
 
     /// Determine if a key is contained in the map, in a transaction.
@@ -343,6 +455,19 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
         });
 
         compound_map_transaction(transaction_started, summary, action)
+    }
+
+    /// Get a view of the internal map, without resolving the values, and emit a checkpoint in the
+    /// event stream.
+    pub(crate) fn checkpoint(
+        &self,
+        coordination_id: u64,
+    ) -> impl Stm<Result = OrdMap<Value, TVar<V>>> + '_ {
+        let put_id = self
+            .summary
+            .put(TransactionSummary::with_id(coordination_id));
+        let chk = self.map_state.get().map(|map| (*map).clone());
+        put_id.followed_by(chk)
     }
 }
 
@@ -457,10 +582,15 @@ pub struct DirectUpdate<'a, K, V> {
     value: Arc<V>,
 }
 
+const UPDATING: &str = "Updating entry";
+const REMOVING: &str = "Removing entry";
+const CLEARING: &str = "Clearing map";
+const MODIFYING: &str = "Modifying entry";
+
 impl<'a, K, V> DirectUpdate<'a, K, V>
 where
-    K: Form + Send + Sync + 'a,
-    V: Any + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
+    V: Any + Send + Sync + Debug + 'a,
 {
     fn into_stm(self) -> impl Stm<Result = ()> + 'a {
         let DirectUpdate { lane, key, value } = self;
@@ -474,12 +604,27 @@ where
 
     /// Executes the update as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, UPDATING, key = ?self.key, value = ?self.value);
         let stm = self.into_stm();
         atomically(&stm, retries).await
     }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, UPDATING, key = ?self.key, value = ?self.value);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
+    }
 }
 
-/// Returned by the `rmove_direct` method of [`MapLane`]. This wraps the removal transaction
+/// Returned by the `remove_direct` method of [`MapLane`]. This wraps the removal transaction
 /// so that it can only be executed and not combined into a larger transaction.
 #[must_use = "Transactions do nothing if not executed."]
 pub struct DirectRemove<'a, K, V> {
@@ -489,7 +634,7 @@ pub struct DirectRemove<'a, K, V> {
 
 impl<'a, K, V> DirectRemove<'a, K, V>
 where
-    K: Form + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
     V: Any + Send + Sync + 'a,
 {
     fn into_stm(self) -> impl Stm<Result = ()> + 'a {
@@ -510,8 +655,23 @@ where
 
     /// Executes the removal as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, REMOVING, key = ?self.key);
         let stm = self.into_stm();
         atomically(&stm, retries).await
+    }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, REMOVING, key = ?self.key);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
     }
 }
 
@@ -541,8 +701,23 @@ where
 
     /// Executes the clear as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, CLEARING);
         let stm = self.into_stm();
         atomically(&stm, retries).await
+    }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, CLEARING);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
     }
 }
 
@@ -557,7 +732,7 @@ pub struct DirectModify<'a, K, V, F> {
 
 impl<'a, K, V, F> DirectModify<'a, K, V, F>
 where
-    K: Form + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
     V: Any + Send + Sync + 'a,
     F: Fn(Option<&V>) -> Option<V> + Send + Sync + Clone + 'a,
 {
@@ -609,8 +784,23 @@ where
 
     /// Executes the modification as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
         let stm = self.into_stm();
         atomically(&stm, retries).await
+    }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
     }
 }
 
@@ -625,7 +815,7 @@ pub struct DirectModifyDefined<'a, K, V, F> {
 
 impl<'a, K, V, F> DirectModifyDefined<'a, K, V, F>
 where
-    K: Form + Send + Sync + 'a,
+    K: Form + Send + Sync + Debug + 'a,
     V: Any + Send + Sync + 'a,
     F: Fn(&V) -> V + Send + Sync + Clone + 'a,
 {
@@ -657,7 +847,22 @@ where
 
     /// Executes the modification as a transaction.
     pub async fn apply<R: RetryManager>(self, retries: R) -> Result<(), TransactionError> {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
         let stm = self.into_stm();
         atomically(&stm, retries).await
+    }
+
+    /// Executes the update in a transaction runner.
+    pub async fn apply_with<Fac, Ret>(
+        self,
+        runner: &mut TransactionRunner<Fac>,
+    ) -> Result<(), TransactionError>
+    where
+        Fac: Fn() -> Ret,
+        Ret: RetryManager,
+    {
+        event!(Level::TRACE, MODIFYING, key = ?self.key);
+        let stm = self.into_stm();
+        runner.atomically(&stm).await
     }
 }

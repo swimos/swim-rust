@@ -20,6 +20,7 @@ use futures::StreamExt;
 use stm::transaction::RetryManager;
 use tokio::sync::broadcast;
 
+#[derive(Clone, Debug)]
 pub struct ExactlyOnce;
 
 impl RetryManager for ExactlyOnce {

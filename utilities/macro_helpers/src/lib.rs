@@ -8,10 +8,10 @@ extern crate quote;
 extern crate syn;
 
 use core::fmt;
+use std::fmt::Display;
+
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
-use std::cell::RefCell;
-use std::fmt::Display;
 use syn::export::TokenStream2;
 use syn::{Data, Index, Meta, Path};
 
@@ -66,83 +66,84 @@ impl From<&syn::Data> for StructureKind {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum CompoundType {
+pub enum CompoundTypeKind {
     Struct,
     Tuple,
     NewType,
     Unit,
 }
 
+/// An enumeration representing a field in a compound type. This enumeration helps to keep track of
+/// fields that may have been renamed when transmuting it.
 #[derive(Clone)]
-pub enum FieldName {
+pub enum FieldIdentity {
     /// A named field containing its identifier.
     Named(Ident),
-    /// A renamed field containing its new name (0) and original identifier (1).
-    Renamed(String, Ident),
-    /// An unnamed field containing its index in the parent structure.
-    Unnamed(Index),
+    /// A renamed field containing its new identifier and original identifier. This field may have
+    /// previously been named or anonymous.
+    Renamed {
+        new_identity: String,
+        old_identity: Ident,
+    },
+    /// An anonymous field containing its index in the parent structure.
+    Anonymous(Index),
 }
 
-impl FieldName {
+impl FieldIdentity {
     /// Returns this [`FieldName`] represented as an [`Ident`]ifier. For renamed fields, this function
     /// returns the original field identifier represented and not the new name. For unnamed fields,
     /// this function returns a new identifier in the format of `__self_index`, where `index` is
     /// the ordinal of the field.
     pub fn as_ident(&self) -> Ident {
         match self {
-            FieldName::Named(ident) => ident.clone(),
-            FieldName::Renamed(_, ident) => ident.clone(),
-            FieldName::Unnamed(index) => Ident::new(&format!("__self_{}", index.index), index.span),
+            FieldIdentity::Named(ident) => ident.clone(),
+            FieldIdentity::Renamed {
+                new_identity,
+                old_identity,
+            } => Ident::new(&new_identity, old_identity.span()),
+            FieldIdentity::Anonymous(index) => {
+                Ident::new(&format!("__self_{}", index.index), index.span)
+            }
         }
     }
 }
 
-impl ToString for FieldName {
+impl ToString for FieldIdentity {
     fn to_string(&self) -> String {
         match self {
-            FieldName::Named(ident) => ident.to_string(),
-            FieldName::Renamed(new_ident, _old_ident) => new_ident.to_string(),
-            FieldName::Unnamed(index) => format!("__self_{}", index.index),
+            FieldIdentity::Named(ident) => ident.to_string(),
+            FieldIdentity::Renamed { new_identity, .. } => new_identity.to_string(),
+            FieldIdentity::Anonymous(index) => format!("__self_{}", index.index),
         }
     }
 }
 
-impl ToTokens for FieldName {
+impl ToTokens for FieldIdentity {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            FieldName::Named(ident) => ident.to_tokens(tokens),
-            FieldName::Renamed(_, ident) => ident.to_tokens(tokens),
-            FieldName::Unnamed(index) => index.to_tokens(tokens),
+            FieldIdentity::Named(ident) => ident.to_tokens(tokens),
+            FieldIdentity::Renamed { old_identity, .. } => old_identity.to_tokens(tokens),
+            FieldIdentity::Anonymous(index) => index.to_tokens(tokens),
         }
     }
 }
 
 /// An error context for building errors while parsing a token stream.
+#[derive(Default)]
 pub struct Context {
-    errors: RefCell<Option<Vec<syn::Error>>>,
-}
-
-impl Context {
-    pub fn default() -> Context {
-        Context {
-            errors: RefCell::new(Some(Vec::new())),
-        }
-    }
+    errors: Vec<syn::Error>,
 }
 
 impl Context {
     /// Pushes an error into the context.
-    pub fn error_spanned_by<A: ToTokens, T: Display>(&self, obj: A, msg: T) {
+    pub fn error_spanned_by<A: ToTokens, T: Display>(&mut self, obj: A, msg: T) {
         self.errors
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
             .push(syn::Error::new_spanned(obj.into_token_stream(), msg));
     }
 
     /// Consumes the context and returns the underlying errors.
     pub fn check(self) -> Result<(), Vec<syn::Error>> {
-        let errors = self.errors.borrow_mut().take().unwrap();
+        let errors = self.errors;
         match errors.len() {
             0 => Ok(()),
             _ => Err(errors),
@@ -168,17 +169,20 @@ pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
 /// ```compile_fail
 /// { a, b }
 /// ```
-pub fn deconstruct_type(compound_type: &CompoundType, fields: &[&FieldName]) -> TokenStream2 {
+pub fn deconstruct_type(
+    compound_type: &CompoundTypeKind,
+    fields: &[&FieldIdentity],
+) -> TokenStream2 {
     let fields: Vec<_> = fields
         .iter()
         .map(|name| match &name {
-            FieldName::Named(ident) => {
+            FieldIdentity::Named(ident) => {
                 quote! { #ident }
             }
-            FieldName::Renamed(_, ident) => {
-                quote! { #ident }
+            FieldIdentity::Renamed { old_identity, .. } => {
+                quote! { #old_identity }
             }
-            un @ FieldName::Unnamed(_) => {
+            un @ FieldIdentity::Anonymous(_) => {
                 let binding = &un.as_ident();
                 quote! { #binding }
             }
@@ -186,20 +190,22 @@ pub fn deconstruct_type(compound_type: &CompoundType, fields: &[&FieldName]) -> 
         .collect();
 
     match compound_type {
-        CompoundType::Struct => quote! { { #(ref #fields,)* } },
-        CompoundType::Tuple => quote! { ( #(ref #fields,)* ) },
-        CompoundType::NewType => quote! { ( #(ref #fields,)* ) },
-        CompoundType::Unit => quote!(),
+        CompoundTypeKind::Struct => quote! { { #(ref #fields,)* } },
+        CompoundTypeKind::Tuple => quote! { ( #(ref #fields,)* ) },
+        CompoundTypeKind::NewType => quote! { ( #(ref #fields,)* ) },
+        CompoundTypeKind::Unit => quote!(),
     }
 }
 
-/// Returns a vector of metadata that matches the provided path.
+/// Returns a vector of metadata for the provided [`Attribute`] that matches the provided
+/// [`Symbol`]. An error that is encountered is added to the [`Context`] and a [`Result::Err`] is
+/// returned.
 pub fn get_attribute_meta(
-    ctx: &Context,
+    ctx: &mut Context,
     attr: &syn::Attribute,
-    path: Symbol,
+    symbol: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
-    if attr.path != path {
+    if attr.path != symbol {
         Ok(Vec::new())
     } else {
         match attr.parse_meta() {
@@ -207,7 +213,7 @@ pub fn get_attribute_meta(
             Ok(other) => {
                 ctx.error_spanned_by(
                     other,
-                    &format!("Invalid attribute. Expected #[{}(...)]", path),
+                    &format!("Invalid attribute. Expected #[{}(...)]", symbol),
                 );
                 Err(())
             }

@@ -33,7 +33,7 @@ jobs:
         - cargo test --workspace
 
 rust:
-  - 1.44.0
+  - 1.45.2
 
 cache:
   directories:

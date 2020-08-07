@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use crate::parser::{
-    EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, RecordTokenStreams, StructRepr,
-    TypeContents,
+    EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents,
 };
-use macro_helpers::{deconstruct_type, CompoundType, FieldName};
+use macro_helpers::{deconstruct_type, CompoundTypeKind, FieldIdentity};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
 
@@ -73,15 +72,11 @@ fn build_struct_as_value(
     mut descriptor: FormDescriptor,
     mut manifest: FieldManifest,
     structure_name: &Ident,
-    compound_type: &CompoundType,
+    compound_type: &CompoundTypeKind,
     fields: &[Field],
 ) -> TokenStream2 {
     let structure_name_str = descriptor.name.tag_ident.to_string();
-    let RecordTokenStreams {
-        headers,
-        attributes,
-        items,
-    } = compute_as_value(&fields, &mut descriptor, &mut manifest);
+    let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, &mut manifest);
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
@@ -95,16 +90,12 @@ fn build_struct_as_value(
 fn build_variant_as_value(
     mut descriptor: FormDescriptor,
     mut manifest: FieldManifest,
-    variant_name: &FieldName,
-    compound_type: &CompoundType,
+    variant_name: &FieldIdentity,
+    compound_type: &CompoundTypeKind,
     fields: &[Field],
 ) -> TokenStream2 {
     let variant_name_str = variant_name.to_string();
-    let RecordTokenStreams {
-        headers,
-        attributes,
-        items,
-    } = compute_as_value(&fields, &mut descriptor, &mut manifest);
+    let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, &mut manifest);
     let structure_name = &descriptor.name.original_ident;
     let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
@@ -121,42 +112,42 @@ fn compute_as_value(
     fields: &[Field],
     descriptor: &mut FormDescriptor,
     manifest: &mut FieldManifest,
-) -> RecordTokenStreams {
-    let mut as_value_ts = fields
+) -> (TokenStream2, TokenStream2, TokenStream2) {
+    let (mut headers, mut items, attributes) = fields
         .iter()
-        .fold(RecordTokenStreams::default(), |mut as_value_ts, f| {
+        .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers,mut items,mut attributes), f| {
             let name = &f.name;
 
             match &f.kind {
                 FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
                     match name {
-                        FieldName::Named(ident) => {
+                        FieldIdentity::Named(ident) => {
                             let name_str = ident.to_string();
-                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
+                            items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),) ;
                         }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),));
+                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                            let name_str = new_identity.to_string();
+                            items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ FieldName::Unnamed(_) => {
+                        un @ FieldIdentity::Anonymous(_) => {
                             let ident = un.as_ident();
-                            as_value_ts.transform_items(|items| quote!(#items swim_common::model::Item::ValueItem(#ident.as_value()),));
+                            items =  quote!(#items swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }
                     }
                 }
                 FieldKind::Attr => {
                     match name {
-                        FieldName::Named(ident) => {
+                        FieldIdentity::Named(ident) => {
                             let name_str = ident.to_string();
-                            as_value_ts.transform_attrs(|attrs| quote!(#attrs swim_common::model::Attr::of((#name_str.to_string(), #ident.as_value())),));
+                            attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #ident.as_value())),);
                         }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            as_value_ts.transform_attrs(|attrs| quote!(#attrs swim_common::model::Attr::of((#name_str.to_string(), #old.as_value())),));
+                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                            let name_str = new_identity.to_string();
+                            attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #old_identity.as_value())),);
                         }
-                        FieldName::Unnamed(_index) => {
-                            // This has bene checked already when parsing the AST.
+                        FieldIdentity::Anonymous(_index) => {
+                            // This has been checked already when parsing the AST.
                             unreachable!()
                         }
                     }
@@ -165,66 +156,64 @@ fn compute_as_value(
                     descriptor.body_replaced = true;
                     let ident = f.name.as_ident();
 
-                    as_value_ts.transform_items(|_items| quote!({
+                    items = quote!({
                         match #ident.as_value() {
                             swim_common::model::Value::Record(_attrs, items) => items,
                             v => vec![swim_common::model::Item::ValueItem(v)]
                         }
-                    }));
+                    });
                 }
                 FieldKind::HeaderBody => {
                     if manifest.has_header_fields {
                         match name {
-                            FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
+                            FieldIdentity::Renamed{old_identity:ident,..} | FieldIdentity::Named(ident) => {
+                                headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
-                            un @ FieldName::Unnamed(_) => {
+                            un @ FieldIdentity::Anonymous(_) => {
                                 let ident = un.as_ident();
-                                as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
+                                headers= quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
                         }
                     } else {
                         match name {
-                            FieldName::Renamed(_, ident) | FieldName::Named(ident) => {
-                                as_value_ts.transform_headers(|_headers| quote!(, #ident.as_value()));
+                            FieldIdentity::Renamed{old_identity:ident,..} | FieldIdentity::Named(ident) => {
+                                headers = quote!(, #ident.as_value());
                             }
-                            un @ FieldName::Unnamed(_) => {
+                            un @ FieldIdentity::Anonymous(_) => {
                                 let ident = un.as_ident();
-                                as_value_ts.transform_headers(|_headers| quote!(, #ident.as_value()));
+                                headers = quote!(, #ident.as_value());
                             }
                         }
                     }
                 }
                 _ => {
                     match name {
-                        FieldName::Named(ident) => {
+                        FieldIdentity::Named(ident) => {
                             let name_str = ident.to_string();
-                            as_value_ts.transform_headers(|headers|quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),));
+                            headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),);
                         }
-                        FieldName::Renamed(new, old) => {
-                            let name_str = new.to_string();
-                            as_value_ts.transform_headers(|headers| quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old.as_value()),));
+                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                            let name_str = new_identity.to_string();
+                            headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ FieldName::Unnamed(_) => {
+                        un @ FieldIdentity::Anonymous(_) => {
                             let ident = un.as_ident();
-                            as_value_ts.transform_headers(|headers|quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),));
+                            headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }
                     }
                 }
             }
 
-            as_value_ts
+            (headers, items, attributes)
         });
 
     if manifest.has_header_fields || manifest.replaces_body {
-        as_value_ts.transform_headers(
-            |headers| quote!(, swim_common::model::Value::Record(Vec::new(), vec![#headers])),
-        );
+        headers = quote!(, swim_common::model::Value::Record(Vec::new(), vec![#headers]));
     }
 
     if !descriptor.has_body_replaced() {
-        as_value_ts.transform_items(|items| quote!(vec![#items]));
+        items = quote!(vec![#items]);
     }
 
-    as_value_ts
+    (headers, attributes, items)
 }
