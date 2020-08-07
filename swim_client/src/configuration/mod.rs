@@ -80,37 +80,38 @@ pub mod downlink {
     }
 
     impl BackpressureMode {
-        fn try_from_value(
-            mut attrs: Vec<Attr>,
-            items: Vec<Item>,
-            use_defaults: bool,
-        ) -> Result<Self, ConfigParseError> {
-            if let Some(Attr { name, value }) = attrs.pop() {
-                match name.as_str() {
-                    PROPAGATE_TAG => {
-                        if let Value::Extant = value {
-                            Ok(BackpressureMode::Propagate)
-                        } else {
-                            Err(UnexpectedValue(value, Some(PROPAGATE_TAG)))
+        fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
+            match value {
+                Value::Record(mut attrs, items) if attrs.len() <= 1 => {
+                    if let Some(Attr { name, value }) = attrs.pop() {
+                        match name.as_str() {
+                            PROPAGATE_TAG => {
+                                if let Value::Extant = value {
+                                    Ok(BackpressureMode::Propagate)
+                                } else {
+                                    Err(UnexpectedValue(value, Some(PROPAGATE_TAG)))
+                                }
+                            }
+                            RELEASE_TAG => {
+                                if let Value::Record(_, items) = value {
+                                    try_release_mode_from_items(items, use_defaults)
+                                } else {
+                                    Err(ConfigParseError::UnexpectedValue(value, Some(RELEASE_TAG)))
+                                }
+                            }
+                            _ => Err(ConfigParseError::UnexpectedAttribute(
+                                name,
+                                Some(BACK_PRESSURE_TAG),
+                            )),
                         }
+                    } else {
+                        Err(ConfigParseError::UnnamedRecord(
+                            Value::Record(attrs, items),
+                            Some(BACK_PRESSURE_TAG),
+                        ))
                     }
-                    RELEASE_TAG => {
-                        if let Value::Record(_, items) = value {
-                            try_release_mode_from_items(items, use_defaults)
-                        } else {
-                            Err(ConfigParseError::UnexpectedValue(value, Some(RELEASE_TAG)))
-                        }
-                    }
-                    _ => Err(ConfigParseError::UnexpectedAttribute(
-                        name,
-                        Some(BACK_PRESSURE_TAG),
-                    )),
                 }
-            } else {
-                Err(ConfigParseError::UnnamedRecord(
-                    Value::Record(attrs, items),
-                    Some(BACK_PRESSURE_TAG),
-                ))
+                _ => Err(ConfigParseError::InvalidValue(value, BACK_PRESSURE_TAG)),
             }
         }
     }
@@ -240,44 +241,51 @@ pub mod downlink {
     }
 
     impl MuxMode {
-        fn try_from_value(
-            mut attrs: Vec<Attr>,
-            items: Vec<Item>,
-            use_defaults: bool,
-        ) -> Result<Self, ConfigParseError> {
-            if let Some(Attr { name, value }) = attrs.pop() {
-                match name.as_str() {
-                    QUEUE_TAG => {
-                        if let Value::Record(_, items) = value {
-                            try_queue_mode_from_items(items, use_defaults)
-                        } else {
-                            Err(ConfigParseError::UnexpectedValue(value, Some(QUEUE_TAG)))
+        fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
+            match value {
+                Value::Record(mut attrs, items) if attrs.len() <= 1 => {
+                    if let Some(Attr { name, value }) = attrs.pop() {
+                        match name.as_str() {
+                            QUEUE_TAG => {
+                                if let Value::Record(_, items) = value {
+                                    try_queue_mode_from_items(items, use_defaults)
+                                } else {
+                                    Err(ConfigParseError::UnexpectedValue(value, Some(QUEUE_TAG)))
+                                }
+                            }
+                            DROPPING_TAG => {
+                                if let Value::Extant = value {
+                                    Ok(MuxMode::Dropping)
+                                } else {
+                                    Err(ConfigParseError::UnexpectedValue(
+                                        value,
+                                        Some(DROPPING_TAG),
+                                    ))
+                                }
+                            }
+                            BUFFERED_TAG => {
+                                if let Value::Record(_, items) = value {
+                                    try_buffered_mode_from_items(items, use_defaults)
+                                } else {
+                                    Err(ConfigParseError::UnexpectedValue(
+                                        value,
+                                        Some(BUFFERED_TAG),
+                                    ))
+                                }
+                            }
+                            _ => Err(ConfigParseError::UnexpectedAttribute(
+                                name,
+                                Some(MUX_MODE_TAG),
+                            )),
                         }
+                    } else {
+                        Err(ConfigParseError::UnnamedRecord(
+                            Value::Record(attrs, items),
+                            Some(MUX_MODE_TAG),
+                        ))
                     }
-                    DROPPING_TAG => {
-                        if let Value::Extant = value {
-                            Ok(MuxMode::Dropping)
-                        } else {
-                            Err(ConfigParseError::UnexpectedValue(value, Some(DROPPING_TAG)))
-                        }
-                    }
-                    BUFFERED_TAG => {
-                        if let Value::Record(_, items) = value {
-                            try_buffered_mode_from_items(items, use_defaults)
-                        } else {
-                            Err(ConfigParseError::UnexpectedValue(value, Some(BUFFERED_TAG)))
-                        }
-                    }
-                    _ => Err(ConfigParseError::UnexpectedAttribute(
-                        name,
-                        Some(MUX_MODE_TAG),
-                    )),
                 }
-            } else {
-                Err(ConfigParseError::UnnamedRecord(
-                    Value::Record(attrs, items),
-                    Some(MUX_MODE_TAG),
-                ))
+                _ => Err(ConfigParseError::InvalidValue(value, MUX_MODE_TAG)),
             }
         }
     }
@@ -502,28 +510,13 @@ pub mod downlink {
             for item in items {
                 match item {
                     Item::Slot(Value::Text(name), value) => match name.as_str() {
-                        BACK_PRESSURE_TAG => match value {
-                            Value::Record(attrs, items) if attrs.len() <= 1 => {
-                                back_pressure = Some(BackpressureMode::try_from_value(
-                                    attrs,
-                                    items,
-                                    use_defaults,
-                                )?)
-                            }
-                            _ => {
-                                return Err(ConfigParseError::InvalidValue(
-                                    value,
-                                    BACK_PRESSURE_TAG,
-                                ))
-                            }
-                        },
-                        MUX_MODE_TAG => match value {
-                            Value::Record(attrs, items) if attrs.len() <= 1 => {
-                                mux_mode =
-                                    Some(MuxMode::try_from_value(attrs, items, use_defaults)?)
-                            }
-                            _ => return Err(ConfigParseError::InvalidValue(value, MUX_MODE_TAG)),
-                        },
+                        BACK_PRESSURE_TAG => {
+                            back_pressure =
+                                Some(BackpressureMode::try_from_value(value, use_defaults)?)
+                        }
+                        MUX_MODE_TAG => {
+                            mux_mode = Some(MuxMode::try_from_value(value, use_defaults)?)
+                        }
                         IDLE_TIMEOUT_TAG => {
                             let timeout = u64::try_from_value(&value).map_err(|_| {
                                 ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG)
@@ -537,20 +530,7 @@ pub mod downlink {
                             buffer_size = Some(size);
                         }
                         ON_INVALID_TAG => {
-                            let on_invalid_str = String::try_from_value(&value).map_err(|_| {
-                                ConfigParseError::InvalidValue(value, ON_INVALID_TAG)
-                            })?;
-
-                            match on_invalid_str.as_str() {
-                                IGNORE_TAG => on_invalid = Some(OnInvalidMessage::Ignore),
-                                TERMINATE_TAG => on_invalid = Some(OnInvalidMessage::Terminate),
-                                _ => {
-                                    return Err(ConfigParseError::InvalidValue(
-                                        Value::Text(on_invalid_str),
-                                        ON_INVALID_TAG,
-                                    ))
-                                }
-                            }
+                            on_invalid = Some(try_on_invalid_from_value(value)?);
                         }
                         YIELD_AFTER_TAG => {
                             let size = usize::try_from_value(&value).map_err(|_| {
@@ -603,6 +583,20 @@ pub mod downlink {
         }
     }
 
+    fn try_on_invalid_from_value(value: Value) -> Result<OnInvalidMessage, ConfigParseError> {
+        let on_invalid_str = String::try_from_value(&value)
+            .map_err(|_| ConfigParseError::InvalidValue(value, ON_INVALID_TAG))?;
+
+        match on_invalid_str.as_str() {
+            IGNORE_TAG => Ok(OnInvalidMessage::Ignore),
+            TERMINATE_TAG => Ok(OnInvalidMessage::Terminate),
+            _ => Err(ConfigParseError::InvalidValue(
+                Value::Text(on_invalid_str),
+                ON_INVALID_TAG,
+            )),
+        }
+    }
+
     impl Default for DownlinkParams {
         fn default() -> Self {
             DownlinkParams::new(
@@ -622,7 +616,7 @@ pub mod downlink {
     pub struct ClientParams {
         /// Buffer size for servicing requests for new downlinks.
         pub dl_req_buffer_size: NonZeroUsize,
-
+        /// Configuration parameters for the router.
         pub router_params: RouterParams,
     }
 

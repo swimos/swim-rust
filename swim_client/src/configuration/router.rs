@@ -31,14 +31,16 @@ const RETRY_STRATEGY_TAG: &str = "retry_strategy";
 const IDLE_TIMEOUT_TAG: &str = "idle_timeout";
 const CONN_REAPER_FREQ_TAG: &str = "conn_reaper_frequency";
 
+/// Configuration parameters for the router.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
     /// The retry strategy that will be used when attempting to make a request to a Web Agent.
     retry_strategy: RetryStrategy,
     /// The maximum amount of time a connection can be inactive for before it will be culled.
     idle_timeout: Duration,
-    /// How frequently inactive connections will be culled
+    /// How frequently inactive connections will be culled.
     conn_reaper_frequency: Duration,
+    /// Size of the internal buffers of the router.
     buffer_size: NonZeroUsize,
 }
 
