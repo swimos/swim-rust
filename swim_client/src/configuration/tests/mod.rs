@@ -4,12 +4,12 @@ use crate::configuration::downlink::{
 use crate::configuration::router::RouterParams;
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::interface::SwimClient;
-use common::model::parser::parse_single;
-use common::warp::path::AbsolutePath;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::num::NonZeroUsize;
+use swim_common::model::parser::parse_single;
+use swim_common::warp::path::AbsolutePath;
 use tokio::time::Duration;
 use url::Url;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};

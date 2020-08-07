@@ -20,13 +20,13 @@ mod tests;
 pub mod downlink {
     use crate::configuration::downlink::ConfigParseError::UnexpectedValue;
     use crate::configuration::router::RouterParams;
-    use common::model::parser::ParseFailure;
-    use common::model::{Attr, Item, Value};
-    use common::warp::path::AbsolutePath;
     use std::collections::HashMap;
     use std::error::Error;
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
+    use swim_common::model::parser::ParseFailure;
+    use swim_common::model::{Attr, Item, Value};
+    use swim_common::warp::path::AbsolutePath;
     use swim_form::Form;
     use tokio::time::Duration;
     use url::Url;

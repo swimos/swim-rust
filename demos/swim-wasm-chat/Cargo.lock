@@ -109,28 +109,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "client"
-version = "0.1.0"
-dependencies = [
- "common",
- "either",
- "futures",
- "futures-util",
- "im",
- "pin-project",
- "pin-utils",
- "rand",
- "swim_form",
- "swim_runtime",
- "tokio",
- "tracing",
- "tracing-futures",
- "tracing-subscriber",
- "url",
- "utilities",
-]
-
-[[package]]
 name = "cloudabi"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -149,31 +127,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common"
-version = "0.1.0"
-dependencies = [
- "base64",
- "bytes",
- "either",
- "futures",
- "futures-util",
- "num-bigint",
- "num-traits",
- "pin-project",
- "pin-utils",
- "regex",
- "serde",
- "swim_runtime",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-futures",
- "tracing-subscriber",
- "url",
- "utilities",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -187,10 +140,10 @@ dependencies = [
 name = "deserialize"
 version = "0.1.0"
 dependencies = [
- "common",
  "num-bigint",
  "num-traits",
  "serde",
+ "swim_common",
 ]
 
 [[package]]
@@ -433,6 +386,15 @@ dependencies = [
  "cfg-if",
  "generator",
  "scoped-tls 0.1.2",
+]
+
+[[package]]
+name = "macro_helpers"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -814,9 +776,9 @@ dependencies = [
 name = "serialize"
 version = "0.1.0"
 dependencies = [
- "common",
  "num-bigint",
  "serde",
+ "swim_common",
 ]
 
 [[package]]
@@ -921,7 +883,6 @@ name = "swim-wasm-chat"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "client",
  "console_error_panic_hook",
  "either",
  "futures",
@@ -929,6 +890,8 @@ dependencies = [
  "js-sys",
  "serde",
  "stdweb",
+ "swim_client",
+ "swim_common",
  "swim_form",
  "swim_wasm",
  "tokio",
@@ -939,10 +902,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "swim_client"
+version = "0.1.0"
+dependencies = [
+ "either",
+ "futures",
+ "futures-util",
+ "im",
+ "pin-project",
+ "pin-utils",
+ "rand",
+ "swim_common",
+ "swim_form",
+ "swim_runtime",
+ "tokio",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber",
+ "url",
+ "utilities",
+]
+
+[[package]]
+name = "swim_common"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bytes",
+ "either",
+ "futures",
+ "futures-util",
+ "num-bigint",
+ "num-traits",
+ "pin-project",
+ "pin-utils",
+ "regex",
+ "serde",
+ "swim_runtime",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber",
+ "url",
+ "utilities",
+]
+
+[[package]]
 name = "swim_form"
 version = "0.1.0"
 dependencies = [
- "common",
  "deserialize",
  "form_derive",
  "im",
@@ -950,6 +959,7 @@ dependencies = [
  "num-traits",
  "serde",
  "serialize",
+ "swim_common",
  "utilities",
 ]
 
@@ -970,11 +980,11 @@ dependencies = [
 name = "swim_wasm"
 version = "0.1.0"
 dependencies = [
- "common",
  "futures",
  "futures-util",
  "pin-project",
  "pin-utils",
+ "swim_common",
  "tokio",
  "url",
  "utilities",
@@ -1208,6 +1218,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "futures-util",
+ "macro_helpers",
  "parking_lot 0.11.0",
  "parking_lot_core 0.8.0",
  "pin-project",

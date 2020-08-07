@@ -18,7 +18,7 @@ use tokio::time::Duration;
 
 use crate::configuration::downlink::ConfigParseError;
 use crate::configuration::downlink::ROUTER_TAG;
-use common::model::{Attr, Item, Value};
+use swim_common::model::{Attr, Item, Value};
 use swim_form::Form;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
