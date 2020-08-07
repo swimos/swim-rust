@@ -174,20 +174,15 @@ pub mod downlink {
             };
         }
 
-        if input_buffer_size.is_none() && use_defaults {
-            input_buffer_size = Some(NonZeroUsize::new(DEFAULT_INPUT_BUFFER_SIZE).unwrap())
-        }
-
-        if bridge_buffer_size.is_none() && use_defaults {
-            bridge_buffer_size = Some(NonZeroUsize::new(DEFAULT_BRIDGE_BUFFER_SIZE).unwrap())
-        }
-
-        if max_active_keys.is_none() && use_defaults {
-            max_active_keys = Some(NonZeroUsize::new(DEFAULT_MAX_ACTIVE_KEYS).unwrap())
-        }
-
-        if yield_after.is_none() && use_defaults {
-            yield_after = Some(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap())
+        if use_defaults {
+            input_buffer_size = input_buffer_size
+                .or_else(|| Some(NonZeroUsize::new(DEFAULT_INPUT_BUFFER_SIZE).unwrap()));
+            bridge_buffer_size = bridge_buffer_size
+                .or_else(|| Some(NonZeroUsize::new(DEFAULT_BRIDGE_BUFFER_SIZE).unwrap()));
+            max_active_keys = max_active_keys
+                .or_else(|| Some(NonZeroUsize::new(DEFAULT_MAX_ACTIVE_KEYS).unwrap()));
+            yield_after =
+                yield_after.or_else(|| Some(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()));
         }
 
         Ok(BackpressureMode::Release {
@@ -314,8 +309,9 @@ pub mod downlink {
             }
         }
 
-        if queue_size.is_none() && use_defaults {
-            queue_size = Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
+        if use_defaults {
+            queue_size =
+                queue_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap()));
         }
 
         Ok(MuxMode::Queue(queue_size.ok_or(
@@ -350,8 +346,9 @@ pub mod downlink {
             };
         }
 
-        if queue_size.is_none() && use_defaults {
-            queue_size = Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
+        if use_defaults {
+            queue_size =
+                queue_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap()));
         }
 
         Ok(MuxMode::Buffered(queue_size.ok_or(
@@ -579,28 +576,13 @@ pub mod downlink {
                 }
             }
 
-            if back_pressure.is_none() && use_defaults {
-                back_pressure = Some(DEFAULT_BACK_PRESSURE)
-            }
-
-            if mux_mode.is_none() && use_defaults {
-                mux_mode = Some(MuxMode::default())
-            }
-
-            if idle_timeout.is_none() && use_defaults {
-                idle_timeout = Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT))
-            }
-
-            if buffer_size.is_none() && use_defaults {
-                buffer_size = Some(DEFAULT_DOWNLINK_BUFFER_SIZE)
-            }
-
-            if on_invalid.is_none() && use_defaults {
-                on_invalid = Some(DEFAULT_ON_INVALID)
-            }
-
-            if yield_after.is_none() && use_defaults {
-                yield_after = Some(DEFAULT_YIELD_AFTER)
+            if use_defaults {
+                back_pressure = back_pressure.or(Some(DEFAULT_BACK_PRESSURE));
+                mux_mode = mux_mode.or_else(|| Some(MuxMode::default()));
+                idle_timeout = idle_timeout.or(Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)));
+                buffer_size = buffer_size.or(Some(DEFAULT_DOWNLINK_BUFFER_SIZE));
+                on_invalid = on_invalid.or(Some(DEFAULT_ON_INVALID));
+                yield_after = yield_after.or(Some(DEFAULT_YIELD_AFTER));
             }
 
             Ok(DownlinkParams::new(
@@ -693,12 +675,10 @@ pub mod downlink {
                 }
             }
 
-            if buffer_size.is_none() && use_defaults {
-                buffer_size = Some(NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap())
-            }
-
-            if router_params.is_none() && use_defaults {
-                router_params = Some(RouterParams::default())
+            if use_defaults {
+                buffer_size = buffer_size
+                    .or_else(|| Some(NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap()));
+                router_params = router_params.or_else(|| Some(RouterParams::default()));
             }
 
             Ok(ClientParams::new(
@@ -830,12 +810,9 @@ pub mod downlink {
                 }
             }
 
-            if client_params.is_none() && use_defaults {
-                client_params = Some(ClientParams::default())
-            }
-
-            if downlink_params.is_none() && use_defaults {
-                downlink_params = Some(DownlinkParams::default())
+            if use_defaults {
+                client_params = client_params.or_else(|| Some(ClientParams::default()));
+                downlink_params = downlink_params.or_else(|| Some(DownlinkParams::default()));
             }
 
             Ok(ConfigHierarchy {

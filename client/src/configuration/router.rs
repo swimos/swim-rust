@@ -135,20 +135,12 @@ impl RouterParams {
             }
         }
 
-        if retry_strategy.is_none() && use_defaults {
-            retry_strategy = Some(RetryStrategy::default())
-        }
-
-        if idle_timeout.is_none() && use_defaults {
-            idle_timeout = Some(DEFAULT_IDLE_TIMEOUT)
-        }
-
-        if conn_reaper_frequency.is_none() && use_defaults {
-            conn_reaper_frequency = Some(DEFAULT_CONN_REAPER_FREQUENCY)
-        }
-
-        if buffer_size.is_none() && use_defaults {
-            buffer_size = Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap())
+        if use_defaults {
+            retry_strategy = retry_strategy.or_else(|| Some(RetryStrategy::default()));
+            idle_timeout = idle_timeout.or(Some(DEFAULT_IDLE_TIMEOUT));
+            conn_reaper_frequency = conn_reaper_frequency.or(Some(DEFAULT_CONN_REAPER_FREQUENCY));
+            buffer_size =
+                buffer_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()));
         }
 
         Ok(RouterParams::new(
@@ -266,8 +258,8 @@ fn try_immediate_strat_from_items(
         }
     }
 
-    if retries.is_none() && use_defaults {
-        retries = Some(NonZeroUsize::new(DEFAULT_RETRIES).unwrap())
+    if use_defaults {
+        retries = retries.or_else(|| Some(NonZeroUsize::new(DEFAULT_RETRIES).unwrap()));
     }
 
     Ok(RetryStrategy::immediate(retries.ok_or(
@@ -323,14 +315,13 @@ fn try_interval_strat_from_items(
         }
     }
 
-    if retries.is_none() && use_defaults {
-        retries = Some(Quantity::Finite(
-            NonZeroUsize::new(DEFAULT_RETRIES).unwrap(),
-        ))
-    }
-
-    if delay.is_none() && use_defaults {
-        delay = Some(Duration::from_secs(DEFAULT_INTERVAL))
+    if use_defaults {
+        retries = retries.or_else(|| {
+            Some(Quantity::Finite(
+                NonZeroUsize::new(DEFAULT_RETRIES).unwrap(),
+            ))
+        });
+        delay = delay.or(Some(Duration::from_secs(DEFAULT_INTERVAL)));
     }
 
     Ok(RetryStrategy::interval(
@@ -390,12 +381,9 @@ fn try_exponential_strat_from_items(
         }
     }
 
-    if max_interval.is_none() && use_defaults {
-        max_interval = Some(Duration::from_secs(DEFAULT_MAX_INTERVAL))
-    }
-
-    if max_backoff.is_none() && use_defaults {
-        max_backoff = Some(Quantity::Finite(Duration::from_secs(DEFAULT_BACKOFF)))
+    if use_defaults {
+        max_interval = max_interval.or(Some(Duration::from_secs(DEFAULT_MAX_INTERVAL)));
+        max_backoff = max_backoff.or(Some(Quantity::Finite(Duration::from_secs(DEFAULT_BACKOFF))));
     }
 
     Ok(RetryStrategy::exponential(
