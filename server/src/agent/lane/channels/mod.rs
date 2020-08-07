@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::routing::ServerRouter;
-use pin_utils::core_reexport::num::NonZeroUsize;
 use futures::future::BoxFuture;
+use pin_utils::core_reexport::num::NonZeroUsize;
 use tokio::sync::mpsc;
 
 pub mod task;
@@ -26,6 +26,7 @@ pub struct AgentExecutionConfig {
     pub max_concurrency: usize,
     pub action_buffer: NonZeroUsize,
     pub update_buffer: NonZeroUsize,
+    pub max_fatal_uplink_errors: usize,
 }
 
 pub trait AgentExecutionContext {

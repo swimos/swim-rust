@@ -15,6 +15,8 @@
 use common::routing::RoutingError;
 use common::sink::item::ItemSender;
 use common::warp::envelope::Envelope;
+use pin_utils::core_reexport::fmt::Formatter;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Location {
@@ -32,6 +34,15 @@ impl RoutingAddr {
 
     pub fn local(id: u32) -> Self {
         RoutingAddr(Location::Local(id))
+    }
+}
+
+impl Display for RoutingAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote Endpoint ({:X}).", id),
+            RoutingAddr(Location::Local(id)) => write!(f, "Local consumer ({:X}).", id),
+        }
     }
 }
 

@@ -26,6 +26,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_form::{Form, FormDeserializeErr};
+use tracing::{event, Level};
 
 #[cfg(test)]
 mod tests;
@@ -78,7 +79,6 @@ fn trans_err_fatal(err: &TransactionError) -> bool {
 }
 
 impl UplinkError {
-
     pub fn is_fatal(&self) -> bool {
         match self {
             UplinkError::LaneStoppedReporting | UplinkError::InconsistentForm(_) => true,
@@ -86,7 +86,6 @@ impl UplinkError {
             _ => false,
         }
     }
-
 }
 
 impl From<MapLaneSyncError> for UplinkError {
@@ -160,6 +159,8 @@ impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
     }
 }
 
+const FAILED_UNLINK: &str = "Failed to send unlink failed uplink.";
+
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates>
 where
     Updates: FusedStream + Send,
@@ -168,6 +169,28 @@ where
 {
     /// Run the uplink as an asynchronous task.
     pub async fn run_uplink<Sender, SendErr>(self, mut sender: Sender) -> Result<(), UplinkError>
+    where
+        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
+    {
+        let result = self.run_uplink_internal(&mut sender).await;
+        let attempt_unlink = match &result {
+            Ok(_) => false,
+            Err(UplinkError::SenderDropped) => {
+                event!(Level::ERROR, FAILED_UNLINK);
+                false
+            }
+            _ => true,
+        };
+        if attempt_unlink && sender.send_item(UplinkMessage::Unlinked).await.is_err() {
+            event!(Level::ERROR, FAILED_UNLINK);
+        }
+        result
+    }
+
+    async fn run_uplink_internal<Sender, SendErr>(
+        self,
+        sender: &mut Sender,
+    ) -> Result<(), UplinkError>
     where
         Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
     {
@@ -181,8 +204,6 @@ where
         pin_mut!(updates);
 
         let mut state = UplinkState::Opened;
-
-        let sender = &mut sender;
 
         loop {
             if state == UplinkState::Opened {
