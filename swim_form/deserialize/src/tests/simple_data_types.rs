@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::tests::from_value;
 use crate::FormDeserializeErr;
-use common::model::{Attr, Item, Value};
+use swim_common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod casts {

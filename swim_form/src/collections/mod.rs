@@ -15,11 +15,11 @@
 use crate::_deserialize::FormDeserializeErr;
 use crate::impls::de_incorrect_type;
 use crate::{Form, ValidatedForm};
-use common::model::schema::StandardSchema;
-use common::model::{Item, Value};
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasher, Hash};
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::{Item, Value};
 
 #[cfg(test)]
 mod tests;

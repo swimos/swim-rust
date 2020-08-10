@@ -15,8 +15,8 @@
 use serde::Serialize;
 
 use crate::tests::to_value;
-use common::model::{Attr, Item, Value};
 use std::collections::BTreeSet;
+use swim_common::model::{Attr, Item, Value};
 
 #[cfg(test)]
 mod valid_types {

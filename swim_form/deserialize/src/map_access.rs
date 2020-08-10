@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::{DeserializerState, FormDeserializeErr, Result, State, ValueDeserializer};
-use common::model::{Item, Value};
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess};
+use swim_common::model::{Item, Value};
 
 pub struct RecordMap<'a, 'de: 'a> {
     de: &'a mut ValueDeserializer<'de>,

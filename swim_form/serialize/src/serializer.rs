@@ -14,7 +14,7 @@
 
 use serde::{Serialize, Serializer};
 
-use common::model::{Attr, Value};
+use swim_common::model::{Attr, Value};
 
 use crate::{FormSerializeErr, SerializerResult, SerializerState, ValueSerializer};
 use num_bigint::{BigInt, BigUint};

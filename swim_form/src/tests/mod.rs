@@ -14,13 +14,13 @@
 
 use trybuild::TestCases;
 
-use common::model::{Attr, Item, Value};
+use swim_common::model::{Attr, Item, Value};
 
 use crate::Form;
 use crate::FormDeserializeErr;
 use base64::URL_SAFE;
-use common::model::blob::Blob;
 use num_bigint::{BigInt, BigUint, RandBigInt};
+use swim_common::model::blob::Blob;
 
 #[cfg(test)]
 mod traits;
