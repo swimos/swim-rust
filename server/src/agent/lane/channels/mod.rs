@@ -29,6 +29,7 @@ pub struct AgentExecutionConfig {
     pub action_buffer: NonZeroUsize,
     pub update_buffer: NonZeroUsize,
     pub max_fatal_uplink_errors: usize,
+    pub max_uplink_start_attempts: NonZeroUsize,
 }
 
 pub trait AgentExecutionContext {

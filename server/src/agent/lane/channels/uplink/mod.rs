@@ -72,6 +72,8 @@ pub enum UplinkError {
     FailedTransaction(TransactionError),
     /// The form used by the lane is inconsistent.
     InconsistentForm(FormDeserializeErr),
+    /// The uplink failed to start after a number of attempts.
+    FailedToStart(usize),
 }
 
 fn trans_err_fatal(err: &TransactionError) -> bool {
@@ -113,6 +115,9 @@ impl Display for UplinkError {
                 "A form implementation used by a lane is inconsistent: {}",
                 err
             ),
+            UplinkError::FailedToStart(n) => {
+                write!(f, "Uplink failed to start after {} attempts.", *n)
+            }
         }
     }
 }

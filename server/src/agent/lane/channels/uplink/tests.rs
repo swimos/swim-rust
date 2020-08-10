@@ -378,6 +378,14 @@ fn uplink_error_display() {
         ),
         "A form implementation used by a lane is inconsistent: Malformatted"
     );
+    assert_eq!(
+        format!("{}", UplinkError::SenderDropped),
+        "Uplink send channel was dropped."
+    );
+    assert_eq!(
+        format!("{}", UplinkError::FailedToStart(2)),
+        "Uplink failed to start after 2 attempts."
+    );
 }
 
 #[test]

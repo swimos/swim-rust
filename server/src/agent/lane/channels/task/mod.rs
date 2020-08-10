@@ -17,9 +17,7 @@ use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{UplinkErrorReport, UplinkSpawner};
 use crate::agent::lane::channels::uplink::{MapLaneUplink, UplinkAction, ValueLaneUplink};
-use crate::agent::lane::channels::{
-    AgentExecutionContext, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
-};
+use crate::agent::lane::channels::{AgentExecutionContext, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction, AgentExecutionConfig};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::TaggedEnvelope;
@@ -113,18 +111,23 @@ where
     let envelopes = envelopes.fuse();
     let arc_handler = Arc::new(message_handler);
 
-    let act_buffer_size = context.configuration().action_buffer;
-    let upd_buffer_size = context.configuration().update_buffer;
-    let max_fatal = context.configuration().max_fatal_uplink_errors;
+    let AgentExecutionConfig {
+        action_buffer,
+        update_buffer,
+        max_fatal_uplink_errors,
+        max_uplink_start_attempts ,
+        ..
+    } = context.configuration();
 
-    let (mut act_tx, act_rx) = mpsc::channel(act_buffer_size.get());
-    let (mut upd_tx, upd_rx) = mpsc::channel(upd_buffer_size.get());
+    let (mut act_tx, act_rx) = mpsc::channel(action_buffer.get());
+    let (mut upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
 
     let spawner = UplinkSpawner::new(
         arc_handler.clone(),
         events,
         act_rx,
-        act_buffer_size,
+        *action_buffer,
+        *max_uplink_start_attempts,
         route.clone(),
     );
 
@@ -191,7 +194,7 @@ where
                         num_fatal += 1;
                     }
                     uplink_errors.push(error);
-                    if num_fatal > max_fatal {
+                    if num_fatal > *max_fatal_uplink_errors {
                         break true;
                     }
                 }
