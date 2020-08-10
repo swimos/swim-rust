@@ -29,7 +29,7 @@ pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
 pub const RENAME_PATH: Symbol = Symbol("rename");
 pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
-pub const VALID_PATH: Symbol = Symbol("valid");
+pub const SCHEMA_PATH: Symbol = Symbol("valid");
 
 /// An enumeration representing the contents of an input.
 pub enum TypeContents<F> {
@@ -369,7 +369,7 @@ pub fn fields_from_ast<'t>(
                         NestedMeta::Meta(Meta::Path(path)) if path == SKIP_PATH => {
                             set_kind(FieldKind::Skip, ctx);
                         }
-                        NestedMeta::Meta(Meta::List(list)) if list.path == VALID_PATH => {
+                        NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
                             // no-op as this is parsed by the validated form derive macro
                         }
                         _ => ctx.error_spanned_by(meta, "Unknown attribute"),

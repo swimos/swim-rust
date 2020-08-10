@@ -27,12 +27,11 @@ use macro_helpers::{to_compile_errors, Context};
 
 use crate::form::to_value;
 use crate::parser::{FormDescriptor, TypeContents};
-use crate::validated::build_validated_form;
+use crate::validated_form::build_validated_form;
 
 mod form;
 mod parser;
-#[allow(warnings)]
-mod validated;
+mod validated_form;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
