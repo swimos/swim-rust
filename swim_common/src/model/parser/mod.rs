@@ -26,7 +26,7 @@ use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
@@ -1172,6 +1172,7 @@ enum StartAt {
 }
 
 /// A partially constructed record. The state of the parser is a stack of these.
+#[derive(Debug)]
 struct Frame {
     attrs: Vec<Attr>,
     items: Vec<Item>,
@@ -1254,7 +1255,7 @@ fn open_new(
 }
 
 /// The state transition function for the parser automaton.
-fn consume_token<S: TokenStr>(
+fn consume_token<S: TokenStr + Debug>(
     state: &mut Vec<Frame>,
     loc_token: LocatedReconToken<S>,
 ) -> Option<ParseTermination> {
@@ -1262,6 +1263,8 @@ fn consume_token<S: TokenStr>(
 
     let LocatedReconToken(token, offset) = loc_token;
 
+    println!("{:?}", state);
+    println!("{:?}", token);
     if let Some(Frame {
         attrs,
         items,
@@ -1331,7 +1334,7 @@ fn update_attr_start<S: TokenStr>(
     }
 }
 
-fn update_reading_attr<S: TokenStr>(
+fn update_reading_attr<S: TokenStr + Debug>(
     token: ReconToken<S>,
     name: String,
     mut attrs: Vec<Attr>,
@@ -1339,6 +1342,8 @@ fn update_reading_attr<S: TokenStr>(
 ) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
+
+    // println!("{:?}", token);
 
     match token {
         AttrMarker => {
@@ -1394,13 +1399,15 @@ fn update_reading_attr<S: TokenStr>(
     }
 }
 
-fn update_after_attr<S: TokenStr>(
+fn update_after_attr<S: TokenStr + Debug>(
     token: ReconToken<S>,
     attrs: Vec<Attr>,
     items: Vec<Item>,
 ) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
+
+    // println!("{:?}", token);
 
     match token {
         AttrMarker => repush(attrs, items, AttributeStart),
@@ -1587,7 +1594,7 @@ fn update_reading_slot<S: TokenStr>(
     }
 }
 
-fn update_after_slot<S: TokenStr>(
+fn update_after_slot<S: TokenStr + Debug>(
     token: ReconToken<S>,
     attr_body: bool,
     attrs: Vec<Attr>,
@@ -1608,7 +1615,10 @@ fn update_after_slot<S: TokenStr>(
         tok @ EntrySep | tok @ NewLine => {
             repush(attrs, items, InsideBody(attr_body, tok == EntrySep))
         }
-        _ => StateModification::Fail(RecordError::InvalidAfterItem),
+        _ => {
+            // println!("{:?}", token);
+            StateModification::Fail(RecordError::InvalidAfterItem)
+        }
     }
 }
 
