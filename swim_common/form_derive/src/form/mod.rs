@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use crate::parser::{
-    EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents,
+    EnumVariant, FieldKind, FieldManifest, FormDescriptor, FormField, StructRepr, TypeContents,
 };
 use macro_helpers::{deconstruct_type, CompoundTypeKind, FieldIdentity};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
 
 pub fn to_value(
-    type_contents: TypeContents,
+    type_contents: TypeContents<FormField<'_>>,
     structure_name: &Ident,
     descriptor: FormDescriptor,
 ) -> TokenStream2 {
@@ -73,7 +73,7 @@ fn build_struct_as_value(
     mut manifest: FieldManifest,
     structure_name: &Ident,
     compound_type: &CompoundTypeKind,
-    fields: &[Field],
+    fields: &[FormField],
 ) -> TokenStream2 {
     let structure_name_str = descriptor.name.tag_ident.to_string();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, &mut manifest);
@@ -92,7 +92,7 @@ fn build_variant_as_value(
     mut manifest: FieldManifest,
     variant_name: &FieldIdentity,
     compound_type: &CompoundTypeKind,
-    fields: &[Field],
+    fields: &[FormField],
 ) -> TokenStream2 {
     let variant_name_str = variant_name.to_string();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, &mut manifest);
@@ -109,7 +109,7 @@ fn build_variant_as_value(
 }
 
 fn compute_as_value(
-    fields: &[Field],
+    fields: &[FormField],
     descriptor: &mut FormDescriptor,
     manifest: &mut FieldManifest,
 ) -> (TokenStream2, TokenStream2, TokenStream2) {

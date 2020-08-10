@@ -16,3 +16,4 @@ mod derive;
 mod enumeration;
 mod impls;
 mod structure;
+mod validated;

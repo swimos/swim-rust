@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::model::schema::attr::AttrSchema;
-use crate::model::schema::item::ItemSchema;
+pub use crate::model::schema::item::ItemSchema;
 use crate::model::schema::range::{
     float_64_range, float_range_to_value, i32_range_as_big_int, i32_range_as_i64,
     i64_range_as_big_int, i64_range_as_i64, i64_range_to_big_int_range, in_big_int_range,
