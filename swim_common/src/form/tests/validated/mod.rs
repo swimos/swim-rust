@@ -219,4 +219,13 @@ mod container_attrs {
             a: i32,
         }
     }
+
+    #[test]
+    fn all_items() {
+        #[derive(Form, ValidatedForm)]
+        struct S {
+            #[form(schema(all_items(and(num_items = 5, num_attrs = 5))))]
+            a: i32,
+        }
+    }
 }

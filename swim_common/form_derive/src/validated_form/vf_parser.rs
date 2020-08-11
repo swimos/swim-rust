@@ -115,13 +115,15 @@ impl ValidatedFormDescriptor {
                             set_int_opt(name, &mut desc.num_items, context);
                         }
                         NestedMeta::Meta(Meta::List(list)) if list.path == ALL_ITEMS_PATH => {
+                            let schema =
+                                parse_schema_meta(StandardSchema::Default, context, &list.nested);
 
-                            // set_container_schema(
-                            //     name.to_token_stream(),
-                            //     &mut desc.schema,
-                            //     context,
-                            //     StandardSchema::AllItems,
-                            // )
+                            set_container_schema(
+                                list.to_token_stream(),
+                                &mut desc.schema,
+                                context,
+                                StandardSchema::AllItems(Box::new(schema)),
+                            )
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == ANYTHING_PATH => {
                             set_container_schema(
@@ -139,11 +141,16 @@ impl ValidatedFormDescriptor {
                                 StandardSchema::Nothing,
                             )
                         }
-                        _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
+                        _ => context.error_spanned_by(
+                            meta,
+                            "Unknown or malformatted schema container attribute",
+                        ),
                     }
                 })
             }
-            _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
+            _ => {
+                context.error_spanned_by(meta, "Unknown or malformatted schema container attribute")
+            }
         });
 
         desc
@@ -216,6 +223,10 @@ impl StandardSchema {
     pub fn not() -> StandardSchema {
         StandardSchema::Not(Box::new(StandardSchema::Default))
     }
+
+    pub fn all_items() -> StandardSchema {
+        StandardSchema::AllItems(Box::new(StandardSchema::Default))
+    }
 }
 
 pub fn type_contents_to_validated<'f>(
@@ -236,7 +247,6 @@ pub fn type_contents_to_validated<'f>(
             }
         }),
         TypeContents::Enum(variants) => {
-            // for each variant, parse the fields
             let variants = variants
                 .into_iter()
                 .map(|variant| {

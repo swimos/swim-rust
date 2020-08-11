@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use trybuild::TestCases;
+use form_derive::*;
 
-#[test]
-fn test_derive() {
-    let t = TestCases::new();
-
-    t.compile_fail("src/form/tests/validated/derive/all_items_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/and_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/or_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/not_op_arg_count.rs");
+fn main() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(all_items(num_items = 5, num_attrs = 5)))]
+        a: i32,
+    }
 }

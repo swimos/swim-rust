@@ -139,9 +139,9 @@ pub struct Context {
 
 impl Context {
     /// Pushes an error into the context.
-    pub fn error_spanned_by<A: ToTokens, T: Display>(&mut self, obj: A, msg: T) {
+    pub fn error_spanned_by<A: ToTokens, T: Display>(&mut self, location: A, msg: T) {
         self.errors
-            .push(syn::Error::new_spanned(obj.into_token_stream(), msg));
+            .push(syn::Error::new_spanned(location.into_token_stream(), msg));
     }
 
     /// Consumes the context and returns the underlying errors.

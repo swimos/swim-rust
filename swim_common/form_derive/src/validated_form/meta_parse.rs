@@ -13,13 +13,29 @@
 // limitations under the License.
 
 use crate::validated_form::vf_parser::{
-    StandardSchema, AND_PATH, NOT_PATH, NUM_ATTRS_PATH, NUM_ITEMS_PATH, OR_PATH,
+    StandardSchema, ALL_ITEMS_PATH, AND_PATH, NOT_PATH, NUM_ATTRS_PATH, NUM_ITEMS_PATH, OR_PATH,
 };
 use macro_helpers::Context;
 use syn::punctuated::Punctuated;
 #[allow(unused_imports)]
 use syn::token::Token;
-use syn::{Meta, NestedMeta};
+use syn::{Lit, Meta, MetaList, NestedMeta};
+
+fn parse_lit_to_int(lit: &Lit, context: &mut Context) -> Option<usize> {
+    match lit {
+        Lit::Int(int) => match int.base10_parse::<usize>() {
+            Ok(int) => Some(int),
+            Err(e) => {
+                context.error_spanned_by(int, e.to_string());
+                None
+            }
+        },
+        _ => {
+            context.error_spanned_by(lit, "Expected an int literal");
+            None
+        }
+    }
+}
 
 pub fn parse_schema_meta(
     schema: StandardSchema,
@@ -30,18 +46,21 @@ pub fn parse_schema_meta(
         let push_element = |elem, borrowed_schema: &mut StandardSchema| match borrowed_schema {
             StandardSchema::And(vec) => vec.push(elem),
             StandardSchema::Or(vec) => vec.push(elem),
-            StandardSchema::Not(boxed) => {
-                *boxed = Box::new(elem);
-            }
+            StandardSchema::AllItems(boxed) => *boxed = Box::new(elem),
+            StandardSchema::Not(boxed) => *boxed = Box::new(elem),
             _ => *borrowed_schema = elem,
         };
 
         match meta {
             NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ATTRS_PATH => {
-                push_element(StandardSchema::NumAttrs(1), &mut schema);
+                if let Some(int) = parse_lit_to_int(&name.lit, context) {
+                    push_element(StandardSchema::NumAttrs(int), &mut schema);
+                }
             }
             NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ITEMS_PATH => {
-                push_element(StandardSchema::NumItems(1), &mut schema);
+                if let Some(int) = parse_lit_to_int(&name.lit, context) {
+                    push_element(StandardSchema::NumItems(int), &mut schema);
+                }
             }
             NestedMeta::Meta(Meta::List(list)) if list.path == AND_PATH => {
                 if list.nested.len() < 2 {
@@ -76,6 +95,19 @@ pub fn parse_schema_meta(
                 } else {
                     push_element(
                         parse_schema_meta(StandardSchema::not(), context, &list.nested),
+                        &mut schema,
+                    );
+                }
+            }
+            NestedMeta::Meta(Meta::List(list)) if list.path == ALL_ITEMS_PATH => {
+                if list.nested.len() > 1 {
+                    context.error_spanned_by(
+                        list,
+                        "Only one argument is permitted as the schema for all items",
+                    )
+                } else {
+                    push_element(
+                        parse_schema_meta(StandardSchema::all_items(), context, &list.nested),
                         &mut schema,
                     );
                 }
