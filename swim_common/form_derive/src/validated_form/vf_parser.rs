@@ -18,11 +18,11 @@ use crate::parser::{
 };
 use crate::validated_form::meta_parse::parse_schema_meta;
 use macro_helpers::{Context, Identity, Symbol};
-use proc_macro2::Ident;
+use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use std::fmt::Debug;
 use syn::export::TokenStream2;
-use syn::{Lit, Meta, MetaNameValue, NestedMeta};
+use syn::{Lit, Meta, MetaNameValue, NestedMeta, Type};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -116,7 +116,7 @@ impl ValidatedFormDescriptor {
                         }
                         NestedMeta::Meta(Meta::List(list)) if list.path == ALL_ITEMS_PATH => {
                             let schema =
-                                parse_schema_meta(StandardSchema::Default, context, &list.nested);
+                                parse_schema_meta(StandardSchema::None, context, &list.nested);
 
                             set_container_schema(
                                 list.to_token_stream(),
@@ -184,11 +184,18 @@ pub struct ValidatedField<'f> {
     field_schema: StandardSchema,
 }
 
+impl<'f> ToTokens for ValidatedField<'f> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.field_schema.to_tokens(tokens);
+    }
+}
+
 #[derive(Debug)]
 #[allow(warnings)]
 pub enum StandardSchema {
+    None,
     /// Uses the implementation on the Type
-    Default,
+    Type(TokenStream2),
     /// This field/container should be equal to the provided [`TokenStream`]
     Equal(TokenStream2),
     /// This field/container should be of the kind provided by the [`TokenStream`]
@@ -211,21 +218,44 @@ pub enum StandardSchema {
     AllItems(Box<StandardSchema>),
 }
 
-impl StandardSchema {
-    pub fn and() -> StandardSchema {
-        StandardSchema::And(Vec::new())
-    }
+impl ToTokens for StandardSchema {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let quote = match self {
+            StandardSchema::Type(ty) => {
+                quote! {
+                    #ty::schema()
+                }
+            }
+            StandardSchema::Equal(_) => unimplemented!(),
+            StandardSchema::OfKind(_) => unimplemented!(),
+            StandardSchema::IntRange => unimplemented!(),
+            StandardSchema::UintRange => unimplemented!(),
+            StandardSchema::FloatRange => unimplemented!(),
+            StandardSchema::BigIntRange => unimplemented!(),
+            StandardSchema::NonNan => unimplemented!(),
+            StandardSchema::Finite => unimplemented!(),
+            StandardSchema::Text(_) => unimplemented!(),
+            StandardSchema::Anything => unimplemented!(),
+            StandardSchema::Nothing => unimplemented!(),
+            StandardSchema::DataLength(_) => unimplemented!(),
+            StandardSchema::NumAttrs(_) => unimplemented!(),
+            StandardSchema::NumItems(_) => unimplemented!(),
+            StandardSchema::And(and_schema) => {
+                quote! {
+                    swim_common::model::schema::StandardSchema::And(
+                        vec![
+                            #(#and_schema)*
+                        ]
+                    )
+                }
+            }
+            StandardSchema::Or(_) => unimplemented!(),
+            StandardSchema::Not(_) => unimplemented!(),
+            StandardSchema::AllItems(_) => unimplemented!(),
+            StandardSchema::None => unimplemented!(),
+        };
 
-    pub fn or() -> StandardSchema {
-        StandardSchema::Or(Vec::new())
-    }
-
-    pub fn not() -> StandardSchema {
-        StandardSchema::Not(Box::new(StandardSchema::Default))
-    }
-
-    pub fn all_items() -> StandardSchema {
-        StandardSchema::AllItems(Box::new(StandardSchema::Default))
+        quote.to_tokens(tokens);
     }
 }
 
@@ -275,6 +305,17 @@ fn map_fields_to_validated<'f>(
     fields
         .into_iter()
         .map(|form_field| {
+            let field_schema = match &form_field.original.ty {
+                Type::Path(path) => StandardSchema::Type(path.to_token_stream()),
+                ty => {
+                    context.error_spanned_by(
+                        ty,
+                        format!("Unsupported type: {}", ty.to_token_stream().to_string()),
+                    );
+                    StandardSchema::None
+                }
+            };
+
             form_field
                 .original
                 .attrs
@@ -282,13 +323,13 @@ fn map_fields_to_validated<'f>(
                 .iter()
                 .fold(
                     ValidatedField {
-                        field_schema: StandardSchema::Default,
+                        field_schema,
                         form_field,
                     },
                     |mut field, attr| match attr {
                         NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
                             field.field_schema =
-                                parse_schema_meta(StandardSchema::Default, context, &list.nested);
+                                parse_schema_meta(StandardSchema::None, context, &list.nested);
                             println!("{:?}", field.field_schema);
                             field
                         }

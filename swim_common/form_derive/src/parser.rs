@@ -30,7 +30,7 @@ pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
 pub const SCHEMA_PATH: Symbol = Symbol("schema");
 
-/// An enumeration representing the contents of an input.
+/// An enumeration representing the contents of a derive input.
 pub enum TypeContents<'t, D, F> {
     /// An enumeration input. Containing a vector of enumeration variants.
     Enum(Vec<EnumVariant<'t, D, F>>),

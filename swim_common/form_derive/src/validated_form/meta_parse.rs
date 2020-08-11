@@ -19,7 +19,7 @@ use macro_helpers::Context;
 use syn::punctuated::Punctuated;
 #[allow(unused_imports)]
 use syn::token::Token;
-use syn::{Lit, Meta, MetaList, NestedMeta};
+use syn::{Lit, Meta, NestedMeta};
 
 fn parse_lit_to_int(lit: &Lit, context: &mut Context) -> Option<usize> {
     match lit {
@@ -70,7 +70,7 @@ pub fn parse_schema_meta(
                     );
                 } else {
                     push_element(
-                        parse_schema_meta(StandardSchema::and(), context, &list.nested),
+                        parse_schema_meta(StandardSchema::And(Vec::new()), context, &list.nested),
                         &mut schema,
                     );
                 }
@@ -83,7 +83,7 @@ pub fn parse_schema_meta(
                     );
                 } else {
                     push_element(
-                        parse_schema_meta(StandardSchema::or(), context, &list.nested),
+                        parse_schema_meta(StandardSchema::Or(Vec::new()), context, &list.nested),
                         &mut schema,
                     );
                 }
@@ -94,7 +94,11 @@ pub fn parse_schema_meta(
                         .error_spanned_by(list, "Only one argument is permitted in a NOT operator")
                 } else {
                     push_element(
-                        parse_schema_meta(StandardSchema::not(), context, &list.nested),
+                        parse_schema_meta(
+                            StandardSchema::Not(Box::new(StandardSchema::None)),
+                            context,
+                            &list.nested,
+                        ),
                         &mut schema,
                     );
                 }
@@ -107,7 +111,11 @@ pub fn parse_schema_meta(
                     )
                 } else {
                     push_element(
-                        parse_schema_meta(StandardSchema::all_items(), context, &list.nested),
+                        parse_schema_meta(
+                            StandardSchema::AllItems(Box::new(StandardSchema::None)),
+                            context,
+                            &list.nested,
+                        ),
                         &mut schema,
                     );
                 }
