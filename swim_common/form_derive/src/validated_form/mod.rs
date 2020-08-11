@@ -15,7 +15,8 @@
 use macro_helpers::Context;
 
 use crate::form::form_parser::build_type_contents;
-use crate::validated_form::vf_parser::{derive_head_attribute, type_contents_to_validated};
+use crate::validated_form::vf_parser::type_contents_to_validated;
+use quote::ToTokens;
 use syn::DeriveInput;
 
 mod meta_parse;
@@ -33,16 +34,14 @@ pub fn build_validated_form(
     context.check()?;
 
     let structure_name = &input.ident;
-    let head_attribute = derive_head_attribute(&type_contents);
     let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
+    let schema = type_contents.into_token_stream();
 
     let ts = quote! {
         impl #impl_generics swim_common::form::ValidatedForm for #structure_name #ty_generics #where_clause
         {
             fn schema() -> swim_common::model::schema::StandardSchema {
-                swim_common::model::schema::StandardSchema::And(vec![
-                    #head_attribute
-                ])
+                #schema
             }
         }
     };

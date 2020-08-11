@@ -119,37 +119,37 @@ mod container_attrs {
         assert!(S::schema().matches(&value));
     }
 
-    // #[test]
-    // fn all_items() {
-    //     #[derive(Form, ValidatedForm)]
-    //     // #[form(schema(all_items(of_kind = "ValueKind::Int32")))]
-    //     struct S {
-    //         a: i32,
-    //         b: i32,
-    //     }
-    //
-    //     let expected_schema = StandardSchema::HeadAttribute {
-    //         schema: Box::new(AttrSchema::named(
-    //             "S",
-    //             StandardSchema::OfKind(ValueKind::Extant),
-    //         )),
-    //         required: true,
-    //         remainder: Box::new(StandardSchema::Anything),
-    //     };
-    //
-    //     let value = S { a: 1, b: 2 }.as_value();
-    //     let expected_value = Value::Record(
-    //         vec![Attr::of("S")],
-    //         vec![
-    //             Item::Slot(Value::text("a"), Value::Int32Value(1)),
-    //             Item::Slot(Value::text("b"), Value::Int32Value(2)),
-    //         ],
-    //     );
-    //
-    //     assert_eq!(value, expected_value);
-    //     assert_eq!(S::schema(), expected_schema);
-    //     assert!(S::schema().matches(&value));
-    // }
+    #[test]
+    fn all_items() {
+        #[derive(Form, ValidatedForm)]
+        // #[form(schema(all_items(of_kind = "ValueKind::Int32")))]
+        struct S {
+            a: i32,
+            b: i32,
+        }
+
+        let expected_schema = StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        };
+
+        let value = S { a: 1, b: 2 }.as_value();
+        let expected_value = Value::Record(
+            vec![Attr::of("S")],
+            vec![
+                Item::Slot(Value::text("a"), Value::Int32Value(1)),
+                Item::Slot(Value::text("b"), Value::Int32Value(2)),
+            ],
+        );
+
+        assert_eq!(value, expected_value);
+        assert_eq!(S::schema(), expected_schema);
+        assert!(S::schema().matches(&value));
+    }
 
     #[test]
     fn anything() {
@@ -197,7 +197,7 @@ mod container_attrs {
     fn and() {
         #[derive(Form, ValidatedForm)]
         struct S {
-            #[form(schema(and(num_items = 5, num_attrs = 5)))]
+            #[form(schema(and(num_items = 5, num_attrs = 50)))]
             a: i32,
         }
     }
@@ -216,15 +216,6 @@ mod container_attrs {
         #[derive(Form, ValidatedForm)]
         struct S {
             #[form(schema(or(num_items = 5, num_attrs = 5)))]
-            a: i32,
-        }
-    }
-
-    #[test]
-    fn all_items() {
-        #[derive(Form, ValidatedForm)]
-        struct S {
-            #[form(schema(all_items(and(num_items = 5, num_attrs = 5))))]
             a: i32,
         }
     }

@@ -71,7 +71,7 @@ pub struct FormField<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
     /// The name of the field.
-    pub name: Identity,
+    pub identity: Identity,
     /// The kind of the field from its attribute.
     pub kind: FieldKind,
 }
@@ -259,7 +259,7 @@ pub fn fields_from_ast<'t>(
 
             FormField {
                 original,
-                name,
+                identity: name,
                 kind: kind_opt.unwrap_or(FieldKind::Slot),
             }
         })

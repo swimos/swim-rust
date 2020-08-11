@@ -12,17 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Debug;
+
+use proc_macro2::{Ident, TokenStream};
+use quote::ToTokens;
+use syn::export::TokenStream2;
+use syn::{Lit, Meta, MetaNameValue, NestedMeta, Type};
+
+use macro_helpers::{Context, Identity, Symbol};
+
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{
     Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
 };
 use crate::validated_form::meta_parse::parse_schema_meta;
-use macro_helpers::{Context, Identity, Symbol};
-use proc_macro2::{Ident, TokenStream};
-use quote::ToTokens;
-use std::fmt::Debug;
-use syn::export::TokenStream2;
-use syn::{Lit, Meta, MetaNameValue, NestedMeta, Type};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -157,7 +160,7 @@ impl ValidatedFormDescriptor {
     }
 }
 
-pub fn derive_head_attribute(
+fn derive_head_attribute(
     type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
 ) -> TokenStream2 {
     match type_contents {
@@ -165,13 +168,13 @@ pub fn derive_head_attribute(
             let ident = repr.descriptor.name.to_string();
             quote! {
                 swim_common::model::schema::StandardSchema::HeadAttribute {
-                    schema: Box::new(swim_common::model::schema::attr::AttrSchema::named(
+                    schema: std::boxed::Box::new(swim_common::model::schema::attr::AttrSchema::named(
                         #ident,
                         // todo: header body check here
                         swim_common::model::schema::StandardSchema::OfKind(swim_common::model::ValueKind::Extant),
                     )),
                     required: true,
-                    remainder: Box::new(swim_common::model::schema::StandardSchema::Anything),
+                    remainder: std::boxed::Box::new(swim_common::model::schema::StandardSchema::Anything),
                 }
             }
         }
@@ -180,13 +183,20 @@ pub fn derive_head_attribute(
 }
 
 pub struct ValidatedField<'f> {
-    form_field: FormField<'f>,
-    field_schema: StandardSchema,
+    pub form_field: FormField<'f>,
+    pub field_schema: StandardSchema,
 }
 
 impl<'f> ToTokens for ValidatedField<'f> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        self.field_schema.to_tokens(tokens);
+        // todo: Create fieldspecs from field identities
+        let field_schema = self.field_schema.to_token_stream();
+        match &self.form_field.identity {
+            Identity::Named(_ident) => {}
+            Identity::Renamed { .. } => {}
+            _anon @ Identity::Anonymous(_) => {}
+        }
+        field_schema.to_tokens(tokens);
     }
 }
 
@@ -221,11 +231,7 @@ pub enum StandardSchema {
 impl ToTokens for StandardSchema {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let quote = match self {
-            StandardSchema::Type(ty) => {
-                quote! {
-                    #ty::schema()
-                }
-            }
+            StandardSchema::Type(ty) => quote!(#ty::schema()),
             StandardSchema::Equal(_) => unimplemented!(),
             StandardSchema::OfKind(_) => unimplemented!(),
             StandardSchema::IntRange => unimplemented!(),
@@ -235,22 +241,26 @@ impl ToTokens for StandardSchema {
             StandardSchema::NonNan => unimplemented!(),
             StandardSchema::Finite => unimplemented!(),
             StandardSchema::Text(_) => unimplemented!(),
-            StandardSchema::Anything => unimplemented!(),
-            StandardSchema::Nothing => unimplemented!(),
-            StandardSchema::DataLength(_) => unimplemented!(),
-            StandardSchema::NumAttrs(_) => unimplemented!(),
-            StandardSchema::NumItems(_) => unimplemented!(),
-            StandardSchema::And(and_schema) => {
-                quote! {
-                    swim_common::model::schema::StandardSchema::And(
-                        vec![
-                            #(#and_schema)*
-                        ]
-                    )
-                }
+            StandardSchema::Anything => {
+                quote!(swim_common::model::schema::StandardSchema::Anything)
             }
-            StandardSchema::Or(_) => unimplemented!(),
-            StandardSchema::Not(_) => unimplemented!(),
+            StandardSchema::Nothing => quote!(swim_common::model::schema::StandardSchema::Nothing),
+            StandardSchema::DataLength(_) => unimplemented!(),
+            StandardSchema::NumAttrs(num) => {
+                quote!(swim_common::model::schema::StandardSchema::NumAttrs(#num))
+            }
+            StandardSchema::NumItems(num) => {
+                quote!(swim_common::model::schema::StandardSchema::NumItems(#num))
+            }
+            StandardSchema::And(and_schema) => quote!(
+                swim_common::model::schema::StandardSchema::And(vec![#(#and_schema,)*])
+            ),
+            StandardSchema::Or(or_schema) => quote!(
+                swim_common::model::schema::StandardSchema::Or(vec![#(#or_schema,)*])
+            ),
+            StandardSchema::Not(not_schema) => quote!(
+                swim_common::model::schema::StandardSchema::Not(std::boxed::Box::new(#not_schema))
+            ),
             StandardSchema::AllItems(_) => unimplemented!(),
             StandardSchema::None => unimplemented!(),
         };
@@ -305,7 +315,7 @@ fn map_fields_to_validated<'f>(
     fields
         .into_iter()
         .map(|form_field| {
-            let field_schema = match &form_field.original.ty {
+            let initial_schema = match &form_field.original.ty {
                 Type::Path(path) => StandardSchema::Type(path.to_token_stream()),
                 ty => {
                     context.error_spanned_by(
@@ -323,14 +333,13 @@ fn map_fields_to_validated<'f>(
                 .iter()
                 .fold(
                     ValidatedField {
-                        field_schema,
+                        field_schema: initial_schema,
                         form_field,
                     },
                     |mut field, attr| match attr {
                         NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
                             field.field_schema =
                                 parse_schema_meta(StandardSchema::None, context, &list.nested);
-                            println!("{:?}", field.field_schema);
                             field
                         }
                         _ => field,
@@ -338,4 +347,30 @@ fn map_fields_to_validated<'f>(
                 )
         })
         .collect()
+}
+
+impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            TypeContents::Struct(repr) => {
+                let head_attribute = derive_head_attribute(&self);
+                let schemas = repr.fields.iter().fold(TokenStream2::new(), |ts, field| {
+                    quote! {
+                        #ts
+                        #field,
+                    }
+                });
+
+                let quote = quote! {
+                    swim_common::model::schema::StandardSchema::And(vec![
+                        #head_attribute,
+                        #schemas
+                    ])
+                };
+
+                quote.to_tokens(tokens);
+            }
+            TypeContents::Enum(_variants) => unimplemented!(),
+        }
+    }
 }
