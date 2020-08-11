@@ -17,8 +17,8 @@ use crate::routing::RoutingAddr;
 #[test]
 fn routing_addr_display() {
     let string = format!("{}", RoutingAddr::remote(0x1));
-    assert_eq!(string, "Remote Endpoint (1).");
+    assert_eq!(string, "Remote Endpoint (1)");
 
     let string = format!("{}", RoutingAddr::local(0x1a));
-    assert_eq!(string, "Local consumer (1A).");
+    assert_eq!(string, "Local consumer (1A)");
 }

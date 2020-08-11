@@ -33,6 +33,20 @@ pub struct AgentExecutionConfig {
     pub max_uplink_start_attempts: NonZeroUsize,
 }
 
+impl Default for AgentExecutionConfig {
+    fn default() -> Self {
+        let default_buffer = NonZeroUsize::new(4).unwrap();
+        AgentExecutionConfig {
+            max_concurrency: 1,
+            action_buffer: default_buffer,
+            update_buffer: default_buffer,
+            uplink_err_buffer: default_buffer,
+            max_fatal_uplink_errors: 0,
+            max_uplink_start_attempts: default_buffer,
+        }
+    }
+}
+
 pub trait AgentExecutionContext {
     type Router: ServerRouter + 'static;
 

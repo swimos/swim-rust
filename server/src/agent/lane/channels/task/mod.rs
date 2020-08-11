@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
@@ -84,13 +87,13 @@ impl Display for LaneIoError {
         } = self;
         writeln!(f, "IO tasks failed for lane: \"{}\".", route)?;
         if let Some(upd) = update_error {
-            writeln!(f, "    update_error = {}", upd)?;
+            writeln!(f, "- update_error = {}", upd)?;
         }
 
         if !uplink_errors.is_empty() {
-            writeln!(f, "    uplink_errors =")?;
+            writeln!(f, "- uplink_errors =")?;
             for err in uplink_errors.iter() {
-                writeln!(f, "        {},", err)?;
+                writeln!(f, "* {}", err)?;
             }
         }
         Ok(())
