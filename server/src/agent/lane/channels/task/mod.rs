@@ -17,10 +17,13 @@ use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{UplinkErrorReport, UplinkSpawner};
 use crate::agent::lane::channels::uplink::{MapLaneUplink, UplinkAction, ValueLaneUplink};
-use crate::agent::lane::channels::{AgentExecutionContext, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction, AgentExecutionConfig};
+use crate::agent::lane::channels::{
+    AgentExecutionConfig, AgentExecutionContext, InputMessage, LaneMessageHandler, OutputMessage,
+    TaggedAction,
+};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::TaggedEnvelope;
+use crate::routing::{RoutingAddr, TaggedEnvelope};
 use common::model::Value;
 use common::topic::Topic;
 use common::warp::envelope::{Envelope, EnvelopeHeader, OutgoingHeader};
@@ -115,7 +118,7 @@ where
         action_buffer,
         update_buffer,
         max_fatal_uplink_errors,
-        max_uplink_start_attempts ,
+        max_uplink_start_attempts,
         ..
     } = context.configuration();
 
@@ -223,7 +226,7 @@ where
     type Uplink = ValueLaneUplink<T>;
     type Update = ValueLaneUpdateTask<T>;
 
-    fn make_uplink(&self) -> Self::Uplink {
+    fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
         ValueLaneUplink::new((*self).clone())
     }
 
@@ -263,7 +266,7 @@ where
     type Uplink = MapLaneUplink<K, V, F>;
     type Update = MapLaneUpdateTask<K, V, F>;
 
-    fn make_uplink(&self) -> Self::Uplink {
+    fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
         let MapLaneMessageHandler {
             lane,
             uplink_counter,

@@ -32,9 +32,20 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
 
+#[cfg(test)]
+mod tests;
+
 const FAILED_ERR_REPORT: &str = "Failed to send error report.";
 const UPLINK_TERMINATED: &str = "An uplink terminated uncleanly.";
 
+/// Creates lane uplinks on demand, replacing them if they fail and reporting any errors that
+/// occur.
+///
+/// #Type Parameters
+///
+/// * `Handler` - Type of the [`LaneMessageHandler`] for the lane, used to create the uplink state
+/// machines,
+/// * `Top` - Type of the [`Topic`] allowing to uplinks to subscribe to the even stream of the lane.
 pub struct UplinkSpawner<Handler, Top> {
     handler: Arc<Handler>,
     topic: Top,
@@ -50,6 +61,18 @@ where
     OutputMessage<Handler>: Into<Value>,
     Top: Topic<Handler::Event>,
 {
+    /// Crate a new uplink spawner.
+    ///
+    /// #Arguments
+    ///
+    /// * `handler` - [`LaneMessageHandler`] implementation to create the uplink state machines.
+    /// * `topic` - Topic with which the uplinks can subscribe to the lane event stream.
+    /// * `rx` - The stream of incoming uplink actions (link, sync requests etc.).
+    /// * `action_buffer_size` - Size of the action queue for each uplink.
+    /// * `max_start_attempts` - The maximum number of times the spawner will attempt to create a
+    /// new uplink before giving up.
+    /// * `route` - The route of the lane (for labelling outgoing envelopes).
+    ///
     pub fn new(
         handler: Arc<Handler>,
         topic: Top,
@@ -68,6 +91,18 @@ where
         }
     }
 
+    /// Run the uplink spawner as an asycn task.
+    ///
+    /// #Arguments
+    ///
+    /// * `router` - Produces channels on which outgoing envelopes can be sent.
+    /// * `spawn_tx` - Channel to an asynchronous tasks spawner (used to run the uplink state
+    /// machines.
+    /// * `error_collector` - Collects errors whenever an uplink fails.
+    ///
+    /// #Type Paramameters
+    ///
+    /// * `Router` - The type of the server router.
     pub async fn run<Router>(
         mut self,
         mut router: Router,
@@ -111,12 +146,16 @@ where
                             {
                                 event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);
                             }
+                            //The uplink is unstable so we stop trying to open it but do not
+                            //necessarily stop overall.
                             break false;
                         }
                     } else {
+                        // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
                 } else {
+                    //Successfully created the uplink so we can stop.
                     break true;
                 }
             };
@@ -127,6 +166,7 @@ where
         join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup())).await;
     }
 
+    //Create a new uplink state machine and attach it to the router
     async fn make_uplink<Router>(
         &mut self,
         addr: RoutingAddr,
@@ -146,7 +186,7 @@ where
         } = self;
         let (tx, rx) = mpsc::channel(action_buffer_size.get());
         let (cleanup_tx, cleanup_rx) = trigger::trigger();
-        let state_machine = handler.make_uplink();
+        let state_machine = handler.make_uplink(addr);
         let updates = if let Ok(sub) = topic.subscribe().await {
             sub.fuse()
         } else {
@@ -176,6 +216,7 @@ where
                 if let Err(mpsc::error::SendError(report)) = err_tx.send(report).await {
                     event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);
                 }
+            } else {
                 cleanup_tx.trigger();
             }
         }
@@ -187,8 +228,12 @@ where
     }
 }
 
+/// Handle on an uplink state machine that is held by the spawner.
 struct UplinkHandle {
+    /// Channel used to send external actions to the uplink.
     sender: mpsc::Sender<UplinkAction>,
+    /// Triggered when all cleanup is complete for the uplink. If the uplink fails the send end of
+    /// this will be dropped, rather than triggered, allowing the cases to be distinguished
     wait_on_cleanup: trigger::Receiver,
 }
 
@@ -207,16 +252,21 @@ impl UplinkHandle {
         self.sender.send(action).await
     }
 
+    /// Stop the uplink cleanly.
     async fn cleanup(self) -> bool {
         let UplinkHandle {
             sender,
             wait_on_cleanup,
         } = self;
+        // Dropping the sender will cause the uplink to begin shutting down.
         drop(sender);
+        // Wait for the shutdown process to complete.
         wait_on_cleanup.await.is_ok()
     }
 }
 
+/// An error report, generated when an uplink failes, specifying the reason for the failure and the
+/// endpoint to which the uplink was attached.
 #[derive(Debug)]
 pub struct UplinkErrorReport {
     pub error: UplinkError,

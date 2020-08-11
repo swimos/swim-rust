@@ -47,7 +47,7 @@ pub trait LaneMessageHandler {
     type Uplink: UplinkStateMachine<Self::Event> + Send + Sync + 'static;
     type Update: LaneUpdate;
 
-    fn make_uplink(&self) -> Self::Uplink;
+    fn make_uplink(&self, addr: RoutingAddr) -> Self::Uplink;
 
     fn make_update(&self) -> Self::Update;
 }

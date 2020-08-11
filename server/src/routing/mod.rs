@@ -18,12 +18,21 @@ use common::warp::envelope::Envelope;
 use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::Display;
 
+#[cfg(test)]
+mod tests;
+
+/// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
+/// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
+/// key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Location {
+    /// Indicates that envelopes will be routed to a remote host.
     RemoteEndpoint(u32),
+    /// Indicates that envelopes will be routed to another agent on this host.
     Local(u32),
 }
 
+/// An opaque routing address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RoutingAddr(Location);
 
@@ -46,9 +55,11 @@ impl Display for RoutingAddr {
     }
 }
 
+/// An [`Envelope`] tagged with the ket of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 
+/// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
