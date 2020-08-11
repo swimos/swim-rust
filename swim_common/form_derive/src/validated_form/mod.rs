@@ -18,6 +18,7 @@ use crate::form::form_parser::build_type_contents;
 use crate::validated_form::vf_parser::{derive_head_attribute, type_contents_to_validated};
 use syn::DeriveInput;
 
+mod meta_parse;
 mod vf_parser;
 
 pub fn build_validated_form(
@@ -28,6 +29,8 @@ pub fn build_validated_form(
         Some(cont) => type_contents_to_validated(&mut context, &input.ident, cont),
         None => return Err(context.check().unwrap_err()),
     };
+
+    context.check()?;
 
     let structure_name = &input.ident;
     let head_attribute = derive_head_attribute(&type_contents);

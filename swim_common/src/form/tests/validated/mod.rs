@@ -20,6 +20,8 @@ use crate::model::schema::StandardSchema;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
 
+mod derive;
+
 mod swim_common {
     pub use crate::*;
 }
@@ -184,7 +186,37 @@ mod container_attrs {
     #[test]
     fn num_items() {
         #[derive(Form, ValidatedForm)]
-        #[form(schema(num_items = 5, num_attrs = 50))]
-        struct S {}
+        #[form(tag = "taggy", schema(num_items = 5, num_attrs = 50))]
+        struct S {
+            #[form(body)]
+            a: i32,
+        }
+    }
+
+    #[test]
+    fn and() {
+        #[derive(Form, ValidatedForm)]
+        struct S {
+            #[form(schema(and(num_items = 5, num_attrs = 5)))]
+            a: i32,
+        }
+    }
+
+    #[test]
+    fn not() {
+        #[derive(Form, ValidatedForm)]
+        struct S {
+            #[form(schema(not(num_items = 5)))]
+            a: i32,
+        }
+    }
+
+    #[test]
+    fn or() {
+        #[derive(Form, ValidatedForm)]
+        struct S {
+            #[form(schema(or(num_items = 5, num_attrs = 5)))]
+            a: i32,
+        }
     }
 }
