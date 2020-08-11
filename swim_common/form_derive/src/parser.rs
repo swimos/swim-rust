@@ -15,7 +15,7 @@
 use proc_macro2::Ident;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, Lit, Meta, NestedMeta};
+use syn::{Attribute, DeriveInput, Lit, Meta, NestedMeta, Variant};
 
 use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Identity, Symbol};
 
@@ -31,15 +31,16 @@ pub const SKIP_PATH: Symbol = Symbol("skip");
 pub const SCHEMA_PATH: Symbol = Symbol("valid");
 
 /// An enumeration representing the contents of an input.
-pub enum TypeContents<D, F> {
+pub enum TypeContents<'t, D, F> {
     /// An enumeration input. Containing a vector of enumeration variants.
-    Enum(Vec<EnumVariant<D, F>>),
+    Enum(Vec<EnumVariant<'t, D, F>>),
     /// A struct input containing its representation.
-    Struct(StructRepr<D, F>),
+    Struct(StructRepr<'t, D, F>),
 }
 
 /// A representation of a parsed struct from the AST.
-pub struct StructRepr<D, F> {
+pub struct StructRepr<'t, D, F> {
+    pub input: &'t DeriveInput,
     /// The struct's type: tuple, named, unit.
     pub compound_type: CompoundTypeKind,
     /// The field members of the struct.
@@ -51,7 +52,8 @@ pub struct StructRepr<D, F> {
 }
 
 /// A representation of a parsed enumeration from the AST.
-pub struct EnumVariant<D, F> {
+pub struct EnumVariant<'t, D, F> {
+    pub syn_variant: &'t Variant,
     /// The name of the variant.
     pub name: Identity,
     /// The variant's type: tuple, named, unit.

@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::form_parser::FormDescriptor;
 use crate::parser::{
-    parse_struct, Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH,
-    SCHEMA_PATH, TAG_PATH,
+    Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
 };
-use macro_helpers::{Context, Identity, StructureKind, Symbol};
-use proc_macro2::{Ident, TokenStream};
+use macro_helpers::{Context, Identity, Symbol};
+use proc_macro2::Ident;
 use quote::ToTokens;
 use syn::export::TokenStream2;
-use syn::{Data, Lit, Meta, MetaNameValue, NestedMeta};
+use syn::{Lit, Meta, MetaNameValue, NestedMeta};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -30,7 +30,7 @@ pub const ALL_ITEMS_PATH: Symbol = Symbol("all_items");
 
 pub struct ValidatedFormDescriptor {
     pub body_replaced: bool,
-    pub name: Name,
+    pub name: Identity,
     pub container_schema: Option<ContainerSchema>,
     pub num_items: Option<usize>,
     pub num_attrs: Option<usize>,
@@ -39,41 +39,39 @@ pub struct ValidatedFormDescriptor {
 impl ValidatedFormDescriptor {
     /// Builds a [`ValidatedFormDescriptor`] for the provided [`DeriveInput`]. An errors encountered
     /// while parsing the [`DeriveInput`] will be added to the [`Context`].
-    pub fn from_ast(ctx: &mut Context, input: &syn::DeriveInput) -> ValidatedFormDescriptor {
-        let kind = StructureKind::from(&input.data);
-
+    pub fn from_attributes(
+        context: &mut Context,
+        ident: &Ident,
+        attributes: Vec<NestedMeta>,
+    ) -> ValidatedFormDescriptor {
         let mut desc = ValidatedFormDescriptor {
             body_replaced: false,
-            name: Name {
-                original_ident: input.ident.clone(),
-                tag_ident: input.ident.clone(),
-            },
+            name: Identity::Named(ident.clone()),
             container_schema: None,
             num_items: None,
             num_attrs: None,
         };
 
-        input.attrs.get_attributes(ctx, FORM_PATH).iter().for_each(
-            |meta: &NestedMeta| match meta {
-                NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
-                    match &name.lit {
-                        Lit::Str(s) => {
-                            let tag = s.value();
-                            if tag.is_empty() {
-                                ctx.error_spanned_by(meta, "New name cannot be empty")
-                            } else {
-                                desc.name.tag_ident = Ident::new(&*tag, s.span());
-                            }
+        attributes.iter().for_each(|meta: &NestedMeta| match meta {
+            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
+                Lit::Str(s) => {
+                    let tag = s.value();
+                    if tag.is_empty() {
+                        context.error_spanned_by(meta, "New name cannot be empty")
+                    } else {
+                        desc.name = Identity::Renamed {
+                            new_identity: tag,
+                            old_identity: ident.clone(),
                         }
-                        _ => ctx.error_spanned_by(meta, "Expected string argument"),
                     }
                 }
-                NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
-                    list.nested.iter().for_each(|nested| {
-                        let set_int_opt =
-                            |name: &MetaNameValue,
-                             target: &mut Option<usize>,
-                             ctx: &mut Context| match &name.lit {
+                _ => context.error_spanned_by(meta, "Expected string argument"),
+            },
+            NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
+                list.nested.iter().for_each(|nested| {
+                    let set_int_opt =
+                        |name: &MetaNameValue, target: &mut Option<usize>, ctx: &mut Context| {
+                            match &name.lit {
                                 Lit::Int(int) => match int.base10_parse::<usize>() {
                                     Ok(i) => match target {
                                         Some(_) => {
@@ -84,74 +82,64 @@ impl ValidatedFormDescriptor {
                                     Err(e) => ctx.error_spanned_by(name, e.to_string()),
                                 },
                                 _ => ctx.error_spanned_by(name, "Expected an integer"),
-                            };
+                            }
+                        };
 
-                        let set_container_schema =
-                            |path,
-                             target: &mut Option<ContainerSchema>,
-                             ctx: &mut Context,
-                             schema: ContainerSchema| {
-                                match target {
-                                    Some(_) => ctx.error_spanned_by(
-                                        path,
-                                        "Container schema has already been applied",
-                                    ),
-                                    None => {
-                                        *target = Some(schema);
-                                    }
+                    let set_container_schema =
+                        |path,
+                         target: &mut Option<ContainerSchema>,
+                         ctx: &mut Context,
+                         schema: ContainerSchema| {
+                            match target {
+                                Some(_) => ctx.error_spanned_by(
+                                    path,
+                                    "Container schema has already been applied",
+                                ),
+                                None => {
+                                    *target = Some(schema);
                                 }
-                            };
+                            }
+                        };
 
-                        match nested {
-                            NestedMeta::Meta(Meta::NameValue(name))
-                                if name.path == NUM_ATTRS_PATH =>
-                            {
-                                set_int_opt(name, &mut desc.num_attrs, ctx);
-                            }
-                            NestedMeta::Meta(Meta::NameValue(name))
-                                if name.path == NUM_ITEMS_PATH =>
-                            {
-                                set_int_opt(name, &mut desc.num_items, ctx);
-                            }
-                            NestedMeta::Meta(Meta::NameValue(name))
-                                if name.path == ALL_ITEMS_PATH =>
-                            {
-                                set_container_schema(
-                                    name.to_token_stream(),
-                                    &mut desc.container_schema,
-                                    ctx,
-                                    ContainerSchema::AllItems,
-                                )
-                            }
-                            NestedMeta::Meta(Meta::Path(path)) if path == ANYTHING_PATH => {
-                                set_container_schema(
-                                    path.to_token_stream(),
-                                    &mut desc.container_schema,
-                                    ctx,
-                                    ContainerSchema::Anything,
-                                )
-                            }
-                            NestedMeta::Meta(Meta::Path(path)) if path == NOTHING_PATH => {
-                                set_container_schema(
-                                    path.to_token_stream(),
-                                    &mut desc.container_schema,
-                                    ctx,
-                                    ContainerSchema::Nothing,
-                                )
-                            }
-                            _ => ctx.error_spanned_by(meta, "Unknown schema container attribute"),
+                    match nested {
+                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ATTRS_PATH => {
+                            set_int_opt(name, &mut desc.num_attrs, context);
                         }
-                    })
-                }
-                _ => ctx.error_spanned_by(meta, "Unknown schema container attribute"),
-            },
-        );
+                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ITEMS_PATH => {
+                            set_int_opt(name, &mut desc.num_items, context);
+                        }
+                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == ALL_ITEMS_PATH => {
+                            set_container_schema(
+                                name.to_token_stream(),
+                                &mut desc.container_schema,
+                                context,
+                                ContainerSchema::AllItems,
+                            )
+                        }
+                        NestedMeta::Meta(Meta::Path(path)) if path == ANYTHING_PATH => {
+                            set_container_schema(
+                                path.to_token_stream(),
+                                &mut desc.container_schema,
+                                context,
+                                ContainerSchema::Anything,
+                            )
+                        }
+                        NestedMeta::Meta(Meta::Path(path)) if path == NOTHING_PATH => {
+                            set_container_schema(
+                                path.to_token_stream(),
+                                &mut desc.container_schema,
+                                context,
+                                ContainerSchema::Nothing,
+                            )
+                        }
+                        _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
+                    }
+                })
+            }
+            _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
+        });
 
         desc
-    }
-
-    pub fn has_container_schema(&self) -> bool {
-        self.container_schema.is_some()
     }
 }
 
@@ -162,12 +150,11 @@ pub enum ContainerSchema {
 }
 
 pub fn derive_head_attribute(
-    descriptor: &ValidatedFormDescriptor,
-    type_contents: &TypeContents<ValidatedField>,
+    type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
 ) -> TokenStream2 {
     match type_contents {
-        TypeContents::Struct(_repr) => {
-            let ident = descriptor.name.tag_ident.to_string();
+        TypeContents::Struct(repr) => {
+            let ident = repr.descriptor.name.to_string();
             quote! {
                 StandardSchema::HeadAttribute {
                     schema: Box::new(AttrSchema::named(
@@ -191,23 +178,36 @@ pub struct ValidatedField<'f> {
 
 pub fn type_contents_to_validated<'f>(
     ctx: &mut Context,
-    type_contents: TypeContents<FormField<'f>>,
-) -> TypeContents<ValidatedField<'f>> {
+    ident: &Ident,
+    type_contents: TypeContents<'f, FormDescriptor, FormField<'f>>,
+) -> TypeContents<'f, ValidatedFormDescriptor, ValidatedField<'f>> {
     match type_contents {
-        TypeContents::Struct(repr) => TypeContents::Struct(StructRepr {
-            compound_type: repr.compound_type,
-            fields: map_fields_to_validated(ctx, repr.fields),
-            manifest: repr.manifest,
+        TypeContents::Struct(repr) => TypeContents::Struct({
+            let attrs = repr.input.attrs.get_attributes(ctx, FORM_PATH);
+
+            StructRepr {
+                input: repr.input,
+                compound_type: repr.compound_type,
+                fields: map_fields_to_validated(ctx, repr.fields),
+                manifest: repr.manifest,
+                descriptor: ValidatedFormDescriptor::from_attributes(ctx, ident, attrs),
+            }
         }),
         TypeContents::Enum(variants) => {
             // for each variant, parse the fields
             let variants = variants
                 .into_iter()
-                .map(|variant| EnumVariant {
-                    name: variant.name,
-                    compound_type: variant.compound_type,
-                    fields: map_fields_to_validated(ctx, variant.fields),
-                    manifest: variant.manifest,
+                .map(|variant| {
+                    let attrs = variant.syn_variant.attrs.get_attributes(ctx, FORM_PATH);
+
+                    EnumVariant {
+                        syn_variant: variant.syn_variant,
+                        name: variant.name,
+                        compound_type: variant.compound_type,
+                        fields: map_fields_to_validated(ctx, variant.fields),
+                        manifest: variant.manifest,
+                        descriptor: ValidatedFormDescriptor::from_attributes(ctx, ident, attrs),
+                    }
                 })
                 .collect();
 
@@ -244,66 +244,4 @@ fn map_fields_to_validated<'f>(
             }
         })
         .collect()
-}
-
-pub fn build_type_contents<'t>(
-    context: &mut Context,
-    input: &'t syn::DeriveInput,
-) -> Option<TypeContents<FormField<'t>>> {
-    let type_contents = match &input.data {
-        Data::Enum(data) => {
-            let variants = data
-                .variants
-                .iter()
-                .map(|variant| {
-                    let mut name_opt = None;
-
-                    variant
-                        .attrs
-                        .get_attributes(context, FORM_PATH)
-                        .iter()
-                        .for_each(|meta| match meta {
-                            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
-                                match &name.lit {
-                                    Lit::Str(s) => {
-                                        name_opt = Some(Identity::Renamed {
-                                            new_identity: s.value(),
-                                            old_identity: variant.ident.clone(),
-                                        });
-                                    }
-                                    _ => context.error_spanned_by(meta, "Expected string argument"),
-                                }
-                            }
-                            _ => context.error_spanned_by(meta, "Unknown enumeration attribute"),
-                        });
-
-                    let (compound_type, fields, manifest) = parse_struct(context, &variant.fields);
-
-                    EnumVariant {
-                        name: name_opt.unwrap_or_else(|| Identity::Named(variant.ident.clone())),
-                        compound_type,
-                        fields,
-                        manifest,
-                    }
-                })
-                .collect();
-
-            TypeContents::Enum(variants)
-        }
-        Data::Struct(data) => {
-            let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
-
-            TypeContents::Struct(StructRepr {
-                compound_type,
-                fields,
-                manifest,
-            })
-        }
-        Data::Union(_) => {
-            context.error_spanned_by(input, "Unions are not supported");
-            return None;
-        }
-    };
-
-    Some(type_contents)
 }

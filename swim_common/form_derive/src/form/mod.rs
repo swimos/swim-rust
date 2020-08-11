@@ -65,6 +65,7 @@ fn to_value(
             fields,
             manifest,
             descriptor,
+            ..
         }) => build_struct_as_value(
             descriptor,
             manifest,
@@ -82,6 +83,7 @@ fn to_value(
                         fields,
                         manifest,
                         descriptor,
+                        ..
                     } = variant;
 
                     let as_value = build_variant_as_value(

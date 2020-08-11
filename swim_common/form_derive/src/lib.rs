@@ -26,11 +26,11 @@ use syn::DeriveInput;
 use macro_helpers::to_compile_errors;
 
 use crate::form::build_derive_form;
-// use crate::validated_form::build_validated_form;
+use crate::validated_form::build_validated_form;
 
 mod form;
 mod parser;
-// mod validated_form;
+mod validated_form;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
@@ -41,10 +41,9 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_derive(ValidatedForm, attributes(form))]
-pub fn derive_validated_form(_input: TokenStream) -> TokenStream {
-    // let input = parse_macro_input!(input as DeriveInput);
-    // build_validated_form(input)
-    //     .unwrap_or_else(to_compile_errors)
-    //     .into()
-    quote!().into()
+pub fn derive_validated_form(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    build_validated_form(input)
+        .unwrap_or_else(to_compile_errors)
+        .into()
 }

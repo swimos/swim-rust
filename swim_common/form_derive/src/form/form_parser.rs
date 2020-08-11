@@ -26,7 +26,7 @@ use syn::{Data, Lit, Meta, NestedMeta};
 pub fn build_type_contents<'t>(
     context: &mut Context,
     input: &'t syn::DeriveInput,
-) -> Option<TypeContents<FormDescriptor, FormField<'t>>> {
+) -> Option<TypeContents<'t, FormDescriptor, FormField<'t>>> {
     let type_contents = match &input.data {
         Data::Enum(data) => {
             if !input.attrs.get_attributes(context, FORM_PATH).is_empty() {
@@ -44,6 +44,7 @@ pub fn build_type_contents<'t>(
                         FormDescriptor::from_attributes(context, &variant.ident, attributes);
 
                     EnumVariant {
+                        syn_variant: variant,
                         name: descriptor.name.clone(),
                         compound_type,
                         fields,
@@ -61,6 +62,7 @@ pub fn build_type_contents<'t>(
             let descriptor = FormDescriptor::from_attributes(context, &input.ident, attributes);
 
             TypeContents::Struct(StructRepr {
+                input,
                 compound_type,
                 fields,
                 manifest,
@@ -91,8 +93,8 @@ pub struct FormDescriptor {
 }
 
 impl FormDescriptor {
-    /// Builds a [`FormDescriptor`] for the provided [`DeriveInput`]. An errors encountered while
-    /// parsing the [`DeriveInput`] will be added to the [`Context`].
+    /// Builds a [`FormDescriptor`] from the provided attributes. An errors encountered while
+    /// parsing the attributes are added to the [`Context`].
     pub fn from_attributes(
         context: &mut Context,
         ident: &Ident,
