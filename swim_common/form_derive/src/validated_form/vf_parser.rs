@@ -19,7 +19,8 @@ use crate::parser::{
 use macro_helpers::{Context, Identity, Symbol};
 use proc_macro2::Ident;
 use quote::ToTokens;
-use syn::export::TokenStream2;
+use std::fmt::Debug;
+use syn::export::{Formatter, TokenStream2};
 use syn::{Lit, Meta, MetaNameValue, NestedMeta};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
@@ -28,6 +29,7 @@ pub const NUM_ATTRS_PATH: Symbol = Symbol("num_attrs");
 pub const NUM_ITEMS_PATH: Symbol = Symbol("num_items");
 pub const ALL_ITEMS_PATH: Symbol = Symbol("all_items");
 
+#[derive(Debug)]
 pub struct ValidatedFormDescriptor {
     pub body_replaced: bool,
     pub name: Identity,
@@ -143,6 +145,7 @@ impl ValidatedFormDescriptor {
     }
 }
 
+#[derive(Debug)]
 pub enum ContainerSchema {
     AllItems,
     Anything,
@@ -185,13 +188,16 @@ pub fn type_contents_to_validated<'f>(
         TypeContents::Struct(repr) => TypeContents::Struct({
             let attrs = repr.input.attrs.get_attributes(ctx, FORM_PATH);
 
-            StructRepr {
+            let repr = StructRepr {
                 input: repr.input,
                 compound_type: repr.compound_type,
                 fields: map_fields_to_validated(ctx, repr.fields),
                 manifest: repr.manifest,
                 descriptor: ValidatedFormDescriptor::from_attributes(ctx, ident, attrs),
-            }
+            };
+
+            println!("{:?}", repr.descriptor);
+            repr
         }),
         TypeContents::Enum(variants) => {
             // for each variant, parse the fields
@@ -200,14 +206,17 @@ pub fn type_contents_to_validated<'f>(
                 .map(|variant| {
                     let attrs = variant.syn_variant.attrs.get_attributes(ctx, FORM_PATH);
 
-                    EnumVariant {
+                    let repr = EnumVariant {
                         syn_variant: variant.syn_variant,
                         name: variant.name,
                         compound_type: variant.compound_type,
                         fields: map_fields_to_validated(ctx, variant.fields),
                         manifest: variant.manifest,
                         descriptor: ValidatedFormDescriptor::from_attributes(ctx, ident, attrs),
-                    }
+                    };
+
+                    println!("{:?}", repr.descriptor);
+                    repr
                 })
                 .collect();
 

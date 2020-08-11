@@ -8,11 +8,11 @@ extern crate quote;
 extern crate syn;
 
 use core::fmt;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
-use syn::export::TokenStream2;
+use syn::export::{Formatter, TokenStream2};
 use syn::{Data, Index, Meta, Path};
 
 #[derive(Copy, Clone)]
@@ -87,6 +87,12 @@ pub enum Identity {
     },
     /// An anonymous element containing its index in the parent structure.
     Anonymous(Index),
+}
+
+impl Debug for Identity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
 }
 
 impl Identity {

@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::parser::{
-    parse_struct, Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, TAG_PATH,
+    parse_struct, Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH,
+    SCHEMA_PATH, TAG_PATH,
 };
 use macro_helpers::{Context, Identity};
 use proc_macro2::Ident;
@@ -122,6 +123,9 @@ impl FormDescriptor {
                 }
                 _ => context.error_spanned_by(meta, "Expected string argument"),
             },
+            NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
+                // handled by the validated form derive
+            }
             _ => context.error_spanned_by(meta, "Unknown container attribute"),
         });
 

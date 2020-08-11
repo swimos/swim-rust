@@ -28,7 +28,7 @@ pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
 pub const RENAME_PATH: Symbol = Symbol("rename");
 pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
-pub const SCHEMA_PATH: Symbol = Symbol("valid");
+pub const SCHEMA_PATH: Symbol = Symbol("schema");
 
 /// An enumeration representing the contents of an input.
 pub enum TypeContents<'t, D, F> {

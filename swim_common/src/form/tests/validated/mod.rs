@@ -180,4 +180,11 @@ mod container_attrs {
         assert_eq!(S::schema(), expected_schema);
         assert!(S::schema().matches(&value));
     }
+
+    #[test]
+    fn num_items() {
+        #[derive(Form, ValidatedForm)]
+        #[form(schema(num_items = 5, num_attrs = 50))]
+        struct S {}
+    }
 }
