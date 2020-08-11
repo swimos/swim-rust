@@ -834,6 +834,102 @@ fn nested_records(read_single: ReadSingleValue) {
 }
 
 #[test]
+fn parse_attributes_with_new_line() {
+    attributes_with_new_line(parse_single);
+}
+
+fn attributes_with_new_line(read_single: ReadSingleValue) {
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar()
+                baz
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar(),
+                baz
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar()
+                baz: qux
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar(),
+                baz: qux
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                one: two
+                three: @four()
+                five: six
+                seven: @eight(nine:ten)
+                eleven: twelve
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                one: two,
+                three: @four(),
+                five: six,
+                seven: @eight(nine:ten),
+                eleven: twelve
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                one: @two()
+                three: @four(five:six),
+                seven: eight,
+                nine: ten
+                eleven: twelve
+            }
+            "
+        )
+            .unwrap(),
+        read_single(
+            "{
+                one: @two(),
+                three: @four(five:six),
+                seven: eight,
+                nine: ten,
+                eleven: twelve
+            }
+            "
+        )
+            .unwrap()
+    );
+
+}
+
+#[test]
 fn parse_tagged_records() {
     tagged_records(parse_single);
 }

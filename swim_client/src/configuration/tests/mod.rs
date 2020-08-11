@@ -17,7 +17,7 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 #[test]
 fn test_conf_from_file_default_manual() {
     let mut file =
-        fs::File::open("swim_client/src/configuration/tests/resources/valid/default-config-manual.recon")
+        fs::File::open("src/configuration/tests/resources/valid/default-config-manual.recon")
             .unwrap();
 
     let mut contents = String::new();
