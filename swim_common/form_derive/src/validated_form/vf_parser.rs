@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use crate::parser::{
-    Attributes, EnumVariant, FormField, Name, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH,
-    TAG_PATH,
+    parse_struct, Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH,
+    SCHEMA_PATH, TAG_PATH,
 };
-use macro_helpers::{Context, StructureKind, Symbol};
-use proc_macro2::Ident;
+use macro_helpers::{Context, Identity, StructureKind, Symbol};
+use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use syn::export::TokenStream2;
-use syn::{Lit, Meta, MetaNameValue, NestedMeta};
+use syn::{Data, Lit, Meta, MetaNameValue, NestedMeta};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -56,23 +56,16 @@ impl ValidatedFormDescriptor {
         input.attrs.get_attributes(ctx, FORM_PATH).iter().for_each(
             |meta: &NestedMeta| match meta {
                 NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
-                    if let StructureKind::Enum = kind {
-                        ctx.error_spanned_by(
-                            meta,
-                            "Tags are only supported on enumeration variants.",
-                        )
-                    } else {
-                        match &name.lit {
-                            Lit::Str(s) => {
-                                let tag = s.value();
-                                if tag.is_empty() {
-                                    ctx.error_spanned_by(meta, "New name cannot be empty")
-                                } else {
-                                    desc.name.tag_ident = Ident::new(&*tag, s.span());
-                                }
+                    match &name.lit {
+                        Lit::Str(s) => {
+                            let tag = s.value();
+                            if tag.is_empty() {
+                                ctx.error_spanned_by(meta, "New name cannot be empty")
+                            } else {
+                                desc.name.tag_ident = Ident::new(&*tag, s.span());
                             }
-                            _ => ctx.error_spanned_by(meta, "Expected string argument"),
                         }
+                        _ => ctx.error_spanned_by(meta, "Expected string argument"),
                     }
                 }
                 NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
@@ -155,6 +148,10 @@ impl ValidatedFormDescriptor {
         );
 
         desc
+    }
+
+    pub fn has_container_schema(&self) -> bool {
+        self.container_schema.is_some()
     }
 }
 
@@ -247,4 +244,66 @@ fn map_fields_to_validated<'f>(
             }
         })
         .collect()
+}
+
+pub fn build_type_contents<'t>(
+    context: &mut Context,
+    input: &'t syn::DeriveInput,
+) -> Option<TypeContents<FormField<'t>>> {
+    let type_contents = match &input.data {
+        Data::Enum(data) => {
+            let variants = data
+                .variants
+                .iter()
+                .map(|variant| {
+                    let mut name_opt = None;
+
+                    variant
+                        .attrs
+                        .get_attributes(context, FORM_PATH)
+                        .iter()
+                        .for_each(|meta| match meta {
+                            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
+                                match &name.lit {
+                                    Lit::Str(s) => {
+                                        name_opt = Some(Identity::Renamed {
+                                            new_identity: s.value(),
+                                            old_identity: variant.ident.clone(),
+                                        });
+                                    }
+                                    _ => context.error_spanned_by(meta, "Expected string argument"),
+                                }
+                            }
+                            _ => context.error_spanned_by(meta, "Unknown enumeration attribute"),
+                        });
+
+                    let (compound_type, fields, manifest) = parse_struct(context, &variant.fields);
+
+                    EnumVariant {
+                        name: name_opt.unwrap_or_else(|| Identity::Named(variant.ident.clone())),
+                        compound_type,
+                        fields,
+                        manifest,
+                    }
+                })
+                .collect();
+
+            TypeContents::Enum(variants)
+        }
+        Data::Struct(data) => {
+            let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
+
+            TypeContents::Struct(StructRepr {
+                compound_type,
+                fields,
+                manifest,
+            })
+        }
+        Data::Union(_) => {
+            context.error_spanned_by(input, "Unions are not supported");
+            return None;
+        }
+    };
+
+    Some(type_contents)
 }

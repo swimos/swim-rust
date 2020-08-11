@@ -73,57 +73,54 @@ pub enum CompoundTypeKind {
     Unit,
 }
 
-/// An enumeration representing a field in a compound type. This enumeration helps to keep track of
-/// fields that may have been renamed when transmuting it.
+/// An enumeration representing a field or a compound type. This enumeration helps to keep track of
+/// elements that may have been renamed when transmuting.
 #[derive(Clone)]
-pub enum FieldIdentity {
-    /// A named field containing its identifier.
+pub enum Identity {
+    /// A named element containing its identifier.
     Named(Ident),
-    /// A renamed field containing its new identifier and original identifier. This field may have
+    /// A renamed element containing its new identifier and original identifier. This field may have
     /// previously been named or anonymous.
     Renamed {
         new_identity: String,
         old_identity: Ident,
     },
-    /// An anonymous field containing its index in the parent structure.
+    /// An anonymous element containing its index in the parent structure.
     Anonymous(Index),
 }
 
-impl FieldIdentity {
+impl Identity {
     /// Returns this [`FieldName`] represented as an [`Ident`]ifier. For renamed fields, this function
     /// returns the original field identifier represented and not the new name. For unnamed fields,
     /// this function returns a new identifier in the format of `__self_index`, where `index` is
     /// the ordinal of the field.
     pub fn as_ident(&self) -> Ident {
         match self {
-            FieldIdentity::Named(ident) => ident.clone(),
-            FieldIdentity::Renamed {
-                new_identity,
-                old_identity,
-            } => Ident::new(&new_identity, old_identity.span()),
-            FieldIdentity::Anonymous(index) => {
+            Identity::Named(ident) => ident.clone(),
+            Identity::Renamed { old_identity, .. } => old_identity.clone(),
+            Identity::Anonymous(index) => {
                 Ident::new(&format!("__self_{}", index.index), index.span)
             }
         }
     }
 }
 
-impl ToString for FieldIdentity {
+impl ToString for Identity {
     fn to_string(&self) -> String {
         match self {
-            FieldIdentity::Named(ident) => ident.to_string(),
-            FieldIdentity::Renamed { new_identity, .. } => new_identity.to_string(),
-            FieldIdentity::Anonymous(index) => format!("__self_{}", index.index),
+            Identity::Named(ident) => ident.to_string(),
+            Identity::Renamed { new_identity, .. } => new_identity.to_string(),
+            Identity::Anonymous(index) => format!("__self_{}", index.index),
         }
     }
 }
 
-impl ToTokens for FieldIdentity {
+impl ToTokens for Identity {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            FieldIdentity::Named(ident) => ident.to_tokens(tokens),
-            FieldIdentity::Renamed { old_identity, .. } => old_identity.to_tokens(tokens),
-            FieldIdentity::Anonymous(index) => index.to_tokens(tokens),
+            Identity::Named(ident) => ident.to_tokens(tokens),
+            Identity::Renamed { old_identity, .. } => old_identity.to_tokens(tokens),
+            Identity::Anonymous(index) => index.to_tokens(tokens),
         }
     }
 }
@@ -169,20 +166,17 @@ pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
 /// ```compile_fail
 /// { a, b }
 /// ```
-pub fn deconstruct_type(
-    compound_type: &CompoundTypeKind,
-    fields: &[&FieldIdentity],
-) -> TokenStream2 {
+pub fn deconstruct_type(compound_type: &CompoundTypeKind, fields: &[&Identity]) -> TokenStream2 {
     let fields: Vec<_> = fields
         .iter()
         .map(|name| match &name {
-            FieldIdentity::Named(ident) => {
+            Identity::Named(ident) => {
                 quote! { #ident }
             }
-            FieldIdentity::Renamed { old_identity, .. } => {
+            Identity::Renamed { old_identity, .. } => {
                 quote! { #old_identity }
             }
-            un @ FieldIdentity::Anonymous(_) => {
+            un @ Identity::Anonymous(_) => {
                 let binding = &un.as_ident();
                 quote! { #binding }
             }

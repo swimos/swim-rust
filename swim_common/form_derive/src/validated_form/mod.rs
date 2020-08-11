@@ -16,7 +16,8 @@ use macro_helpers::Context;
 
 use crate::parser::TypeContents;
 use crate::validated_form::vf_parser::{
-    derive_head_attribute, type_contents_to_validated, ValidatedFormDescriptor,
+    build_type_contents, derive_head_attribute, type_contents_to_validated, ValidatedField,
+    ValidatedFormDescriptor,
 };
 use syn::DeriveInput;
 
@@ -28,13 +29,13 @@ pub fn build_validated_form(
     let mut context = Context::default();
     let descriptor = ValidatedFormDescriptor::from_ast(&mut context, &input);
     let structure_name = descriptor.name.original_ident.clone();
-    let type_contents = match TypeContents::from(&mut context, &input) {
-        Some(cont) => type_contents_to_validated(&mut context, cont),
-        None => return Err(context.check().unwrap_err()),
-    };
+    let type_contents: TypeContents<ValidatedField> =
+        match build_type_contents(&mut context, &input) {
+            Some(cont) => type_contents_to_validated(&mut context, cont),
+            None => return Err(context.check().unwrap_err()),
+        };
 
     let head_attribute = derive_head_attribute(&descriptor, &type_contents);
-
     let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
 
     let ts = quote! {

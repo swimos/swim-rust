@@ -23,15 +23,14 @@ use proc_macro::TokenStream;
 
 use syn::DeriveInput;
 
-use macro_helpers::{to_compile_errors, Context};
+use macro_helpers::to_compile_errors;
 
-use crate::form::to_value;
-use crate::parser::{FormDescriptor, TypeContents};
-use crate::validated_form::build_validated_form;
+use crate::form::build_derive_form;
+// use crate::validated_form::build_validated_form;
 
 mod form;
 mod parser;
-mod validated_form;
+// mod validated_form;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
@@ -41,45 +40,11 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
         .into()
 }
 
-fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
-    let mut context = Context::default();
-    let descriptor = FormDescriptor::from_ast(&mut context, &input);
-    let structure_name = descriptor.name.original_ident.clone();
-    let type_contents = match TypeContents::from(&mut context, &input) {
-        Some(cont) => cont,
-        None => return Err(context.check().unwrap_err()),
-    };
-
-    let as_value_body = to_value(type_contents, &structure_name, descriptor);
-
-    context.check()?;
-
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
-
-    let ts = quote! {
-        impl #impl_generics swim_common::form::Form for #structure_name #ty_generics #where_clause
-        {
-            #[inline]
-            #[allow(non_snake_case)]
-            fn as_value(&self) -> swim_common::model::Value {
-                #as_value_body
-            }
-
-            #[inline]
-            #[allow(non_snake_case)]
-            fn try_from_value(value: &swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
-                unimplemented!()
-            }
-        }
-    };
-
-    Ok(ts)
-}
-
 #[proc_macro_derive(ValidatedForm, attributes(form))]
-pub fn derive_validated_form(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    build_validated_form(input)
-        .unwrap_or_else(to_compile_errors)
-        .into()
+pub fn derive_validated_form(_input: TokenStream) -> TokenStream {
+    // let input = parse_macro_input!(input as DeriveInput);
+    // build_validated_form(input)
+    //     .unwrap_or_else(to_compile_errors)
+    //     .into()
+    quote!().into()
 }

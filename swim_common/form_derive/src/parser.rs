@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use macro_helpers::{
-    get_attribute_meta, CompoundTypeKind, Context, FieldIdentity, StructureKind, Symbol,
-};
 use proc_macro2::Ident;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, Data, Lit, Meta, NestedMeta};
+use syn::{Attribute, Lit, Meta, NestedMeta};
+
+use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Identity, Symbol};
 
 pub const FORM_PATH: Symbol = Symbol("form");
 pub const HEADER_PATH: Symbol = Symbol("header");
@@ -32,104 +31,37 @@ pub const SKIP_PATH: Symbol = Symbol("skip");
 pub const SCHEMA_PATH: Symbol = Symbol("valid");
 
 /// An enumeration representing the contents of an input.
-pub enum TypeContents<F> {
+pub enum TypeContents<D, F> {
     /// An enumeration input. Containing a vector of enumeration variants.
-    Enum(Vec<EnumVariant<F>>),
+    Enum(Vec<EnumVariant<D, F>>),
     /// A struct input containing its representation.
-    Struct(StructRepr<F>),
-}
-
-impl<'t> TypeContents<FormField<'t>> {
-    /// Build a [`TypeContents`] input from an abstract syntax tree. Returns [`Option::None`] if
-    /// there was an error that was encountered while parsing the tree. The underlying error is
-    /// added to the [`Context]`. If [`derive_valid`] is `true`, then [`[form(valid(..))]`]
-    /// attributes are parsed into the [`TypeContents`] representation.
-    pub fn from(context: &mut Context, input: &'t syn::DeriveInput) -> Option<Self> {
-        let type_contents = match &input.data {
-            Data::Enum(data) => {
-                let variants =
-                    data.variants
-                        .iter()
-                        .map(|variant| {
-                            let mut name_opt = None;
-
-                            variant
-                                .attrs
-                                .get_attributes(context, FORM_PATH)
-                                .iter()
-                                .for_each(|meta| match meta {
-                                    NestedMeta::Meta(Meta::NameValue(name))
-                                        if name.path == TAG_PATH =>
-                                    {
-                                        match &name.lit {
-                                            Lit::Str(s) => {
-                                                name_opt = Some(FieldIdentity::Renamed {
-                                                    new_identity: s.value(),
-                                                    old_identity: variant.ident.clone(),
-                                                });
-                                            }
-                                            _ => context
-                                                .error_spanned_by(meta, "Expected string argument"),
-                                        }
-                                    }
-                                    _ => context
-                                        .error_spanned_by(meta, "Unknown enumeration attribute"),
-                                });
-
-                            let (compound_type, fields, manifest) =
-                                parse_struct(context, &variant.fields);
-
-                            EnumVariant {
-                                name: name_opt
-                                    .unwrap_or_else(|| FieldIdentity::Named(variant.ident.clone())),
-                                compound_type,
-                                fields,
-                                manifest,
-                            }
-                        })
-                        .collect();
-
-                TypeContents::Enum(variants)
-            }
-            Data::Struct(data) => {
-                let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
-
-                TypeContents::Struct(StructRepr {
-                    compound_type,
-                    fields,
-                    manifest,
-                })
-            }
-            Data::Union(_) => {
-                context.error_spanned_by(input, "Unions are not supported");
-                return None;
-            }
-        };
-
-        Some(type_contents)
-    }
+    Struct(StructRepr<D, F>),
 }
 
 /// A representation of a parsed struct from the AST.
-pub struct StructRepr<F> {
+pub struct StructRepr<D, F> {
     /// The struct's type: tuple, named, unit.
     pub compound_type: CompoundTypeKind,
     /// The field members of the struct.
     pub fields: Vec<F>,
     /// A derived [`FieldManifest`] from the attributes on the members.
     pub manifest: FieldManifest,
+    /// A form descriptor
+    pub descriptor: D,
 }
 
 /// A representation of a parsed enumeration from the AST.
-pub struct EnumVariant<F> {
+pub struct EnumVariant<D, F> {
     /// The name of the variant.
-    pub name: FieldIdentity,
+    pub name: Identity,
     /// The variant's type: tuple, named, unit.
     pub compound_type: CompoundTypeKind,
     /// The field members of the variant.
     pub fields: Vec<F>,
     /// A derived [`FieldManifest`] from the attributes on the members.
     pub manifest: FieldManifest,
+    /// A form descriptor
+    pub descriptor: D,
 }
 
 /// A representation of a parsed field for a form from the AST.
@@ -137,17 +69,9 @@ pub struct FormField<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
     /// The name of the field.
-    pub name: FieldIdentity,
+    pub name: Identity,
     /// The kind of the field from its attribute.
     pub kind: FieldKind,
-}
-
-#[derive(Debug, Clone)]
-pub struct Name {
-    /// The original name of the structure.
-    pub original_ident: Ident,
-    /// Tag for the structure.
-    pub tag_ident: Ident,
 }
 
 /// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields
@@ -193,68 +117,6 @@ pub struct FieldManifest {
     pub has_slot_fields: bool,
     /// Whether or not there are fields tha are written as headers in the record.
     pub has_header_fields: bool,
-}
-
-/// A [`FormDescriptor`] is a representation of a [`Form`] that is built from a [`DeriveInput`],
-/// containing the name of the compound type that it represents and whether or not the body of the
-/// produced [`Value`] is replaced. A field annotated with [`[form(body)]` will cause this to
-/// happen. A compound type annotated with [`[form(tag = "name")]` will set the structure's output
-/// value to be replaced with the provided literal.
-#[derive(Debug, Clone)]
-pub struct FormDescriptor {
-    /// Denotes whether or not the body of the produced record is replaced by a field in the
-    /// compound type.
-    pub body_replaced: bool,
-    /// The name that the compound type will be transmuted with.
-    pub name: Name,
-}
-
-impl FormDescriptor {
-    /// Builds a [`FormDescriptor`] for the provided [`DeriveInput`]. An errors encountered while
-    /// parsing the [`DeriveInput`] will be added to the [`Context`].
-    pub fn from_ast(ctx: &mut Context, input: &syn::DeriveInput) -> FormDescriptor {
-        let kind = StructureKind::from(&input.data);
-
-        let mut desc = FormDescriptor {
-            body_replaced: false,
-            name: Name {
-                original_ident: input.ident.clone(),
-                tag_ident: input.ident.clone(),
-            },
-        };
-
-        input.attrs.get_attributes(ctx, FORM_PATH).iter().for_each(
-            |meta: &NestedMeta| match meta {
-                NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
-                    if let StructureKind::Enum = kind {
-                        ctx.error_spanned_by(
-                            meta,
-                            "Tags are only supported on enumeration variants.",
-                        )
-                    } else {
-                        match &name.lit {
-                            Lit::Str(s) => {
-                                let tag = s.value();
-                                if tag.is_empty() {
-                                    ctx.error_spanned_by(meta, "New name cannot be empty")
-                                } else {
-                                    desc.name.tag_ident = Ident::new(&*tag, s.span());
-                                }
-                            }
-                            _ => ctx.error_spanned_by(meta, "Expected string argument"),
-                        }
-                    }
-                }
-                _ => ctx.error_spanned_by(meta, "Unknown container attribute"),
-            },
-        );
-
-        desc
-    }
-
-    pub fn has_body_replaced(&self) -> bool {
-        self.body_replaced
-    }
 }
 
 /// Parse a structure's fields from the [`DeriveInput`]'s fields. Returns the type of the fields,
@@ -358,7 +220,7 @@ pub fn fields_from_ast<'t>(
                                         Ident::new(&format!("__self_{}", index), original.span())
                                     });
 
-                                    renamed = Some(FieldIdentity::Renamed {
+                                    renamed = Some(Identity::Renamed {
                                         new_identity: s.value(),
                                         old_identity: old_ident,
                                     });
@@ -380,13 +242,13 @@ pub fn fields_from_ast<'t>(
             );
 
             let name = renamed.unwrap_or_else(|| match &original.ident {
-                Some(ident) => FieldIdentity::Named(ident.clone()),
-                None => FieldIdentity::Anonymous(index.into()),
+                Some(ident) => Identity::Named(ident.clone()),
+                None => Identity::Anonymous(index.into()),
             });
 
             let kind = kind_opt.unwrap_or(FieldKind::Slot);
 
-            if let (FieldIdentity::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
+            if let (Identity::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
                 ctx.error_spanned_by(
                     original,
                     "An unnamed field cannot be promoted to an attribute.",
