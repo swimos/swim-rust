@@ -29,8 +29,8 @@ use common::topic::Topic;
 use common::warp::envelope::{Envelope, EnvelopeHeader, OutgoingHeader};
 use common::warp::path::RelativePath;
 use either::Either;
-use futures::future::join3;
-use futures::{select, Stream, StreamExt};
+use futures::future::{join3, BoxFuture};
+use futures::{select, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
@@ -97,17 +97,84 @@ impl Display for LaneIoError {
     }
 }
 
+pub struct UplinkChannels<Top> {
+    events: Top,
+    actions: mpsc::Receiver<TaggedAction>,
+    errors_collector: mpsc::Sender<UplinkErrorReport>,
+}
+
+pub trait LaneUplinks {
+    fn make_task<Handler, Top, Context>(
+        &self,
+        message_handler: Arc<Handler>,
+        channels: UplinkChannels<Top>,
+        route: RelativePath,
+        context: &Context,
+    ) -> BoxFuture<'static, ()>
+    where
+        Handler: LaneMessageHandler + 'static,
+        OutputMessage<Handler>: Into<Value>,
+        Top: Topic<Handler::Event> + Send + 'static,
+        Context: AgentExecutionContext;
+}
+
+struct SpawnerUplinkFactory(AgentExecutionConfig);
+
+impl LaneUplinks for SpawnerUplinkFactory {
+    fn make_task<Handler, Top, Context>(
+        &self,
+        message_handler: Arc<Handler>,
+        channels: UplinkChannels<Top>,
+        route: RelativePath,
+        context: &Context,
+    ) -> BoxFuture<'static, ()>
+    where
+        Handler: LaneMessageHandler + 'static,
+        OutputMessage<Handler>: Into<Value>,
+        Top: Topic<Handler::Event> + Send + 'static,
+        Context: AgentExecutionContext,
+    {
+        let SpawnerUplinkFactory(AgentExecutionConfig {
+            action_buffer,
+            max_uplink_start_attempts,
+            ..
+        }) = self;
+
+        let UplinkChannels {
+            events,
+            actions,
+            errors_collector: error_collector,
+        } = channels;
+
+        let spawner = UplinkSpawner::new(
+            message_handler,
+            events,
+            actions,
+            *action_buffer,
+            *max_uplink_start_attempts,
+            route,
+        );
+
+        spawner
+            .run(context.router_handle(), context.spawner(), error_collector)
+            .boxed()
+    }
+}
+
 impl Error for LaneIoError {}
 
-pub async fn run_lane_io<Handler>(
+pub async fn run_lane_io<Handler, Uplinks>(
     message_handler: Handler,
+    lane_uplinks: Uplinks,
     envelopes: impl Stream<Item = TaggedEnvelope>,
-    events: impl Topic<Handler::Event>,
+    events: impl Topic<Handler::Event> + Send + 'static,
+    config: &AgentExecutionConfig,
     context: &impl AgentExecutionContext,
     route: RelativePath,
 ) -> Result<(), LaneIoError>
 where
-    Handler: LaneMessageHandler,
+    Handler: LaneMessageHandler + 'static,
+    Uplinks: LaneUplinks,
     OutputMessage<Handler>: Into<Value>,
     InputMessage<Handler>: Debug + Form,
 {
@@ -117,28 +184,25 @@ where
     let AgentExecutionConfig {
         action_buffer,
         update_buffer,
+        uplink_err_buffer,
         max_fatal_uplink_errors,
-        max_uplink_start_attempts,
         ..
-    } = context.configuration();
+    } = config;
 
     let (mut act_tx, act_rx) = mpsc::channel(action_buffer.get());
     let (mut upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
+    let (err_tx, err_rx) = mpsc::channel(uplink_err_buffer.get());
 
-    let spawner = UplinkSpawner::new(
-        arc_handler.clone(),
+    let spawner_channels = UplinkChannels {
         events,
-        act_rx,
-        *action_buffer,
-        *max_uplink_start_attempts,
-        route.clone(),
-    );
+        actions: act_rx,
+        errors_collector: err_tx,
+    };
 
     let update_task = arc_handler.make_update().run_update(upd_rx);
 
-    let (err_tx, err_rx) = mpsc::channel(5);
-
-    let uplink_spawn_task = spawner.run(context.router_handle(), context.spawner(), err_tx);
+    let uplink_spawn_task =
+        lane_uplinks.make_task(arc_handler, spawner_channels, route.clone(), context);
 
     let mut err_rx = err_rx.fuse();
 

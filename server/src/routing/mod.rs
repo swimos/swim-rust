@@ -60,7 +60,7 @@ impl Display for RoutingAddr {
 pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 
 /// Interface for interacting with the server [`Envelope`] router.
-pub trait ServerRouter {
+pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
     fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError>;

@@ -28,21 +28,20 @@ pub struct AgentExecutionConfig {
     pub max_concurrency: usize,
     pub action_buffer: NonZeroUsize,
     pub update_buffer: NonZeroUsize,
+    pub uplink_err_buffer: NonZeroUsize,
     pub max_fatal_uplink_errors: usize,
     pub max_uplink_start_attempts: NonZeroUsize,
 }
 
 pub trait AgentExecutionContext {
-    type Router: ServerRouter;
+    type Router: ServerRouter + 'static;
 
     fn router_handle(&self) -> Self::Router;
-
-    fn configuration(&self) -> &AgentExecutionConfig;
 
     fn spawner(&self) -> mpsc::Sender<BoxFuture<'static, ()>>;
 }
 
-pub trait LaneMessageHandler {
+pub trait LaneMessageHandler: Send + Sync {
     type Event: Send;
     type Uplink: UplinkStateMachine<Self::Event> + Send + Sync + 'static;
     type Update: LaneUpdate;

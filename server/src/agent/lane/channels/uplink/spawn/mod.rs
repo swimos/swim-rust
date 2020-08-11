@@ -59,7 +59,7 @@ impl<Handler, Top> UplinkSpawner<Handler, Top>
 where
     Handler: LaneMessageHandler,
     OutputMessage<Handler>: Into<Value>,
-    Top: Topic<Handler::Event>,
+    Top: Topic<Handler::Event> + Send,
 {
     /// Crate a new uplink spawner.
     ///
