@@ -491,13 +491,13 @@ enum ParseTermination {
     EarlyTermination(Value),
 }
 
-trait TokenStr: PartialEq + Borrow<str> + Into<String> + Clone {}
+trait TokenStr: PartialEq + Borrow<str> + Into<String> {}
 
 impl<'a> TokenStr for &'a str {}
 
 impl<'a> TokenStr for String {}
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug)]
 enum ReconToken<S> {
     AttrMarker,
     AttrBodyStart,
@@ -1449,7 +1449,7 @@ fn update_after_attr<S: TokenStr>(
         }
         NewLine => {
             let record = Value::Record(attrs, items);
-            StateModification::PushDownAndRepeat(record, token.clone())
+            StateModification::PushDownAndRepeat(record, token)
         }
         _ => StateModification::Fail(RecordError::BadRecordStart),
     }

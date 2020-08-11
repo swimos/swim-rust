@@ -913,7 +913,7 @@ fn attributes_with_new_line(read_single: ReadSingleValue) {
             }
             "
         )
-            .unwrap(),
+        .unwrap(),
         read_single(
             "{
                 one: @two(),
@@ -924,9 +924,8 @@ fn attributes_with_new_line(read_single: ReadSingleValue) {
             }
             "
         )
-            .unwrap()
+        .unwrap()
     );
-
 }
 
 #[test]
