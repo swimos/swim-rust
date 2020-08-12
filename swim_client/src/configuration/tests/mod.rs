@@ -318,7 +318,7 @@ async fn test_client_file_conf_recon_error() {
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Client error. Caused by: Recon error: Bad token at offset: 66"
+            "Client error. Caused by: Recon error: Bad token at: 4:19"
         )
     } else {
         panic!("Expected file error!")
