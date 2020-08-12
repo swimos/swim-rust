@@ -23,13 +23,20 @@ pub mod task;
 pub mod update;
 pub mod uplink;
 
+/// Configuration parameters controlling how an agent and its lane are executed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentExecutionConfig {
+    /// Maximum level of concurrency for the task running the agent.
     pub max_concurrency: usize,
+    /// Maximum buffer size, per lane, for accepting uplink actions.
     pub action_buffer: NonZeroUsize,
+    /// Maximum buffer size, per lane, for accepting commands.
     pub update_buffer: NonZeroUsize,
+    /// Maximum buffer size, per lane, for reporting errors.
     pub uplink_err_buffer: NonZeroUsize,
+    /// Maximum number of fatal uplink errors before the task running a lane will stop.
     pub max_fatal_uplink_errors: usize,
+    /// Maximum number of times a lane will attempt to start a new uplink before failing.
     pub max_uplink_start_attempts: NonZeroUsize,
 }
 
@@ -47,14 +54,18 @@ impl Default for AgentExecutionConfig {
     }
 }
 
+/// A context, scoped to an agent, to provide shared functionality to each of its lanes.
 pub trait AgentExecutionContext {
     type Router: ServerRouter + 'static;
 
+    /// Create a handle to the envelope router for the agent.
     fn router_handle(&self) -> Self::Router;
 
+    /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<BoxFuture<'static, ()>>;
 }
 
+/// Creates uplink state machines and update tasks for a lane.
 pub trait LaneMessageHandler: Send + Sync {
     type Event: Send;
     type Uplink: UplinkStateMachine<Self::Event> + Send + Sync + 'static;
@@ -71,5 +82,6 @@ pub type OutputMessage<Handler> = <<Handler as LaneMessageHandler>::Uplink as Up
 
 pub type InputMessage<Handler> = <<Handler as LaneMessageHandler>::Update as LaneUpdate>::Msg;
 
+/// An [`UplinkAction`] tagged with the ket of the endpoint into routing table from which it originated.
 #[derive(Debug)]
 pub struct TaggedAction(RoutingAddr, UplinkAction);
