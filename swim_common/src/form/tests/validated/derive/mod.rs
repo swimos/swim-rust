@@ -24,4 +24,5 @@ fn test_derive() {
     t.compile_fail("src/form/tests/validated/derive/not_op_arg_count.rs");
     t.compile_fail("src/form/tests/validated/derive/invalid_container_of_kind.rs");
     t.compile_fail("src/form/tests/validated/derive/trailing_schema.rs");
+    t.compile_fail("src/form/tests/validated/derive/nothing_attr_on_field.rs");
 }

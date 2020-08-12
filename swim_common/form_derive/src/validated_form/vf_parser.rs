@@ -26,6 +26,7 @@ use crate::parser::{
     Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
 };
 use crate::validated_form::meta_parse::parse_schema_meta;
+use std::ops::Range;
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -33,6 +34,13 @@ pub const NUM_ATTRS_PATH: Symbol = Symbol("num_attrs");
 pub const NUM_ITEMS_PATH: Symbol = Symbol("num_items");
 pub const OF_KIND_PATH: Symbol = Symbol("of_kind");
 pub const EQUAL_PATH: Symbol = Symbol("equal");
+pub const TEXT_PATH: Symbol = Symbol("text");
+pub const NON_NAN_PATH: Symbol = Symbol("non_nan");
+pub const FINITE_PATH: Symbol = Symbol("finite");
+pub const INT_RANGE_PATH: Symbol = Symbol("int_range");
+pub const UINT_RANGE_PATH: Symbol = Symbol("uint_range");
+pub const FLOAT_RANGE_PATH: Symbol = Symbol("float_range");
+pub const BIG_INT_RANGE_PATH: Symbol = Symbol("big_int_range");
 pub const ALL_ITEMS_PATH: Symbol = Symbol("all_items");
 pub const AND_PATH: Symbol = Symbol("and");
 pub const OR_PATH: Symbol = Symbol("or");
@@ -216,10 +224,10 @@ pub enum StandardSchema {
     Equal(ExprPath),
     /// This field/container should be of the kind provided by the [`TokenStream`]
     OfKind(TokenStream2),
-    IntRange,
-    UintRange,
-    FloatRange,
-    BigIntRange,
+    IntRange((Range<i64>, bool)),
+    UintRange((Range<u64>, bool)),
+    FloatRange((Range<f64>, bool)),
+    BigIntRange((Range<String>, bool)),
     NonNan,
     Finite,
     Text(String),
@@ -256,14 +264,14 @@ impl ToTokens for StandardSchema {
             StandardSchema::OfKind(kind) => {
                 quote!(swim_common::model::schema::StandardSchema::OfKind(#kind))
             }
-            StandardSchema::IntRange => unimplemented!(),
-            StandardSchema::UintRange => unimplemented!(),
-            StandardSchema::FloatRange => unimplemented!(),
-            StandardSchema::BigIntRange => unimplemented!(),
+            StandardSchema::IntRange(_) => unimplemented!(),
+            StandardSchema::UintRange(_) => unimplemented!(),
+            StandardSchema::FloatRange(_) => unimplemented!(),
+            StandardSchema::BigIntRange(_) => unimplemented!(),
             StandardSchema::NonNan => quote!(swim_common::model::schema::StandardSchema::NonNan),
             StandardSchema::Finite => quote!(swim_common::model::schema::StandardSchema::Finite),
             StandardSchema::Text(text) => {
-                quote!(swim_common::model::schema::StandardSchema::Text(&#text))
+                quote!(swim_common::model::schema::StandardSchema::text(&#text))
             }
             StandardSchema::Anything => {
                 quote!(swim_common::model::schema::StandardSchema::Anything)
@@ -290,7 +298,10 @@ impl ToTokens for StandardSchema {
             StandardSchema::AllItems(ts) => {
                 quote!(swim_common::model::schema::StandardSchema::AllItems(std::boxed::Box::new(#ts)))
             }
-            StandardSchema::None => quote!(),
+            StandardSchema::None => {
+                // no-op as this will be a container schema
+                quote!()
+            }
         };
 
         quote.to_tokens(tokens);

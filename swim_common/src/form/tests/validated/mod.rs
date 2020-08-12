@@ -15,8 +15,11 @@
 use crate::form::Form;
 use crate::form::ValidatedForm;
 use crate::model::schema::attr::AttrSchema;
+use crate::model::schema::slot::SlotSchema;
+use crate::model::schema::ItemSchema;
 use crate::model::schema::Schema;
 use crate::model::schema::StandardSchema;
+use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
 
@@ -26,28 +29,22 @@ mod swim_common {
     pub use crate::*;
 }
 
-use crate::model::schema::slot::SlotSchema;
-use crate::model::schema::ItemSchema;
-use crate::model::Item;
-
 #[test]
 fn test_tag() {
     #[derive(Form, ValidatedForm)]
     struct S;
 
-    let expected_schema = StandardSchema::And(vec![StandardSchema::HeadAttribute {
+    let expected_schema = StandardSchema::HeadAttribute {
         schema: Box::new(AttrSchema::named(
             "S",
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
         remainder: Box::new(StandardSchema::Anything),
-    }]);
+    };
 
     let value = S {}.as_value();
-    let expected_value = Value::Record(vec![Attr::of("S")], Vec::new());
 
-    assert_eq!(value, expected_value);
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&value));
 }
@@ -90,14 +87,6 @@ fn all_items() {
     ]);
 
     let valid = S { a: 1, b: 2 }.as_value();
-    let valid_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![
-            Item::Slot(Value::text("a"), Value::Int32Value(1)),
-            Item::Slot(Value::text("b"), Value::Int32Value(2)),
-        ],
-    );
-
     let invalid_value = Value::Record(
         vec![Attr::of("S")],
         vec![
@@ -106,14 +95,14 @@ fn all_items() {
         ],
     );
 
-    assert_eq!(valid, valid_value);
+    assert_eq!(valid, valid);
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&valid));
     assert!(!S::schema().matches(&invalid_value));
 }
 
 #[test]
-fn anything() {
+fn container_anything() {
     #[derive(Form, ValidatedForm)]
     #[form(schema(anything))]
     struct S {
@@ -124,22 +113,53 @@ fn anything() {
     let expected_schema = StandardSchema::Anything;
 
     let value = S { a: 1, b: 2 }.as_value();
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![
-            Item::Slot(Value::text("a"), Value::Int32Value(1)),
-            Item::Slot(Value::text("b"), Value::Int32Value(2)),
-        ],
-    );
 
-    assert_eq!(value, expected_value);
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&value));
     assert!(S::schema().matches(&Value::Int32Value(1)));
 }
 
 #[test]
-fn nothing() {
+fn text() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(text = "swim"))]
+        a: String,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::text("swim"),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let value = S {
+        a: String::from("swim"),
+    }
+    .as_value();
+
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn container_nothing() {
     #[derive(Form, ValidatedForm)]
     #[form(schema(nothing))]
     struct S {
@@ -150,15 +170,7 @@ fn nothing() {
     let expected_schema = StandardSchema::Nothing;
 
     let value = S { a: 1, b: 2 }.as_value();
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![
-            Item::Slot(Value::text("a"), Value::Int32Value(1)),
-            Item::Slot(Value::text("b"), Value::Int32Value(2)),
-        ],
-    );
 
-    assert_eq!(value, expected_value);
     assert_eq!(S::schema(), expected_schema);
     assert!(!S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
@@ -196,24 +208,17 @@ fn num_items_attrs() {
         },
     ]);
 
-    let inner_value = Value::Record(
-        vec![Attr::of("a"), Attr::of("b"), Attr::of("c")],
-        vec![
-            Item::ValueItem(Value::Int32Value(1)),
-            Item::ValueItem(Value::Int32Value(2)),
-        ],
-    );
-
     let value = S {
-        a: inner_value.clone(),
+        a: Value::Record(
+            vec![Attr::of("a"), Attr::of("b"), Attr::of("c")],
+            vec![
+                Item::ValueItem(Value::Int32Value(1)),
+                Item::ValueItem(Value::Int32Value(2)),
+            ],
+        ),
     }
     .as_value();
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("a"), inner_value)],
-    );
 
-    assert_eq!(value, expected_value);
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
@@ -248,24 +253,17 @@ fn num_items() {
         },
     ]);
 
-    let inner_value = Value::Record(
-        vec![],
-        vec![
-            Item::ValueItem(Value::Int32Value(1)),
-            Item::ValueItem(Value::Int32Value(2)),
-        ],
-    );
-
     let value = S {
-        a: inner_value.clone(),
+        a: Value::Record(
+            vec![],
+            vec![
+                Item::ValueItem(Value::Int32Value(1)),
+                Item::ValueItem(Value::Int32Value(2)),
+            ],
+        ),
     }
     .as_value();
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("a"), inner_value)],
-    );
 
-    assert_eq!(value, expected_value);
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
@@ -300,18 +298,11 @@ fn num_attrs() {
         },
     ]);
 
-    let inner_value = Value::Record(vec![Attr::of("a"), Attr::of("b"), Attr::of("c")], vec![]);
-
     let value = S {
-        a: inner_value.clone(),
+        a: Value::Record(vec![Attr::of("a"), Attr::of("b"), Attr::of("c")], vec![]),
     }
     .as_value();
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("a"), inner_value)],
-    );
 
-    assert_eq!(value, expected_value);
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
@@ -357,12 +348,6 @@ fn and() {
     }
     .as_value();
 
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("a"), Value::text("text"))],
-    );
-
-    assert_eq!(value, expected_value);
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
@@ -461,23 +446,13 @@ fn field_equal() {
         },
     ]);
 
-    let valid_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![
-            Item::Slot(Value::text("a"), Value::Int32Value(1)),
-            Item::Slot(Value::text("b"), Value::Int32Value(2)),
-        ],
-    );
+    let valid_value = S {
+        a: Value::Int32Value(1),
+        b: 2,
+    }
+    .as_value();
     let invalid_value = Value::Int32Value(1);
 
-    assert_eq!(
-        S {
-            a: Value::Int32Value(1),
-            b: 2
-        }
-        .as_value(),
-        valid_value
-    );
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&valid_value));
     assert!(!S::schema().matches(&invalid_value));
@@ -512,10 +487,10 @@ fn not() {
         },
     ]);
 
-    let valid_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("a"), Value::Int32Value(1))],
-    );
+    let valid_value = S {
+        a: Value::Int32Value(1),
+    }
+    .as_value();
     let invalid_value = Value::Record(
         vec![Attr::of("S")],
         vec![Item::Slot(Value::text("a"), Value::text("invalid"))],
@@ -569,11 +544,6 @@ fn or() {
     }
     .as_value();
 
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("a"), Value::text("text"))],
-    );
-
     let partial_value = Value::Record(
         vec![Attr::of("S")],
         vec![Item::Slot(Value::text("a"), Value::Int32Value(1))],
@@ -581,9 +551,8 @@ fn or() {
 
     let schema = S::schema();
 
-    assert_eq!(value, expected_value);
     assert_eq!(schema, expected_schema);
-    assert!(schema.matches(&expected_value));
+    assert!(schema.matches(&value));
     assert!(schema.matches(&partial_value));
     assert!(!schema.matches(&Value::Int32Value(1)));
 }
@@ -628,19 +597,16 @@ fn generic_value() {
         },
     ]);
 
-    let expected_value = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(
-            Value::text("f"),
-            Value::Int32Value(i32::max_value()),
-        )],
-    );
+    let valid_value = S {
+        f: Value::Int32Value(i32::max_value()),
+    }
+    .as_value();
 
     let schema = S::<Value>::schema();
 
-    assert_eq!(s.as_value(), expected_value);
+    assert_eq!(s.as_value(), valid_value);
     assert_eq!(schema, expected_schema);
-    assert!(schema.matches(&expected_value));
+    assert!(schema.matches(&valid_value));
     assert!(!schema.matches(&Value::Int32Value(1)));
 }
 
@@ -648,6 +614,65 @@ fn generic_value() {
 fn tuple_struct() {
     #[derive(Form, ValidatedForm)]
     struct S(i32, i64, String);
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (ItemSchema::ValueItem(i32::schema()), true),
+                (ItemSchema::ValueItem(i64::schema()), true),
+                (ItemSchema::ValueItem(String::schema()), true),
+            ],
+            exhaustive: false,
+        },
+    ]);
+
+    assert_eq!(S::schema(), expected_schema);
+}
+
+#[test]
+fn tuple_struct_attrs() {
+    fn int_eq() -> Value {
+        Value::Int64Value(i64::max_value())
+    }
+
+    #[derive(Form, ValidatedForm)]
+    struct S(
+        #[form(schema(of_kind(ValueKind::Int32)))] i32,
+        #[form(schema(equal = "int_eq"))] i64,
+        #[form(schema(text = "swim"))] String,
+    );
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
+                    true,
+                ),
+                (ItemSchema::ValueItem(StandardSchema::Equal(int_eq())), true),
+                (ItemSchema::ValueItem(StandardSchema::text("swim")), true),
+            ],
+            exhaustive: false,
+        },
+    ]);
+
+    assert_eq!(S::schema(), expected_schema);
 }
 
 #[test]
@@ -663,5 +688,218 @@ fn unit_struct() {
         required: true,
         remainder: Box::new(StandardSchema::Anything),
     };
+
     assert_eq!(S::schema(), expected_schema);
+}
+
+#[test]
+fn field_anything() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        a: i32,
+        #[form(schema(anything))]
+        b: Value,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
+                    true,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("b"),
+                        StandardSchema::Anything,
+                    )),
+                    true,
+                ),
+            ],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+    let value = S {
+        a: 1,
+        b: Value::text("hello"),
+    }
+    .as_value();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(&value));
+    assert!(!schema.matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn field_non_nan() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(non_nan))]
+        f: f64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::NonNan,
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+
+    assert!(schema.matches(&S { f: 0.0 }.as_value()));
+    assert!(schema.matches(&S { f: 1.0 }.as_value()));
+    assert!(schema.matches(&S { f: -1.0 }.as_value()));
+    assert!(schema.matches(&S { f: f64::INFINITY }.as_value()));
+    assert!(schema.matches(
+        &S {
+            f: f64::NEG_INFINITY
+        }
+        .as_value()
+    ));
+    assert!(!schema.matches(&S { f: f64::NAN }.as_value()));
+
+    assert!(!schema.matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn field_finite() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(finite))]
+        f: f64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::Finite,
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+
+    assert!(schema.matches(&S { f: 0.0 }.as_value()));
+    assert!(schema.matches(&S { f: 1.0 }.as_value()));
+    assert!(schema.matches(&S { f: -1.0 }.as_value()));
+    assert!(!schema.matches(&S { f: f64::INFINITY }.as_value()));
+    assert!(!schema.matches(
+        &S {
+            f: f64::NEG_INFINITY
+        }
+        .as_value()
+    ));
+    assert!(!schema.matches(&S { f: f64::NAN }.as_value()));
+
+    assert!(!schema.matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn complex() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(or(
+            and(of_kind(ValueKind::Record), num_attrs = 1, num_items = 2),
+            and(of_kind(ValueKind::Record), num_attrs = 2, num_items = 1),
+            of_kind(ValueKind::Int32)
+        )))]
+        value: Value,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("value"),
+                    StandardSchema::Or(vec![
+                        StandardSchema::And(vec![
+                            StandardSchema::OfKind(ValueKind::Record),
+                            StandardSchema::NumAttrs(1),
+                            StandardSchema::NumItems(2),
+                        ]),
+                        StandardSchema::And(vec![
+                            StandardSchema::OfKind(ValueKind::Record),
+                            StandardSchema::NumAttrs(2),
+                            StandardSchema::NumItems(1),
+                        ]),
+                        StandardSchema::OfKind(ValueKind::Int32),
+                    ]),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+
+    let first = Value::Record(
+        vec![Attr::of("a")],
+        vec![
+            Item::ValueItem(Value::text("1")),
+            Item::ValueItem(Value::text("2")),
+        ],
+    );
+    let second = Value::Record(
+        vec![Attr::of("a"), Attr::of("1")],
+        vec![Item::ValueItem(Value::text("1"))],
+    );
+    let third = Value::Int32Value(i32::max_value());
+
+    assert!(schema.matches(&S { value: first }.as_value()));
+    assert!(schema.matches(&S { value: second }.as_value()));
+    assert!(schema.matches(&S { value: third }.as_value()));
+    assert!(!schema.matches(&Value::Int64Value(i64::max_value())));
 }
