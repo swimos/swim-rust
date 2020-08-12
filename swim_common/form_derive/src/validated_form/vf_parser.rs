@@ -441,6 +441,8 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                 let (container_schema, is_bounded_schema) = derive_container_schema(&self);
                 let quote = if is_bounded_schema {
                     quote!(#container_schema)
+                } else if container_schema.is_empty() && schemas.is_empty() {
+                    quote!(#head_attribute)
                 } else {
                     quote! {
                         swim_common::model::schema::StandardSchema::And(

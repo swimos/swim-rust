@@ -563,6 +563,7 @@ fn or() {
             exhaustive: false,
         },
     ]);
+
     let value = S {
         a: String::from("text"),
     }
@@ -641,4 +642,26 @@ fn generic_value() {
     assert_eq!(schema, expected_schema);
     assert!(schema.matches(&expected_value));
     assert!(!schema.matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn tuple_struct() {
+    #[derive(Form, ValidatedForm)]
+    struct S(i32, i64, String);
+}
+
+#[test]
+fn unit_struct() {
+    #[derive(Form, ValidatedForm)]
+    struct S;
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Anything),
+    };
+    assert_eq!(S::schema(), expected_schema);
 }
