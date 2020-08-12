@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::uplink::{Uplink, UplinkAction, UplinkError, UplinkMessage};
-use crate::agent::lane::channels::{LaneMessageHandler, OutputMessage, TaggedAction};
+use crate::agent::lane::channels::{
+    AgentExecutionConfig, AgentExecutionContext, LaneMessageHandler, OutputMessage, TaggedAction,
+};
 use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::{join_all, BoxFuture};
 use futures::{FutureExt, StreamExt};
@@ -282,5 +285,49 @@ impl UplinkErrorReport {
 impl Display for UplinkErrorReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Uplink to {} failed: {}", &self.addr, &self.error)
+    }
+}
+
+/// Default spawner factory, using [`UplinkSpawner`].
+pub(crate) struct SpawnerUplinkFactory(AgentExecutionConfig);
+
+impl LaneUplinks for SpawnerUplinkFactory {
+    fn make_task<Handler, Top, Context>(
+        &self,
+        message_handler: Arc<Handler>,
+        channels: UplinkChannels<Top>,
+        route: RelativePath,
+        context: &Context,
+    ) -> BoxFuture<'static, ()>
+    where
+        Handler: LaneMessageHandler + 'static,
+        OutputMessage<Handler>: Into<Value>,
+        Top: Topic<Handler::Event> + Send + 'static,
+        Context: AgentExecutionContext,
+    {
+        let SpawnerUplinkFactory(AgentExecutionConfig {
+            action_buffer,
+            max_uplink_start_attempts,
+            ..
+        }) = self;
+
+        let UplinkChannels {
+            events,
+            actions,
+            error_collector,
+        } = channels;
+
+        let spawner = UplinkSpawner::new(
+            message_handler,
+            events,
+            actions,
+            *action_buffer,
+            *max_uplink_start_attempts,
+            route,
+        );
+
+        spawner
+            .run(context.router_handle(), context.spawner(), error_collector)
+            .boxed()
     }
 }

@@ -18,7 +18,7 @@ mod tests;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::channels::uplink::spawn::{UplinkErrorReport, UplinkSpawner};
+use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{MapLaneUplink, UplinkAction, ValueLaneUplink};
 use crate::agent::lane::channels::{
     AgentExecutionConfig, AgentExecutionContext, InputMessage, LaneMessageHandler, OutputMessage,
@@ -29,7 +29,7 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
 use futures::future::{join3, BoxFuture};
-use futures::{select, FutureExt, Stream, StreamExt};
+use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
@@ -46,6 +46,7 @@ use tokio::sync::mpsc;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
+/// Aggregate error report combining lane update errors and lane uplink errors.
 #[derive(Debug)]
 pub struct LaneIoError {
     pub route: RelativePath,
@@ -102,13 +103,48 @@ impl Display for LaneIoError {
     }
 }
 
+impl Error for LaneIoError {}
+
+/// Encapsulates the inputs and outputs of an uplink spawner.
 pub struct UplinkChannels<Top> {
-    events: Top,
-    actions: mpsc::Receiver<TaggedAction>,
-    error_collector: mpsc::Sender<UplinkErrorReport>,
+    /// Event topic for the lane.
+    pub events: Top,
+    /// Input for passing actions to the uplink.
+    pub actions: mpsc::Receiver<TaggedAction>,
+    /// Output for the uplink to report failures.
+    pub error_collector: mpsc::Sender<UplinkErrorReport>,
 }
 
+impl<Top> UplinkChannels<Top> {
+    pub(crate) fn new(
+        events: Top,
+        actions: mpsc::Receiver<TaggedAction>,
+        error_collector: mpsc::Sender<UplinkErrorReport>,
+    ) -> Self {
+        UplinkChannels {
+            events,
+            actions,
+            error_collector,
+        }
+    }
+}
+
+/// Trait to abstract out spawning of lane uplinks.
 pub trait LaneUplinks {
+    /// Create a task that will spawn uplinks on demand.
+    ///
+    /// #Arguments
+    ///
+    /// * `message_handler` - Creates the update task for the lane and new uplink state machines.
+    /// * `channels` - The inputs and outputs for the uplink spawner.
+    /// * `route` - The route to the lane for creating envelopes.
+    /// * `context` - Agent execution context for scheduling tasks and routing envelopes.
+    ///
+    /// #Type Parameters
+    ///
+    /// * `Handler` - Type of the lane uplink strategy.
+    /// * `Top` - Type of the lane event topic.
+    /// * `Context` - Type o the agent execution context.
     fn make_task<Handler, Top, Context>(
         &self,
         message_handler: Arc<Handler>,
@@ -123,51 +159,18 @@ pub trait LaneUplinks {
         Context: AgentExecutionContext;
 }
 
-struct SpawnerUplinkFactory(AgentExecutionConfig);
-
-impl LaneUplinks for SpawnerUplinkFactory {
-    fn make_task<Handler, Top, Context>(
-        &self,
-        message_handler: Arc<Handler>,
-        channels: UplinkChannels<Top>,
-        route: RelativePath,
-        context: &Context,
-    ) -> BoxFuture<'static, ()>
-    where
-        Handler: LaneMessageHandler + 'static,
-        OutputMessage<Handler>: Into<Value>,
-        Top: Topic<Handler::Event> + Send + 'static,
-        Context: AgentExecutionContext,
-    {
-        let SpawnerUplinkFactory(AgentExecutionConfig {
-            action_buffer,
-            max_uplink_start_attempts,
-            ..
-        }) = self;
-
-        let UplinkChannels {
-            events,
-            actions,
-            error_collector,
-        } = channels;
-
-        let spawner = UplinkSpawner::new(
-            message_handler,
-            events,
-            actions,
-            *action_buffer,
-            *max_uplink_start_attempts,
-            route,
-        );
-
-        spawner
-            .run(context.router_handle(), context.spawner(), error_collector)
-            .boxed()
-    }
-}
-
-impl Error for LaneIoError {}
-
+/// Run the [`Envelope`] IO for a lane, updating the state of the lane and creating uplinks to
+/// remote subscribers.
+///
+/// #Arguments
+/// * `message_handler` - Creates the update task for the lane and new uplink state machines.
+/// * `lane_uplinks` - Strategy for spawning lane uplinks.
+/// * `envelopes` - The stream of incoming envelopes.
+/// * `events` - The lane event topic.
+/// * `config` - Agent configuration parameters.
+/// * `context` - The agent execution context, providing task scheduling and outgoing envelope
+/// routing.
+/// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_lane_io<Handler, Uplinks>(
     message_handler: Handler,
     lane_uplinks: Uplinks,
@@ -198,11 +201,7 @@ where
     let (mut upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(uplink_err_buffer.get());
 
-    let spawner_channels = UplinkChannels {
-        events,
-        actions: act_rx,
-        error_collector: err_tx,
-    };
+    let spawner_channels = UplinkChannels::new(events, act_rx, err_tx);
 
     let (upd_done_tx, upd_done_rx) = trigger::trigger();
     let updater = arc_handler.make_update().run_update(upd_rx);
@@ -299,6 +298,8 @@ where
     }
 }
 
+/// Each uplink from a [`MapLane`] requires a unique ID. This handler implementation maintains
+/// a monotonic counter to ensure that.
 pub struct MapLaneMessageHandler<K, V, F> {
     lane: MapLane<K, V>,
     uplink_counter: AtomicU64,

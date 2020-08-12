@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::channels::uplink::spawn::{UplinkErrorReport, UplinkSpawner};
+use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
-use crate::agent::lane::channels::{LaneMessageHandler, TaggedAction};
+use crate::agent::lane::channels::{
+    AgentExecutionConfig, AgentExecutionContext, LaneMessageHandler, TaggedAction,
+};
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::future::{join, join3, ready};
@@ -35,6 +38,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_form::{Form, FormDeserializeErr};
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 
 const INIT: i32 = 42;
 
@@ -177,25 +181,6 @@ fn route() -> RelativePath {
     RelativePath::new("node", "lane")
 }
 
-/// Create a spawner attached to the provided inputs and ouputs.
-fn make_spawner(
-    tx_up: mpsc::Sender<i32>,
-    rx_event: mpsc::Receiver<i32>,
-    rx_act: mpsc::Receiver<TaggedAction>,
-) -> UplinkSpawner<TestHandler, MpscTopic<i32>> {
-    let handler = Arc::new(TestHandler(tx_up, INIT));
-    let (topic, _rec) = MpscTopic::new(rx_event, default_buffer(), yield_after());
-
-    UplinkSpawner::new(
-        handler,
-        topic,
-        rx_act,
-        default_buffer(),
-        max_attempts(),
-        route(),
-    )
-}
-
 #[derive(Clone)]
 struct UplinkSpawnerInputs {
     action_tx: mpsc::Sender<TaggedAction>,
@@ -289,6 +274,31 @@ impl UplinkSpawnerSplitOutputs {
     }
 }
 
+fn make_config() -> AgentExecutionConfig {
+    AgentExecutionConfig {
+        max_concurrency: 1,
+        action_buffer: default_buffer(),
+        update_buffer: default_buffer(),
+        uplink_err_buffer: default_buffer(),
+        max_fatal_uplink_errors: 1,
+        max_uplink_start_attempts: max_attempts(),
+    }
+}
+
+struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<BoxFuture<'static, ()>>);
+
+impl AgentExecutionContext for TestContext {
+    type Router = TestRouter;
+
+    fn router_handle(&self) -> Self::Router {
+        TestRouter(self.0.clone())
+    }
+
+    fn spawner(&self) -> Sender<BoxFuture<'static, ()>> {
+        self.1.clone()
+    }
+}
+
 /// Create a spawner connected to a complete test harness.
 fn make_test_harness() -> (
     UplinkSpawnerInputs,
@@ -306,11 +316,15 @@ fn make_test_harness() -> (
     let (error_tx, error_rx) = mpsc::channel(5);
     let error_task = error_rx.collect::<Vec<_>>();
 
-    let spawner = make_spawner(tx_up, rx_event, rx_act);
+    let handler = Arc::new(TestHandler(tx_up, INIT));
+    let (topic, _rec) = MpscTopic::new(rx_event, default_buffer(), yield_after());
+    let factory = SpawnerUplinkFactory(make_config());
 
-    let router = TestRouter(tx_router);
+    let channels = UplinkChannels::new(topic, rx_act, error_tx);
 
-    let spawner_task = spawner.run(router, spawn_tx, error_tx);
+    let context = TestContext(tx_router, spawn_tx);
+
+    let spawner_task = factory.make_task(handler, channels, route(), &context);
 
     let errs = join3(spawn_task, spawner_task, error_task)
         .map(|(_, _, errs)| errs)
