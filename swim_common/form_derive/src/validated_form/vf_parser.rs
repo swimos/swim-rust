@@ -19,7 +19,7 @@ use quote::ToTokens;
 use syn::export::TokenStream2;
 use syn::{Lit, Meta, MetaNameValue, NestedMeta, Type};
 
-use macro_helpers::{Context, Identity, Symbol};
+use macro_helpers::{CompoundTypeKind, Context, Identity, Symbol};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{
@@ -31,6 +31,7 @@ pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
 pub const NUM_ATTRS_PATH: Symbol = Symbol("num_attrs");
 pub const NUM_ITEMS_PATH: Symbol = Symbol("num_items");
+pub const OF_KIND_PATH: Symbol = Symbol("of_kind");
 pub const ALL_ITEMS_PATH: Symbol = Symbol("all_items");
 pub const AND_PATH: Symbol = Symbol("and");
 pub const OR_PATH: Symbol = Symbol("or");
@@ -189,14 +190,36 @@ pub struct ValidatedField<'f> {
 
 impl<'f> ToTokens for ValidatedField<'f> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        // todo: Create fieldspecs from field identities
         let field_schema = self.field_schema.to_token_stream();
-        match &self.form_field.identity {
-            Identity::Named(_ident) => {}
-            Identity::Renamed { .. } => {}
-            _anon @ Identity::Anonymous(_) => {}
-        }
-        field_schema.to_tokens(tokens);
+        let schema = match &self.form_field.identity {
+            Identity::Named(ident) => {
+                let field_name = ident.to_string();
+
+                quote! {
+                    swim_common::model::schema::ItemSchema::Field(
+                        swim_common::model::schema::slot::SlotSchema::new(
+                            StandardSchema::text(#field_name),
+                            #field_schema,
+                        )
+                    )
+                }
+            }
+            Identity::Renamed { new_identity, .. } => {
+                quote! {
+                    swim_common::model::schema::ItemSchema::Field(
+                        swim_common::model::schema::slot::SlotSchema::new(
+                            StandardSchema::text(&#new_identity),
+                            #field_schema,
+                        )
+                    )
+                }
+            }
+            Identity::Anonymous(_) => quote! (
+                swim_common::model::schema::ItemSchema::ValueItem(#field_schema)
+            ),
+        };
+
+        schema.to_tokens(tokens);
     }
 }
 
@@ -232,20 +255,28 @@ impl ToTokens for StandardSchema {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let quote = match self {
             StandardSchema::Type(ty) => quote!(#ty::schema()),
-            StandardSchema::Equal(_) => unimplemented!(),
-            StandardSchema::OfKind(_) => unimplemented!(),
+            StandardSchema::Equal(value) => {
+                quote!(swim_common::model::schema::StandardSchema::Equal(#value))
+            }
+            StandardSchema::OfKind(kind) => {
+                quote!(swim_common::model::schema::StandardSchema::OfKind(#kind))
+            }
             StandardSchema::IntRange => unimplemented!(),
             StandardSchema::UintRange => unimplemented!(),
             StandardSchema::FloatRange => unimplemented!(),
             StandardSchema::BigIntRange => unimplemented!(),
-            StandardSchema::NonNan => unimplemented!(),
-            StandardSchema::Finite => unimplemented!(),
-            StandardSchema::Text(_) => unimplemented!(),
+            StandardSchema::NonNan => quote!(swim_common::model::schema::StandardSchema::NonNan),
+            StandardSchema::Finite => quote!(swim_common::model::schema::StandardSchema::Finite),
+            StandardSchema::Text(text) => {
+                quote!(swim_common::model::schema::StandardSchema::Text(&#text))
+            }
             StandardSchema::Anything => {
                 quote!(swim_common::model::schema::StandardSchema::Anything)
             }
             StandardSchema::Nothing => quote!(swim_common::model::schema::StandardSchema::Nothing),
-            StandardSchema::DataLength(_) => unimplemented!(),
+            StandardSchema::DataLength(len) => {
+                quote!(swim_common::model::schema::StandardSchema::binary_length(#len))
+            }
             StandardSchema::NumAttrs(num) => {
                 quote!(swim_common::model::schema::StandardSchema::NumAttrs(#num))
             }
@@ -261,8 +292,10 @@ impl ToTokens for StandardSchema {
             StandardSchema::Not(not_schema) => quote!(
                 swim_common::model::schema::StandardSchema::Not(std::boxed::Box::new(#not_schema))
             ),
-            StandardSchema::AllItems(_) => unimplemented!(),
-            StandardSchema::None => unimplemented!(),
+            StandardSchema::AllItems(ts) => {
+                quote!(swim_common::model::schema::StandardSchema::AllItems(std::boxed::Box::new(#ts)))
+            }
+            StandardSchema::None => quote!(),
         };
 
         quote.to_tokens(tokens);
@@ -349,6 +382,37 @@ fn map_fields_to_validated<'f>(
         .collect()
 }
 
+fn derive_container_schema(
+    type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
+) -> TokenStream2 {
+    match type_contents {
+        TypeContents::Struct(repr) => match &repr.descriptor.schema {
+            Some(schema) => match schema {
+                StandardSchema::AllItems(items) => match &repr.compound_type {
+                    CompoundTypeKind::Struct => {
+                        quote! {
+                            swim_common::model::schema::StandardSchema::AllItems(
+                                std::boxed::Box::new(
+                                    swim_common::model::schema::ItemSchema::Field(
+                                        swim_common::model::schema::slot::SlotSchema::new(
+                                            swim_common::model::schema::StandardSchema::Anything,
+                                            #items,
+                                        )
+                                    )
+                                )
+                            ),
+                        }
+                    }
+                    _ => unimplemented!(),
+                },
+                _ => unimplemented!(),
+            },
+            None => quote!(),
+        },
+        TypeContents::Enum(_variants) => unimplemented!(),
+    }
+}
+
 impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
@@ -357,15 +421,25 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                 let schemas = repr.fields.iter().fold(TokenStream2::new(), |ts, field| {
                     quote! {
                         #ts
-                        #field,
+                        (#field, true),
                     }
                 });
 
+                let container_schema = derive_container_schema(&self);
+
                 let quote = quote! {
-                    swim_common::model::schema::StandardSchema::And(vec![
-                        #head_attribute,
-                        #schemas
-                    ])
+                    swim_common::model::schema::StandardSchema::And(
+                        vec![
+                            #head_attribute,
+                            #container_schema
+                            swim_common::model::schema::StandardSchema::Layout {
+                                items: vec![
+                                    #schemas
+                                ],
+                                exhaustive: false
+                            }
+                        ]
+                    )
                 };
 
                 quote.to_tokens(tokens);

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use quote::ToTokens;
+use syn::DeriveInput;
+
 use macro_helpers::Context;
 
 use crate::form::form_parser::build_type_contents;
 use crate::validated_form::vf_parser::type_contents_to_validated;
-use quote::ToTokens;
-use syn::DeriveInput;
 
 mod meta_parse;
 mod vf_parser;
@@ -45,6 +46,8 @@ pub fn build_validated_form(
             }
         }
     };
+
+    println!("{}", ts.to_string());
 
     Ok(ts)
 }

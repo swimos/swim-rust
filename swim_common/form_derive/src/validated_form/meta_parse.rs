@@ -13,9 +13,11 @@
 // limitations under the License.
 
 use crate::validated_form::vf_parser::{
-    StandardSchema, ALL_ITEMS_PATH, AND_PATH, NOT_PATH, NUM_ATTRS_PATH, NUM_ITEMS_PATH, OR_PATH,
+    StandardSchema, ALL_ITEMS_PATH, AND_PATH, NOT_PATH, NUM_ATTRS_PATH, NUM_ITEMS_PATH,
+    OF_KIND_PATH, OR_PATH,
 };
 use macro_helpers::Context;
+use quote::ToTokens;
 use syn::punctuated::Punctuated;
 #[allow(unused_imports)]
 use syn::token::Token;
@@ -61,6 +63,12 @@ pub fn parse_schema_meta(
                 if let Some(int) = parse_lit_to_int(&name.lit, context) {
                     push_element(StandardSchema::NumItems(int), &mut schema);
                 }
+            }
+            NestedMeta::Meta(Meta::List(list)) if list.path == OF_KIND_PATH => {
+                push_element(
+                    StandardSchema::OfKind(list.nested.to_token_stream()),
+                    &mut schema,
+                );
             }
             NestedMeta::Meta(Meta::List(list)) if list.path == AND_PATH => {
                 if list.nested.len() < 2 {
@@ -120,7 +128,10 @@ pub fn parse_schema_meta(
                     );
                 }
             }
-            _ => context.error_spanned_by(meta, "Unknown field attribute"),
+            meta => {
+                println!("{:?}", meta);
+                context.error_spanned_by(meta, "Unknown schema")
+            }
         }
 
         schema
