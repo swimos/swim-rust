@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use trybuild::TestCases;
+use form_derive::*;
+use swim_common::model::ValueKind;
 
-#[test]
-fn test_derive() {
-    let t = TestCases::new();
-
-    t.compile_fail("src/form/tests/validated/derive/all_items_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/and_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/or_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/not_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/invalid_container_of_kind.rs");
+fn main() {
+    #[derive(Form, ValidatedForm)]
+    #[form(schema(all_items(of_kind(ValueKind::ThisIsntValid))))]
+    struct S {
+        a: i32,
+    }
 }

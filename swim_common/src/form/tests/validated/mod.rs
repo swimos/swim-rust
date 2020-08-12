@@ -96,7 +96,7 @@ mod swim_common {
 mod container_attrs {
     use super::*;
     use crate::model::schema::slot::SlotSchema;
-    use crate::model::schema::{FieldSpec, ItemSchema};
+    use crate::model::schema::ItemSchema;
     use crate::model::Item;
 
     // #[test]
@@ -164,8 +164,8 @@ mod container_attrs {
             },
         ]);
 
-        let value = S { a: 1, b: 2 }.as_value();
-        let expected_value = Value::Record(
+        let valid = S { a: 1, b: 2 }.as_value();
+        let valid_value = Value::Record(
             vec![Attr::of("S")],
             vec![
                 Item::Slot(Value::text("a"), Value::Int32Value(1)),
@@ -173,11 +173,20 @@ mod container_attrs {
             ],
         );
 
-        assert_eq!(value, expected_value);
+        let invalid_value = Value::Record(
+            vec![Attr::of("S")],
+            vec![
+                Item::Slot(Value::text("a"), Value::Int32Value(1)),
+                Item::Slot(Value::text("b"), Value::text("invalid")),
+            ],
+        );
+
+        assert_eq!(valid, valid_value);
         assert_eq!(S::schema(), expected_schema);
-        assert!(S::schema().matches(&value));
+        assert!(S::schema().matches(&valid));
+        assert!(!S::schema().matches(&invalid_value));
     }
-    //
+
     // #[test]
     // fn anything() {
     //     #[derive(Form, ValidatedForm)]
@@ -229,14 +238,50 @@ mod container_attrs {
     //     }
     // }
     //
-    // #[test]
-    // fn not() {
-    //     #[derive(Form, ValidatedForm)]
-    //     struct S {
-    //         #[form(schema(not(num_items = 5)))]
-    //         a: i32,
-    //     }
-    // }
+    #[test]
+    fn not() {
+        #[derive(Form, ValidatedForm)]
+        struct S {
+            #[form(schema(not(of_kind(ValueKind::Text))))]
+            a: Value,
+        }
+
+        let expected_schema = StandardSchema::And(vec![
+            StandardSchema::HeadAttribute {
+                schema: Box::new(AttrSchema::named(
+                    "S",
+                    StandardSchema::OfKind(ValueKind::Extant),
+                )),
+                required: true,
+                remainder: Box::new(StandardSchema::Anything),
+            },
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::Not(Box::new(StandardSchema::OfKind(ValueKind::Text))),
+                    )),
+                    true,
+                )],
+                exhaustive: false,
+            },
+        ]);
+
+        let valid_value = Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::Slot(Value::text("a"), Value::Int32Value(1))],
+        );
+        let invalid_value = Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::Slot(Value::text("a"), Value::text("invalid"))],
+        );
+
+        let schema = S::schema();
+
+        assert_eq!(schema, expected_schema);
+        assert!(schema.matches(&valid_value));
+        assert!(!schema.matches(&invalid_value));
+    }
     //
     // #[test]
     // fn or() {
@@ -246,13 +291,4 @@ mod container_attrs {
     //         a: i32,
     //     }
     // }
-    #[test]
-    fn text() {
-        // let ts = StandardSchema::text()
-
-        let ss = StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(
-            StandardSchema::Anything,
-            StandardSchema::OfKind(ValueKind::BigInt),
-        ))));
-    }
 }

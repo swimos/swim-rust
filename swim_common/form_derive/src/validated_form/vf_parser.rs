@@ -198,7 +198,7 @@ impl<'f> ToTokens for ValidatedField<'f> {
                 quote! {
                     swim_common::model::schema::ItemSchema::Field(
                         swim_common::model::schema::slot::SlotSchema::new(
-                            StandardSchema::text(#field_name),
+                            swim_common::model::schema::StandardSchema::text(#field_name),
                             #field_schema,
                         )
                     )
@@ -208,7 +208,7 @@ impl<'f> ToTokens for ValidatedField<'f> {
                 quote! {
                     swim_common::model::schema::ItemSchema::Field(
                         swim_common::model::schema::slot::SlotSchema::new(
-                            StandardSchema::text(&#new_identity),
+                            swim_common::model::schema::StandardSchema::text(&#new_identity),
                             #field_schema,
                         )
                     )
