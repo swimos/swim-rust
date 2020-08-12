@@ -14,7 +14,7 @@
 
 use serde::Serialize;
 
-use common::model::{Attr, Item, Value};
+use swim_common::model::{Attr, Item, Value};
 
 use crate::tests::to_value;
 

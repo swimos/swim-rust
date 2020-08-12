@@ -15,7 +15,7 @@
 use serde::Serialize;
 
 use crate::tests::to_value;
-use common::model::{Attr, Item, Value};
+use swim_common::model::{Attr, Item, Value};
 
 #[test]
 fn vector_of_tuples() {

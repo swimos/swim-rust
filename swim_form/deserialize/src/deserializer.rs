@@ -14,7 +14,7 @@
 
 use serde::Deserializer;
 
-use common::model::{Item, Value};
+use swim_common::model::{Item, Value};
 
 use crate::enum_access::Enum;
 use crate::map_access::RecordMap;

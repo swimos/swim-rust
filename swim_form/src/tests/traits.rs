@@ -17,9 +17,9 @@ use std::fmt::Debug;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 
-use common::model::Value::Record;
-use common::model::{Item, Value};
 use deserialize::FormDeserializeErr;
+use swim_common::model::Value::Record;
+use swim_common::model::{Item, Value};
 
 use super::super::Form;
 use crate::impls::de_incorrect_type;
