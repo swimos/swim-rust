@@ -14,7 +14,7 @@
 
 use common::routing::RoutingError;
 use common::sink::item::ItemSender;
-use common::warp::envelope::Envelope;
+use common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::Display;
 
@@ -58,6 +58,11 @@ impl Display for RoutingAddr {
 /// An [`Envelope`] tagged with the ket of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
+
+/// An [`OutgoingLinkMessage`] tagged with the ket of the endpoint into routing table from which it
+/// originated.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedClientEnvelope(pub RoutingAddr, pub OutgoingLinkMessage);
 
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {

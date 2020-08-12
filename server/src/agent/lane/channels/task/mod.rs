@@ -26,10 +26,10 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use common::model::Value;
 use common::topic::Topic;
-use common::warp::envelope::{Envelope, EnvelopeHeader, OutgoingHeader};
+use common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use common::warp::path::RelativePath;
 use either::Either;
 use futures::future::{join3, BoxFuture};
@@ -43,6 +43,8 @@ use std::sync::Arc;
 use stm::transaction::RetryManager;
 use swim_form::Form;
 use tokio::sync::mpsc;
+use utilities::future::SwimStreamExt;
+use utilities::sync::trigger;
 
 #[derive(Debug)]
 pub struct LaneIoError {
@@ -103,7 +105,7 @@ impl Display for LaneIoError {
 pub struct UplinkChannels<Top> {
     events: Top,
     actions: mpsc::Receiver<TaggedAction>,
-    errors_collector: mpsc::Sender<UplinkErrorReport>,
+    error_collector: mpsc::Sender<UplinkErrorReport>,
 }
 
 pub trait LaneUplinks {
@@ -146,7 +148,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         let UplinkChannels {
             events,
             actions,
-            errors_collector: error_collector,
+            error_collector,
         } = channels;
 
         let spawner = UplinkSpawner::new(
@@ -169,12 +171,12 @@ impl Error for LaneIoError {}
 pub async fn run_lane_io<Handler, Uplinks>(
     message_handler: Handler,
     lane_uplinks: Uplinks,
-    envelopes: impl Stream<Item = TaggedEnvelope>,
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
     events: impl Topic<Handler::Event> + Send + 'static,
-    config: &AgentExecutionConfig,
-    context: &impl AgentExecutionContext,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
     route: RelativePath,
-) -> Result<(), LaneIoError>
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     Handler: LaneMessageHandler + 'static,
     Uplinks: LaneUplinks,
@@ -199,15 +201,21 @@ where
     let spawner_channels = UplinkChannels {
         events,
         actions: act_rx,
-        errors_collector: err_tx,
+        error_collector: err_tx,
     };
 
-    let update_task = arc_handler.make_update().run_update(upd_rx);
+    let (upd_done_tx, upd_done_rx) = trigger::trigger();
+    let updater = arc_handler.make_update().run_update(upd_rx);
+    let update_task = async move {
+        let result = updater.await;
+        upd_done_tx.trigger();
+        result
+    };
 
     let uplink_spawn_task =
-        lane_uplinks.make_task(arc_handler, spawner_channels, route.clone(), context);
+        lane_uplinks.make_task(arc_handler, spawner_channels, route.clone(), &context);
 
-    let mut err_rx = err_rx.fuse();
+    let mut err_rx = err_rx.take_until_completes(upd_done_rx).fuse();
 
     let envelope_task = async move {
         pin_mut!(envelopes);
@@ -216,31 +224,23 @@ where
         let mut num_fatal: usize = 0;
 
         let failed: bool = loop {
-            let envelope_or_err: Option<Either<TaggedEnvelope, UplinkErrorReport>> = select! {
+            let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
                 maybe_env = envelopes.next() => maybe_env.map(Either::Left),
                 maybe_err = err_rx.next() => maybe_err.map(Either::Right),
             };
 
             match envelope_or_err {
                 Some(Either::Left(envelope)) => {
-                    let TaggedEnvelope(addr, Envelope { header, body }) = envelope;
+                    let TaggedClientEnvelope(addr, OutgoingLinkMessage { header, body, .. }) =
+                        envelope;
                     let action = match header {
-                        EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), _) => {
-                            Some(Either::Left(UplinkAction::Link))
-                        }
-                        EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(_), _) => {
-                            Some(Either::Left(UplinkAction::Sync))
-                        }
-                        EnvelopeHeader::OutgoingLink(OutgoingHeader::Unlink, _) => {
-                            Some(Either::Left(UplinkAction::Unlink))
-                        }
-                        EnvelopeHeader::OutgoingLink(OutgoingHeader::Command, _) => {
-                            Some(Either::Right(body.unwrap_or(Value::Extant)))
-                        }
-                        _ => None,
+                        OutgoingHeader::Link(_) => Either::Left(UplinkAction::Link),
+                        OutgoingHeader::Sync(_) => Either::Left(UplinkAction::Sync),
+                        OutgoingHeader::Unlink => Either::Left(UplinkAction::Unlink),
+                        OutgoingHeader::Command => Either::Right(body.unwrap_or(Value::Extant)),
                     };
                     match action {
-                        Some(Either::Left(uplink_action)) => {
+                        Either::Left(uplink_action) => {
                             if act_tx
                                 .send(TaggedAction(addr, uplink_action))
                                 .await
@@ -249,13 +249,10 @@ where
                                 break false;
                             }
                         }
-                        Some(Either::Right(command)) => {
+                        Either::Right(command) => {
                             if upd_tx.send(Form::try_convert(command)).await.is_err() {
                                 break false;
                             }
-                        }
-                        _ => {
-                            //TODO handle incoming messages to support server side downlinks.
                         }
                     }
                 }
@@ -264,7 +261,7 @@ where
                         num_fatal += 1;
                     }
                     uplink_errors.push(error);
-                    if num_fatal > *max_fatal_uplink_errors {
+                    if num_fatal > max_fatal_uplink_errors {
                         break true;
                     }
                 }
@@ -281,7 +278,7 @@ where
         (_, _, (true, upl_errs)) if !upl_errs.is_empty() => {
             Err(LaneIoError::for_uplink_errors(route, upl_errs))
         }
-        _ => Ok(()),
+        (_, _, (_, upl_errs)) => Ok(upl_errs),
     }
 }
 
