@@ -13,7 +13,7 @@ use std::fmt::{Debug, Display};
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use syn::export::{Formatter, TokenStream2};
-use syn::{Data, Index, Meta, Path};
+use syn::{Data, ExprPath, Index, Lit, Meta, Path};
 
 #[derive(Copy, Clone)]
 pub struct Symbol(pub &'static str);
@@ -221,6 +221,28 @@ pub fn get_attribute_meta(
                 ctx.error_spanned_by(attr, e.to_compile_error());
                 Err(())
             }
+        }
+    }
+}
+
+pub fn lit_str_to_expr_path(ctx: &mut Context, lit: &Lit) -> Result<ExprPath, ()> {
+    match lit {
+        Lit::Str(lit_str) => {
+            let token_stream = syn::parse_str(&lit_str.value()).map_err(|e| {
+                ctx.error_spanned_by(lit_str, e.to_string());
+                ()
+            })?;
+            match syn::parse2::<ExprPath>(token_stream) {
+                Ok(path) => Ok(path),
+                Err(e) => {
+                    ctx.error_spanned_by(lit, e.to_string());
+                    Err(())
+                }
+            }
+        }
+        _ => {
+            ctx.error_spanned_by(lit, "Expected a String literal");
+            Err(())
         }
     }
 }

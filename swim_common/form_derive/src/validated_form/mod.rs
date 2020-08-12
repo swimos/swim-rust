@@ -47,7 +47,7 @@ pub fn build_validated_form(
         }
     };
 
-    // println!("{}", ts.to_string());
+    println!("{}", ts.to_string());
 
     Ok(ts)
 }

@@ -13,15 +13,15 @@
 // limitations under the License.
 
 use crate::validated_form::vf_parser::{
-    StandardSchema, ALL_ITEMS_PATH, AND_PATH, NOT_PATH, NUM_ATTRS_PATH, NUM_ITEMS_PATH,
+    StandardSchema, ALL_ITEMS_PATH, AND_PATH, EQUAL_PATH, NOT_PATH, NUM_ATTRS_PATH, NUM_ITEMS_PATH,
     OF_KIND_PATH, OR_PATH,
 };
-use macro_helpers::Context;
+use macro_helpers::{lit_str_to_expr_path, Context};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
 #[allow(unused_imports)]
 use syn::token::Token;
-use syn::{Lit, Meta, NestedMeta};
+use syn::{ExprPath, Lit, Meta, NestedMeta};
 
 fn parse_lit_to_int(lit: &Lit, context: &mut Context) -> Option<usize> {
     match lit {
@@ -65,10 +65,19 @@ pub fn parse_schema_meta(
                 }
             }
             NestedMeta::Meta(Meta::List(list)) if list.path == OF_KIND_PATH => {
-                push_element(
-                    StandardSchema::OfKind(list.nested.to_token_stream()),
-                    &mut schema,
-                );
+                if list.nested.len() != 1 {
+                    context.error_spanned_by(list, "Only one argument may be provided");
+                } else {
+                    push_element(
+                        StandardSchema::OfKind(list.nested.to_token_stream()),
+                        &mut schema,
+                    );
+                }
+            }
+            NestedMeta::Meta(Meta::NameValue(name)) if name.path == EQUAL_PATH => {
+                if let Ok(path) = lit_str_to_expr_path(context, &name.lit) {
+                    push_element(StandardSchema::Equal(path), &mut schema);
+                }
             }
             NestedMeta::Meta(Meta::List(list)) if list.path == AND_PATH => {
                 if list.nested.len() < 2 {
@@ -128,10 +137,7 @@ pub fn parse_schema_meta(
                     );
                 }
             }
-            meta => {
-                println!("{:?}", meta);
-                context.error_spanned_by(meta, "Unknown schema")
-            }
+            meta => context.error_spanned_by(meta, "Unknown schema"),
         }
 
         schema

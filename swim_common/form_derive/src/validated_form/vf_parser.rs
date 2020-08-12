@@ -17,9 +17,9 @@ use std::fmt::Debug;
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use syn::export::TokenStream2;
-use syn::{Lit, Meta, MetaNameValue, NestedMeta, Type};
+use syn::{ExprPath, Lit, Meta, MetaNameValue, NestedMeta, Type};
 
-use macro_helpers::{CompoundTypeKind, Context, Identity, Symbol};
+use macro_helpers::{lit_str_to_expr_path, CompoundTypeKind, Context, Identity, Symbol};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{
@@ -32,6 +32,7 @@ pub const NOTHING_PATH: Symbol = Symbol("nothing");
 pub const NUM_ATTRS_PATH: Symbol = Symbol("num_attrs");
 pub const NUM_ITEMS_PATH: Symbol = Symbol("num_items");
 pub const OF_KIND_PATH: Symbol = Symbol("of_kind");
+pub const EQUAL_PATH: Symbol = Symbol("equal");
 pub const ALL_ITEMS_PATH: Symbol = Symbol("all_items");
 pub const AND_PATH: Symbol = Symbol("and");
 pub const OR_PATH: Symbol = Symbol("or");
@@ -145,6 +146,16 @@ impl ValidatedFormDescriptor {
                                 StandardSchema::Nothing,
                             )
                         }
+                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == EQUAL_PATH => {
+                            if let Ok(path) = lit_str_to_expr_path(context, &name.lit) {
+                                set_container_schema(
+                                    path.to_token_stream(),
+                                    &mut desc.schema,
+                                    context,
+                                    StandardSchema::Equal(path),
+                                )
+                            }
+                        }
                         _ => context.error_spanned_by(
                             meta,
                             "Unknown or malformatted schema container attribute",
@@ -229,8 +240,7 @@ pub enum StandardSchema {
     None,
     /// Uses the implementation on the Type
     Type(TokenStream2),
-    /// This field/container should be equal to the provided [`TokenStream`]
-    Equal(TokenStream2),
+    Equal(ExprPath),
     /// This field/container should be of the kind provided by the [`TokenStream`]
     OfKind(TokenStream2),
     IntRange,
@@ -255,8 +265,13 @@ impl ToTokens for StandardSchema {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let quote = match self {
             StandardSchema::Type(ty) => quote!(#ty::schema()),
-            StandardSchema::Equal(value) => {
-                quote!(swim_common::model::schema::StandardSchema::Equal(#value))
+            StandardSchema::Equal(path) => {
+                quote! {
+                    {
+                        let value:Value = #path();
+                        swim_common::model::schema::StandardSchema::Equal(value)
+                    }
+                }
             }
             StandardSchema::OfKind(kind) => {
                 quote!(swim_common::model::schema::StandardSchema::OfKind(#kind))
@@ -405,6 +420,14 @@ fn derive_container_schema(
                     }
                     _ => unimplemented!(),
                 },
+                StandardSchema::Equal(path) => {
+                    quote! {
+                        {
+                            let value: swim_common::model::Value = #path();
+                            swim_common::model::schema::StandardSchema::Equal(value)
+                        },
+                    }
+                }
                 _ => unimplemented!(),
             },
             None => quote!(),
