@@ -36,8 +36,7 @@ pub enum RetryStrategy {
 /// backed by this.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IntervalStrategy {
-    /// Indefinate if [`None`]
-    retry: Option<usize>,
+    retry: Quantity<usize>,
     delay: Option<Duration>,
 }
 
@@ -49,11 +48,17 @@ pub struct ExponentialStrategy {
     /// The maximum interval between a retry, generated intervals will be truncated to this duration
     /// if they exceed it.
     max_interval: Duration,
-    /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds. Indefinate if
-    /// [`None`]
-    max_backoff: Option<Duration>,
+    /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds.
+    max_backoff: Quantity<Duration>,
     /// The current retry number.
     retry_no: u64,
+}
+
+/// Wrapper around a type that can have finite and infinite values.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Quantity<T> {
+    Finite(T),
+    Infinite,
 }
 
 impl Default for RetryStrategy {
@@ -61,7 +66,7 @@ impl Default for RetryStrategy {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
             max_interval: Duration::from_secs(16),
-            max_backoff: Some(Duration::from_secs(300)),
+            max_backoff: Quantity::Finite(Duration::from_secs(300)),
             retry_no: 0,
         })
     }
@@ -70,7 +75,7 @@ impl Default for RetryStrategy {
 impl RetryStrategy {
     /// Builds a truncated exponential retry strategy with a [`max_interval`] between the requests and
     /// a [`max_backoff`] duration that the requests will be attempted for.
-    pub fn exponential(max_interval: Duration, max_backoff: Option<Duration>) -> RetryStrategy {
+    pub fn exponential(max_interval: Duration, max_backoff: Quantity<Duration>) -> RetryStrategy {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
             max_interval,
@@ -83,19 +88,19 @@ impl RetryStrategy {
     /// in between the requests.
     pub fn immediate(retries: NonZeroUsize) -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
-            retry: Some(retries.get()),
+            retry: Quantity::Finite(retries.get()),
             delay: None,
         })
     }
 
     /// Builds an interval retry strategy that will attempt ([`retries`]) requests with [`delay`]
     /// sleep in between the requests.
-    pub fn interval(delay: Duration, retries: Option<NonZeroUsize>) -> RetryStrategy {
+    pub fn interval(delay: Duration, retries: Quantity<NonZeroUsize>) -> RetryStrategy {
         let retries = {
-            if let Some(retries) = retries {
-                Some(retries.get())
+            if let Quantity::Finite(retries) = retries {
+                Quantity::Finite(retries.get())
             } else {
-                None
+                Quantity::Infinite
             }
         };
 
@@ -108,7 +113,7 @@ impl RetryStrategy {
     /// No retry strategy. Only the initial request is attempted.
     pub fn none() -> RetryStrategy {
         RetryStrategy::Interval(IntervalStrategy {
-            retry: Some(0),
+            retry: Quantity::Finite(0),
             delay: None,
         })
     }
@@ -129,16 +134,16 @@ impl Iterator for RetryStrategy {
 
         match self {
             RetryStrategy::Exponential(ref mut strategy) => {
-                match (strategy.start, strategy.max_backoff) {
+                match (strategy.start, &strategy.max_backoff) {
                     (None, _) => {
                         strategy.start = Some(std::time::Instant::now());
                     }
-                    (Some(start), Some(max_backoff)) => {
-                        if start.elapsed() > max_backoff {
+                    (Some(start), Quantity::Finite(max_backoff)) => {
+                        if start.elapsed() > *max_backoff {
                             return None;
                         }
                     }
-                    (Some(_), None) => {}
+                    (Some(_), Quantity::Infinite) => {}
                 }
 
                 strategy.retry_no += 1;
@@ -151,16 +156,16 @@ impl Iterator for RetryStrategy {
                 Some(Some(sleep_time))
             }
             RetryStrategy::Immediate(strategy) => match strategy.retry {
-                Some(ref mut retry) => decrement_retries(retry, Some(None)),
-                None => Some(None),
+                Quantity::Finite(ref mut retry) => decrement_retries(retry, Some(None)),
+                Quantity::Infinite => Some(None),
             },
             RetryStrategy::Interval(strategy) => match strategy.retry {
-                Some(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
-                None => Some(strategy.delay),
+                Quantity::Finite(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
+                Quantity::Infinite => Some(strategy.delay),
             },
             RetryStrategy::None(strategy) => match strategy.retry {
-                Some(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
-                None => unreachable!(),
+                Quantity::Finite(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
+                Quantity::Infinite => unreachable!(),
             },
         }
     }
@@ -168,7 +173,7 @@ impl Iterator for RetryStrategy {
 
 #[cfg(test)]
 mod tests {
-    use crate::future::retryable::strategy::RetryStrategy;
+    use crate::future::retryable::strategy::{Quantity, RetryStrategy};
     use std::num::NonZeroUsize;
     use std::time::Duration;
 
@@ -178,7 +183,7 @@ mod tests {
 
         let max_interval = Duration::from_secs(2);
         let max_backoff = Duration::from_secs(8);
-        let strategy = RetryStrategy::exponential(max_interval, Some(max_backoff));
+        let strategy = RetryStrategy::exponential(max_interval, Quantity::Finite(max_backoff));
         let start = Instant::now();
         let mut it = strategy.into_iter();
 
@@ -214,8 +219,10 @@ mod tests {
     async fn test_interval() {
         let retries = 5;
         let expected_duration = Duration::from_secs(1);
-        let strategy =
-            RetryStrategy::interval(expected_duration, Some(NonZeroUsize::new(retries).unwrap()));
+        let strategy = RetryStrategy::interval(
+            expected_duration,
+            Quantity::Finite(NonZeroUsize::new(retries).unwrap()),
+        );
         let mut it = strategy.into_iter();
         let count = it.count();
 

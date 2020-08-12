@@ -1,0 +1,5 @@
+@config{
+    @client {
+        buffer_size: "test"
+    }
+}
