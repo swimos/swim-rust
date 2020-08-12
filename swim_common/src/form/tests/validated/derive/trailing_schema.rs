@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use trybuild::TestCases;
+use form_derive::*;
+use swim_common::model::Value;
 
-#[test]
-fn test_derive() {
-    let t = TestCases::new();
-
-    t.compile_fail("src/form/tests/validated/derive/all_items_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/and_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/or_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/not_op_arg_count.rs");
-    t.compile_fail("src/form/tests/validated/derive/invalid_container_of_kind.rs");
-    t.compile_fail("src/form/tests/validated/derive/trailing_schema.rs");
+fn main() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(num_items = 2, num_attrs = 3))]
+        a: Value,
+    }
 }

@@ -21,7 +21,7 @@ use quote::ToTokens;
 use syn::punctuated::Punctuated;
 #[allow(unused_imports)]
 use syn::token::Token;
-use syn::{ExprPath, Lit, Meta, NestedMeta};
+use syn::{Lit, Meta, NestedMeta};
 
 fn parse_lit_to_int(lit: &Lit, context: &mut Context) -> Option<usize> {
     match lit {
@@ -40,106 +40,137 @@ fn parse_lit_to_int(lit: &Lit, context: &mut Context) -> Option<usize> {
 }
 
 pub fn parse_schema_meta(
-    schema: StandardSchema,
+    default_schema: StandardSchema,
     context: &mut Context,
     nested: &Punctuated<NestedMeta, Token![,]>,
 ) -> StandardSchema {
-    nested.iter().fold(schema, |mut schema, meta| {
-        let push_element = |elem, borrowed_schema: &mut StandardSchema| match borrowed_schema {
-            StandardSchema::And(vec) => vec.push(elem),
-            StandardSchema::Or(vec) => vec.push(elem),
-            StandardSchema::AllItems(boxed) => *boxed = Box::new(elem),
-            StandardSchema::Not(boxed) => *boxed = Box::new(elem),
-            _ => *borrowed_schema = elem,
-        };
+    nested
+        .iter()
+        .fold(
+            (default_schema, false),
+            |(mut schema, mut schema_applied), meta| {
+                let mut push_element =
+                    |elem, borrowed_schema: &mut StandardSchema, context: &mut Context| {
+                        match borrowed_schema {
+                            StandardSchema::And(vec) => vec.push(elem),
+                            StandardSchema::Or(vec) => vec.push(elem),
+                            StandardSchema::AllItems(boxed) => *boxed = Box::new(elem),
+                            StandardSchema::Not(boxed) => *boxed = Box::new(elem),
+                            _ => {
+                                if schema_applied {
+                                    context.error_spanned_by(
+                                        meta,
+                                        "Use schema operators for chained schemas",
+                                    )
+                                } else {
+                                    schema_applied = true;
+                                    *borrowed_schema = elem;
+                                }
+                            }
+                        }
+                    };
 
-        match meta {
-            NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ATTRS_PATH => {
-                if let Some(int) = parse_lit_to_int(&name.lit, context) {
-                    push_element(StandardSchema::NumAttrs(int), &mut schema);
+                match meta {
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ATTRS_PATH => {
+                        if let Some(int) = parse_lit_to_int(&name.lit, context) {
+                            push_element(StandardSchema::NumAttrs(int), &mut schema, context);
+                        }
+                    }
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ITEMS_PATH => {
+                        if let Some(int) = parse_lit_to_int(&name.lit, context) {
+                            push_element(StandardSchema::NumItems(int), &mut schema, context);
+                        }
+                    }
+                    NestedMeta::Meta(Meta::List(list)) if list.path == OF_KIND_PATH => {
+                        if list.nested.len() != 1 {
+                            context.error_spanned_by(list, "Only one argument may be provided");
+                        } else {
+                            push_element(
+                                StandardSchema::OfKind(list.nested.to_token_stream()),
+                                &mut schema,
+                                context,
+                            );
+                        }
+                    }
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path == EQUAL_PATH => {
+                        if let Ok(path) = lit_str_to_expr_path(context, &name.lit) {
+                            push_element(StandardSchema::Equal(path), &mut schema, context);
+                        }
+                    }
+                    NestedMeta::Meta(Meta::List(list)) if list.path == AND_PATH => {
+                        if list.nested.len() < 2 {
+                            context.error_spanned_by(
+                                list,
+                                "At least two arguments must be provided to an AND operator",
+                            );
+                        } else {
+                            let s = parse_schema_meta(
+                                StandardSchema::And(Vec::new()),
+                                context,
+                                &list.nested,
+                            );
+                            push_element(s, &mut schema, context);
+                        }
+                    }
+                    NestedMeta::Meta(Meta::List(list)) if list.path == OR_PATH => {
+                        if list.nested.len() < 2 {
+                            context.error_spanned_by(
+                                list,
+                                "At least two arguments must be provided to an OR operator",
+                            );
+                        } else {
+                            push_element(
+                                parse_schema_meta(
+                                    StandardSchema::Or(Vec::new()),
+                                    context,
+                                    &list.nested,
+                                ),
+                                &mut schema,
+                                context,
+                            );
+                        }
+                    }
+                    NestedMeta::Meta(Meta::List(list)) if list.path == NOT_PATH => {
+                        if list.nested.len() > 1 {
+                            context.error_spanned_by(
+                                list,
+                                "Only one argument is permitted in a NOT operator",
+                            )
+                        } else {
+                            push_element(
+                                parse_schema_meta(
+                                    StandardSchema::Not(Box::new(StandardSchema::None)),
+                                    context,
+                                    &list.nested,
+                                ),
+                                &mut schema,
+                                context,
+                            );
+                        }
+                    }
+                    NestedMeta::Meta(Meta::List(list)) if list.path == ALL_ITEMS_PATH => {
+                        if list.nested.len() > 1 {
+                            context.error_spanned_by(
+                                list,
+                                "Only one argument is permitted as the schema for all items",
+                            )
+                        } else {
+                            push_element(
+                                parse_schema_meta(
+                                    StandardSchema::AllItems(Box::new(StandardSchema::None)),
+                                    context,
+                                    &list.nested,
+                                ),
+                                &mut schema,
+                                context,
+                            );
+                        }
+                    }
+                    meta => context.error_spanned_by(meta, "Unknown schema"),
                 }
-            }
-            NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ITEMS_PATH => {
-                if let Some(int) = parse_lit_to_int(&name.lit, context) {
-                    push_element(StandardSchema::NumItems(int), &mut schema);
-                }
-            }
-            NestedMeta::Meta(Meta::List(list)) if list.path == OF_KIND_PATH => {
-                if list.nested.len() != 1 {
-                    context.error_spanned_by(list, "Only one argument may be provided");
-                } else {
-                    push_element(
-                        StandardSchema::OfKind(list.nested.to_token_stream()),
-                        &mut schema,
-                    );
-                }
-            }
-            NestedMeta::Meta(Meta::NameValue(name)) if name.path == EQUAL_PATH => {
-                if let Ok(path) = lit_str_to_expr_path(context, &name.lit) {
-                    push_element(StandardSchema::Equal(path), &mut schema);
-                }
-            }
-            NestedMeta::Meta(Meta::List(list)) if list.path == AND_PATH => {
-                if list.nested.len() < 2 {
-                    context.error_spanned_by(
-                        list,
-                        "At least two arguments must be provided to an AND operator",
-                    );
-                } else {
-                    push_element(
-                        parse_schema_meta(StandardSchema::And(Vec::new()), context, &list.nested),
-                        &mut schema,
-                    );
-                }
-            }
-            NestedMeta::Meta(Meta::List(list)) if list.path == OR_PATH => {
-                if list.nested.len() < 2 {
-                    context.error_spanned_by(
-                        list,
-                        "At least two arguments must be provided to an OR operator",
-                    );
-                } else {
-                    push_element(
-                        parse_schema_meta(StandardSchema::Or(Vec::new()), context, &list.nested),
-                        &mut schema,
-                    );
-                }
-            }
-            NestedMeta::Meta(Meta::List(list)) if list.path == NOT_PATH => {
-                if list.nested.len() > 1 {
-                    context
-                        .error_spanned_by(list, "Only one argument is permitted in a NOT operator")
-                } else {
-                    push_element(
-                        parse_schema_meta(
-                            StandardSchema::Not(Box::new(StandardSchema::None)),
-                            context,
-                            &list.nested,
-                        ),
-                        &mut schema,
-                    );
-                }
-            }
-            NestedMeta::Meta(Meta::List(list)) if list.path == ALL_ITEMS_PATH => {
-                if list.nested.len() > 1 {
-                    context.error_spanned_by(
-                        list,
-                        "Only one argument is permitted as the schema for all items",
-                    )
-                } else {
-                    push_element(
-                        parse_schema_meta(
-                            StandardSchema::AllItems(Box::new(StandardSchema::None)),
-                            context,
-                            &list.nested,
-                        ),
-                        &mut schema,
-                    );
-                }
-            }
-            meta => context.error_spanned_by(meta, "Unknown schema"),
-        }
 
-        schema
-    })
+                (schema, schema_applied)
+            },
+        )
+        .0
 }

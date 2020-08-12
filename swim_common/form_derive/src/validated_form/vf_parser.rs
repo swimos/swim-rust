@@ -17,7 +17,7 @@ use std::fmt::Debug;
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use syn::export::TokenStream2;
-use syn::{ExprPath, Lit, Meta, MetaNameValue, NestedMeta, Type};
+use syn::{ExprPath, Lit, Meta, NestedMeta, Type};
 
 use macro_helpers::{lit_str_to_expr_path, CompoundTypeKind, Context, Identity, Symbol};
 
@@ -76,26 +76,10 @@ impl ValidatedFormDescriptor {
                         }
                     }
                 }
-                _ => context.error_spanned_by(meta, "Expected string argument"),
+                _ => context.error_spanned_by(meta, "Expected string literal"),
             },
             NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
                 list.nested.iter().for_each(|nested| {
-                    let set_int_opt =
-                        |name: &MetaNameValue, target: &mut Option<usize>, ctx: &mut Context| {
-                            match &name.lit {
-                                Lit::Int(int) => match int.base10_parse::<usize>() {
-                                    Ok(i) => match target {
-                                        Some(_) => {
-                                            ctx.error_spanned_by(int, "Duplicate schema definition")
-                                        }
-                                        None => *target = Some(i),
-                                    },
-                                    Err(e) => ctx.error_spanned_by(name, e.to_string()),
-                                },
-                                _ => ctx.error_spanned_by(name, "Expected an integer"),
-                            }
-                        };
-
                     let set_container_schema =
                         |path,
                          target: &mut Option<StandardSchema>,
@@ -113,12 +97,6 @@ impl ValidatedFormDescriptor {
                         };
 
                     match nested {
-                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ATTRS_PATH => {
-                            set_int_opt(name, &mut desc.num_attrs, context);
-                        }
-                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == NUM_ITEMS_PATH => {
-                            set_int_opt(name, &mut desc.num_items, context);
-                        }
                         NestedMeta::Meta(Meta::List(list)) if list.path == ALL_ITEMS_PATH => {
                             let schema =
                                 parse_schema_meta(StandardSchema::None, context, &list.nested);
@@ -156,16 +134,11 @@ impl ValidatedFormDescriptor {
                                 )
                             }
                         }
-                        _ => context.error_spanned_by(
-                            meta,
-                            "Unknown or malformatted schema container attribute",
-                        ),
+                        _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
                     }
                 })
             }
-            _ => {
-                context.error_spanned_by(meta, "Unknown or malformatted schema container attribute")
-            }
+            _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
         });
 
         desc
@@ -225,7 +198,7 @@ impl<'f> ToTokens for ValidatedField<'f> {
                     )
                 }
             }
-            Identity::Anonymous(_) => quote! (
+            Identity::Anonymous(_) => quote!(
                 swim_common::model::schema::ItemSchema::ValueItem(#field_schema)
             ),
         };
@@ -261,18 +234,25 @@ pub enum StandardSchema {
     AllItems(Box<StandardSchema>),
 }
 
+impl StandardSchema {
+    /// Returns whether or not the schema is a blanket schema that should affect the entire value.
+    /// For containers, [`StandardSchema::Anything`] or [`StandardSchema::Nothing`] will overpower
+    /// all the other variants.
+    pub fn is_bounded(&self) -> bool {
+        match self {
+            StandardSchema::Anything | StandardSchema::Nothing => true,
+            _ => false,
+        }
+    }
+}
+
 impl ToTokens for StandardSchema {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let quote = match self {
             StandardSchema::Type(ty) => quote!(#ty::schema()),
-            StandardSchema::Equal(path) => {
-                quote! {
-                    {
-                        let value:Value = #path();
-                        swim_common::model::schema::StandardSchema::Equal(value)
-                    }
-                }
-            }
+            StandardSchema::Equal(path) => quote! (
+                    swim_common::model::schema::StandardSchema::Equal(#path())
+            ),
             StandardSchema::OfKind(kind) => {
                 quote!(swim_common::model::schema::StandardSchema::OfKind(#kind))
             }
@@ -399,13 +379,13 @@ fn map_fields_to_validated<'f>(
 
 fn derive_container_schema(
     type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
-) -> TokenStream2 {
+) -> (TokenStream2, bool) {
     match type_contents {
         TypeContents::Struct(repr) => match &repr.descriptor.schema {
             Some(schema) => match schema {
                 StandardSchema::AllItems(items) => match &repr.compound_type {
                     CompoundTypeKind::Struct => {
-                        quote! {
+                        let quote = quote! {
                             swim_common::model::schema::StandardSchema::AllItems(
                                 std::boxed::Box::new(
                                     swim_common::model::schema::ItemSchema::Field(
@@ -416,21 +396,20 @@ fn derive_container_schema(
                                     )
                                 )
                             ),
-                        }
+                        };
+                        (quote, false)
                     }
                     _ => unimplemented!(),
                 },
-                StandardSchema::Equal(path) => {
-                    quote! {
-                        {
-                            let value: swim_common::model::Value = #path();
-                            swim_common::model::schema::StandardSchema::Equal(value)
-                        },
+                schema => {
+                    if schema.is_bounded() {
+                        (quote!(#schema), true)
+                    } else {
+                        (quote!(#schema,), false)
                     }
                 }
-                _ => unimplemented!(),
             },
-            None => quote!(),
+            None => (quote!(), false),
         },
         TypeContents::Enum(_variants) => unimplemented!(),
     }
@@ -441,28 +420,37 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
         match self {
             TypeContents::Struct(repr) => {
                 let head_attribute = derive_head_attribute(&self);
-                let schemas = repr.fields.iter().fold(TokenStream2::new(), |ts, field| {
+                let mut schemas = repr.fields.iter().fold(TokenStream2::new(), |ts, field| {
                     quote! {
                         #ts
                         (#field, true),
                     }
                 });
 
-                let container_schema = derive_container_schema(&self);
+                if !schemas.is_empty() {
+                    schemas = quote! {
+                        swim_common::model::schema::StandardSchema::Layout {
+                            items: vec![
+                                #schemas
+                            ],
+                            exhaustive: false
+                        }
+                    };
+                }
 
-                let quote = quote! {
-                    swim_common::model::schema::StandardSchema::And(
-                        vec![
-                            #head_attribute,
-                            #container_schema
-                            swim_common::model::schema::StandardSchema::Layout {
-                                items: vec![
-                                    #schemas
-                                ],
-                                exhaustive: false
-                            }
-                        ]
-                    )
+                let (container_schema, is_bounded_schema) = derive_container_schema(&self);
+                let quote = if is_bounded_schema {
+                    quote!(#container_schema)
+                } else {
+                    quote! {
+                        swim_common::model::schema::StandardSchema::And(
+                            vec![
+                                #head_attribute,
+                                #container_schema
+                                #schemas
+                            ]
+                        )
+                    }
                 };
 
                 quote.to_tokens(tokens);
