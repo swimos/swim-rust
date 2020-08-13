@@ -376,7 +376,10 @@ impl Form for usize {
             Value::BigUint(i) => usize::try_from(i).map_err(|_| {
                 FormErr::IncorrectType("Expected Value::UInt64Value, found Value::BigUint".into())
             }),
-            v => de_incorrect_type("Value::UInt64Value", v),
+            v => Err(FormErr::IncorrectType(format!(
+                "Expected Value::UInt64Value, found {}",
+                v.kind()
+            ))),
         }
     }
 }
