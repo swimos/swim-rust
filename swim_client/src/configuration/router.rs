@@ -16,20 +16,31 @@ use std::num::NonZeroUsize;
 
 use tokio::time::Duration;
 
-use utilities::future::retryable::strategy::RetryStrategy;
+use crate::configuration::downlink::ConfigParseError;
+use crate::configuration::downlink::ROUTER_TAG;
+use swim_common::form::Form;
+use swim_common::model::{Attr, Item, Value};
+use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
 const DEFAULT_BUFFER_SIZE: usize = 100;
 
+const BUFFER_SIZE_TAG: &str = "buffer_size";
+const RETRY_STRATEGY_TAG: &str = "retry_strategy";
+const IDLE_TIMEOUT_TAG: &str = "idle_timeout";
+const CONN_REAPER_FREQ_TAG: &str = "conn_reaper_frequency";
+
+/// Configuration parameters for the router.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
     /// The retry strategy that will be used when attempting to make a request to a Web Agent.
     retry_strategy: RetryStrategy,
     /// The maximum amount of time a connection can be inactive for before it will be culled.
     idle_timeout: Duration,
-    /// How frequently inactive connections will be culled
+    /// How frequently inactive connections will be culled.
     conn_reaper_frequency: Duration,
+    /// Size of the internal buffers of the router.
     buffer_size: NonZeroUsize,
 }
 
@@ -45,6 +56,20 @@ impl Default for RouterParams {
 }
 
 impl RouterParams {
+    pub fn new(
+        retry_strategy: RetryStrategy,
+        idle_timeout: Duration,
+        conn_reaper_frequency: Duration,
+        buffer_size: NonZeroUsize,
+    ) -> RouterParams {
+        RouterParams {
+            retry_strategy,
+            idle_timeout,
+            conn_reaper_frequency,
+            buffer_size,
+        }
+    }
+
     pub fn buffer_size(&self) -> NonZeroUsize {
         self.buffer_size
     }
@@ -68,6 +93,311 @@ impl RouterParams {
             self.buffer_size,
         )
     }
+
+    pub fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
+        let mut retry_strategy: Option<RetryStrategy> = None;
+        let mut idle_timeout: Option<Duration> = None;
+        let mut conn_reaper_frequency: Option<Duration> = None;
+        let mut buffer_size: Option<NonZeroUsize> = None;
+
+        for item in items {
+            match item {
+                Item::Slot(Value::Text(name), value) => match name.as_str() {
+                    RETRY_STRATEGY_TAG => match value {
+                        Value::Record(attrs, items) if attrs.len() <= 1 => {
+                            retry_strategy =
+                                Some(try_retry_strat_from_value(attrs, items, use_defaults)?)
+                        }
+                        _ => return Err(ConfigParseError::InvalidValue(value, RETRY_STRATEGY_TAG)),
+                    },
+                    IDLE_TIMEOUT_TAG => {
+                        let timeout = u64::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG))?;
+                        idle_timeout = Some(Duration::from_secs(timeout))
+                    }
+                    CONN_REAPER_FREQ_TAG => {
+                        let freq = u64::try_from_value(&value).map_err(|_| {
+                            ConfigParseError::InvalidValue(value, CONN_REAPER_FREQ_TAG)
+                        })?;
+                        conn_reaper_frequency = Some(Duration::from_secs(freq))
+                    }
+                    BUFFER_SIZE_TAG => {
+                        let size = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG))?;
+                        buffer_size = Some(NonZeroUsize::new(size).unwrap());
+                    }
+                    _ => return Err(ConfigParseError::UnexpectedKey(name, ROUTER_TAG)),
+                },
+                Item::Slot(value, _) => {
+                    return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
+                }
+                Item::ValueItem(value) => {
+                    return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
+                }
+            }
+        }
+
+        if use_defaults {
+            retry_strategy = retry_strategy.or_else(|| Some(RetryStrategy::default()));
+            idle_timeout = idle_timeout.or(Some(DEFAULT_IDLE_TIMEOUT));
+            conn_reaper_frequency = conn_reaper_frequency.or(Some(DEFAULT_CONN_REAPER_FREQUENCY));
+            buffer_size =
+                buffer_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()));
+        }
+
+        Ok(RouterParams::new(
+            retry_strategy.ok_or(ConfigParseError::MissingKey(RETRY_STRATEGY_TAG, ROUTER_TAG))?,
+            idle_timeout.ok_or(ConfigParseError::MissingKey(
+                RETRY_STRATEGY_TAG,
+                IDLE_TIMEOUT_TAG,
+            ))?,
+            conn_reaper_frequency.ok_or(ConfigParseError::MissingKey(
+                RETRY_STRATEGY_TAG,
+                CONN_REAPER_FREQ_TAG,
+            ))?,
+            buffer_size.ok_or(ConfigParseError::MissingKey(
+                RETRY_STRATEGY_TAG,
+                BUFFER_SIZE_TAG,
+            ))?,
+        ))
+    }
+}
+
+const RETRY_IMMEDIATE_TAG: &str = "immediate";
+const RETRY_INTERVAL_TAG: &str = "interval";
+const RETRY_EXPONENTIAL_TAG: &str = "exponential";
+const RETRY_NONE_TAG: &str = "none";
+const RETRIES_TAG: &str = "retries";
+const DELAY_TAG: &str = "delay";
+const MAX_INTERVAL_TAG: &str = "max_interval";
+const MAX_BACKOFF_TAG: &str = "max_backoff";
+const INDEFINITE_TAG: &str = "indefinite";
+
+const DEFAULT_RETRIES: usize = 5;
+const DEFAULT_INTERVAL: u64 = 5;
+const DEFAULT_MAX_INTERVAL: u64 = 16;
+const DEFAULT_BACKOFF: u64 = 32;
+
+fn try_retry_strat_from_value(
+    mut attrs: Vec<Attr>,
+    items: Vec<Item>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
+    if let Some(Attr { name, value }) = attrs.pop() {
+        match name.as_str() {
+            RETRY_IMMEDIATE_TAG => {
+                if let Value::Record(_, items) = value {
+                    try_immediate_strat_from_items(items, use_defaults)
+                } else {
+                    Err(ConfigParseError::InvalidValue(value, RETRY_IMMEDIATE_TAG))
+                }
+            }
+            RETRY_INTERVAL_TAG => {
+                if let Value::Record(_, items) = value {
+                    try_interval_strat_from_items(items, use_defaults)
+                } else {
+                    Err(ConfigParseError::InvalidValue(value, RETRY_INTERVAL_TAG))
+                }
+            }
+            RETRY_EXPONENTIAL_TAG => {
+                if let Value::Record(_, items) = value {
+                    try_exponential_strat_from_items(items, use_defaults)
+                } else {
+                    Err(ConfigParseError::InvalidValue(value, RETRY_EXPONENTIAL_TAG))
+                }
+            }
+            RETRY_NONE_TAG => {
+                if let Value::Extant = value {
+                    Ok(RetryStrategy::none())
+                } else {
+                    Err(ConfigParseError::UnexpectedValue(
+                        value,
+                        Some(RETRY_NONE_TAG),
+                    ))
+                }
+            }
+            _ => Err(ConfigParseError::UnexpectedAttribute(
+                name,
+                Some(RETRY_STRATEGY_TAG),
+            )),
+        }
+    } else {
+        Err(ConfigParseError::UnnamedRecord(
+            Value::Record(attrs, items),
+            Some(RETRY_STRATEGY_TAG),
+        ))
+    }
+}
+
+fn try_immediate_strat_from_items(
+    items: Vec<Item>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
+    let mut retries: Option<NonZeroUsize> = None;
+
+    for item in items {
+        match item {
+            Item::Slot(Value::Text(name), value) => match name.as_str() {
+                RETRIES_TAG => {
+                    let num_tries = usize::try_from_value(&value)
+                        .map_err(|_| ConfigParseError::InvalidValue(value, RETRIES_TAG))?;
+                    retries = Some(NonZeroUsize::new(num_tries).unwrap());
+                }
+                _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_IMMEDIATE_TAG)),
+            },
+            Item::Slot(value, _) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_IMMEDIATE_TAG),
+                ))
+            }
+            Item::ValueItem(value) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_IMMEDIATE_TAG),
+                ))
+            }
+        }
+    }
+
+    if use_defaults {
+        retries = retries.or_else(|| Some(NonZeroUsize::new(DEFAULT_RETRIES).unwrap()));
+    }
+
+    Ok(RetryStrategy::immediate(retries.ok_or(
+        ConfigParseError::MissingKey(RETRIES_TAG, RETRY_IMMEDIATE_TAG),
+    )?))
+}
+
+fn try_interval_strat_from_items(
+    items: Vec<Item>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
+    let mut delay: Option<Duration> = None;
+    let mut retries: Option<Quantity<NonZeroUsize>> = None;
+
+    for item in items {
+        match item {
+            Item::Slot(Value::Text(name), value) => match name.as_str() {
+                DELAY_TAG => {
+                    let delay_len = u64::try_from_value(&value)
+                        .map_err(|_| ConfigParseError::InvalidValue(value, DELAY_TAG))?;
+                    delay = Some(Duration::from_secs(delay_len));
+                }
+                RETRIES_TAG => {
+                    if let Value::Text(text_value) = value {
+                        if text_value == INDEFINITE_TAG {
+                            retries = Some(Quantity::Infinite)
+                        } else {
+                            return Err(ConfigParseError::InvalidValue(
+                                Value::Text(text_value),
+                                RETRIES_TAG,
+                            ));
+                        }
+                    } else {
+                        let num_tries = usize::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::InvalidValue(value, RETRIES_TAG))?;
+                        retries = Some(Quantity::Finite(NonZeroUsize::new(num_tries).unwrap()));
+                    }
+                }
+                _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_INTERVAL_TAG)),
+            },
+            Item::Slot(value, _) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_INTERVAL_TAG),
+                ))
+            }
+            Item::ValueItem(value) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_INTERVAL_TAG),
+                ))
+            }
+        }
+    }
+
+    if use_defaults {
+        retries = retries.or_else(|| {
+            Some(Quantity::Finite(
+                NonZeroUsize::new(DEFAULT_RETRIES).unwrap(),
+            ))
+        });
+        delay = delay.or(Some(Duration::from_secs(DEFAULT_INTERVAL)));
+    }
+
+    Ok(RetryStrategy::interval(
+        delay.ok_or(ConfigParseError::MissingKey(DELAY_TAG, RETRY_INTERVAL_TAG))?,
+        retries.ok_or(ConfigParseError::MissingKey(
+            RETRIES_TAG,
+            RETRY_INTERVAL_TAG,
+        ))?,
+    ))
+}
+
+fn try_exponential_strat_from_items(
+    items: Vec<Item>,
+    use_defaults: bool,
+) -> Result<RetryStrategy, ConfigParseError> {
+    let mut max_interval: Option<Duration> = None;
+    let mut max_backoff: Option<Quantity<Duration>> = None;
+
+    for item in items {
+        match item {
+            Item::Slot(Value::Text(name), value) => match name.as_str() {
+                MAX_INTERVAL_TAG => {
+                    let interval = u64::try_from_value(&value)
+                        .map_err(|_| ConfigParseError::InvalidValue(value, MAX_INTERVAL_TAG))?;
+                    max_interval = Some(Duration::from_secs(interval));
+                }
+                MAX_BACKOFF_TAG => {
+                    if let Value::Text(text_value) = value {
+                        if text_value == INDEFINITE_TAG {
+                            max_backoff = Some(Quantity::Infinite)
+                        } else {
+                            return Err(ConfigParseError::InvalidValue(
+                                Value::Text(text_value),
+                                MAX_BACKOFF_TAG,
+                            ));
+                        }
+                    } else {
+                        let backoff = u64::try_from_value(&value)
+                            .map_err(|_| ConfigParseError::InvalidValue(value, MAX_BACKOFF_TAG))?;
+                        max_backoff = Some(Quantity::Finite(Duration::from_secs(backoff)));
+                    }
+                }
+                _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_EXPONENTIAL_TAG)),
+            },
+            Item::Slot(value, _) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_EXPONENTIAL_TAG),
+                ))
+            }
+            Item::ValueItem(value) => {
+                return Err(ConfigParseError::UnexpectedValue(
+                    value,
+                    Some(RETRY_EXPONENTIAL_TAG),
+                ))
+            }
+        }
+    }
+
+    if use_defaults {
+        max_interval = max_interval.or(Some(Duration::from_secs(DEFAULT_MAX_INTERVAL)));
+        max_backoff = max_backoff.or(Some(Quantity::Finite(Duration::from_secs(DEFAULT_BACKOFF))));
+    }
+
+    Ok(RetryStrategy::exponential(
+        max_interval.ok_or(ConfigParseError::MissingKey(
+            MAX_INTERVAL_TAG,
+            RETRY_EXPONENTIAL_TAG,
+        ))?,
+        max_backoff.ok_or(ConfigParseError::MissingKey(
+            MAX_BACKOFF_TAG,
+            RETRY_EXPONENTIAL_TAG,
+        ))?,
+    ))
 }
 
 pub struct RouterParamBuilder {

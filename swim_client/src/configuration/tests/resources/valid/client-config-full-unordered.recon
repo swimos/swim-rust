@@ -1,0 +1,55 @@
+@config {
+    @host {
+        "ws://127.0.0.2": {
+            mux_mode: @dropping(),
+            yield_after: 300
+            buffer_size: 25
+            idle_timeout: 50000
+            back_pressure: @propagate(),
+            on_invalid: "terminate"
+        }
+        "ws://127.0.0.1": {
+            yield_after: 200
+            buffer_size: 15
+            idle_timeout: 40000
+            mux_mode: @queue(queue_size: 15),
+            on_invalid: "ignore"
+            back_pressure: @propagate(),
+        }
+    }
+    @downlinks {
+        idle_timeout: 30000
+        back_pressure: @release(input_buffer_size: 15, bridge_buffer_size: 15, max_active_keys: 15, yield_after: 15),
+        yield_after: 512
+        mux_mode: @buffered(queue_size: 10),
+        buffer_size: 10
+        on_invalid: "ignore"
+    }
+    @lane {
+        @path(host: "ws://192.168.0.2", node: "qux", lane: "quz") {
+            buffer_size: 50
+            back_pressure: @release(input_buffer_size: 20, bridge_buffer_size: 20, max_active_keys: 20, yield_after: 20),
+            idle_timeout: 100000
+            yield_after: 600
+            mux_mode: @buffered(queue_size: 5),
+            on_invalid: "terminate"
+        }
+        @path(host: "ws://192.168.0.1", node: "bar", lane: "baz") {
+            buffer_size: 40
+            yield_after: 100
+            idle_timeout: 90000
+            back_pressure: @propagate(),
+            on_invalid: "ignore"
+            mux_mode: @buffered(queue_size: 10),
+        }
+    }
+    @client {
+        router: {
+            buffer_size: 50
+            idle_timeout: 15
+            retry_strategy: @immediate(retries: 10),
+            conn_reaper_frequency: 22
+        }
+        buffer_size: 5
+    }
+}
