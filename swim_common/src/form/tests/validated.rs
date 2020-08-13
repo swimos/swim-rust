@@ -50,7 +50,7 @@ fn test_tag() {
 }
 
 #[test]
-fn all_items() {
+fn all_items_named() {
     #[derive(Form, ValidatedForm)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S {
@@ -82,7 +82,7 @@ fn all_items() {
                     true,
                 ),
             ],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -93,6 +93,84 @@ fn all_items() {
             Item::Slot(Value::text("a"), Value::Int32Value(1)),
             Item::Slot(Value::text("b"), Value::text("invalid")),
         ],
+    );
+
+    assert_eq!(valid, valid);
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&valid));
+    assert!(!S::schema().matches(&invalid_value));
+}
+
+#[test]
+fn all_items_tuple() {
+    #[derive(Form, ValidatedForm)]
+    #[form(schema(all_items(of_kind(ValueKind::Int32))))]
+    struct S(i32, i64);
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
+            ValueKind::Int32,
+        )))),
+        StandardSchema::Layout {
+            items: vec![
+                (ItemSchema::ValueItem(i32::schema()), true),
+                (ItemSchema::ValueItem(i64::schema()), true),
+            ],
+            exhaustive: true,
+        },
+    ]);
+
+    let valid = S(1, 2).as_value();
+    let invalid_value = Value::Record(
+        vec![Attr::of("S")],
+        vec![
+            Item::ValueItem(Value::Int32Value(1)),
+            Item::ValueItem(Value::text("invalid")),
+        ],
+    );
+
+    assert_eq!(valid, valid);
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&valid));
+    assert!(!S::schema().matches(&invalid_value));
+}
+
+#[test]
+fn all_items_new_type() {
+    #[derive(Form, ValidatedForm)]
+    #[form(schema(all_items(of_kind(ValueKind::Int32))))]
+    struct S(i32);
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
+            ValueKind::Int32,
+        )))),
+        StandardSchema::Layout {
+            items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
+            exhaustive: true,
+        },
+    ]);
+
+    let valid = S(1).as_value();
+    let invalid_value = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::ValueItem(Value::text("invalid"))],
     );
 
     assert_eq!(valid, valid);
@@ -144,7 +222,7 @@ fn text() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -204,7 +282,7 @@ fn num_items_attrs() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -249,7 +327,7 @@ fn num_items() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -294,7 +372,7 @@ fn num_attrs() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -340,7 +418,7 @@ fn and() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
     let value = S {
@@ -393,7 +471,7 @@ fn container_equal() {
                     true,
                 ),
             ],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -442,7 +520,7 @@ fn field_equal() {
                     true,
                 ),
             ],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -483,7 +561,7 @@ fn not() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -535,7 +613,7 @@ fn or() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -593,7 +671,7 @@ fn generic_value() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -630,7 +708,7 @@ fn tuple_struct() {
                 (ItemSchema::ValueItem(i64::schema()), true),
                 (ItemSchema::ValueItem(String::schema()), true),
             ],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -668,7 +746,7 @@ fn tuple_struct_attrs() {
                 (ItemSchema::ValueItem(StandardSchema::Equal(int_eq())), true),
                 (ItemSchema::ValueItem(StandardSchema::text("swim")), true),
             ],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -724,7 +802,7 @@ fn field_anything() {
                     true,
                 ),
             ],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -765,7 +843,7 @@ fn field_non_nan() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -813,7 +891,7 @@ fn field_finite() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -877,7 +955,7 @@ fn complex() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -929,7 +1007,7 @@ fn int_range_inclusive() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -967,7 +1045,7 @@ fn uint_range_inclusive() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -1004,7 +1082,7 @@ fn int_range() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -1043,7 +1121,7 @@ fn float_range_inclusive() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -1080,7 +1158,7 @@ fn float_range() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -1119,7 +1197,7 @@ fn uint_range() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -1160,7 +1238,7 @@ fn big_int_range_inclusive() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
@@ -1218,7 +1296,7 @@ fn big_int_range() {
                 )),
                 true,
             )],
-            exhaustive: false,
+            exhaustive: true,
         },
     ]);
 
