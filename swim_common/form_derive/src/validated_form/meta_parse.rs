@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::validated_form::range::parse_range_str;
+use crate::validated_form::range::{parse_range_str, Range};
 use crate::validated_form::vf_parser::{
     StandardSchema, ALL_ITEMS_PATH, AND_PATH, ANYTHING_PATH, BIG_INT_RANGE_PATH, EQUAL_PATH,
     FINITE_PATH, FLOAT_RANGE_PATH, INT_RANGE_PATH, NON_NAN_PATH, NOTHING_PATH, NOT_PATH,
@@ -20,7 +20,8 @@ use crate::validated_form::vf_parser::{
 };
 use macro_helpers::{lit_str_to_expr_path, Context};
 use quote::ToTokens;
-use std::ops::Range;
+use std::fmt::Display;
+use std::str::FromStr;
 use syn::punctuated::Punctuated;
 #[allow(unused_imports)]
 use syn::token::Token;
@@ -41,72 +42,28 @@ fn parse_lit_to_int(lit: &Lit, context: &mut Context) -> Option<usize> {
         }
     }
 }
-// todo: change to range syntax
-macro_rules! build_std_range {
-    ($nested:expr, $context:expr, $variant:ident, $target:ty, $type:expr) => {{
-        let mut lower_opt = None;
-        let mut upper_opt = None;
-        let mut inclusive = false;
 
-        $nested.iter().for_each(|n| match n {
-            NestedMeta::Lit(Lit::$variant(int)) => match int.base10_parse::<$target>() {
-                Ok(int) => {
-                    if lower_opt.is_none() {
-                        lower_opt = Some(int);
-                    } else if upper_opt.is_none() {
-                        upper_opt = Some(int);
-                    } else {
-                        $context
-                            .error_spanned_by(int, "Expected only an upper and lower range bound");
-                    }
-                }
-                Err(e) => $context.error_spanned_by(int, e),
-            },
-            NestedMeta::Lit(Lit::Bool(bool)) => inclusive = bool.value,
-            _ => $context.error_spanned_by(n, format!("Expected {} literal", $type)),
-        });
-
-        if lower_opt.is_none() || upper_opt.is_none() {
-            $context.error_spanned_by(
-                $nested,
-                "Expected a range in the format of (lower, upper, inclusive (optional))",
-            );
-            None
-        } else {
-            Some((lower_opt.unwrap(), upper_opt.unwrap(), inclusive))
-        }
-    }};
-}
-
-fn build_big_int_range(
-    context: &mut Context,
-    nested: &Punctuated<NestedMeta, Token![,]>,
-) -> Option<(Range<String>, bool)> {
-    let mut lower_opt = None;
-    let mut upper_opt = None;
-    let mut inclusive = false;
-
-    nested.iter().for_each(|n| match n {
-        NestedMeta::Lit(Lit::Str(str)) => {
-            if lower_opt.is_none() {
-                lower_opt = Some(str.value());
-            } else if upper_opt.is_none() {
-                upper_opt = Some(str.value());
-            } else {
-                context.error_spanned_by(str, "Expected only an upper and lower range bound");
+fn build_range<T, E>(lit: &Lit, context: &mut Context) -> Option<Range<T>>
+where
+    T: FromStr<Err = E> + Default,
+    E: Display,
+{
+    match lit {
+        Lit::Str(str) => match parse_range_str::<T, _>(&str.value()) {
+            Ok(range) => Some(range),
+            Err(e) => {
+                context.error_spanned_by(
+                    str,
+                    &format!("Failed to parse range: {} at index {}", e.0, e.1),
+                );
+                None
             }
-        }
-        NestedMeta::Lit(Lit::Bool(bool)) => inclusive = bool.value,
-        _ => context.error_spanned_by(n, format!("Expected a String literal")),
-    });
-
-    Some((
-        Range {
-            start: lower_opt?,
-            end: upper_opt?,
         },
-        inclusive,
-    ))
+        _ => {
+            context.error_spanned_by(lit, "Expected a String literal");
+            None
+        }
+    }
 }
 
 pub fn parse_schema_meta(
@@ -142,47 +99,23 @@ pub fn parse_schema_meta(
 
                 match meta {
                     NestedMeta::Meta(Meta::NameValue(name)) if name.path == INT_RANGE_PATH => {
-                        match &name.lit {
-                            Lit::Str(str) => {
-                                let _ = parse_range_str::<i32, _>(&str.value());
-                            }
-                            _ => {
-                                context.error_spanned_by(name, "Expected a String literal");
-                            }
+                        if let Some(range) = build_range(&name.lit, context) {
+                            push_element(StandardSchema::IntRange(range), &mut schema, context);
                         }
                     }
-                    NestedMeta::Meta(Meta::List(list)) if list.path == UINT_RANGE_PATH => {
-                        if let Some((start, end, inclusive)) =
-                            build_std_range!(&list.nested, context, Int, u64, "unsigned integer")
-                        {
-                            push_element(
-                                StandardSchema::UintRange((Range { start, end }, inclusive)),
-                                &mut schema,
-                                context,
-                            );
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path == UINT_RANGE_PATH => {
+                        if let Some(range) = build_range(&name.lit, context) {
+                            push_element(StandardSchema::UintRange(range), &mut schema, context);
                         }
                     }
-                    NestedMeta::Meta(Meta::List(list)) if list.path == FLOAT_RANGE_PATH => {
-                        if let Some((start, end, inclusive)) =
-                            build_std_range!(&list.nested, context, Float, f64, "float")
-                        {
-                            push_element(
-                                StandardSchema::FloatRange((Range { start, end }, inclusive)),
-                                &mut schema,
-                                context,
-                            );
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path == FLOAT_RANGE_PATH => {
+                        if let Some(range) = build_range(&name.lit, context) {
+                            push_element(StandardSchema::FloatRange(range), &mut schema, context);
                         }
                     }
-                    NestedMeta::Meta(Meta::List(list)) if list.path == BIG_INT_RANGE_PATH => {
-                        match build_big_int_range(context, &list.nested) {
-                            Some((range, inclusive)) => push_element(
-                                StandardSchema::BigIntRange((range, inclusive)),
-                                &mut schema,
-                                context,
-                            ),
-                            None => {
-                                context.error_spanned_by(list, "Malformatted Big Integer range");
-                            }
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path == BIG_INT_RANGE_PATH => {
+                        if let Some(range) = build_range(&name.lit, context) {
+                            push_element(StandardSchema::BigIntRange(range), &mut schema, context);
                         }
                     }
                     NestedMeta::Meta(Meta::Path(path)) if path == ANYTHING_PATH => {

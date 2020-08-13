@@ -22,6 +22,8 @@ use crate::model::schema::StandardSchema;
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
+use num_bigint::BigInt;
+use num_traits::Float;
 
 mod derive;
 
@@ -902,4 +904,357 @@ fn complex() {
     assert!(schema.matches(&S { value: second }.as_value()));
     assert!(schema.matches(&S { value: third }.as_value()));
     assert!(!schema.matches(&Value::Int64Value(i64::max_value())));
+}
+
+#[test]
+fn int_range_inclusive() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(int_range = "0..=10"))]
+        f: i64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_int_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(&S { f: 0 }.as_value()));
+    assert!(schema.matches(&S { f: 10 }.as_value()));
+    assert!(!schema.matches(&S { f: 11 }.as_value()));
+    assert!(!schema.matches(&S { f: -1 }.as_value()));
+}
+
+#[test]
+fn uint_range_inclusive() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(uint_range = "0..=10"))]
+        f: u64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_uint_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(&S { f: 0 }.as_value()));
+    assert!(schema.matches(&S { f: 10 }.as_value()));
+    assert!(!schema.matches(&S { f: 11 }.as_value()));
+}
+
+#[test]
+fn int_range() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(int_range = "0..10"))]
+        f: i64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::int_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(&S { f: 0 }.as_value()));
+    assert!(schema.matches(&S { f: 9 }.as_value()));
+    assert!(!schema.matches(&S { f: -1 }.as_value()));
+    assert!(!schema.matches(&S { f: 10 }.as_value()));
+    assert!(!schema.matches(&S { f: 11 }.as_value()));
+}
+
+#[test]
+fn float_range_inclusive() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(float_range = "0.0..=10.1"))]
+        f: f64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_float_range(0.0, 10.1),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(&S { f: 0.0 }.as_value()));
+    assert!(schema.matches(&S { f: 10.1 }.as_value()));
+    assert!(!schema.matches(&S { f: 11.0 }.as_value()));
+}
+
+#[test]
+fn float_range() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(float_range = "0..10"))]
+        f: f64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::float_range(0.0, 10.0),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(&S { f: 0.0 }.as_value()));
+    assert!(schema.matches(&S { f: 9.9 }.as_value()));
+    assert!(!schema.matches(&S { f: -1.0 }.as_value()));
+    assert!(!schema.matches(&S { f: 10.1 }.as_value()));
+    assert!(!schema.matches(&S { f: f64::infinity() }.as_value()));
+}
+
+#[test]
+fn uint_range() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(uint_range = "0..10"))]
+        f: u64,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::uint_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(&S { f: 0 }.as_value()));
+    assert!(schema.matches(&S { f: 9 }.as_value()));
+    assert!(!schema.matches(&S { f: 10 }.as_value()));
+    assert!(!schema.matches(&S { f: 11 }.as_value()));
+}
+
+#[test]
+fn big_int_range_inclusive() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(big_int_range = "123456..=789101112"))]
+        f: BigInt,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_big_int_range(
+                        BigInt::from(123456),
+                        BigInt::from(789101112),
+                    ),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(
+        &S {
+            f: BigInt::from(123456)
+        }
+        .as_value()
+    ));
+    assert!(schema.matches(
+        &S {
+            f: BigInt::from(789101112)
+        }
+        .as_value()
+    ));
+    assert!(!schema.matches(
+        &S {
+            f: BigInt::from(i32::max_value())
+        }
+        .as_value()
+    ));
+    assert!(!schema.matches(
+        &S {
+            f: BigInt::from(-1)
+        }
+        .as_value()
+    ));
+}
+
+#[test]
+fn big_int_range() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(big_int_range = "100..300"))]
+        f: BigInt,
+    }
+
+    let expected_schema = StandardSchema::And(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "S",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Anything),
+        },
+        StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::big_int_range(BigInt::from(100), BigInt::from(300)),
+                )),
+                true,
+            )],
+            exhaustive: false,
+        },
+    ]);
+
+    let schema = S::schema();
+
+    assert_eq!(schema, expected_schema);
+    assert!(schema.matches(
+        &S {
+            f: BigInt::from(100)
+        }
+        .as_value()
+    ));
+    assert!(schema.matches(
+        &S {
+            f: BigInt::from(299)
+        }
+        .as_value()
+    ));
+    assert!(!schema.matches(
+        &S {
+            f: BigInt::from(300)
+        }
+        .as_value()
+    ));
+    assert!(!schema.matches(
+        &S {
+            f: BigInt::from(i32::max_value())
+        }
+        .as_value()
+    ));
+    assert!(!schema.matches(
+        &S {
+            f: BigInt::from(-1)
+        }
+        .as_value()
+    ));
 }

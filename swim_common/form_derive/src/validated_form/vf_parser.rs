@@ -24,7 +24,8 @@ use crate::parser::{
     Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
 };
 use crate::validated_form::meta_parse::parse_schema_meta;
-use std::ops::Range;
+use crate::validated_form::range::Range;
+use num_bigint::BigInt;
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -220,10 +221,10 @@ pub enum StandardSchema {
     Equal(ExprPath),
     /// This field/container should be of the kind provided by the [`TokenStream`]
     OfKind(TokenStream2),
-    IntRange((Range<i64>, bool)),
-    UintRange((Range<u64>, bool)),
-    FloatRange((Range<f64>, bool)),
-    BigIntRange((Range<String>, bool)),
+    IntRange(Range<i64>),
+    UintRange(Range<u64>),
+    FloatRange(Range<f64>),
+    BigIntRange(Range<BigInt>),
     NonNan,
     Finite,
     Text(String),
@@ -260,10 +261,63 @@ impl ToTokens for StandardSchema {
             StandardSchema::OfKind(kind) => {
                 quote!(swim_common::model::schema::StandardSchema::OfKind(#kind))
             }
-            StandardSchema::IntRange(_) => unimplemented!(),
-            StandardSchema::UintRange(_) => unimplemented!(),
-            StandardSchema::FloatRange(_) => unimplemented!(),
-            StandardSchema::BigIntRange(_) => unimplemented!(),
+            StandardSchema::IntRange(Range {
+                lower,
+                upper,
+                inclusive,
+            }) => {
+                if *inclusive {
+                    quote!(swim_common::model::schema::StandardSchema::inclusive_int_range(#lower, #upper))
+                } else {
+                    quote!(swim_common::model::schema::StandardSchema::int_range(#lower, #upper))
+                }
+            }
+            StandardSchema::UintRange(Range {
+                lower,
+                upper,
+                inclusive,
+            }) => {
+                if *inclusive {
+                    quote!(swim_common::model::schema::StandardSchema::inclusive_uint_range(#lower, #upper))
+                } else {
+                    quote!(swim_common::model::schema::StandardSchema::uint_range(#lower, #upper))
+                }
+            }
+            StandardSchema::FloatRange(Range {
+                lower,
+                upper,
+                inclusive,
+            }) => {
+                if *inclusive {
+                    quote!(swim_common::model::schema::StandardSchema::inclusive_float_range(#lower, #upper))
+                } else {
+                    quote!(swim_common::model::schema::StandardSchema::float_range(#lower, #upper))
+                }
+            }
+            StandardSchema::BigIntRange(Range {
+                lower,
+                upper,
+                inclusive,
+            }) => {
+                let lower = {
+                    let lower_str = lower.to_string();
+                    quote! {
+                        std::str::FromStr::from_str(&#lower_str).unwrap()
+                    }
+                };
+                let upper = {
+                    let upper_str = upper.to_string();
+                    quote! {
+                        std::str::FromStr::from_str(&#upper_str).unwrap()
+                    }
+                };
+
+                if *inclusive {
+                    quote!(swim_common::model::schema::StandardSchema::inclusive_big_int_range(#lower, #upper))
+                } else {
+                    quote!(swim_common::model::schema::StandardSchema::big_int_range(#lower, #upper))
+                }
+            }
             StandardSchema::NonNan => quote!(swim_common::model::schema::StandardSchema::NonNan),
             StandardSchema::Finite => quote!(swim_common::model::schema::StandardSchema::Finite),
             StandardSchema::Text(text) => {
