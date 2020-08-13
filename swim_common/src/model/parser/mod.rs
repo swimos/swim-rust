@@ -621,8 +621,11 @@ impl TokenParseState {
 
 #[derive(Clone, Copy, Hash, Ord, PartialOrd, PartialEq, Eq, Debug)]
 struct Location {
+    /// Number of characters from the start. (Absolute offset)
     offset: usize,
+    /// Line number.
     line_num: usize,
+    /// Number of characters from the start of the current line. (Relative offset)
     line_loc: usize,
 }
 
@@ -637,11 +640,13 @@ impl Location {
 }
 
 impl Location {
+    /// Sets the absolute offset to a new value and recalculates the relative offset.
     fn update_offset(&mut self, new_offset: usize) {
         self.line_loc = self.line_loc + new_offset - self.offset;
         self.offset = new_offset;
     }
 
+    /// Increments the line number and resets the relative offset.
     fn new_line(&mut self) {
         self.line_loc = 1;
         self.line_num += 1;
