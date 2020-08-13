@@ -106,13 +106,12 @@ fn all_items_tuple() {
     struct S(i32, i64);
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
             ValueKind::Int32,
@@ -148,13 +147,12 @@ fn all_items_new_type() {
     struct S(i32);
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
             ValueKind::Int32,
