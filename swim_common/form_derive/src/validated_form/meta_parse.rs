@@ -54,7 +54,7 @@ where
             Err(e) => {
                 context.error_spanned_by(
                     str,
-                    &format!("Failed to parse range: {} at index {}", e.0, e.1),
+                    &format!("Failed to parse range. {} at index {}", e.0, e.1),
                 );
                 None
             }
