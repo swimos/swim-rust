@@ -43,6 +43,8 @@ use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_form::Form;
 use tokio::sync::mpsc;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
@@ -159,6 +161,15 @@ pub trait LaneUplinks {
         Context: AgentExecutionContext;
 }
 
+const LANE_IO_TASK: &str = "Lane IO task.";
+const UPDATE_TASK: &str = "Lane update task.";
+const UPLINK_SPAWN_TASK: &str = "Uplink spawn task.";
+const DISPATCH_ACTION: &str = "Dispatching uplink action.";
+const DISPATCH_COMMAND: &str = "Dispatching lane command.";
+const UPLINK_FAILED: &str = "An uplink failed with a non-fatal error.";
+const UPLINK_FATAL: &str = "An uplink failed with a fatal error.";
+const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
+
 /// Run the [`Envelope`] IO for a lane, updating the state of the lane and creating uplinks to
 /// remote subscribers.
 ///
@@ -186,6 +197,8 @@ where
     OutputMessage<Handler>: Into<Value>,
     InputMessage<Handler>: Debug + Form,
 {
+    let span = span!(Level::INFO, LANE_IO_TASK, ?route);
+    let _enter = span.enter();
     let envelopes = envelopes.fuse();
     let arc_handler = Arc::new(message_handler);
 
@@ -209,12 +222,16 @@ where
         let result = updater.await;
         upd_done_tx.trigger();
         result
-    };
+    }
+    .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-    let uplink_spawn_task =
-        lane_uplinks.make_task(arc_handler, spawner_channels, route.clone(), &context);
+    let uplink_spawn_task = lane_uplinks
+        .make_task(arc_handler, spawner_channels, route.clone(), &context)
+        .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
     let mut err_rx = err_rx.take_until_completes(upd_done_rx).fuse();
+
+    let route_cpy = route.clone();
 
     let envelope_task = async move {
         pin_mut!(envelopes);
@@ -240,6 +257,7 @@ where
                     };
                     match action {
                         Either::Left(uplink_action) => {
+                            event!(Level::TRACE, DISPATCH_ACTION, route = ?route_cpy, ?addr, action = ?uplink_action);
                             if act_tx
                                 .send(TaggedAction(addr, uplink_action))
                                 .await
@@ -249,6 +267,7 @@ where
                             }
                         }
                         Either::Right(command) => {
+                            event!(Level::TRACE, DISPATCH_COMMAND, route = ?route_cpy, ?addr, ?command);
                             if upd_tx.send(Form::try_convert(command)).await.is_err() {
                                 break false;
                             }
@@ -258,9 +277,13 @@ where
                 Some(Either::Right(error)) => {
                     if error.error.is_fatal() {
                         num_fatal += 1;
+                        event!(Level::ERROR, UPLINK_FATAL, route = ?route_cpy, ?error);
+                    } else {
+                        event!(Level::WARN, UPLINK_FAILED, route = ?route_cpy, ?error);
                     }
                     uplink_errors.push(error);
                     if num_fatal > max_fatal_uplink_errors {
+                        event!(Level::ERROR, TOO_MANY_FAILURES, route = ?route_cpy, num_fatal, max = max_fatal_uplink_errors);
                         break true;
                     }
                 }
