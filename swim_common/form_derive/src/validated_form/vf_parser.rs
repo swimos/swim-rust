@@ -60,6 +60,7 @@ impl ValidatedFormDescriptor {
         context: &mut Context,
         ident: &Ident,
         attributes: Vec<NestedMeta>,
+        kind: CompoundTypeKind,
     ) -> ValidatedFormDescriptor {
         let mut desc = ValidatedFormDescriptor {
             body_replaced: false,
@@ -104,15 +105,22 @@ impl ValidatedFormDescriptor {
 
                     match nested {
                         NestedMeta::Meta(Meta::List(list)) if list.path == ALL_ITEMS_PATH => {
-                            let schema =
-                                parse_schema_meta(StandardSchema::None, context, &list.nested);
+                            if let CompoundTypeKind::Unit = kind {
+                                context.error_spanned_by(
+                                    list,
+                                    "Attribute not supported by unit compound types",
+                                )
+                            } else {
+                                let schema =
+                                    parse_schema_meta(StandardSchema::None, context, &list.nested);
 
-                            set_container_schema(
-                                list.to_token_stream(),
-                                &mut desc.schema,
-                                context,
-                                StandardSchema::AllItems(Box::new(schema)),
-                            )
+                                set_container_schema(
+                                    list.to_token_stream(),
+                                    &mut desc.schema,
+                                    context,
+                                    StandardSchema::AllItems(Box::new(schema)),
+                                )
+                            }
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == ANYTHING_PATH => {
                             set_container_schema(
@@ -371,7 +379,12 @@ pub fn type_contents_to_validated<'f>(
                 compound_type: repr.compound_type,
                 fields: map_fields_to_validated(ctx, repr.fields),
                 manifest: repr.manifest,
-                descriptor: ValidatedFormDescriptor::from_attributes(ctx, ident, attrs),
+                descriptor: ValidatedFormDescriptor::from_attributes(
+                    ctx,
+                    ident,
+                    attrs,
+                    repr.compound_type,
+                ),
             }
         }),
         TypeContents::Enum(variants) => {
@@ -386,7 +399,12 @@ pub fn type_contents_to_validated<'f>(
                         compound_type: variant.compound_type,
                         fields: map_fields_to_validated(ctx, variant.fields),
                         manifest: variant.manifest,
-                        descriptor: ValidatedFormDescriptor::from_attributes(ctx, ident, attrs),
+                        descriptor: ValidatedFormDescriptor::from_attributes(
+                            ctx,
+                            ident,
+                            attrs,
+                            variant.compound_type,
+                        ),
                     }
                 })
                 .collect();
@@ -459,7 +477,20 @@ fn derive_container_schema(
                         };
                         (quote, false)
                     }
-                    _ => unimplemented!(),
+                    CompoundTypeKind::Tuple | CompoundTypeKind::NewType => {
+                        let quote = quote! {
+                            swim_common::model::schema::StandardSchema::AllItems(
+                                std::boxed::Box::new(
+                                    swim_common::model::schema::ItemSchema::ValueItem(#items)
+                                )
+                            ),
+                        };
+                        (quote, false)
+                    }
+                    CompoundTypeKind::Unit => {
+                        // Caught during the attribute parsing
+                        unreachable!()
+                    }
                 },
                 schema => {
                     if schema.is_bounded() {
@@ -493,7 +524,7 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                             items: vec![
                                 #schemas
                             ],
-                            exhaustive: false
+                            exhaustive: true
                         }
                     };
                 }
