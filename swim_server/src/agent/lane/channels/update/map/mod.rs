@@ -21,6 +21,7 @@ use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
 use swim_form::Form;
+use tracing::{event, Level};
 
 #[cfg(test)]
 mod tests;
@@ -40,6 +41,8 @@ where
         MapLaneUpdateTask { lane, retries }
     }
 }
+
+const APPLYING_UPDATE: &str = "Applying map update.";
 
 impl<K, V, F, Ret> LaneUpdate for MapLaneUpdateTask<K, V, F>
 where
@@ -64,8 +67,10 @@ where
             pin_mut!(messages);
 
             let mut runner = TransactionRunner::new(1, retries);
-            while let Some(update) = messages.next().await {
-                match update? {
+            while let Some(update_result) = messages.next().await {
+                let update = update_result?;
+                event!(Level::TRACE, message = APPLYING_UPDATE, ?update);
+                match update {
                     MapUpdate::Update(key, value) => {
                         lane.update_direct(key, value)
                             .apply_with(&mut runner)

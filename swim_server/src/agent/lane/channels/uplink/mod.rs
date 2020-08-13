@@ -21,14 +21,14 @@ use futures::{select, select_biased, FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSender;
 use swim_form::{Form, FormDeserializeErr};
-use tracing::{event, Level};
+use tracing::{event, span, Level};
 
 #[cfg(test)]
 mod tests;
@@ -167,7 +167,8 @@ impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
     }
 }
 
-const FAILED_UNLINK: &str = "Failed to send unlink failed uplink.";
+const UPLINK_FAILED: &str = "Uplink task failed.";
+const FAILED_UNLINK: &str = "Failed to send unlink for failed uplink.";
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates>
 where
@@ -183,11 +184,16 @@ where
         let result = self.run_uplink_internal(&mut sender).await;
         let attempt_unlink = match &result {
             Ok(_) => false,
-            Err(UplinkError::SenderDropped) => {
-                event!(Level::ERROR, FAILED_UNLINK);
-                false
+            Err(error) => {
+                event!(Level::ERROR, message = UPLINK_FAILED, ?error);
+                match error {
+                    UplinkError::SenderDropped => {
+                        event!(Level::ERROR, FAILED_UNLINK);
+                        false
+                    }
+                    _ => true,
+                }
             }
-            _ => true,
         };
         if attempt_unlink && sender.send_item(UplinkMessage::Unlinked).await.is_err() {
             event!(Level::ERROR, FAILED_UNLINK);
@@ -266,6 +272,10 @@ where
     }
 }
 
+const LINKING: &str = "Creating uplink.";
+const SYNCING: &str = "Synchronizing uplink.";
+const UNLINKING: &str = "Stopping uplink after client request.";
+
 // Change the state of the uplink based on an action.
 async fn handle_action<SM, Updates, Sender, SendErr>(
     state_machine: &SM,
@@ -282,14 +292,18 @@ where
     match action {
         Some(UplinkAction::Link) => {
             //Move into the linked state which will caused updates to be sent.
+            event!(Level::DEBUG, LINKING);
             send_msg(sender, UplinkMessage::Linked).await?;
             Ok(Some(UplinkState::Linked))
         }
         Some(UplinkAction::Sync) => {
             if prev_state == UplinkState::Opened {
+                event!(Level::DEBUG, LINKING);
                 send_msg(sender, UplinkMessage::Linked).await?;
             }
             // Run the sync state machine until it completes then enter the synced state.
+            let span = span!(Level::DEBUG, SYNCING);
+            let _enter = span.enter();
             let sync_stream = state_machine.sync_lane(updates);
             pin_mut!(sync_stream);
             while let Some(result) = sync_stream.next().await {
@@ -300,6 +314,7 @@ where
         }
         _ => {
             // When an unlink is requested, send the unlinked response and terminate the uplink.
+            event!(Level::DEBUG, UNLINKING);
             send_msg(sender, UplinkMessage::Unlinked).await?;
             Ok(None)
         }
@@ -308,7 +323,7 @@ where
 
 /// Trait encoding the differences in uplink behaviour for different kinds of lanes.
 pub trait UplinkStateMachine<Event> {
-    type Msg: Any + Send + Sync;
+    type Msg: Any + Send + Sync + Debug;
 
     /// Create a message to send to the subscriber from a lane event (where appropriate).
     fn message_for(&self, event: Event) -> Result<Option<Self::Msg>, UplinkError>;
@@ -368,9 +383,11 @@ impl<T> Deref for ValueLaneEvent<T> {
     }
 }
 
+const OBTAINED_VALUE_STATE: &str = "Obtained value lane state.";
+
 impl<T> UplinkStateMachine<Arc<T>> for ValueLaneUplink<T>
 where
-    T: Any + Send + Sync,
+    T: Any + Send + Sync + Debug,
 {
     type Msg = ValueLaneEvent<T>;
 
@@ -392,6 +409,7 @@ where
                 maybe_v = updates.next() => maybe_v,
             };
             if let Some(v) = lane_state {
+                event!(Level::TRACE, message = OBTAINED_VALUE_STATE, value = ?v);
                 Ok(v.into())
             } else {
                 Err(UplinkError::LaneStoppedReporting)
@@ -427,8 +445,8 @@ where
 
 impl<K, V, Retries, F> UplinkStateMachine<MapLaneEvent<K, V>> for MapLaneUplink<K, V, F>
 where
-    K: Form + Any + Send + Sync,
-    V: Any + Send + Sync,
+    K: Form + Any + Send + Sync + Debug,
+    V: Any + Send + Sync + Debug,
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {

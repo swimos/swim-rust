@@ -283,7 +283,7 @@ where
 
 impl<T> LaneMessageHandler for ValueLane<T>
 where
-    T: Any + Send + Sync,
+    T: Any + Send + Sync + Debug,
 {
     type Event = Arc<T>;
     type Uplink = ValueLaneUplink<T>;

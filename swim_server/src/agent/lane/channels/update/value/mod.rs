@@ -21,6 +21,8 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
+use std::fmt::Debug;
+use tracing::{event, Level};
 
 /// Asynchronous task to set a stream of values into a [`ValueLane`].
 pub struct ValueLaneUpdateTask<T> {
@@ -33,9 +35,11 @@ impl<T> ValueLaneUpdateTask<T> {
     }
 }
 
+const APPLYING_UPDATE: &str = "Applying value update.";
+
 impl<T> LaneUpdate for ValueLaneUpdateTask<T>
 where
-    T: Any + Send + Sync,
+    T: Any + Send + Sync + Debug,
 {
     type Msg = T;
 
@@ -51,8 +55,10 @@ where
         let ValueLaneUpdateTask { lane } = self;
         async move {
             pin_mut!(messages);
-            while let Some(msg) = messages.next().await {
-                lane.store(msg?).await;
+            while let Some(msg_result) = messages.next().await {
+                let msg = msg_result?;
+                event!(Level::TRACE, message = APPLYING_UPDATE, value = ?msg);
+                lane.store(msg).await;
             }
             Ok(())
         }
