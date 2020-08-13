@@ -1289,9 +1289,6 @@ fn consume_token<S: TokenStr>(
 
     let LocatedReconToken(token, offset) = loc_token;
 
-    println!("{:?}", state);
-    println!("{:?}", token);
-
     if let Some(Frame {
         attrs,
         items,
