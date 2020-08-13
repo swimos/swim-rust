@@ -644,6 +644,103 @@ fn complex_attributes(read_single: ReadSingleValue) {
             Value::from_vec(vec![Value::Extant, Value::Extant])
         ))))
     );
+
+    assert_that!(
+        read_single(
+            "@first @second {
+                b: 3
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("first"), Attr::of("second")],
+            vec![Item::slot("b", 3u32)]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                @first
+                @second {
+                    b: 3
+                }
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![
+                Item::ValueItem(Value::Record(vec![Attr::of("first")], vec![])),
+                Item::ValueItem(Value::Record(
+                    vec![Attr::of("second")],
+                    vec![Item::slot("b", 3u32)]
+                ))
+            ]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                @first {
+                    @second {
+                        b: 3
+                    }
+                }
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![Item::ValueItem(Value::Record(
+                vec![Attr::of("first")],
+                vec![Item::ValueItem(Value::Record(
+                    vec![Attr::of("second")],
+                    vec![Item::slot("b", 3u32)]
+                ))]
+            ))]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                a: @first
+                @second {
+                    b: 3
+                }
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![
+                Item::slot("a", Attr::of("first")),
+                Item::ValueItem(Value::Record(
+                    vec![Attr::of("second")],
+                    vec![Item::slot("b", 3u32)]
+                ))
+            ]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                @first
+                5
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![
+                Item::ValueItem(Value::Record(vec![Attr::of("first")], vec![])),
+                Item::ValueItem(Value::from(5u32))
+            ]
+        ))
+    );
 }
 
 #[test]
@@ -921,6 +1018,25 @@ fn attributes_with_new_line(read_single: ReadSingleValue) {
                 seven: eight,
                 nine: ten,
                 eleven: twelve
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar()
+                @baz
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar
+                @baz
             }
             "
         )

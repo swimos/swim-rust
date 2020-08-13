@@ -26,7 +26,7 @@ use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
@@ -491,7 +491,7 @@ enum ParseTermination {
     EarlyTermination(Value),
 }
 
-trait TokenStr: PartialEq + Borrow<str> + Into<String> {}
+trait TokenStr: PartialEq + Borrow<str> + Into<String> + Debug {}
 
 impl<'a> TokenStr for &'a str {}
 
@@ -1190,6 +1190,7 @@ enum StartAt {
 }
 
 /// A partially constructed record. The state of the parser is a stack of these.
+#[derive(Debug)]
 struct Frame {
     attrs: Vec<Attr>,
     items: Vec<Item>,
@@ -1287,6 +1288,9 @@ fn consume_token<S: TokenStr>(
     use ValueParseState::*;
 
     let LocatedReconToken(token, offset) = loc_token;
+
+    println!("{:?}", state);
+    println!("{:?}", token);
 
     if let Some(Frame {
         attrs,
@@ -1415,7 +1419,15 @@ fn update_reading_attr<S: TokenStr>(
             let record = Value::Record(attrs, items);
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         }
-        NewLine => repush(attrs, items, ReadingAttribute(name)),
+        NewLine => {
+            let attr = Attr {
+                name,
+                value: Value::Extant,
+            };
+            attrs.push(attr);
+            let record = Value::Record(attrs, items);
+            StateModification::PushDownAndRepeat(record, token)
+        }
         _ => StateModification::Fail(RecordError::InvalidAttributeValue),
     }
 }
