@@ -1,0 +1,6 @@
+@config {
+    @client {
+        buffer_size: 2
+        router: **invalid
+    }
+}
