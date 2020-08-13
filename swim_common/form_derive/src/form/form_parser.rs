@@ -31,7 +31,7 @@ pub fn build_type_contents<'t>(
     let type_contents = match &input.data {
         Data::Enum(data) => {
             if !input.attrs.get_attributes(context, FORM_PATH).is_empty() {
-                context.error_spanned_by(input, "Form attributes are not valid on enumerations");
+                context.error_spanned_by(input, "Tags are only supported on enumeration variants.");
                 return None;
             }
 
@@ -131,7 +131,7 @@ impl FormDescriptor {
 
         FormDescriptor {
             body_replaced: false,
-            name: name_opt.unwrap_or(Identity::Named(ident.clone())),
+            name: name_opt.unwrap_or_else(|| Identity::Named(ident.clone())),
         }
     }
 

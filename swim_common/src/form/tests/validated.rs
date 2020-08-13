@@ -25,8 +25,6 @@ use crate::model::{Attr, Value};
 use num_bigint::BigInt;
 use num_traits::Float;
 
-mod derive;
-
 mod swim_common {
     pub use crate::*;
 }

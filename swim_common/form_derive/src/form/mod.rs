@@ -87,7 +87,7 @@ fn to_value(
                     } = variant;
 
                     let as_value = build_variant_as_value(
-                        descriptor.clone(),
+                        descriptor,
                         manifest,
                         &name,
                         &compound_type,

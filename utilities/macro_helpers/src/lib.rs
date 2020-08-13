@@ -230,7 +230,6 @@ pub fn lit_str_to_expr_path(ctx: &mut Context, lit: &Lit) -> Result<ExprPath, ()
         Lit::Str(lit_str) => {
             let token_stream = syn::parse_str(&lit_str.value()).map_err(|e| {
                 ctx.error_spanned_by(lit_str, e.to_string());
-                ()
             })?;
             match syn::parse2::<ExprPath>(token_stream) {
                 Ok(path) => Ok(path),

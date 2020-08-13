@@ -31,10 +31,10 @@ struct RangeOpt<T> {
 
 #[derive(Debug)]
 enum RangeParseState {
-    ReadingStart,
-    ReadingDots,
-    ReadingInclusive,
-    ReadingEnd(usize),
+    Start,
+    Dots,
+    Inclusive,
+    End(usize),
 }
 
 #[derive(Debug, PartialEq)]
@@ -63,13 +63,13 @@ where
         .map(Some)
         .chain(iter::once(None));
 
-    let mut parse_state = RangeParseState::ReadingStart;
+    let mut parse_state = RangeParseState::Start;
 
     let result = input_str.char_indices().zip(following).try_fold(
         RangeOpt::default(),
         move |mut range, ((current_idx, current_char), next)| {
             match parse_state {
-                RangeParseState::ReadingStart => match next {
+                RangeParseState::Start => match next {
                     Some((next_idx, next_char)) => {
                         if current_char == '.' && next_char == '.' {
                             let slice = &input_str[0..current_idx];
@@ -78,20 +78,20 @@ where
                                     .parse::<T>()
                                     .map_err(|e| RangeParseErr(e.to_string(), next_idx))?,
                             );
-                            parse_state = RangeParseState::ReadingDots;
+                            parse_state = RangeParseState::Dots;
                         }
                     }
                     None => {
                         return Err(RangeParseErr::new(ERR_UNEXPECTED, current_idx));
                     }
                 },
-                RangeParseState::ReadingDots => match next {
+                RangeParseState::Dots => match next {
                     Some((next_idx, next_char)) => match next_char {
                         '=' => {
-                            parse_state = RangeParseState::ReadingInclusive;
+                            parse_state = RangeParseState::Inclusive;
                         }
                         n if n.is_numeric() || n == '-' => {
-                            parse_state = RangeParseState::ReadingEnd(next_idx);
+                            parse_state = RangeParseState::End(next_idx);
                         }
                         '.' => {
                             return Err(RangeParseErr::new(ERR_MALFORMATTED, next_idx));
@@ -100,18 +100,18 @@ where
                     },
                     None => return Err(RangeParseErr::new(ERR_UNEXPECTED, current_idx)),
                 },
-                RangeParseState::ReadingInclusive => match next {
+                RangeParseState::Inclusive => match next {
                     Some((next_idx, next_char)) => {
                         if next_char.is_numeric() || next_char == '.' || next_char == '-' {
                             range.inclusive = true;
-                            parse_state = RangeParseState::ReadingEnd(next_idx);
+                            parse_state = RangeParseState::End(next_idx);
                         } else {
                             return Err(RangeParseErr::new(ERR_MALFORMATTED, next_idx));
                         }
                     }
                     _ => return Err(RangeParseErr::new(ERR_UNEXPECTED, current_idx)),
                 },
-                RangeParseState::ReadingEnd(start_idx) => match next {
+                RangeParseState::End(start_idx) => match next {
                     Some((next_idx, next_char)) => {
                         if !(next_char.is_numeric() || next_char == '.' || next_char == '-') {
                             return Err(RangeParseErr::new(ERR_MALFORMATTED, next_idx));
