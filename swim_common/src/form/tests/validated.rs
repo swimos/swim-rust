@@ -16,9 +16,9 @@ use crate::form::Form;
 use crate::form::ValidatedForm;
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::slot::SlotSchema;
-use crate::model::schema::ItemSchema;
 use crate::model::schema::Schema;
 use crate::model::schema::StandardSchema;
+use crate::model::schema::{FieldSpec, ItemSchema};
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
@@ -34,13 +34,12 @@ fn test_tag() {
     #[derive(Form, ValidatedForm)]
     struct S;
 
-    let expected_schema = StandardSchema::HeadAttribute {
-        schema: Box::new(AttrSchema::named(
+    let expected_schema = StandardSchema::HasAttributes {
+        attributes: vec![FieldSpec::default(AttrSchema::named(
             "S",
             StandardSchema::OfKind(ValueKind::Extant),
-        )),
-        required: true,
-        remainder: Box::new(StandardSchema::Anything),
+        ))],
+        exhaustive: true,
     };
 
     let value = S {}.as_value();
@@ -59,13 +58,12 @@ fn all_items() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(
             StandardSchema::Anything,
@@ -128,13 +126,12 @@ fn text() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -185,13 +182,12 @@ fn num_items_attrs() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -233,13 +229,12 @@ fn num_items() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -278,13 +273,12 @@ fn num_attrs() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -321,13 +315,12 @@ fn and() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -373,13 +366,12 @@ fn container_equal() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Equal(container_expected()),
         StandardSchema::Layout {
@@ -420,13 +412,12 @@ fn field_equal() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![
@@ -467,13 +458,12 @@ fn not() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -516,13 +506,12 @@ fn or() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -577,13 +566,12 @@ fn generic_value() {
     };
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -616,13 +604,12 @@ fn tuple_struct() {
     struct S(i32, i64, String);
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![
@@ -651,13 +638,12 @@ fn tuple_struct_attrs() {
     );
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![
@@ -680,13 +666,12 @@ fn unit_struct() {
     #[derive(Form, ValidatedForm)]
     struct S;
 
-    let expected_schema = StandardSchema::HeadAttribute {
-        schema: Box::new(AttrSchema::named(
+    let expected_schema = StandardSchema::HasAttributes {
+        attributes: vec![FieldSpec::default(AttrSchema::named(
             "S",
             StandardSchema::OfKind(ValueKind::Extant),
-        )),
-        required: true,
-        remainder: Box::new(StandardSchema::Anything),
+        ))],
+        exhaustive: true,
     };
 
     assert_eq!(S::schema(), expected_schema);
@@ -702,13 +687,12 @@ fn field_anything() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![
@@ -749,13 +733,12 @@ fn field_non_nan() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -797,13 +780,12 @@ fn field_finite() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -849,13 +831,12 @@ fn complex() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -913,13 +894,12 @@ fn int_range_inclusive() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -951,13 +931,12 @@ fn uint_range_inclusive() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -988,13 +967,12 @@ fn int_range() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -1027,13 +1005,12 @@ fn float_range_inclusive() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -1064,13 +1041,12 @@ fn float_range() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -1103,13 +1079,12 @@ fn uint_range() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -1141,13 +1116,12 @@ fn big_int_range_inclusive() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(
@@ -1202,13 +1176,12 @@ fn big_int_range() {
     }
 
     let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HeadAttribute {
-            schema: Box::new(AttrSchema::named(
+        StandardSchema::HasAttributes {
+            attributes: vec![FieldSpec::default(AttrSchema::named(
                 "S",
                 StandardSchema::OfKind(ValueKind::Extant),
-            )),
-            required: true,
-            remainder: Box::new(StandardSchema::Anything),
+            ))],
+            exhaustive: true,
         },
         StandardSchema::Layout {
             items: vec![(

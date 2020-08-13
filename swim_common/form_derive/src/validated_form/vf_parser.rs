@@ -157,15 +157,14 @@ fn derive_head_attribute(
     match type_contents {
         TypeContents::Struct(repr) => {
             let ident = repr.descriptor.name.to_string();
+
             quote! {
-                swim_common::model::schema::StandardSchema::HeadAttribute {
-                    schema: std::boxed::Box::new(swim_common::model::schema::attr::AttrSchema::named(
+                swim_common::model::schema::StandardSchema::HasAttributes {
+                    attributes: vec![swim_common::model::schema::FieldSpec::default(swim_common::model::schema::attr::AttrSchema::named(
                         #ident,
-                        // todo: header body check here
                         swim_common::model::schema::StandardSchema::OfKind(swim_common::model::ValueKind::Extant),
-                    )),
-                    required: true,
-                    remainder: std::boxed::Box::new(swim_common::model::schema::StandardSchema::Anything),
+                    ))],
+                    exhaustive: true,
                 }
             }
         }
