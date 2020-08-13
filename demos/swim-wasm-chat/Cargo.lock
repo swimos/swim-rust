@@ -389,6 +389,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "macro_helpers"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "matchers"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1209,6 +1218,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "futures-util",
+ "macro_helpers",
  "parking_lot 0.11.0",
  "parking_lot_core 0.8.0",
  "pin-project",
