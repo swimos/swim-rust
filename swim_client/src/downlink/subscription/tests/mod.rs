@@ -19,6 +19,7 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use swim_common::warp::path::AbsolutePath;
 use tokio::time::Duration;
+use url::Url;
 
 mod harness;
 
@@ -35,7 +36,7 @@ fn per_host_config() -> ConfigHierarchy {
     .unwrap();
 
     let mut conf = ConfigHierarchy::default();
-    conf.for_host("127.0.0.2".to_string(), special_params);
+    conf.for_host(Url::parse("ws://127.0.0.2").unwrap(), special_params);
     conf
 }
 
