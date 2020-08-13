@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::validated_form::range::parse_range_str;
 use crate::validated_form::vf_parser::{
     StandardSchema, ALL_ITEMS_PATH, AND_PATH, ANYTHING_PATH, BIG_INT_RANGE_PATH, EQUAL_PATH,
     FINITE_PATH, FLOAT_RANGE_PATH, INT_RANGE_PATH, NON_NAN_PATH, NOTHING_PATH, NOT_PATH,
@@ -40,7 +41,7 @@ fn parse_lit_to_int(lit: &Lit, context: &mut Context) -> Option<usize> {
         }
     }
 }
-
+// todo: change to range syntax
 macro_rules! build_std_range {
     ($nested:expr, $context:expr, $variant:ident, $target:ty, $type:expr) => {{
         let mut lower_opt = None;
@@ -62,7 +63,7 @@ macro_rules! build_std_range {
                 Err(e) => $context.error_spanned_by(int, e),
             },
             NestedMeta::Lit(Lit::Bool(bool)) => inclusive = bool.value,
-            _ => $context.error_spanned_by(n, format!("Expected a {} literal", $type)),
+            _ => $context.error_spanned_by(n, format!("Expected {} literal", $type)),
         });
 
         if lower_opt.is_none() || upper_opt.is_none() {
@@ -140,15 +141,14 @@ pub fn parse_schema_meta(
                     };
 
                 match meta {
-                    NestedMeta::Meta(Meta::List(list)) if list.path == INT_RANGE_PATH => {
-                        if let Some((start, end, inclusive)) =
-                            build_std_range!(&list.nested, context, Int, i64, "integer")
-                        {
-                            push_element(
-                                StandardSchema::IntRange((Range { start, end }, inclusive)),
-                                &mut schema,
-                                context,
-                            );
+                    NestedMeta::Meta(Meta::NameValue(name)) if name.path == INT_RANGE_PATH => {
+                        match &name.lit {
+                            Lit::Str(str) => {
+                                let _ = parse_range_str::<i32, _>(&str.value());
+                            }
+                            _ => {
+                                context.error_spanned_by(name, "Expected a String literal");
+                            }
                         }
                     }
                     NestedMeta::Meta(Meta::List(list)) if list.path == UINT_RANGE_PATH => {

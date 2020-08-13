@@ -23,6 +23,8 @@ use crate::validated_form::vf_parser::type_contents_to_validated;
 mod meta_parse;
 mod vf_parser;
 
+mod range;
+
 pub fn build_validated_form(
     input: DeriveInput,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Debug;
-
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use syn::export::TokenStream2;
@@ -46,7 +44,6 @@ pub const AND_PATH: Symbol = Symbol("and");
 pub const OR_PATH: Symbol = Symbol("or");
 pub const NOT_PATH: Symbol = Symbol("not");
 
-#[derive(Debug)]
 pub struct ValidatedFormDescriptor {
     pub body_replaced: bool,
     pub name: Identity,
@@ -215,7 +212,6 @@ impl<'f> ToTokens for ValidatedField<'f> {
     }
 }
 
-#[derive(Debug)]
 #[allow(warnings)]
 pub enum StandardSchema {
     None,
