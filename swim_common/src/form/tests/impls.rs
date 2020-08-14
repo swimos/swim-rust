@@ -78,7 +78,6 @@ fn blob() {
 mod primitive {
     use super::*;
     use std::cell::{Cell, RefCell};
-    use std::marker::PhantomData;
     use std::sync::Arc;
 
     macro_rules! test_impl {
@@ -166,18 +165,6 @@ mod primitive {
 
         assert_eq!(value, Value::UInt64Value(123));
         assert_eq!(*AtomicU64::try_from_value(&value).unwrap().get_mut(), 123);
-    }
-
-    #[test]
-    fn test_phantomdata() {
-        let pd: PhantomData<i32> = PhantomData::default();
-        let value = pd.as_value();
-
-        assert_eq!(value, Value::Extant);
-        assert_eq!(
-            PhantomData::<i32>::try_from_value(&value),
-            Ok(PhantomData::default())
-        );
     }
 
     #[test]

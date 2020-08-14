@@ -60,29 +60,6 @@ fn test_transmute_generic() {
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s));
 }
-use std::marker::PhantomData;
-
-#[test]
-fn test_transmute_generic_lifetime() {
-    #[derive(Form, Debug, PartialEq)]
-    struct S<'l, F>
-    where
-        F: Form,
-    {
-        f: PhantomData<&'l F>,
-    }
-
-    let s: S<i32> = S {
-        f: Default::default(),
-    };
-    let rec = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(Value::text("f"), Value::Extant)],
-    );
-
-    assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
-}
 
 #[test]
 fn test_transmute_newtype() {

@@ -29,30 +29,7 @@ use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
 use crate::model::schema::StandardSchema;
 use crate::model::{Item, Value, ValueKind};
-use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
-
-impl<F: ?Sized> Form for PhantomData<F> {
-    fn as_value(&self) -> Value {
-        Value::Extant
-    }
-
-    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
-        match value {
-            Value::Extant => Ok(Default::default()),
-            v => Err(FormErr::incorrect_type("Value::Extant", v)),
-        }
-    }
-}
-
-impl<F> ValidatedForm for PhantomData<F>
-where
-    F: ValidatedForm,
-{
-    fn schema() -> StandardSchema {
-        F::schema()
-    }
-}
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
