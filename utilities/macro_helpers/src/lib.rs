@@ -97,10 +97,7 @@ impl FieldIdentity {
     pub fn as_ident(&self) -> Ident {
         match self {
             FieldIdentity::Named(ident) => ident.clone(),
-            FieldIdentity::Renamed {
-                new_identity,
-                old_identity,
-            } => Ident::new(&new_identity, old_identity.span()),
+            FieldIdentity::Renamed { old_identity, .. } => old_identity.clone(),
             FieldIdentity::Anonymous(index) => {
                 Ident::new(&format!("__self_{}", index.index), index.span)
             }
@@ -203,9 +200,9 @@ pub fn deconstruct_type(
 pub fn get_attribute_meta(
     ctx: &mut Context,
     attr: &syn::Attribute,
-    path: Symbol,
+    symbol: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
-    if attr.path != path {
+    if attr.path != symbol {
         Ok(Vec::new())
     } else {
         match attr.parse_meta() {
@@ -213,7 +210,7 @@ pub fn get_attribute_meta(
             Ok(other) => {
                 ctx.error_spanned_by(
                     other,
-                    &format!("Invalid attribute. Expected #[{}(...)]", path),
+                    &format!("Invalid attribute. Expected #[{}(...)]", symbol),
                 );
                 Err(())
             }

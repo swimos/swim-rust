@@ -23,34 +23,34 @@ use proc_macro::TokenStream;
 
 use syn::DeriveInput;
 
+mod from_value;
+use from_value::from_value;
+mod to_value;
+use to_value::to_value;
+
 use macro_helpers::{to_compile_errors, Context};
 
 use crate::parser::{FormDescriptor, TypeContents};
 
 mod parser;
-mod to_value;
-use to_value::to_value;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    build_derive_form(input)
-        .unwrap_or_else(to_compile_errors)
-        .into()
-}
-
-fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let mut context = Context::default();
     let descriptor = FormDescriptor::from_ast(&mut context, &input);
     let structure_name = descriptor.name.original_ident.clone();
     let type_contents = match TypeContents::from(&mut context, &input) {
         Some(cont) => cont,
-        None => return Err(context.check().unwrap_err()),
+        None => return to_compile_errors(context.check().unwrap_err()).into(),
     };
 
+    let from_value_body = from_value(&type_contents, &structure_name, &descriptor);
     let as_value_body = to_value(type_contents, &structure_name, descriptor);
 
-    context.check()?;
+    if let Err(e) = context.check() {
+        return to_compile_errors(e).into();
+    }
 
     let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
 
@@ -66,10 +66,10 @@ fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream, Vec
             #[inline]
             #[allow(non_snake_case)]
             fn try_from_value(value: &swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
-                unimplemented!()
+                #from_value_body
             }
         }
     };
 
-    Ok(ts)
+    ts.into()
 }
