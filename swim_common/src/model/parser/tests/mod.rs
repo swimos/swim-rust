@@ -931,8 +931,163 @@ fn nested_records(read_single: ReadSingleValue) {
 }
 
 #[test]
+fn parse_attribute_only_records() {
+    attribute_only_records(parse_single);
+}
+
+#[test]
+fn iteratee_attribute_only_records() {
+    attribute_only_records(consume_to_value);
+}
+
+fn attribute_only_records(read_single: ReadSingleValue) {
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![("first", Value::of_attr("attr"))])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr()
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![("first", Value::of_attr("attr"))])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr,
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::ValueItem(Value::Extant)
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr(),
+
+        }"
+        )
+        .unwrap(),
+        Value::record(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::ValueItem(Value::Extant)
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr, second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr,
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr(), second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr(),
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr()
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+}
+
+#[test]
 fn parse_attributes_with_new_line() {
     attributes_with_new_line(parse_single);
+}
+
+#[test]
+fn iteratee_attributes_with_new_line() {
+    attributes_with_new_line(consume_to_value);
 }
 
 fn attributes_with_new_line(read_single: ReadSingleValue) {
@@ -941,6 +1096,24 @@ fn attributes_with_new_line(read_single: ReadSingleValue) {
             "{
                 foo: @bar()
                 baz
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar(),
+                baz
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar(), baz
             }
             "
         )

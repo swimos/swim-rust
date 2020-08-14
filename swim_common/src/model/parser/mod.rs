@@ -1121,21 +1121,42 @@ fn push_down_and_close(
     }
 }
 
-fn push_down_and_repeat<S: TokenStr>(
+/// Add a value to the frame on top of the parser stack, after consuming an item separator or
+/// new line.
+fn push_down_item(
     state: &mut Vec<Frame>,
     value: Value,
-    token: ReconToken<S>,
     offset: usize,
+    closed_with_newline: bool,
 ) -> Option<Result<Value, BadRecord>> {
-    match push_down(state, value, offset) {
-        Some(val) => Some(val),
-        None => match consume_token(state, LocatedReconToken(token, offset))? {
-            ParseTermination::Failed(ParseFailure::InvalidToken(bad_record)) => {
-                Some(Err(bad_record))
+    if let Some(Frame {
+        attrs,
+        mut items,
+        mut parse_state,
+    }) = state.pop()
+    {
+        let p = match parse_state {
+            ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) => {
+                items.push(Item::ValueItem(value));
+                p
             }
-            ParseTermination::EarlyTermination(value) => Some(Ok(value)),
-            _ => unreachable!(),
-        },
+            ValueParseState::ReadingSlot(p, key) => {
+                items.push(Item::Slot(key, value));
+                p
+            }
+            _ => {
+                return Some(Err(BadRecord(offset, RecordError::BadStack)));
+            }
+        };
+        parse_state = ValueParseState::InsideBody(p, !closed_with_newline);
+        state.push(Frame {
+            attrs,
+            items,
+            parse_state,
+        });
+        None
+    } else {
+        Some(Err(BadRecord(offset, RecordError::BadStack)))
     }
 }
 
@@ -1212,16 +1233,16 @@ impl Frame {
 }
 
 /// An operation to be applied to the parser state after consuming a token.
-enum StateModification<S: TokenStr> {
+enum StateModification {
     Fail(RecordError),
     RePush(Frame),
     OpenNew(Frame, StartAt),
     PushDown(Value),
-    PushDownAndRepeat(Value, ReconToken<S>),
+    PushDownItem(Value, bool),
     PushDownAndClose(Value, bool),
 }
 
-impl<S: TokenStr> StateModification<S> {
+impl StateModification {
     /// Apply the modification to the parser state stack.
     fn apply(self, state: &mut Vec<Frame>, offset: usize) -> Option<Result<Value, BadRecord>> {
         match self {
@@ -1241,8 +1262,8 @@ impl<S: TokenStr> StateModification<S> {
                 None
             }
             StateModification::PushDown(value) => push_down(state, value, offset),
-            StateModification::PushDownAndRepeat(value, token) => {
-                push_down_and_repeat(state, value, token, offset)
+            StateModification::PushDownItem(value, closed_with_newline) => {
+                push_down_item(state, value, offset, closed_with_newline)
             }
             StateModification::PushDownAndClose(value, attr_body) => {
                 push_down_and_close(state, value, attr_body, offset)
@@ -1252,11 +1273,7 @@ impl<S: TokenStr> StateModification<S> {
 }
 
 /// Push an entry back onto the stack.
-fn repush<S: TokenStr>(
-    attrs: Vec<Attr>,
-    items: Vec<Item>,
-    parse_state: ValueParseState,
-) -> StateModification<S> {
+fn repush(attrs: Vec<Attr>, items: Vec<Item>, parse_state: ValueParseState) -> StateModification {
     StateModification::RePush(Frame {
         attrs,
         items,
@@ -1264,12 +1281,12 @@ fn repush<S: TokenStr>(
     })
 }
 
-fn open_new<S: TokenStr>(
+fn open_new(
     attrs: Vec<Attr>,
     items: Vec<Item>,
     parse_state: ValueParseState,
     start_at: StartAt,
-) -> StateModification<S> {
+) -> StateModification {
     StateModification::OpenNew(
         Frame {
             attrs,
@@ -1295,7 +1312,7 @@ fn consume_token<S: TokenStr>(
         parse_state,
     }) = state.pop()
     {
-        let state_mod: StateModification<S> = match parse_state {
+        let state_mod: StateModification = match parse_state {
             AttributeStart => update_attr_start(token, attrs, items),
             ReadingAttribute(name) => update_reading_attr(token, name, attrs, items),
             AfterAttribute => update_after_attr(token, attrs, items),
@@ -1344,7 +1361,7 @@ fn update_attr_start<S: TokenStr>(
     token: ReconToken<S>,
     attrs: Vec<Attr>,
     items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
@@ -1363,7 +1380,7 @@ fn update_reading_attr<S: TokenStr>(
     name: String,
     mut attrs: Vec<Attr>,
     items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
@@ -1398,14 +1415,14 @@ fn update_reading_attr<S: TokenStr>(
                 _ => StateModification::Fail(RecordError::NonValueToken),
             }
         }
-        EntrySep => {
+        tok @ EntrySep | tok @ NewLine => {
             let attr = Attr {
                 name,
                 value: Value::Extant,
             };
             attrs.push(attr);
             let record = Value::Record(attrs, items);
-            StateModification::PushDown(record)
+            StateModification::PushDownItem(record, tok == NewLine)
         }
         tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
             let attr = Attr {
@@ -1416,15 +1433,6 @@ fn update_reading_attr<S: TokenStr>(
             let record = Value::Record(attrs, items);
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         }
-        NewLine => {
-            let attr = Attr {
-                name,
-                value: Value::Extant,
-            };
-            attrs.push(attr);
-            let record = Value::Record(attrs, items);
-            StateModification::PushDownAndRepeat(record, token)
-        }
         _ => StateModification::Fail(RecordError::InvalidAttributeValue),
     }
 }
@@ -1433,7 +1441,7 @@ fn update_after_attr<S: TokenStr>(
     token: ReconToken<S>,
     attrs: Vec<Attr>,
     items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
@@ -1448,17 +1456,13 @@ fn update_after_attr<S: TokenStr>(
             Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
             _ => StateModification::Fail(RecordError::NonValueToken),
         },
-        EntrySep => {
+        tok @ EntrySep | tok @ NewLine => {
             let record = Value::Record(attrs, items);
-            StateModification::PushDown(record)
+            StateModification::PushDownItem(record, tok == NewLine)
         }
         tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
             let record = Value::Record(attrs, items);
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
-        }
-        NewLine => {
-            let record = Value::Record(attrs, items);
-            StateModification::PushDownAndRepeat(record, token)
         }
         _ => StateModification::Fail(RecordError::BadRecordStart),
     }
@@ -1469,7 +1473,7 @@ fn update_record_start<S: TokenStr>(
     attr_body: bool,
     attrs: Vec<Attr>,
     mut items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
@@ -1505,7 +1509,7 @@ fn update_inside_body<S: TokenStr>(
     required: bool,
     attrs: Vec<Attr>,
     mut items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
@@ -1557,7 +1561,7 @@ fn update_single<S: TokenStr>(
     value: Value,
     attrs: Vec<Attr>,
     mut items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
@@ -1587,7 +1591,7 @@ fn update_reading_slot<S: TokenStr>(
     key: Value,
     attrs: Vec<Attr>,
     mut items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
@@ -1630,7 +1634,7 @@ fn update_after_slot<S: TokenStr>(
     attr_body: bool,
     attrs: Vec<Attr>,
     items: Vec<Item>,
-) -> StateModification<S> {
+) -> StateModification {
     use ReconToken::*;
     use ValueParseState::*;
 
