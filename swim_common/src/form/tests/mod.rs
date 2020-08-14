@@ -15,6 +15,7 @@
 mod enumeration;
 mod impls;
 mod structure;
+#[allow(warnings)]
 mod validated;
 
 use trybuild::TestCases;

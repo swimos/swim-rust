@@ -80,6 +80,26 @@ impl<'a> FormField<'a> {
     pub fn is_skipped(&self) -> bool {
         self.kind == FieldKind::Skip
     }
+
+    pub fn is_attr(&self) -> bool {
+        self.kind == FieldKind::Attr
+    }
+
+    pub fn is_slot(&self) -> bool {
+        self.kind == FieldKind::Slot
+    }
+
+    pub fn is_body(&self) -> bool {
+        self.kind == FieldKind::Body
+    }
+
+    pub fn is_header_body(&self) -> bool {
+        self.kind == FieldKind::HeaderBody
+    }
+
+    pub fn is_header(&self) -> bool {
+        self.kind == FieldKind::Header
+    }
 }
 
 /// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields

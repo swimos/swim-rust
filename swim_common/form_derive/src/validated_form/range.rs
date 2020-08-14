@@ -15,7 +15,7 @@
 use std::iter;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Range<T> {
     pub lower: T,
     pub upper: T,

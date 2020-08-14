@@ -34,12 +34,19 @@ fn test_tag() {
     #[derive(Form, ValidatedForm)]
     struct S;
 
-    let expected_schema = StandardSchema::HasAttributes {
-        attributes: vec![FieldSpec::default(AttrSchema::named(
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
             "S",
             StandardSchema::OfKind(ValueKind::Extant),
-        ))],
-        exhaustive: true,
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![],
+                exhaustive: true,
+            },
+        ])),
     };
 
     let value = S {}.as_value();
@@ -57,32 +64,41 @@ fn all_items_named() {
         b: i32,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::And(vec![
+            StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Anything,
+                StandardSchema::OfKind(ValueKind::Int32),
+            )))),
+            StandardSchema::Or(vec![
                 StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(
-            StandardSchema::Anything,
-            StandardSchema::OfKind(ValueKind::Int32),
-        )))),
-        StandardSchema::Layout {
-            items: vec![
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
-                    true,
-                ),
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("b"), i32::schema())),
-                    true,
-                ),
-            ],
-            exhaustive: true,
-        },
-    ]);
+                StandardSchema::Layout {
+                    items: vec![
+                        (
+                            ItemSchema::Field(SlotSchema::new(
+                                StandardSchema::text("a"),
+                                i32::schema(),
+                            )),
+                            true,
+                        ),
+                        (
+                            ItemSchema::Field(SlotSchema::new(
+                                StandardSchema::text("b"),
+                                i32::schema(),
+                            )),
+                            true,
+                        ),
+                    ],
+                    exhaustive: true,
+                },
+            ]),
+        ])),
+    };
 
     let valid = S { a: 1, b: 2 }.as_value();
     let invalid_value = Value::Record(
@@ -105,25 +121,28 @@ fn all_items_tuple() {
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S(i32, i64);
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::And(vec![
+            StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
+                ValueKind::Int32,
+            )))),
+            StandardSchema::Or(vec![
                 StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
-            ValueKind::Int32,
-        )))),
-        StandardSchema::Layout {
-            items: vec![
-                (ItemSchema::ValueItem(i32::schema()), true),
-                (ItemSchema::ValueItem(i64::schema()), true),
-            ],
-            exhaustive: true,
-        },
-    ]);
+                StandardSchema::Layout {
+                    items: vec![
+                        (ItemSchema::ValueItem(i32::schema()), true),
+                        (ItemSchema::ValueItem(i64::schema()), true),
+                    ],
+                    exhaustive: true,
+                },
+            ]),
+        ])),
+    };
 
     let valid = S(1, 2).as_value();
     let invalid_value = Value::Record(
@@ -146,22 +165,25 @@ fn all_items_new_type() {
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S(i32);
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::And(vec![
+            StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
+                ValueKind::Int32,
+            )))),
+            StandardSchema::Or(vec![
                 StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
-            ValueKind::Int32,
-        )))),
-        StandardSchema::Layout {
-            items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
-            exhaustive: true,
-        },
-    ]);
+                StandardSchema::Layout {
+                    items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
+                    exhaustive: true,
+                },
+            ]),
+        ])),
+    };
 
     let valid = S(1).as_value();
     let invalid_value = Value::Record(
@@ -176,24 +198,6 @@ fn all_items_new_type() {
 }
 
 #[test]
-fn container_anything() {
-    #[derive(Form, ValidatedForm)]
-    #[form(schema(anything))]
-    struct S {
-        a: i32,
-        b: i32,
-    }
-
-    let expected_schema = StandardSchema::Anything;
-
-    let value = S { a: 1, b: 2 }.as_value();
-
-    assert_eq!(S::schema(), expected_schema);
-    assert!(S::schema().matches(&value));
-    assert!(S::schema().matches(&Value::Int32Value(1)));
-}
-
-#[test]
 fn text() {
     #[derive(Form, ValidatedForm)]
     struct S {
@@ -201,25 +205,26 @@ fn text() {
         a: String,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("a"),
-                    StandardSchema::text("swim"),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::text("swim"),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let value = S {
         a: String::from("swim"),
@@ -232,24 +237,6 @@ fn text() {
 }
 
 #[test]
-fn container_nothing() {
-    #[derive(Form, ValidatedForm)]
-    #[form(schema(nothing))]
-    struct S {
-        a: i32,
-        b: i32,
-    }
-
-    let expected_schema = StandardSchema::Nothing;
-
-    let value = S { a: 1, b: 2 }.as_value();
-
-    assert_eq!(S::schema(), expected_schema);
-    assert!(!S::schema().matches(&value));
-    assert!(!S::schema().matches(&Value::Int32Value(1)));
-}
-
-#[test]
 fn num_items_attrs() {
     #[derive(Form, ValidatedForm)]
     struct S {
@@ -257,28 +244,29 @@ fn num_items_attrs() {
         a: Value,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("a"),
-                    StandardSchema::And(vec![
-                        StandardSchema::NumItems(2),
-                        StandardSchema::NumAttrs(3),
-                    ]),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::And(vec![
+                            StandardSchema::NumItems(2),
+                            StandardSchema::NumAttrs(3),
+                        ]),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let value = S {
         a: Value::Record(
@@ -304,25 +292,26 @@ fn num_items() {
         a: Value,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("a"),
-                    StandardSchema::NumItems(2),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::NumItems(2),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let value = S {
         a: Value::Record(
@@ -348,25 +337,26 @@ fn num_attrs() {
         a: Value,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("a"),
-                    StandardSchema::NumAttrs(3),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::NumAttrs(3),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let value = S {
         a: Value::Record(vec![Attr::of("a"), Attr::of("b"), Attr::of("c")], vec![]),
@@ -390,28 +380,30 @@ fn and() {
         a: String,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("a"),
-                    StandardSchema::And(vec![
-                        StandardSchema::OfKind(ValueKind::Text),
-                        StandardSchema::Equal(s_value()),
-                    ]),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::And(vec![
+                            StandardSchema::OfKind(ValueKind::Text),
+                            StandardSchema::Equal(s_value()),
+                        ]),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
+
     let value = S {
         a: String::from("text"),
     }
@@ -420,58 +412,6 @@ fn and() {
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
-}
-
-#[test]
-fn container_equal() {
-    fn container_expected() -> Value {
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![
-                Item::Slot(Value::text("a"), Value::Int32Value(1)),
-                Item::Slot(Value::text("b"), Value::Int32Value(2)),
-            ],
-        )
-    }
-
-    #[derive(Form, ValidatedForm)]
-    #[form(schema(equal = "container_expected"))]
-    struct S {
-        a: i32,
-        b: i32,
-    }
-
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Equal(container_expected()),
-        StandardSchema::Layout {
-            items: vec![
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
-                    true,
-                ),
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("b"), i32::schema())),
-                    true,
-                ),
-            ],
-            exhaustive: true,
-        },
-    ]);
-
-    let valid_value = container_expected();
-    let invalid_value = Value::Int32Value(1);
-
-    assert_eq!(S { a: 1, b: 2 }.as_value(), valid_value);
-    assert_eq!(S::schema(), expected_schema);
-    assert!(S::schema().matches(&valid_value));
-    assert!(!S::schema().matches(&invalid_value));
 }
 
 #[test]
@@ -487,31 +427,35 @@ fn field_equal() {
         b: i32,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![
-                (
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::Equal(field_expected()),
-                    )),
-                    true,
-                ),
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("b"), i32::schema())),
-                    true,
-                ),
-            ],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("a"),
+                            StandardSchema::Equal(field_expected()),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let valid_value = S {
         a: Value::Int32Value(1),
@@ -533,25 +477,26 @@ fn not() {
         a: Value,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("a"),
-                    StandardSchema::Not(Box::new(StandardSchema::OfKind(ValueKind::Text))),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::Not(Box::new(StandardSchema::OfKind(ValueKind::Text))),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let valid_value = S {
         a: Value::Int32Value(1),
@@ -581,28 +526,29 @@ fn or() {
         a: String,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("a"),
-                    StandardSchema::Or(vec![
-                        StandardSchema::OfKind(ValueKind::Int32),
-                        StandardSchema::Equal(s_value()),
-                    ]),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::Or(vec![
+                            StandardSchema::OfKind(ValueKind::Int32),
+                            StandardSchema::Equal(s_value()),
+                        ]),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let value = S {
         a: String::from("text"),
@@ -641,25 +587,26 @@ fn generic_value() {
         f: Value::Int32Value(i32::max_value()),
     };
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::Equal(expected()),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::Equal(expected()),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let valid_value = S {
         f: Value::Int32Value(i32::max_value()),
@@ -679,23 +626,24 @@ fn tuple_struct() {
     #[derive(Form, ValidatedForm)]
     struct S(i32, i64, String);
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![
-                (ItemSchema::ValueItem(i32::schema()), true),
-                (ItemSchema::ValueItem(i64::schema()), true),
-                (ItemSchema::ValueItem(String::schema()), true),
-            ],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![
+                    (ItemSchema::ValueItem(i32::schema()), true),
+                    (ItemSchema::ValueItem(i64::schema()), true),
+                    (ItemSchema::ValueItem(String::schema()), true),
+                ],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     assert_eq!(S::schema(), expected_schema);
 }
@@ -713,26 +661,27 @@ fn tuple_struct_attrs() {
         #[form(schema(text = "swim"))] String,
     );
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![
-                (
-                    ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
-                    true,
-                ),
-                (ItemSchema::ValueItem(StandardSchema::Equal(int_eq())), true),
-                (ItemSchema::ValueItem(StandardSchema::text("swim")), true),
-            ],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
+                        true,
+                    ),
+                    (ItemSchema::ValueItem(StandardSchema::Equal(int_eq())), true),
+                    (ItemSchema::ValueItem(StandardSchema::text("swim")), true),
+                ],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     assert_eq!(S::schema(), expected_schema);
 }
@@ -742,12 +691,19 @@ fn unit_struct() {
     #[derive(Form, ValidatedForm)]
     struct S;
 
-    let expected_schema = StandardSchema::HasAttributes {
-        attributes: vec![FieldSpec::default(AttrSchema::named(
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
             "S",
             StandardSchema::OfKind(ValueKind::Extant),
-        ))],
-        exhaustive: true,
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![],
+                exhaustive: true,
+            },
+        ])),
     };
 
     assert_eq!(S::schema(), expected_schema);
@@ -762,31 +718,35 @@ fn field_anything() {
         b: Value,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
-                    true,
-                ),
-                (
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("b"),
-                        StandardSchema::Anything,
-                    )),
-                    true,
-                ),
-            ],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("a"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            StandardSchema::Anything,
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
     let value = S {
@@ -808,25 +768,26 @@ fn field_non_nan() {
         f: f64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::NonNan,
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::NonNan,
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -855,25 +816,26 @@ fn field_finite() {
         f: f64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::Finite,
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::Finite,
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -906,37 +868,38 @@ fn complex() {
         value: Value,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("value"),
-                    StandardSchema::Or(vec![
-                        StandardSchema::And(vec![
-                            StandardSchema::OfKind(ValueKind::Record),
-                            StandardSchema::NumAttrs(1),
-                            StandardSchema::NumItems(2),
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("value"),
+                        StandardSchema::Or(vec![
+                            StandardSchema::And(vec![
+                                StandardSchema::OfKind(ValueKind::Record),
+                                StandardSchema::NumAttrs(1),
+                                StandardSchema::NumItems(2),
+                            ]),
+                            StandardSchema::And(vec![
+                                StandardSchema::OfKind(ValueKind::Record),
+                                StandardSchema::NumAttrs(2),
+                                StandardSchema::NumItems(1),
+                            ]),
+                            StandardSchema::OfKind(ValueKind::Int32),
                         ]),
-                        StandardSchema::And(vec![
-                            StandardSchema::OfKind(ValueKind::Record),
-                            StandardSchema::NumAttrs(2),
-                            StandardSchema::NumItems(1),
-                        ]),
-                        StandardSchema::OfKind(ValueKind::Int32),
-                    ]),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -969,25 +932,26 @@ fn int_range_inclusive() {
         f: i64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::inclusive_int_range(0, 10),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::inclusive_int_range(0, 10),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1006,25 +970,26 @@ fn uint_range_inclusive() {
         f: u64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::inclusive_uint_range(0, 10),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::inclusive_uint_range(0, 10),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1042,25 +1007,26 @@ fn int_range() {
         f: i64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::int_range(0, 10),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::int_range(0, 10),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1080,25 +1046,26 @@ fn float_range_inclusive() {
         f: f64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::inclusive_float_range(0.0, 10.1),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::inclusive_float_range(0.0, 10.1),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1116,25 +1083,26 @@ fn float_range() {
         f: f64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::float_range(0.0, 10.0),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::float_range(0.0, 10.0),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1154,25 +1122,26 @@ fn uint_range() {
         f: u64,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::uint_range(0, 10),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::uint_range(0, 10),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1191,28 +1160,29 @@ fn big_int_range_inclusive() {
         f: BigInt,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::inclusive_big_int_range(
-                        BigInt::from(123456),
-                        BigInt::from(789101112),
-                    ),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::inclusive_big_int_range(
+                            BigInt::from(123456),
+                            BigInt::from(789101112),
+                        ),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1251,25 +1221,26 @@ fn big_int_range() {
         f: BigInt,
     }
 
-    let expected_schema = StandardSchema::And(vec![
-        StandardSchema::HasAttributes {
-            attributes: vec![FieldSpec::default(AttrSchema::named(
-                "S",
-                StandardSchema::OfKind(ValueKind::Extant),
-            ))],
-            exhaustive: true,
-        },
-        StandardSchema::Layout {
-            items: vec![(
-                ItemSchema::Field(SlotSchema::new(
-                    StandardSchema::text("f"),
-                    StandardSchema::big_int_range(BigInt::from(100), BigInt::from(300)),
-                )),
-                true,
-            )],
-            exhaustive: true,
-        },
-    ]);
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Extant),
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("f"),
+                        StandardSchema::big_int_range(BigInt::from(100), BigInt::from(300)),
+                    )),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
 
     let schema = S::schema();
 
@@ -1304,4 +1275,102 @@ fn big_int_range() {
         }
         .as_value()
     ));
+}
+
+#[test]
+fn container_anything() {
+    #[derive(Form, ValidatedForm)]
+    #[form(schema(anything))]
+    struct S {
+        a: i32,
+        b: i32,
+    }
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::And(vec![
+            StandardSchema::Anything,
+            StandardSchema::Or(vec![
+                StandardSchema::OfKind(ValueKind::Extant),
+                StandardSchema::Layout {
+                    items: vec![
+                        (
+                            ItemSchema::Field(SlotSchema::new(
+                                StandardSchema::text("a"),
+                                i32::schema(),
+                            )),
+                            true,
+                        ),
+                        (
+                            ItemSchema::Field(SlotSchema::new(
+                                StandardSchema::text("b"),
+                                i32::schema(),
+                            )),
+                            true,
+                        ),
+                    ],
+                    exhaustive: true,
+                },
+            ]),
+        ])),
+    };
+
+    let value = S { a: 1, b: 2 }.as_value();
+
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn container_nothing() {
+    #[derive(Form, ValidatedForm)]
+    #[form(schema(nothing))]
+    struct S {
+        a: i32,
+        b: i32,
+    }
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::And(vec![
+            StandardSchema::Nothing,
+            StandardSchema::Or(vec![
+                StandardSchema::OfKind(ValueKind::Extant),
+                StandardSchema::Layout {
+                    items: vec![
+                        (
+                            ItemSchema::Field(SlotSchema::new(
+                                StandardSchema::text("a"),
+                                i32::schema(),
+                            )),
+                            true,
+                        ),
+                        (
+                            ItemSchema::Field(SlotSchema::new(
+                                StandardSchema::text("b"),
+                                i32::schema(),
+                            )),
+                            true,
+                        ),
+                    ],
+                    exhaustive: true,
+                },
+            ]),
+        ])),
+    };
+
+    let value = S { a: 1, b: 2 }.as_value();
+
+    assert_eq!(S::schema(), expected_schema);
+    assert!(!S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
 }

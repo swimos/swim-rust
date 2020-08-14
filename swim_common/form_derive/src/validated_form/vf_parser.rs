@@ -17,12 +17,13 @@ use quote::ToTokens;
 use syn::export::TokenStream2;
 use syn::{ExprPath, Lit, Meta, NestedMeta, Type};
 
-use macro_helpers::{lit_str_to_expr_path, CompoundTypeKind, Context, Identity, Symbol};
+use macro_helpers::{CompoundTypeKind, Context, Identity, Symbol};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{
     Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
 };
+use crate::validated_form::attrs::{build_attrs, build_head_attribute};
 use crate::validated_form::meta_parse::parse_schema_meta;
 use crate::validated_form::range::Range;
 use num_bigint::BigInt;
@@ -46,25 +47,23 @@ pub const OR_PATH: Symbol = Symbol("or");
 pub const NOT_PATH: Symbol = Symbol("not");
 
 pub struct ValidatedFormDescriptor {
-    pub name: Identity,
-    pub schema: Option<StandardSchema>,
+    pub identity: Identity,
+    pub schema: StandardSchema,
     pub all_items: bool,
 }
 
 impl ValidatedFormDescriptor {
     /// Builds a [`ValidatedFormDescriptor`] for the provided [`DeriveInput`]. An errors encountered
     /// while parsing the [`DeriveInput`] will be added to the [`Context`].
-    pub fn from_attributes(
+    pub fn from(
         context: &mut Context,
         ident: &Ident,
         attributes: Vec<NestedMeta>,
         kind: CompoundTypeKind,
     ) -> ValidatedFormDescriptor {
-        let mut desc = ValidatedFormDescriptor {
-            name: Identity::Named(ident.clone()),
-            schema: None,
-            all_items: false,
-        };
+        let mut schema_opt = None;
+        let mut all_items = false;
+        let mut identity = Identity::Named(ident.clone());
 
         attributes.iter().for_each(|meta: &NestedMeta| match meta {
             NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
@@ -73,7 +72,7 @@ impl ValidatedFormDescriptor {
                     if tag.is_empty() {
                         context.error_spanned_by(meta, "New name cannot be empty")
                     } else {
-                        desc.name = Identity::Renamed {
+                        identity = Identity::Renamed {
                             new_identity: tag,
                             old_identity: ident.clone(),
                         }
@@ -109,11 +108,11 @@ impl ValidatedFormDescriptor {
                             } else {
                                 let schema =
                                     parse_schema_meta(StandardSchema::None, context, &list.nested);
-                                desc.all_items = true;
+                                all_items = true;
 
                                 set_container_schema(
                                     list.to_token_stream(),
-                                    &mut desc.schema,
+                                    &mut schema_opt,
                                     context,
                                     StandardSchema::AllItems(Box::new(schema)),
                                 )
@@ -122,7 +121,7 @@ impl ValidatedFormDescriptor {
                         NestedMeta::Meta(Meta::Path(path)) if path == ANYTHING_PATH => {
                             set_container_schema(
                                 path.to_token_stream(),
-                                &mut desc.schema,
+                                &mut schema_opt,
                                 context,
                                 StandardSchema::Anything,
                             )
@@ -130,20 +129,10 @@ impl ValidatedFormDescriptor {
                         NestedMeta::Meta(Meta::Path(path)) if path == NOTHING_PATH => {
                             set_container_schema(
                                 path.to_token_stream(),
-                                &mut desc.schema,
+                                &mut schema_opt,
                                 context,
                                 StandardSchema::Nothing,
                             )
-                        }
-                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == EQUAL_PATH => {
-                            if let Ok(path) = lit_str_to_expr_path(context, &name.lit) {
-                                set_container_schema(
-                                    path.to_token_stream(),
-                                    &mut desc.schema,
-                                    context,
-                                    StandardSchema::Equal(path),
-                                )
-                            }
                         }
                         _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
                     }
@@ -152,40 +141,11 @@ impl ValidatedFormDescriptor {
             _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
         });
 
-        desc
-    }
-}
-
-fn quote_attribute(ident: String, schema: &StandardSchema) -> TokenStream2 {
-    quote! {
-        swim_common::model::schema::FieldSpec::default(
-            swim_common::model::schema::attr::AttrSchema::named(
-                #ident,
-                #schema,
-            )
-        )
-    }
-}
-
-fn derive_head_attribute(
-    type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
-) -> TokenStream2 {
-    match type_contents {
-        TypeContents::Struct(repr) => {
-            let ident = repr.descriptor.name.to_string();
-
-            quote_attribute(
-                ident,
-                &repr
-                    .descriptor
-                    .schema
-                    .as_ref()
-                    .unwrap_or(&StandardSchema::OfKind(quote!(
-                        swim_common::model::ValueKind::Extant
-                    ))),
-            )
+        ValidatedFormDescriptor {
+            identity,
+            schema: schema_opt.unwrap_or(StandardSchema::None),
+            all_items,
         }
-        TypeContents::Enum(_variants) => unimplemented!(),
     }
 }
 
@@ -195,7 +155,7 @@ pub struct ValidatedField<'f> {
 }
 
 impl<'f> ValidatedField<'f> {
-    fn as_attr(&self) -> TokenStream2 {
+    pub fn as_attr(&self) -> TokenStream2 {
         let ValidatedField {
             form_field,
             field_schema,
@@ -250,6 +210,7 @@ impl<'f> ValidatedField<'f> {
 }
 
 #[allow(warnings)]
+#[derive(Clone, Debug)]
 pub enum StandardSchema {
     None,
     /// Uses the implementation on the Type
@@ -273,18 +234,6 @@ pub enum StandardSchema {
     Or(Vec<StandardSchema>),
     Not(Box<StandardSchema>),
     AllItems(Box<StandardSchema>),
-}
-
-impl StandardSchema {
-    /// Returns whether or not the schema is a blanket schema that should affect the entire value.
-    /// For containers, [`StandardSchema::Anything`] or [`StandardSchema::Nothing`] will overpower
-    /// all the other variants.
-    pub fn is_bounded(&self) -> bool {
-        match self {
-            StandardSchema::Anything | StandardSchema::Nothing => true,
-            _ => false,
-        }
-    }
 }
 
 impl ToTokens for StandardSchema {
@@ -402,8 +351,7 @@ pub fn type_contents_to_validated<'f>(
     match type_contents {
         TypeContents::Struct(repr) => TypeContents::Struct({
             let attrs = repr.input.attrs.get_attributes(ctx, FORM_PATH);
-            let descriptor =
-                ValidatedFormDescriptor::from_attributes(ctx, ident, attrs, repr.compound_type);
+            let descriptor = ValidatedFormDescriptor::from(ctx, ident, attrs, repr.compound_type);
 
             StructRepr {
                 input: repr.input,
@@ -418,12 +366,8 @@ pub fn type_contents_to_validated<'f>(
                 .into_iter()
                 .map(|variant| {
                     let attrs = variant.syn_variant.attrs.get_attributes(ctx, FORM_PATH);
-                    let descriptor = ValidatedFormDescriptor::from_attributes(
-                        ctx,
-                        ident,
-                        attrs,
-                        variant.compound_type,
-                    );
+                    let descriptor =
+                        ValidatedFormDescriptor::from(ctx, ident, attrs, variant.compound_type);
 
                     EnumVariant {
                         syn_variant: variant.syn_variant,
@@ -508,102 +452,154 @@ where
 
 fn derive_container_schema(
     type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
-) -> (TokenStream2, bool) {
+) -> TokenStream2 {
     match type_contents {
         TypeContents::Struct(repr) => match &repr.descriptor.schema {
-            Some(schema) => match schema {
-                StandardSchema::AllItems(items) => match &repr.compound_type {
-                    CompoundTypeKind::Struct => {
-                        let quote = quote! {
-                            swim_common::model::schema::StandardSchema::AllItems(
-                                std::boxed::Box::new(
-                                    swim_common::model::schema::ItemSchema::Field(
-                                        swim_common::model::schema::slot::SlotSchema::new(
-                                            swim_common::model::schema::StandardSchema::Anything,
-                                            #items,
-                                        )
+            StandardSchema::AllItems(items) => match &repr.compound_type {
+                CompoundTypeKind::Struct => {
+                    quote! {
+                        swim_common::model::schema::StandardSchema::AllItems(
+                            std::boxed::Box::new(
+                                swim_common::model::schema::ItemSchema::Field(
+                                    swim_common::model::schema::slot::SlotSchema::new(
+                                        swim_common::model::schema::StandardSchema::Anything,
+                                        #items,
                                     )
                                 )
-                            ),
-                        };
-                        (quote, false)
-                    }
-                    CompoundTypeKind::Tuple | CompoundTypeKind::NewType => {
-                        let quote = quote! {
-                            swim_common::model::schema::StandardSchema::AllItems(
-                                std::boxed::Box::new(
-                                    swim_common::model::schema::ItemSchema::ValueItem(#items)
-                                )
-                            ),
-                        };
-                        (quote, false)
-                    }
-                    CompoundTypeKind::Unit => {
-                        // Caught during the attribute parsing
-                        unreachable!()
-                    }
-                },
-                schema => {
-                    if schema.is_bounded() {
-                        (quote!(#schema), true)
-                    } else {
-                        (quote!(#schema,), false)
+                            )
+                        ),
                     }
                 }
+                CompoundTypeKind::Tuple | CompoundTypeKind::NewType => {
+                    quote! {
+                        swim_common::model::schema::StandardSchema::AllItems(
+                            std::boxed::Box::new(
+                                swim_common::model::schema::ItemSchema::ValueItem(#items)
+                            )
+                        ),
+                    }
+                }
+                CompoundTypeKind::Unit => {
+                    // Caught during the attribute parsing
+                    unreachable!()
+                }
             },
-            None => (quote!(), false),
+            schema => quote!(#schema,),
         },
         TypeContents::Enum(_variants) => unimplemented!(),
     }
+}
+
+fn build_headers(fields: &[ValidatedField]) -> TokenStream2 {
+    let mut schemas = fields
+        .iter()
+        .filter(|f| !f.form_field.is_skipped() && f.form_field.is_header())
+        .fold(TokenStream2::new(), |ts, field| {
+            let item = field.as_item();
+
+            quote! {
+                #ts
+                (#item, true),
+            }
+        });
+
+    if !schemas.is_empty() {
+        schemas = quote! {
+            swim_common::model::schema::StandardSchema::Layout {
+                items: vec![
+                    #schemas
+                ],
+                exhaustive: true
+            }
+        };
+    }
+    schemas
+}
+
+fn build_items(fields: &[ValidatedField]) -> TokenStream2 {
+    let mut schemas = fields
+        .iter()
+        .filter(|f| {
+            (!f.form_field.is_skipped() && f.form_field.is_slot()) || f.form_field.is_body()
+        })
+        .fold(TokenStream2::new(), |ts, field| {
+            let item = field.as_item();
+
+            quote! {
+                #ts
+                (#item, true),
+            }
+        });
+
+    schemas = quote! {
+        swim_common::model::schema::StandardSchema::Or(vec![
+            swim_common::model::schema::StandardSchema::OfKind(
+                swim_common::model::ValueKind::Extant
+            ),
+            swim_common::model::schema::StandardSchema::Layout {
+                items: vec![
+                    #schemas
+                ],
+                exhaustive: true
+            }
+        ])
+    };
+
+    schemas
 }
 
 impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             TypeContents::Struct(repr) => {
-                let head_attribute = derive_head_attribute(&self);
-                let mut schemas = repr
-                    .fields
-                    .iter()
-                    .filter(|f| !f.form_field.is_skipped())
-                    .fold(TokenStream2::new(), |ts, field| {
-                        let item = field.as_item();
-
-                        quote! {
-                            #ts
-                            (#item, true),
+                let item_schemas = {
+                    match &repr.descriptor.schema {
+                        StandardSchema::None => build_items(&repr.fields),
+                        _ => {
+                            let container_schema = derive_container_schema(self);
+                            let item_schema = build_items(&repr.fields);
+                            quote! {
+                                swim_common::model::schema::StandardSchema::And(vec![
+                                    #container_schema
+                                    #item_schema
+                                ])
+                            }
                         }
-                    });
-
-                if !schemas.is_empty() {
-                    schemas = quote! {
-                        swim_common::model::schema::StandardSchema::Layout {
-                            items: vec![
-                                #schemas
-                            ],
-                            exhaustive: true
-                        }
-                    };
-                }
-
-                let (container_schema, is_bounded_schema) = derive_container_schema(&self);
-                let quote = if is_bounded_schema {
-                    quote!(#container_schema)
-                } else if container_schema.is_empty() && schemas.is_empty() {
-                    quote!(#head_attribute)
-                } else {
-                    quote! {
-                        swim_common::model::schema::StandardSchema::And(
-                            vec![
-                                #head_attribute,
-                                #container_schema
-                                #schemas
-                            ]
-                        )
                     }
                 };
 
-                quote.to_tokens(tokens);
+                let attr_schemas = build_attrs(&repr.fields);
+                let header_schema = build_headers(&repr.fields);
+
+                let mut remainder = vec![];
+
+                if !item_schemas.is_empty() {
+                    remainder.push(item_schemas);
+                }
+                if !attr_schemas.is_empty() {
+                    remainder.push(attr_schemas);
+                }
+                if !header_schema.is_empty() {
+                    remainder.push(header_schema);
+                }
+
+                let remainder = {
+                    if remainder.len() == 0 {
+                        quote!()
+                    } else if remainder.len() == 1 {
+                        remainder.remove(0)
+                    } else {
+                        quote! {
+                            swim_common::model::schema::StandardSchema::And(vec![
+                                #(#remainder)*
+                            ])
+                        }
+                    }
+                };
+
+                let head_attribute =
+                    build_head_attribute(&repr.descriptor.identity, remainder, &repr.fields);
+                head_attribute.to_tokens(tokens);
             }
             TypeContents::Enum(_variants) => unimplemented!(),
         }
