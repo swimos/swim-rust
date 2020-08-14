@@ -132,7 +132,7 @@ impl Default for FieldKind {
 }
 
 /// A structure representing what fields in the compound type are annotated with.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct FieldManifest {
     /// Whether or not there is a field in the compound type that replaces the body of the output
     /// record.

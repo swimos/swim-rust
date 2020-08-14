@@ -46,6 +46,7 @@ pub const AND_PATH: Symbol = Symbol("and");
 pub const OR_PATH: Symbol = Symbol("or");
 pub const NOT_PATH: Symbol = Symbol("not");
 
+#[derive(Debug)]
 pub struct ValidatedFormDescriptor {
     pub identity: Identity,
     pub schema: StandardSchema,
@@ -181,7 +182,7 @@ impl<'f> ValidatedField<'f> {
         }
     }
 
-    fn as_item(&self) -> TokenStream2 {
+    pub fn as_item(&self) -> TokenStream2 {
         let ValidatedField {
             form_field,
             field_schema,
@@ -490,38 +491,10 @@ fn derive_container_schema(
     }
 }
 
-fn build_headers(fields: &[ValidatedField]) -> TokenStream2 {
-    let mut schemas = fields
-        .iter()
-        .filter(|f| !f.form_field.is_skipped() && f.form_field.is_header())
-        .fold(TokenStream2::new(), |ts, field| {
-            let item = field.as_item();
-
-            quote! {
-                #ts
-                (#item, true),
-            }
-        });
-
-    if !schemas.is_empty() {
-        schemas = quote! {
-            swim_common::model::schema::StandardSchema::Layout {
-                items: vec![
-                    #schemas
-                ],
-                exhaustive: true
-            }
-        };
-    }
-    schemas
-}
-
 fn build_items(fields: &[ValidatedField]) -> TokenStream2 {
     let mut schemas = fields
         .iter()
-        .filter(|f| {
-            (!f.form_field.is_skipped() && f.form_field.is_slot()) || f.form_field.is_body()
-        })
+        .filter(|f| f.form_field.is_slot() || f.form_field.is_body())
         .fold(TokenStream2::new(), |ts, field| {
             let item = field.as_item();
 
@@ -532,17 +505,12 @@ fn build_items(fields: &[ValidatedField]) -> TokenStream2 {
         });
 
     schemas = quote! {
-        swim_common::model::schema::StandardSchema::Or(vec![
-            swim_common::model::schema::StandardSchema::OfKind(
-                swim_common::model::ValueKind::Extant
-            ),
-            swim_common::model::schema::StandardSchema::Layout {
-                items: vec![
-                    #schemas
-                ],
-                exhaustive: true
-            }
-        ])
+        swim_common::model::schema::StandardSchema::Layout {
+            items: vec![
+                #schemas
+            ],
+            exhaustive: true
+        }
     };
 
     schemas
@@ -552,6 +520,7 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             TypeContents::Struct(repr) => {
+                let attr_schemas = build_attrs(&repr.fields);
                 let item_schemas = {
                     match &repr.descriptor.schema {
                         StandardSchema::None => build_items(&repr.fields),
@@ -568,30 +537,14 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                     }
                 };
 
-                let attr_schemas = build_attrs(&repr.fields);
-                let header_schema = build_headers(&repr.fields);
-
-                let mut remainder = vec![];
-
-                if !item_schemas.is_empty() {
-                    remainder.push(item_schemas);
-                }
-                if !attr_schemas.is_empty() {
-                    remainder.push(attr_schemas);
-                }
-                if !header_schema.is_empty() {
-                    remainder.push(header_schema);
-                }
-
                 let remainder = {
-                    if remainder.len() == 0 {
-                        quote!()
-                    } else if remainder.len() == 1 {
-                        remainder.remove(0)
+                    if attr_schemas.is_empty() {
+                        item_schemas
                     } else {
                         quote! {
                             swim_common::model::schema::StandardSchema::And(vec![
-                                #(#remainder)*
+                                #attr_schemas,
+                                #item_schemas
                             ])
                         }
                     }
@@ -599,6 +552,7 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
 
                 let head_attribute =
                     build_head_attribute(&repr.descriptor.identity, remainder, &repr.fields);
+
                 head_attribute.to_tokens(tokens);
             }
             TypeContents::Enum(_variants) => unimplemented!(),

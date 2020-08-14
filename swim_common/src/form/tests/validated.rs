@@ -40,13 +40,10 @@ fn test_tag() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        }),
     };
 
     let value = S {}.as_value();
@@ -75,28 +72,25 @@ fn all_items_named() {
                 StandardSchema::Anything,
                 StandardSchema::OfKind(ValueKind::Int32),
             )))),
-            StandardSchema::Or(vec![
-                StandardSchema::OfKind(ValueKind::Extant),
-                StandardSchema::Layout {
-                    items: vec![
-                        (
-                            ItemSchema::Field(SlotSchema::new(
-                                StandardSchema::text("a"),
-                                i32::schema(),
-                            )),
-                            true,
-                        ),
-                        (
-                            ItemSchema::Field(SlotSchema::new(
-                                StandardSchema::text("b"),
-                                i32::schema(),
-                            )),
-                            true,
-                        ),
-                    ],
-                    exhaustive: true,
-                },
-            ]),
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("a"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
         ])),
     };
 
@@ -131,16 +125,13 @@ fn all_items_tuple() {
             StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
                 ValueKind::Int32,
             )))),
-            StandardSchema::Or(vec![
-                StandardSchema::OfKind(ValueKind::Extant),
-                StandardSchema::Layout {
-                    items: vec![
-                        (ItemSchema::ValueItem(i32::schema()), true),
-                        (ItemSchema::ValueItem(i64::schema()), true),
-                    ],
-                    exhaustive: true,
-                },
-            ]),
+            StandardSchema::Layout {
+                items: vec![
+                    (ItemSchema::ValueItem(i32::schema()), true),
+                    (ItemSchema::ValueItem(i64::schema()), true),
+                ],
+                exhaustive: true,
+            },
         ])),
     };
 
@@ -175,13 +166,10 @@ fn all_items_new_type() {
             StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(StandardSchema::OfKind(
                 ValueKind::Int32,
             )))),
-            StandardSchema::Or(vec![
-                StandardSchema::OfKind(ValueKind::Extant),
-                StandardSchema::Layout {
-                    items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
-                    exhaustive: true,
-                },
-            ]),
+            StandardSchema::Layout {
+                items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
+                exhaustive: true,
+            },
         ])),
     };
 
@@ -211,19 +199,16 @@ fn text() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::text("swim"),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::text("swim"),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let value = S {
@@ -250,22 +235,19 @@ fn num_items_attrs() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::And(vec![
-                            StandardSchema::NumItems(2),
-                            StandardSchema::NumAttrs(3),
-                        ]),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::And(vec![
+                        StandardSchema::NumItems(2),
+                        StandardSchema::NumAttrs(3),
+                    ]),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let value = S {
@@ -298,19 +280,16 @@ fn num_items() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::NumItems(2),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::NumItems(2),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let value = S {
@@ -343,19 +322,16 @@ fn num_attrs() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::NumAttrs(3),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::NumAttrs(3),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let value = S {
@@ -386,22 +362,19 @@ fn and() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::And(vec![
-                            StandardSchema::OfKind(ValueKind::Text),
-                            StandardSchema::Equal(s_value()),
-                        ]),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::And(vec![
+                        StandardSchema::OfKind(ValueKind::Text),
+                        StandardSchema::Equal(s_value()),
+                    ]),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let value = S {
@@ -433,28 +406,22 @@ fn field_equal() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![
-                    (
-                        ItemSchema::Field(SlotSchema::new(
-                            StandardSchema::text("a"),
-                            StandardSchema::Equal(field_expected()),
-                        )),
-                        true,
-                    ),
-                    (
-                        ItemSchema::Field(SlotSchema::new(
-                            StandardSchema::text("b"),
-                            i32::schema(),
-                        )),
-                        true,
-                    ),
-                ],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("a"),
+                        StandardSchema::Equal(field_expected()),
+                    )),
+                    true,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("b"), i32::schema())),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        }),
     };
 
     let valid_value = S {
@@ -483,19 +450,16 @@ fn not() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::Not(Box::new(StandardSchema::OfKind(ValueKind::Text))),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::Not(Box::new(StandardSchema::OfKind(ValueKind::Text))),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let valid_value = S {
@@ -532,22 +496,19 @@ fn or() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("a"),
-                        StandardSchema::Or(vec![
-                            StandardSchema::OfKind(ValueKind::Int32),
-                            StandardSchema::Equal(s_value()),
-                        ]),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("a"),
+                    StandardSchema::Or(vec![
+                        StandardSchema::OfKind(ValueKind::Int32),
+                        StandardSchema::Equal(s_value()),
+                    ]),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let value = S {
@@ -593,19 +554,16 @@ fn generic_value() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::Equal(expected()),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::Equal(expected()),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let valid_value = S {
@@ -632,17 +590,14 @@ fn tuple_struct() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![
-                    (ItemSchema::ValueItem(i32::schema()), true),
-                    (ItemSchema::ValueItem(i64::schema()), true),
-                    (ItemSchema::ValueItem(String::schema()), true),
-                ],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![
+                (ItemSchema::ValueItem(i32::schema()), true),
+                (ItemSchema::ValueItem(i64::schema()), true),
+                (ItemSchema::ValueItem(String::schema()), true),
+            ],
+            exhaustive: true,
+        }),
     };
 
     assert_eq!(S::schema(), expected_schema);
@@ -667,20 +622,17 @@ fn tuple_struct_attrs() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![
-                    (
-                        ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
-                        true,
-                    ),
-                    (ItemSchema::ValueItem(StandardSchema::Equal(int_eq())), true),
-                    (ItemSchema::ValueItem(StandardSchema::text("swim")), true),
-                ],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::ValueItem(StandardSchema::OfKind(ValueKind::Int32)),
+                    true,
+                ),
+                (ItemSchema::ValueItem(StandardSchema::Equal(int_eq())), true),
+                (ItemSchema::ValueItem(StandardSchema::text("swim")), true),
+            ],
+            exhaustive: true,
+        }),
     };
 
     assert_eq!(S::schema(), expected_schema);
@@ -697,13 +649,10 @@ fn unit_struct() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        }),
     };
 
     assert_eq!(S::schema(), expected_schema);
@@ -724,28 +673,22 @@ fn field_anything() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![
-                    (
-                        ItemSchema::Field(SlotSchema::new(
-                            StandardSchema::text("a"),
-                            i32::schema(),
-                        )),
-                        true,
-                    ),
-                    (
-                        ItemSchema::Field(SlotSchema::new(
-                            StandardSchema::text("b"),
-                            StandardSchema::Anything,
-                        )),
-                        true,
-                    ),
-                ],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
+                    true,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(
+                        StandardSchema::text("b"),
+                        StandardSchema::Anything,
+                    )),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -774,19 +717,16 @@ fn field_non_nan() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::NonNan,
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::NonNan,
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -822,19 +762,16 @@ fn field_finite() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::Finite,
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::Finite,
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -874,31 +811,28 @@ fn complex() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("value"),
-                        StandardSchema::Or(vec![
-                            StandardSchema::And(vec![
-                                StandardSchema::OfKind(ValueKind::Record),
-                                StandardSchema::NumAttrs(1),
-                                StandardSchema::NumItems(2),
-                            ]),
-                            StandardSchema::And(vec![
-                                StandardSchema::OfKind(ValueKind::Record),
-                                StandardSchema::NumAttrs(2),
-                                StandardSchema::NumItems(1),
-                            ]),
-                            StandardSchema::OfKind(ValueKind::Int32),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("value"),
+                    StandardSchema::Or(vec![
+                        StandardSchema::And(vec![
+                            StandardSchema::OfKind(ValueKind::Record),
+                            StandardSchema::NumAttrs(1),
+                            StandardSchema::NumItems(2),
                         ]),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+                        StandardSchema::And(vec![
+                            StandardSchema::OfKind(ValueKind::Record),
+                            StandardSchema::NumAttrs(2),
+                            StandardSchema::NumItems(1),
+                        ]),
+                        StandardSchema::OfKind(ValueKind::Int32),
+                    ]),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -938,19 +872,16 @@ fn int_range_inclusive() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::inclusive_int_range(0, 10),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_int_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -976,19 +907,16 @@ fn uint_range_inclusive() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::inclusive_uint_range(0, 10),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_uint_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -1013,19 +941,16 @@ fn int_range() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::int_range(0, 10),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::int_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -1052,19 +977,16 @@ fn float_range_inclusive() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::inclusive_float_range(0.0, 10.1),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_float_range(0.0, 10.1),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -1089,19 +1011,16 @@ fn float_range() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::float_range(0.0, 10.0),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::float_range(0.0, 10.0),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -1128,19 +1047,16 @@ fn uint_range() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::uint_range(0, 10),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::uint_range(0, 10),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -1166,22 +1082,19 @@ fn big_int_range_inclusive() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::inclusive_big_int_range(
-                            BigInt::from(123456),
-                            BigInt::from(789101112),
-                        ),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::inclusive_big_int_range(
+                        BigInt::from(123456),
+                        BigInt::from(789101112),
+                    ),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -1227,19 +1140,16 @@ fn big_int_range() {
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Or(vec![
-            StandardSchema::OfKind(ValueKind::Extant),
-            StandardSchema::Layout {
-                items: vec![(
-                    ItemSchema::Field(SlotSchema::new(
-                        StandardSchema::text("f"),
-                        StandardSchema::big_int_range(BigInt::from(100), BigInt::from(300)),
-                    )),
-                    true,
-                )],
-                exhaustive: true,
-            },
-        ])),
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("f"),
+                    StandardSchema::big_int_range(BigInt::from(100), BigInt::from(300)),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
     };
 
     let schema = S::schema();
@@ -1294,28 +1204,25 @@ fn container_anything() {
         required: true,
         remainder: Box::new(StandardSchema::And(vec![
             StandardSchema::Anything,
-            StandardSchema::Or(vec![
-                StandardSchema::OfKind(ValueKind::Extant),
-                StandardSchema::Layout {
-                    items: vec![
-                        (
-                            ItemSchema::Field(SlotSchema::new(
-                                StandardSchema::text("a"),
-                                i32::schema(),
-                            )),
-                            true,
-                        ),
-                        (
-                            ItemSchema::Field(SlotSchema::new(
-                                StandardSchema::text("b"),
-                                i32::schema(),
-                            )),
-                            true,
-                        ),
-                    ],
-                    exhaustive: true,
-                },
-            ]),
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("a"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
         ])),
     };
 
@@ -1343,28 +1250,25 @@ fn container_nothing() {
         required: true,
         remainder: Box::new(StandardSchema::And(vec![
             StandardSchema::Nothing,
-            StandardSchema::Or(vec![
-                StandardSchema::OfKind(ValueKind::Extant),
-                StandardSchema::Layout {
-                    items: vec![
-                        (
-                            ItemSchema::Field(SlotSchema::new(
-                                StandardSchema::text("a"),
-                                i32::schema(),
-                            )),
-                            true,
-                        ),
-                        (
-                            ItemSchema::Field(SlotSchema::new(
-                                StandardSchema::text("b"),
-                                i32::schema(),
-                            )),
-                            true,
-                        ),
-                    ],
-                    exhaustive: true,
-                },
-            ]),
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("a"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
         ])),
     };
 
@@ -1373,4 +1277,107 @@ fn container_nothing() {
     assert_eq!(S::schema(), expected_schema);
     assert!(!S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn form_header_body() {
+    fn eq() -> Value {
+        Value::Int32Value(i32::max_value())
+    }
+
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        a: i32,
+        #[form(header_body, schema(equal = "eq"))]
+        b: i32,
+    }
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named("S", StandardSchema::Equal(eq()))),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
+                true,
+            )],
+            exhaustive: true,
+        }),
+    };
+
+    let value = S {
+        a: 1,
+        b: i32::max_value(),
+    }
+    .as_value();
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn form_attr() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        a: i32,
+        #[form(attr, schema(int_range = "0..=11"))]
+        b: i32,
+    }
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::And(vec![
+            StandardSchema::HasAttributes {
+                attributes: vec![FieldSpec::new(
+                    AttrSchema::named("b", StandardSchema::inclusive_int_range(0, 11)),
+                    true,
+                    true,
+                )],
+                exhaustive: true,
+            },
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        ])),
+    };
+
+    let value = S { a: 1, b: 2 }.as_value();
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn form_header() {
+    fn eq() -> Value {
+        Value::Int32Value(i32::max_value())
+    }
+
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        a: i32,
+        #[form(header, schema(equal = "eq"))]
+        b: i32,
+    }
+
+    println!("{:?}", S::schema())
+}
+
+#[test]
+fn form_body() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        a: i32,
+        #[form(body)]
+        b: i32,
+    }
+
+    println!("{:?}", S::schema())
 }

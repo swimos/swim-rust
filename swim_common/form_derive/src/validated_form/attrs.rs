@@ -50,21 +50,37 @@ pub fn build_head_attribute(
 }
 
 pub fn build_attrs(fields: &[ValidatedField]) -> TokenStream2 {
-    let mut attrs = fields
-        .iter()
-        .filter(|f| f.form_field.is_attr() && !f.form_field.is_skipped())
-        .fold(TokenStream2::new(), |ts, f| {
-            let attr = f.as_attr();
-            quote! {
-                #ts,
-                #attr
-            }
-        });
+    let header_schemas = fields.iter().filter(|f| f.form_field.is_header()).fold(
+        TokenStream2::new(),
+        |ts, field| {
+            let item = field.as_attr();
 
-    if !attrs.is_empty() {
+            quote! {
+                #ts
+                #item,
+            }
+        },
+    );
+
+    let mut attrs =
+        fields
+            .iter()
+            .filter(|f| f.form_field.is_attr())
+            .fold(TokenStream2::new(), |ts, f| {
+                let attr = f.as_attr();
+                quote! {
+                    #ts
+                    #attr,
+                }
+            });
+
+    if !attrs.is_empty() || !header_schemas.is_empty() {
         attrs = quote! {
             swim_common::model::schema::StandardSchema::HasAttributes {
-                attributes: vec![#attrs],
+                attributes: vec![
+                    #header_schemas
+                    #attrs
+                ],
                 exhaustive: true,
             }
         };
