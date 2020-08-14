@@ -93,9 +93,6 @@ where
                         n if n.is_numeric() || n == '-' => {
                             parse_state = RangeParseState::End(next_idx);
                         }
-                        '.' => {
-                            return Err(RangeParseErr::new(ERR_MALFORMATTED, next_idx));
-                        }
                         _ => return Err(RangeParseErr::new(ERR_MALFORMATTED, next_idx)),
                     },
                     None => return Err(RangeParseErr::new(ERR_UNEXPECTED, current_idx)),

@@ -37,6 +37,7 @@ fn test_derive() {
 
     t.compile_fail("src/form/tests/derive/validated_form/all_items_op_arg_count.rs");
     t.compile_fail("src/form/tests/derive/validated_form/all_items_unit.rs");
+    t.compile_fail("src/form/tests/derive/validated_form/all_items_skipped.rs");
     t.compile_fail("src/form/tests/derive/validated_form/and_op_arg_count.rs");
     t.compile_fail("src/form/tests/derive/validated_form/or_op_arg_count.rs");
     t.compile_fail("src/form/tests/derive/validated_form/not_op_arg_count.rs");
@@ -44,4 +45,5 @@ fn test_derive() {
     t.compile_fail("src/form/tests/derive/validated_form/trailing_schema.rs");
     t.compile_fail("src/form/tests/derive/validated_form/nothing_attr_on_field.rs");
     t.compile_fail("src/form/tests/derive/validated_form/invalid_range.rs");
+    t.compile_fail("src/form/tests/derive/validated_form/schema_skipped_field.rs");
 }

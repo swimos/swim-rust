@@ -76,6 +76,12 @@ pub struct FormField<'a> {
     pub kind: FieldKind,
 }
 
+impl<'a> FormField<'a> {
+    pub fn is_skipped(&self) -> bool {
+        self.kind == FieldKind::Skip
+    }
+}
+
 /// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields
 /// are assumed to be annotated as [`Item::Slot`].
 #[derive(PartialEq, Debug, Eq, Hash, Copy, Clone)]

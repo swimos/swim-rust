@@ -20,6 +20,7 @@ use macro_helpers::Context;
 use crate::form::form_parser::build_type_contents;
 use crate::validated_form::vf_parser::type_contents_to_validated;
 
+mod attrs;
 mod meta_parse;
 mod vf_parser;
 
