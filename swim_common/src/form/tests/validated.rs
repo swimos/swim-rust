@@ -1381,3 +1381,13 @@ fn form_body() {
 
     println!("{:?}", S::schema())
 }
+
+#[test]
+fn form_enum() {
+    #[derive(Form, ValidatedForm)]
+    enum E {
+        A,
+    }
+
+    println!("{:?}", E::schema())
+}

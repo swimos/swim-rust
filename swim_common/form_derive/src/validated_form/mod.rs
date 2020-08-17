@@ -14,10 +14,17 @@
 
 use syn::DeriveInput;
 
-use macro_helpers::Context;
+use macro_helpers::{CompoundTypeKind, Context};
 
 use crate::form::form_parser::build_type_contents;
-use crate::validated_form::vf_parser::type_contents_to_validated;
+use crate::parser::TypeContents;
+use crate::validated_form::attrs::{build_attrs, build_head_attribute};
+use crate::validated_form::vf_parser::{
+    type_contents_to_validated, StandardSchema, ValidatedField, ValidatedFormDescriptor,
+};
+use proc_macro2::TokenStream;
+use quote::ToTokens;
+use syn::export::TokenStream2;
 
 mod attrs;
 mod meta_parse;
@@ -49,4 +56,139 @@ pub fn build_validated_form(
     };
 
     Ok(ts)
+}
+
+fn derive_container_schema(
+    compound_type: &CompoundTypeKind,
+    container_schema: &StandardSchema,
+) -> TokenStream2 {
+    match &container_schema {
+        StandardSchema::AllItems(items) => match compound_type {
+            CompoundTypeKind::Struct => {
+                quote! {
+                    swim_common::model::schema::StandardSchema::AllItems(
+                        std::boxed::Box::new(
+                            swim_common::model::schema::ItemSchema::Field(
+                                swim_common::model::schema::slot::SlotSchema::new(
+                                    swim_common::model::schema::StandardSchema::Anything,
+                                    #items,
+                                )
+                            )
+                        )
+                    ),
+                }
+            }
+            CompoundTypeKind::Tuple | CompoundTypeKind::NewType => {
+                quote! {
+                    swim_common::model::schema::StandardSchema::AllItems(
+                        std::boxed::Box::new(
+                            swim_common::model::schema::ItemSchema::ValueItem(#items)
+                        )
+                    ),
+                }
+            }
+            CompoundTypeKind::Unit => {
+                // Caught during the attribute parsing
+                unreachable!()
+            }
+        },
+        schema => quote!(#schema,),
+    }
+}
+
+fn derive_items(fields: &[ValidatedField]) -> TokenStream2 {
+    let mut schemas = fields
+        .iter()
+        .filter(|f| f.form_field.is_slot() || f.form_field.is_body())
+        .fold(TokenStream2::new(), |ts, field| {
+            let item = field.as_item();
+
+            quote! {
+                #ts
+                (#item, true),
+            }
+        });
+
+    schemas = quote! {
+        swim_common::model::schema::StandardSchema::Layout {
+            items: vec![
+                #schemas
+            ],
+            exhaustive: true
+        }
+    };
+
+    schemas
+}
+
+fn derive_compound_schema(
+    fields: &[ValidatedField],
+    compound_type: &CompoundTypeKind,
+    descriptor: &ValidatedFormDescriptor,
+) -> TokenStream2 {
+    let attr_schemas = build_attrs(fields);
+    let item_schemas = {
+        match &descriptor.schema {
+            StandardSchema::None => derive_items(fields),
+            _ => {
+                let container_schema = derive_container_schema(compound_type, &descriptor.schema);
+                let item_schema = derive_items(fields);
+
+                quote! {
+                    swim_common::model::schema::StandardSchema::And(vec![
+                        #container_schema
+                        #item_schema
+                    ])
+                }
+            }
+        }
+    };
+
+    let remainder = if attr_schemas.is_empty() {
+        item_schemas
+    } else {
+        quote! {
+            swim_common::model::schema::StandardSchema::And(vec![
+                #attr_schemas,
+                #item_schemas
+            ])
+        }
+    };
+
+    build_head_attribute(&descriptor.identity, remainder, fields)
+}
+
+impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            TypeContents::Struct(repr) => {
+                let schema =
+                    derive_compound_schema(&repr.fields, &repr.compound_type, &repr.descriptor);
+
+                schema.to_tokens(tokens);
+            }
+            TypeContents::Enum(variants) => {
+                let schemas = variants.iter().fold(TokenStream2::new(), |ts, variant| {
+                    let schema = derive_compound_schema(
+                        &variant.fields,
+                        &variant.compound_type,
+                        &variant.descriptor,
+                    );
+
+                    quote! {
+                        #ts
+                        #schema,
+                    }
+                });
+
+                let schemas = quote! {
+                    swim_common::model::schema::StandardSchema::Or(vec![
+                        #schemas
+                    ])
+                };
+
+                schemas.to_tokens(tokens);
+            }
+        }
+    }
 }
