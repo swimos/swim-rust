@@ -17,7 +17,7 @@ use syn::DeriveInput;
 use macro_helpers::{CompoundTypeKind, Context};
 
 use crate::form::form_parser::build_type_contents;
-use crate::parser::TypeContents;
+use crate::parser::{FieldManifest, TypeContents};
 use crate::validated_form::attrs::{build_attrs, build_head_attribute};
 use crate::validated_form::vf_parser::{
     type_contents_to_validated, StandardSchema, ValidatedField, ValidatedFormDescriptor,
@@ -57,7 +57,6 @@ pub fn build_validated_form(
 
     Ok(ts)
 }
-
 fn derive_container_schema(
     compound_type: &CompoundTypeKind,
     container_schema: &StandardSchema,
@@ -96,18 +95,29 @@ fn derive_container_schema(
     }
 }
 
-fn derive_items(fields: &[ValidatedField]) -> TokenStream2 {
-    let mut schemas = fields
-        .iter()
-        .filter(|f| f.form_field.is_slot() || f.form_field.is_body())
-        .fold(TokenStream2::new(), |ts, field| {
+fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenStream2 {
+    let fields: Vec<&ValidatedField> = if descriptor.replaces_body {
+        fields.iter().filter(|f| f.form_field.is_body()).collect()
+    } else {
+        fields
+            .iter()
+            .filter(|f| f.form_field.is_slot() || f.form_field.is_body())
+            .collect()
+    };
+
+    let mut schemas = fields.iter().fold(TokenStream2::new(), |ts, field| {
+        if field.form_field.is_body() {
+            let schema = &field.field_schema;
+            quote!((swim_common::model::schema::ItemSchema::ValueItem(#schema), true))
+        } else {
             let item = field.as_item();
 
             quote! {
                 #ts
                 (#item, true),
             }
-        });
+        }
+    });
 
     schemas = quote! {
         swim_common::model::schema::StandardSchema::Layout {
@@ -125,14 +135,15 @@ fn derive_compound_schema(
     fields: &[ValidatedField],
     compound_type: &CompoundTypeKind,
     descriptor: &ValidatedFormDescriptor,
+    manifest: &FieldManifest,
 ) -> TokenStream2 {
     let attr_schemas = build_attrs(fields);
     let item_schemas = {
         match &descriptor.schema {
-            StandardSchema::None => derive_items(fields),
+            StandardSchema::None => derive_items(fields, manifest),
             _ => {
                 let container_schema = derive_container_schema(compound_type, &descriptor.schema);
-                let item_schema = derive_items(fields);
+                let item_schema = derive_items(fields, manifest);
 
                 quote! {
                     swim_common::model::schema::StandardSchema::And(vec![
@@ -155,15 +166,19 @@ fn derive_compound_schema(
         }
     };
 
-    build_head_attribute(&descriptor.identity, remainder, fields)
+    build_head_attribute(&descriptor.identity, remainder, fields, manifest)
 }
 
 impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             TypeContents::Struct(repr) => {
-                let schema =
-                    derive_compound_schema(&repr.fields, &repr.compound_type, &repr.descriptor);
+                let schema = derive_compound_schema(
+                    &repr.fields,
+                    &repr.compound_type,
+                    &repr.descriptor,
+                    &repr.manifest,
+                );
 
                 schema.to_tokens(tokens);
             }
@@ -173,6 +188,7 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                         &variant.fields,
                         &variant.compound_type,
                         &variant.descriptor,
+                        &variant.manifest,
                     );
 
                     quote! {
