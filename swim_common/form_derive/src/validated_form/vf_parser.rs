@@ -493,47 +493,39 @@ fn derive_container_schema(
 }
 
 fn build_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenStream2 {
-    if descriptor.replaces_body {
-        let field: &ValidatedField = fields
-            .iter()
-            .filter(|f| f.form_field.is_body())
-            .collect::<Vec<_>>()
-            .first()
-            .expect("Missing body field");
-        let schema = &field.field_schema;
-
-        quote! {
-            swim_common::model::schema::StandardSchema::Layout {
-                items: vec![
-                    (swim_common::model::schema::ItemSchema::ValueItem(#schema), true)
-                ],
-                exhaustive: true
-            }
-        }
+    let fields: Vec<&ValidatedField> = if descriptor.replaces_body {
+        fields.iter().filter(|f| f.form_field.is_body()).collect()
     } else {
-        let mut schemas = fields
+        fields
             .iter()
             .filter(|f| f.form_field.is_slot() || f.form_field.is_body())
-            .fold(TokenStream2::new(), |ts, field| {
-                let item = field.as_item();
+            .collect()
+    };
 
-                quote! {
-                    #ts
-                    (#item, true),
-                }
-            });
+    let mut schemas = fields.iter().fold(TokenStream2::new(), |ts, field| {
+        if field.form_field.is_body() {
+            let schema = &field.field_schema;
+            quote!((swim_common::model::schema::ItemSchema::ValueItem(#schema), true))
+        } else {
+            let item = field.as_item();
 
-        schemas = quote! {
-            swim_common::model::schema::StandardSchema::Layout {
-                items: vec![
-                    #schemas
-                ],
-                exhaustive: true
+            quote! {
+                #ts
+                (#item, true),
             }
-        };
+        }
+    });
 
-        schemas
-    }
+    schemas = quote! {
+        swim_common::model::schema::StandardSchema::Layout {
+            items: vec![
+                #schemas
+            ],
+            exhaustive: true
+        }
+    };
+
+    schemas
 }
 
 impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
