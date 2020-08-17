@@ -137,16 +137,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deserialize"
-version = "0.1.0"
-dependencies = [
- "num-bigint",
- "num-traits",
- "serde",
- "swim_common",
-]
-
-[[package]]
 name = "discard"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -168,6 +158,8 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 name = "form_derive"
 version = "0.1.0"
 dependencies = [
+ "macro_helpers",
+ "num-bigint",
  "proc-macro2 1.0.18",
  "quote 1.0.7",
  "syn",
@@ -311,6 +303,20 @@ dependencies = [
 
 [[package]]
 name = "im"
+version = "14.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "696059c87b83c5a258817ecd67c3af915e3ed141891fc35a1e79908801cf0ce7"
+dependencies = [
+ "bitmaps",
+ "rand_core",
+ "rand_xoshiro",
+ "sized-chunks 0.5.3",
+ "typenum",
+ "version_check",
+]
+
+[[package]]
+name = "im"
 version = "15.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "111c1983f3c5bb72732df25cddacee9b546d08325fb584b5ebd38148be7b0246"
@@ -318,7 +324,7 @@ dependencies = [
  "bitmaps",
  "rand_core",
  "rand_xoshiro",
- "sized-chunks",
+ "sized-chunks 0.6.2",
  "typenum",
  "version_check",
 ]
@@ -395,6 +401,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "macro_helpers"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.18",
+ "quote 1.0.7",
+ "syn",
+]
+
+[[package]]
 name = "matchers"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -430,7 +445,6 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
- "serde",
 ]
 
 [[package]]
@@ -788,15 +802,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serialize"
-version = "0.1.0"
-dependencies = [
- "num-bigint",
- "serde",
- "swim_common",
-]
-
-[[package]]
 name = "sha1"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -809,6 +814,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06d5a3f5166fb5b42a5439f2eee8b9de149e235961e3eb21c5808fc3ea17ff3e"
 dependencies = [
  "lazy_static",
+]
+
+[[package]]
+name = "sized-chunks"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d59044ea371ad781ff976f7b06480b9f0180e834eda94114f2afb4afc12b7718"
+dependencies = [
+ "bitmaps",
+ "typenum",
 ]
 
 [[package]]
@@ -922,12 +937,12 @@ dependencies = [
  "either",
  "futures 0.3.5",
  "futures-util",
- "im",
+ "im 15.0.0",
+ "num-bigint",
  "pin-project",
  "pin-utils",
  "rand",
  "swim_common",
- "swim_form",
  "swim_runtime",
  "tokio",
  "tracing",
@@ -944,14 +959,15 @@ dependencies = [
  "base64",
  "bytes",
  "either",
+ "form_derive",
  "futures 0.3.5",
  "futures-util",
+ "im 14.3.0",
  "num-bigint",
  "num-traits",
  "pin-project",
  "pin-utils",
  "regex",
- "serde",
  "swim_runtime",
  "tokio",
  "tokio-util",
@@ -959,21 +975,6 @@ dependencies = [
  "tracing-futures",
  "tracing-subscriber",
  "url",
- "utilities",
-]
-
-[[package]]
-name = "swim_form"
-version = "0.1.0"
-dependencies = [
- "deserialize",
- "form_derive",
- "im",
- "num-bigint",
- "num-traits",
- "serde",
- "serialize",
- "swim_common",
  "utilities",
 ]
 
@@ -1238,6 +1239,7 @@ version = "0.1.0"
 dependencies = [
  "futures 0.3.5",
  "futures-util",
+ "macro_helpers",
  "parking_lot 0.11.0",
  "parking_lot_core 0.8.0",
  "pin-project",
