@@ -1731,3 +1731,95 @@ fn test_hash_map() {
     assert!(S::schema().matches(&value));
     assert!(!S::schema().matches(&Value::Int32Value(1)));
 }
+
+#[test]
+fn test_nested() {
+    #[derive(Form, ValidatedForm)]
+    struct Parent {
+        a: i32,
+        b: Child,
+        #[form(skip)]
+        e: f64,
+    }
+
+    #[derive(Form, ValidatedForm)]
+    enum Child {
+        ChildA,
+        ChildB { c: i32, d: f64 },
+    }
+
+    let child_schema = StandardSchema::Or(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "ChildA",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Layout {
+                items: vec![],
+                exhaustive: true,
+            }),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "ChildB",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("c"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("d"),
+                            f64::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            }),
+        },
+    ]);
+
+    assert_eq!(Child::schema(), child_schema);
+
+    let parent_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "Parent",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![
+                (
+                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
+                    true,
+                ),
+                (
+                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("b"), child_schema)),
+                    true,
+                ),
+            ],
+            exhaustive: true,
+        }),
+    };
+
+    assert_eq!(Parent::schema(), parent_schema);
+
+    let value = Parent {
+        a: 1,
+        b: Child::ChildB { c: 2, d: 3.0 },
+        e: 4.0,
+    }
+    .as_value();
+
+    assert!(Parent::schema().matches(&value));
+    assert!(!Parent::schema().matches(&Value::Int32Value(1)));
+}
