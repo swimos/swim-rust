@@ -15,7 +15,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::agent::context::ContextImpl;
+use crate::agent::context::{AgentExecutionContext, ContextImpl};
+use crate::agent::lane::channels::task::{LaneIoError, MapLaneMessageHandler};
+use crate::agent::lane::channels::update::StmRetryStrategy;
+use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
@@ -23,21 +27,27 @@ use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::routing::TaggedClientEnvelope;
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::{once, repeat, unfold, BoxStream};
 use futures::{FutureExt, Stream, StreamExt};
 use futures_util::stream::FuturesUnordered;
+use pin_utils::core_reexport::fmt::Formatter;
 use pin_utils::pin_mut;
 use std::any::Any;
-use std::fmt::Debug;
+use std::error::Error;
+use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_common::topic::MpscTopic;
+use swim_common::warp::path::RelativePath;
 use swim_form::Form;
 use swim_runtime::time::clock::Clock;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use url::Url;
@@ -116,7 +126,7 @@ pub async fn run_agent<Config, Clk, Agent, L>(
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let scheduler_task = rx
-            .take_until_completes(stop_trigger)
+            .take_until(stop_trigger)
             .for_each_concurrent(None, |eff| eff)
             .boxed()
             .instrument(span!(Level::TRACE, SCHEDULER_TASK));
@@ -266,6 +276,119 @@ pub trait LaneTasks<Agent, Context: AgentContext<Agent> + Sized + Send + Sync + 
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AttachError {
+    /// The lane stopped reporting its state changes.
+    LaneStoppedReporting,
+}
+
+impl Display for AttachError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttachError::LaneStoppedReporting => write!(
+                f,
+                "Failed to attach as the lane stopped reporting its state."
+            ),
+        }
+    }
+}
+
+impl Error for AttachError {}
+
+/// Lazily initialized envelope IO for a lane.
+pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
+    Send + Sync
+{
+    /// Attempt to attach the running lane to a stream of envelopes.
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: mpsc::Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
+}
+
+struct ValueLaneIo<T> {
+    lane: ValueLane<T>,
+    hook: oneshot::Sender<mpsc::Sender<Arc<T>>>,
+}
+
+impl<T, Context> LaneIo<Context> for ValueLaneIo<T>
+where
+    T: Any + Send + Sync + Form + Debug,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let ValueLaneIo { lane, hook } = self;
+        let uplink_factory = SpawnerUplinkFactory::new(config.clone());
+        let (event_tx, event_rx) = mpsc::channel(config.lane_buffer.get());
+        hook.send(event_tx)
+            .map_err(|_| AttachError::LaneStoppedReporting)?;
+        let (topic, _rec) = MpscTopic::new(event_rx, config.lane_buffer, config.yield_after);
+        Ok(lane::channels::task::run_lane_io(
+            lane,
+            uplink_factory,
+            envelopes,
+            topic,
+            config,
+            context,
+            route,
+        )
+        .boxed())
+    }
+}
+
+struct MapLaneIo<K, V> {
+    lane: MapLane<K, V>,
+    hook: oneshot::Sender<mpsc::Sender<MapLaneEvent<K, V>>>,
+}
+
+impl<K, V, Context> LaneIo<Context> for MapLaneIo<K, V>
+where
+    K: Any + Send + Sync + Form + Clone + Debug,
+    V: Any + Send + Sync + Form + Debug,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let MapLaneIo { lane, hook } = self;
+
+        let uplink_factory = SpawnerUplinkFactory::new(config.clone());
+
+        let (event_tx, event_rx) = mpsc::channel(config.lane_buffer.get());
+        hook.send(event_tx)
+            .map_err(|_| AttachError::LaneStoppedReporting)?;
+        let (topic, _rec) = MpscTopic::new(event_rx, config.lane_buffer, config.yield_after);
+
+        let retries = StmRetryStrategy::new(config.retry_strategy);
+
+        let handler = MapLaneMessageHandler::new(lane, move || retries);
+
+        Ok(lane::channels::task::run_lane_io(
+            handler,
+            uplink_factory,
+            envelopes,
+            topic,
+            config,
+            context,
+            route,
+        )
+        .boxed())
+    }
+}
+
 struct LifecycleTasks<L, S, P> {
     name: String,
     lifecycle: L,
@@ -312,7 +435,7 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent());
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
             while let Some(event) = events.next().await {
                 lifecycle
@@ -383,7 +506,7 @@ where
         lifecycle.on_start(model, context).boxed()
     }
 
-    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+    fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let MapLifecycleTasks(LifecycleTasks {
                 lifecycle,
@@ -392,7 +515,7 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent()).clone();
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
             while let Some(event) = events.next().await {
                 lifecycle
@@ -457,7 +580,7 @@ where
         ready(()).boxed()
     }
 
-    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+    fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let ActionLifecycleTasks(LifecycleTasks {
                 lifecycle,
@@ -466,7 +589,7 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent()).clone();
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
             while let Some(command) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
@@ -501,7 +624,7 @@ where
         ready(()).boxed()
     }
 
-    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+    fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let CommandLifecycleTasks(LifecycleTasks {
                 lifecycle,
@@ -510,7 +633,7 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent()).clone();
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
             while let Some(command) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);

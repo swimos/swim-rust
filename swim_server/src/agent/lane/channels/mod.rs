@@ -14,11 +14,9 @@
 
 use crate::agent::lane::channels::update::LaneUpdate;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
-use crate::routing::{RoutingAddr, ServerRouter};
-use futures::future::BoxFuture;
+use crate::routing::RoutingAddr;
 use pin_utils::core_reexport::num::NonZeroUsize;
-use tokio::sync::mpsc;
-
+use utilities::future::retryable::strategy::RetryStrategy;
 pub mod task;
 pub mod update;
 pub mod uplink;
@@ -38,31 +36,27 @@ pub struct AgentExecutionConfig {
     pub max_fatal_uplink_errors: usize,
     /// Maximum number of times a lane will attempt to start a new uplink before failing.
     pub max_uplink_start_attempts: NonZeroUsize,
+    pub lane_buffer: NonZeroUsize,
+    pub yield_after: NonZeroUsize,
+    pub retry_strategy: RetryStrategy,
 }
 
 impl Default for AgentExecutionConfig {
     fn default() -> Self {
         let default_buffer = NonZeroUsize::new(4).unwrap();
+
         AgentExecutionConfig {
             max_concurrency: 1,
             action_buffer: default_buffer,
             update_buffer: default_buffer,
             uplink_err_buffer: default_buffer,
             max_fatal_uplink_errors: 0,
-            max_uplink_start_attempts: default_buffer,
+            max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
+            lane_buffer: default_buffer,
+            yield_after: NonZeroUsize::new(2048).unwrap(),
+            retry_strategy: RetryStrategy::default(),
         }
     }
-}
-
-/// A context, scoped to an agent, to provide shared functionality to each of its lanes.
-pub trait AgentExecutionContext {
-    type Router: ServerRouter + 'static;
-
-    /// Create a handle to the envelope router for the agent.
-    fn router_handle(&self) -> Self::Router;
-
-    /// Provide a channel to dispatch events to the agent scheduler.
-    fn spawner(&self) -> mpsc::Sender<BoxFuture<'static, ()>>;
 }
 
 /// Creates uplink state machines and update tasks for a lane.

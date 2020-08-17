@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::{AgentContext, Eff};
+use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
@@ -105,7 +106,7 @@ where
                     eff.await;
                 }
             })
-            .take_until_completes(self.stop_signal.clone())
+            .take_until(self.stop_signal.clone())
             .never_error()
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can drop the errors.
@@ -132,4 +133,15 @@ where
     fn agent_stop_event(&self) -> trigger::Receiver {
         self.stop_signal.clone()
     }
+}
+
+/// A context, scoped to an agent, to provide shared functionality to each of its lanes.
+pub trait AgentExecutionContext {
+    type Router: ServerRouter + 'static;
+
+    /// Create a handle to the envelope router for the agent.
+    fn router_handle(&self) -> Self::Router;
+
+    /// Provide a channel to dispatch events to the agent scheduler.
+    fn spawner(&self) -> mpsc::Sender<Eff>;
 }

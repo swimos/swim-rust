@@ -378,7 +378,7 @@ impl<K, V> MapUpdate<K, V> {
 }
 
 /// A single event that occurred during a transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum MapLaneEvent<K, V> {
     /// A coordination checkpoint was encountered in the stream. For an explanation of checkpoints,
     /// see [`crate::agent::lane::channels::uplink::map::sync_map_lane`].
@@ -389,6 +389,17 @@ pub enum MapLaneEvent<K, V> {
     Update(K, Arc<V>),
     /// An entry was removed.
     Remove(K),
+}
+
+impl<K: Clone, V> Clone for MapLaneEvent<K, V> {
+    fn clone(&self) -> Self {
+        match self {
+            MapLaneEvent::Checkpoint(id) => MapLaneEvent::Checkpoint(*id),
+            MapLaneEvent::Clear => MapLaneEvent::Clear,
+            MapLaneEvent::Update(k, v) => MapLaneEvent::Update(k.clone(), v.clone()),
+            MapLaneEvent::Remove(k) => MapLaneEvent::Remove(k.clone()),
+        }
+    }
 }
 
 impl<V> MapLaneEvent<Value, V> {

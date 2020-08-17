@@ -15,20 +15,21 @@
 #[cfg(test)]
 mod tests;
 
+use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{MapLaneUplink, UplinkAction, ValueLaneUplink};
 use crate::agent::lane::channels::{
-    AgentExecutionConfig, AgentExecutionContext, InputMessage, LaneMessageHandler, OutputMessage,
-    TaggedAction,
+    AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
-use futures::future::{join3, BoxFuture};
+use futures::future::join3;
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
@@ -45,7 +46,6 @@ use swim_form::Form;
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
 /// Aggregate error report combining lane update errors and lane uplink errors.
@@ -153,7 +153,7 @@ pub trait LaneUplinks {
         channels: UplinkChannels<Top>,
         route: RelativePath,
         context: &Context,
-    ) -> BoxFuture<'static, ()>
+    ) -> Eff
     where
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
@@ -229,7 +229,7 @@ where
         .make_task(arc_handler, spawner_channels, route.clone(), &context)
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
-    let mut err_rx = err_rx.take_until_completes(upd_done_rx).fuse();
+    let mut err_rx = err_rx.take_until(upd_done_rx).fuse();
 
     let route_cpy = route.clone();
 

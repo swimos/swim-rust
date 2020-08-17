@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneIoError, LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
 use crate::agent::lane::channels::{
-    AgentExecutionConfig, AgentExecutionContext, LaneMessageHandler, OutputMessage, TaggedAction,
+    AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
+use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join3, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
@@ -38,7 +40,7 @@ use swim_common::warp::path::RelativePath;
 use swim_form::{Form, FormDeserializeErr};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
-use utilities::future::SwimStreamExt;
+use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
 
 #[test]
@@ -282,7 +284,7 @@ impl LaneMessageHandler for TestHandler {
 
 #[derive(Clone)]
 struct TestContext(
-    mpsc::Sender<BoxFuture<'static, ()>>,
+    mpsc::Sender<Eff>,
     mpsc::Sender<TaggedEnvelope>,
     Arc<Mutex<Option<trigger::Sender>>>,
 );
@@ -336,7 +338,7 @@ impl AgentExecutionContext for TestContext {
         TestRouter(self.1.clone())
     }
 
-    fn spawner(&self) -> Sender<BoxFuture<'static, ()>> {
+    fn spawner(&self) -> Sender<Eff> {
         self.0.clone()
     }
 }
@@ -357,6 +359,9 @@ fn make_config() -> AgentExecutionConfig {
         uplink_err_buffer: default_buffer(),
         max_fatal_uplink_errors: 1,
         max_uplink_start_attempts: default_buffer(),
+        lane_buffer: default_buffer(),
+        yield_after: yield_after(),
+        retry_strategy: RetryStrategy::default(),
     }
 }
 
@@ -464,7 +469,7 @@ fn make_context() -> (
 
     let context = TestContext(spawn_tx, router_tx, Arc::new(Mutex::new(Some(stop_tx))));
     let spawn_task = spawn_rx
-        .take_until_completes(stop_rx)
+        .take_until(stop_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();
 
