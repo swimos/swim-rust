@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use num_bigint::BigInt;
+use num_traits::Float;
+
 use crate::form::Form;
 use crate::form::ValidatedForm;
 use crate::model::schema::attr::AttrSchema;
@@ -22,8 +25,6 @@ use crate::model::schema::{FieldSpec, ItemSchema};
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
-use num_bigint::BigInt;
-use num_traits::Float;
 
 mod swim_common {
     pub use crate::*;
@@ -1362,12 +1363,40 @@ fn form_header() {
 
     #[derive(Form, ValidatedForm)]
     struct S {
+        #[form(header_body)]
         a: i32,
-        #[form(header, schema(equal = "eq"))]
+        #[form(header)]
         b: i32,
     }
 
-    println!("{:?}", S::schema())
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::Layout {
+                items: vec![
+                    (ItemSchema::ValueItem(i32::schema()), true),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        }),
+    };
+
+    let value = S { a: 1, b: 2 }.as_value();
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
 }
 
 #[test]
@@ -1379,5 +1408,27 @@ fn form_body() {
         b: i32,
     }
 
-    println!("{:?}", S::schema())
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::Layout {
+                items: vec![(
+                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
+                    true,
+                )],
+                exhaustive: true,
+            },
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
+            exhaustive: true,
+        }),
+    };
+
+    let value = S { a: 1, b: 2 }.as_value();
+
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
 }

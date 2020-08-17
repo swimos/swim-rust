@@ -21,7 +21,8 @@ use macro_helpers::{CompoundTypeKind, Context, Identity, Symbol};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{
-    Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
+    Attributes, EnumVariant, FieldManifest, FormField, StructRepr, TypeContents, FORM_PATH,
+    SCHEMA_PATH, TAG_PATH,
 };
 use crate::validated_form::attrs::{build_attrs, build_head_attribute};
 use crate::validated_form::meta_parse::parse_schema_meta;
@@ -491,29 +492,48 @@ fn derive_container_schema(
     }
 }
 
-fn build_items(fields: &[ValidatedField]) -> TokenStream2 {
-    let mut schemas = fields
-        .iter()
-        .filter(|f| f.form_field.is_slot() || f.form_field.is_body())
-        .fold(TokenStream2::new(), |ts, field| {
-            let item = field.as_item();
+fn build_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenStream2 {
+    if descriptor.replaces_body {
+        let field: &ValidatedField = fields
+            .iter()
+            .filter(|f| f.form_field.is_body())
+            .collect::<Vec<_>>()
+            .first()
+            .expect("Missing body field");
+        let schema = &field.field_schema;
 
-            quote! {
-                #ts
-                (#item, true),
+        quote! {
+            swim_common::model::schema::StandardSchema::Layout {
+                items: vec![
+                    (swim_common::model::schema::ItemSchema::ValueItem(#schema), true)
+                ],
+                exhaustive: true
             }
-        });
-
-    schemas = quote! {
-        swim_common::model::schema::StandardSchema::Layout {
-            items: vec![
-                #schemas
-            ],
-            exhaustive: true
         }
-    };
+    } else {
+        let mut schemas = fields
+            .iter()
+            .filter(|f| f.form_field.is_slot() || f.form_field.is_body())
+            .fold(TokenStream2::new(), |ts, field| {
+                let item = field.as_item();
 
-    schemas
+                quote! {
+                    #ts
+                    (#item, true),
+                }
+            });
+
+        schemas = quote! {
+            swim_common::model::schema::StandardSchema::Layout {
+                items: vec![
+                    #schemas
+                ],
+                exhaustive: true
+            }
+        };
+
+        schemas
+    }
 }
 
 impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
@@ -523,10 +543,10 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                 let attr_schemas = build_attrs(&repr.fields);
                 let item_schemas = {
                     match &repr.descriptor.schema {
-                        StandardSchema::None => build_items(&repr.fields),
+                        StandardSchema::None => build_items(&repr.fields, &repr.manifest),
                         _ => {
                             let container_schema = derive_container_schema(self);
-                            let item_schema = build_items(&repr.fields);
+                            let item_schema = build_items(&repr.fields, &repr.manifest);
                             quote! {
                                 swim_common::model::schema::StandardSchema::And(vec![
                                     #container_schema
@@ -550,8 +570,12 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                     }
                 };
 
-                let head_attribute =
-                    build_head_attribute(&repr.descriptor.identity, remainder, &repr.fields);
+                let head_attribute = build_head_attribute(
+                    &repr.descriptor.identity,
+                    remainder,
+                    &repr.fields,
+                    &repr.manifest,
+                );
 
                 head_attribute.to_tokens(tokens);
             }

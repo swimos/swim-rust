@@ -16,27 +16,71 @@ use syn::export::TokenStream2;
 
 use macro_helpers::Identity;
 
+use crate::parser::FieldManifest;
 use crate::validated_form::vf_parser::{StandardSchema, ValidatedField};
 
 pub fn build_head_attribute(
     compound_identity: &Identity,
     remainder: TokenStream2,
     fields: &[ValidatedField],
+    manifest: &FieldManifest,
 ) -> TokenStream2 {
-    let field_opt = fields
+    let header_body_opt = fields
         .iter()
         .filter(|f| f.form_field.is_header_body())
         .collect::<Vec<_>>();
-    let schema = match field_opt.first() {
-        Some(field) => field.field_schema.clone(),
-        None => StandardSchema::OfKind(quote!(swim_common::model::ValueKind::Extant)),
+
+    let header_schemas = fields
+        .iter()
+        .filter(|f| f.form_field.is_header() || (f.form_field.is_slot() && manifest.replaces_body))
+        .fold(TokenStream2::new(), |ts, field| {
+            let item = field.as_item();
+
+            quote! {
+                #ts
+                (#item, true),
+            }
+        });
+
+    let tag_value_schema = match header_body_opt.first() {
+        Some(field) => {
+            let schema = &field.field_schema;
+            if !header_schemas.is_empty() {
+                quote! {
+                    swim_common::model::schema::StandardSchema::Layout {
+                        items: vec![
+                            (swim_common::model::schema::ItemSchema::ValueItem(#schema), true),
+                            #header_schemas
+                        ],
+                        exhaustive: true
+                    }
+                }
+            } else {
+                quote!(#schema)
+            }
+        }
+        None => {
+            if !header_schemas.is_empty() {
+                quote! {
+                    swim_common::model::schema::StandardSchema::Layout {
+                        items: vec![
+                            #header_schemas
+                        ],
+                        exhaustive: true
+                    }
+                }
+            } else {
+                let schema = StandardSchema::OfKind(quote!(swim_common::model::ValueKind::Extant));
+                quote!(#schema)
+            }
+        }
     };
 
     let compound_identity = compound_identity.to_string();
     let attr_schema = quote! {
         swim_common::model::schema::attr::AttrSchema::named(
             #compound_identity,
-            #schema,
+            #tag_value_schema,
         )
     };
 
@@ -50,18 +94,6 @@ pub fn build_head_attribute(
 }
 
 pub fn build_attrs(fields: &[ValidatedField]) -> TokenStream2 {
-    let header_schemas = fields.iter().filter(|f| f.form_field.is_header()).fold(
-        TokenStream2::new(),
-        |ts, field| {
-            let item = field.as_attr();
-
-            quote! {
-                #ts
-                #item,
-            }
-        },
-    );
-
     let mut attrs =
         fields
             .iter()
@@ -74,11 +106,10 @@ pub fn build_attrs(fields: &[ValidatedField]) -> TokenStream2 {
                 }
             });
 
-    if !attrs.is_empty() || !header_schemas.is_empty() {
+    if !attrs.is_empty() {
         attrs = quote! {
             swim_common::model::schema::StandardSchema::HasAttributes {
                 attributes: vec![
-                    #header_schemas
                     #attrs
                 ],
                 exhaustive: true,
