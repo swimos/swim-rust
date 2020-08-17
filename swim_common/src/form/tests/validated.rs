@@ -25,6 +25,7 @@ use crate::model::schema::{FieldSpec, ItemSchema};
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
+use std::collections::BTreeMap;
 
 mod swim_common {
     pub use crate::*;
@@ -1434,11 +1435,299 @@ fn form_body() {
 }
 
 #[test]
-fn form_enum() {
+fn form_single_enum() {
     #[derive(Form, ValidatedForm)]
     enum E {
         A,
     }
 
-    println!("{:?}", E::schema())
+    let expected_schema = StandardSchema::Or(vec![StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "A",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        }),
+    }]);
+
+    let value = E::A.as_value();
+
+    assert_eq!(E::schema(), expected_schema);
+    assert!(E::schema().matches(&value));
+    assert!(!E::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn form_enum_tag() {
+    #[derive(Form, ValidatedForm)]
+    enum E {
+        #[form(tag = "Enumeration")]
+        A,
+    }
+
+    let expected_schema = StandardSchema::Or(vec![StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "Enumeration",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![],
+            exhaustive: true,
+        }),
+    }]);
+
+    let value = E::A.as_value();
+
+    assert_eq!(E::schema(), expected_schema);
+    assert!(E::schema().matches(&value));
+    assert!(!E::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn form_enum_variants() {
+    #[derive(Form, ValidatedForm)]
+    enum E {
+        UnitEnum,
+        NewTypeEnum(i32),
+        TupleEnum(i32, i64, String),
+        StructEnum { a: i32, b: i64, c: String },
+    }
+
+    let expected_schema = StandardSchema::Or(vec![
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "UnitEnum",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Layout {
+                items: vec![],
+                exhaustive: true,
+            }),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "NewTypeEnum",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Layout {
+                items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
+                exhaustive: true,
+            }),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "TupleEnum",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Layout {
+                items: vec![
+                    (ItemSchema::ValueItem(i32::schema()), true),
+                    (ItemSchema::ValueItem(i64::schema()), true),
+                    (ItemSchema::ValueItem(String::schema()), true),
+                ],
+                exhaustive: true,
+            }),
+        },
+        StandardSchema::HeadAttribute {
+            schema: Box::new(AttrSchema::named(
+                "StructEnum",
+                StandardSchema::OfKind(ValueKind::Extant),
+            )),
+            required: true,
+            remainder: Box::new(StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("a"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            i64::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("c"),
+                            String::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            }),
+        },
+    ]);
+
+    let enums = vec![
+        E::UnitEnum,
+        E::NewTypeEnum(i32::max_value()),
+        E::TupleEnum(i32::max_value(), i64::max_value(), String::from("swim")),
+        E::StructEnum {
+            a: i32::max_value(),
+            b: i64::max_value(),
+            c: String::from("swim"),
+        },
+    ];
+
+    let schema = E::schema();
+    assert_eq!(schema, expected_schema);
+
+    enums.iter().for_each(|e| {
+        let value = e.as_value();
+
+        assert!(schema.matches(&value));
+        assert!(!schema.matches(&Value::Int32Value(1)));
+    });
+}
+
+#[test]
+fn form_enum_attrs() {
+    fn i64_eq() -> Value {
+        Value::Int64Value(100)
+    }
+
+    #[derive(Form, ValidatedForm)]
+    enum E {
+        #[form(tag = "Enumeration")]
+        A {
+            #[form(rename = "integer")]
+            a: i32,
+            #[form(body, schema(equal = "i64_eq"))]
+            b: i64,
+            #[form(skip)]
+            c: i32,
+            #[form(schema(int_range = "0..=11"), rename = "ranged_integer")]
+            d: i32,
+        },
+    }
+
+    let expected_schema = StandardSchema::Or(vec![StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "Enumeration",
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("integer"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("ranged_integer"),
+                            StandardSchema::inclusive_int_range(0, 11),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(ItemSchema::ValueItem(StandardSchema::Equal(i64_eq())), true)],
+            exhaustive: true,
+        }),
+    }]);
+
+    let value = E::A {
+        a: 1,
+        b: 100,
+        c: i32::max_value(),
+        d: 9,
+    }
+    .as_value();
+
+    assert_eq!(E::schema(), expected_schema);
+    assert!(E::schema().matches(&value));
+    assert!(!E::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn test_vector() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        v: Vec<i32>,
+    }
+
+    let value = S {
+        v: vec![1, 2, 3, 4, 5],
+    }
+    .as_value();
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("v"),
+                    <Vec<i32> as ValidatedForm>::schema(),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
+    };
+
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn test_hash_map() {
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        v: BTreeMap<String, i32>,
+    }
+
+    let value = S {
+        v: {
+            let mut map = BTreeMap::new();
+            map.insert("a".into(), 1);
+            map.insert("b".into(), 2);
+            map.insert("c".into(), 3);
+            map
+        },
+    }
+    .as_value();
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::named(
+            "S",
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::Layout {
+            items: vec![(
+                ItemSchema::Field(SlotSchema::new(
+                    StandardSchema::text("v"),
+                    <BTreeMap<String, i32> as ValidatedForm>::schema(),
+                )),
+                true,
+            )],
+            exhaustive: true,
+        }),
+    };
+
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&value));
+    assert!(!S::schema().matches(&Value::Int32Value(1)));
 }

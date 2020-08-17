@@ -27,7 +27,8 @@ use num_traits::FromPrimitive;
 
 use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
-use crate::model::schema::StandardSchema;
+use crate::model::schema::slot::SlotSchema;
+use crate::model::schema::{ItemSchema, StandardSchema};
 use crate::model::{Item, Value, ValueKind};
 
 impl<'a, F> Form for &'a F
@@ -493,6 +494,16 @@ macro_rules! impl_seq_form {
                 unimplemented!()
             }
         }
+
+        impl<V $(, $typaram)*> ValidatedForm for $ty<V $(, $typaram)*>
+        where
+            V: ValidatedForm $(+ $tbound1 $(+ $tbound2)*)*,
+            $($typaram: ValidatedForm + $bound,)*
+        {
+            fn schema() -> StandardSchema {
+                StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(V::schema())))
+            }
+        }
     }
 }
 
@@ -510,6 +521,17 @@ macro_rules! impl_map_form {
 
             fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
                 unimplemented!()
+            }
+        }
+
+        impl<K, V $(, $typaram)*> ValidatedForm for $ty<K, V $(, $typaram)*>
+        where
+            K: ValidatedForm $(+ $kbound1 $(+ $kbound2)*)*,
+            V: ValidatedForm,
+            $($typaram: $bound,)*
+        {
+            fn schema() -> StandardSchema {
+                StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(K::schema(), V::schema()))))
             }
         }
     }

@@ -410,7 +410,13 @@ where
         .into_iter()
         .map(|form_field| {
             let initial_schema = match &form_field.original.ty {
-                Type::Path(path) => StandardSchema::Type(path.to_token_stream()),
+                Type::Path(path) => {
+                    let path = quote! {
+                        <#path as swim_common::form::ValidatedForm>
+                    };
+
+                    StandardSchema::Type(path)
+                }
                 ty => {
                     context.error_spanned_by(
                         ty,

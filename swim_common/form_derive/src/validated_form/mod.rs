@@ -14,7 +14,7 @@
 
 use syn::DeriveInput;
 
-use macro_helpers::{CompoundTypeKind, Context};
+use macro_helpers::{CompoundTypeKind, Context, Identity};
 
 use crate::form::form_parser::build_type_contents;
 use crate::parser::{FieldManifest, TypeContents};
@@ -135,6 +135,7 @@ fn derive_compound_schema(
     fields: &[ValidatedField],
     compound_type: &CompoundTypeKind,
     descriptor: &ValidatedFormDescriptor,
+    ident: &Identity,
     manifest: &FieldManifest,
 ) -> TokenStream2 {
     let attr_schemas = build_attrs(fields);
@@ -166,7 +167,7 @@ fn derive_compound_schema(
         }
     };
 
-    build_head_attribute(&descriptor.identity, remainder, fields, manifest)
+    build_head_attribute(ident, remainder, fields, manifest)
 }
 
 impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
@@ -177,6 +178,7 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                     &repr.fields,
                     &repr.compound_type,
                     &repr.descriptor,
+                    &repr.descriptor.identity,
                     &repr.manifest,
                 );
 
@@ -188,6 +190,7 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                         &variant.fields,
                         &variant.compound_type,
                         &variant.descriptor,
+                        &variant.name,
                         &variant.manifest,
                     );
 
