@@ -18,6 +18,7 @@ use trybuild::TestCases;
 fn test_derive() {
     let t = TestCases::new();
 
+    t.compile_fail("src/form/tests/derive/borrowed_field.rs");
     t.compile_fail("src/form/tests/derive/empty_tag.rs");
     t.compile_fail("src/form/tests/derive/double_kind.rs");
     t.compile_fail("src/form/tests/derive/double_body_attr.rs");
