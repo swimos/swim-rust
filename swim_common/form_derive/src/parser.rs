@@ -33,6 +33,7 @@ pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
 
 /// An enumeration representing the contents of an input.
+#[derive(Clone)]
 pub enum TypeContents<'t> {
     /// An enumeration input. Containing a vector of enumeration variants.
     Enum(Vec<EnumVariant<'t>>),
@@ -110,6 +111,7 @@ impl<'t> TypeContents<'t> {
 }
 
 /// A representation of a parsed struct from the AST.
+#[derive(Clone)]
 pub struct StructRepr<'t> {
     /// The struct's type: tuple, named, unit.
     pub compound_type: CompoundTypeKind,
@@ -120,6 +122,7 @@ pub struct StructRepr<'t> {
 }
 
 /// A representation of a parsed enumeration from the AST.
+#[derive(Clone)]
 pub struct EnumVariant<'a> {
     /// The name of the variant.
     pub name: FieldIdentity,
@@ -132,6 +135,7 @@ pub struct EnumVariant<'a> {
 }
 
 /// A representation of a parsed field from the AST.
+#[derive(Clone)]
 pub struct Field<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
@@ -413,7 +417,7 @@ impl Default for FieldKind {
 }
 
 /// A structure representing what fields in the compound type are annotated with.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct FieldManifest {
     /// Whether or not there is a field in the compound type that replaces the body of the output
     /// record.
