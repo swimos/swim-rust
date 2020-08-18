@@ -167,7 +167,7 @@ impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
     }
 }
 
-const FAILED_UNLINK: &str = "Failed to send unlink failed uplink.";
+const FAILED_UNLINK: &str = "Failed to send an unlink message to a failed uplink.";
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates>
 where

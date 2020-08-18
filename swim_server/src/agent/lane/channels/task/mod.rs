@@ -144,7 +144,7 @@ pub trait LaneUplinks {
     ///
     /// * `Handler` - Type of the lane uplink strategy.
     /// * `Top` - Type of the lane event topic.
-    /// * `Context` - Type o the agent execution context.
+    /// * `Context` - Type of the agent execution context.
     fn make_task<Handler, Top, Context>(
         &self,
         message_handler: Arc<Handler>,
