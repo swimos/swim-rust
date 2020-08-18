@@ -49,17 +49,17 @@ impl Display for FormErr {
     }
 }
 
-/// A [`Form`] transforms between a Rust object and a structurally typed [`Value`]. Swim forms
-/// provide a derive macro to generate an implementation of [`Form`] for a structure providing all
-/// members implement [`Form`]. Forms are supported by structures and enumerations in: New Type,
+/// A `Form` transforms between a Rust object and a structurally typed `Value`. Swim forms
+/// provide a derive macro to generate an implementation of `Form` for a structure providing all
+/// members implement `Form`. Forms are supported by structures and enumerations in: New Type,
 /// tuple, structure, and unit forms. Unions are not supported.
 ///
 /// # Attributes
 /// Forms provide a number of attributes that may be used to manipulate fields and properties of a
-/// structure. All form attributes are available with the [`#[form(..)]`] path.
+/// structure. All form attributes are available with the `#[form(..)]` path.
 ///
 /// ## Container attributes
-/// - [`#[form(tag = "name")]`] on [`struct`]ures will transmute the structure to a value with the
+/// - `#[form(tag = "name")]` on `struct`ures will transmute the structure to a value with the
 /// provided tag name.
 ///
 /// ```
@@ -84,7 +84,7 @@ impl Display for FormErr {
 ///
 /// ## Variant attributes
 /// Enumeration variant names are used as tags, to use a custom tag the attribute
-/// [`#[form(tag = "name")]`] on an enumeration variant will transmute the enumeration to a value
+/// `#[form(tag = "name")]` on an enumeration variant will transmute the enumeration to a value
 /// with the provided tag name.
 ///
 /// ```
@@ -108,7 +108,7 @@ impl Display for FormErr {
 /// # Field attributes
 /// ## Skip
 /// Skip a field when transmuting the form. Fields annotated with this must implement
-/// [`Default`].
+/// `Default`.
 ///
 /// ```
 /// use swim_common::model::{Attr, Item, Value};
@@ -136,7 +136,7 @@ impl Display for FormErr {
 ///
 /// ## Rename
 /// Rename the field to the provided name. Structures and enumerations that contain unnamed fields
-/// and are renamed will be written as [`Item::Slot`] in the output record.
+/// and are renamed will be written as `Item::Slot` in the output record.
 ///
 /// ```
 /// use swim_common::model::{Attr, Item, Value};
@@ -192,7 +192,7 @@ impl Display for FormErr {
 /// ```
 /// ## Slot
 /// The field should be written as a slot in the main body or the header if another field is marked
-/// as [`body`]. A field marked with no positional attribute will default to being written as a
+/// as `body`. A field marked with no positional attribute will default to being written as a
 /// slot in the output record.
 ///
 /// ```
@@ -321,19 +321,19 @@ pub trait Form: Sized {
         self.as_value()
     }
 
-    /// Attempt to create a new instance of this object from the provided [`Value`] instance.
+    /// Attempt to create a new instance of this object from the provided `Value` instance.
     fn try_from_value(value: &Value) -> Result<Self, FormErr>;
 
-    /// Consume the [`Value`] and attempt to create a new instance of this object from it.
+    /// Consume the `Value` and attempt to create a new instance of this object from it.
     fn try_convert(value: Value) -> Result<Self, FormErr> {
         Form::try_from_value(&value)
     }
 }
 
-/// A [`Form`] with an associated schema that can validate [`Value`] instances without attempting
+/// A `Form` with an associated schema that can validate `Value` instances without attempting
 /// to convert them.
 ///
-/// See [`StandardSchema`] for details of schema variants.
+/// See `StandardSchema` for details of schema variants.
 ///
 /// # How can I implement `ValidatedForm`?
 /// # Structures
@@ -634,7 +634,7 @@ pub trait Form: Sized {
 ///     f: f64
 /// }
 /// ```
-/// Asserts that a [`Value`] is a non-NaN floating point number.
+/// Asserts that a `Value` is a non-NaN floating point number.
 ///
 /// ### finite
 /// ```
@@ -646,16 +646,102 @@ pub trait Form: Sized {
 ///     f: f64
 /// }
 /// ```
-/// Asserts that a [`Value`] is a finite floating point number.
+/// Asserts that a `Value` is a finite floating point number.
 ///
 /// ### Ranges
+/// Numerical types may have their transmuted `Value`s asserted that they are within a provided
+/// range for:
+/// - `i32`/`i64` using `int_range`.
+/// - `u32`/`u64` using `uint_range`.
+/// - `f64` using `float_range`.
+/// - `BigInt`/`BigUint` using `big_int_range`.
+///
+/// The `std::ops::Range` (`start..end`) and `std::ops::RangeInclusive` (start..=end) syntax is used
+/// for deriving ranges.
+///
+/// ```
+/// use swim_common::form::{Form, ValidatedForm};
+///
+/// #[derive(Form, ValidatedForm)]
+/// struct S {
+///     #[form(schema(int_range = "0..=10"))]
+///     range: i32,
+/// }
+/// ```
+///
 /// ### all_items
+/// Asserts that all of the items in the record match the given schema. At a container level, this
+/// writes the argument as a layout
+///
+/// ```
+/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::model::ValueKind;
+///
+/// #[derive(Form, ValidatedForm)]
+/// #[form(schema(all_items(of_kind(ValueKind::Int32))))]
+/// struct S {
+///     a: i32,
+///     b: i32,
+///     c: i32
+/// }
+/// ```
+/// Is equivalent to:
+/// ```
+/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::model::ValueKind;
+///
+/// #[derive(Form, ValidatedForm)]
+/// struct S {
+///     #[form(schema(of_kind(ValueKind::Int32)))]
+///     a: i32,
+///     #[form(schema(of_kind(ValueKind::Int32)))]
+///     b: i32,
+///     #[form(schema(of_kind(ValueKind::Int32)))]
+///     c: i32
+/// }
+/// ```
+///
 /// ### and
+/// ```
+/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::model::ValueKind;
+///
+/// #[derive(Form, ValidatedForm)]
+/// struct S {
+///     #[form(schema(and(of_kind(ValueKind::String), text = "swim")))]
+///     company: String
+/// }
+/// ```
+/// Performs a logical AND on two or more schemas.
+///
 /// ### or
+/// ```
+/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::model::{Value, ValueKind};
+///
+/// #[derive(Form, ValidatedForm)]
+/// struct S {
+///     #[form(schema(or(of_kind(ValueKind::Int32), of_kind(ValueKind::Int64))))]
+///     value: Value
+/// }
+/// ```
+/// Performs a logical OR on two or more schemas.
+///
 /// ### not
+/// ```
+/// use swim_common::form::{Form, ValidatedForm};
+///
+/// #[derive(Form, ValidatedForm)]
+/// struct S {
+///     #[form(schema(not(int_range = "0..=10")))]
+///     range: i32,
+/// }
+/// ```
+/// Negates the result of a schema.
+///
 pub trait ValidatedForm: Form {
-    /// A schema for the form. If the schema returns true for a [`Value`] the form should be able
-    /// to create an instance of the type from the [`Value`] without generating an error.
+    /// A schema for the form. If the schema returns true for a `Value` the form should be able
+    /// to create an instance of the type from the `Value` without generating an error.
     fn schema() -> StandardSchema;
 }
 
