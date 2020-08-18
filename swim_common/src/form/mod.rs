@@ -711,7 +711,7 @@ pub trait Form: Sized {
 ///
 /// #[derive(Form, ValidatedForm)]
 /// struct S {
-///     #[form(schema(and(of_kind(ValueKind::String), text = "swim")))]
+///     #[form(schema(and(of_kind(ValueKind::Text), text = "swim")))]
 ///     company: String
 /// }
 /// ```

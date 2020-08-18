@@ -1823,36 +1823,3 @@ fn test_nested() {
     assert!(Parent::schema().matches(&value));
     assert!(!Parent::schema().matches(&Value::Int32Value(1)));
 }
-
-#[test]
-fn t() {
-    #[derive(Form, ValidatedForm)]
-    #[form(tag = "Structure")]
-    struct S {
-        a: i32,
-        b: i64,
-    }
-
-    let expected_schema = StandardSchema::HeadAttribute {
-        schema: Box::new(AttrSchema::named(
-            "Structure",
-            StandardSchema::OfKind(ValueKind::Extant),
-        )),
-        required: true,
-        remainder: Box::new(StandardSchema::Layout {
-            items: vec![
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("a"), i32::schema())),
-                    true,
-                ),
-                (
-                    ItemSchema::Field(SlotSchema::new(StandardSchema::text("b"), i64::schema())),
-                    true,
-                ),
-            ],
-            exhaustive: true,
-        }),
-    };
-
-    assert_eq!(S::schema(), expected_schema);
-}
