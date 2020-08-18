@@ -105,6 +105,7 @@ impl Display for FormErr {
 ///     Vec::new()
 /// ));
 /// ```
+///
 /// # Field attributes
 /// ## Skip
 /// Skip a field when transmuting the form. Fields annotated with this must implement
@@ -472,6 +473,8 @@ pub trait Form: Sized {
 /// The derive macro supports all of the `StandardSchema` variants in a Snake Case format except
 /// for: `HeadAttribute`, `HasAttributes`, `HasSlots` and `Layout`. Implementors which require these
 /// variants will have to be implemented manually.
+///
+/// Derived schemas mandate that all fields are present and exhaustive validation is performed.
 ///
 /// ## Usage
 /// Any `struct` or `enum` annotated with `#[derive(ValidatedForm)]` will have a schema derived for
