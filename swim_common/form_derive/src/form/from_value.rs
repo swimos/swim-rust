@@ -16,18 +16,19 @@ use proc_macro2::Ident;
 use syn::export::TokenStream2;
 use syn::spanned::Spanned;
 
-use macro_helpers::{CompoundTypeKind, FieldIdentity};
+use macro_helpers::{CompoundTypeKind, Identity};
 
-use crate::parser::{Field, FieldKind, FieldManifest, FormDescriptor, TypeContents};
+use crate::parser::{FieldKind, FieldManifest, TypeContents, FormField};
+use crate::form::form_parser::FormDescriptor;
 
 pub fn from_value(
-    type_contents: &TypeContents,
+    type_contents: &TypeContents<FormDescriptor, FormField<'_>>,
     structure_name: &Ident,
-    descriptor: &FormDescriptor,
 ) -> TokenStream2 {
     match type_contents {
         TypeContents::Struct(repr) => {
-            let structure_name_str = descriptor.name.tag_ident.to_string();
+            let descriptor = &repr.descriptor;
+            let structure_name_str = descriptor.name.to_string();
             let field_manifest = &repr.manifest;
             let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
             let (headers, items, attributes) = parse_elements(&repr.fields, field_manifest);
@@ -108,7 +109,7 @@ fn build_attr_quote(
 ) -> TokenStream2 {
     quote! {
         let mut attr_it = attrs.iter();
-        while let Some(Attr { name, ref value }) = attr_it.next() {
+        while let Some(swim_common::model::Attr { name, ref value }) = attr_it.next() {
             match name.as_ref() {
                  #name_str => match value {
                     swim_common::model::Value::Record(_attrs, items) => {
@@ -131,14 +132,14 @@ fn build_attr_quote(
 }
 
 fn parse_fields(
-    fields: &[Field],
+    fields: &[FormField],
     compound_type: &CompoundTypeKind,
 ) -> (TokenStream2, TokenStream2) {
     fields.iter().fold(
         (TokenStream2::new(), TokenStream2::new()),
         |(field_opts, field_assignments), f| {
-            let ident = f.name.as_ident();
-            let name = f.name.as_ident().to_string();
+            let ident = f.identity.as_ident();
+            let name =ident.to_string();
             let name = Ident::new(&format!("__opt_{}", name), f.original.span());
 
             match &f.kind {
@@ -192,19 +193,19 @@ fn parse_fields(
 }
 
 fn parse_elements(
-    fields: &[Field],
+    fields: &[FormField],
     field_manifest: &FieldManifest,
 ) -> (TokenStream2, TokenStream2, TokenStream2) {
     let (headers, mut items, attributes) = fields
         .iter()
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut items, mut attrs), f| {
-            let name = f.name.as_ident();
+            let name = f.identity.as_ident();
             let ident = Ident::new(&format!("__opt_{}", name), f.original.span());
 
             match f.kind {
                 FieldKind::Attr => {
                     // Unnamed fields won't compile so there's no need in checking the name variant
-                    let name_str = f.name.to_string();
+                    let name_str = f.identity.to_string();
 
                     attrs = quote! {
                         #attrs
@@ -232,14 +233,14 @@ fn parse_elements(
                             }
                     };
 
-                    match &f.name {
-                        FieldIdentity::Named(name) => {
+                    match &f.identity {
+                        Identity::Named(name) => {
                             build_named_ident(name.to_string(), ident);
                         }
-                        FieldIdentity::Renamed{new_identity, ..} => {
+                        Identity::Renamed{new_identity, ..} => {
                             build_named_ident(new_identity.to_string(), ident);
                         }
-                        FieldIdentity::Anonymous(_) => {
+                        Identity::Anonymous(_) => {
                             items = quote! {
                                     #items
                                     swim_common::model::Item::ValueItem(v) if #ident.is_none() => {
@@ -250,7 +251,7 @@ fn parse_elements(
                     }
                 }
                 FieldKind::HeaderBody => {
-                    let field_name_str = f.name.to_string();
+                    let field_name_str = f.identity.to_string();
 
                     headers = quote! {
                         swim_common::model::Item::ValueItem(v) => {
@@ -271,10 +272,10 @@ fn parse_elements(
                 }
                 FieldKind::Skip => {}
                 _ => {
-                    let field_name_str = f.name.to_string();
+                    let field_name_str = f.identity.to_string();
 
-                    match &f.name {
-                        FieldIdentity::Renamed{new_identity, ..} => {
+                    match &f.identity {
+                        Identity::Renamed{new_identity, ..} => {
                             headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #new_identity => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
@@ -282,7 +283,7 @@ fn parse_elements(
                                 #headers
                             };
                         }
-                        FieldIdentity::Named(field_ident) => {
+                        Identity::Named(field_ident) => {
                             let ident_str = field_ident.to_string();
                             headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #ident_str => {
@@ -291,7 +292,7 @@ fn parse_elements(
                                 #headers
                             };
                         }
-                        FieldIdentity::Anonymous(_) => {
+                        Identity::Anonymous(_) => {
                             headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #field_name_str => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);

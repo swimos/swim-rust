@@ -12,24 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::{
-    EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents,
-};
-use macro_helpers::{deconstruct_type, CompoundTypeKind, FieldIdentity};
+use crate::parser::{EnumVariant, FieldKind, FieldManifest, StructRepr, TypeContents, FormField};
+use macro_helpers::{deconstruct_type, CompoundTypeKind, Identity};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
+use crate::form::form_parser::FormDescriptor;
+
 
 pub fn to_value(
-    type_contents: TypeContents,
+    type_contents: TypeContents<FormDescriptor, FormField<'_>>,
     structure_name: &Ident,
-    descriptor: FormDescriptor,
 ) -> TokenStream2 {
     match type_contents {
         TypeContents::Struct(StructRepr {
-            compound_type,
-            fields,
-            manifest,
-        }) => build_struct_as_value(
+                                 compound_type,
+                                 fields,
+                                 manifest,
+                                 descriptor,
+                                 ..
+                             }) => build_struct_as_value(
             descriptor,
             manifest,
             &structure_name,
@@ -45,14 +46,17 @@ pub fn to_value(
                         compound_type,
                         fields,
                         manifest,
+                        descriptor,
+                        ..
                     } = variant;
 
                     let as_value = build_variant_as_value(
-                        descriptor.clone(),
+                        descriptor,
                         manifest,
                         &name,
                         &compound_type,
                         &fields,
+                        structure_name,
                     );
 
                     as_value_arms.push(as_value);
@@ -73,11 +77,11 @@ fn build_struct_as_value(
     mut manifest: FieldManifest,
     structure_name: &Ident,
     compound_type: &CompoundTypeKind,
-    fields: &[Field],
+    fields: &[FormField],
 ) -> TokenStream2 {
-    let structure_name_str = descriptor.name.tag_ident.to_string();
+    let structure_name_str = descriptor.name.to_string();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, &mut manifest);
-    let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
+    let field_names: Vec<_> = fields.iter().map(|f| &f.identity).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
     quote! {
@@ -90,14 +94,14 @@ fn build_struct_as_value(
 fn build_variant_as_value(
     mut descriptor: FormDescriptor,
     mut manifest: FieldManifest,
-    variant_name: &FieldIdentity,
+    variant_name: &Identity,
     compound_type: &CompoundTypeKind,
-    fields: &[Field],
+    fields: &[FormField],
+    structure_name: &Ident,
 ) -> TokenStream2 {
     let variant_name_str = variant_name.to_string();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, &mut manifest);
-    let structure_name = &descriptor.name.original_ident;
-    let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
+    let field_names: Vec<_> = fields.iter().map(|f| &f.identity).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names);
 
     quote! {
@@ -109,28 +113,28 @@ fn build_variant_as_value(
 }
 
 fn compute_as_value(
-    fields: &[Field],
+    fields: &[FormField],
     descriptor: &mut FormDescriptor,
     manifest: &mut FieldManifest,
 ) -> (TokenStream2, TokenStream2, TokenStream2) {
     let (mut headers, mut items, attributes) = fields
         .iter()
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers,mut items,mut attributes), f| {
-            let name = &f.name;
+            let name = &f.identity;
 
             match &f.kind {
                 FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
                     match name {
-                        FieldIdentity::Named(ident) => {
+                        Identity::Named(ident) => {
                             let name_str = ident.to_string();
                             items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),) ;
                         }
-                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                        Identity::Renamed{new_identity, old_identity} => {
                             let name_str = new_identity.to_string();
                             items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ FieldIdentity::Anonymous(_) => {
+                        un @ Identity::Anonymous(_) => {
                             let ident = un.as_ident();
                             items =  quote!(#items swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }
@@ -138,15 +142,15 @@ fn compute_as_value(
                 }
                 FieldKind::Attr => {
                     match name {
-                        FieldIdentity::Named(ident) => {
+                        Identity::Named(ident) => {
                             let name_str = ident.to_string();
                             attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #ident.as_value())),);
                         }
-                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                        Identity::Renamed{new_identity, old_identity} => {
                             let name_str = new_identity.to_string();
                             attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #old_identity.as_value())),);
                         }
-                        FieldIdentity::Anonymous(_index) => {
+                        Identity::Anonymous(_index) => {
                             // This has been checked already when parsing the AST.
                             unreachable!()
                         }
@@ -154,7 +158,7 @@ fn compute_as_value(
                 }
                 FieldKind::Body => {
                     descriptor.body_replaced = true;
-                    let ident = f.name.as_ident();
+                    let ident = f.identity.as_ident();
 
                     items = quote!({
                         match #ident.as_value() {
@@ -166,20 +170,20 @@ fn compute_as_value(
                 FieldKind::HeaderBody => {
                     if manifest.has_header_fields {
                         match name {
-                            FieldIdentity::Renamed{old_identity:ident,..} | FieldIdentity::Named(ident) => {
+                            Identity::Renamed{old_identity:ident,..} | Identity::Named(ident) => {
                                 headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
-                            un @ FieldIdentity::Anonymous(_) => {
+                            un @ Identity::Anonymous(_) => {
                                 let ident = un.as_ident();
                                 headers= quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
                         }
                     } else {
                         match name {
-                            FieldIdentity::Renamed{old_identity:ident,..} | FieldIdentity::Named(ident) => {
+                            Identity::Renamed{old_identity:ident,..} | Identity::Named(ident) => {
                                 headers = quote!(, #ident.as_value());
                             }
-                            un @ FieldIdentity::Anonymous(_) => {
+                            un @ Identity::Anonymous(_) => {
                                 let ident = un.as_ident();
                                 headers = quote!(, #ident.as_value());
                             }
@@ -188,15 +192,15 @@ fn compute_as_value(
                 }
                 _ => {
                     match name {
-                        FieldIdentity::Named(ident) => {
+                        Identity::Named(ident) => {
                             let name_str = ident.to_string();
                             headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),);
                         }
-                        FieldIdentity::Renamed{new_identity, old_identity} => {
+                        Identity::Renamed{new_identity, old_identity} => {
                             let name_str = new_identity.to_string();
                             headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ FieldIdentity::Anonymous(_) => {
+                        un @ Identity::Anonymous(_) => {
                             let ident = un.as_ident();
                             headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }
