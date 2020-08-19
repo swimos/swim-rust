@@ -1,5 +1,0 @@
-error: Borrowed fields are not allowed by forms
-  --> $DIR/borrowed_field.rs:23:13
-   |
-23 |         A { f: &'l F },
-   |             ^^^^^^^^
