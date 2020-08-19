@@ -38,8 +38,8 @@ use crate::downlink::{
     BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message, SyncStateMachine,
     TransitionError,
 };
-use crate::router::RoutingError;
 use std::num::NonZeroUsize;
+use swim_common::routing::RoutingError;
 
 #[cfg(test)]
 mod tests;
