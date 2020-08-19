@@ -14,10 +14,10 @@
 
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use swim_form::Form;
 
 use super::*;
 use crate::downlink::Message;
-use swim_common::form::Form;
 use swim_common::model::Value::Int32Value;
 use swim_common::warp::envelope::LinkMessage;
 

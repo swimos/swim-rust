@@ -20,6 +20,7 @@ use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
     StoppedFuture,
 };
+use crate::router::RoutingError;
 use futures::future::Ready;
 use futures::Stream;
 use futures_util::stream::StreamExt;
@@ -27,7 +28,6 @@ use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
 use swim_common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
 use swim_runtime::task::spawn;

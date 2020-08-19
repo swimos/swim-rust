@@ -14,7 +14,9 @@
 
 use std::collections::HashMap;
 
-use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, SubscriberRequest};
+use crate::router::{
+    CloseReceiver, CloseResponseSender, RouterEvent, RoutingError, SubscriberRequest,
+};
 use futures::future::ready;
 use futures::stream;
 use futures::stream::FuturesUnordered;
@@ -23,7 +25,6 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 use swim_common::connections::WsMessage;
 use swim_common::model::parser::parse_single;
-use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;

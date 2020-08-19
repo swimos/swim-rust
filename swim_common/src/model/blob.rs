@@ -21,6 +21,9 @@ use std::io::Write;
 use base64::write::EncoderWriter;
 use base64::{DecodeError, URL_SAFE};
 use futures::io::IoSlice;
+use serde::de::{Error as DeError, SeqAccess, Visitor};
+use serde::ser::{Error as SerError, SerializeStructVariant};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, BorrowMut};
 
 pub const EXT_BLOB: &str = "___BLOB";
@@ -122,6 +125,102 @@ impl AsRef<[u8]> for Blob {
     fn as_ref(&self) -> &[u8] {
         &self.data
     }
+}
+
+impl Serialize for Blob {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
+        let s = String::from_utf8(self.data.clone()).map_err(SerError::custom)?;
+        serializer.serialize_str(&s)
+    }
+}
+
+struct WrappedBlobVisitor;
+
+impl<'de> Visitor<'de> for WrappedBlobVisitor {
+    type Value = Blob;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "A valid base64 encoded string or byte array")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(Blob::from_encoded(Vec::from(v.as_bytes())))
+    }
+
+    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(Blob::from_encoded(Vec::from(v.as_bytes())))
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(Blob::from_encoded(Vec::from(v.as_bytes())))
+    }
+
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(Blob::from_vec(v.to_owned()))
+    }
+
+    fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(Blob::from_vec(v.to_owned()))
+    }
+
+    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(Blob::from_vec(v))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, <A as SeqAccess<'de>>::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut vec = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+
+        while let Some(byte) = seq.next_element()? {
+            vec.push(byte);
+        }
+
+        Ok(Blob::from_vec(vec))
+    }
+}
+
+impl<'de> Deserialize<'de> for Blob {
+    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(WrappedBlobVisitor)
+    }
+}
+
+pub fn serialize_blob_as_value<S>(bi: &Blob, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut r = serializer
+        .serialize_struct_variant(EXT_BLOB, u32::max_value(), EXT_BLOB, usize::max_value())
+        .expect("infallible");
+
+    r.serialize_field(EXT_BLOB, &bi)?;
+    r.end()
 }
 
 #[cfg(test)]

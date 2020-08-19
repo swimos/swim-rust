@@ -13,12 +13,15 @@
 // limitations under the License.
 
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::{Future, Stream};
 use tokio::stream::StreamExt;
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
 use tracing::trace_span;
@@ -36,7 +39,7 @@ use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender, SwimConnPool};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
-use swim_common::routing::RoutingError;
+use swim_common::connections::error::ConnectionError;
 
 pub mod incoming;
 pub mod outgoing;
@@ -577,5 +580,65 @@ impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
 
     fn general_sink(&mut self) -> Self::GeneralSink {
         self.router_sink_tx.clone().map_err_into::<RoutingError>()
+    }
+}
+
+// An error returned by the router
+#[derive(Clone, Debug, PartialEq)]
+pub enum RoutingError {
+    // The connection to the remote host has been lost.
+    ConnectionError,
+    // The remote host is unreachable.
+    HostUnreachable,
+    // The connection pool has encountered an error.
+    PoolError(ConnectionError),
+    // The router has been stopped.
+    RouterDropped,
+    // The router has encountered an error while stopping.
+    CloseError,
+}
+
+impl RoutingError {
+    /// Returns whether or not the router can recover from the error.
+    /// Inverse of [`is_fatal`].
+    pub fn is_transient(&self) -> bool {
+        match &self {
+            RoutingError::ConnectionError => true,
+            RoutingError::HostUnreachable => true,
+            RoutingError::PoolError(ConnectionError::ConnectionRefused) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether or not the error is unrecoverable.
+    /// Inverse of [`is_transient`].
+    pub fn is_fatal(&self) -> bool {
+        !self.is_transient()
+    }
+}
+
+impl Display for RoutingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoutingError::ConnectionError => write!(f, "Connection error."),
+            RoutingError::HostUnreachable => write!(f, "Host unreachable."),
+            RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
+            RoutingError::RouterDropped => write!(f, "Router was dropped."),
+            RoutingError::CloseError => write!(f, "Closing error."),
+        }
+    }
+}
+
+impl Error for RoutingError {}
+
+impl<T> From<SendError<T>> for RoutingError {
+    fn from(_: SendError<T>) -> Self {
+        RoutingError::RouterDropped
+    }
+}
+
+impl From<RoutingError> for RequestError {
+    fn from(_: RoutingError) -> Self {
+        RequestError {}
     }
 }

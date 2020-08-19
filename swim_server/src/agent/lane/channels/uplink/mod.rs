@@ -15,6 +15,7 @@
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::LaneModel;
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, StreamExt};
@@ -22,19 +23,15 @@ use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::{Form, FormErr};
-use swim_common::model::Value;
 use swim_common::sink::item::ItemSender;
-use tracing::{event, Level};
+use swim_form::{Form, FormDeserializeErr};
 
 #[cfg(test)]
 mod tests;
 
 pub mod map;
-pub(crate) mod spawn;
 
 /// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -71,26 +68,7 @@ pub enum UplinkError {
     /// The uplink attempted to execute a transaction against its lane but failed.
     FailedTransaction(TransactionError),
     /// The form used by the lane is inconsistent.
-    InconsistentForm(FormErr),
-    /// The uplink failed to start after a number of attempts.
-    FailedToStart(usize),
-}
-
-fn trans_err_fatal(err: &TransactionError) -> bool {
-    match err {
-        TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } => false,
-        _ => true,
-    }
-}
-
-impl UplinkError {
-    pub fn is_fatal(&self) -> bool {
-        match self {
-            UplinkError::LaneStoppedReporting | UplinkError::InconsistentForm(_) => true,
-            UplinkError::FailedTransaction(err) => trans_err_fatal(err),
-            _ => false,
-        }
-    }
+    InconsistentForm(FormDeserializeErr),
 }
 
 impl From<MapLaneSyncError> for UplinkError {
@@ -115,22 +93,11 @@ impl Display for UplinkError {
                 "A form implementation used by a lane is inconsistent: {}",
                 err
             ),
-            UplinkError::FailedToStart(n) => {
-                write!(f, "Uplink failed to start after {} attempts.", *n)
-            }
         }
     }
 }
 
-impl Error for UplinkError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            UplinkError::FailedTransaction(err) => Some(err),
-            UplinkError::InconsistentForm(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl Error for UplinkError {}
 
 // Yield a message to the subscriber.
 async fn send_msg<Msg, Sender, SendErr>(
@@ -148,70 +115,45 @@ where
 }
 
 /// Date required to run an uplink.
-pub struct Uplink<SM, Actions, Updates> {
-    /// The uplink state machine.
-    state_machine: SM,
+pub struct Uplink<Lane, Actions, Updates> {
+    /// The lane being uplinked.
+    lane: Lane,
     /// Stream of requested state changes.
     actions: Actions,
     /// Stream of updates to the lane.
     updates: Updates,
 }
 
-impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
-    pub fn new(state_machine: SM, actions: Actions, updates: Updates) -> Self {
+impl<Lane, Actions, Updates> Uplink<Lane, Actions, Updates> {
+    pub fn new(lane: Lane, actions: Actions, updates: Updates) -> Self {
         Uplink {
-            state_machine,
+            lane,
             actions,
             updates,
         }
     }
 }
 
-const FAILED_UNLINK: &str = "Failed to send an unlink message to a failed uplink.";
-
-impl<SM, Actions, Updates> Uplink<SM, Actions, Updates>
+impl<Lane, Actions, Updates> Uplink<Lane, Actions, Updates>
 where
-    Updates: FusedStream + Send,
-    SM: UplinkStateMachine<Updates::Item>,
+    Lane: UplinkStateMachine,
     Actions: FusedStream<Item = UplinkAction> + Unpin,
+    Updates: FusedStream<Item = Lane::Event> + Send + Unpin,
 {
     /// Run the uplink as an asynchronous task.
     pub async fn run_uplink<Sender, SendErr>(self, mut sender: Sender) -> Result<(), UplinkError>
     where
-        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
-    {
-        let result = self.run_uplink_internal(&mut sender).await;
-        let attempt_unlink = match &result {
-            Ok(_) => false,
-            Err(UplinkError::SenderDropped) => {
-                event!(Level::ERROR, FAILED_UNLINK);
-                false
-            }
-            _ => true,
-        };
-        if attempt_unlink && sender.send_item(UplinkMessage::Unlinked).await.is_err() {
-            event!(Level::ERROR, FAILED_UNLINK);
-        }
-        result
-    }
-
-    async fn run_uplink_internal<Sender, SendErr>(
-        self,
-        sender: &mut Sender,
-    ) -> Result<(), UplinkError>
-    where
-        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
+        Sender: ItemSender<UplinkMessage<Lane::Msg>, SendErr>,
     {
         let Uplink {
-            state_machine,
-            actions,
-            updates,
+            lane,
+            mut actions,
+            mut updates,
         } = self;
 
-        pin_mut!(actions);
-        pin_mut!(updates);
-
         let mut state = UplinkState::Opened;
+
+        let sender = &mut sender;
 
         loop {
             if state == UplinkState::Opened {
@@ -223,14 +165,8 @@ where
                         _ = updates.next() => {}, //Ignore updates until linked.
                     }
                 };
-                if let Some(new_state) = handle_action(
-                    &state_machine,
-                    UplinkState::Opened,
-                    &mut updates,
-                    sender,
-                    action,
-                )
-                .await?
+                if let Some(new_state) =
+                    handle_action(&lane, UplinkState::Opened, &mut updates, sender, action).await?
                 {
                     state = new_state;
                 } else {
@@ -240,7 +176,7 @@ where
                 select_biased! {
                     action = actions.next() => {
                         if let Some(new_state) = handle_action(
-                            &state_machine,
+                            &lane,
                             UplinkState::Opened,
                             &mut updates,
                             sender,
@@ -253,7 +189,7 @@ where
                     },
                     maybe_update = updates.next() => {
                         if let Some(update) = maybe_update {
-                            if let Some(msg) = state_machine.message_for(update)? {
+                            if let Some(msg) = lane.message_for(update)? {
                                 send_msg(sender, UplinkMessage::Event(msg)).await?;
                             }
                         } else {
@@ -267,17 +203,17 @@ where
 }
 
 // Change the state of the uplink based on an action.
-async fn handle_action<SM, Updates, Sender, SendErr>(
-    state_machine: &SM,
+async fn handle_action<Lane, Updates, Sender, SendErr>(
+    lane: &Lane,
     prev_state: UplinkState,
     updates: &mut Updates,
     sender: &mut Sender,
     action: Option<UplinkAction>,
 ) -> Result<Option<UplinkState>, UplinkError>
 where
-    Updates: FusedStream + Send + Unpin,
-    SM: UplinkStateMachine<Updates::Item>,
-    Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
+    Lane: UplinkStateMachine,
+    Updates: FusedStream<Item = Lane::Event> + Send + Unpin,
+    Sender: ItemSender<UplinkMessage<Lane::Msg>, SendErr>,
 {
     match action {
         Some(UplinkAction::Link) => {
@@ -290,7 +226,7 @@ where
                 send_msg(sender, UplinkMessage::Linked).await?;
             }
             // Run the sync state machine until it completes then enter the synced state.
-            let sync_stream = state_machine.sync_lane(updates);
+            let sync_stream = lane.sync_lane(updates);
             pin_mut!(sync_stream);
             while let Some(result) = sync_stream.next().await {
                 send_msg(sender, UplinkMessage::Event(result?)).await?;
@@ -307,11 +243,11 @@ where
 }
 
 /// Trait encoding the differences in uplink behaviour for different kinds of lanes.
-pub trait UplinkStateMachine<Event> {
+pub trait UplinkStateMachine: LaneModel {
     type Msg: Any + Send + Sync;
 
     /// Create a message to send to the subscriber from a lane event (where appropriate).
-    fn message_for(&self, event: Event) -> Result<Option<Self::Msg>, UplinkError>;
+    fn message_for(&self, event: Self::Event) -> Result<Option<Self::Msg>, UplinkError>;
 
     /// Create a sync state machine for the lane, this will create a stream that emits messages
     /// until the sync is complete (which should be forwarded to the subscriber) an then terminates,
@@ -321,61 +257,17 @@ pub trait UplinkStateMachine<Event> {
         updates: &'a mut Updates,
     ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
     where
-        Updates: FusedStream<Item = Event> + Send + Unpin + 'a;
+        Updates: FusedStream<Item = Self::Event> + Send + Unpin + 'a;
 }
 
-pub struct ValueLaneUplink<T>(ValueLane<T>);
-
-impl<T> ValueLaneUplink<T>
+impl<T> UplinkStateMachine for ValueLane<T>
 where
     T: Any + Send + Sync,
 {
-    pub fn new(lane: ValueLane<T>) -> Self {
-        ValueLaneUplink(lane)
-    }
-}
+    type Msg = Arc<T>;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ValueLaneEvent<T>(pub Arc<T>);
-
-impl<T> Clone for ValueLaneEvent<T> {
-    fn clone(&self) -> Self {
-        ValueLaneEvent(self.0.clone())
-    }
-}
-
-impl<T> From<Arc<T>> for ValueLaneEvent<T> {
-    fn from(t: Arc<T>) -> Self {
-        ValueLaneEvent(t)
-    }
-}
-
-impl<T: Form> From<ValueLaneEvent<T>> for Value {
-    fn from(event: ValueLaneEvent<T>) -> Self {
-        let ValueLaneEvent(inner) = event;
-        match Arc::try_unwrap(inner) {
-            Ok(t) => t.into_value(),
-            Err(t) => t.as_value(),
-        }
-    }
-}
-
-impl<T> Deref for ValueLaneEvent<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
-    }
-}
-
-impl<T> UplinkStateMachine<Arc<T>> for ValueLaneUplink<T>
-where
-    T: Any + Send + Sync,
-{
-    type Msg = ValueLaneEvent<T>;
-
-    fn message_for(&self, event: Arc<T>) -> Result<Option<Self::Msg>, UplinkError> {
-        Ok(Some(event.into()))
+    fn message_for(&self, event: Self::Event) -> Result<Option<Self::Msg>, UplinkError> {
+        Ok(Some(event))
     }
 
     fn sync_lane<'a, Updates>(
@@ -383,16 +275,15 @@ where
         updates: &'a mut Updates,
     ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
     where
-        Updates: FusedStream<Item = Arc<T>> + Send + Unpin + 'a,
+        Updates: FusedStream<Item = Self::Event> + Send + Unpin + 'a,
     {
-        let ValueLaneUplink(lane) = self;
         let fut = async move {
             let lane_state: Option<Arc<T>> = select! {
-                v = lane.load().fuse() => Some(v),
+                v = self.load().fuse() => Some(v),
                 maybe_v = updates.next() => maybe_v,
             };
             if let Some(v) = lane_state {
-                Ok(v.into())
+                Ok(v)
             } else {
                 Err(UplinkError::LaneStoppedReporting)
             }
@@ -402,39 +293,50 @@ where
     }
 }
 
-/// Uplink for a [`MapLane`].
-pub struct MapLaneUplink<K, V, F> {
-    /// The underlying [`MapLane`].
+/// Wrapper around a [`MapLane`] for a map lane uplink.
+pub struct MapLaneUplink<K, V, Retries> {
+    /// The underlying lane.
     lane: MapLane<K, V>,
     /// A unique (for this lane) ID for this uplink. This is used to identify events corresponding
     /// to checkpoint transactions that were initiated by this uplink.
     id: u64,
     /// A factory for retry strategies to be used for the checkpoint transactions.
-    retries: F,
+    retries: Retries,
 }
 
-impl<K, V, F, Retries> MapLaneUplink<K, V, F>
+impl<K, V, Retries> MapLaneUplink<K, V, Retries>
 where
     K: Form + Any + Send + Sync,
     V: Any + Send + Sync,
-    F: Fn() -> Retries + Send + Sync + 'static,
-    Retries: RetryManager + Send + 'static,
+    Retries: RetryManager + Clone + Send,
 {
-    pub fn new(lane: MapLane<K, V>, id: u64, retries: F) -> Self {
+    pub fn new(lane: MapLane<K, V>, id: u64, retries: Retries) -> Self {
         MapLaneUplink { lane, id, retries }
     }
 }
 
-impl<K, V, Retries, F> UplinkStateMachine<MapLaneEvent<K, V>> for MapLaneUplink<K, V, F>
+impl<K, V, Retries> LaneModel for MapLaneUplink<K, V, Retries>
 where
     K: Form + Any + Send + Sync,
     V: Any + Send + Sync,
-    F: Fn() -> Retries + Send + Sync + 'static,
-    Retries: RetryManager + Send + 'static,
+    Retries: RetryManager + Clone + Send,
+{
+    type Event = MapLaneEvent<K, V>;
+
+    fn same_lane(this: &Self, other: &Self) -> bool {
+        LaneModel::same_lane(&this.lane, &other.lane)
+    }
+}
+
+impl<K, V, Retries> UplinkStateMachine for MapLaneUplink<K, V, Retries>
+where
+    K: Form + Any + Send + Sync,
+    V: Any + Send + Sync,
+    Retries: RetryManager + Clone + Send + 'static,
 {
     type Msg = MapUpdate<K, V>;
 
-    fn message_for(&self, event: MapLaneEvent<K, V>) -> Result<Option<Self::Msg>, UplinkError> {
+    fn message_for(&self, event: Self::Event) -> Result<Option<Self::Msg>, UplinkError> {
         Ok(MapUpdate::make(event))
     }
 
@@ -443,11 +345,11 @@ where
         updates: &'a mut Updates,
     ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
     where
-        Updates: FusedStream<Item = MapLaneEvent<K, V>> + Send + Unpin + 'a,
+        Updates: FusedStream<Item = Self::Event> + Send + Unpin + 'a,
     {
         let MapLaneUplink { lane, id, retries } = self;
         Box::pin(
-            map::sync_map_lane(*id, lane, updates, retries()).filter_map(|r| {
+            map::sync_map_lane(*id, lane, updates, retries.clone()).filter_map(|r| {
                 ready(match r {
                     Ok(event) => MapUpdate::make(event).map(Ok),
                     Err(err) => Some(Err(err.into())),

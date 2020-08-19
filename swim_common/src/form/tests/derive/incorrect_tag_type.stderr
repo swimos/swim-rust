@@ -1,5 +1,0 @@
-error: Expected string argument
-  --> $DIR/incorrect_tag_type.rs:19:12
-   |
-19 |     #[form(tag = 13)]
-   |            ^^^^^^^^

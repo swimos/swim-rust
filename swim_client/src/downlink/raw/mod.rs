@@ -17,6 +17,7 @@ use crate::downlink::{
     Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
     Operation, Response, StateMachine, StoppedFuture,
 };
+use crate::router::RoutingError;
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
 use futures::{Stream, StreamExt};
@@ -28,7 +29,6 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, watch};

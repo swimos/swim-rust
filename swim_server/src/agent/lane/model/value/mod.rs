@@ -26,17 +26,9 @@ use tokio::sync::{broadcast, mpsc, watch};
 mod tests;
 
 /// A lane containing a single value.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ValueLane<T> {
     value: TVar<T>,
-}
-
-impl<T> Clone for ValueLane<T> {
-    fn clone(&self) -> Self {
-        ValueLane {
-            value: self.value.clone(),
-        }
-    }
 }
 
 impl<T: Any + Send + Sync> ValueLane<T> {

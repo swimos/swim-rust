@@ -15,7 +15,6 @@
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::channels::uplink::{
     MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
-    ValueLaneUplink,
 };
 use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::{map, value};
@@ -31,7 +30,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::form::FormErr;
+use swim_form::FormDeserializeErr;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
@@ -80,11 +79,7 @@ async fn uplink_not_linked() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
-        rx_action.fuse(),
-        events.fuse(),
-    );
+    let uplink = Uplink::new(lane.clone(), rx_action.fuse(), events.fuse());
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -122,11 +117,7 @@ async fn uplink_open_to_linked() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
-        rx_action.fuse(),
-        events.fuse(),
-    );
+    let uplink = Uplink::new(lane.clone(), rx_action.fuse(), events.fuse());
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -170,11 +161,7 @@ async fn uplink_open_to_synced() {
 
     let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
-    let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
-        rx_action.fuse(),
-        events.fuse(),
-    );
+    let uplink = Uplink::new(lane.clone(), rx_action.fuse(), events.fuse());
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
@@ -211,26 +198,22 @@ async fn uplink_open_to_synced() {
 async fn value_state_machine_message_for() {
     let (lane, _events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
 
-    let uplink = ValueLaneUplink::new(lane);
-
     let event = Arc::new(4);
 
-    let msg = uplink.message_for(event.clone());
+    let msg = lane.message_for(event.clone());
 
-    assert!(matches!(msg, Ok(Some(v)) if Arc::ptr_eq(&v.0, &event)));
+    assert!(matches!(msg, Ok(Some(v)) if Arc::ptr_eq(&v, &event)));
 }
 
 #[tokio::test]
 async fn value_state_machine_sync_from_var() {
     let (lane, events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
 
-    let uplink = ValueLaneUplink::new(lane);
-
     let mut events = events.fuse();
 
     let sync_events = timeout(
         Duration::from_secs(10),
-        uplink.sync_lane(&mut events).collect::<Vec<_>>(),
+        lane.sync_lane(&mut events).collect::<Vec<_>>(),
     )
     .await;
 
@@ -245,8 +228,6 @@ async fn value_state_machine_sync_from_var() {
 async fn value_state_machine_sync_from_events() {
     let (lane, _events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
 
-    let uplink = ValueLaneUplink::new(lane.clone());
-
     let (mut tx_fake, rx_fake) = mpsc::channel(5);
 
     let mut rx_fake = rx_fake.fuse();
@@ -255,7 +236,7 @@ async fn value_state_machine_sync_from_events() {
 
     let sync_task = timeout(
         Duration::from_secs(10),
-        uplink.sync_lane(&mut rx_fake).collect::<Vec<_>>(),
+        lane.sync_lane(&mut rx_fake).collect::<Vec<_>>(),
     );
 
     let event = Arc::new(87);
@@ -269,14 +250,14 @@ async fn value_state_machine_sync_from_events() {
 
     let event_vec = sync_result.unwrap();
 
-    assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v.0, &event)));
+    assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v, &event)));
 }
 
 #[tokio::test]
 async fn map_state_machine_message_for() {
     let (lane, _events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
 
-    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, ExactlyOnce);
 
     let value = Arc::new(4);
 
@@ -337,7 +318,7 @@ async fn map_state_machine_sync() {
         .await
         .is_ok());
 
-    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, ExactlyOnce);
 
     let sync_events = timeout(
         Duration::from_secs(10),
@@ -372,16 +353,11 @@ fn uplink_error_display() {
     assert_eq!(format!("{}", UplinkError::FailedTransaction(TransactionError::InvalidRetry)), 
                "The uplink failed to execute a transaction: Retry on transaction with no data dependencies.");
     assert_eq!(
-        format!("{}", UplinkError::InconsistentForm(FormErr::Malformatted)),
+        format!(
+            "{}",
+            UplinkError::InconsistentForm(FormDeserializeErr::Malformatted)
+        ),
         "A form implementation used by a lane is inconsistent: Malformatted"
-    );
-    assert_eq!(
-        format!("{}", UplinkError::SenderDropped),
-        "Uplink send channel was dropped."
-    );
-    assert_eq!(
-        format!("{}", UplinkError::FailedToStart(2)),
-        "Uplink failed to start after 2 attempts."
     );
 }
 
@@ -393,9 +369,10 @@ fn uplink_error_from_map_sync_error() {
         err1,
         UplinkError::FailedTransaction(TransactionError::InvalidRetry)
     ));
-    let err2: UplinkError = MapLaneSyncError::InconsistentForm(FormErr::Malformatted).into();
+    let err2: UplinkError =
+        MapLaneSyncError::InconsistentForm(FormDeserializeErr::Malformatted).into();
     assert!(matches!(
         err2,
-        UplinkError::InconsistentForm(FormErr::Malformatted)
+        UplinkError::InconsistentForm(FormDeserializeErr::Malformatted)
     ));
 }

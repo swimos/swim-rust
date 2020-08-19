@@ -1,5 +1,0 @@
-error: Expected string argument
-  --> $DIR/incorrect_rename_type.rs:20:16
-   |
-20 |         #[form(rename = 13)]
-   |                ^^^^^^^^^^^

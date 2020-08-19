@@ -21,11 +21,11 @@ use crate::downlink::{
     buffered, dropping, queue, Command, DownlinkError, DownlinkState, Event, Message, Operation,
     Response, StateMachine,
 };
+use crate::router::RoutingError;
 use futures::Stream;
 use std::num::NonZeroUsize;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tracing::{error, instrument, trace};
 
