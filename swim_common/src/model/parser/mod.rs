@@ -26,7 +26,7 @@ use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
@@ -169,13 +169,13 @@ pub enum ParseFailure {
 impl Display for ParseFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseFailure::TokenizationFailure(BadToken(offset, _)) => {
-                write!(f, "Bad token at: {}:{}", offset.line, offset.column)
+            ParseFailure::TokenizationFailure(BadToken(location, _)) => {
+                write!(f, "Bad token at: {}:{}", location.line, location.column)
             }
-            ParseFailure::InvalidToken(BadRecord(offset, err)) => write!(
+            ParseFailure::InvalidToken(BadRecord(location, err)) => write!(
                 f,
                 "Token at {}:{} is not valid in this context: {:?}",
-                offset.line, offset.column, *err
+                location.line, location.column, *err
             ),
             ParseFailure::IncompleteRecord => {
                 write!(f, "The input ended before the record was complete.")
@@ -491,7 +491,7 @@ enum ParseTermination {
     EarlyTermination(Value),
 }
 
-trait TokenStr: PartialEq + Borrow<str> + Into<String> {}
+trait TokenStr: PartialEq + Borrow<str> + Into<String> + Debug {}
 
 impl<'a> TokenStr for &'a str {}
 
@@ -1219,6 +1219,45 @@ fn push_down_and_close(
     }
 }
 
+/// Add a value to the frame on top of the parser stack, after consuming an item separator or
+/// new line.
+fn push_down_item(
+    state: &mut Vec<Frame>,
+    value: Value,
+    location: Location,
+    closed_with_newline: bool,
+) -> Option<Result<Value, BadRecord>> {
+    if let Some(Frame {
+        attrs,
+        mut items,
+        mut parse_state,
+    }) = state.pop()
+    {
+        let p = match parse_state {
+            ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) => {
+                items.push(Item::ValueItem(value));
+                p
+            }
+            ValueParseState::ReadingSlot(p, key) => {
+                items.push(Item::Slot(key, value));
+                p
+            }
+            _ => {
+                return Some(Err(BadRecord(location, RecordError::BadStack)));
+            }
+        };
+        parse_state = ValueParseState::InsideBody(p, !closed_with_newline);
+        state.push(Frame {
+            attrs,
+            items,
+            parse_state,
+        });
+        None
+    } else {
+        Some(Err(BadRecord(location, RecordError::BadStack)))
+    }
+}
+
 /// Pack a ['Value'] into an attribute body then add that attribute to the frame on top of the
 /// stack.
 fn pack_attribute_body(
@@ -1270,6 +1309,7 @@ enum StartAt {
 }
 
 /// A partially constructed record. The state of the parser is a stack of these.
+#[derive(Debug)]
 struct Frame {
     attrs: Vec<Attr>,
     items: Vec<Item>,
@@ -1296,6 +1336,7 @@ enum StateModification {
     RePush(Frame),
     OpenNew(Frame, StartAt),
     PushDown(Value),
+    PushDownItem(Value, bool),
     PushDownAndClose(Value, bool),
 }
 
@@ -1319,6 +1360,9 @@ impl StateModification {
                 None
             }
             StateModification::PushDown(value) => push_down(state, value, location),
+            StateModification::PushDownItem(value, closed_with_newline) => {
+                push_down_item(state, value, location, closed_with_newline)
+            }
             StateModification::PushDownAndClose(value, attr_body) => {
                 push_down_and_close(state, value, attr_body, location)
             }
@@ -1469,14 +1513,14 @@ fn update_reading_attr<S: TokenStr>(
                 _ => StateModification::Fail(RecordError::NonValueToken),
             }
         }
-        EntrySep => {
+        tok @ EntrySep | tok @ NewLine => {
             let attr = Attr {
                 name,
                 value: Value::Extant,
             };
             attrs.push(attr);
             let record = Value::Record(attrs, items);
-            StateModification::PushDown(record)
+            StateModification::PushDownItem(record, tok == NewLine)
         }
         tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
             let attr = Attr {
@@ -1487,7 +1531,6 @@ fn update_reading_attr<S: TokenStr>(
             let record = Value::Record(attrs, items);
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         }
-        NewLine => repush(attrs, items, ReadingAttribute(name)),
         _ => StateModification::Fail(RecordError::InvalidAttributeValue),
     }
 }
@@ -1511,15 +1554,14 @@ fn update_after_attr<S: TokenStr>(
             Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
             _ => StateModification::Fail(RecordError::NonValueToken),
         },
-        EntrySep => {
+        tok @ EntrySep | tok @ NewLine => {
             let record = Value::Record(attrs, items);
-            StateModification::PushDown(record)
+            StateModification::PushDownItem(record, tok == NewLine)
         }
         tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
             let record = Value::Record(attrs, items);
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         }
-        NewLine => repush(attrs, items, AfterAttribute),
         _ => StateModification::Fail(RecordError::BadRecordStart),
     }
 }

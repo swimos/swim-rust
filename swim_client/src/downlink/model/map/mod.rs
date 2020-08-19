@@ -21,13 +21,12 @@ use futures::Stream;
 use im::ordmap::OrdMap;
 use tokio::sync::mpsc;
 
+use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::schema::attr::AttrSchema;
 use swim_common::model::schema::slot::SlotSchema;
 use swim_common::model::schema::{FieldSpec, Schema, StandardSchema};
 use swim_common::model::{Attr, Item, Value, ValueKind};
 use swim_common::sink::item::ItemSender;
-use swim_form::FormDeserializeErr;
-use swim_form::{Form, ValidatedForm};
 
 use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
@@ -39,8 +38,8 @@ use crate::downlink::{
     BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message, SyncStateMachine,
     TransitionError,
 };
-use crate::router::RoutingError;
 use std::num::NonZeroUsize;
+use swim_common::routing::RoutingError;
 
 #[cfg(test)]
 mod tests;
@@ -82,7 +81,7 @@ impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
         }
     }
 
-    fn try_from_value(body: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value(body: &Value) -> Result<Self, FormErr> {
         use Value::*;
         if let Record(attrs, items) = body {
             let mut attr_it = attrs.iter();
@@ -106,7 +105,7 @@ impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
                         let key = extract_key(value.clone())?;
                         Ok(MapModification::Insert(key, V::try_convert(Extant)?))
                     }
-                    _ => Err(FormDeserializeErr::Malformatted),
+                    _ => Err(FormErr::Malformatted),
                 },
                 Some(Attr { name, value }) if *name == INSERT_NAME => {
                     let key = extract_key(value.clone())?;
@@ -122,10 +121,10 @@ impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
                     Ok(MapModification::Insert(key, V::try_convert(insert_value)?))
                 }
 
-                _ => Err(FormDeserializeErr::Malformatted),
+                _ => Err(FormErr::Malformatted),
             }
         } else {
-            Err(FormDeserializeErr::IncorrectType(
+            Err(FormErr::IncorrectType(
                 "Invalid structure for map action.".to_string(),
             ))
         }
@@ -169,53 +168,40 @@ impl<K: ValidatedForm, V: ValidatedForm> ValidatedForm for MapModification<K, V>
 
 pub type UntypedMapModification<V> = MapModification<Value, V>;
 
-fn extract_key<K: ValidatedForm>(attr_body: Value) -> Result<K, FormDeserializeErr> {
+fn extract_key<K: ValidatedForm>(attr_body: Value) -> Result<K, FormErr> {
     match attr_body {
         Value::Record(attrs, items) if attrs.is_empty() && items.len() < 2 => {
             match items.into_iter().next() {
                 Some(Item::Slot(Value::Text(name), key)) if name == KEY_FIELD => {
                     Ok(K::try_convert(key)?)
                 }
-                _ => Err(FormDeserializeErr::Message(
-                    "Invalid key specifier.".to_string(),
-                )),
+                _ => Err(FormErr::Message("Invalid key specifier.".to_string())),
             }
         }
-        _ => Err(FormDeserializeErr::Message(
-            "Invalid key specifier.".to_string(),
-        )),
+        _ => Err(FormErr::Message("Invalid key specifier.".to_string())),
     }
 }
 
 fn extract_take_or_skip<K: ValidatedForm, V: ValidatedForm>(
     name: &str,
     n: i32,
-) -> Result<MapModification<K, V>, FormDeserializeErr> {
+) -> Result<MapModification<K, V>, FormErr> {
     match name {
         TAKE_NAME => {
             if n >= 0 {
                 Ok(MapModification::Take(n as usize))
             } else {
-                Err(FormDeserializeErr::Message(format!(
-                    "Invalid take size: {}",
-                    n
-                )))
+                Err(FormErr::Message(format!("Invalid take size: {}", n)))
             }
         }
         SKIP_NAME => {
             if n >= 0 {
                 Ok(MapModification::Skip(n as usize))
             } else {
-                Err(FormDeserializeErr::Message(format!(
-                    "Invalid drop size: {}",
-                    n
-                )))
+                Err(FormErr::Message(format!("Invalid drop size: {}", n)))
             }
         }
-        _ => Err(FormDeserializeErr::Message(format!(
-            "{} is not a map action.",
-            name
-        ))),
+        _ => Err(FormErr::Message(format!("{} is not a map action.", name))),
     }
 }
 

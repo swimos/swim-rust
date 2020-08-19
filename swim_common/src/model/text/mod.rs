@@ -15,12 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use serde::export::fmt::Debug;
-use serde::export::Formatter;
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::Ordering;
 use std::convert::Infallible;
-use std::fmt::Display;
+use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::str;
