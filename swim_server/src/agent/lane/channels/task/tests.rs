@@ -53,7 +53,7 @@ fn lane_io_err_display_update() {
         lines,
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
-            "- update_error = The body of an incoming envelops was invalid: Malformatted"
+            "- update_error = The body of an incoming envelope was invalid: Malformatted"
         ]
     );
 }
@@ -97,7 +97,7 @@ fn lane_io_err_display_both() {
         lines,
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
-            "- update_error = The body of an incoming envelops was invalid: Malformatted",
+            "- update_error = The body of an incoming envelope was invalid: Malformatted",
             "- uplink_errors =",
             "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
         ]
