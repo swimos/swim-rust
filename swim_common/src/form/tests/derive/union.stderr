@@ -1,0 +1,7 @@
+error: Unions are not supported
+  --> $DIR/union.rs:19:5
+   |
+19 | /     union S {
+20 | |         a: i32,
+21 | |     }
+   | |_____^

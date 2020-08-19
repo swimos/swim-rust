@@ -16,9 +16,14 @@
 
 pub mod configuration;
 pub mod connections;
+pub mod form;
 pub mod model;
 pub mod request;
 pub mod routing;
 pub mod sink;
 pub mod topic;
 pub mod warp;
+
+#[allow(unused_imports)]
+#[macro_use]
+extern crate form_derive;

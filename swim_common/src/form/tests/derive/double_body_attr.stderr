@@ -1,0 +1,5 @@
+error: At most one field can replace the body.
+  --> $DIR/double_body_attr.rs:22:16
+   |
+22 |         #[form(body)]
+   |                ^^^^

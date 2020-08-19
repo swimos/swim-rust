@@ -37,11 +37,11 @@ use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::topic::Topic;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
-use swim_form::Form;
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
@@ -146,7 +146,7 @@ pub trait LaneUplinks {
     ///
     /// * `Handler` - Type of the lane uplink strategy.
     /// * `Top` - Type of the lane event topic.
-    /// * `Context` - Type o the agent execution context.
+    /// * `Context` - Type of the agent execution context.
     fn make_task<Handler, Top, Context>(
         &self,
         message_handler: Arc<Handler>,

@@ -19,9 +19,9 @@ use std::sync::Arc;
 
 use tracing::info;
 
+use swim_common::form::ValidatedForm;
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
-use swim_form::ValidatedForm;
 
 use crate::configuration::downlink::{Config, ConfigHierarchy, ConfigParseError};
 use crate::configuration::router::RouterParamBuilder;

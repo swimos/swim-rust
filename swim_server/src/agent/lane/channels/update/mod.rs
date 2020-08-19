@@ -20,7 +20,7 @@ use futures::Stream;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use stm::transaction::TransactionError;
-use swim_form::FormDeserializeErr;
+use swim_common::form::FormErr;
 
 #[cfg(test)]
 mod tests;
@@ -29,7 +29,7 @@ mod tests;
 #[derive(Debug)]
 pub enum UpdateError {
     FailedTransaction(TransactionError),
-    BadEnvelopeBody(FormDeserializeErr),
+    BadEnvelopeBody(FormErr),
 }
 
 impl Display for UpdateError {
@@ -39,7 +39,7 @@ impl Display for UpdateError {
                 write!(f, "Failed to apply a transaction to the lane: {}", err)
             }
             UpdateError::BadEnvelopeBody(err) => {
-                write!(f, "The body of an incoming envelops was invalid: {}", err)
+                write!(f, "The body of an incoming envelope was invalid: {}", err)
             }
         }
     }
@@ -60,8 +60,8 @@ impl From<TransactionError> for UpdateError {
     }
 }
 
-impl From<FormDeserializeErr> for UpdateError {
-    fn from(err: FormDeserializeErr) -> Self {
+impl From<FormErr> for UpdateError {
+    fn from(err: FormErr) -> Self {
         UpdateError::BadEnvelopeBody(err)
     }
 }

@@ -22,9 +22,8 @@ use crate::downlink::Event;
 use futures::Stream;
 use std::convert::TryInto;
 use std::marker::PhantomData;
+use swim_common::form::{Form, FormErr};
 use swim_common::topic::{Topic, TopicError};
-use swim_form::Form;
-use swim_form::FormDeserializeErr;
 use utilities::future::{SwimFutureExt, Transform, TransformedFuture, UntilFailure};
 
 /// A transformation that attempts to apply a form to an [`Event<Value>`].
@@ -76,7 +75,7 @@ impl<K: Form, V: Form> ApplyFormsMap<K, V> {
 }
 
 impl<T: Form> Transform<Event<SharedValue>> for ApplyForm<T> {
-    type Out = Result<Event<T>, FormDeserializeErr>;
+    type Out = Result<Event<T>, FormErr>;
 
     fn transform(&self, value: Event<SharedValue>) -> Self::Out {
         value.try_transform(|val| T::try_from_value(val.as_ref()))
@@ -84,7 +83,7 @@ impl<T: Form> Transform<Event<SharedValue>> for ApplyForm<T> {
 }
 
 impl<K: Form, V: Form> Transform<Event<ViewWithEvent>> for ApplyFormsMap<K, V> {
-    type Out = Result<Event<TypedViewWithEvent<K, V>>, FormDeserializeErr>;
+    type Out = Result<Event<TypedViewWithEvent<K, V>>, FormErr>;
 
     fn transform(&self, input: Event<ViewWithEvent>) -> Self::Out {
         input.try_transform(|val| val.try_into())

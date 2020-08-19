@@ -55,11 +55,11 @@ impl Display for RoutingAddr {
     }
 }
 
-/// An [`Envelope`] tagged with the ket of the endpoint into routing table from which it originated.
+/// An [`Envelope`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 
-/// An [`OutgoingLinkMessage`] tagged with the ket of the endpoint into routing table from which it
+/// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
 /// originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedClientEnvelope(pub RoutingAddr, pub OutgoingLinkMessage);

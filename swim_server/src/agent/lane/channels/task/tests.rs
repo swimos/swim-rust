@@ -29,13 +29,13 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::{MpscTopic, Topic};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
-use swim_form::{Form, FormDeserializeErr};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use utilities::future::SwimStreamExt;
@@ -44,10 +44,8 @@ use utilities::sync::trigger;
 #[test]
 fn lane_io_err_display_update() {
     let route = RelativePath::new("node", "lane");
-    let err = LaneIoError::for_update_err(
-        route,
-        UpdateError::BadEnvelopeBody(FormDeserializeErr::Malformatted),
-    );
+    let err =
+        LaneIoError::for_update_err(route, UpdateError::BadEnvelopeBody(FormErr::Malformatted));
 
     let string = format!("{}", err);
     let lines = string.lines().collect::<Vec<_>>();
@@ -55,7 +53,7 @@ fn lane_io_err_display_update() {
         lines,
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
-            "- update_error = The body of an incoming envelops was invalid: Malformatted"
+            "- update_error = The body of an incoming envelope was invalid: Malformatted"
         ]
     );
 }
@@ -87,7 +85,7 @@ fn lane_io_err_display_both() {
     let route = RelativePath::new("node", "lane");
     let err = LaneIoError::new(
         route,
-        UpdateError::BadEnvelopeBody(FormDeserializeErr::Malformatted),
+        UpdateError::BadEnvelopeBody(FormErr::Malformatted),
         vec![UplinkErrorReport {
             error: UplinkError::SenderDropped,
             addr: RoutingAddr::remote(1),
@@ -99,7 +97,7 @@ fn lane_io_err_display_both() {
         lines,
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
-            "- update_error = The body of an incoming envelops was invalid: Malformatted",
+            "- update_error = The body of an incoming envelope was invalid: Malformatted",
             "- uplink_errors =",
             "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
         ]
@@ -185,7 +183,7 @@ impl Form for Message {
         Value::Int32Value(self.0)
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
         i32::try_from_value(value).map(|n| Message(n))
     }
 }
@@ -246,9 +244,7 @@ impl LaneUpdate for TestUpdater {
                     match msg {
                         Ok(msg) => {
                             if msg.0 < 0 {
-                                break Err(UpdateError::BadEnvelopeBody(
-                                    FormDeserializeErr::Malformatted,
-                                ));
+                                break Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted));
                             } else {
                                 values.lock().await.push(msg.0);
                             }
@@ -634,9 +630,7 @@ async fn fail_on_update_error() {
             assert_eq!(route, RelativePath::new("node", "lane"));
             assert!(matches!(
                 update_error,
-                Some(UpdateError::BadEnvelopeBody(
-                    FormDeserializeErr::Malformatted
-                ))
+                Some(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
             ));
             assert!(uplink_errors.is_empty());
         }
@@ -786,9 +780,7 @@ async fn report_uplink_failures_on_update_failure() {
             assert_eq!(route, RelativePath::new("node", "lane"));
             assert!(matches!(
                 update_error,
-                Some(UpdateError::BadEnvelopeBody(
-                    FormDeserializeErr::Malformatted
-                ))
+                Some(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
             ));
             match uplink_errors.as_slice() {
                 [UplinkErrorReport { error, addr: a }] => {

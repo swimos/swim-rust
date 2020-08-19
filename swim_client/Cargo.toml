@@ -34,7 +34,6 @@ tracing = "0.1.16"
 [dependencies]
 swim_common = { path = "../swim_common" }
 utilities = { path = "../utilities" }
-swim_form = { path = "../swim_form" }
 swim_runtime = { path = "../swim_runtime" }
 
 pin-utils = "0.1.0"
@@ -48,8 +47,8 @@ rand = "0.7.3"
 tracing-subscriber = "0.2.7"
 tracing-futures = "0.2.3"
 tokio = { version = "0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
+num-bigint = "0.3"
 
 [dev-dependencies]
 hamcrest2 = "0.3"
 tokio = { version = "0.2.21", features = ["rt-threaded"] }
-
