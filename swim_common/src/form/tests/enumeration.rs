@@ -21,52 +21,75 @@ mod swim_common {
 
 #[test]
 fn test_transmute_single_variant() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     enum S {
         A { a: i32, b: i64 },
     }
 
     let s = S::A { a: 1, b: 2 };
+    let rec = Value::Record(
+        vec![Attr::of("A")],
+        vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+        ],
+    );
 
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("A")],
-            vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
+}
+
+#[test]
+fn test_generic() {
+    #[derive(Form, Debug, PartialEq)]
+    enum S<F>
+    where
+        F: Form,
+    {
+        A { f: F },
+    }
+
+    let s = S::A { f: 1 };
+    let rec = Value::Record(
+        vec![Attr::of("A")],
+        vec![Item::Slot(
+            Value::Text(String::from("f")),
+            Value::Int32Value(1),
+        )],
+    );
+
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_skip() {
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         enum S {
             A(#[form(skip)] i32),
         }
 
         let s = S::A(2);
+        let rec = Value::Record(vec![Attr::of("A")], vec![]);
 
-        assert_eq!(s.as_value(), Value::Record(vec![Attr::of("A")], vec![]))
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S::A(0)));
     }
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         enum S {
             A(#[form(skip)] i32, i64),
         }
 
         let s = S::A(2, 3);
+        let rec = Value::Record(
+            vec![Attr::of("A")],
+            vec![Item::ValueItem(Value::Int64Value(3))],
+        );
 
-        assert_eq!(
-            s.as_value(),
-            Value::Record(
-                vec![Attr::of("A")],
-                vec![Item::ValueItem(Value::Int64Value(3)),]
-            )
-        )
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S::A(0, 3)));
     }
     {
         #[derive(Form)]
@@ -95,7 +118,7 @@ fn test_skip() {
 
 #[test]
 fn test_transmute_multiple_variants() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     #[allow(dead_code)]
     enum S {
         A { a: i32, b: i64 },
@@ -106,34 +129,35 @@ fn test_transmute_multiple_variants() {
     }
 
     let s = S::C { e: 1, f: 2 };
+    let rec = Value::Record(
+        vec![Attr::of("C")],
+        vec![
+            Item::Slot(Value::Text(String::from("e")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("f")), Value::Int64Value(2)),
+        ],
+    );
 
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("C")],
-            vec![
-                Item::Slot(Value::Text(String::from("e")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("f")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_unit() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     enum S {
         A,
     }
 
     let s = S::A;
+    let rec = Value::Record(vec![Attr::of("A")], vec![]);
 
-    assert_eq!(s.as_value(), Value::Record(vec![Attr::of("A")], vec![]))
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_tag() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     enum S {
         #[form(tag = "MyTagA")]
         A,
@@ -145,60 +169,65 @@ fn test_tag() {
         D { a: i32, b: i64 },
     }
 
-    assert_eq!(
-        S::A.as_value(),
-        Value::Record(vec![Attr::of("MyTagA")], vec![])
-    );
-    assert_eq!(
-        S::B.as_value(),
-        Value::Record(vec![Attr::of("MyTagB")], vec![])
-    );
-    assert_eq!(
-        S::C(1, 2).as_value(),
-        Value::Record(
+    {
+        let rec = Value::Record(vec![Attr::of("MyTagA")], vec![]);
+        assert_eq!(S::A.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S::A));
+    }
+    {
+        let rec = Value::Record(vec![Attr::of("MyTagB")], vec![]);
+        assert_eq!(S::B.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S::B));
+    }
+    {
+        let s = S::C(1, 2);
+        let rec = Value::Record(
             vec![Attr::of("MyTagC")],
             vec![
                 Item::ValueItem(Value::Int32Value(1)),
                 Item::ValueItem(Value::Int64Value(2)),
-            ]
-        )
-    );
-    assert_eq!(
-        S::D { a: 1, b: 2 }.as_value(),
-        Value::Record(
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s));
+    }
+    {
+        let s = S::D { a: 1, b: 2 };
+        let rec = Value::Record(
             vec![Attr::of("MyTagD")],
             vec![
                 Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
                 Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    );
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s));
+    }
 }
 
 #[test]
 fn test_tuple() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     enum S {
         A(i32, i64),
     }
 
     let s = S::A(2, 3);
+    let rec = Value::Record(
+        vec![Attr::of("A")],
+        vec![
+            Item::ValueItem(Value::Int32Value(2)),
+            Item::ValueItem(Value::Int64Value(3)),
+        ],
+    );
 
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("A")],
-            vec![
-                Item::ValueItem(Value::Int32Value(2)),
-                Item::ValueItem(Value::Int64Value(3)),
-            ]
-        )
-    )
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_rename() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     enum S {
         A(#[form(rename = "A::a")] i32, i64),
         B {
@@ -208,26 +237,30 @@ fn test_rename() {
         },
     }
 
-    assert_eq!(
-        S::A(1, 2).as_value(),
-        Value::Record(
+    {
+        let s = S::A(1, 2);
+        let rec = Value::Record(
             vec![Attr::of("A")],
             vec![
                 Item::Slot(Value::Text(String::from("A::a")), Value::Int32Value(1)),
                 Item::ValueItem(Value::Int64Value(2)),
-            ]
-        )
-    );
-    assert_eq!(
-        S::B { a: 1, b: 2 }.as_value(),
-        Value::Record(
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s));
+    }
+    {
+        let s = S::B { a: 1, b: 2 };
+        let rec = Value::Record(
             vec![Attr::of("B")],
             vec![
                 Item::Slot(Value::Text(String::from("B::a")), Value::Int32Value(1)),
                 Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    );
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s));
+    }
 }
 
 #[test]
