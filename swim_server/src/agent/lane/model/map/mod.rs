@@ -27,7 +27,7 @@ use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRu
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::form::{Form, FormErr};
-use swim_common::model::Value;
+use swim_common::model::{Attr, Item, Value};
 
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
@@ -129,10 +129,232 @@ where
 
 /// Updates that can be applied to a [`MapLane`].
 /// TODO Add take/drop.
+#[derive(Debug, PartialEq, Eq)]
 pub enum MapUpdate<K, V> {
     Update(K, Arc<V>),
     Remove(K),
     Clear,
+}
+
+const UPDATE_TAG: &str = "update";
+const REMOVE_TAG: &str = "remove";
+const CLEAR_TAG: &str = "clear";
+const KEY_SLOT: &str = "key";
+
+const REMOVE_WITH_BODY: &str = "Remove updates should not have a body.";
+const CLEAR_WITH_BODY: &str = "Clear updates should not have a body.";
+
+impl<K: Form, V: Form> Form for MapUpdate<K, V> {
+    fn as_value(&self) -> Value {
+        match self {
+            MapUpdate::Update(k, v) => {
+                let key_slot = (KEY_SLOT, k.as_value());
+                let header = Attr::with_item(UPDATE_TAG, key_slot);
+                let body = v.as_value();
+                body.prepend(header)
+            }
+            MapUpdate::Remove(k) => {
+                let key_slot = (KEY_SLOT, k.as_value());
+                let header = Attr::with_item(REMOVE_TAG, key_slot);
+                Value::of_attr(header)
+            }
+            MapUpdate::Clear => Value::of_attr(CLEAR_TAG),
+        }
+    }
+
+    fn into_value(self) -> Value {
+        match self {
+            MapUpdate::Update(k, v) => {
+                let key_slot = (KEY_SLOT, k.into_value());
+                let header = Attr::with_item(UPDATE_TAG, key_slot);
+                let body = match Arc::try_unwrap(v) {
+                    Ok(v) => v.into_value(),
+                    Err(v) => v.as_value(),
+                };
+                body.prepend(header)
+            }
+            MapUpdate::Remove(k) => {
+                let key_slot = (KEY_SLOT, k.into_value());
+                let header = Attr::with_item(REMOVE_TAG, key_slot);
+                Value::of_attr(header)
+            }
+            MapUpdate::Clear => Value::of_attr(CLEAR_TAG),
+        }
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        let (head, remainder) = try_decompose_ref(value)?;
+        match head.name.as_str() {
+            UPDATE_TAG => {
+                let key = key_by_ref(head)?;
+                let value = remainder.try_to_value()?;
+                Ok(MapUpdate::Update(key, Arc::new(value)))
+            }
+            REMOVE_TAG => {
+                let key = key_by_ref(head)?;
+                if remainder == BodyType::Missing {
+                    Ok(MapUpdate::Remove(key))
+                } else {
+                    Err(FormErr::Message(REMOVE_WITH_BODY.to_string()))
+                }
+            }
+            CLEAR_TAG => {
+                if remainder == BodyType::Missing {
+                    Ok(MapUpdate::Clear)
+                } else {
+                    Err(FormErr::Message(CLEAR_WITH_BODY.to_string()))
+                }
+            }
+            ow => Err(FormErr::IncorrectType(format!("Not a map update: {}", ow))),
+        }
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormErr> {
+        let (head, remainder) = try_decompose(value)?;
+        match head.name.as_str() {
+            UPDATE_TAG => {
+                let key = take_key(head)?;
+                let value = V::try_convert(remainder)?;
+                Ok(MapUpdate::Update(key, Arc::new(value)))
+            }
+            REMOVE_TAG => {
+                let key = take_key(head)?;
+                if remainder == Value::Extant {
+                    Ok(MapUpdate::Remove(key))
+                } else {
+                    Err(FormErr::Message(REMOVE_WITH_BODY.to_string()))
+                }
+            }
+            CLEAR_TAG => {
+                if remainder == Value::Extant {
+                    Ok(MapUpdate::Clear)
+                } else {
+                    Err(FormErr::Message(CLEAR_WITH_BODY.to_string()))
+                }
+            }
+            ow => Err(FormErr::IncorrectType(format!(
+                "Invalid tag for map update of kind {}.",
+                ow
+            ))),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum BodyType<'a> {
+    Missing,
+    Single(&'a Value),
+    Record(&'a [Attr], &'a [Item]),
+}
+
+impl<'a> BodyType<'a> {
+    fn try_to_value<V: Form>(self) -> Result<V, FormErr> {
+        match self {
+            BodyType::Missing => Form::try_convert(Value::Extant),
+            BodyType::Single(v) => Form::try_from_value(v),
+            BodyType::Record(attrs, items) => {
+                let mut rec_attrs = Vec::with_capacity(attrs.len());
+                rec_attrs.extend_from_slice(attrs);
+                let mut rec_items = Vec::with_capacity(items.len());
+                rec_items.extend_from_slice(items);
+                V::try_convert(Value::Record(rec_attrs, rec_items))
+            }
+        }
+    }
+}
+
+fn try_decompose_ref(value: &Value) -> Result<(&Attr, BodyType), FormErr> {
+    match value {
+        Value::Record(attrs, items) => {
+            if let Some((head, tail)) = attrs.split_first() {
+                let remainder = if tail.is_empty() {
+                    if items.is_empty() {
+                        BodyType::Missing
+                    } else {
+                        match items.first() {
+                            Some(Item::ValueItem(v)) => BodyType::Single(v),
+                            _ => BodyType::Record(tail, items.as_slice()),
+                        }
+                    }
+                } else {
+                    BodyType::Record(tail, items.as_slice())
+                };
+                Ok((head, remainder))
+            } else {
+                Err(FormErr::Malformatted)
+            }
+        }
+        _ => Err(FormErr::Malformatted),
+    }
+}
+
+fn try_decompose(value: Value) -> Result<(Attr, Value), FormErr> {
+    match value {
+        Value::Record(attrs, mut items) => {
+            let mut attr_it = attrs.into_iter();
+            if let Some(head) = attr_it.next() {
+                let tail = attr_it.collect::<Vec<_>>();
+                let remainder = if tail.is_empty() {
+                    if items.is_empty() {
+                        Value::Extant
+                    } else if matches!(items.first(), Some(Item::ValueItem(_))) {
+                        match items.remove(0) {
+                            Item::ValueItem(v) => v,
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        Value::Record(tail, items)
+                    }
+                } else {
+                    Value::Record(tail, items)
+                };
+                Ok((head, remainder))
+            } else {
+                Err(FormErr::Malformatted)
+            }
+        }
+        _ => Err(FormErr::Malformatted),
+    }
+}
+
+fn take_key<K: Form>(attr: Attr) -> Result<K, FormErr> {
+    let Attr { value, .. } = attr;
+    match value {
+        Value::Record(attrs, mut items) if attrs.is_empty() && items.len() == 1 => {
+            match items.remove(0) {
+                Item::Slot(Value::Text(name), key_value) if name == KEY_SLOT => {
+                    K::try_convert(key_value)
+                }
+                ow => Err(FormErr::Message(format!("Unexpected item: {}", ow))),
+            }
+        }
+        ow => Err(FormErr::Message(format!("Invalid key specifier: {}.", ow))),
+    }
+}
+
+fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormErr> {
+    let Attr { name, value } = attr;
+    match value {
+        Value::Record(attrs, items) if attrs.is_empty() && items.len() <= 1 => {
+            match items.first() {
+                Some(Item::Slot(Value::Text(name), key_value)) if name == KEY_SLOT => {
+                    K::try_from_value(key_value)
+                }
+                Some(ow) => Err(FormErr::Message(format!("Unexpected item: {}", ow))),
+                _ => Err(FormErr::Message(format!(
+                    "Invalid tag for map update of kind {}.",
+                    name
+                ))),
+            }
+        }
+        ow => Err(FormErr::Message(format!("Invalid key specifier: {}.", ow))),
+    }
+}
+
+impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
+    fn from(event: MapUpdate<K, V>) -> Self {
+        event.into_value()
+    }
 }
 
 impl<K, V> MapUpdate<K, V> {
