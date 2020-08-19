@@ -27,11 +27,11 @@ use crate::downlink::{
     create_downlink, BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message,
     SyncStateMachine, TransitionError, UpdateFailure,
 };
-use crate::router::RoutingError;
 use std::fmt;
 use std::num::NonZeroUsize;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
+use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 
 #[cfg(test)]
