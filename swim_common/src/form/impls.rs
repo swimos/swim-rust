@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::borrow::Cow;
-use std::cell::Cell;
+use core::iter::FromIterator;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::convert::TryFrom;
 use std::hash::BuildHasher;
@@ -29,32 +29,7 @@ use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
 use crate::model::schema::StandardSchema;
 use crate::model::{Item, Value, ValueKind};
-
-impl<'a, F> Form for &'a F
-where
-    F: Form,
-{
-    fn as_value(&self) -> Value {
-        (**self).as_value()
-    }
-
-    fn try_from_value<'f>(_value: &Value) -> Result<Self, FormErr> {
-        unimplemented!()
-    }
-}
-
-impl<'a, F> Form for &'a mut F
-where
-    F: Form,
-{
-    fn as_value(&self) -> Value {
-        (**self).as_value()
-    }
-
-    fn try_from_value<'f>(_value: &Value) -> Result<Self, FormErr> {
-        unimplemented!()
-    }
-}
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
@@ -69,7 +44,7 @@ impl Form for Blob {
         match value {
             Value::Data(blob) => Ok(blob.clone()),
             Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
-            v => de_incorrect_type("Value::Data", v),
+            v => Err(FormErr::incorrect_type("Value::Data", v)),
         }
     }
 
@@ -77,7 +52,7 @@ impl Form for Blob {
         match value {
             Value::Data(blob) => Ok(blob),
             Value::Text(s) => Ok(Blob::from_encoded(Vec::from(s.as_bytes()))),
-            v => de_incorrect_type("Value::Data", &v),
+            v => Err(FormErr::incorrect_type("Value::Data", &v)),
         }
     }
 }
@@ -119,7 +94,7 @@ impl Form for BigInt {
                 ))
             }),
             Value::BigUint(uint) => Ok(BigInt::from(uint.clone())),
-            v => de_incorrect_type("Value::Float64Value", v),
+            v => Err(FormErr::incorrect_type("Value::Float64Value", v)),
         }
     }
 }
@@ -173,7 +148,7 @@ impl Form for BigUint {
                 ))
             }),
             Value::BigUint(uint) => Ok(uint.clone()),
-            v => de_incorrect_type("Value::Float64Value", v),
+            v => Err(FormErr::incorrect_type("Value::Float64Value", v)),
         }
     }
 }
@@ -192,7 +167,7 @@ impl Form for f64 {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
         match value {
             Value::Float64Value(i) => Ok(*i),
-            v => de_incorrect_type("Value::Float64Value", v),
+            v => Err(FormErr::incorrect_type("Value::Float64Value", v)),
         }
     }
 }
@@ -201,14 +176,6 @@ impl ValidatedForm for f64 {
     fn schema() -> StandardSchema {
         StandardSchema::OfKind(ValueKind::Float64)
     }
-}
-
-pub fn de_incorrect_type<V>(expected: &str, actual: &Value) -> Result<V, FormErr> {
-    Err(FormErr::IncorrectType(format!(
-        "Expected: {}, found: {}",
-        expected,
-        actual.kind()
-    )))
 }
 
 impl Form for i32 {
@@ -238,7 +205,7 @@ impl Form for i32 {
             Value::BigUint(i) => i32::try_from(i).map_err(|_| {
                 FormErr::IncorrectType("Expected Value::Int32Value, found Value::BigUint".into())
             }),
-            v => de_incorrect_type("Value::Int32Value", v),
+            v => Err(FormErr::incorrect_type("Value::Int32Value", v)),
         }
     }
 }
@@ -274,7 +241,7 @@ impl Form for i64 {
             Value::BigUint(i) => i64::try_from(i).map_err(|_| {
                 FormErr::IncorrectType("Expected Value::Int64Value, found Value::BigUint".into())
             }),
-            v => de_incorrect_type("Value::Int64Value", v),
+            v => Err(FormErr::incorrect_type("Value::Int64Value", v)),
         }
     }
 }
@@ -314,7 +281,7 @@ impl Form for u32 {
             Value::BigUint(i) => u32::try_from(i).map_err(|_| {
                 FormErr::IncorrectType("Expected Value::UInt32Value, found Value::BigUint".into())
             }),
-            v => de_incorrect_type("Value::UInt32Value", v),
+            v => Err(FormErr::incorrect_type("Value::UInt32Value", v)),
         }
     }
 }
@@ -350,7 +317,7 @@ impl Form for u64 {
             Value::BigUint(i) => u64::try_from(i).map_err(|_| {
                 FormErr::IncorrectType("Expected Value::UInt64Value, found Value::BigUint".into())
             }),
-            v => de_incorrect_type("Value::UInt64Value", v),
+            v => Err(FormErr::incorrect_type("Value::UInt64Value", v)),
         }
     }
 }
@@ -386,7 +353,10 @@ impl Form for usize {
             Value::BigUint(i) => usize::try_from(i).map_err(|_| {
                 FormErr::IncorrectType("Expected Value::UInt64Value, found Value::BigUint".into())
             }),
-            v => de_incorrect_type("Value::UInt64Value", v),
+            v => Err(FormErr::IncorrectType(format!(
+                "Expected Value::UInt64Value, found {}",
+                v.kind()
+            ))),
         }
     }
 }
@@ -399,7 +369,7 @@ impl Form for bool {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
         match value {
             Value::BooleanValue(i) => Ok(*i),
-            v => de_incorrect_type("Value::BooleanValue", v),
+            v => Err(FormErr::incorrect_type("Value::BooleanValue", v)),
         }
     }
 }
@@ -418,7 +388,7 @@ impl Form for String {
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
         match value {
             Value::Text(i) => Ok(i.to_owned()),
-            v => de_incorrect_type("Value::Text", v),
+            v => Err(FormErr::incorrect_type("Value::Text", v)),
         }
     }
 }
@@ -460,119 +430,124 @@ impl ValidatedForm for String {
     }
 }
 
-fn seq_to_record<V>(it: V) -> Value
-where
-    V: Iterator,
-    <V as Iterator>::Item: Form,
-{
-    let vec = match it.size_hint() {
-        (u, Some(r)) if u == r => Vec::with_capacity(r),
-        _ => Vec::new(),
-    };
-
-    let items = it.fold(vec, |mut items, i| {
-        items.push(Item::of(i.as_value()));
-        items
-    });
-
-    Value::Record(Vec::new(), items)
-}
-
 macro_rules! impl_seq_form {
-    ($ty:ident < V $(: $tbound1:ident $(+ $tbound2:ident)*)* $(, $typaram:ident : $bound:ident)* >) => {
+    ($ty:ident < V $(: $tbound1:ident $(+ $tbound2:ident)*)* $(, $typaram:ident : $bound:ident $(+ $bound2:ident)*)* >) => {
         impl<V $(, $typaram)*> Form for $ty<V $(, $typaram)*>
         where
             V: Form $(+ $tbound1 $(+ $tbound2)*)*,
-            $($typaram: Form + $bound,)*
+            $($typaram: Form + $bound $(+ $bound2)*,)*
         {
             fn as_value(&self) -> Value {
-                seq_to_record(self.iter())
+                let it = self.iter();
+
+                let vec = match it.size_hint() {
+                    (u, Some(r)) if u == r => Vec::with_capacity(r),
+                    _ => Vec::new(),
+                };
+
+                let items = it.fold(vec, |mut items, i| {
+                    items.push(Item::of(i.as_value()));
+                    items
+                });
+
+                Value::Record(Vec::new(), items)
             }
 
-            fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
-                unimplemented!()
-            }
-        }
-    }
-}
+            fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+                match value {
+                    Value::Record(_attrs, items) => {
+                        let elems =
+                                items
+                                    .iter()
+                                    .try_fold(Vec::with_capacity(items.len()), |mut items, i| {
+                                        let value = match i {
+                                            Item::Slot(_key, value) => value,
+                                            Item::ValueItem(value) => value,
+                                        };
 
-macro_rules! impl_map_form {
-    ($ty:ident < K $(: $kbound1:ident $(+ $kbound2:ident)*)*, V $(, $typaram:ident : $bound:ident)* >) => {
-        impl<K, V $(, $typaram)*> Form for $ty<K, V $(, $typaram)*>
-        where
-            K: Form $(+ $kbound1 $(+ $kbound2)*)*,
-            V: Form,
-            $($typaram: $bound,)*
-        {
-            fn as_value(&self) -> Value {
-                map_to_record(self.iter())
-            }
+                                        let v = V::try_from_value(value)?;
+                                        items.push(v);
 
-            fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
-                unimplemented!()
+                                        Ok(items)
+                                    })?;
+
+                        Ok($ty::from_iter(elems))
+                    }
+                    v => Err(FormErr::incorrect_type("Value::Record", v)),
+                }
             }
         }
     }
 }
 
 impl_seq_form!(Vec<V>);
-impl_seq_form!(ImHashSet<V, L: BuildHasher>);
-impl_seq_form!(ImHashSet<V>);
-impl_seq_form!(OrdSet<V: Ord>);
 impl_seq_form!(VecDeque<V>);
-impl_seq_form!(BinaryHeap<V: Ord>);
-impl_seq_form!(BTreeSet<V>);
-impl_seq_form!(HashSet<V: Eq + Hash, L: BuildHasher>);
-impl_seq_form!(HashSet<V: Eq + Hash>);
 impl_seq_form!(LinkedList<V>);
+impl_seq_form!(BinaryHeap<V: Ord>);
+impl_seq_form!(ImHashSet<V: Hash + Eq + Clone, L: BuildHasher + Default>);
+impl_seq_form!(ImHashSet<V: Hash + Eq + Clone>);
+impl_seq_form!(OrdSet<V: Ord + Clone>);
+impl_seq_form!(BTreeSet<V: Ord>);
+impl_seq_form!(HashSet<V: Eq + Hash, L: BuildHasher + Default>);
+impl_seq_form!(HashSet<V: Eq + Hash>);
 
-fn map_to_record<Iter, K, V>(it: Iter) -> Value
-where
-    Iter: Iterator<Item = (K, V)>,
-    K: Form,
-    V: Form,
-{
-    let vec = match it.size_hint() {
-        (u, Some(r)) if u == r => Vec::with_capacity(r),
-        _ => Vec::new(),
-    };
+macro_rules! impl_map_form {
+    ($ty:ident < K $(: $kbound1:ident $(+ $kbound2:ident)*)*, V $(: $vbound1:ident $(+ $vbound2:ident)*)* $(, $typaram:ident : $bound:ident $(+ $bound2:ident)*)* >) => {
+        impl<K, V $(, $typaram)*> Form for $ty<K, V $(, $typaram)*>
+        where
+            K: Form $(+ $kbound1 $(+ $kbound2)*)*,
+            V: Form $(+ $vbound1 $(+ $vbound2)*)*,
+            $($typaram: Form + $bound $(+ $bound2)*,)*
+        {
+            fn as_value(&self) -> Value {
+                let it = self.iter();
 
-    it.fold(Value::Record(vec![], vec), |mut v, (key, value)| {
-        if let Value::Record(_, items) = &mut v {
-            items.push(Item::slot(key.as_value(), value.as_value()))
-        } else {
-            unreachable!()
+                let vec = match it.size_hint() {
+                    (l, Some(u)) if l == u => Vec::with_capacity(u),
+                    _ => Vec::new(),
+                };
+
+                let items = it.fold(vec, |mut items, (key, value)| {
+                    items.push(Item::slot(key.as_value(), value.as_value()));
+                    items
+                });
+
+                Value::Record(Vec::new(), items)
+            }
+
+            fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+                match value {
+                    Value::Record(_attrs, items) => {
+                        let elems =
+                                items
+                                    .iter()
+                                    .try_fold(Vec::with_capacity(items.len()), |mut items, i| {
+                                        match i {
+                                            Item::Slot(key, value) => {
+                                                let k = K::try_from_value(key)?;
+                                                let v = V::try_from_value(value)?;
+                                                items.push((k, v));
+
+                                                Ok(items)
+                                            },
+                                            Item::ValueItem(_) => {
+                                                Err(FormErr::IncorrectType(String::from("Expected a key-value pair")))
+                                            },
+                                        }
+                                    })?;
+
+                        Ok($ty::from_iter(elems))
+                    }
+                    v => Err(FormErr::incorrect_type("Value::Record", v)),
+                }
+            }
         }
-        v
-    })
+    }
 }
 
 impl_map_form!(BTreeMap<K: Ord, V>);
-impl_map_form!(HashMap<K: Eq + Hash, V, H: BuildHasher>);
-
-impl<K, V> Form for ImHashMap<K, V>
-where
-    K: Form,
-    V: Form,
-{
-    fn as_value(&self) -> Value {
-        self.iter().fold(
-            Value::Record(vec![], Vec::with_capacity(self.len())),
-            |mut v, (key, value)| {
-                if let Value::Record(_, items) = &mut v {
-                    items.push(Item::slot(key.as_value(), value.as_value()))
-                } else {
-                    unreachable!()
-                }
-                v
-            },
-        )
-    }
-
-    fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
-        unimplemented!()
-    }
-}
+impl_map_form!(HashMap<K: Eq + Hash, V, H: BuildHasher + Default>);
+impl_map_form!(ImHashMap<K: Eq + Hash + Clone, V: Clone>);
 
 impl Form for () {
     fn as_value(&self) -> Value {
@@ -582,7 +557,7 @@ impl Form for () {
     fn try_from_value(value: &Value) -> Result<Self, FormErr> {
         match value {
             Value::Extant => Ok(()),
-            _ => Err(FormErr::IncorrectType("Expected ()".to_string())),
+            v => Err(FormErr::incorrect_type("()", v)),
         }
     }
 }
@@ -607,6 +582,28 @@ where
 }
 
 impl<V> ValidatedForm for Cell<V>
+where
+    V: ValidatedForm + Copy,
+{
+    fn schema() -> StandardSchema {
+        StandardSchema::Or(vec![V::schema(), StandardSchema::OfKind(ValueKind::Extant)])
+    }
+}
+
+impl<F> Form for RefCell<F>
+where
+    F: Form + Copy,
+{
+    fn as_value(&self) -> Value {
+        self.borrow_mut().as_value()
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        F::try_from_value(value).map(RefCell::new)
+    }
+}
+
+impl<V> ValidatedForm for RefCell<V>
 where
     V: ValidatedForm + Copy,
 {
@@ -659,24 +656,85 @@ where
     }
 }
 
-impl<'l, F> Form for Cow<'l, F>
-where
-    F: Form + Clone,
-{
+impl Form for AtomicBool {
     fn as_value(&self) -> Value {
-        (**self).as_value()
+        Value::BooleanValue(self.load(Ordering::SeqCst))
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        F::try_from_value(value).map(Cow::Owned)
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::BooleanValue(b) => Ok(AtomicBool::new(*b)),
+            v => Err(FormErr::incorrect_type("Value::BooleanValue", v)),
+        }
     }
 }
 
-impl<'l, F> ValidatedForm for Cow<'l, F>
-where
-    F: ValidatedForm + Clone,
-{
+impl ValidatedForm for AtomicBool {
     fn schema() -> StandardSchema {
-        F::schema()
+        StandardSchema::OfKind(ValueKind::Boolean)
+    }
+}
+
+impl Form for AtomicI32 {
+    fn as_value(&self) -> Value {
+        Value::Int32Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        i32::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicI32 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Int32)
+    }
+}
+
+impl Form for AtomicI64 {
+    fn as_value(&self) -> Value {
+        Value::Int64Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        i64::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicI64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Int64)
+    }
+}
+
+impl Form for AtomicU32 {
+    fn as_value(&self) -> Value {
+        Value::UInt32Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        u32::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicU32 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt32)
+    }
+}
+
+impl Form for AtomicU64 {
+    fn as_value(&self) -> Value {
+        Value::UInt64Value(self.load(Ordering::SeqCst))
+    }
+
+    fn try_from_value<'l>(value: &Value) -> Result<Self, FormErr> {
+        u64::try_from_value(value).map(Self::new)
+    }
+}
+
+impl ValidatedForm for AtomicU64 {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::UInt64)
     }
 }

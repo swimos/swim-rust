@@ -15,7 +15,7 @@
 use proc_macro2::Ident;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, Data};
+use syn::{Attribute, Data, Type};
 use syn::{Lit, Meta, NestedMeta};
 
 use macro_helpers::{
@@ -260,6 +260,10 @@ pub fn fields_from_ast<'t>(
                 },
             );
 
+            if let Type::Reference(_) = &original.ty {
+                ctx.error_spanned_by(original, "Borrowed fields are not allowed by forms")
+            }
+
             let name = renamed.unwrap_or_else(|| match &original.ident {
                 Some(ident) => FieldIdentity::Named(ident.clone()),
                 None => FieldIdentity::Anonymous(index.into()),
@@ -299,7 +303,7 @@ pub struct Name {
 ///    #[form(skip)]
 ///    name: String,
 ///    age: i32,
-/// }
+///}
 ///```
 /// will return a [`Vector`] that contains the [`NestedMeta`] for the field [`name`].
 pub trait Attributes {
