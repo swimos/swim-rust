@@ -15,8 +15,11 @@
 #[cfg(test)]
 mod tests;
 
+use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value::ValueLane;
-use futures::{Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream, StreamExt};
+use pin_utils::pin_mut;
 use std::any::Any;
 
 /// Asynchronous task to set a stream of values into a [`ValueLane`].
@@ -30,14 +33,29 @@ impl<T> ValueLaneUpdateTask<T> {
     }
 }
 
-impl<T> ValueLaneUpdateTask<T>
+impl<T> LaneUpdate for ValueLaneUpdateTask<T>
 where
     T: Any + Send + Sync,
 {
-    pub async fn run<Updates>(self, updates: Updates)
+    type Msg = T;
+
+    fn run_update<Messages, Err>(
+        self,
+        messages: Messages,
+    ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Updates: Stream<Item = T>,
+        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Err: Send,
+        UpdateError: From<Err>,
     {
-        updates.for_each(|value| self.lane.store(value)).await;
+        let ValueLaneUpdateTask { lane } = self;
+        async move {
+            pin_mut!(messages);
+            while let Some(msg) = messages.next().await {
+                lane.store(msg?).await;
+            }
+            Ok(())
+        }
+        .boxed()
     }
 }

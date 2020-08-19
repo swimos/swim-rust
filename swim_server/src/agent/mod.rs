@@ -35,7 +35,7 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_form::Form;
+use swim_common::form::Form;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
