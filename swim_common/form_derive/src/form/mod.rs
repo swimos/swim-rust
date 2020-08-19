@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::form_parser::{build_type_contents};
-use macro_helpers::{ Context};
+use crate::form::form_parser::build_type_contents;
+use macro_helpers::Context;
 use syn::DeriveInput;
 
 pub mod form_parser;

@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::{EnumVariant, FieldKind, FieldManifest, StructRepr, TypeContents, FormField};
+use crate::form::form_parser::FormDescriptor;
+use crate::parser::{EnumVariant, FieldKind, FieldManifest, FormField, StructRepr, TypeContents};
 use macro_helpers::{deconstruct_type, CompoundTypeKind, Identity};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
-use crate::form::form_parser::FormDescriptor;
-
 
 pub fn to_value(
     type_contents: TypeContents<FormDescriptor, FormField<'_>>,
@@ -25,12 +24,12 @@ pub fn to_value(
 ) -> TokenStream2 {
     match type_contents {
         TypeContents::Struct(StructRepr {
-                                 compound_type,
-                                 fields,
-                                 manifest,
-                                 descriptor,
-                                 ..
-                             }) => build_struct_as_value(
+            compound_type,
+            fields,
+            manifest,
+            descriptor,
+            ..
+        }) => build_struct_as_value(
             descriptor,
             manifest,
             &structure_name,

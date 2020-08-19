@@ -18,8 +18,8 @@ use syn::spanned::Spanned;
 
 use macro_helpers::{CompoundTypeKind, Identity};
 
-use crate::parser::{FieldKind, FieldManifest, TypeContents, FormField};
 use crate::form::form_parser::FormDescriptor;
+use crate::parser::{FieldKind, FieldManifest, FormField, TypeContents};
 
 pub fn from_value(
     type_contents: &TypeContents<FormDescriptor, FormField<'_>>,
