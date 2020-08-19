@@ -170,12 +170,12 @@ impl Display for ParseFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ParseFailure::TokenizationFailure(BadToken(offset, _)) => {
-                write!(f, "Bad token at: {}:{}", offset.line_num, offset.line_loc)
+                write!(f, "Bad token at: {}:{}", offset.line, offset.column)
             }
             ParseFailure::InvalidToken(BadRecord(offset, err)) => write!(
                 f,
                 "Token at {}:{} is not valid in this context: {:?}",
-                offset.line_num, offset.line_loc, *err
+                offset.line, offset.column, *err
             ),
             ParseFailure::IncompleteRecord => {
                 write!(f, "The input ended before the record was complete.")
@@ -624,17 +624,17 @@ struct Location {
     /// Number of characters from the start. (Absolute offset)
     offset: usize,
     /// Line number.
-    line_num: usize,
+    line: usize,
     /// Number of characters from the start of the current line. (Relative offset)
-    line_loc: usize,
+    column: usize,
 }
 
 impl Location {
     fn new() -> Self {
         Location {
             offset: 0,
-            line_num: 1,
-            line_loc: 1,
+            line: 1,
+            column: 1,
         }
     }
 }
@@ -642,14 +642,14 @@ impl Location {
 impl Location {
     /// Sets the absolute offset to a new value and recalculates the relative offset.
     fn update_offset(&mut self, new_offset: usize) {
-        self.line_loc = self.line_loc + new_offset - self.offset;
+        self.column = self.column + new_offset - self.offset;
         self.offset = new_offset;
     }
 
     /// Increments the line number and resets the relative offset.
     fn new_line(&mut self) {
-        self.line_loc = 1;
-        self.line_num += 1;
+        self.column = 0;
+        self.line += 1;
     }
 }
 
@@ -921,17 +921,23 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
         '}' => Some(Result::Ok(loc(ReconToken::RecordBodyEnd, *location))),
         ':' => Some(Result::Ok(loc(ReconToken::SlotDivider, *location))),
         ',' | ';' => Some(Result::Ok(loc(ReconToken::EntrySep, *location))),
-        '\r' | '\n' => {
-            location.new_line();
-
-            match next {
-                Some((_, c)) if c.is_whitespace() => {
-                    *state = TokenParseState::ReadingNewLine(*location);
-                    None
-                }
-                _ => Some(Result::Ok(loc(ReconToken::NewLine, *location))),
+        '\r' | '\n' => match next {
+            Some((next_index, c)) if c == '\n' => {
+                location.update_offset(next_index);
+                location.new_line();
+                *state = TokenParseState::ReadingNewLine(*location);
+                None
             }
-        }
+            Some((_, c)) if c.is_whitespace() => {
+                location.new_line();
+                *state = TokenParseState::ReadingNewLine(*location);
+                None
+            }
+            _ => {
+                location.new_line();
+                Some(Result::Ok(loc(ReconToken::NewLine, *location)))
+            }
+        },
         w if w.is_whitespace() => None,
         '\"' => match next {
             Some((next_index, _)) => {

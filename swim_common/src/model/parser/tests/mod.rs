@@ -1030,3 +1030,74 @@ fn biguint_tests() {
         ))))
     );
 }
+
+#[test]
+fn error_tests() {
+    if let Err(e) = parse_single(&format!("@name(`)")) {
+        assert_eq!(e.to_string(), "Bad token at: 1:7");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\n12: *foo)")) {
+        assert_eq!(e.to_string(), "Bad token at: 2:5");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\r12: *foo)")) {
+        assert_eq!(e.to_string(), "Bad token at: 2:5");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\r\n12: *foo)")) {
+        assert_eq!(e.to_string(), "Bad token at: 2:5");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\n112: foo\n113: bar\n114: *baz\n115: qux)")) {
+        assert_eq!(e.to_string(), "Bad token at: 4:6");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\r112: foo\r113: bar\r114: *baz\r115: qux)")) {
+        assert_eq!(e.to_string(), "Bad token at: 4:6");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@name(\r\n112: foo\r\n113: bar\r\n114: *baz\r\n115: qux)"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:6");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@config {{\n    @client {{\n        buffer_size: 2\n        router: **invalid\n    }}\n}}"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:17");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@config {{\r    @client {{\r        buffer_size: 2\r        router: **invalid\r    }}\r}}"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:17");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@config {{\r\n    @client {{\r\n        buffer_size: 2\r\n        router: **invalid\r\n    }}\r\n}}"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:17");
+    } else {
+        panic!("Error expected!");
+    }
+}
