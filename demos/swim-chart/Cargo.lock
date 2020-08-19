@@ -159,7 +159,6 @@ name = "form_derive"
 version = "0.1.0"
 dependencies = [
  "macro_helpers",
- "num-bigint",
  "proc-macro2 1.0.18",
  "quote 1.0.7",
  "syn",

@@ -21,71 +21,93 @@ mod swim_common {
 
 #[test]
 fn test_transmute() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S {
         a: i32,
         b: i64,
     }
 
     let s = S { a: 1, b: 2 };
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
+}
+
+#[test]
+fn test_transmute_generic() {
+    #[derive(Form, Debug, PartialEq)]
+    struct S<F>
+    where
+        F: Form,
+    {
+        f: F,
+    }
+
+    let s = S { f: 1 };
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::Slot(
+            Value::Text(String::from("f")),
+            Value::Int32Value(1),
+        )],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_transmute_newtype() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S(i32);
 
     let s = S(1);
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![Item::ValueItem(Value::Int32Value(1))]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::ValueItem(Value::Int32Value(1))],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_transmute_tuple() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S(i32, i64);
 
     let s = S(1, 2);
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("S")],
-            vec![
-                Item::ValueItem(Value::Int32Value(1)),
-                Item::ValueItem(Value::Int32Value(2))
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![
+            Item::ValueItem(Value::Int32Value(1)),
+            Item::ValueItem(Value::Int32Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_transmute_unit() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct S;
 
     let s = S;
-    assert_eq!(s.as_value(), Value::Record(vec![Attr::of("S")], vec![]))
+    let rec = Value::Record(vec![Attr::of("S")], vec![]);
+
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_skip_field() {
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         struct S {
             a: i32,
             #[form(skip)]
@@ -93,43 +115,42 @@ fn test_skip_field() {
         }
 
         let s = S { a: 1, b: 2 };
-        assert_eq!(
-            s.as_value(),
-            Value::Record(
-                vec![Attr::of("S")],
-                vec![Item::Slot(
-                    Value::Text(String::from("a")),
-                    Value::Int32Value(1)
-                ),]
-            )
+        let rec = Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::Slot(
+                Value::Text(String::from("a")),
+                Value::Int32Value(1),
+            )],
         );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S { a: 1, b: 0 }));
     }
-
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         struct S(#[form(skip)] i32);
 
         let s = S(1);
-        assert_eq!(s.as_value(), Value::Record(vec![Attr::of("S")], vec![]));
+        let rec = Value::Record(vec![Attr::of("S")], vec![]);
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S(0)));
     }
     {
-        #[derive(Form)]
+        #[derive(Form, Debug, PartialEq)]
         struct S(#[form(skip)] i32, i64);
 
         let s = S(1, 2);
-        assert_eq!(
-            s.as_value(),
-            Value::Record(
-                vec![Attr::of("S")],
-                vec![Item::ValueItem(Value::Int64Value(2))]
-            )
-        )
+        let rec = Value::Record(
+            vec![Attr::of("S")],
+            vec![Item::ValueItem(Value::Int64Value(2))],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(S(0, 2)));
     }
 }
 
 #[test]
 fn test_tag() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     #[form(tag = "Structure")]
     struct S {
         a: i32,
@@ -137,21 +158,20 @@ fn test_tag() {
     }
 
     let s = S { a: 1, b: 2 };
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("Structure")],
-            vec![
-                Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("Structure")],
+        vec![
+            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn test_rename() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     #[form(tag = "Structure")]
     struct S {
         #[form(rename = "field_a")]
@@ -160,21 +180,20 @@ fn test_rename() {
     }
 
     let s = S { a: 1, b: 2 };
-    assert_eq!(
-        s.as_value(),
-        Value::Record(
-            vec![Attr::of("Structure")],
-            vec![
-                Item::Slot(Value::Text(String::from("field_a")), Value::Int32Value(1)),
-                Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
-            ]
-        )
-    )
+    let rec = Value::Record(
+        vec![Attr::of("Structure")],
+        vec![
+            Item::Slot(Value::Text(String::from("field_a")), Value::Int32Value(1)),
+            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s));
 }
 
 #[test]
 fn body_replaces() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq)]
     struct BodyReplace {
         n: i32,
         #[form(body)]
@@ -205,7 +224,8 @@ fn body_replaces() {
         body: Value::Record(Vec::new(), body),
     };
 
-    assert_eq!(br.as_value(), rec)
+    assert_eq!(br.as_value(), rec);
+    assert_eq!(BodyReplace::try_from_value(&rec), Ok(br));
 }
 
 #[test]
