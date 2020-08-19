@@ -20,12 +20,12 @@ use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
     StateMachine, StoppedFuture,
 };
-use crate::router::RoutingError;
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
+use swim_common::routing::RoutingError;
 use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use swim_common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use swim_runtime::task::spawn;

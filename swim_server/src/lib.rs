@@ -15,3 +15,4 @@
 #![allow(clippy::match_wild_err_arm)]
 
 pub mod agent;
+pub mod routing;

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
+use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::map;
 use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
 use crate::agent::lane::strategy::Queue;
@@ -30,9 +31,11 @@ async fn update_task_map_lane_update() {
 
     let task = MapLaneUpdateTask::new(lane, || ExactlyOnce);
 
-    let updates = once(ready(MapUpdate::Update(4, Arc::new(7))));
+    let upd: Result<MapUpdate<i32, i32>, UpdateError> = Ok(MapUpdate::Update(4, Arc::new(7)));
 
-    let update_task = task.run(updates);
+    let updates = once(ready(upd));
+
+    let update_task = task.run_update(updates);
     let receive_task = timeout(Duration::from_secs(10), events.next());
 
     let (upd_result, rec_result) = join(update_task, receive_task).await;
@@ -55,9 +58,11 @@ async fn update_task_map_lane_remove() {
 
     let task = MapLaneUpdateTask::new(lane, || ExactlyOnce);
 
-    let updates = once(ready(MapUpdate::Remove(4)));
+    let rem: Result<MapUpdate<i32, i32>, UpdateError> = Ok(MapUpdate::Remove(4));
 
-    let update_task = task.run(updates);
+    let updates = once(ready(rem));
+
+    let update_task = task.run_update(updates);
     let receive_task = timeout(Duration::from_secs(10), events.next());
 
     let (upd_result, rec_result) = join(update_task, receive_task).await;
@@ -79,10 +84,11 @@ async fn update_task_map_lane_clear() {
     assert!(events.next().await.is_some());
 
     let task = MapLaneUpdateTask::new(lane, || ExactlyOnce);
+    let clear: Result<MapUpdate<i32, i32>, UpdateError> = Ok(MapUpdate::Clear);
 
-    let updates = once(ready(MapUpdate::Clear));
+    let updates = once(ready(clear));
 
-    let update_task = task.run(updates);
+    let update_task = task.run_update(updates);
     let receive_task = timeout(Duration::from_secs(10), events.next());
 
     let (upd_result, rec_result) = join(update_task, receive_task).await;
