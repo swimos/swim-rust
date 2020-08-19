@@ -37,6 +37,7 @@ fn test_transmute() {
     );
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
     assert_eq!(s.into_value(), rec);
 }
 
@@ -60,6 +61,7 @@ fn test_transmute_generic() {
     );
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
     assert_eq!(s.into_value(), rec);
 }
 
@@ -75,6 +77,7 @@ fn test_transmute_newtype() {
     );
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
     assert_eq!(s.into_value(), rec);
 }
 
@@ -93,6 +96,7 @@ fn test_transmute_tuple() {
     );
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
     assert_eq!(s.into_value(), rec);
 }
 
@@ -106,6 +110,7 @@ fn test_transmute_unit() {
 
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
     assert_eq!(s.into_value(), rec);
 }
 
@@ -129,6 +134,7 @@ fn test_skip_field() {
         );
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S { a: 1, b: 0 }));
+        assert_eq!(S::try_convert(rec.clone()), Ok(S { a: 1, b: 0 }));
         assert_eq!(s.into_value(), rec);
     }
     {
@@ -139,6 +145,7 @@ fn test_skip_field() {
         let rec = Value::Record(vec![Attr::of("S")], vec![]);
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S(0)));
+        assert_eq!(S::try_convert(rec.clone()), Ok(S(0)));
         assert_eq!(s.into_value(), rec);
     }
     {
@@ -152,6 +159,7 @@ fn test_skip_field() {
         );
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S(0, 2)));
+        assert_eq!(S::try_convert(rec.clone()), Ok(S(0, 2)));
         assert_eq!(s.into_value(), rec);
     }
 }
@@ -175,6 +183,7 @@ fn test_tag() {
     );
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
     assert_eq!(s.into_value(), rec);
 }
 
@@ -198,6 +207,7 @@ fn test_rename() {
     );
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
     assert_eq!(s.into_value(), rec);
 }
 
@@ -236,6 +246,7 @@ fn body_replaces() {
 
     assert_eq!(br.as_value(), rec);
     assert_eq!(BodyReplace::try_from_value(&rec), Ok(br.clone()));
+    assert_eq!(BodyReplace::try_convert(rec.clone()), Ok(br.clone()));
     assert_eq!(br.into_value(), rec);
 }
 
@@ -277,6 +288,7 @@ fn complex_header() {
 
     assert_eq!(ch.as_value(), rec);
     assert_eq!(ComplexHeader::try_from_value(&rec), Ok(ch.clone()));
+    assert_eq!(ComplexHeader::try_convert(rec.clone()), Ok(ch.clone()));
     assert_eq!(ch.into_value(), rec);
 }
 
@@ -305,6 +317,7 @@ fn example1() {
 
     assert_eq!(e1.as_value(), rec);
     assert_eq!(Example1::try_from_value(&rec), Ok(e1.clone()));
+    assert_eq!(Example1::try_convert(rec.clone()), Ok(e1.clone()));
     assert_eq!(e1.into_value(), rec);
 }
 
@@ -353,6 +366,7 @@ fn nested() {
 
     assert_eq!(outer.as_value(), expected);
     assert_eq!(Outer::try_from_value(&expected), Ok(outer.clone()));
+    assert_eq!(Outer::try_convert(expected.clone()), Ok(outer.clone()));
     assert_eq!(outer.into_value(), expected);
 }
 
@@ -410,6 +424,10 @@ fn header() {
 
     assert_eq!(struct_some.as_value(), rec_some);
     assert_eq!(Example::try_from_value(&rec_some), Ok(struct_some.clone()));
+    assert_eq!(
+        Example::try_convert(rec_some.clone()),
+        Ok(struct_some.clone())
+    );
     assert_eq!(struct_some.into_value(), rec_some);
 }
 
@@ -448,6 +466,10 @@ fn annotated() {
 
     assert_eq!(ex.as_value(), expected);
     assert_eq!(ExampleAnnotated::try_from_value(&expected), Ok(ex.clone()));
+    assert_eq!(
+        ExampleAnnotated::try_convert(expected.clone()),
+        Ok(ex.clone())
+    );
     assert_eq!(ex.into_value(), expected);
 }
 
@@ -468,5 +490,9 @@ fn header_body_replace() {
 
     assert_eq!(ex.as_value(), expected);
     assert_eq!(HeaderBodyReplace::try_from_value(&expected), Ok(ex.clone()));
+    assert_eq!(
+        HeaderBodyReplace::try_convert(expected.clone()),
+        Ok(ex.clone())
+    );
     assert_eq!(ex.into_value(), expected);
 }
