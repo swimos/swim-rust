@@ -2,7 +2,7 @@
     @client {
         buffer_size: 2
         router: {
-            retry_strategy: @interval(delay: 5, retries: "indefinite"),
+            retry_strategy: @interval(delay: 5, retries: "indefinite")
             idle_timeout: 100
             conn_reaper_frequency: 6000
             buffer_size: 15
