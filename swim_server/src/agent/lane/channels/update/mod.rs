@@ -39,7 +39,7 @@ impl Display for UpdateError {
                 write!(f, "Failed to apply a transaction to the lane: {}", err)
             }
             UpdateError::BadEnvelopeBody(err) => {
-                write!(f, "The body of an incoming envelops was invalid: {}", err)
+                write!(f, "The body of an incoming envelope was invalid: {}", err)
             }
         }
     }
