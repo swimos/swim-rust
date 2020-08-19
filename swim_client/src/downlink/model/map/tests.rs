@@ -14,13 +14,13 @@
 
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use num_bigint::{BigInt, BigUint};
 use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
 use swim_common::model::schema::Schema;
 use swim_common::request::Request;
-use swim_form::{BigInt, BigUint};
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);
@@ -1587,7 +1587,7 @@ pub fn clear_to_value() {
     );
 }
 
-type MapModResult = Result<UntypedMapModification<Value>, FormDeserializeErr>;
+type MapModResult = Result<UntypedMapModification<Value>, FormErr>;
 
 #[test]
 pub fn clear_from_value() {

@@ -13,9 +13,10 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, RoutingError};
+use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
 use futures::stream;
 use futures::StreamExt;
+use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
