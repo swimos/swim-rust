@@ -482,7 +482,7 @@ macro_rules! impl_seq_form {
         impl<V $(, $typaram)*> ValidatedForm for $ty<V $(, $typaram)*>
         where
             V: ValidatedForm $(+ $tbound1 $(+ $tbound2)*)*,
-            $($typaram: ValidatedForm + $bound,)*
+            $($typaram: ValidatedForm + $bound $(+ $bound2)*,)*
         {
             fn schema() -> StandardSchema {
                 StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(V::schema())))
@@ -557,8 +557,8 @@ macro_rules! impl_map_form {
         impl<K, V $(, $typaram)*> ValidatedForm for $ty<K, V $(, $typaram)*>
         where
             K: ValidatedForm $(+ $kbound1 $(+ $kbound2)*)*,
-            V: ValidatedForm,
-            $($typaram: $bound,)*
+            V: ValidatedForm $(+ $vbound1 $(+ $vbound2)*)*,
+            $($typaram: ValidatedForm + $bound $(+ $bound2)*,)*
         {
             fn schema() -> StandardSchema {
                 StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(K::schema(), V::schema()))))
