@@ -76,6 +76,32 @@ pub struct FormField<'a> {
     pub kind: FieldKind,
 }
 
+impl<'a> FormField<'a> {
+    pub fn is_skipped(&self) -> bool {
+        self.kind == FieldKind::Skip
+    }
+
+    pub fn is_attr(&self) -> bool {
+        self.kind == FieldKind::Attr
+    }
+
+    pub fn is_slot(&self) -> bool {
+        self.kind == FieldKind::Slot
+    }
+
+    pub fn is_body(&self) -> bool {
+        self.kind == FieldKind::Body
+    }
+
+    pub fn is_header_body(&self) -> bool {
+        self.kind == FieldKind::HeaderBody
+    }
+
+    pub fn is_header(&self) -> bool {
+        self.kind == FieldKind::Header
+    }
+}
+
 /// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields
 /// are assumed to be annotated as [`Item::Slot`].
 #[derive(PartialEq, Debug, Eq, Hash, Copy, Clone)]
@@ -106,7 +132,7 @@ impl Default for FieldKind {
 }
 
 /// A structure representing what fields in the compound type are annotated with.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct FieldManifest {
     /// Whether or not there is a field in the compound type that replaces the body of the output
     /// record.

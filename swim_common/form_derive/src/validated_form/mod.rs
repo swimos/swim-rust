@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use quote::ToTokens;
 use syn::DeriveInput;
 
 use macro_helpers::Context;
@@ -20,6 +19,7 @@ use macro_helpers::Context;
 use crate::form::form_parser::build_type_contents;
 use crate::validated_form::vf_parser::type_contents_to_validated;
 
+mod attrs;
 mod meta_parse;
 mod vf_parser;
 
@@ -38,18 +38,15 @@ pub fn build_validated_form(
 
     let structure_name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
-    let schema = type_contents.into_token_stream();
 
     let ts = quote! {
         impl #impl_generics swim_common::form::ValidatedForm for #structure_name #ty_generics #where_clause
         {
             fn schema() -> swim_common::model::schema::StandardSchema {
-                #schema
+                #type_contents
             }
         }
     };
-
-    // println!("{}", ts.to_string());
 
     Ok(ts)
 }
