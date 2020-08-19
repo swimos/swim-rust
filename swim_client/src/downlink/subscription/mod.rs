@@ -27,7 +27,7 @@ use crate::downlink::typed::{
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{raw, Command, DownlinkError, Message, StoppedFuture};
-use crate::router::{Router, RouterEvent, RoutingError};
+use crate::router::{Router, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;
 use futures::Stream;
@@ -44,6 +44,7 @@ use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
+use swim_common::routing::RoutingError;
 use swim_common::sink::item::either::EitherSink;
 use swim_common::sink::item::ItemSender;
 use swim_common::sink::item::ItemSink;

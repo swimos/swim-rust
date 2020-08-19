@@ -17,7 +17,6 @@ mod tests;
 
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
-use crate::router::RoutingError;
 use either::Either;
 use futures::stream::SelectAll;
 use futures::{select_biased, Stream};
@@ -25,6 +24,7 @@ use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
+use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
