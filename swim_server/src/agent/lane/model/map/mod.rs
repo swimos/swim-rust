@@ -29,6 +29,7 @@ use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::model::{Attr, Item, Value};
 use swim_form::{Form, FormDeserializeErr};
 
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::{
     DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
@@ -140,13 +141,16 @@ where
 
 /// Create a new map lane with the specified watch strategy, attaching an additional, deferred
 /// observer channel.
-pub fn make_lane_model_deferred<K, V, W>(watch: W) -> (MapLane<K, V>, W::View, W::DeferredView)
+pub fn make_lane_model_deferred<K, V, W>(
+    watch: W,
+    config: &AgentExecutionConfig,
+) -> (MapLane<K, V>, W::View, W::DeferredView)
 where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
     W: MapLaneWatch<K, V>,
 {
-    let (observer, view, deferred) = watch.make_watch_with_deferred();
+    let (observer, view, deferred) = watch.make_watch_with_deferred(config);
     let summary = TVar::new_with_observer(Default::default(), observer);
     let lane = MapLane::with_summary(summary);
     (lane, view, deferred)
@@ -456,7 +460,10 @@ pub trait MapLaneWatch<K, V> {
     /// Create a linked observer and view stream.
     fn make_watch(&self) -> (Self::Obs, Self::View);
 
-    fn make_watch_with_deferred(&self) -> (Self::WithDefObs, Self::View, Self::DeferredView);
+    fn make_watch_with_deferred(
+        &self,
+        config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView);
 }
 
 /// Transforms a transaction summary into a stream of events with typed keys.
@@ -491,8 +498,6 @@ type TransformedChannel<C, K, V> = FlatmapStream<C, ToTypedEvents<K, V>>;
 type TransformedDeferred<D, K, V> =
     TransformedDeferredLaneView<SummaryRef<V>, D, ToTypedEvents<K, V>>;
 
-const DEFAULT_YIELD_AFTER: usize = 2048;
-
 type WatchSumSender<V> = watch::Sender<SummaryRef<V>>;
 type WatchOptSumSender<V> = watch::Sender<Option<SummaryRef<V>>>;
 
@@ -516,7 +521,10 @@ where
         (observer, str)
     }
 
-    fn make_watch_with_deferred(&self) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+    fn make_watch_with_deferred(
+        &self,
+        _config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
         let (tx, rx) = watch::channel(Default::default());
         let observer = ChannelObserver::new(tx);
         let (tx_init, rx_init) = oneshot::channel();
@@ -536,10 +544,8 @@ where
     V: Any + Send + Sync,
 {
     type Obs = ChannelObserver<mpsc::Sender<Arc<TransactionSummary<Value, V>>>>;
-    type WithDefObs = JoinObserver<
-        ChannelObserver<MpscSumSender<V>>,
-        DeferredChannelObserver<MpscSumSender<V>>,
-    >;
+    type WithDefObs =
+        JoinObserver<ChannelObserver<MpscSumSender<V>>, DeferredChannelObserver<MpscSumSender<V>>>;
     type View = TransformedChannel<mpsc::Receiver<SummaryRef<V>>, K, V>;
     type DeferredView = TransformedDeferred<DeferredMpscView<SummaryRef<V>>, K, V>;
 
@@ -551,16 +557,22 @@ where
         (observer, str)
     }
 
-    fn make_watch_with_deferred(&self) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+    fn make_watch_with_deferred(
+        &self,
+        config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
         let Queue(n) = self;
         let (tx, rx) = mpsc::channel(n.get());
         let observer = ChannelObserver::new(tx);
         let (tx_init, rx_init) = oneshot::channel();
         let deferred = DeferredChannelObserver::Uninitialized(rx_init);
         let joined = observer::join(observer, deferred);
-        let deferred_view =
-            DeferredMpscView::new(tx_init, *n, NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap())
-                .transform(ToTypedEvents::default());
+        let deferred_view = DeferredMpscView::new(
+            tx_init,
+            *n,
+            NonZeroUsize::new(config.yield_after.get()).unwrap(),
+        )
+        .transform(ToTypedEvents::default());
         let str = rx.transform_flat_map(ToTypedEvents::default());
         (joined, str, deferred_view)
     }
@@ -589,7 +601,10 @@ where
         (observer, str)
     }
 
-    fn make_watch_with_deferred(&self) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+    fn make_watch_with_deferred(
+        &self,
+        _config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());
         let observer = ChannelObserver::new(tx);

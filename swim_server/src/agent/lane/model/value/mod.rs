@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::{
     DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
 };
@@ -80,13 +81,17 @@ where
 
 /// Create a new value lane with the specified watch strategy, attaching an additional, deferred
 /// observer channel.
-pub fn make_lane_model_deferred<T, W>(init: T, watch: W) -> (ValueLane<T>, W::View, W::DeferredView)
+pub fn make_lane_model_deferred<T, W>(
+    init: T,
+    watch: W,
+    config: &AgentExecutionConfig,
+) -> (ValueLane<T>, W::View, W::DeferredView)
 where
     T: Any + Send + Sync,
     W: ValueLaneWatch<T>,
 {
     let value = Arc::new(init);
-    let (observer, view, deferred) = watch.make_watch_with_deferred(&value);
+    let (observer, view, deferred) = watch.make_watch_with_deferred(&value, config);
     let var = TVar::from_arc_with_observer(value, observer);
     let lane = ValueLane { value: var };
     (lane, view, deferred)
@@ -141,10 +146,9 @@ pub trait ValueLaneWatch<T> {
     fn make_watch_with_deferred(
         &self,
         init: &Arc<T>,
+        config: &AgentExecutionConfig,
     ) -> (Self::WithDefObs, Self::View, Self::DeferredView);
 }
-
-const DEFAULT_YIELD_AFTER: usize = 2048;
 
 type MpscArcSender<T> = mpsc::Sender<Arc<T>>;
 
@@ -153,10 +157,8 @@ where
     T: Any + Send + Sync,
 {
     type Obs = ChannelObserver<mpsc::Sender<Arc<T>>>;
-    type WithDefObs = JoinObserver<
-        ChannelObserver<MpscArcSender<T>>,
-        DeferredChannelObserver<MpscArcSender<T>>,
-    >;
+    type WithDefObs =
+        JoinObserver<ChannelObserver<MpscArcSender<T>>, DeferredChannelObserver<MpscArcSender<T>>>;
     type View = mpsc::Receiver<Arc<T>>;
     type DeferredView = DeferredMpscView<Arc<T>>;
 
@@ -170,6 +172,7 @@ where
     fn make_watch_with_deferred(
         &self,
         _init: &Arc<T>,
+        config: &AgentExecutionConfig,
     ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
         let Queue(n) = self;
         let (tx, rx) = mpsc::channel(n.get());
@@ -177,8 +180,11 @@ where
         let (tx_init, rx_init) = oneshot::channel();
         let deferred = DeferredChannelObserver::Uninitialized(rx_init);
         let joined = observer::join(observer, deferred);
-        let deferred_view =
-            DeferredMpscView::new(tx_init, *n, NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap());
+        let deferred_view = DeferredMpscView::new(
+            tx_init,
+            *n,
+            NonZeroUsize::new(config.yield_after.get()).unwrap(),
+        );
         (joined, rx, deferred_view)
     }
 }
@@ -192,7 +198,7 @@ where
 {
     type Obs = ChannelObserver<watch::Sender<Arc<T>>>;
     type WithDefObs = JoinObserver<
-        ChannelObserver<WatchArcSender<T> >,
+        ChannelObserver<WatchArcSender<T>>,
         DeferredChannelObserver<WatchOptArcSender<T>>,
     >;
     type View = watch::Receiver<Arc<T>>;
@@ -207,6 +213,7 @@ where
     fn make_watch_with_deferred(
         &self,
         init: &Arc<T>,
+        _config: &AgentExecutionConfig,
     ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
         let (tx, rx) = watch::channel::<Arc<T>>(init.clone());
         let observer = ChannelObserver::new(tx);
@@ -242,6 +249,7 @@ where
     fn make_watch_with_deferred(
         &self,
         _init: &Arc<T>,
+        _config: &AgentExecutionConfig,
     ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());

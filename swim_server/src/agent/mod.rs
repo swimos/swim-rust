@@ -482,12 +482,14 @@ where
 ///
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `config` - Configuration parameters.
 /// * `init` - The initial value of the lane.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 pub fn make_value_lane<Agent, Context, T, L>(
     name: impl Into<String>,
     is_public: bool,
+    config: &AgentExecutionConfig,
     init: T,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
@@ -505,7 +507,7 @@ where
 {
     let (lane, event_stream, deferred) = if is_public {
         let (lane, event_stream, deferred) =
-            model::value::make_lane_model_deferred(init, lifecycle.create_strategy());
+            model::value::make_lane_model_deferred(init, lifecycle.create_strategy(), config);
 
         (lane, event_stream, Some(deferred))
     } else {
@@ -577,11 +579,13 @@ where
 ///
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `config` - Configuration parameters.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 pub fn make_map_lane<Agent, Context, K, V, L>(
     name: impl Into<String>,
     is_public: bool,
+    config: &AgentExecutionConfig,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
 ) -> (
@@ -599,7 +603,7 @@ where
 {
     let (lane, event_stream, deferred) = if is_public {
         let (lane, event_stream, deferred) =
-            model::map::make_lane_model_deferred(lifecycle.create_strategy());
+            model::map::make_lane_model_deferred(lifecycle.create_strategy(), config);
         (lane, event_stream, Some(deferred))
     } else {
         let (lane, event_stream) = model::map::make_lane_model(lifecycle.create_strategy());
