@@ -402,6 +402,17 @@ pub struct TransformedStreamFut<Str, Trans, Fut> {
     done: bool,
 }
 
+#[pin_project(project = FlatmapStreamProj)]
+#[derive(Debug)]
+pub struct FlatmapStream<Str1: Stream, Trans: TransformMut<Str1::Item>> {
+    #[pin]
+    stream: Str1,
+    transform: Trans,
+    #[pin]
+    current: Option<Trans::Out>,
+    done: bool,
+}
+
 impl<Str, Trans> TransformedStream<Str, Trans>
 where
     Str: Stream,
@@ -420,6 +431,22 @@ where
 {
     pub fn new(stream: Str, transform: Trans) -> Self {
         TransformedStreamFut {
+            stream,
+            transform,
+            current: None,
+            done: false,
+        }
+    }
+}
+
+impl<Str, Trans> FlatmapStream<Str, Trans>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Stream,
+{
+    pub fn new(stream: Str, transform: Trans) -> Self {
+        FlatmapStream {
             stream,
             transform,
             current: None,
@@ -492,6 +519,56 @@ where
     }
 }
 
+impl<Str, Trans> Stream for FlatmapStream<Str, Trans>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Stream,
+{
+    type Item = <Trans::Out as Stream>::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let FlatmapStreamProj {
+            mut stream,
+            transform,
+            mut current,
+            done,
+        } = self.project();
+        if *done {
+            return Poll::Ready(None);
+        }
+        loop {
+            if let Some(inner) = current.as_mut().as_pin_mut() {
+                let result = ready!(inner.poll_next(cx));
+                if let Some(v) = result {
+                    break Poll::Ready(Some(v));
+                } else {
+                    current.as_mut().set(None);
+                }
+            } else {
+                let maybe_item = ready!(stream.as_mut().poll_next(cx));
+                if let Some(item) = maybe_item {
+                    current.as_mut().set(Some(transform.transform(item)));
+                } else {
+                    *done = true;
+                    break Poll::Ready(None);
+                }
+            }
+        }
+    }
+}
+
+impl<Str, Trans> FusedStream for FlatmapStream<Str, Trans>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Stream,
+{
+    fn is_terminated(&self) -> bool {
+        self.done
+    }
+}
+
 /// A stream that runs another stream of [`Result`]s until an error is produces, yielding the
 /// OK values.
 #[pin_project]
@@ -540,6 +617,7 @@ pub trait SwimStreamExt: Stream {
     /// use utilities::future::*;
     /// use std::ops::Add;
     /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    ///
     /// struct Plus(i32);
     ///
     /// impl TransformMut<i32> for Plus {
@@ -575,6 +653,7 @@ pub trait SwimStreamExt: Stream {
     /// use utilities::future::*;
     /// use std::ops::Add;
     /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    ///
     /// struct Plus(i32);
     ///
     /// impl TransformMut<i32> for Plus {
@@ -597,6 +676,44 @@ pub trait SwimStreamExt: Stream {
         Trans::Out: Future,
     {
         TransformedStreamFut::new(self, transform)
+    }
+
+    /// Apply a transformation, resulting in a stream for each item, to the items of a stream,
+    /// evaluating each stream to produce the elements of the new stream.
+    ///
+    ///  # Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::StreamExt;
+    /// use futures::future::{ready, Ready};
+    /// use futures::stream::{iter, Iter};
+    /// use utilities::future::*;
+    /// use std::ops::Add;
+    /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    /// use std::iter::{Repeat, Take, repeat};
+    ///
+    /// struct RepeatItems(usize);
+    ///
+    /// impl TransformMut<i32> for RepeatItems {
+    ///     type Out = Iter<Take<Repeat<i32>>>;
+    ///
+    ///     fn transform(&mut self, input: i32) -> Self::Out {
+    ///         iter(repeat(input).take(self.0))
+    ///     }
+    /// }
+    ///
+    /// let inputs = iter((0..3).into_iter());
+    ///
+    /// let outputs: Vec<i32> = block_on(inputs.transform_flat_map(RepeatItems(2)).collect::<Vec<i32>>());
+    /// assert_eq!(outputs, vec![0, 0, 1, 1, 2, 2]);
+    /// ```
+    fn transform_flat_map<Trans>(self, transform: Trans) -> FlatmapStream<Self, Trans>
+    where
+        Self: Sized,
+        Trans: TransformMut<Self::Item>,
+        Trans::Out: Stream,
+    {
+        FlatmapStream::new(self, transform)
     }
 
     /// Transform the items of a stream until an error is encountered, then terminate.

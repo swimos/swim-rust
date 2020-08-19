@@ -15,10 +15,11 @@
 use super::{SwimFutureExt, SwimStreamExt, SwimTryFutureExt, TransformMut};
 use futures::executor::block_on;
 use futures::future::{ready, Ready};
-use futures::stream::{iter, FusedStream};
+use futures::stream::{iter, FusedStream, Iter};
 use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use std::iter::{repeat, Repeat, Take};
 
 #[test]
 fn future_into() {
@@ -61,6 +62,16 @@ impl TransformMut<i32> for PlusReady {
     }
 }
 
+struct RepeatStream(usize);
+
+impl TransformMut<i32> for RepeatStream {
+    type Out = Iter<Take<Repeat<i32>>>;
+
+    fn transform(&mut self, input: i32) -> Self::Out {
+        iter(repeat(input).take(self.0))
+    }
+}
+
 #[test]
 fn transform_future() {
     let fut = ready(2);
@@ -93,6 +104,35 @@ fn transform_stream_fut() {
     let outputs: Vec<i32> = block_on(inputs.transform_fut(PlusReady(3)).collect::<Vec<i32>>());
 
     assert_that!(outputs, eq(vec![3, 4, 5, 6, 7]));
+}
+
+#[test]
+fn flatmap_stream() {
+    let inputs = iter((0..5).into_iter());
+
+    let outputs: Vec<i32> = block_on(
+        inputs
+            .transform_flat_map(RepeatStream(3))
+            .collect::<Vec<i32>>(),
+    );
+
+    assert_that!(
+        outputs,
+        eq(vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
+    );
+}
+
+#[test]
+fn flatmap_stream_done() {
+    let inputs = iter((0..5).into_iter());
+
+    let mut stream = inputs.transform_flat_map(RepeatStream(3));
+
+    assert!(!stream.is_terminated());
+
+    block_on((&mut stream).collect::<Vec<i32>>());
+
+    assert!(stream.is_terminated());
 }
 
 #[test]

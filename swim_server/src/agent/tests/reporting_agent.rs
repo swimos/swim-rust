@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent;
+use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
@@ -270,7 +271,7 @@ impl TestAgentConfig {
 }
 
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
-    fn instantiate<Context: AgentContext<Self>>(
+    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
         configuration: &TestAgentConfig,
     ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
     where
@@ -283,16 +284,18 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
 
         let inner = ReportingLifecycleInner(collector.clone());
 
-        let (data, data_tasks) = agent::make_map_lane(
+        let (data, data_tasks, _) = agent::make_map_lane(
             "data",
+            false,
             DataLifecycle {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.data,
         );
 
-        let (total, total_tasks) = agent::make_value_lane(
+        let (total, total_tasks, _) = agent::make_value_lane(
             "total",
+            false,
             0,
             TotalLifecycle {
                 inner: inner.clone(),
