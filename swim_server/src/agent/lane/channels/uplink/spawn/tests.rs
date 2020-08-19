@@ -30,13 +30,13 @@ use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::MpscTopic;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_form::{Form, FormDeserializeErr};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 
@@ -49,7 +49,7 @@ impl Form for Message {
         Value::Int32Value(self.0)
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
         i32::try_from_value(value).map(|n| Message(n))
     }
 }
@@ -120,9 +120,7 @@ impl UplinkStateMachine<i32> for TestStateMachine {
         if event >= 0 {
             Ok(Some(Message(event)))
         } else {
-            Err(UplinkError::InconsistentForm(
-                FormDeserializeErr::Malformatted,
-            ))
+            Err(UplinkError::InconsistentForm(FormErr::Malformatted))
         }
     }
 
@@ -610,6 +608,6 @@ async fn uplink_failure() {
 
     let (_, errs) = join(io_task, spawn_task).await;
     assert!(
-        matches!(errs.as_slice(), [UplinkErrorReport { error: UplinkError::InconsistentForm(FormDeserializeErr::Malformatted), addr: a }] if *a == addr)
+        matches!(errs.as_slice(), [UplinkErrorReport { error: UplinkError::InconsistentForm(FormErr::Malformatted), addr: a }] if *a == addr)
     );
 }

@@ -26,8 +26,8 @@ use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
+use swim_common::form::{Form, FormErr};
 use swim_common::model::{Attr, Item, Value};
-use swim_form::{Form, FormDeserializeErr};
 
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
@@ -182,7 +182,7 @@ impl<K: Form, V: Form> Form for MapUpdate<K, V> {
         }
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormDeserializeErr> {
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
         let (head, remainder) = try_decompose_ref(value)?;
         match head.name.as_str() {
             UPDATE_TAG => {
@@ -195,24 +195,21 @@ impl<K: Form, V: Form> Form for MapUpdate<K, V> {
                 if remainder == BodyType::Missing {
                     Ok(MapUpdate::Remove(key))
                 } else {
-                    Err(FormDeserializeErr::Message(REMOVE_WITH_BODY.to_string()))
+                    Err(FormErr::Message(REMOVE_WITH_BODY.to_string()))
                 }
             }
             CLEAR_TAG => {
                 if remainder == BodyType::Missing {
                     Ok(MapUpdate::Clear)
                 } else {
-                    Err(FormDeserializeErr::Message(CLEAR_WITH_BODY.to_string()))
+                    Err(FormErr::Message(CLEAR_WITH_BODY.to_string()))
                 }
             }
-            ow => Err(FormDeserializeErr::IncorrectType(format!(
-                "Not a map update: {}",
-                ow
-            ))),
+            ow => Err(FormErr::IncorrectType(format!("Not a map update: {}", ow))),
         }
     }
 
-    fn try_convert(value: Value) -> Result<Self, FormDeserializeErr> {
+    fn try_convert(value: Value) -> Result<Self, FormErr> {
         let (head, remainder) = try_decompose(value)?;
         match head.name.as_str() {
             UPDATE_TAG => {
@@ -225,17 +222,17 @@ impl<K: Form, V: Form> Form for MapUpdate<K, V> {
                 if remainder == Value::Extant {
                     Ok(MapUpdate::Remove(key))
                 } else {
-                    Err(FormDeserializeErr::Message(REMOVE_WITH_BODY.to_string()))
+                    Err(FormErr::Message(REMOVE_WITH_BODY.to_string()))
                 }
             }
             CLEAR_TAG => {
                 if remainder == Value::Extant {
                     Ok(MapUpdate::Clear)
                 } else {
-                    Err(FormDeserializeErr::Message(CLEAR_WITH_BODY.to_string()))
+                    Err(FormErr::Message(CLEAR_WITH_BODY.to_string()))
                 }
             }
-            ow => Err(FormDeserializeErr::IncorrectType(format!(
+            ow => Err(FormErr::IncorrectType(format!(
                 "Invalid tag for map update of kind {}.",
                 ow
             ))),
@@ -251,7 +248,7 @@ enum BodyType<'a> {
 }
 
 impl<'a> BodyType<'a> {
-    fn try_to_value<V: Form>(self) -> Result<V, FormDeserializeErr> {
+    fn try_to_value<V: Form>(self) -> Result<V, FormErr> {
         match self {
             BodyType::Missing => Form::try_convert(Value::Extant),
             BodyType::Single(v) => Form::try_from_value(v),
@@ -266,7 +263,7 @@ impl<'a> BodyType<'a> {
     }
 }
 
-fn try_decompose_ref(value: &Value) -> Result<(&Attr, BodyType), FormDeserializeErr> {
+fn try_decompose_ref(value: &Value) -> Result<(&Attr, BodyType), FormErr> {
     match value {
         Value::Record(attrs, items) => {
             if let Some((head, tail)) = attrs.split_first() {
@@ -284,14 +281,14 @@ fn try_decompose_ref(value: &Value) -> Result<(&Attr, BodyType), FormDeserialize
                 };
                 Ok((head, remainder))
             } else {
-                Err(FormDeserializeErr::Malformatted)
+                Err(FormErr::Malformatted)
             }
         }
-        _ => Err(FormDeserializeErr::Malformatted),
+        _ => Err(FormErr::Malformatted),
     }
 }
 
-fn try_decompose(value: Value) -> Result<(Attr, Value), FormDeserializeErr> {
+fn try_decompose(value: Value) -> Result<(Attr, Value), FormErr> {
     match value {
         Value::Record(attrs, mut items) => {
             let mut attr_it = attrs.into_iter();
@@ -313,14 +310,14 @@ fn try_decompose(value: Value) -> Result<(Attr, Value), FormDeserializeErr> {
                 };
                 Ok((head, remainder))
             } else {
-                Err(FormDeserializeErr::Malformatted)
+                Err(FormErr::Malformatted)
             }
         }
-        _ => Err(FormDeserializeErr::Malformatted),
+        _ => Err(FormErr::Malformatted),
     }
 }
 
-fn take_key<K: Form>(attr: Attr) -> Result<K, FormDeserializeErr> {
+fn take_key<K: Form>(attr: Attr) -> Result<K, FormErr> {
     let Attr { value, .. } = attr;
     match value {
         Value::Record(attrs, mut items) if attrs.is_empty() && items.len() == 1 => {
@@ -328,17 +325,14 @@ fn take_key<K: Form>(attr: Attr) -> Result<K, FormDeserializeErr> {
                 Item::Slot(Value::Text(name), key_value) if name == KEY_SLOT => {
                     K::try_convert(key_value)
                 }
-                ow => Err(FormDeserializeErr::IllegalItem(ow)),
+                ow => Err(FormErr::Message(format!("Unexpected item: {}", ow))),
             }
         }
-        ow => Err(FormDeserializeErr::Message(format!(
-            "Invalid key specifier: {}.",
-            ow
-        ))),
+        ow => Err(FormErr::Message(format!("Invalid key specifier: {}.", ow))),
     }
 }
 
-fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormDeserializeErr> {
+fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormErr> {
     let Attr { name, value } = attr;
     match value {
         Value::Record(attrs, items) if attrs.is_empty() && items.len() <= 1 => {
@@ -346,17 +340,14 @@ fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormDeserializeErr> {
                 Some(Item::Slot(Value::Text(name), key_value)) if name == KEY_SLOT => {
                     K::try_from_value(key_value)
                 }
-                Some(ow) => Err(FormDeserializeErr::IllegalItem(ow.clone())),
-                _ => Err(FormDeserializeErr::Message(format!(
+                Some(ow) => Err(FormErr::Message(format!("Unexpected item: {}", ow))),
+                _ => Err(FormErr::Message(format!(
                     "Invalid tag for map update of kind {}.",
                     name
                 ))),
             }
         }
-        ow => Err(FormDeserializeErr::Message(format!(
-            "Invalid key specifier: {}.",
-            ow
-        ))),
+        ow => Err(FormErr::Message(format!("Invalid key specifier: {}.", ow))),
     }
 }
 
@@ -393,7 +384,7 @@ pub enum MapLaneEvent<K, V> {
 
 impl<V> MapLaneEvent<Value, V> {
     /// Attempt to type the key of a [`MapLaneEvent`] using a form.
-    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormDeserializeErr> {
+    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormErr> {
         match self {
             MapLaneEvent::Checkpoint(id) => Ok(MapLaneEvent::Checkpoint(id)),
             MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),
