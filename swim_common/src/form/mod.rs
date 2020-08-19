@@ -32,9 +32,17 @@ mod tests;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
 pub enum FormErr {
+    MismatchedTag,
     IncorrectType(String),
     Malformatted,
     Message(String),
+    DuplicateField(String),
+}
+
+impl FormErr {
+    pub fn incorrect_type(expected: &'static str, actual: &Value) -> FormErr {
+        FormErr::IncorrectType(format!("Expected: {}, found: {}", expected, actual.kind()))
+    }
 }
 
 impl Error for FormErr {}
@@ -45,6 +53,8 @@ impl Display for FormErr {
             FormErr::IncorrectType(s) => write!(f, "Incorrect type: {}", s),
             FormErr::Malformatted => write!(f, "Malformatted"),
             FormErr::Message(msg) => write!(f, "{}", msg),
+            FormErr::MismatchedTag => write!(f, "Incorrect tag"),
+            FormErr::DuplicateField(field) => write!(f, "Duplicate field {}", field),
         }
     }
 }

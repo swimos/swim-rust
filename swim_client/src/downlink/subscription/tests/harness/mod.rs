@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{Router, RouterEvent, RoutingError};
+use crate::router::{Router, RouterEvent};
 use futures::future::{ready, Ready};
 use futures::stream::{pending, Pending};
 use swim_common::request::request_future::RequestError;
+use swim_common::routing::RoutingError;
 use swim_common::sink::item::drop_all::{drop_all, DropAll};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;

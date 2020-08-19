@@ -12,18 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+use crate::routing::RoutingAddr;
 
-pub mod configuration;
-pub mod connections;
-pub mod form;
-pub mod model;
-pub mod request;
-pub mod routing;
-pub mod sink;
-pub mod topic;
-pub mod warp;
+#[test]
+fn routing_addr_display() {
+    let string = format!("{}", RoutingAddr::remote(0x1));
+    assert_eq!(string, "Remote Endpoint (1)");
 
-#[allow(unused_imports)]
-#[macro_use]
-extern crate form_derive;
+    let string = format!("{}", RoutingAddr::local(0x1a));
+    assert_eq!(string, "Local consumer (1A)");
+}
