@@ -19,7 +19,7 @@ use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
-use swim_form::Form;
+use swim_common::form::Form;
 
 #[cfg(test)]
 mod tests;

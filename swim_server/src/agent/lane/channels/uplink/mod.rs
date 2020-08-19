@@ -25,8 +25,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
+use swim_common::form::{Form, FormErr};
 use swim_common::sink::item::ItemSender;
-use swim_form::{Form, FormDeserializeErr};
 
 #[cfg(test)]
 mod tests;
@@ -68,7 +68,7 @@ pub enum UplinkError {
     /// The uplink attempted to execute a transaction against its lane but failed.
     FailedTransaction(TransactionError),
     /// The form used by the lane is inconsistent.
-    InconsistentForm(FormDeserializeErr),
+    InconsistentForm(FormErr),
 }
 
 impl From<MapLaneSyncError> for UplinkError {

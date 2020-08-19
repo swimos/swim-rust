@@ -20,8 +20,8 @@ use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::sync::Arc;
+use swim_common::form::FormErr;
 use swim_common::model::Value;
-use swim_form::FormDeserializeErr;
 
 fn make_raw() -> ValMap {
     let mut map = ValMap::new();
@@ -125,7 +125,7 @@ fn typed_view_with_event_initial() {
         event: MapEvent::Initial,
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(
         typed,
@@ -143,7 +143,7 @@ fn typed_view_with_event_clear() {
         event: MapEvent::Clear,
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(
         typed,
@@ -161,7 +161,7 @@ fn typed_view_with_event_take() {
         event: MapEvent::Take(1),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(
         typed,
@@ -179,7 +179,7 @@ fn typed_view_with_event_skip() {
         event: MapEvent::Skip(1),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(
         typed,
@@ -197,7 +197,7 @@ fn typed_view_with_event_good_insert() {
         event: MapEvent::Insert(Value::Int32Value(2)),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(
         typed,
@@ -215,7 +215,7 @@ fn typed_view_with_event_bad_insert() {
         event: MapEvent::Insert(Value::text("hello")),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(typed, err());
 }
@@ -227,7 +227,7 @@ fn typed_view_with_event_good_remove() {
         event: MapEvent::Remove(Value::Int32Value(2)),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(
         typed,
@@ -245,7 +245,7 @@ fn typed_view_with_event_bad_remove() {
         event: MapEvent::Remove(Value::text("hello")),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormDeserializeErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert_that!(typed, err());
 }

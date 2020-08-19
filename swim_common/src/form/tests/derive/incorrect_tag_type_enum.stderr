@@ -1,0 +1,5 @@
+error: Expected string argument
+  --> $DIR/incorrect_tag_type_enum.rs:20:16
+   |
+20 |         #[form(tag = 13)]
+   |                ^^^^^^^^
