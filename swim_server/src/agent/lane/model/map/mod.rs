@@ -332,7 +332,7 @@ fn take_key<K: Form>(attr: Attr) -> Result<K, FormDeserializeErr> {
             }
         }
         ow => Err(FormDeserializeErr::Message(format!(
-            "Invalid ket specifier: {}.",
+            "Invalid key specifier: {}.",
             ow
         ))),
     }
@@ -354,7 +354,7 @@ fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormDeserializeErr> {
             }
         }
         ow => Err(FormDeserializeErr::Message(format!(
-            "Invalid ket specifier: {}.",
+            "Invalid key specifier: {}.",
             ow
         ))),
     }

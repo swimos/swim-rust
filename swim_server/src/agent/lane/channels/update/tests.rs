@@ -29,7 +29,7 @@ fn update_error_display() {
 
     assert_eq!(
         string2,
-        "The body of an incoming envelops was invalid: Malformatted"
+        "The body of an incoming envelope was invalid: Malformatted"
     );
 }
 
