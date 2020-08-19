@@ -18,7 +18,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use swim_common::form::FormErr;
+use swim_form::FormDeserializeErr;
 use tokio::sync::broadcast;
 
 pub mod channels;
@@ -42,7 +42,7 @@ pub trait LaneModel {
 /// Particularly, converting from the type type to [`Value`] and back again results in an
 /// error.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct InvalidForm(FormErr);
+pub struct InvalidForm(FormDeserializeErr);
 
 impl Display for InvalidForm {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

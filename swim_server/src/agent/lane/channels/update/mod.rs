@@ -15,12 +15,9 @@
 pub mod map;
 pub mod value;
 
-use futures::future::BoxFuture;
-use futures::Stream;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use stm::transaction::TransactionError;
-use swim_common::form::FormErr;
 
 #[cfg(test)]
 mod tests;
@@ -29,7 +26,6 @@ mod tests;
 #[derive(Debug)]
 pub enum UpdateError {
     FailedTransaction(TransactionError),
-    BadEnvelopeBody(FormErr),
 }
 
 impl Display for UpdateError {
@@ -38,43 +34,14 @@ impl Display for UpdateError {
             UpdateError::FailedTransaction(err) => {
                 write!(f, "Failed to apply a transaction to the lane: {}", err)
             }
-            UpdateError::BadEnvelopeBody(err) => {
-                write!(f, "The body of an incoming envelope was invalid: {}", err)
-            }
         }
     }
 }
 
-impl Error for UpdateError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            UpdateError::FailedTransaction(err) => Some(err),
-            UpdateError::BadEnvelopeBody(err) => Some(err),
-        }
-    }
-}
+impl Error for UpdateError {}
 
 impl From<TransactionError> for UpdateError {
     fn from(err: TransactionError) -> Self {
         UpdateError::FailedTransaction(err)
     }
-}
-
-impl From<FormErr> for UpdateError {
-    fn from(err: FormErr) -> Self {
-        UpdateError::BadEnvelopeBody(err)
-    }
-}
-
-pub trait LaneUpdate {
-    type Msg: Send + 'static;
-
-    fn run_update<Messages, Err>(
-        self,
-        messages: Messages,
-    ) -> BoxFuture<'static, Result<(), UpdateError>>
-    where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
-        Err: Send,
-        UpdateError: From<Err>;
 }

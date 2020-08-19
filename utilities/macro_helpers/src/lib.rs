@@ -8,10 +8,9 @@ extern crate quote;
 extern crate syn;
 
 use core::fmt;
-use std::fmt::Display;
-
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
+use std::fmt::Display;
 use syn::export::TokenStream2;
 use syn::{Data, Index, Meta, Path};
 
@@ -97,7 +96,10 @@ impl FieldIdentity {
     pub fn as_ident(&self) -> Ident {
         match self {
             FieldIdentity::Named(ident) => ident.clone(),
-            FieldIdentity::Renamed { old_identity, .. } => old_identity.clone(),
+            FieldIdentity::Renamed {
+                new_identity,
+                old_identity,
+            } => Ident::new(&new_identity, old_identity.span()),
             FieldIdentity::Anonymous(index) => {
                 Ident::new(&format!("__self_{}", index.index), index.span)
             }
@@ -194,15 +196,13 @@ pub fn deconstruct_type(
     }
 }
 
-/// Returns a vector of metadata for the provided [`Attribute`] that matches the provided
-/// [`Symbol`]. An error that is encountered is added to the [`Context`] and a [`Result::Err`] is
-/// returned.
+/// Returns a vector of metadata that matches the provided path.
 pub fn get_attribute_meta(
     ctx: &mut Context,
     attr: &syn::Attribute,
-    symbol: Symbol,
+    path: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
-    if attr.path != symbol {
+    if attr.path != path {
         Ok(Vec::new())
     } else {
         match attr.parse_meta() {
@@ -210,7 +210,7 @@ pub fn get_attribute_meta(
             Ok(other) => {
                 ctx.error_spanned_by(
                     other,
-                    &format!("Invalid attribute. Expected #[{}(...)]", symbol),
+                    &format!("Invalid attribute. Expected #[{}(...)]", path),
                 );
                 Err(())
             }

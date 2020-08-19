@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
+use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::model::map::{MapLane, MapUpdate};
-use futures::future::BoxFuture;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
-use swim_common::form::Form;
+use swim_form::Form;
 
 #[cfg(test)]
 mod tests;
@@ -41,46 +40,37 @@ where
     }
 }
 
-impl<K, V, F, Ret> LaneUpdate for MapLaneUpdateTask<K, V, F>
+impl<K, V, F, Ret> MapLaneUpdateTask<K, V, F>
 where
-    K: Form + Any + Send + Sync + Debug,
+    K: Form + Send + Sync + Debug,
     V: Any + Send + Sync + Debug,
-    F: Fn() -> Ret + Send + Sync + 'static,
-    Ret: RetryManager + Send,
+    F: Fn() -> Ret,
+    Ret: RetryManager,
 {
-    type Msg = MapUpdate<K, V>;
-
-    fn run_update<Messages, Err>(
-        self,
-        messages: Messages,
-    ) -> BoxFuture<'static, Result<(), UpdateError>>
+    pub async fn run<Updates>(self, updates: Updates) -> Result<(), UpdateError>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
-        Err: Send,
-        UpdateError: From<Err>,
+        Updates: Stream<Item = MapUpdate<K, V>>,
     {
         let MapLaneUpdateTask { lane, retries } = self;
-        async move {
-            pin_mut!(messages);
 
-            let mut runner = TransactionRunner::new(1, retries);
-            while let Some(update) = messages.next().await {
-                match update? {
-                    MapUpdate::Update(key, value) => {
-                        lane.update_direct(key, value)
-                            .apply_with(&mut runner)
-                            .await?;
-                    }
-                    MapUpdate::Remove(key) => {
-                        lane.remove_direct(key).apply_with(&mut runner).await?;
-                    }
-                    MapUpdate::Clear => {
-                        lane.clear_direct().apply_with(&mut runner).await?;
-                    }
+        pin_mut!(updates);
+
+        let mut runner = TransactionRunner::new(1, retries);
+        while let Some(update) = updates.next().await {
+            match update {
+                MapUpdate::Update(key, value) => {
+                    lane.update_direct(key, value)
+                        .apply_with(&mut runner)
+                        .await?;
+                }
+                MapUpdate::Remove(key) => {
+                    lane.remove_direct(key).apply_with(&mut runner).await?;
+                }
+                MapUpdate::Clear => {
+                    lane.clear_direct().apply_with(&mut runner).await?;
                 }
             }
-            Ok(())
         }
-        .boxed()
+        Ok(())
     }
 }

@@ -22,11 +22,11 @@ mod tests {
     use swim_client::downlink::typed::event::TypedViewWithEvent;
     use swim_client::downlink::{Downlink, Event};
     use swim_client::interface::SwimClient;
-    use swim_common::form::Form;
     use swim_common::model::{Attr, Item, Value};
     use swim_common::sink::item::ItemSink;
     use swim_common::topic::Topic;
     use swim_common::warp::path::AbsolutePath;
+    use swim_form::Form;
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;

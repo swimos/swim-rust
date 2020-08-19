@@ -19,9 +19,10 @@ use serde::{Deserialize, Serialize};
 use swim_client::downlink::model::map::{MapEvent, ViewWithEvent};
 use swim_client::downlink::Event;
 use swim_client::interface::SwimClient;
-use swim_common::form::Form;
+use swim_common::model::Value;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use swim_form::*;
 use swim_wasm::connection::WasmWsFactory;
 use tokio::sync::{mpsc, oneshot};
 use wasm_bindgen::prelude::*;
@@ -39,10 +40,11 @@ pub async fn start() {
 }
 
 #[wasm_bindgen]
-#[derive(Debug, Form, Serialize, Deserialize)]
+#[form(Value)]
+#[derive(Debug)]
 pub struct Message {
     value: String,
-    #[form(rename = "userName")]
+    #[serde(rename = "userName")]
     user_name: String,
     uuid: String,
 }

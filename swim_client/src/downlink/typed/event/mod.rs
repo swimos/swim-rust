@@ -18,8 +18,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
+use swim_form::Form;
+use swim_form::FormDeserializeErr;
 
 #[cfg(test)]
 mod tests;
@@ -119,7 +120,7 @@ impl<K: Form + Ord + Clone, V: Form + Clone> TypedMapView<K, V> {
 }
 
 impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
-    type Error = FormErr;
+    type Error = FormDeserializeErr;
 
     fn try_from(view: ViewWithEvent) -> Result<Self, Self::Error> {
         let ViewWithEvent { view, event } = view;
@@ -132,7 +133,7 @@ impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
     }
 }
 
-fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
+fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormDeserializeErr> {
     match event {
         MapEvent::Initial => Ok(MapEvent::Initial),
         MapEvent::Insert(k) => K::try_convert(k).map(MapEvent::Insert),

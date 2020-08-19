@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::router::RoutingError;
 use futures::future::{ready, Ready};
 use std::num::NonZeroUsize;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSender, ItemSink};
 use swim_runtime::task::{spawn, TaskHandle};
 

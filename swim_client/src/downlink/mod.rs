@@ -33,6 +33,7 @@ pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
+use crate::router::RoutingError;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
@@ -40,7 +41,6 @@ use swim_common::connections::error::ConnectionError;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::topic::Topic;
 use tracing::{instrument, trace};

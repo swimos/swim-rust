@@ -29,14 +29,14 @@ use std::sync::Arc;
 use stm::transaction;
 use stm::transaction::{RetryManager, TransactionError};
 use stm::var::TVar;
-use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
+use swim_form::{Form, FormDeserializeErr};
 use utilities::sync::trigger;
 
 #[derive(Debug)]
 pub enum MapLaneSyncError {
     FailedTransaction(TransactionError),
-    InconsistentForm(FormErr),
+    InconsistentForm(FormDeserializeErr),
 }
 
 type EventResult<K, V> = Result<MapLaneEvent<K, V>, MapLaneSyncError>;

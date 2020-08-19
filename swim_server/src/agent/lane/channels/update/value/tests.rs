@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
-use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value;
 use crate::agent::lane::strategy::Queue;
 use futures::future::{join, ready};
@@ -28,11 +27,9 @@ async fn update_task_vale_lane() {
 
     let task = ValueLaneUpdateTask::new(lane);
 
-    let value: Result<i32, UpdateError> = Ok(7);
+    let updates = once(ready(7));
 
-    let updates = once(ready(value));
-
-    let update_task = task.run_update(updates);
+    let update_task = task.run(updates);
     let receive_task = timeout(Duration::from_secs(10), events.next());
 
     let (_, rec_result) = join(update_task, receive_task).await;
