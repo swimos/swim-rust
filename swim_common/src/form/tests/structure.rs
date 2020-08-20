@@ -21,7 +21,7 @@ mod swim_common {
 
 #[test]
 fn test_transmute() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct S {
         a: i32,
         b: i64,
@@ -36,12 +36,14 @@ fn test_transmute() {
         ],
     );
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
 }
 
 #[test]
 fn test_transmute_generic() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct S<F>
     where
         F: Form,
@@ -58,12 +60,14 @@ fn test_transmute_generic() {
         )],
     );
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
 }
 
 #[test]
 fn test_transmute_newtype() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct S(i32);
 
     let s = S(1);
@@ -72,12 +76,14 @@ fn test_transmute_newtype() {
         vec![Item::ValueItem(Value::Int32Value(1))],
     );
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
 }
 
 #[test]
 fn test_transmute_tuple() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct S(i32, i64);
 
     let s = S(1, 2);
@@ -89,25 +95,29 @@ fn test_transmute_tuple() {
         ],
     );
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
 }
 
 #[test]
 fn test_transmute_unit() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct S;
 
     let s = S;
     let rec = Value::Record(vec![Attr::of("S")], vec![]);
 
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
 }
 
 #[test]
 fn test_skip_field() {
     {
-        #[derive(Form, Debug, PartialEq)]
+        #[derive(Form, Debug, PartialEq, Clone)]
         struct S {
             a: i32,
             #[form(skip)]
@@ -124,18 +134,22 @@ fn test_skip_field() {
         );
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S { a: 1, b: 0 }));
+        assert_eq!(S::try_convert(rec.clone()), Ok(S { a: 1, b: 0 }));
+        assert_eq!(s.into_value(), rec);
     }
     {
-        #[derive(Form, Debug, PartialEq)]
+        #[derive(Form, Debug, PartialEq, Clone)]
         struct S(#[form(skip)] i32);
 
         let s = S(1);
         let rec = Value::Record(vec![Attr::of("S")], vec![]);
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S(0)));
+        assert_eq!(S::try_convert(rec.clone()), Ok(S(0)));
+        assert_eq!(s.into_value(), rec);
     }
     {
-        #[derive(Form, Debug, PartialEq)]
+        #[derive(Form, Debug, PartialEq, Clone)]
         struct S(#[form(skip)] i32, i64);
 
         let s = S(1, 2);
@@ -145,12 +159,14 @@ fn test_skip_field() {
         );
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S(0, 2)));
+        assert_eq!(S::try_convert(rec.clone()), Ok(S(0, 2)));
+        assert_eq!(s.into_value(), rec);
     }
 }
 
 #[test]
 fn test_tag() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     #[form(tag = "Structure")]
     struct S {
         a: i32,
@@ -166,12 +182,14 @@ fn test_tag() {
         ],
     );
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
 }
 
 #[test]
 fn test_rename() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     #[form(tag = "Structure")]
     struct S {
         #[form(rename = "field_a")]
@@ -188,12 +206,14 @@ fn test_rename() {
         ],
     );
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
 }
 
 #[test]
 fn body_replaces() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct BodyReplace {
         n: i32,
         #[form(body)]
@@ -225,12 +245,14 @@ fn body_replaces() {
     };
 
     assert_eq!(br.as_value(), rec);
-    assert_eq!(BodyReplace::try_from_value(&rec), Ok(br));
+    assert_eq!(BodyReplace::try_from_value(&rec), Ok(br.clone()));
+    assert_eq!(BodyReplace::try_convert(rec.clone()), Ok(br.clone()));
+    assert_eq!(br.into_value(), rec);
 }
 
 #[test]
 fn complex_header() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct ComplexHeader {
         #[form(header_body)]
         n: i32,
@@ -265,11 +287,14 @@ fn complex_header() {
     };
 
     assert_eq!(ch.as_value(), rec);
+    assert_eq!(ComplexHeader::try_from_value(&rec), Ok(ch.clone()));
+    assert_eq!(ComplexHeader::try_convert(rec.clone()), Ok(ch.clone()));
+    assert_eq!(ch.into_value(), rec);
 }
 
 #[test]
 fn example1() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct Example1 {
         a: i32,
         b: String,
@@ -291,17 +316,20 @@ fn example1() {
     );
 
     assert_eq!(e1.as_value(), rec);
+    assert_eq!(Example1::try_from_value(&rec), Ok(e1.clone()));
+    assert_eq!(Example1::try_convert(rec.clone()), Ok(e1.clone()));
+    assert_eq!(e1.into_value(), rec);
 }
 
 #[test]
 fn nested() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct Outer {
         inner: Inner,
         opt: Option<i32>,
     }
 
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     #[form(tag = "custom")]
     struct Inner {
         a: i32,
@@ -337,11 +365,14 @@ fn nested() {
     );
 
     assert_eq!(outer.as_value(), expected);
+    assert_eq!(Outer::try_from_value(&expected), Ok(outer.clone()));
+    assert_eq!(Outer::try_convert(expected.clone()), Ok(outer.clone()));
+    assert_eq!(outer.into_value(), expected);
 }
 
 #[test]
 fn header() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct Example {
         a: String,
         #[form(header)]
@@ -392,11 +423,17 @@ fn header() {
     );
 
     assert_eq!(struct_some.as_value(), rec_some);
+    assert_eq!(Example::try_from_value(&rec_some), Ok(struct_some.clone()));
+    assert_eq!(
+        Example::try_convert(rec_some.clone()),
+        Ok(struct_some.clone())
+    );
+    assert_eq!(struct_some.into_value(), rec_some);
 }
 
 #[test]
 fn annotated() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     #[form(tag = "example")]
     struct ExampleAnnotated {
         #[form(header)]
@@ -428,11 +465,17 @@ fn annotated() {
     );
 
     assert_eq!(ex.as_value(), expected);
+    assert_eq!(ExampleAnnotated::try_from_value(&expected), Ok(ex.clone()));
+    assert_eq!(
+        ExampleAnnotated::try_convert(expected.clone()),
+        Ok(ex.clone())
+    );
+    assert_eq!(ex.into_value(), expected);
 }
 
 #[test]
 fn header_body_replace() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     struct HeaderBodyReplace {
         #[form(header_body)]
         n: i64,
@@ -446,4 +489,10 @@ fn header_body_replace() {
     );
 
     assert_eq!(ex.as_value(), expected);
+    assert_eq!(HeaderBodyReplace::try_from_value(&expected), Ok(ex.clone()));
+    assert_eq!(
+        HeaderBodyReplace::try_convert(expected.clone()),
+        Ok(ex.clone())
+    );
+    assert_eq!(ex.into_value(), expected);
 }

@@ -642,8 +642,19 @@ where
         (**self).as_value()
     }
 
+    fn into_value(self) -> Value {
+        match Arc::try_unwrap(self) {
+            Ok(v) => v.into_value(),
+            Err(v) => v.as_value(),
+        }
+    }
+
     fn try_from_value(value: &Value) -> Result<Self, FormErr> {
         F::try_from_value(value).map(Arc::new)
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormErr> {
+        F::try_convert(value).map(Arc::new)
     }
 }
 
