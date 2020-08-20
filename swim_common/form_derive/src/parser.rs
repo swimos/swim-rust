@@ -30,7 +30,8 @@ pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
 pub const SCHEMA_PATH: Symbol = Symbol("schema");
 
-/// An enumeration representing the contents of a derive input.
+/// An enumeration representing the contents of an input.
+#[derive(Clone)]
 pub enum TypeContents<'t, D, F> {
     /// An enumeration input. Containing a vector of enumeration variants.
     Enum(Vec<EnumVariant<'t, D, F>>),
@@ -39,6 +40,7 @@ pub enum TypeContents<'t, D, F> {
 }
 
 /// A representation of a parsed struct from the AST.
+#[derive(Clone)]
 pub struct StructRepr<'t, D, F> {
     pub input: &'t DeriveInput,
     /// The struct's type: tuple, named, unit.
@@ -52,6 +54,7 @@ pub struct StructRepr<'t, D, F> {
 }
 
 /// A representation of a parsed enumeration from the AST.
+#[derive(Clone)]
 pub struct EnumVariant<'t, D, F> {
     pub syn_variant: &'t Variant,
     /// The name of the variant.
@@ -67,6 +70,7 @@ pub struct EnumVariant<'t, D, F> {
 }
 
 /// A representation of a parsed field for a form from the AST.
+#[derive(Clone)]
 pub struct FormField<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
@@ -317,4 +321,111 @@ impl Attributes for Vec<Attribute> {
             .flatten()
             .collect()
     }
+}
+
+/// A [`FormDescriptor`] is a representation of a [`Form`] that is built from a [`DeriveInput`],
+/// containing the name of the compound type that it represents and whether or not the body of the
+/// produced [`Value`] is replaced. A field annotated with [`[form(body)]` will cause this to
+/// happen. A compound type annotated with [`[form(tag = "name")]` will set the structure's output
+/// value to be replaced with the provided literal.
+#[derive(Debug, Clone)]
+pub struct FormDescriptor {
+    /// Denotes whether or not the body of the produced record is replaced by a field in the
+    /// compound type.
+    pub body_replaced: bool,
+    /// The name that the compound type will be transmuted with.
+    pub name: Name,
+}
+
+impl FormDescriptor {
+    /// Builds a [`FormDescriptor`] for the provided [`DeriveInput`]. An errors encountered while
+    /// parsing the [`DeriveInput`] will be added to the [`Context`].
+    pub fn from_ast(ctx: &mut Context, input: &syn::DeriveInput) -> FormDescriptor {
+        let kind = StructureKind::from(&input.data);
+
+        let mut desc = FormDescriptor {
+            body_replaced: false,
+            name: Name {
+                original_ident: input.ident.clone(),
+                tag_ident: input.ident.clone(),
+            },
+        };
+
+        input.attrs.get_attributes(ctx, FORM_PATH).iter().for_each(
+            |meta: &NestedMeta| match meta {
+                NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
+                    if let StructureKind::Enum = kind {
+                        ctx.error_spanned_by(
+                            meta,
+                            "Tags are only supported on enumeration variants.",
+                        )
+                    } else {
+                        match &name.lit {
+                            Lit::Str(s) => {
+                                let tag = s.value();
+                                if tag.is_empty() {
+                                    ctx.error_spanned_by(meta, "New name cannot be empty")
+                                } else {
+                                    desc.name.tag_ident = Ident::new(&*tag, s.span());
+                                }
+                            }
+                            _ => ctx.error_spanned_by(meta, "Expected string argument"),
+                        }
+                    }
+                }
+                _ => ctx.error_spanned_by(meta, "Unknown attribute"),
+            },
+        );
+
+        desc
+    }
+
+    pub fn has_body_replaced(&self) -> bool {
+        self.body_replaced
+    }
+}
+
+/// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields
+/// are assumed to be annotated as [`Item::Slot`].
+#[derive(PartialEq, Debug, Eq, Hash, Copy, Clone)]
+pub enum FieldKind {
+    /// The field should be written as a slot in the tag attribute.
+    Header,
+    /// The field should be written as an attribute.
+    Attr,
+    /// The field should be written as a slot in the main body (or the header if another field is
+    /// marked as [`FieldKind::Body`]
+    Slot,
+    /// The field should be used to form the entire body of the record, all other fields that are
+    /// marked as slots will be promoted to headers. At most one field may be marked with this.
+    Body,
+    /// The field should be moved into the body of the tag attribute (unlabelled). If there are no
+    /// header fields it will form the entire body of the tag, otherwise it will be the first item
+    /// of the tag body. At most one field may be marked with this.
+    HeaderBody,
+    /// The field will be ignored during transformations. The decorated field must implement
+    /// [`Default`].
+    Skip,
+}
+
+impl Default for FieldKind {
+    fn default() -> Self {
+        FieldKind::Slot
+    }
+}
+
+/// A structure representing what fields in the compound type are annotated with.
+#[derive(Default, Clone)]
+pub struct FieldManifest {
+    /// Whether or not there is a field in the compound type that replaces the body of the output
+    /// record.
+    pub replaces_body: bool,
+    /// Whether or not there is a field in the compound type that is promoted to the header's body.
+    pub header_body: bool,
+    /// Whether or not there are fields that are written to the attributes vector in the record.
+    pub has_attr_fields: bool,
+    /// Whether or not there are fields that are written to the slot vector in the record.
+    pub has_slot_fields: bool,
+    /// Whether or not there are fields tha are written as headers in the record.
+    pub has_header_fields: bool,
 }
