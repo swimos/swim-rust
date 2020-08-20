@@ -148,7 +148,7 @@ impl LaneUpdate for TestUpdater {
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>,
     {
@@ -156,7 +156,7 @@ impl LaneUpdate for TestUpdater {
 
         async move {
             pin_mut!(messages);
-            while let Some(Ok(Message(n))) = messages.next().await {
+            while let Some(Ok((_, Message(n)))) = messages.next().await {
                 if tx.send(n).await.is_err() {
                     break;
                 }

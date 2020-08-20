@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod action;
 pub mod map;
 pub mod value;
 
+use crate::routing::RoutingAddr;
 use futures::future::{ready, BoxFuture, Either, Ready};
 use futures::stream::{iter, Iter};
 use futures::Stream;
@@ -37,6 +39,7 @@ mod tests;
 pub enum UpdateError {
     FailedTransaction(TransactionError),
     BadEnvelopeBody(FormDeserializeErr),
+    FeedbackChannelDropped,
 }
 
 impl Display for UpdateError {
@@ -48,6 +51,9 @@ impl Display for UpdateError {
             UpdateError::BadEnvelopeBody(err) => {
                 write!(f, "The body of an incoming envelops was invalid: {}", err)
             }
+            UpdateError::FeedbackChannelDropped => {
+                write!(f, "Action lane feedback channel dropped.")
+            }
         }
     }
 }
@@ -57,6 +63,7 @@ impl Error for UpdateError {
         match self {
             UpdateError::FailedTransaction(err) => Some(err),
             UpdateError::BadEnvelopeBody(err) => Some(err),
+            _ => None,
         }
     }
 }
@@ -81,7 +88,7 @@ pub trait LaneUpdate {
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>;
 }

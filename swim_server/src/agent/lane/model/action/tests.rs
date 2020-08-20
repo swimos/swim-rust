@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::model::action::Action;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 
@@ -22,7 +23,7 @@ async fn send_command() {
     let mut commander = model.commander();
     commander.command(3).await;
     let event = events.next().await;
-    assert_eq!(event, Some(3));
+    assert!(matches!(event, Some(Action { command: 3, .. })));
 }
 
 #[tokio::test]

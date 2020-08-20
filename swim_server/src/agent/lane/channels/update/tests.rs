@@ -31,6 +31,10 @@ fn update_error_display() {
         string2,
         "The body of an incoming envelops was invalid: Malformatted"
     );
+
+    let err3 = UpdateError::FeedbackChannelDropped;
+    let string3 = format!("{}", err3);
+    assert_eq!(string3, "Action lane feedback channel dropped.");
 }
 
 #[test]

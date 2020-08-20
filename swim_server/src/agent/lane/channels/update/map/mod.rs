@@ -14,6 +14,7 @@
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::map::{MapLane, MapUpdate};
+use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -58,7 +59,7 @@ where
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>,
     {
@@ -68,7 +69,7 @@ where
 
             let mut runner = TransactionRunner::new(1, retries);
             while let Some(update_result) = messages.next().await {
-                let update = update_result?;
+                let (_, update) = update_result?;
                 event!(Level::TRACE, message = APPLYING_UPDATE, ?update);
                 match update {
                     MapUpdate::Update(key, value) => {

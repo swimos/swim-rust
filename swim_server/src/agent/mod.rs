@@ -22,7 +22,7 @@ use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkEr
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
 use crate::agent::lane::model;
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
@@ -81,6 +81,7 @@ const ON_EVENT: &str = "On event handler";
 const COMMANDED: &str = "Command received";
 const ON_COMMAND: &str = "On command handler";
 const ACTION_RESULT: &str = "Action result";
+const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.";
 
 /// Creates a single, asynchronous task that manages the lifecycle of an agent, all of its lanes
 /// and any events that are scheduled within it.
@@ -632,7 +633,7 @@ impl<Agent, Context, Command, Response, L, S, P> LaneTasks<Agent, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = Command> + Send + Sync + 'static,
+    S: Stream<Item = Action<Command, Response>> + Send + Sync + 'static,
     Command: Any + Send + Sync + Debug,
     Response: Any + Send + Sync + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
@@ -653,7 +654,7 @@ where
             let model = projection(context.agent()).clone();
             let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(command) = events.next().await {
+            while let Some(Action { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 //TODO After agents are connected to web-sockets the response will have somewhere to go.
                 let response = lifecycle
@@ -661,6 +662,11 @@ where
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
                 event!(Level::TRACE, ACTION_RESULT, ?response);
+                if let Some(tx) = responder {
+                    if tx.send(response).is_err() {
+                        event!(Level::WARN, RESPONSE_IGNORED);
+                    }
+                }
             }
         }
         .boxed()
@@ -677,7 +683,7 @@ impl<Agent, Context, Command, L, S, P> LaneTasks<Agent, Context> for CommandLife
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = Command> + Send + Sync + 'static,
+    S: Stream<Item = Action<Command, ()>> + Send + Sync + 'static,
     Command: Any + Send + Sync + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
     P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
@@ -697,12 +703,17 @@ where
             let model = projection(context.agent()).clone();
             let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(command) = events.next().await {
+            while let Some(Action { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 lifecycle
                     .on_command(command, &model, &context)
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
+                if let Some(tx) = responder {
+                    if tx.send(()).is_err() {
+                        event!(Level::WARN, RESPONSE_IGNORED);
+                    }
+                }
             }
         }
         .boxed()

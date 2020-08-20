@@ -235,7 +235,7 @@ impl LaneUpdate for TestUpdater {
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>,
     {
@@ -246,7 +246,7 @@ impl LaneUpdate for TestUpdater {
             loop {
                 if let Some(msg) = messages.next().await {
                     match msg {
-                        Ok(msg) => {
+                        Ok((_, msg)) => {
                             if msg.0 < 0 {
                                 break Err(UpdateError::BadEnvelopeBody(
                                     FormDeserializeErr::Malformatted,

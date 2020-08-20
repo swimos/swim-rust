@@ -46,7 +46,8 @@ fn format_invalid_form() {
     );
 }
 
-#[tokio::test]
+#[tokio::main]
+#[test]
 async fn broadcast_stream_send() {
     let (tx, rx) = broadcast::channel(1);
     let mut stream = BroadcastStream(rx);
