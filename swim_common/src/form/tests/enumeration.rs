@@ -21,7 +21,7 @@ mod swim_common {
 
 #[test]
 fn test_transmute_single_variant() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
         A { a: i32, b: i64 },
     }
@@ -36,12 +36,13 @@ fn test_transmute_single_variant() {
     );
 
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec), Ok(s));
 }
 
 #[test]
 fn test_generic() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum S<F>
     where
         F: Form,
@@ -59,13 +60,14 @@ fn test_generic() {
     );
 
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec), Ok(s));
 }
 
 #[test]
 fn test_skip() {
     {
-        #[derive(Form, Debug, PartialEq)]
+        #[derive(Form, Debug, PartialEq, Clone)]
         enum S {
             A(#[form(skip)] i32),
         }
@@ -75,9 +77,10 @@ fn test_skip() {
 
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S::A(0)));
+        assert_eq!(S::try_convert(rec), Ok(S::A(0)));
     }
     {
-        #[derive(Form, Debug, PartialEq)]
+        #[derive(Form, Debug, PartialEq, Clone)]
         enum S {
             A(#[form(skip)] i32, i64),
         }
@@ -90,9 +93,10 @@ fn test_skip() {
 
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S::A(0, 3)));
+        assert_eq!(S::try_convert(rec), Ok(S::A(0, 3)));
     }
     {
-        #[derive(Form)]
+        #[derive(Form, Clone, Debug, PartialEq)]
         enum S {
             A {
                 #[form(skip)]
@@ -102,23 +106,22 @@ fn test_skip() {
         }
 
         let s = S::A { a: 1, b: 2 };
+        let rec = Value::Record(
+            vec![Attr::of("A")],
+            vec![Item::Slot(
+                Value::Text(String::from("b")),
+                Value::Int64Value(2),
+            )],
+        );
 
-        assert_eq!(
-            s.as_value(),
-            Value::Record(
-                vec![Attr::of("A")],
-                vec![Item::Slot(
-                    Value::Text(String::from("b")),
-                    Value::Int64Value(2)
-                ),]
-            )
-        )
+        assert_eq!(s.as_value(), rec.clone());
+        assert_eq!(S::try_convert(rec), Ok(S::A { a: 0, b: 2 }));
     }
 }
 
 #[test]
 fn test_transmute_multiple_variants() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     #[allow(dead_code)]
     enum S {
         A { a: i32, b: i64 },
@@ -138,12 +141,13 @@ fn test_transmute_multiple_variants() {
     );
 
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec), Ok(s));
 }
 
 #[test]
 fn test_unit() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
         A,
     }
@@ -152,12 +156,13 @@ fn test_unit() {
     let rec = Value::Record(vec![Attr::of("A")], vec![]);
 
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec), Ok(s));
 }
 
 #[test]
 fn test_tag() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
         #[form(tag = "MyTagA")]
         A,
@@ -173,6 +178,7 @@ fn test_tag() {
         let rec = Value::Record(vec![Attr::of("MyTagA")], vec![]);
         assert_eq!(S::A.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S::A));
+        assert_eq!(S::try_convert(rec), Ok(S::A));
     }
     {
         let rec = Value::Record(vec![Attr::of("MyTagB")], vec![]);
@@ -189,7 +195,8 @@ fn test_tag() {
             ],
         );
         assert_eq!(s.as_value(), rec);
-        assert_eq!(S::try_from_value(&rec), Ok(s));
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
     }
     {
         let s = S::D { a: 1, b: 2 };
@@ -201,13 +208,14 @@ fn test_tag() {
             ],
         );
         assert_eq!(s.as_value(), rec);
-        assert_eq!(S::try_from_value(&rec), Ok(s));
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
     }
 }
 
 #[test]
 fn test_tuple() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
         A(i32, i64),
     }
@@ -222,12 +230,13 @@ fn test_tuple() {
     );
 
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s));
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec), Ok(s));
 }
 
 #[test]
 fn test_rename() {
-    #[derive(Form, Debug, PartialEq)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
         A(#[form(rename = "A::a")] i32, i64),
         B {
@@ -247,7 +256,8 @@ fn test_rename() {
             ],
         );
         assert_eq!(s.as_value(), rec);
-        assert_eq!(S::try_from_value(&rec), Ok(s));
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
     }
     {
         let s = S::B { a: 1, b: 2 };
@@ -259,13 +269,14 @@ fn test_rename() {
             ],
         );
         assert_eq!(s.as_value(), rec);
-        assert_eq!(S::try_from_value(&rec), Ok(s));
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
     }
 }
 
 #[test]
 fn body_replaces() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum BodyReplace {
         A(i32, #[form(body)] Value),
     }
@@ -285,12 +296,14 @@ fn body_replaces() {
 
     let br = BodyReplace::A(1033, Value::Record(Vec::new(), body));
 
-    assert_eq!(br.as_value(), rec)
+    assert_eq!(br.as_value(), rec);
+    assert_eq!(BodyReplace::try_from_value(&rec), Ok(br.clone()));
+    assert_eq!(BodyReplace::try_convert(rec), Ok(br));
 }
 
 #[test]
 fn complex_header() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum ComplexHeader {
         A {
             #[form(header_body)]
@@ -327,16 +340,18 @@ fn complex_header() {
     };
 
     assert_eq!(ch.as_value(), rec);
+    assert_eq!(ComplexHeader::try_from_value(&rec), Ok(ch.clone()));
+    assert_eq!(ComplexHeader::try_convert(rec), Ok(ch));
 }
 
 #[test]
 fn nested() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum Outer {
         A { inner: Inner, opt: Option<i32> },
     }
 
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum Inner {
         #[form(tag = "custom")]
         B { a: i32, b: String },
@@ -371,11 +386,13 @@ fn nested() {
     );
 
     assert_eq!(outer.as_value(), expected);
+    assert_eq!(Outer::try_from_value(&expected), Ok(outer.clone()));
+    assert_eq!(Outer::try_convert(expected), Ok(outer));
 }
 
 #[test]
 fn header() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum Example {
         A {
             a: String,
@@ -428,11 +445,13 @@ fn header() {
     );
 
     assert_eq!(struct_some.as_value(), rec_some);
+    assert_eq!(Example::try_from_value(&rec_some), Ok(struct_some.clone()));
+    assert_eq!(Example::try_convert(rec_some), Ok(struct_some));
 }
 
 #[test]
 fn annotated() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum ExampleAnnotated {
         #[form(tag = "example")]
         A {
@@ -469,11 +488,22 @@ fn annotated() {
     );
 
     assert_eq!(ex.as_value(), expected);
+
+    let expected_struct = ExampleAnnotated::A {
+        count: 1033,
+        name: String::from("bob"),
+        age: 0,
+    };
+    assert_eq!(
+        ExampleAnnotated::try_from_value(&expected),
+        Ok(expected_struct.clone())
+    );
+    assert_eq!(ExampleAnnotated::try_convert(expected), Ok(expected_struct));
 }
 
 #[test]
 fn header_body_replace() {
-    #[derive(Form)]
+    #[derive(Form, Debug, PartialEq, Clone)]
     enum HeaderBodyReplace {
         A {
             #[form(header_body)]
@@ -482,8 +512,9 @@ fn header_body_replace() {
     }
 
     let ex = HeaderBodyReplace::A { n: 16 };
-
     let expected = Value::Record(vec![Attr::of(("A", Value::Int64Value(16)))], Vec::new());
 
     assert_eq!(ex.as_value(), expected);
+    assert_eq!(HeaderBodyReplace::try_from_value(&expected), Ok(ex.clone()));
+    assert_eq!(HeaderBodyReplace::try_convert(expected), Ok(ex));
 }

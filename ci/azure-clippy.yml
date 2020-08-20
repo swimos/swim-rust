@@ -14,3 +14,4 @@ jobs:
       - script: |
           cargo clippy --all-features -- -D warnings
         displayName: cargo clippy --all
+
