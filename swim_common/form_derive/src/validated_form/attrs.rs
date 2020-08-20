@@ -14,13 +14,13 @@
 
 use syn::export::TokenStream2;
 
-use macro_helpers::Identity;
+use macro_helpers::Label;
 
 use crate::parser::FieldManifest;
 use crate::validated_form::vf_parser::{StandardSchema, ValidatedField};
 
 pub fn build_head_attribute(
-    compound_identity: &Identity,
+    compound_identity: &Label,
     remainder: TokenStream2,
     fields: &[ValidatedField],
     manifest: &FieldManifest,

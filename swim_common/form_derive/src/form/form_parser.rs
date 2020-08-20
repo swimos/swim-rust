@@ -16,7 +16,7 @@ use crate::parser::{
     parse_struct, Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH,
     SCHEMA_PATH, TAG_PATH,
 };
-use macro_helpers::{Context, Identity};
+use macro_helpers::{Context, Label};
 use proc_macro2::Ident;
 use syn::{Data, Lit, Meta, NestedMeta};
 
@@ -90,7 +90,7 @@ pub struct FormDescriptor {
     /// compound type.
     pub body_replaced: bool,
     /// The name that the compound type will be transmuted with.
-    pub name: Identity,
+    pub name: Label,
 }
 
 impl FormDescriptor {
@@ -113,7 +113,7 @@ impl FormDescriptor {
                         match name_opt {
                             Some(_) => context.error_spanned_by(s, "Duplicate tag"),
                             None => {
-                                name_opt = Some(Identity::Renamed {
+                                name_opt = Some(Label::Renamed {
                                     new_identity: tag,
                                     old_identity: ident.clone(),
                                 });
@@ -131,7 +131,7 @@ impl FormDescriptor {
 
         FormDescriptor {
             body_replaced: false,
-            name: name_opt.unwrap_or_else(|| Identity::Named(ident.clone())),
+            name: name_opt.unwrap_or_else(|| Label::Named(ident.clone())),
         }
     }
 

@@ -17,7 +17,7 @@ use quote::ToTokens;
 use syn::export::TokenStream2;
 use syn::{ExprPath, Lit, Meta, NestedMeta, Type};
 
-use macro_helpers::{CompoundTypeKind, Context, Identity, Symbol};
+use macro_helpers::{CompoundTypeKind, Context, Label, Symbol};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{
@@ -47,7 +47,7 @@ pub const NOT_PATH: Symbol = Symbol("not");
 
 #[derive(Debug)]
 pub struct ValidatedFormDescriptor {
-    pub identity: Identity,
+    pub identity: Label,
     pub schema: StandardSchema,
     pub all_items: bool,
 }
@@ -63,7 +63,7 @@ impl ValidatedFormDescriptor {
     ) -> ValidatedFormDescriptor {
         let mut schema_opt = None;
         let mut all_items = false;
-        let mut identity = Identity::Named(ident.clone());
+        let mut identity = Label::Named(ident.clone());
 
         attributes.iter().for_each(|meta: &NestedMeta| match meta {
             NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
@@ -72,7 +72,7 @@ impl ValidatedFormDescriptor {
                     if tag.is_empty() {
                         context.error_spanned_by(meta, "New name cannot be empty")
                     } else {
-                        identity = Identity::Renamed {
+                        identity = Label::Renamed {
                             new_identity: tag,
                             old_identity: ident.clone(),
                         }
@@ -163,9 +163,9 @@ impl<'f> ValidatedField<'f> {
 
         let field_schema = field_schema.to_token_stream();
         let ident = match &form_field.identity {
-            Identity::Named(ident) => ident.to_string(),
-            Identity::Renamed { new_identity, .. } => new_identity.clone(),
-            Identity::Anonymous(_) => {
+            Label::Named(ident) => ident.to_string(),
+            Label::Renamed { new_identity, .. } => new_identity.clone(),
+            Label::Anonymous(_) => {
                 // Caught by the form descriptor parser
                 unreachable!()
             }
@@ -200,9 +200,9 @@ impl<'f> ValidatedField<'f> {
         };
 
         match &form_field.identity {
-            Identity::Named(ident) => build_named(ident.to_string()),
-            Identity::Renamed { new_identity, .. } => build_named(new_identity.to_string()),
-            Identity::Anonymous(_) => quote!(
+            Label::Named(ident) => build_named(ident.to_string()),
+            Label::Renamed { new_identity, .. } => build_named(new_identity.to_string()),
+            Label::Anonymous(_) => quote!(
                 swim_common::model::schema::ItemSchema::ValueItem(#field_schema)
             ),
         }

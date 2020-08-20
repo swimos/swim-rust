@@ -16,7 +16,7 @@ use proc_macro2::Ident;
 use syn::export::TokenStream2;
 use syn::spanned::Spanned;
 
-use macro_helpers::{CompoundTypeKind, Identity};
+use macro_helpers::{CompoundTypeKind, Label};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{FieldKind, FieldManifest, FormField, TypeContents};
@@ -234,13 +234,13 @@ fn parse_elements(
                     };
 
                     match &f.identity {
-                        Identity::Named(name) => {
+                        Label::Named(name) => {
                             build_named_ident(name.to_string(), ident);
                         }
-                        Identity::Renamed{new_identity, ..} => {
+                        Label::Renamed{new_identity, ..} => {
                             build_named_ident(new_identity.to_string(), ident);
                         }
-                        Identity::Anonymous(_) => {
+                        Label::Anonymous(_) => {
                             items = quote! {
                                     #items
                                     swim_common::model::Item::ValueItem(v) if #ident.is_none() => {
@@ -275,7 +275,7 @@ fn parse_elements(
                     let field_name_str = f.identity.to_string();
 
                     match &f.identity {
-                        Identity::Renamed{new_identity, ..} => {
+                        Label::Renamed{new_identity, ..} => {
                             headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #new_identity => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);
@@ -283,7 +283,7 @@ fn parse_elements(
                                 #headers
                             };
                         }
-                        Identity::Named(field_ident) => {
+                        Label::Named(field_ident) => {
                             let ident_str = field_ident.to_string();
                             headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #ident_str => {
@@ -292,7 +292,7 @@ fn parse_elements(
                                 #headers
                             };
                         }
-                        Identity::Anonymous(_) => {
+                        Label::Anonymous(_) => {
                             headers = quote! {
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), ref v) if name == #field_name_str => {
                                     #ident = std::option::Option::Some(swim_common::form::Form::try_from_value(v)?);

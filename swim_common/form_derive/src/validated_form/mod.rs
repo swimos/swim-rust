@@ -14,7 +14,7 @@
 
 use syn::DeriveInput;
 
-use macro_helpers::{CompoundTypeKind, Context, Identity};
+use macro_helpers::{CompoundTypeKind, Context, Label};
 
 use crate::form::form_parser::build_type_contents;
 use crate::parser::{FieldManifest, TypeContents};
@@ -136,7 +136,7 @@ fn derive_compound_schema(
     fields: &[ValidatedField],
     compound_type: &CompoundTypeKind,
     descriptor: &ValidatedFormDescriptor,
-    ident: &Identity,
+    ident: &Label,
     manifest: &FieldManifest,
 ) -> TokenStream2 {
     let attr_schemas = build_attrs(fields);

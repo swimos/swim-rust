@@ -14,7 +14,7 @@
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{EnumVariant, FieldKind, FieldManifest, FormField, StructRepr, TypeContents};
-use macro_helpers::{deconstruct_type, CompoundTypeKind, Identity};
+use macro_helpers::{deconstruct_type, CompoundTypeKind, Label};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
 
@@ -93,7 +93,7 @@ fn build_struct_as_value(
 fn build_variant_as_value(
     mut descriptor: FormDescriptor,
     mut manifest: FieldManifest,
-    variant_name: &Identity,
+    variant_name: &Label,
     compound_type: &CompoundTypeKind,
     fields: &[FormField],
     structure_name: &Ident,
@@ -125,15 +125,15 @@ fn compute_as_value(
                 FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
                     match name {
-                        Identity::Named(ident) => {
+                        Label::Named(ident) => {
                             let name_str = ident.to_string();
                             items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),) ;
                         }
-                        Identity::Renamed{new_identity, old_identity} => {
+                        Label::Renamed{new_identity, old_identity} => {
                             let name_str = new_identity.to_string();
                             items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ Identity::Anonymous(_) => {
+                        un @ Label::Anonymous(_) => {
                             let ident = un.as_ident();
                             items =  quote!(#items swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }
@@ -141,15 +141,15 @@ fn compute_as_value(
                 }
                 FieldKind::Attr => {
                     match name {
-                        Identity::Named(ident) => {
+                        Label::Named(ident) => {
                             let name_str = ident.to_string();
                             attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #ident.as_value())),);
                         }
-                        Identity::Renamed{new_identity, old_identity} => {
+                        Label::Renamed{new_identity, old_identity} => {
                             let name_str = new_identity.to_string();
                             attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #old_identity.as_value())),);
                         }
-                        Identity::Anonymous(_index) => {
+                        Label::Anonymous(_index) => {
                             // This has been checked already when parsing the AST.
                             unreachable!()
                         }
@@ -169,20 +169,20 @@ fn compute_as_value(
                 FieldKind::HeaderBody => {
                     if manifest.has_header_fields {
                         match name {
-                            Identity::Renamed{old_identity:ident,..} | Identity::Named(ident) => {
+                            Label::Renamed{old_identity:ident,..} | Label::Named(ident) => {
                                 headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
-                            un @ Identity::Anonymous(_) => {
+                            un @ Label::Anonymous(_) => {
                                 let ident = un.as_ident();
                                 headers= quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                             }
                         }
                     } else {
                         match name {
-                            Identity::Renamed{old_identity:ident,..} | Identity::Named(ident) => {
+                            Label::Renamed{old_identity:ident,..} | Label::Named(ident) => {
                                 headers = quote!(, #ident.as_value());
                             }
-                            un @ Identity::Anonymous(_) => {
+                            un @ Label::Anonymous(_) => {
                                 let ident = un.as_ident();
                                 headers = quote!(, #ident.as_value());
                             }
@@ -191,15 +191,15 @@ fn compute_as_value(
                 }
                 _ => {
                     match name {
-                        Identity::Named(ident) => {
+                        Label::Named(ident) => {
                             let name_str = ident.to_string();
                             headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #ident.as_value()),);
                         }
-                        Identity::Renamed{new_identity, old_identity} => {
+                        Label::Renamed{new_identity, old_identity} => {
                             let name_str = new_identity.to_string();
                             headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #old_identity.as_value()),);
                         }
-                        un @ Identity::Anonymous(_) => {
+                        un @ Label::Anonymous(_) => {
                             let ident = un.as_ident();
                             headers = quote!(#headers swim_common::model::Item::ValueItem(#ident.as_value()),);
                         }

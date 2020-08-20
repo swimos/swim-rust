@@ -17,7 +17,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Attribute, DeriveInput, Lit, Meta, NestedMeta, Variant};
 
-use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Identity, Symbol};
+use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Label, Symbol};
 
 pub const FORM_PATH: Symbol = Symbol("form");
 pub const HEADER_PATH: Symbol = Symbol("header");
@@ -55,7 +55,7 @@ pub struct StructRepr<'t, D, F> {
 pub struct EnumVariant<'t, D, F> {
     pub syn_variant: &'t Variant,
     /// The name of the variant.
-    pub name: Identity,
+    pub name: Label,
     /// The variant's type: tuple, named, unit.
     pub compound_type: CompoundTypeKind,
     /// The field members of the variant.
@@ -71,7 +71,7 @@ pub struct FormField<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
     /// The name of the field.
-    pub identity: Identity,
+    pub identity: Label,
     /// The kind of the field from its attribute.
     pub kind: FieldKind,
 }
@@ -248,7 +248,7 @@ pub fn fields_from_ast<'t>(
                                         Ident::new(&format!("__self_{}", index), original.span())
                                     });
 
-                                    renamed = Some(Identity::Renamed {
+                                    renamed = Some(Label::Renamed {
                                         new_identity: s.value(),
                                         old_identity: old_ident,
                                     });
@@ -270,13 +270,13 @@ pub fn fields_from_ast<'t>(
             );
 
             let name = renamed.unwrap_or_else(|| match &original.ident {
-                Some(ident) => Identity::Named(ident.clone()),
-                None => Identity::Anonymous(index.into()),
+                Some(ident) => Label::Named(ident.clone()),
+                None => Label::Anonymous(index.into()),
             });
 
             let kind = kind_opt.unwrap_or(FieldKind::Slot);
 
-            if let (Identity::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
+            if let (Label::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
                 ctx.error_spanned_by(
                     original,
                     "An unnamed field cannot be promoted to an attribute.",
