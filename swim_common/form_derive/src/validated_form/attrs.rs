@@ -19,6 +19,14 @@ use macro_helpers::Label;
 use crate::parser::FieldManifest;
 use crate::validated_form::vf_parser::{StandardSchema, ValidatedField};
 
+/// Builds a `StandardSchema::HeadAttribute` schema for the compound type.
+///
+/// * `compound_identity` - the identifier of the structure or the variant (not the identifier of the
+/// enumeration).
+/// * `remainder` - the remaining schema for the compound type. This could be a
+/// `StandardSchema::Layout` or similar.
+/// * `fields` - the fields in the structure or variant.
+/// * `manifest` - the `FieldManifest` for the structure or variant.
 pub fn build_head_attribute(
     compound_identity: &Label,
     remainder: TokenStream2,
@@ -93,6 +101,7 @@ pub fn build_head_attribute(
     }
 }
 
+/// Builds a `StandardSchema::HasAttributes` schema for the fields.
 pub fn build_attrs(fields: &[ValidatedField]) -> TokenStream2 {
     let mut attrs =
         fields

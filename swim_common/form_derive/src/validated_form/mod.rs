@@ -32,6 +32,7 @@ mod vf_parser;
 
 mod range;
 
+// Builds the ValidatedForm implementation from the DeriveInput.
 pub fn build_validated_form(
     input: DeriveInput,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
@@ -58,6 +59,7 @@ pub fn build_validated_form(
     Ok(ts)
 }
 
+/// Derives a container schema for the provided `StandardSchema`
 fn derive_container_schema(
     compound_type: &CompoundTypeKind,
     container_schema: &StandardSchema,
@@ -96,6 +98,7 @@ fn derive_container_schema(
     }
 }
 
+/// Derives a `StandardSchema::Layout` for the provided fields.
 fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenStream2 {
     let fields: Vec<&ValidatedField> = if descriptor.replaces_body {
         fields.iter().filter(|f| f.form_field.is_body()).collect()
@@ -132,6 +135,14 @@ fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenS
     schemas
 }
 
+/// Derives the final `StandardSchema` for the structure. The final schema asserts the head
+/// attribute, the attributes and items for the provided structure or variant.
+///
+/// * `fields` - the fields in the structure or variant.
+/// * `compound_type` - the compound type kind.
+/// * `descriptor` - a derived descriptor of the structure.
+/// * `ident` - the identifier of the structure or the variant (not the identifier of the
+/// enumeration).
 fn derive_compound_schema(
     fields: &[ValidatedField],
     compound_type: &CompoundTypeKind,

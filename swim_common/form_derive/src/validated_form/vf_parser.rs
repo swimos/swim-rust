@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use num_bigint::BigInt;
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use syn::export::TokenStream2;
@@ -25,7 +26,6 @@ use crate::parser::{
 };
 use crate::validated_form::meta_parse::parse_schema_meta;
 use crate::validated_form::range::Range;
-use num_bigint::BigInt;
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -158,6 +158,7 @@ pub struct ValidatedField<'f> {
 }
 
 impl<'f> ValidatedField<'f> {
+    /// Writes this field into a `TokenStream2` as an attribute.
     pub fn as_attr(&self) -> TokenStream2 {
         let ValidatedField {
             form_field,
@@ -184,6 +185,8 @@ impl<'f> ValidatedField<'f> {
         }
     }
 
+    /// Writes this field into a `TokenStream2` as an item. If this field is named then a
+    /// `Slot` is derived, otherwise, a `ValueItem` is derived.
     pub fn as_item(&self) -> TokenStream2 {
         let ValidatedField {
             form_field,
@@ -212,6 +215,8 @@ impl<'f> ValidatedField<'f> {
     }
 }
 
+/// A representation used derive to `swim_common::model::schema::StandardSchema`. Where fields are
+/// their AST representation.
 #[allow(warnings)]
 #[derive(Clone, Debug)]
 pub enum StandardSchema {
@@ -243,7 +248,7 @@ impl ToTokens for StandardSchema {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let quote = match self {
             StandardSchema::Type(ty) => quote!(#ty::schema()),
-            StandardSchema::Equal(path) => quote! (
+            StandardSchema::Equal(path) => quote!(
                     swim_common::model::schema::StandardSchema::Equal(#path())
             ),
             StandardSchema::OfKind(kind) => {
@@ -346,6 +351,9 @@ impl ToTokens for StandardSchema {
     }
 }
 
+/// Converts between `TypeContents<'f, FormDescriptor, FormField<'f>>` and
+/// `TypeContents<'f, ValidatedFormDescriptor, ValidatedField<'f>>`. Parsing any attributes of the
+/// path `#[form(schema(..))]`.
 pub fn type_contents_to_validated<'f>(
     ctx: &mut Context,
     ident: &Ident,
@@ -402,6 +410,8 @@ pub fn type_contents_to_validated<'f>(
     }
 }
 
+/// Maps `FormField`s to `ValidatedField` and parses any attributes of the path
+/// `#[form(schema(..))]`.
 fn map_fields_to_validated<'f, T>(
     loc: &T,
     context: &mut Context,
