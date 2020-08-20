@@ -13,19 +13,14 @@
 // limitations under the License.
 
 use crate::form::form_parser::FormDescriptor;
-use crate::parser::{EnumVariant, FieldKind, FieldManifest, FormField, StructRepr, TypeContents};
+use crate::parser::{EnumVariant, FieldKind, FormField, StructRepr, TypeContents};
 use macro_helpers::{deconstruct_type, CompoundTypeKind, Label};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
 
-use crate::parser::{
-    EnumVariant, Field, FieldKind, FieldManifest, FormDescriptor, StructRepr, TypeContents,
-};
-
 pub fn to_value(
     type_contents: TypeContents<FormDescriptor, FormField<'_>>,
     structure_name: &Ident,
-    descriptor: FormDescriptor,
     fn_factory: fn(&Ident) -> TokenStream2,
     requires_deref: bool,
 ) -> TokenStream2 {
@@ -33,11 +28,10 @@ pub fn to_value(
         TypeContents::Struct(StructRepr {
             compound_type,
             fields,
-            manifest,
+            descriptor,
             ..
         }) => build_struct_as_value(
             descriptor,
-            manifest,
             &structure_name,
             &compound_type,
             &fields,
@@ -52,17 +46,18 @@ pub fn to_value(
                         name,
                         compound_type,
                         fields,
-                        manifest,
+                        descriptor,
+                        ..
                     } = variant;
 
                     let as_value = build_variant_as_value(
                         descriptor,
-                        manifest,
                         &name,
                         &compound_type,
                         &fields,
                         fn_factory,
                         requires_deref,
+                        structure_name,
                     );
 
                     as_value_arms.push(as_value);
@@ -88,17 +83,15 @@ pub fn to_value(
 
 fn build_struct_as_value(
     mut descriptor: FormDescriptor,
-    mut manifest: FieldManifest,
     structure_name: &Ident,
     compound_type: &CompoundTypeKind,
     fields: &[FormField],
     fn_factory: fn(&Ident) -> TokenStream2,
     requires_deref: bool,
 ) -> TokenStream2 {
-    let structure_name_str = descriptor.name.tag_ident.to_string();
-    let (headers, attributes, items) =
-        compute_as_value(&fields, &mut descriptor, &mut manifest, fn_factory);
-    let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
+    let structure_name_str = descriptor.name.to_string();
+    let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
+    let field_names: Vec<_> = fields.iter().map(|f| &f.identity).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
     quote! {
@@ -110,7 +103,6 @@ fn build_struct_as_value(
 
 fn build_variant_as_value(
     mut descriptor: FormDescriptor,
-    mut manifest: FieldManifest,
     variant_name: &Label,
     compound_type: &CompoundTypeKind,
     fields: &[FormField],
@@ -119,10 +111,8 @@ fn build_variant_as_value(
     structure_name: &Ident,
 ) -> TokenStream2 {
     let variant_name_str = variant_name.to_string();
-    let (headers, attributes, items) =
-        compute_as_value(&fields, &mut descriptor, &mut manifest, fn_factory);
-    let structure_name = &descriptor.name.original_ident;
-    let field_names: Vec<_> = fields.iter().map(|f| &f.name).collect();
+    let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
+    let field_names: Vec<_> = fields.iter().map(|f| &f.identity).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
     quote! {
@@ -136,13 +126,13 @@ fn build_variant_as_value(
 fn compute_as_value(
     fields: &[FormField],
     descriptor: &mut FormDescriptor,
-    manifest: &mut FieldManifest,
     fn_factory: fn(&Ident) -> TokenStream2,
 ) -> (TokenStream2, TokenStream2, TokenStream2) {
     let (mut headers, mut items, attributes) = fields
         .iter()
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut items, mut attributes), f| {
-            let name = &f.name;
+            let name = &f.identity;
+            let manifest = &descriptor.manifest;
 
             match &f.kind {
                 FieldKind::Skip => {}
@@ -168,7 +158,7 @@ fn compute_as_value(
                 }
                 FieldKind::Body => {
                     descriptor.body_replaced = true;
-                    let ident = f.name.as_ident();
+                    let ident = f.identity.as_ident();
                     let func = fn_factory(&ident);
 
                     items = quote!({
@@ -207,6 +197,8 @@ fn compute_as_value(
 
             (headers, items, attributes)
         });
+
+    let manifest = &descriptor.manifest;
 
     if manifest.has_header_fields || manifest.replaces_body {
         headers = quote!(, swim_common::model::Value::Record(Vec::new(), vec![#headers]));

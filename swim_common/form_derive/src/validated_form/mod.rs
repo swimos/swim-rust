@@ -137,9 +137,10 @@ fn derive_compound_schema(
     compound_type: &CompoundTypeKind,
     descriptor: &ValidatedFormDescriptor,
     ident: &Label,
-    manifest: &FieldManifest,
 ) -> TokenStream2 {
+    let manifest = &descriptor.form_descriptor.manifest;
     let attr_schemas = build_attrs(fields);
+
     let item_schemas = {
         match &descriptor.schema {
             StandardSchema::None => derive_items(fields, manifest),
@@ -180,7 +181,6 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                     &repr.compound_type,
                     &repr.descriptor,
                     &repr.descriptor.identity,
-                    &repr.manifest,
                 );
 
                 schema.to_tokens(tokens);
@@ -192,7 +192,6 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                         &variant.compound_type,
                         &variant.descriptor,
                         &variant.name,
-                        &variant.manifest,
                     );
 
                     quote! {

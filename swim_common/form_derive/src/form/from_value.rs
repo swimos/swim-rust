@@ -24,7 +24,6 @@ use crate::parser::{FieldKind, FieldManifest, FormField, TypeContents};
 pub fn from_value(
     type_contents: &TypeContents<FormDescriptor, FormField<'_>>,
     structure_name: &Ident,
-    descriptor: &FormDescriptor,
     fn_factory: fn(TokenStream2) -> TokenStream2,
     into: bool,
 ) -> TokenStream2 {
@@ -32,7 +31,7 @@ pub fn from_value(
         TypeContents::Struct(repr) => {
             let descriptor = &repr.descriptor;
             let structure_name_str = descriptor.name.to_string();
-            let field_manifest = &repr.manifest;
+            let field_manifest = &descriptor.manifest;
             let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
             let (headers, header_body, items, attributes) =
                 parse_elements(&repr.fields, field_manifest, fn_factory, into);
@@ -76,8 +75,12 @@ pub fn from_value(
                 let (field_opts, field_assignments) =
                     parse_fields(&variant.fields, &variant.compound_type);
 
-                let (headers, header_body, items, attributes) =
-                    parse_elements(&variant.fields, &variant.manifest, fn_factory, into);
+                let (headers, header_body, items, attributes) = parse_elements(
+                    &variant.fields,
+                    &variant.descriptor.manifest,
+                    fn_factory,
+                    into,
+                );
 
                 let self_members = match &variant.compound_type {
                     CompoundTypeKind::Struct => {
@@ -151,7 +154,7 @@ fn build_attr_quote(
     } else {
         quote! {
             let mut attr_it = attrs.iter();
-            while let Some(Attr { name, ref value }) = attr_it.next() {
+            while let Some(swim_common::model::Attr { name, ref value }) = attr_it.next() {
                 match name.as_ref() {
                      #name_str => match value {
                         swim_common::model::Value::Record(_attrs, items) => {
@@ -181,8 +184,8 @@ fn parse_fields(
     fields.iter().fold(
         (TokenStream2::new(), TokenStream2::new()),
         |(field_opts, field_assignments), f| {
-            let ident = f.name.as_ident();
-            let name = f.name.as_ident().to_string();
+            let ident = f.identity.as_ident();
+            let name = f.identity.as_ident().to_string();
             let opt_name = Ident::new(&format!("__opt_{}", name), f.original.span());
 
             match &f.kind {
@@ -245,12 +248,12 @@ fn parse_elements(
         .iter()
         .filter(|f| f.kind != FieldKind::Skip)
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut header_body, mut items, mut attrs), f| {
-            let name = f.name.as_ident();
+            let name = f.identity.as_ident();
             let ident = Ident::new(&format!("__opt_{}", name), f.original.span());
 
             match f.kind {
                 FieldKind::Attr => {
-                    let name_str = f.name.to_string();
+                    let name_str = f.identity.to_string();
                     let fn_call = fn_factory(quote!(value));
 
                     attrs = quote! {
@@ -281,7 +284,7 @@ fn parse_elements(
                         }
                     };
 
-                    match &f.name {
+                    match &f.identity {
                         Label::Anonymous(_) => {
                             let fn_call = fn_factory(quote!(v));
 
@@ -301,7 +304,7 @@ fn parse_elements(
                     let fn_call = fn_factory(quote!(v));
 
                     if field_manifest.has_header_fields {
-                        let field_name_str = f.name.to_string();
+                        let field_name_str = f.identity.to_string();
 
                         headers = quote! {
                             swim_common::model::Item::ValueItem(v) => {
@@ -337,7 +340,7 @@ fn parse_elements(
                 _ => {
                     let fn_call = fn_factory(quote!(v));
 
-                    match &f.name {
+                    match &f.identity {
                         Label::Anonymous(_) => {
                             headers = quote! {
                                 swim_common::model::Item::ValueItem(v) => {

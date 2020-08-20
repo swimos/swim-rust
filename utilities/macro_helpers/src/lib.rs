@@ -104,9 +104,7 @@ impl Label {
         match self {
             Label::Named(ident) => ident.clone(),
             Label::Renamed { old_identity, .. } => old_identity.clone(),
-            Label::Anonymous(index) => {
-                Ident::new(&format!("__self_{}", index.index), index.span)
-            }
+            Label::Anonymous(index) => Ident::new(&format!("__self_{}", index.index), index.span),
         }
     }
 }

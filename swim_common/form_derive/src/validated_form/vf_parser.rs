@@ -50,6 +50,7 @@ pub struct ValidatedFormDescriptor {
     pub identity: Label,
     pub schema: StandardSchema,
     pub all_items: bool,
+    pub form_descriptor: FormDescriptor,
 }
 
 impl ValidatedFormDescriptor {
@@ -60,6 +61,7 @@ impl ValidatedFormDescriptor {
         ident: &Ident,
         attributes: Vec<NestedMeta>,
         kind: CompoundTypeKind,
+        form_descriptor: FormDescriptor,
     ) -> ValidatedFormDescriptor {
         let mut schema_opt = None;
         let mut all_items = false;
@@ -145,6 +147,7 @@ impl ValidatedFormDescriptor {
             identity,
             schema: schema_opt.unwrap_or(StandardSchema::None),
             all_items,
+            form_descriptor,
         }
     }
 }
@@ -351,13 +354,18 @@ pub fn type_contents_to_validated<'f>(
     match type_contents {
         TypeContents::Struct(repr) => TypeContents::Struct({
             let attrs = repr.input.attrs.get_attributes(ctx, FORM_PATH);
-            let descriptor = ValidatedFormDescriptor::from(ctx, ident, attrs, repr.compound_type);
+            let descriptor = ValidatedFormDescriptor::from(
+                ctx,
+                ident,
+                attrs,
+                repr.compound_type,
+                repr.descriptor,
+            );
 
             StructRepr {
                 input: repr.input,
                 compound_type: repr.compound_type,
                 fields: map_fields_to_validated(&repr.input, ctx, repr.fields, &descriptor),
-                manifest: repr.manifest,
                 descriptor,
             }
         }),
@@ -366,8 +374,13 @@ pub fn type_contents_to_validated<'f>(
                 .into_iter()
                 .map(|variant| {
                     let attrs = variant.syn_variant.attrs.get_attributes(ctx, FORM_PATH);
-                    let descriptor =
-                        ValidatedFormDescriptor::from(ctx, ident, attrs, variant.compound_type);
+                    let descriptor = ValidatedFormDescriptor::from(
+                        ctx,
+                        ident,
+                        attrs,
+                        variant.compound_type,
+                        variant.descriptor,
+                    );
 
                     EnumVariant {
                         syn_variant: variant.syn_variant,
@@ -379,7 +392,6 @@ pub fn type_contents_to_validated<'f>(
                             variant.fields,
                             &descriptor,
                         ),
-                        manifest: variant.manifest,
                         descriptor,
                     }
                 })

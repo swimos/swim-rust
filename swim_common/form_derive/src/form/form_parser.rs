@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::parser::{
-    parse_struct, Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH,
-    SCHEMA_PATH, TAG_PATH,
+    parse_struct, Attributes, EnumVariant, FieldManifest, FormField, StructRepr, TypeContents,
+    FORM_PATH, SCHEMA_PATH, TAG_PATH,
 };
 use macro_helpers::{Context, Label};
 use proc_macro2::Ident;
@@ -41,15 +41,18 @@ pub fn build_type_contents<'t>(
                 .map(|variant| {
                     let (compound_type, fields, manifest) = parse_struct(context, &variant.fields);
                     let attributes = variant.attrs.get_attributes(context, FORM_PATH);
-                    let descriptor =
-                        FormDescriptor::from_attributes(context, &variant.ident, attributes);
+                    let descriptor = FormDescriptor::from_attributes(
+                        context,
+                        &variant.ident,
+                        attributes,
+                        manifest,
+                    );
 
                     EnumVariant {
                         syn_variant: variant,
                         name: descriptor.name.clone(),
                         compound_type,
                         fields,
-                        manifest,
                         descriptor,
                     }
                 })
@@ -60,13 +63,13 @@ pub fn build_type_contents<'t>(
         Data::Struct(data) => {
             let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
             let attributes = input.attrs.get_attributes(context, FORM_PATH);
-            let descriptor = FormDescriptor::from_attributes(context, &input.ident, attributes);
+            let descriptor =
+                FormDescriptor::from_attributes(context, &input.ident, attributes, manifest);
 
             TypeContents::Struct(StructRepr {
                 input,
                 compound_type,
                 fields,
-                manifest,
                 descriptor,
             })
         }
@@ -84,13 +87,15 @@ pub fn build_type_contents<'t>(
 /// produced [`Value`] is replaced. A field annotated with [`[form(body)]` will cause this to
 /// happen. A compound type annotated with [`[form(tag = "name")]` will set the structure's output
 /// value to be replaced with the provided literal.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FormDescriptor {
     /// Denotes whether or not the body of the produced record is replaced by a field in the
     /// compound type.
     pub body_replaced: bool,
     /// The name that the compound type will be transmuted with.
     pub name: Label,
+    /// A derived [`FieldManifest`] from the attributes on the members.
+    pub manifest: FieldManifest,
 }
 
 impl FormDescriptor {
@@ -100,6 +105,7 @@ impl FormDescriptor {
         context: &mut Context,
         ident: &Ident,
         attributes: Vec<NestedMeta>,
+        manifest: FieldManifest,
     ) -> FormDescriptor {
         let mut name_opt = None;
 
@@ -132,6 +138,7 @@ impl FormDescriptor {
         FormDescriptor {
             body_replaced: false,
             name: name_opt.unwrap_or_else(|| Label::Named(ident.clone())),
+            manifest,
         }
     }
 

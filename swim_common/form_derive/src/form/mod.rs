@@ -12,26 +12,50 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::form_parser::build_type_contents;
-use macro_helpers::Context;
 use syn::DeriveInput;
+
+use from_value::from_value;
+use macro_helpers::Context;
+use to_value::to_value;
+
+use crate::form::form_parser::build_type_contents;
 
 pub mod form_parser;
 mod from_value;
-use from_value::from_value;
 mod to_value;
-use to_value::to_value;
 
 pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let mut context = Context::default();
+    let structure_name = &input.ident;
     let type_contents = match build_type_contents(&mut context, &input) {
         Some(cont) => cont,
         None => return Err(context.check().unwrap_err()),
     };
 
-    let structure_name = &input.ident;
-    let from_value_body = from_value(&type_contents, &structure_name);
-    let as_value_body = to_value(type_contents, structure_name);
+    let from_value_body = from_value(
+        &type_contents,
+        &structure_name,
+        |value| parse_quote!(swim_common::form::Form::try_from_value(#value)),
+        false,
+    );
+    let try_convert_body = from_value(
+        &type_contents,
+        &structure_name,
+        |value| parse_quote!(swim_common::form::Form::try_convert(#value)),
+        true,
+    );
+    let as_value_body = to_value(
+        type_contents.clone(),
+        &structure_name,
+        |ident| parse_quote!(#ident.as_value()),
+        true,
+    );
+    let into_value_body = to_value(
+        type_contents,
+        &structure_name,
+        |ident| parse_quote!(#ident.into_value()),
+        false,
+    );
 
     context.check()?;
 
@@ -47,9 +71,21 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
             }
 
             #[inline]
+            #[allow(non_snake_case, unused_variables)]
+            fn into_value(self) -> swim_common::model::Value {
+                #into_value_body
+            }
+
+            #[inline]
             #[allow(non_snake_case)]
             fn try_from_value(value: &swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
                 #from_value_body
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            fn try_convert(value: swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
+                #try_convert_body
             }
         }
     };
