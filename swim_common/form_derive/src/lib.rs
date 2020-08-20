@@ -45,8 +45,34 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
         None => return to_compile_errors(context.check().unwrap_err()).into(),
     };
 
-    let from_value_body = from_value(&type_contents, &structure_name, &descriptor);
-    let as_value_body = to_value(type_contents, &structure_name, descriptor);
+    let from_value_body = from_value(
+        &type_contents,
+        &structure_name,
+        &descriptor,
+        |value| parse_quote!(swim_common::form::Form::try_from_value(#value)),
+        false,
+    );
+    let try_convert_body = from_value(
+        &type_contents,
+        &structure_name,
+        &descriptor,
+        |value| parse_quote!(swim_common::form::Form::try_convert(#value)),
+        true,
+    );
+    let as_value_body = to_value(
+        type_contents.clone(),
+        &structure_name,
+        descriptor.clone(),
+        |ident| parse_quote!(#ident.as_value()),
+        true,
+    );
+    let into_value_body = to_value(
+        type_contents,
+        &structure_name,
+        descriptor,
+        |ident| parse_quote!(#ident.into_value()),
+        false,
+    );
 
     if let Err(e) = context.check() {
         return to_compile_errors(e).into();
@@ -64,9 +90,21 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
             }
 
             #[inline]
+            #[allow(non_snake_case, unused_variables)]
+            fn into_value(self) -> swim_common::model::Value {
+                #into_value_body
+            }
+
+            #[inline]
             #[allow(non_snake_case)]
             fn try_from_value(value: &swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
                 #from_value_body
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            fn try_convert(value: swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
+                #try_convert_body
             }
         }
     };

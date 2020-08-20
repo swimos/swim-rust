@@ -169,6 +169,7 @@ pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
 pub fn deconstruct_type(
     compound_type: &CompoundTypeKind,
     fields: &[&FieldIdentity],
+    as_ref: bool,
 ) -> TokenStream2 {
     let fields: Vec<_> = fields
         .iter()
@@ -186,11 +187,20 @@ pub fn deconstruct_type(
         })
         .collect();
 
-    match compound_type {
-        CompoundTypeKind::Struct => quote! { { #(ref #fields,)* } },
-        CompoundTypeKind::Tuple => quote! { ( #(ref #fields,)* ) },
-        CompoundTypeKind::NewType => quote! { ( #(ref #fields,)* ) },
-        CompoundTypeKind::Unit => quote!(),
+    if as_ref {
+        match compound_type {
+            CompoundTypeKind::Struct => quote! { { #(ref #fields,)* } },
+            CompoundTypeKind::Tuple => quote! { ( #(ref #fields,)* ) },
+            CompoundTypeKind::NewType => quote! { ( #(ref #fields,)* ) },
+            CompoundTypeKind::Unit => quote!(),
+        }
+    } else {
+        match compound_type {
+            CompoundTypeKind::Struct => quote! { { #(#fields,)* } },
+            CompoundTypeKind::Tuple => quote! { ( #(#fields,)* ) },
+            CompoundTypeKind::NewType => quote! { ( #(#fields,)* ) },
+            CompoundTypeKind::Unit => quote!(),
+        }
     }
 }
 
