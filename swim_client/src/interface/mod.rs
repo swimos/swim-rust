@@ -169,8 +169,11 @@ impl SwimClient {
     pub async fn send_command(
         &mut self,
         target: AbsolutePath,
-        envelope: Envelope,
+        value: Value,
     ) -> Result<(), ClientError> {
+        let envelope =
+            Envelope::make_command(target.node.clone(), target.lane.clone(), Some(value));
+
         self.downlinks
             .send_command(target, envelope)
             .await

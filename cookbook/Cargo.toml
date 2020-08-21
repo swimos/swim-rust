@@ -9,5 +9,8 @@ edition = "2018"
 [dependencies]
 url = "2.1.1"
 tokio = "0.2.21"
+futures = "0.3.4"
+futures-util = "0.3.4"
+rand = "0.7.3"
 swim_client = { path = "../swim_client" }
 swim_common = { path = "../swim_common" }
