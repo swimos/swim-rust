@@ -26,13 +26,16 @@ use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::model::Value;
-use swim_common::sink::item::ItemSender;
+use swim_common::sink::item::{ItemSender, ItemSink};
+use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::RelativePath;
 use swim_form::{Form, FormDeserializeErr};
 use tracing::{event, span, Level};
 
 #[cfg(test)]
 mod tests;
 
+pub mod action;
 pub mod map;
 pub(crate) mod spawn;
 
@@ -472,5 +475,38 @@ where
                 })
             }),
         )
+    }
+}
+
+pub(crate) struct UplinkMessageSender<S> {
+    inner: S,
+    route: RelativePath,
+}
+
+impl<S> UplinkMessageSender<S> {
+    pub(crate) fn new(inner: S, route: RelativePath) -> Self {
+        UplinkMessageSender { inner, route }
+    }
+}
+
+impl<'a, Msg, S> ItemSink<'a, UplinkMessage<Msg>> for UplinkMessageSender<S>
+where
+    S: ItemSink<'a, Envelope>,
+    Msg: Into<Value>,
+{
+    type Error = S::Error;
+    type SendFuture = S::SendFuture;
+
+    fn send_item(&'a mut self, msg: UplinkMessage<Msg>) -> Self::SendFuture {
+        let UplinkMessageSender { inner, route } = self;
+        let envelope = match msg {
+            UplinkMessage::Linked => Envelope::linked(&route.node, &route.lane),
+            UplinkMessage::Synced => Envelope::synced(&route.node, &route.lane),
+            UplinkMessage::Unlinked => Envelope::unlinked(&route.node, &route.lane),
+            UplinkMessage::Event(ev) => {
+                Envelope::make_event(&route.node, &route.lane, Some(ev.into()))
+            }
+        };
+        inner.send_item(envelope)
     }
 }
