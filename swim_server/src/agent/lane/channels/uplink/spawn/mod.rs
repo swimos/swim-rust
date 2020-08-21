@@ -40,6 +40,9 @@ mod tests;
 
 const FAILED_ERR_REPORT: &str = "Failed to send error report.";
 const UPLINK_TERMINATED: &str = "An uplink terminated uncleanly.";
+const NEW_UPLINK: &str = "Creating new uplink.";
+const UPLINK_CLEANUP: &str = "Uplink cleanup task.";
+const UPLINK_TASK: &str = "Uplink task.";
 
 /// Creates lane uplinks on demand, replacing them if they fail and reporting any errors that
 /// occur.
@@ -122,8 +125,11 @@ where
                 let sender = match uplink_senders.entry(addr) {
                     Entry::Occupied(entry) => Some(entry.into_mut()),
                     Entry::Vacant(entry) => {
+                        let span =
+                            span!(Level::TRACE, NEW_UPLINK, lane = ?self.route, endpoint = ?addr);
                         if let Some(handle) = self
                             .make_uplink(addr, error_collector.clone(), &mut spawn_tx, &mut router)
+                            .instrument(span)
                             .await
                         {
                             Some(entry.insert(handle))
@@ -166,7 +172,9 @@ where
                 break;
             }
         }
-        join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup())).await;
+        join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup()))
+            .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
+            .await;
     }
 
     //Create a new uplink state machine and attach it to the router
@@ -223,7 +231,7 @@ where
                 cleanup_tx.trigger();
             }
         }
-        .instrument(span!(Level::INFO, "Lane uplink.", ?route, ?addr));
+        .instrument(span!(Level::INFO, UPLINK_TASK, ?route, ?addr));
         if spawn_tx.send(ul_task.boxed()).await.is_err() {
             return None;
         }

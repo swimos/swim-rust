@@ -42,6 +42,7 @@ use tokio::sync::mpsc::Sender;
 
 const INIT: i32 = 42;
 
+#[derive(Debug)]
 struct Message(i32);
 
 impl Form for Message {
