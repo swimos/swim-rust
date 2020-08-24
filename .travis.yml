@@ -19,9 +19,9 @@ jobs:
         - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.3"
         - REPO_URL="https://github.com/swimos/swim-docker-example/"
       script:
-        - cd client
+        - cd swim_client
         # Features aren't allowed in the root of a virtual workspace
-        - cargo test --all-targets --package client --features test-server
+        - cargo test --all-targets --package swim_client --features test-server
         - cd ..
 
     - os: linux

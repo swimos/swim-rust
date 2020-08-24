@@ -35,4 +35,3 @@ jobs:
       - script: bash <(curl -s https://codecov.io/bash)
         displayName: Upload code coverage
         workingDirectory: $(Build.SourcesDirectory)
-

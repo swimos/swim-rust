@@ -1,0 +1,11 @@
+@configuration {
+    @client {
+        buffer_size: 2
+        router: {
+            retry_strategy: @exponential(max_interval: 16, max_backoff: "indefinite")
+            idle_timeout: 60
+            conn_reaper_frequency: 60
+            buffer_size: 100
+        }
+    }
+}
