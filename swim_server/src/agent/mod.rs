@@ -418,6 +418,60 @@ where
     }
 }
 
+struct ActionLaneIo<Command, Response> {
+    lane: ActionLane<Command, Response>,
+    feedback: bool,
+}
+
+impl<Command, Response> ActionLaneIo<Command, Response>
+where
+    Command: Send + Sync + Form + Debug + 'static,
+    Response: Send + Sync + Form + Debug + 'static,
+{
+
+    fn new_action(lane: ActionLane<Command, Response>) -> Self {
+        ActionLaneIo {
+            lane,
+            feedback: true,
+        }
+    }
+
+    fn new_command(lane: ActionLane<Command, Response>) -> Self {
+        ActionLaneIo {
+            lane,
+            feedback: false,
+        }
+    }
+
+}
+
+impl<Command, Response, Context> LaneIo<Context> for ActionLaneIo<Command, Response>
+where
+    Command: Send + Sync + Form + Debug + 'static,
+    Response: Send + Sync + Form + Debug + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+
+        let ActionLaneIo { lane, feedback } = self;
+
+        Ok(lane::channels::task::run_action_lane_io(
+            lane,
+            feedback,
+            envelopes,
+            config,
+            context,
+            route
+        ).boxed())
+    }
+}
+
 struct LifecycleTasks<L, S, P> {
     name: String,
     lifecycle: L,
@@ -725,26 +779,29 @@ where
 /// #Arguments
 ///
 /// * `name`- The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_action_lane<Agent, Context, Command, Response, L, S, P>(
     name: impl Into<String>,
+    is_public: bool,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
     ActionLane<Command, Response>,
     impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
-    Context: AgentContext<Agent> + Send + Sync + 'static,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     S: Stream<Item = Command> + Send + Sync + 'static,
-    Command: Any + Send + Sync + Debug,
-    Response: Any + Send + Sync + Debug,
+    Command: Any + Send + Sync + Form + Debug,
+    Response: Any + Send + Sync + Form + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
-    P: Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
+    P: Fn(&Agent) -> &ActionLane<Command, Response> + AgentExecutionContext + Send + Sync + 'static,
 {
     let (lane, event_stream) = model::action::make_lane_model(buffer_size);
 
@@ -754,7 +811,13 @@ where
         event_stream,
         projection,
     });
-    (lane, tasks)
+
+    let lane_io = if is_public {
+        Some(ActionLaneIo::new_action(lane.clone()))
+    } else {
+        None
+    };
+    (lane, tasks, lane_io)
 }
 
 /// Create a command lane from a lifecycle.
@@ -762,19 +825,21 @@ where
 /// #Arguments
 ///
 /// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_command_lane<Agent, Context, Command, L>(
     name: impl Into<String>,
+    is_public: bool,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (CommandLane<Command>, impl LaneTasks<Agent, Context>)
+) -> (CommandLane<Command>, impl LaneTasks<Agent, Context>, Option<impl LaneIo<Context>>)
 where
     Agent: 'static,
-    Context: AgentContext<Agent> + Send + Sync + 'static,
-    Command: Any + Send + Sync + Debug,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    Command: Any + Send + Sync + Form + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
 {
     let (lane, event_stream) = model::action::make_lane_model(buffer_size);
@@ -785,5 +850,12 @@ where
         event_stream,
         projection,
     });
-    (lane, tasks)
+
+    let lane_io = if is_public {
+        Some(ActionLaneIo::new_command(lane.clone()))
+    } else {
+        None
+    };
+
+    (lane, tasks, lane_io)
 }

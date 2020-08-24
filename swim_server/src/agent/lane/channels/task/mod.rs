@@ -16,20 +16,23 @@
 mod tests;
 
 use crate::agent::context::AgentExecutionContext;
+use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
+use crate::agent::lane::channels::uplink::action::ActionLaneUplinks;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{MapLaneUplink, UplinkAction, ValueLaneUplink};
 use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
+use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
-use futures::future::join3;
+use futures::future::{join, join3};
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
@@ -42,7 +45,7 @@ use swim_common::model::Value;
 use swim_common::topic::Topic;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
-use swim_form::Form;
+use swim_form::{Form, FormDeserializeErr};
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
@@ -53,6 +56,7 @@ use utilities::sync::trigger;
 pub struct LaneIoError {
     pub route: RelativePath,
     pub update_error: Option<UpdateError>,
+    pub uplink_cleanup_failed: bool,
     pub uplink_errors: Vec<UplinkErrorReport>,
 }
 
@@ -61,23 +65,35 @@ impl LaneIoError {
         LaneIoError {
             route,
             update_error: Some(err),
+            uplink_cleanup_failed: false,
             uplink_errors: vec![],
         }
     }
 
-    pub fn for_uplink_errors(route: RelativePath, errs: Vec<UplinkErrorReport>) -> Self {
+    pub fn for_uplink_errors(
+        route: RelativePath,
+        uplink_cleanup_failed: bool,
+        errs: Vec<UplinkErrorReport>,
+    ) -> Self {
         assert!(!errs.is_empty());
         LaneIoError {
             route,
             update_error: None,
+            uplink_cleanup_failed,
             uplink_errors: errs,
         }
     }
 
-    pub fn new(route: RelativePath, upd: UpdateError, upl: Vec<UplinkErrorReport>) -> Self {
+    pub fn new(
+        route: RelativePath,
+        upd: UpdateError,
+        uplink_cleanup_failed: bool,
+        upl: Vec<UplinkErrorReport>,
+    ) -> Self {
         LaneIoError {
             route,
             update_error: Some(upd),
+            uplink_cleanup_failed,
             uplink_errors: upl,
         }
     }
@@ -88,13 +104,16 @@ impl Display for LaneIoError {
         let LaneIoError {
             route,
             update_error,
+            uplink_cleanup_failed,
             uplink_errors,
         } = self;
         writeln!(f, "IO tasks failed for lane: \"{}\".", route)?;
+        if *uplink_cleanup_failed {
+            writeln!(f, "- Uplink cleanup failed.")?;
+        }
         if let Some(upd) = update_error {
             writeln!(f, "- update_error = {}", upd)?;
         }
-
         if !uplink_errors.is_empty() {
             writeln!(f, "- uplink_errors =")?;
             for err in uplink_errors.iter() {
@@ -236,8 +255,7 @@ where
     let envelope_task = async move {
         pin_mut!(envelopes);
 
-        let mut uplink_errors = vec![];
-        let mut num_fatal: usize = 0;
+        let mut err_acc = UplinkErrorAcc::new(route_cpy.clone(), max_fatal_uplink_errors);
 
         let failed: bool = loop {
             let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
@@ -279,15 +297,7 @@ where
                     }
                 }
                 Some(Either::Right(error)) => {
-                    if error.error.is_fatal() {
-                        num_fatal += 1;
-                        event!(Level::ERROR, UPLINK_FATAL, route = ?route_cpy, ?error);
-                    } else {
-                        event!(Level::WARN, UPLINK_FAILED, route = ?route_cpy, ?error);
-                    }
-                    uplink_errors.push(error);
-                    if num_fatal > max_fatal_uplink_errors {
-                        event!(Level::ERROR, TOO_MANY_FAILURES, route = ?route_cpy, num_fatal, max = max_fatal_uplink_errors);
+                    if err_acc.add(error).is_err() {
                         break true;
                     }
                 }
@@ -296,16 +306,12 @@ where
                 }
             }
         };
-        (failed, uplink_errors)
+        (failed, err_acc.take_errors())
     };
 
-    match join3(uplink_spawn_task, update_task, envelope_task).await {
-        (_, Err(upd_err), (_, upl_errs)) => Err(LaneIoError::new(route, upd_err, upl_errs)),
-        (_, _, (true, upl_errs)) if !upl_errs.is_empty() => {
-            Err(LaneIoError::for_uplink_errors(route, upl_errs))
-        }
-        (_, _, (_, upl_errs)) => Ok(upl_errs),
-    }
+    let (_, upd_res, (upl_fatal, upl_errs)) =
+        join3(uplink_spawn_task, update_task, envelope_task).await;
+    combine_results(route, upd_res.err(), false, upl_fatal, upl_errs)
 }
 
 impl<T> LaneMessageHandler for ValueLane<T>
@@ -371,5 +377,221 @@ where
     fn make_update(&self) -> Self::Update {
         let MapLaneMessageHandler { lane, retries, .. } = self;
         MapLaneUpdateTask::new((*lane).clone(), (*retries).clone())
+    }
+}
+
+async fn simple_action_envelope_task<Command>(
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    mut commands: mpsc::Sender<Result<(RoutingAddr, Command), FormDeserializeErr>>,
+) where
+    Command: Send + Sync + Form + 'static,
+{
+    pin_mut!(envelopes);
+
+    while let Some(TaggedClientEnvelope(addr, envelope)) = envelopes.next().await {
+        let OutgoingLinkMessage { header, body, .. } = envelope;
+        let sent = match header {
+            OutgoingHeader::Command => {
+                let command =
+                    Command::try_convert(body.unwrap_or(Value::Extant)).map(|cmd| (addr, cmd));
+                commands.send(command).await.is_ok()
+            }
+            _ => true,
+        };
+        if !sent {
+            break;
+        }
+    }
+}
+
+async fn action_envelope_task_with_uplinks<Command>(
+    route: RelativePath,
+    config: AgentExecutionConfig,
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    mut commands: mpsc::Sender<Result<(RoutingAddr, Command), FormDeserializeErr>>,
+    mut actions: mpsc::Sender<TaggedAction>,
+    err_rx: mpsc::Receiver<UplinkErrorReport>,
+) -> (bool, Vec<UplinkErrorReport>)
+where
+    Command: Send + Sync + Form + 'static,
+{
+    pin_mut!(envelopes);
+
+    let envelopes = envelopes.fuse();
+    let mut err_rx = err_rx.fuse();
+    pin_mut!(envelopes);
+
+    let mut err_acc = UplinkErrorAcc::new(route, config.max_fatal_uplink_errors);
+
+    let failed: bool = loop {
+        let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
+            maybe_env = envelopes.next() => maybe_env.map(Either::Left),
+            maybe_err = err_rx.next() => maybe_err.map(Either::Right),
+        };
+
+        match envelope_or_err {
+            Some(Either::Left(TaggedClientEnvelope(addr, envelope))) => {
+                let OutgoingLinkMessage { header, body, .. } = envelope;
+                let sent = match header {
+                    OutgoingHeader::Link(_) => actions
+                        .send(TaggedAction(addr, UplinkAction::Link))
+                        .await
+                        .is_ok(),
+                    OutgoingHeader::Sync(_) => actions
+                        .send(TaggedAction(addr, UplinkAction::Sync))
+                        .await
+                        .is_ok(),
+                    OutgoingHeader::Unlink => actions
+                        .send(TaggedAction(addr, UplinkAction::Unlink))
+                        .await
+                        .is_ok(),
+                    OutgoingHeader::Command => {
+                        let command = Command::try_convert(body.unwrap_or(Value::Extant))
+                            .map(|cmd| (addr, cmd));
+                        commands.send(command).await.is_ok()
+                    }
+                };
+                if !sent {
+                    break false;
+                }
+            }
+            Some(Either::Right(error)) => {
+                if err_acc.add(error).is_err() {
+                    break true;
+                }
+            }
+            _ => {
+                break false;
+            }
+        }
+    };
+    (failed, err_acc.take_errors())
+}
+
+pub async fn run_action_lane_io<Command, Response>(
+    lane: ActionLane<Command, Response>,
+    feedback: bool,
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    Command: Send + Sync + Form + Debug + 'static,
+    Response: Send + Sync + Form + Debug + 'static,
+{
+    let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
+
+    if feedback {
+        let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
+        let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
+        let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
+
+        let updater =
+            ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
+
+        let update_task = updater.run_update(update_rx);
+
+        let uplinks = ActionLaneUplinks::new(feedback_rx, route.clone(), config.cleanup_timeout);
+        let uplink_task = uplinks.run(uplink_rx, context.router_handle(), err_tx);
+
+        let envelope_task = action_envelope_task_with_uplinks(
+            route.clone(),
+            config,
+            envelopes,
+            update_tx,
+            uplink_tx,
+            err_rx,
+        );
+        let (upd_result, uplink_task_state, (uplink_fatal, uplink_errs)) =
+            join3(update_task, uplink_task, envelope_task).await;
+        combine_results(
+            route,
+            upd_result.err(),
+            !uplink_task_state,
+            uplink_fatal,
+            uplink_errs,
+        )
+    } else {
+        let updater = ActionLaneUpdateTask::new(lane.clone(), None, config.cleanup_timeout);
+        let update_task = updater.run_update(update_rx);
+        let envelope_task = simple_action_envelope_task(envelopes, update_tx);
+        let (upd_result, _) = join(update_task, envelope_task).await;
+        combine_results(route, upd_result.err(), false, false, vec![])
+    }
+}
+
+fn combine_results(
+    route: RelativePath,
+    update_error: Option<UpdateError>,
+    uplinks_task_state: bool,
+    uplink_fatal: bool,
+    uplink_errs: Vec<UplinkErrorReport>,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError> {
+    if let Some(upd_err) = update_error {
+        Err(LaneIoError::new(
+            route,
+            upd_err,
+            uplinks_task_state,
+            uplink_errs,
+        ))
+    } else if uplink_fatal && !uplink_errs.is_empty() {
+        Err(LaneIoError::for_uplink_errors(
+            route,
+            uplinks_task_state,
+            uplink_errs,
+        ))
+    } else {
+        Ok(uplink_errs)
+    }
+}
+
+struct UplinkErrorAcc {
+    route: RelativePath,
+    errors: Vec<UplinkErrorReport>,
+    max_fatal: usize,
+    num_fatal: usize,
+}
+
+impl UplinkErrorAcc {
+    fn new(route: RelativePath, max_fatal: usize) -> Self {
+        UplinkErrorAcc {
+            route,
+            errors: vec![],
+            max_fatal,
+            num_fatal: 0,
+        }
+    }
+
+    fn add(&mut self, error: UplinkErrorReport) -> Result<(), ()> {
+        let UplinkErrorAcc {
+            route,
+            errors,
+            max_fatal,
+            num_fatal,
+        } = self;
+        if error.error.is_fatal() {
+            *num_fatal += 1;
+            event!(Level::ERROR, UPLINK_FATAL, ?route, ?error);
+        } else {
+            event!(Level::WARN, UPLINK_FAILED, ?route, ?error);
+        }
+        errors.push(error);
+        if *num_fatal > *max_fatal {
+            event!(
+                Level::ERROR,
+                TOO_MANY_FAILURES,
+                ?route,
+                ?num_fatal,
+                ?max_fatal
+            );
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn take_errors(self) -> Vec<UplinkErrorReport> {
+        self.errors
     }
 }

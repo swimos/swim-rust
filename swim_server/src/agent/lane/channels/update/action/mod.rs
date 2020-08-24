@@ -34,6 +34,24 @@ pub struct ActionLaneUpdateTask<Command, Response> {
     cleanup_timeout: Duration,
 }
 
+impl<Command, Response> ActionLaneUpdateTask<Command, Response>
+where
+    Command: Send + Sync + Debug + 'static,
+    Response: Send + Sync + Debug + 'static,
+{
+    pub fn new(
+        lane: ActionLane<Command, Response>,
+        feedback: Option<mpsc::Sender<(RoutingAddr, Response)>>,
+        cleanup_timeout: Duration,
+    ) -> Self {
+        ActionLaneUpdateTask {
+            lane,
+            feedback,
+            cleanup_timeout,
+        }
+    }
+}
+
 const NO_COMPLETION: &str = "Action did not complete.";
 const CLEANUP_TIMEOUT: &str = "Timeout waiting for pending completions.";
 

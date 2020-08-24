@@ -38,6 +38,20 @@ pub struct ActionLaneUplinks<Response> {
     response_timeout: Duration,
 }
 
+impl<Response> ActionLaneUplinks<Response> {
+    pub fn new(
+        responses: mpsc::Receiver<(RoutingAddr, Response)>,
+        route: RelativePath,
+        response_timeout: Duration,
+    ) -> Self {
+        ActionLaneUplinks {
+            responses,
+            route,
+            response_timeout,
+        }
+    }
+}
+
 impl<Response> ActionLaneUplinks<Response>
 where
     Response: Send + Sync + Form + Form + 'static,
@@ -47,7 +61,7 @@ where
         uplink_actions: impl Stream<Item = TaggedAction>,
         router: Router,
         err_tx: mpsc::Sender<UplinkErrorReport>,
-    ) -> Result<(), UplinkError>
+    ) -> bool
     where
         Router: ServerRouter,
     {
@@ -77,7 +91,7 @@ where
                         .await;
                 }
                 Either::Left(_) => {
-                    return Err(UplinkError::LaneStoppedReporting);
+                    return false;
                 }
                 Either::Right(Some(TaggedAction(addr, act))) => match act {
                     UplinkAction::Link => {
@@ -124,10 +138,10 @@ where
                         .await
                 }
                 Ok(None) => {
-                    break Ok(());
+                    break true;
                 }
                 _ => {
-                    break Err(UplinkError::LaneStoppedReporting);
+                    break false;
                 }
             }
         }
