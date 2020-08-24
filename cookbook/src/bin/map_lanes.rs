@@ -19,26 +19,21 @@ async fn did_update(
     map_recv
         .filter_map(|event| async {
             match event {
-                Remote(event) => Some(event),
+                Remote(TypedViewWithEvent {
+                    view,
+                    event: MapEvent::Insert(key),
+                }) => Some((key, view)),
+                Remote(TypedViewWithEvent {
+                    view,
+                    event: MapEvent::Remove(key),
+                }) => Some((key, view)),
                 _ => None,
             }
         })
-        .scan(initial_value, |state, current| {
-            let previous = state.clone();
-            *state = current.view.clone();
-
-            let TypedViewWithEvent {
-                view: current,
-                event: key,
-            } = current;
-
-            async { Some((key, previous, current)) }
-        })
-        .filter_map(|(key, previous, current)| async {
-            match key {
-                MapEvent::Insert(key) | MapEvent::Remove(key) => Some((key, previous, current)),
-                _ => None,
-            }
+        .scan(initial_value, |state, (key, current_view)| {
+            let previous_view = state.clone();
+            *state = current_view.clone();
+            async { Some((key, previous_view, current_view)) }
         })
         .for_each(|(key, previous, current)| async move {
             println!(
