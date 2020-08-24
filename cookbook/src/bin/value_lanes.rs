@@ -2,12 +2,36 @@ use futures::StreamExt;
 use std::time::Duration;
 use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
 use swim_client::downlink::model::value::Action;
+use swim_client::downlink::subscription::TypedValueReceiver;
 use swim_client::downlink::Downlink;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::AbsolutePath;
 use tokio::task;
+
+async fn did_set(value_recv: TypedValueReceiver<String>, initial_value: String) {
+    value_recv
+        .filter_map(|event| async {
+            match event {
+                Remote(event) => Some(event),
+                _ => None,
+            }
+        })
+        .scan(initial_value, |state, current| {
+            let previous = state.clone();
+            *state = current.clone();
+
+            async { Some((previous, current)) }
+        })
+        .for_each(|(previous, current)| async move {
+            println!(
+                "Link watched info change TO {:?} FROM {:?}",
+                current, previous
+            )
+        })
+        .await;
+}
 
 #[tokio::main]
 async fn main() {
@@ -29,34 +53,13 @@ async fn main() {
         .await
         .expect("Failed to retrieve initial downlink value!");
 
-    task::spawn(async move {
-        value_recv
-            .filter_map(|event| async {
-                match event {
-                    Remote(event) => Some(event),
-                    _ => None,
-                }
-            })
-            .scan(initial_value, |state, current| {
-                let previous = state.clone();
-                *state = current.clone();
-
-                async { Some((previous, current)) }
-            })
-            .for_each(|(previous, current)| async move {
-                println!(
-                    "Link watched info change TO {:?} FROM {:?}",
-                    current, previous
-                )
-            })
-            .await;
-    });
+    task::spawn(did_set(value_recv, initial_value));
 
     // Send using either the proxy command lane...
     client
         .send_command(path, String::from("Hello from command, world!").into())
         .await
-        .expect("Failed to send command.");
+        .expect("Failed to send command!");
     tokio::time::delay_for(Duration::from_secs(2)).await;
 
     // ...or a downlink set()
