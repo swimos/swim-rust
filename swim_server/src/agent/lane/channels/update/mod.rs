@@ -18,7 +18,7 @@ pub mod value;
 use futures::future::BoxFuture;
 use futures::Stream;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use stm::transaction::TransactionError;
 use swim_common::form::FormErr;
 
@@ -67,7 +67,7 @@ impl From<FormErr> for UpdateError {
 }
 
 pub trait LaneUpdate {
-    type Msg: Send + 'static;
+    type Msg: Send + Debug + 'static;
 
     fn run_update<Messages, Err>(
         self,
