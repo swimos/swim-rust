@@ -34,7 +34,7 @@ async fn did_update(map_recv: TypedMapReceiver<i32, bool>, default: bool) {
 #[tokio::main]
 async fn main() {
     let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
-    let host_uri = url::Url::parse(&format!("ws://127.0.0.1:9001")).unwrap();
+    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
 
     let building_node = "/building/swim";
     let first_room_node = "/swim/1";

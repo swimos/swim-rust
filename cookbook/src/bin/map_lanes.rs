@@ -49,7 +49,7 @@ async fn did_update(
 #[tokio::main]
 async fn main() {
     let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
-    let host_uri = url::Url::parse(&format!("ws://127.0.0.1:9001")).unwrap();
+    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "unit/foo";
     let cart_lane = "shoppingCart";
     let add_lane = "addItem";
