@@ -30,6 +30,7 @@ use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
+use tracing::{event, Level};
 
 pub struct ActionLaneUplinks<Response> {
     /// Stream of updates to the lane.
@@ -51,6 +52,13 @@ impl<Response> ActionLaneUplinks<Response> {
         }
     }
 }
+
+const LINKING: &str = "Linking uplink an action lane.";
+const SYNCING: &str = "Syncing with an action lane (this is a no-op).";
+const UNLINKING: &str = "Unlinking from an action lane.";
+const AWAITING_PENDING: &str = "Awaiting pending responses.";
+const RESPONSE_TIMEOUT: &str = "Awaiting pending responses timed out.";
+const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
 
 impl<Response> ActionLaneUplinks<Response>
 where
@@ -95,6 +103,7 @@ where
                 }
                 Either::Right(Some(TaggedAction(addr, act))) => match act {
                     UplinkAction::Link => {
+                        event!(Level::DEBUG, LINKING);
                         if uplinks.send_msg(UplinkMessage::Linked, addr).await.is_err() {
                             break;
                         }
@@ -102,8 +111,10 @@ where
                     UplinkAction::Sync => {
                         let linked = uplinks.uplinks.contains_key(&addr);
                         if !linked {
+                            event!(Level::DEBUG, LINKING);
                             match uplinks.send_msg(UplinkMessage::Linked, addr).await {
                                 Ok(true) => {
+                                    event!(Level::DEBUG, SYNCING);
                                     if uplinks.send_msg(UplinkMessage::Synced, addr).await.is_err()
                                     {
                                         break;
@@ -114,11 +125,15 @@ where
                                 }
                                 _ => {}
                             }
-                        } else if uplinks.send_msg(UplinkMessage::Synced, addr).await.is_err() {
-                            break;
+                        } else {
+                            event!(Level::DEBUG, SYNCING);
+                            if uplinks.send_msg(UplinkMessage::Synced, addr).await.is_err() {
+                                break;
+                            }
                         }
                     }
                     UplinkAction::Unlink => {
+                        event!(Level::DEBUG, UNLINKING);
                         if uplinks.unlink(addr).await.is_err() {
                             break;
                         }
@@ -131,6 +146,7 @@ where
         }
 
         loop {
+            event!(Level::DEBUG, AWAITING_PENDING);
             match timeout(response_timeout, responses.next()).await {
                 Ok(Some((addr, response))) => {
                     uplinks
@@ -141,6 +157,7 @@ where
                     break true;
                 }
                 _ => {
+                    event!(Level::ERROR, RESPONSE_TIMEOUT, ?response_timeout);
                     break false;
                 }
             }
@@ -268,6 +285,6 @@ async fn handle_err(err_tx: &mut mpsc::Sender<UplinkErrorReport>, addr: RoutingA
         .await
         .is_err()
     {
-        //TODO log error.
+        event!(Level::ERROR, message = FAILED_ERR_REPORT, ?addr);
     }
 }

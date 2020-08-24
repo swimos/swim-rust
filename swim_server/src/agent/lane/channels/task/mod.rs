@@ -413,7 +413,7 @@ async fn action_envelope_task_with_uplinks<Command>(
     err_rx: mpsc::Receiver<UplinkErrorReport>,
 ) -> (bool, Vec<UplinkErrorReport>)
 where
-    Command: Send + Sync + Form + 'static,
+    Command: Send + Sync + Form + Debug + 'static,
 {
     pin_mut!(envelopes);
 
@@ -421,7 +421,7 @@ where
     let mut err_rx = err_rx.fuse();
     pin_mut!(envelopes);
 
-    let mut err_acc = UplinkErrorAcc::new(route, config.max_fatal_uplink_errors);
+    let mut err_acc = UplinkErrorAcc::new(route.clone(), config.max_fatal_uplink_errors);
 
     let failed: bool = loop {
         let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
@@ -433,21 +433,19 @@ where
             Some(Either::Left(TaggedClientEnvelope(addr, envelope))) => {
                 let OutgoingLinkMessage { header, body, .. } = envelope;
                 let sent = match header {
-                    OutgoingHeader::Link(_) => actions
-                        .send(TaggedAction(addr, UplinkAction::Link))
-                        .await
-                        .is_ok(),
-                    OutgoingHeader::Sync(_) => actions
-                        .send(TaggedAction(addr, UplinkAction::Sync))
-                        .await
-                        .is_ok(),
-                    OutgoingHeader::Unlink => actions
-                        .send(TaggedAction(addr, UplinkAction::Unlink))
-                        .await
-                        .is_ok(),
+                    OutgoingHeader::Link(_) => {
+                        send_action(&mut actions, &route, addr, UplinkAction::Link).await
+                    }
+                    OutgoingHeader::Sync(_) => {
+                        send_action(&mut actions, &route, addr, UplinkAction::Sync).await
+                    }
+                    OutgoingHeader::Unlink => {
+                        send_action(&mut actions, &route, addr, UplinkAction::Unlink).await
+                    }
                     OutgoingHeader::Command => {
                         let command = Command::try_convert(body.unwrap_or(Value::Extant))
                             .map(|cmd| (addr, cmd));
+                        event!(Level::TRACE, DISPATCH_COMMAND, ?route, ?addr, ?command);
                         commands.send(command).await.is_ok()
                     }
                 };
@@ -468,6 +466,19 @@ where
     (failed, err_acc.take_errors())
 }
 
+async fn send_action(
+    sender: &mut mpsc::Sender<TaggedAction>,
+    route: &RelativePath,
+    addr: RoutingAddr,
+    action: UplinkAction,
+) -> bool {
+    event!(Level::TRACE, DISPATCH_ACTION, ?route, ?addr, ?action);
+    sender
+        .send(TaggedAction(addr, UplinkAction::Link))
+        .await
+        .is_ok()
+}
+
 pub async fn run_action_lane_io<Command, Response>(
     lane: ActionLane<Command, Response>,
     feedback: bool,
@@ -480,6 +491,9 @@ where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
 {
+    let span = span!(Level::INFO, LANE_IO_TASK, ?route);
+    let _enter = span.enter();
+
     let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
 
     if feedback {
@@ -490,10 +504,15 @@ where
         let updater =
             ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
 
-        let update_task = updater.run_update(update_rx);
+        let update_task =
+            updater
+                .run_update(update_rx)
+                .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
         let uplinks = ActionLaneUplinks::new(feedback_rx, route.clone(), config.cleanup_timeout);
-        let uplink_task = uplinks.run(uplink_rx, context.router_handle(), err_tx);
+        let uplink_task = uplinks
+            .run(uplink_rx, context.router_handle(), err_tx)
+            .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
         let envelope_task = action_envelope_task_with_uplinks(
             route.clone(),
