@@ -36,13 +36,13 @@ use crate::downlink::raw::DownlinkTaskHandle;
 use futures::task::{Context, Poll};
 use futures::Future;
 use std::pin::Pin;
-use swim_common::connections::error::ConnectionError;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::topic::Topic;
+use swim_common::ws::error::ConnectionError;
 use tracing::{instrument, trace};
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the

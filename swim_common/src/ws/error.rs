@@ -32,7 +32,6 @@ pub enum ConnectionError {
     AlreadyClosedError,
     /// The connection was refused by the host.
     ConnectionRefused,
-
     /// Not an error. Closed event by the WebSocket
     Closed,
 }
@@ -42,15 +41,18 @@ pub enum ConnectionError {
 pub enum WebSocketError {
     /// An invalid URL was supplied.
     Url(String),
-    /// A protocol error occured.
+    /// A protocol error occurred.
     Protocol,
+    /// A TLS error occurred.
+    Tls(String),
 }
 
 impl Display for WebSocketError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match &self {
             WebSocketError::Url(url) => write!(f, "An invalid URL ({}) was supplied", url),
-            WebSocketError::Protocol => write!(f, "A protocol error occured."),
+            WebSocketError::Protocol => write!(f, "A protocol error occurred."),
+            WebSocketError::Tls(msg) => write!(f, "A TLS error occurred: {}", msg),
         }
     }
 }

@@ -17,6 +17,8 @@ mod tests;
 
 #[cfg(feature = "websocket")]
 pub mod tungstenite;
+// #[allow(warnings)]
+// mod warpws;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod async_factory {
@@ -29,8 +31,8 @@ pub mod async_factory {
     use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
     use swim_common::request::Request;
 
-    use swim_common::connections::error::ConnectionError;
-    use swim_common::connections::{WebsocketFactory, WsMessage};
+    use swim_common::ws::error::ConnectionError;
+    use swim_common::ws::{WebsocketFactory, WsMessage};
     use swim_runtime::task::{spawn, TaskHandle};
     use utilities::errors::FlattenErrors;
 

@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::error::ConnectionError;
+use url::Url;
+
+use crate::ws::error::{ConnectionError, WebSocketError};
 use futures::{Future, Sink, Stream};
+use std::path::PathBuf;
 
 pub mod error;
+mod tung;
 
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
@@ -60,4 +64,16 @@ pub trait WebsocketFactory: Send + Sync {
 
     /// Open a connection to the provided remote URL.
     fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
+}
+
+pub trait WebSocketHandler {}
+
+pub enum StreamType {
+    Plain,
+    Tls(PathBuf),
+}
+
+pub struct WebSocketConfig {
+    stream_type: StreamType,
+    extensions: Vec<Box<dyn WebSocketHandler>>,
 }

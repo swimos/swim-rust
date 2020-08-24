@@ -18,8 +18,8 @@ use futures::{Sink, Stream};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::pin::Pin;
-use swim_common::connections::error::ConnectionError;
-use swim_common::connections::{WebsocketFactory, WsMessage};
+use swim_common::ws::error::ConnectionError;
+use swim_common::ws::{WebsocketFactory, WsMessage};
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);

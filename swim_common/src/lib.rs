@@ -15,7 +15,6 @@
 #![allow(clippy::match_wild_err_arm)]
 
 pub mod configuration;
-pub mod connections;
 pub mod form;
 pub mod model;
 pub mod request;
@@ -23,6 +22,9 @@ pub mod routing;
 pub mod sink;
 pub mod topic;
 pub mod warp;
+
+#[allow(warnings)]
+pub mod ws;
 
 #[allow(unused_imports)]
 #[macro_use]

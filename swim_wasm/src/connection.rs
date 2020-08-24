@@ -24,8 +24,8 @@ use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequence
 use swim_common::request::Request;
 
 use std::ops::Deref;
-use swim_common::connections::error::{ConnectionError, WebSocketError};
-use swim_common::connections::{WebsocketFactory, WsMessage};
+use swim_common::ws::error::{ConnectionError, WebSocketError};
+use swim_common::ws::{WebsocketFactory, WsMessage};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
