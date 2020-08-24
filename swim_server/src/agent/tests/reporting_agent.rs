@@ -308,8 +308,9 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             |agent: &ReportingAgent| &agent.total,
         );
 
-        let (action, action_tasks) = agent::make_command_lane(
+        let (action, action_tasks, _) = agent::make_command_lane(
             "action",
+            false,
             ActionLifecycle {
                 inner: inner.clone(),
             },

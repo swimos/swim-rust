@@ -83,6 +83,6 @@ pub type OutputMessage<Handler> = <<Handler as LaneMessageHandler>::Uplink as Up
 
 pub type InputMessage<Handler> = <<Handler as LaneMessageHandler>::Update as LaneUpdate>::Msg;
 
-/// An [`UplinkAction`] tagged with the ket of the endpoint into routing table from which it originated.
+/// An [`UplinkAction`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug)]
 pub struct TaggedAction(RoutingAddr, UplinkAction);

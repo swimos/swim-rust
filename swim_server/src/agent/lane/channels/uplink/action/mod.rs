@@ -24,10 +24,10 @@ use pin_utils::pin_mut;
 use std::collections::{hash_map::Entry, HashMap};
 use std::marker::PhantomData;
 use std::time::Duration;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::RelativePath;
-use swim_form::Form;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
 
@@ -54,7 +54,7 @@ impl<Response> ActionLaneUplinks<Response> {
 
 impl<Response> ActionLaneUplinks<Response>
 where
-    Response: Send + Sync + Form + Form + 'static,
+    Response: Send + Sync + Form + 'static,
 {
     pub async fn run<Router>(
         self,

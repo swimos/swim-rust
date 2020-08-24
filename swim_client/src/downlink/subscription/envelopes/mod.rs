@@ -122,9 +122,9 @@ pub(in crate::downlink) mod map {
     use crate::downlink::model::map::UntypedMapModification;
     use crate::downlink::Message;
     use std::sync::Arc;
+    use swim_common::form::Form;
     use swim_common::model::Value;
     use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
-    use swim_form::Form;
     use tracing::warn;
 
     pub(super) fn envelope_body(cmd: UntypedMapModification<Arc<Value>>) -> Option<Value> {

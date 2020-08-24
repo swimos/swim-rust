@@ -24,7 +24,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_form::FormDeserializeErr;
+use swim_common::form::FormErr;
 use swim_runtime::time::delay::{delay_for, Delay};
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::future::{
@@ -38,7 +38,7 @@ mod tests;
 #[derive(Debug)]
 pub enum UpdateError {
     FailedTransaction(TransactionError),
-    BadEnvelopeBody(FormDeserializeErr),
+    BadEnvelopeBody(FormErr),
     FeedbackChannelDropped,
 }
 
@@ -49,7 +49,7 @@ impl Display for UpdateError {
                 write!(f, "Failed to apply a transaction to the lane: {}", err)
             }
             UpdateError::BadEnvelopeBody(err) => {
-                write!(f, "The body of an incoming envelops was invalid: {}", err)
+                write!(f, "The body of an incoming envelope was invalid: {}", err)
             }
             UpdateError::FeedbackChannelDropped => {
                 write!(f, "Action lane feedback channel dropped.")
@@ -74,8 +74,8 @@ impl From<TransactionError> for UpdateError {
     }
 }
 
-impl From<FormDeserializeErr> for UpdateError {
-    fn from(err: FormDeserializeErr) -> Self {
+impl From<FormErr> for UpdateError {
+    fn from(err: FormErr) -> Self {
         UpdateError::BadEnvelopeBody(err)
     }
 }

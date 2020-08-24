@@ -26,7 +26,7 @@ use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
@@ -144,11 +144,11 @@ pub enum RecordError {
 
 /// Parse failure indicating that an invalid token was encountered.
 #[derive(Eq, Clone, Hash, Debug, PartialEq, Ord, PartialOrd)]
-pub struct BadToken(usize, TokenError);
+pub struct BadToken(Location, TokenError);
 
 /// Parse failure indicated that an invalid sequence of tokens was encountered.
 #[derive(Eq, Clone, Hash, Debug, PartialEq, Ord, PartialOrd)]
-pub struct BadRecord(usize, RecordError);
+pub struct BadRecord(Location, RecordError);
 
 /// Failure type for Recon parse operations.
 #[derive(Eq, Clone, Hash, Debug, PartialEq)]
@@ -169,13 +169,13 @@ pub enum ParseFailure {
 impl Display for ParseFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseFailure::TokenizationFailure(BadToken(offset, _)) => {
-                write!(f, "Bad token at offset: {}", *offset)
+            ParseFailure::TokenizationFailure(BadToken(location, _)) => {
+                write!(f, "Bad token at: {}:{}", location.line, location.column)
             }
-            ParseFailure::InvalidToken(BadRecord(offset, err)) => write!(
+            ParseFailure::InvalidToken(BadRecord(location, err)) => write!(
                 f,
-                "Token at {} is not valid in this context: {:?}",
-                *offset, *err
+                "Token at {}:{} is not valid in this context: {:?}",
+                location.line, location.column, *err
             ),
             ParseFailure::IncompleteRecord => {
                 write!(f, "The input ended before the record was complete.")
@@ -243,11 +243,11 @@ pub fn parse_document(repr: &str) -> Result<Vec<Item>, ParseFailure> {
 
     let final_state = tokens.try_fold(init_state, |mut state, maybe_token| {
         let token = maybe_token.map_err(ParseFailure::TokenizationFailure)?;
-        let offset = token.1;
+        let location = token.1;
         match consume_token(&mut state, token) {
             Some(ParseTermination::Failed(err)) => Err(err),
             Some(ParseTermination::EarlyTermination(_)) => Err(ParseFailure::InvalidToken(
-                BadRecord(offset, RecordError::BadStackOnClose),
+                BadRecord(location, RecordError::BadStackOnClose),
             )),
             _ => Ok(state),
         }
@@ -368,10 +368,10 @@ fn from_tokens_document_iteratee(
     unfold_with_flush(
         init_state,
         |state: &mut Vec<Frame>, loc_token: LocatedReconToken<String>| {
-            let offset = loc_token.1;
+            let location = loc_token.1;
             consume_token(state, loc_token).map(|res| match res {
                 ParseTermination::EarlyTermination(_) => Err(ParseFailure::InvalidToken(
-                    BadRecord(offset, RecordError::BadStackOnClose),
+                    BadRecord(location, RecordError::BadStackOnClose),
                 )),
                 ParseTermination::Failed(failure) => Err(failure),
             })
@@ -491,7 +491,7 @@ enum ParseTermination {
     EarlyTermination(Value),
 }
 
-trait TokenStr: PartialEq + Borrow<str> + Into<String> {}
+trait TokenStr: PartialEq + Borrow<str> + Into<String> + Debug {}
 
 impl<'a> TokenStr for &'a str {}
 
@@ -583,24 +583,74 @@ impl<S: TokenStr> ReconToken<S> {
 
 /// A token along with its offset within the stream (in bytes).
 #[derive(PartialEq, Debug)]
-struct LocatedReconToken<S>(ReconToken<S>, usize);
+struct LocatedReconToken<S>(ReconToken<S>, Location);
 
-fn loc<S>(token: ReconToken<S>, offset: usize) -> LocatedReconToken<S> {
-    LocatedReconToken(token, offset)
+fn loc<S>(token: ReconToken<S>, location: Location) -> LocatedReconToken<S> {
+    LocatedReconToken(token, location)
 }
 
 /// States for the tokenization automaton.
 #[derive(PartialEq, Eq, Debug)]
 enum TokenParseState {
-    None,
-    ReadingIdentifier(usize),
-    ReadingStringLiteral(usize, bool),
-    ReadingInteger(usize),
-    ReadingMantissa(usize),
-    StartExponent(usize),
-    ReadingExponent(usize),
-    ReadingNewLine(usize),
-    Failed(usize, TokenError),
+    None(Location),
+    ReadingIdentifier(Location),
+    ReadingStringLiteral(Location, bool),
+    ReadingInteger(Location),
+    ReadingMantissa(Location),
+    StartExponent(Location),
+    ReadingExponent(Location),
+    ReadingNewLine(Location),
+    Failed(Location, TokenError),
+}
+
+impl TokenParseState {
+    fn location(&mut self) -> &mut Location {
+        match self {
+            TokenParseState::None(loc) => loc,
+            TokenParseState::ReadingIdentifier(loc) => loc,
+            TokenParseState::ReadingStringLiteral(loc, _) => loc,
+            TokenParseState::ReadingInteger(loc) => loc,
+            TokenParseState::ReadingMantissa(loc) => loc,
+            TokenParseState::StartExponent(loc) => loc,
+            TokenParseState::ReadingExponent(loc) => loc,
+            TokenParseState::ReadingNewLine(loc) => loc,
+            TokenParseState::Failed(loc, _) => loc,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Hash, Ord, PartialOrd, PartialEq, Eq, Debug)]
+struct Location {
+    /// Number of characters from the start. (Absolute offset)
+    offset: usize,
+    /// Line number.
+    line: usize,
+    /// Number of characters from the start of the current line. (Relative offset)
+    column: usize,
+}
+
+impl Location {
+    fn new() -> Self {
+        Location {
+            offset: 0,
+            line: 1,
+            column: 1,
+        }
+    }
+}
+
+impl Location {
+    /// Sets the absolute offset to a new value and recalculates the relative offset.
+    fn update_offset(&mut self, new_offset: usize) {
+        self.column = self.column + new_offset - self.offset;
+        self.offset = new_offset;
+    }
+
+    /// Increments the line number and resets the relative offset.
+    fn new_line(&mut self) {
+        self.column = 0;
+        self.line += 1;
+    }
 }
 
 /// State transition function for the tokenization automaton.
@@ -613,25 +663,27 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
 ) -> Option<Result<LocatedReconToken<T>, BadToken>> {
     source.update(next);
     match state {
-        TokenParseState::None => token_start(source, state, index, current, next),
-        TokenParseState::ReadingIdentifier(off) => match next {
+        TokenParseState::None(_) => token_start(source, state, index, current, next),
+        TokenParseState::ReadingIdentifier(location) => match next {
             Some((_, c)) if is_identifier_char(c) => None,
             _ => {
-                let tok = extract_identifier(source, next.map(|p| p.0), *off);
-                *state = TokenParseState::None;
+                let location = *location;
+                let tok = extract_identifier(source, next.map(|p| p.0), location);
+                *state = TokenParseState::None(location);
                 tok
             }
         },
-        TokenParseState::ReadingStringLiteral(off, escape) => {
+        TokenParseState::ReadingStringLiteral(location, escape) => {
             if current == '\"' {
                 if *escape {
                     *escape = false;
                     None
                 } else {
-                    let start = *off;
+                    let location = *location;
+                    let start = location.offset;
                     let token = ReconToken::StringLiteral(source.take(start, index));
-                    *state = TokenParseState::None;
-                    Some(Result::Ok(loc(token, start)))
+                    *state = TokenParseState::None(location);
+                    Some(Result::Ok(loc(token, location)))
                 }
             } else {
                 match next {
@@ -645,107 +697,118 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                         }
                     }
                     _ => {
-                        *state = TokenParseState::Failed(index, TokenError::NoClosingQuote);
-                        Some(Result::Err(BadToken(index, TokenError::NoClosingQuote)))
+                        let location = *location;
+                        *state = TokenParseState::Failed(location, TokenError::NoClosingQuote);
+                        Some(Result::Err(BadToken(location, TokenError::NoClosingQuote)))
                     }
                 }
             }
         }
-        TokenParseState::ReadingInteger(off) => match next {
+        TokenParseState::ReadingInteger(location) => match next {
             Some((_, c)) if is_numeric_char(c) => {
                 if current == '.' {
-                    *state = TokenParseState::ReadingMantissa(*off)
+                    *state = TokenParseState::ReadingMantissa(*location)
                 } else if current == 'e' || current == 'E' {
-                    *state = TokenParseState::StartExponent(*off)
+                    *state = TokenParseState::StartExponent(*location)
                 }
                 None
             }
             _ => {
-                let start = *off;
+                let location = *location;
+                let start = location.offset;
                 Some(parse_int_token(
                     state,
-                    start,
+                    location,
                     source.take_opt_ref(start, next.map(|p| p.0)),
                 ))
             }
         },
-        TokenParseState::ReadingMantissa(off) => match next {
+        TokenParseState::ReadingMantissa(location) => match next {
             Some((_, c)) if is_mantissa_char(c) => {
                 if current == 'e' || current == 'E' {
-                    *state = TokenParseState::StartExponent(*off)
+                    *state = TokenParseState::StartExponent(*location)
                 }
                 None
             }
             _ => {
-                let start = *off;
+                let location = *location;
+                let start = location.offset;
                 Some(parse_float_token(
                     state,
-                    start,
+                    location,
                     source.take_opt_ref(start, next.map(|p| p.0)),
                 ))
             }
         },
-        TokenParseState::StartExponent(off) => match next {
+        TokenParseState::StartExponent(location) => match next {
             Some((_, c)) if c.is_digit(10) => {
                 if current == '-' || current.is_digit(10) {
-                    *state = TokenParseState::ReadingExponent(*off);
+                    *state = TokenParseState::ReadingExponent(*location);
                     None
                 } else {
-                    let start = *off;
-                    *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
-                    Some(Result::Err(BadToken(start, TokenError::InvalidFloat)))
+                    let location = *location;
+                    *state = TokenParseState::Failed(location, TokenError::InvalidFloat);
+                    Some(Result::Err(BadToken(location, TokenError::InvalidFloat)))
                 }
             }
             Some((next_off, _)) => {
                 if current.is_digit(10) {
-                    let start = *off;
+                    let location = *location;
+                    let start = location.offset;
                     Some(parse_float_token(
                         state,
-                        start,
+                        location,
                         source.take_ref(start, next_off),
                     ))
                 } else {
-                    Some(Err(BadToken(*off, TokenError::InvalidFloat)))
+                    Some(Err(BadToken(*location, TokenError::InvalidFloat)))
                 }
             }
             _ => {
-                let start = *off;
-                Some(parse_float_token(state, start, source.take_all_ref(start)))
-            }
-        },
-        TokenParseState::ReadingExponent(off) => match next {
-            Some((_, c)) if c.is_digit(10) => {
-                if current.is_digit(10) {
-                    *state = TokenParseState::ReadingExponent(*off);
-                    None
-                } else {
-                    let start = *off;
-                    *state = TokenParseState::Failed(start, TokenError::InvalidFloat);
-                    Some(Result::Err(BadToken(start, TokenError::InvalidFloat)))
-                }
-            }
-            _ => {
-                let start = *off;
+                let location = *location;
+                let start = location.offset;
                 Some(parse_float_token(
                     state,
-                    start,
+                    location,
+                    source.take_all_ref(start),
+                ))
+            }
+        },
+        TokenParseState::ReadingExponent(location) => match next {
+            Some((_, c)) if c.is_digit(10) => {
+                if current.is_digit(10) {
+                    *state = TokenParseState::ReadingExponent(*location);
+                    None
+                } else {
+                    let location = *location;
+                    *state = TokenParseState::Failed(location, TokenError::InvalidFloat);
+                    Some(Result::Err(BadToken(location, TokenError::InvalidFloat)))
+                }
+            }
+            _ => {
+                let location = *location;
+                let start = location.offset;
+                Some(parse_float_token(
+                    state,
+                    location,
                     source.take_opt_ref(start, next.map(|p| p.0)),
                 ))
             }
         },
-        TokenParseState::ReadingNewLine(off) => match next {
+        TokenParseState::ReadingNewLine(location) => match next {
             Some((_, w)) if w.is_whitespace() => None,
             Some(_) => {
-                let start = *off;
-                *state = TokenParseState::None;
-                Some(Ok(loc(ReconToken::NewLine, start)))
+                let location = *location;
+                *state = TokenParseState::None(location);
+                Some(Ok(loc(ReconToken::NewLine, location)))
             }
             _ => {
-                *state = TokenParseState::None;
+                let location = *location;
+                *state = TokenParseState::None(location);
                 None
             }
         },
-        TokenParseState::Failed(i, err) => Some(Err(BadToken(*i, *err))),
+        TokenParseState::Failed(location, err) => Some(Err(BadToken(*location, *err))),
     }
 }
 
@@ -753,9 +816,9 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
 fn extract_identifier<T: TokenStr, B: TokenBuffer<T>>(
     source: &mut B,
     next_index: Option<usize>,
-    start: usize,
+    location: Location,
 ) -> Option<Result<LocatedReconToken<T>, BadToken>> {
-    let content = source.take_opt(start, next_index);
+    let content = source.take_opt(location.offset, next_index);
     let token = if content.borrow() == "true" {
         ReconToken::BoolLiteral(true)
     } else if content.borrow() == "false" {
@@ -763,7 +826,7 @@ fn extract_identifier<T: TokenStr, B: TokenBuffer<T>>(
     } else {
         ReconToken::Identifier(content)
     };
-    Some(Result::Ok(loc(token, start)))
+    Some(Result::Ok(loc(token, location)))
 }
 
 fn is_numeric_char(c: char) -> bool {
@@ -776,44 +839,44 @@ fn is_mantissa_char(c: char) -> bool {
 
 fn parse_int_token<T: TokenStr>(
     state: &mut TokenParseState,
-    offset: usize,
+    location: Location,
     rep: &str,
 ) -> Result<LocatedReconToken<T>, BadToken> {
     match rep.parse::<u64>() {
         Ok(n) => {
-            *state = TokenParseState::None;
+            *state = TokenParseState::None(location);
             Ok(loc(
                 match u32::try_from(n) {
                     Ok(m) => ReconToken::UInt32Literal(m),
                     Err(_) => ReconToken::UInt64Literal(n),
                 },
-                offset,
+                location,
             ))
         }
         Err(_) => match rep.parse::<i64>() {
             Ok(m) => {
-                *state = TokenParseState::None;
+                *state = TokenParseState::None(location);
                 Ok(loc(
                     match i32::try_from(m) {
                         Ok(m) => ReconToken::Int32Literal(m),
                         Err(_) => ReconToken::Int64Literal(m),
                     },
-                    offset,
+                    location,
                 ))
             }
             Err(_) => match BigUint::from_str(rep) {
                 Ok(n) => {
-                    *state = TokenParseState::None;
-                    Ok(loc(ReconToken::BigUint(n), offset))
+                    *state = TokenParseState::None(location);
+                    Ok(loc(ReconToken::BigUint(n), location))
                 }
                 Err(_) => match BigInt::from_str(rep) {
                     Ok(n) => {
-                        *state = TokenParseState::None;
-                        Ok(loc(ReconToken::BigInt(n), offset))
+                        *state = TokenParseState::None(location);
+                        Ok(loc(ReconToken::BigInt(n), location))
                     }
                     Err(_) => {
-                        *state = TokenParseState::Failed(offset, TokenError::InvalidInteger);
-                        Err(BadToken(offset, TokenError::InvalidInteger))
+                        *state = TokenParseState::Failed(location, TokenError::InvalidInteger);
+                        Err(BadToken(location, TokenError::InvalidInteger))
                     }
                 },
             },
@@ -823,17 +886,17 @@ fn parse_int_token<T: TokenStr>(
 
 fn parse_float_token<T: TokenStr>(
     state: &mut TokenParseState,
-    offset: usize,
+    location: Location,
     rep: &str,
 ) -> Result<LocatedReconToken<T>, BadToken> {
     match rep.parse::<f64>() {
         Ok(x) => {
-            *state = TokenParseState::None;
-            Ok(loc(ReconToken::Float64Literal(x), offset))
+            *state = TokenParseState::None(location);
+            Ok(loc(ReconToken::Float64Literal(x), location))
         }
         Err(_) => {
-            *state = TokenParseState::Failed(offset, TokenError::InvalidFloat);
-            Err(BadToken(offset, TokenError::InvalidFloat))
+            *state = TokenParseState::Failed(location, TokenError::InvalidFloat);
+            Err(BadToken(location, TokenError::InvalidFloat))
         }
     }
 }
@@ -847,84 +910,102 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
     current: char,
     next: Option<(usize, char)>,
 ) -> Option<Result<LocatedReconToken<T>, BadToken>> {
+    let location = state.location();
+    location.update_offset(index);
+
     match current {
-        '@' => Some(Result::Ok(loc(ReconToken::AttrMarker, index))),
-        '(' => Some(Result::Ok(loc(ReconToken::AttrBodyStart, index))),
-        ')' => Some(Result::Ok(loc(ReconToken::AttrBodyEnd, index))),
-        '{' => Some(Result::Ok(loc(ReconToken::RecordBodyStart, index))),
-        '}' => Some(Result::Ok(loc(ReconToken::RecordBodyEnd, index))),
-        ':' => Some(Result::Ok(loc(ReconToken::SlotDivider, index))),
-        ',' | ';' => Some(Result::Ok(loc(ReconToken::EntrySep, index))),
+        '@' => Some(Result::Ok(loc(ReconToken::AttrMarker, *location))),
+        '(' => Some(Result::Ok(loc(ReconToken::AttrBodyStart, *location))),
+        ')' => Some(Result::Ok(loc(ReconToken::AttrBodyEnd, *location))),
+        '{' => Some(Result::Ok(loc(ReconToken::RecordBodyStart, *location))),
+        '}' => Some(Result::Ok(loc(ReconToken::RecordBodyEnd, *location))),
+        ':' => Some(Result::Ok(loc(ReconToken::SlotDivider, *location))),
+        ',' | ';' => Some(Result::Ok(loc(ReconToken::EntrySep, *location))),
         '\r' | '\n' => match next {
-            Some((_, c)) if c.is_whitespace() => {
-                *state = TokenParseState::ReadingNewLine(index);
+            Some((next_index, c)) if c == '\n' => {
+                location.update_offset(next_index);
+                location.new_line();
+                *state = TokenParseState::ReadingNewLine(*location);
                 None
             }
-            _ => Some(Result::Ok(loc(ReconToken::NewLine, index))),
+            Some((_, c)) if c.is_whitespace() => {
+                location.new_line();
+                *state = TokenParseState::ReadingNewLine(*location);
+                None
+            }
+            _ => {
+                location.new_line();
+                Some(Result::Ok(loc(ReconToken::NewLine, *location)))
+            }
         },
         w if w.is_whitespace() => None,
         '\"' => match next {
             Some((next_index, _)) => {
+                location.update_offset(next_index);
                 source.mark(false);
-                *state = TokenParseState::ReadingStringLiteral(next_index, false);
+                *state = TokenParseState::ReadingStringLiteral(*location, false);
                 None
             }
             _ => {
-                *state = TokenParseState::Failed(index, TokenError::NoClosingQuote);
-                Some(Err(BadToken(index, TokenError::NoClosingQuote)))
+                let location = *location;
+                *state = TokenParseState::Failed(location, TokenError::NoClosingQuote);
+                Some(Err(BadToken(location, TokenError::NoClosingQuote)))
             }
         },
         c if is_identifier_start(c) => match next {
             Some((_, c)) if is_identifier_char(c) => {
                 source.mark(true);
-                *state = TokenParseState::ReadingIdentifier(index);
+                *state = TokenParseState::ReadingIdentifier(*location);
                 None
             }
             Some((next_off, _)) => Some(Ok(loc(
                 ReconToken::Identifier(source.take(index, next_off)),
-                index,
+                *location,
             ))),
             _ => Some(Ok(loc(
                 ReconToken::Identifier(source.take_all(index)),
-                index,
+                *location,
             ))),
         },
         '-' => match next {
             Some((_, c)) if c == '.' || c.is_digit(10) => {
                 source.mark(true);
-                *state = TokenParseState::ReadingInteger(index);
+                *state = TokenParseState::ReadingInteger(*location);
                 None
             }
             _ => {
-                *state = TokenParseState::Failed(index, TokenError::InvalidInteger);
-                Some(Result::Err(BadToken(index, TokenError::InvalidInteger)))
+                let location = *location;
+                *state = TokenParseState::Failed(location, TokenError::InvalidInteger);
+                Some(Result::Err(BadToken(location, TokenError::InvalidInteger)))
             }
         },
         c if c.is_digit(10) => match next {
             Some((_, c)) if is_numeric_char(c) => {
                 source.mark(true);
-                *state = TokenParseState::ReadingInteger(index);
+                *state = TokenParseState::ReadingInteger(*location);
                 None
             }
             _ => Some(Result::Ok(loc(
                 ReconToken::UInt32Literal(c.to_digit(10).unwrap() as u32),
-                index,
+                *location,
             ))),
         },
         '.' => match next {
             Some((_, c)) if c.is_digit(10) => {
                 source.mark(true);
-                *state = TokenParseState::ReadingMantissa(index);
+                *state = TokenParseState::ReadingMantissa(*location);
                 None
             }
             _ => {
-                *state = TokenParseState::Failed(index, TokenError::InvalidFloat);
-                Some(Result::Err(BadToken(index, TokenError::InvalidFloat)))
+                let location = *location;
+                *state = TokenParseState::Failed(location, TokenError::InvalidFloat);
+                Some(Result::Err(BadToken(location, TokenError::InvalidFloat)))
             }
         },
         _ => {
-            *state = TokenParseState::Failed(index, TokenError::BadStartChar);
-            Some(Result::Err(BadToken(index, TokenError::BadStartChar)))
+            let location = *location;
+            *state = TokenParseState::Failed(location, TokenError::BadStartChar);
+            Some(Result::Err(BadToken(location, TokenError::BadStartChar)))
         }
     }
 }
@@ -935,24 +1016,37 @@ fn final_token<T: TokenStr, B: TokenBuffer<T>>(
     state: &mut TokenParseState,
 ) -> Option<Result<LocatedReconToken<T>, BadToken>> {
     match state {
-        TokenParseState::ReadingIdentifier(off) => extract_identifier(source, None, *off),
-        TokenParseState::ReadingInteger(off) => {
-            let start = *off;
-            Some(parse_int_token(state, start, source.take_all_ref(start)))
+        TokenParseState::ReadingIdentifier(location) => extract_identifier(source, None, *location),
+        TokenParseState::ReadingInteger(location) => {
+            let location = *location;
+            let start = location.offset;
+            Some(parse_int_token(state, location, source.take_all_ref(start)))
         }
-        TokenParseState::ReadingMantissa(off) => {
-            let start = *off;
-            Some(parse_float_token(state, start, source.take_all_ref(start)))
+        TokenParseState::ReadingMantissa(location) => {
+            let location = *location;
+            let start = location.offset;
+            Some(parse_float_token(
+                state,
+                location,
+                source.take_all_ref(start),
+            ))
         }
-        TokenParseState::StartExponent(off) => Some(Err(BadToken(*off, TokenError::InvalidFloat))),
-        TokenParseState::ReadingExponent(off) => {
-            let start = *off;
-            Some(parse_float_token(state, start, source.take_all_ref(start)))
+        TokenParseState::StartExponent(location) => {
+            Some(Err(BadToken(*location, TokenError::InvalidFloat)))
         }
-        TokenParseState::ReadingNewLine(off) => {
-            Some(Ok(LocatedReconToken(ReconToken::NewLine, *off)))
+        TokenParseState::ReadingExponent(location) => {
+            let location = *location;
+            let start = location.offset;
+            Some(parse_float_token(
+                state,
+                location,
+                source.take_all_ref(start),
+            ))
         }
-        TokenParseState::Failed(off, err) => Some(Err(BadToken(*off, *err))),
+        TokenParseState::ReadingNewLine(location) => {
+            Some(Ok(LocatedReconToken(ReconToken::NewLine, *location)))
+        }
+        TokenParseState::Failed(location, err) => Some(Err(BadToken(*location, *err))),
         _ => None,
     }
 }
@@ -972,7 +1066,7 @@ fn tokenize_str<'a>(
     repr.char_indices()
         .zip(following)
         .scan(
-            TokenParseState::None,
+            TokenParseState::None(Location::new()),
             move |parse_state, ((i, current), next)| {
                 let current_token =
                     tokenize_update(&mut token_buffer, parse_state, i, current, next);
@@ -991,7 +1085,11 @@ fn tokenize_iteratee(
 ) -> impl Iteratee<(usize, char), Item = Result<LocatedReconToken<String>, BadToken>> {
     let char_look_ahead = look_ahead::<(usize, char)>();
     let tokenize = unfold_with_flush(
-        (false, TokenAccumulator::new(), TokenParseState::None),
+        (
+            false,
+            TokenAccumulator::new(),
+            TokenParseState::None(Location::new()),
+        ),
         |state, item: ((usize, char), Option<(usize, char)>)| {
             let (is_init, token_buffer, parse_state) = state;
             let ((i, current), next) = item;
@@ -1046,7 +1144,7 @@ fn is_escape(c: char) -> bool {
 fn push_down(
     state: &mut Vec<Frame>,
     value: Value,
-    offset: usize,
+    location: Location,
 ) -> Option<Result<Value, BadRecord>> {
     if let Some(Frame {
         attrs,
@@ -1077,7 +1175,7 @@ fn push_down(
             ValueParseState::ReadingAttribute(name) => {
                 pack_attribute_body(state, value, attrs, items, name)
             }
-            _ => Some(Err(BadRecord(offset, RecordError::BadStack))),
+            _ => Some(Err(BadRecord(location, RecordError::BadStack))),
         }
     } else {
         Some(Ok(value))
@@ -1090,7 +1188,7 @@ fn push_down_and_close(
     state: &mut Vec<Frame>,
     value: Value,
     is_attr: bool,
-    offset: usize,
+    location: Location,
 ) -> Option<Result<Value, BadRecord>> {
     if let Some(Frame {
         attrs,
@@ -1102,22 +1200,61 @@ fn push_down_and_close(
             ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) if p == is_attr => {
                 items.push(Item::ValueItem(value));
                 let record = Value::Record(attrs, items);
-                push_down(state, record, offset)
+                push_down(state, record, location)
             }
             ValueParseState::ReadingSlot(p, key) if p == is_attr => {
                 items.push(Item::Slot(key, value));
                 let record = Value::Record(attrs, items);
-                push_down(state, record, offset)
+                push_down(state, record, location)
             }
             ValueParseState::ReadingAttribute(name) if is_attr => {
                 pack_attribute_body(state, value, attrs, items, name)
             }
-            _ => Some(Err(BadRecord(offset, RecordError::BadStackOnClose))),
+            _ => Some(Err(BadRecord(location, RecordError::BadStackOnClose))),
         }
     } else if is_attr {
-        Some(Err(BadRecord(offset, RecordError::EmptyStackOnClose)))
+        Some(Err(BadRecord(location, RecordError::EmptyStackOnClose)))
     } else {
         Some(Ok(value))
+    }
+}
+
+/// Add a value to the frame on top of the parser stack, after consuming an item separator or
+/// new line.
+fn push_down_item(
+    state: &mut Vec<Frame>,
+    value: Value,
+    location: Location,
+    closed_with_newline: bool,
+) -> Option<Result<Value, BadRecord>> {
+    if let Some(Frame {
+        attrs,
+        mut items,
+        mut parse_state,
+    }) = state.pop()
+    {
+        let p = match parse_state {
+            ValueParseState::RecordStart(p) | ValueParseState::InsideBody(p, _) => {
+                items.push(Item::ValueItem(value));
+                p
+            }
+            ValueParseState::ReadingSlot(p, key) => {
+                items.push(Item::Slot(key, value));
+                p
+            }
+            _ => {
+                return Some(Err(BadRecord(location, RecordError::BadStack)));
+            }
+        };
+        parse_state = ValueParseState::InsideBody(p, !closed_with_newline);
+        state.push(Frame {
+            attrs,
+            items,
+            parse_state,
+        });
+        None
+    } else {
+        Some(Err(BadRecord(location, RecordError::BadStack)))
     }
 }
 
@@ -1172,6 +1309,7 @@ enum StartAt {
 }
 
 /// A partially constructed record. The state of the parser is a stack of these.
+#[derive(Debug)]
 struct Frame {
     attrs: Vec<Attr>,
     items: Vec<Item>,
@@ -1198,14 +1336,15 @@ enum StateModification {
     RePush(Frame),
     OpenNew(Frame, StartAt),
     PushDown(Value),
+    PushDownItem(Value, bool),
     PushDownAndClose(Value, bool),
 }
 
 impl StateModification {
     /// Apply the modification to the parser state stack.
-    fn apply(self, state: &mut Vec<Frame>, offset: usize) -> Option<Result<Value, BadRecord>> {
+    fn apply(self, state: &mut Vec<Frame>, location: Location) -> Option<Result<Value, BadRecord>> {
         match self {
-            StateModification::Fail(err) => Some(Err(BadRecord(offset, err))),
+            StateModification::Fail(err) => Some(Err(BadRecord(location, err))),
             StateModification::RePush(frame) => {
                 state.push(frame);
                 None
@@ -1220,9 +1359,12 @@ impl StateModification {
                 state.push(Frame::new_record(start));
                 None
             }
-            StateModification::PushDown(value) => push_down(state, value, offset),
+            StateModification::PushDown(value) => push_down(state, value, location),
+            StateModification::PushDownItem(value, closed_with_newline) => {
+                push_down_item(state, value, location, closed_with_newline)
+            }
             StateModification::PushDownAndClose(value, attr_body) => {
-                push_down_and_close(state, value, attr_body, offset)
+                push_down_and_close(state, value, attr_body, location)
             }
         }
     }
@@ -1260,7 +1402,7 @@ fn consume_token<S: TokenStr>(
 ) -> Option<ParseTermination> {
     use ValueParseState::*;
 
-    let LocatedReconToken(token, offset) = loc_token;
+    let LocatedReconToken(token, location) = loc_token;
 
     if let Some(Frame {
         attrs,
@@ -1280,7 +1422,7 @@ fn consume_token<S: TokenStr>(
             ReadingSlot(attr_body, key) => update_reading_slot(token, attr_body, key, attrs, items),
             AfterSlot(attr_body) => update_after_slot(token, attr_body, attrs, items),
         };
-        match state_mod.apply(state, offset) {
+        match state_mod.apply(state, location) {
             Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
             Some(Err(failed)) => Some(ParseTermination::Failed(ParseFailure::InvalidToken(failed))),
             _ => None,
@@ -1300,14 +1442,14 @@ fn consume_token<S: TokenStr>(
             tok if tok.is_value() => match tok.unwrap_value() {
                 Some(Ok(value)) => Some(ParseTermination::EarlyTermination(value)),
                 Some(Err(_)) => Some(ParseTermination::Failed(ParseFailure::InvalidToken(
-                    BadRecord(offset, RecordError::InvalidValue),
+                    BadRecord(location, RecordError::InvalidValue),
                 ))),
                 _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(
-                    BadRecord(offset, RecordError::NonValueToken),
+                    BadRecord(location, RecordError::NonValueToken),
                 ))),
             },
             _ => Some(ParseTermination::Failed(ParseFailure::InvalidToken(
-                BadRecord(offset, RecordError::BadValueStart),
+                BadRecord(location, RecordError::BadValueStart),
             ))),
         }
     }
@@ -1371,14 +1513,14 @@ fn update_reading_attr<S: TokenStr>(
                 _ => StateModification::Fail(RecordError::NonValueToken),
             }
         }
-        EntrySep => {
+        tok @ EntrySep | tok @ NewLine => {
             let attr = Attr {
                 name,
                 value: Value::Extant,
             };
             attrs.push(attr);
             let record = Value::Record(attrs, items);
-            StateModification::PushDown(record)
+            StateModification::PushDownItem(record, tok == NewLine)
         }
         tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
             let attr = Attr {
@@ -1389,7 +1531,6 @@ fn update_reading_attr<S: TokenStr>(
             let record = Value::Record(attrs, items);
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         }
-        NewLine => repush(attrs, items, ReadingAttribute(name)),
         _ => StateModification::Fail(RecordError::InvalidAttributeValue),
     }
 }
@@ -1413,15 +1554,14 @@ fn update_after_attr<S: TokenStr>(
             Some(Err(_)) => StateModification::Fail(RecordError::InvalidValue),
             _ => StateModification::Fail(RecordError::NonValueToken),
         },
-        EntrySep => {
+        tok @ EntrySep | tok @ NewLine => {
             let record = Value::Record(attrs, items);
-            StateModification::PushDown(record)
+            StateModification::PushDownItem(record, tok == NewLine)
         }
         tok @ AttrBodyEnd | tok @ RecordBodyEnd => {
             let record = Value::Record(attrs, items);
             StateModification::PushDownAndClose(record, tok == AttrBodyEnd)
         }
-        NewLine => repush(attrs, items, AfterAttribute),
         _ => StateModification::Fail(RecordError::BadRecordStart),
     }
 }

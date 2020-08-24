@@ -644,6 +644,103 @@ fn complex_attributes(read_single: ReadSingleValue) {
             Value::from_vec(vec![Value::Extant, Value::Extant])
         ))))
     );
+
+    assert_that!(
+        read_single(
+            "@first @second {
+                b: 3
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![Attr::of("first"), Attr::of("second")],
+            vec![Item::slot("b", 3u32)]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                @first
+                @second {
+                    b: 3
+                }
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![
+                Item::ValueItem(Value::Record(vec![Attr::of("first")], vec![])),
+                Item::ValueItem(Value::Record(
+                    vec![Attr::of("second")],
+                    vec![Item::slot("b", 3u32)]
+                ))
+            ]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                @first {
+                    @second {
+                        b: 3
+                    }
+                }
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![Item::ValueItem(Value::Record(
+                vec![Attr::of("first")],
+                vec![Item::ValueItem(Value::Record(
+                    vec![Attr::of("second")],
+                    vec![Item::slot("b", 3u32)]
+                ))]
+            ))]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                a: @first
+                @second {
+                    b: 3
+                }
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![
+                Item::slot("a", Attr::of("first")),
+                Item::ValueItem(Value::Record(
+                    vec![Attr::of("second")],
+                    vec![Item::slot("b", 3u32)]
+                ))
+            ]
+        ))
+    );
+
+    assert_that!(
+        read_single(
+            "{
+                @first
+                5
+            }"
+        )
+        .unwrap(),
+        eq(Value::Record(
+            vec![],
+            vec![
+                Item::ValueItem(Value::Record(vec![Attr::of("first")], vec![])),
+                Item::ValueItem(Value::from(5u32))
+            ]
+        ))
+    );
 }
 
 #[test]
@@ -830,6 +927,293 @@ fn nested_records(read_single: ReadSingleValue) {
                 Item::from(("a", Value::from_vec(vec![("b", 1u32), ("c", 2u32)])))
             ])
         )))
+    );
+}
+
+#[test]
+fn parse_attribute_only_records() {
+    attribute_only_records(parse_single);
+}
+
+#[test]
+fn iteratee_attribute_only_records() {
+    attribute_only_records(consume_to_value);
+}
+
+fn attribute_only_records(read_single: ReadSingleValue) {
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![("first", Value::of_attr("attr"))])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr()
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![("first", Value::of_attr("attr"))])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr,
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::ValueItem(Value::Extant)
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr(),
+
+        }"
+        )
+        .unwrap(),
+        Value::record(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::ValueItem(Value::Extant)
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr, second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr,
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr(), second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr(),
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+            first: @attr()
+            second
+
+        }"
+        )
+        .unwrap(),
+        Value::from_vec(vec![
+            Item::of(("first", Value::of_attr("attr"))),
+            Item::of("second")
+        ])
+    );
+}
+
+#[test]
+fn parse_attributes_with_new_line() {
+    attributes_with_new_line(parse_single);
+}
+
+#[test]
+fn iteratee_attributes_with_new_line() {
+    attributes_with_new_line(consume_to_value);
+}
+
+fn attributes_with_new_line(read_single: ReadSingleValue) {
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar()
+                baz
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar(),
+                baz
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar(), baz
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar(),
+                baz
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar()
+                baz: qux
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar(),
+                baz: qux
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                one: two
+                three: @four()
+                five: six
+                seven: @eight(nine:ten)
+                eleven: twelve
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                one: two,
+                three: @four(),
+                five: six,
+                seven: @eight(nine:ten),
+                eleven: twelve
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                one: @two()
+                three: @four(five:six),
+                seven: eight,
+                nine: ten
+                eleven: twelve
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                one: @two(),
+                three: @four(five:six),
+                seven: eight,
+                nine: ten,
+                eleven: twelve
+            }
+            "
+        )
+        .unwrap()
+    );
+
+    assert_eq!(
+        read_single(
+            "{
+                foo: @bar()
+                @baz
+            }
+            "
+        )
+        .unwrap(),
+        read_single(
+            "{
+                foo: @bar
+                @baz
+            }
+            "
+        )
+        .unwrap()
     );
 }
 
@@ -1029,4 +1413,75 @@ fn biguint_tests() {
             Value::BigUint(BigUint::from_str(&u64_oob_str).unwrap())
         ))))
     );
+}
+
+#[test]
+fn error_tests() {
+    if let Err(e) = parse_single(&format!("@name(`)")) {
+        assert_eq!(e.to_string(), "Bad token at: 1:7");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\n12: *foo)")) {
+        assert_eq!(e.to_string(), "Bad token at: 2:5");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\r12: *foo)")) {
+        assert_eq!(e.to_string(), "Bad token at: 2:5");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\r\n12: *foo)")) {
+        assert_eq!(e.to_string(), "Bad token at: 2:5");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\n112: foo\n113: bar\n114: *baz\n115: qux)")) {
+        assert_eq!(e.to_string(), "Bad token at: 4:6");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!("@name(\r112: foo\r113: bar\r114: *baz\r115: qux)")) {
+        assert_eq!(e.to_string(), "Bad token at: 4:6");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@name(\r\n112: foo\r\n113: bar\r\n114: *baz\r\n115: qux)"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:6");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@config {{\n    @client {{\n        buffer_size: 2\n        router: **invalid\n    }}\n}}"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:17");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@config {{\r    @client {{\r        buffer_size: 2\r        router: **invalid\r    }}\r}}"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:17");
+    } else {
+        panic!("Error expected!");
+    }
+
+    if let Err(e) = parse_single(&format!(
+        "@config {{\r\n    @client {{\r\n        buffer_size: 2\r\n        router: **invalid\r\n    }}\r\n}}"
+    )) {
+        assert_eq!(e.to_string(), "Bad token at: 4:17");
+    } else {
+        panic!("Error expected!");
+    }
 }

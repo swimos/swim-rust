@@ -17,7 +17,7 @@ use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::StreamExt;
 use stm::transaction::RetryManager;
-use swim_form::FormDeserializeErr;
+use swim_common::form::FormErr;
 use tokio::sync::broadcast;
 
 #[derive(Clone, Debug)]
@@ -38,7 +38,7 @@ impl RetryManager for ExactlyOnce {
 
 #[test]
 fn format_invalid_form() {
-    let err = InvalidForm(FormDeserializeErr::Malformatted);
+    let err = InvalidForm(FormErr::Malformatted);
     let str = format!("{}", err);
     assert_eq!(
         str,

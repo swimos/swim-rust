@@ -25,11 +25,11 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::sink::item::{ItemSender, ItemSink};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_form::{Form, FormDeserializeErr};
 use tracing::{event, span, Level};
 
 #[cfg(test)]
@@ -74,7 +74,7 @@ pub enum UplinkError {
     /// The uplink attempted to execute a transaction against its lane but failed.
     FailedTransaction(TransactionError),
     /// The form used by the lane is inconsistent.
-    InconsistentForm(FormDeserializeErr),
+    InconsistentForm(FormErr),
     /// The uplink failed to start after a number of attempts.
     FailedToStart(usize),
 }
@@ -170,8 +170,8 @@ impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
     }
 }
 
+const FAILED_UNLINK: &str = "Failed to send an unlink message to a failed uplink.";
 const UPLINK_FAILED: &str = "Uplink task failed.";
-const FAILED_UNLINK: &str = "Failed to send unlink for failed uplink.";
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates>
 where

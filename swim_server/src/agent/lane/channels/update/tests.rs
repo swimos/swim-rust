@@ -14,7 +14,7 @@
 
 use crate::agent::lane::channels::update::UpdateError;
 use stm::transaction::TransactionError;
-use swim_form::FormDeserializeErr;
+use swim_common::form::FormErr;
 
 #[test]
 fn update_error_display() {
@@ -24,12 +24,12 @@ fn update_error_display() {
 
     assert_eq!(string, "Failed to apply a transaction to the lane: Retry on transaction with no data dependencies.");
 
-    let err2 = UpdateError::BadEnvelopeBody(FormDeserializeErr::Malformatted);
+    let err2 = UpdateError::BadEnvelopeBody(FormErr::Malformatted);
     let string2 = format!("{}", err2);
 
     assert_eq!(
         string2,
-        "The body of an incoming envelops was invalid: Malformatted"
+        "The body of an incoming envelope was invalid: Malformatted"
     );
 
     let err3 = UpdateError::FeedbackChannelDropped;
@@ -48,9 +48,9 @@ fn update_error_from_transaction_error() {
 
 #[test]
 fn update_error_from_form_error() {
-    let err: UpdateError = FormDeserializeErr::Malformatted.into();
+    let err: UpdateError = FormErr::Malformatted.into();
     assert!(matches!(
         err,
-        UpdateError::BadEnvelopeBody(FormDeserializeErr::Malformatted)
+        UpdateError::BadEnvelopeBody(FormErr::Malformatted)
     ))
 }

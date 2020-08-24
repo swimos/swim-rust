@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_form::FormDeserializeErr;
+use swim_common::form::FormErr;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
@@ -372,10 +372,7 @@ fn uplink_error_display() {
     assert_eq!(format!("{}", UplinkError::FailedTransaction(TransactionError::InvalidRetry)), 
                "The uplink failed to execute a transaction: Retry on transaction with no data dependencies.");
     assert_eq!(
-        format!(
-            "{}",
-            UplinkError::InconsistentForm(FormDeserializeErr::Malformatted)
-        ),
+        format!("{}", UplinkError::InconsistentForm(FormErr::Malformatted)),
         "A form implementation used by a lane is inconsistent: Malformatted"
     );
     assert_eq!(
@@ -396,10 +393,9 @@ fn uplink_error_from_map_sync_error() {
         err1,
         UplinkError::FailedTransaction(TransactionError::InvalidRetry)
     ));
-    let err2: UplinkError =
-        MapLaneSyncError::InconsistentForm(FormDeserializeErr::Malformatted).into();
+    let err2: UplinkError = MapLaneSyncError::InconsistentForm(FormErr::Malformatted).into();
     assert!(matches!(
         err2,
-        UplinkError::InconsistentForm(FormDeserializeErr::Malformatted)
+        UplinkError::InconsistentForm(FormErr::Malformatted)
     ));
 }

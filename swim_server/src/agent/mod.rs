@@ -43,10 +43,10 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_common::form::Form;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::DiscardingSender;
 use swim_common::warp::path::RelativePath;
-use swim_form::Form;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
@@ -428,7 +428,6 @@ where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
 {
-
     fn new_action(lane: ActionLane<Command, Response>) -> Self {
         ActionLaneIo {
             lane,
@@ -442,7 +441,6 @@ where
             feedback: false,
         }
     }
-
 }
 
 impl<Command, Response, Context> LaneIo<Context> for ActionLaneIo<Command, Response>
@@ -458,17 +456,12 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-
         let ActionLaneIo { lane, feedback } = self;
 
         Ok(lane::channels::task::run_action_lane_io(
-            lane,
-            feedback,
-            envelopes,
-            config,
-            context,
-            route
-        ).boxed())
+            lane, feedback, envelopes, config, context, route,
+        )
+        .boxed())
     }
 }
 
@@ -835,7 +828,11 @@ pub fn make_command_lane<Agent, Context, Command, L>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (CommandLane<Command>, impl LaneTasks<Agent, Context>, Option<impl LaneIo<Context>>)
+) -> (
+    CommandLane<Command>,
+    impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
+)
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,

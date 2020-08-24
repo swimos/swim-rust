@@ -8,9 +8,10 @@ extern crate quote;
 extern crate syn;
 
 use core::fmt;
+use std::fmt::Display;
+
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
-use std::fmt::Display;
 use syn::export::TokenStream2;
 use syn::{Data, Index, Meta, Path};
 
@@ -96,10 +97,7 @@ impl FieldIdentity {
     pub fn as_ident(&self) -> Ident {
         match self {
             FieldIdentity::Named(ident) => ident.clone(),
-            FieldIdentity::Renamed {
-                new_identity,
-                old_identity,
-            } => Ident::new(&new_identity, old_identity.span()),
+            FieldIdentity::Renamed { old_identity, .. } => old_identity.clone(),
             FieldIdentity::Anonymous(index) => {
                 Ident::new(&format!("__self_{}", index.index), index.span)
             }
@@ -171,6 +169,7 @@ pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
 pub fn deconstruct_type(
     compound_type: &CompoundTypeKind,
     fields: &[&FieldIdentity],
+    as_ref: bool,
 ) -> TokenStream2 {
     let fields: Vec<_> = fields
         .iter()
@@ -188,21 +187,32 @@ pub fn deconstruct_type(
         })
         .collect();
 
-    match compound_type {
-        CompoundTypeKind::Struct => quote! { { #(ref #fields,)* } },
-        CompoundTypeKind::Tuple => quote! { ( #(ref #fields,)* ) },
-        CompoundTypeKind::NewType => quote! { ( #(ref #fields,)* ) },
-        CompoundTypeKind::Unit => quote!(),
+    if as_ref {
+        match compound_type {
+            CompoundTypeKind::Struct => quote! { { #(ref #fields,)* } },
+            CompoundTypeKind::Tuple => quote! { ( #(ref #fields,)* ) },
+            CompoundTypeKind::NewType => quote! { ( #(ref #fields,)* ) },
+            CompoundTypeKind::Unit => quote!(),
+        }
+    } else {
+        match compound_type {
+            CompoundTypeKind::Struct => quote! { { #(#fields,)* } },
+            CompoundTypeKind::Tuple => quote! { ( #(#fields,)* ) },
+            CompoundTypeKind::NewType => quote! { ( #(#fields,)* ) },
+            CompoundTypeKind::Unit => quote!(),
+        }
     }
 }
 
-/// Returns a vector of metadata that matches the provided path.
+/// Returns a vector of metadata for the provided [`Attribute`] that matches the provided
+/// [`Symbol`]. An error that is encountered is added to the [`Context`] and a [`Result::Err`] is
+/// returned.
 pub fn get_attribute_meta(
     ctx: &mut Context,
     attr: &syn::Attribute,
-    path: Symbol,
+    symbol: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
-    if attr.path != path {
+    if attr.path != symbol {
         Ok(Vec::new())
     } else {
         match attr.parse_meta() {
@@ -210,7 +220,7 @@ pub fn get_attribute_meta(
             Ok(other) => {
                 ctx.error_spanned_by(
                     other,
-                    &format!("Invalid attribute. Expected #[{}(...)]", path),
+                    &format!("Invalid attribute. Expected #[{}(...)]", symbol),
                 );
                 Err(())
             }
