@@ -46,7 +46,7 @@ async fn main() {
 
     let path = AbsolutePath::new(host_uri.clone(), building_node, status_lane);
 
-    let (_, map_recv) = client
+    let (_downlink, map_recv) = client
         .map_downlink::<i32, bool>(path)
         .await
         .expect("Failed to create downlink!");

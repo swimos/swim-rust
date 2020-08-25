@@ -1,9 +1,8 @@
 use rand::seq::SliceRandom;
 use std::time::Duration;
 use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
-use swim_client::downlink::model::map::MapAction;
+use swim_client::downlink::Downlink;
 use swim_client::interface::SwimClient;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::AbsolutePath;
 
 #[tokio::main]
@@ -18,22 +17,22 @@ async fn main() {
         "shoppingCart",
     );
 
-    let (mut map_downlink, _) = client
+    let (map_downlink, _) = client
         .map_downlink::<String, i32>(path)
         .await
         .expect("Failed to create downlink!");
 
-    map_downlink
-        .send_item(MapAction::insert(
-            String::from("FromClientLink").into(),
-            25.into(),
-        ))
+    let (_dl_topic, mut dl_sink) = map_downlink.split();
+
+    dl_sink
+        .insert(String::from("FromClientLink"), 25)
         .await
         .expect("Failed to send message!");
 
     tokio::time::delay_for(Duration::from_secs(2)).await;
 
-    drop(map_downlink);
+    drop(_dl_topic);
+    drop(dl_sink);
 
     let items = vec!["bat", "cat", "rat"];
 

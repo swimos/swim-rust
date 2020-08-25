@@ -107,7 +107,7 @@ where
 }
 
 /// Wraps a sender up updates to a map downlink providing typed, asynchronous operations
-/// that can be performed on in.
+/// that can be performed on it.
 pub struct MapActions<Sender, K, V> {
     sender: Sender,
     _entry_type: PhantomData<(K, V)>,

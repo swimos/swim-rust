@@ -61,7 +61,7 @@ async fn main() {
         .await
         .expect("Failed to create map downlink!");
 
-    let (_, mut dl_sink) = map_downlink.split();
+    let (_dl_topic, mut dl_sink) = map_downlink.split();
 
     let initial_value = dl_sink
         .view()
@@ -79,14 +79,14 @@ async fn main() {
     tokio::time::delay_for(Duration::from_secs(2)).await;
 
     dl_sink
-        .send_item(MapAction::insert("FromClientLink".into(), 25.into()))
+        .insert("FromClientLink".to_string(), 25)
         .await
         .expect("Failed to send message!");
 
     tokio::time::delay_for(Duration::from_secs(2)).await;
 
     dl_sink
-        .send_item(MapAction::remove("FromClientLink".into()))
+        .remove("FromClientLink".to_string())
         .await
         .expect("Failed to send message!");
 

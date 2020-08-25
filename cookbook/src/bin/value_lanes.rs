@@ -1,12 +1,10 @@
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
-use swim_client::downlink::model::value::Action;
 use swim_client::downlink::subscription::TypedValueReceiver;
 use swim_client::downlink::Downlink;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::AbsolutePath;
 use tokio::task;
 
@@ -19,9 +17,7 @@ async fn did_set(value_recv: TypedValueReceiver<String>, initial_value: String) 
             }
         })
         .scan(initial_value, |state, current| {
-            let previous = state.clone();
-            *state = current.clone();
-
+            let previous = std::mem::replace(state, current.clone());
             async { Some((previous, current)) }
         })
         .for_each(|(previous, current)| async move {
@@ -46,7 +42,7 @@ async fn main() {
         .await
         .expect("Failed to create value downlink!");
 
-    let (_, mut dl_sink) = value_downlink.split();
+    let (_dl_topic, mut dl_sink) = value_downlink.split();
 
     let initial_value = dl_sink
         .get()
@@ -64,7 +60,7 @@ async fn main() {
 
     // ...or a downlink set()
     dl_sink
-        .send_item(Action::set(String::from("Hello from link, world!").into()))
+        .set("Hello from link, world!".to_string())
         .await
         .expect("Failed to send message!");
     tokio::time::delay_for(Duration::from_secs(2)).await;
