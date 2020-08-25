@@ -13,14 +13,9 @@
 // limitations under the License.
 
 use futures::future::ErrInto as FutErrInto;
-use futures::stream::{SplitSink, SplitStream, StreamExt};
-use tokio::net::TcpStream;
-use tokio_tls::TlsStream;
-use tokio_tungstenite::stream::Stream as StreamSwitcher;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::tungstenite::Error;
+use futures::stream::{SplitSink, SplitStream};
+
 use tokio_tungstenite::*;
-use url::Url;
 
 use swim_common::request::request_future::SendAndAwait;
 
@@ -28,7 +23,10 @@ use super::async_factory;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{WebsocketFactory, WsMessage};
+use swim_common::ws::{
+    maybe_normalise_url, StreamType, WebSocketConfig, WebsocketFactory, WsMessage,
+    UNSUPPORTED_SCHEME,
+};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
@@ -39,6 +37,103 @@ type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungSink, TungStream), Con
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>>;
 pub type ConnReq = async_factory::ConnReq<TungSink, TungStream>;
+
+use futures::StreamExt;
+use http::{Request, Response, Uri};
+use native_tls::{Certificate, TlsConnector};
+use std::fs::File;
+use std::io::{BufReader, Read};
+use tokio::net::TcpStream;
+use tokio_native_tls::{TlsConnector as TokioTlsConnector, TlsStream};
+use tokio_tungstenite::stream::Stream as StreamSwitcher;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{client_async_with_config, WebSocketStream};
+use url::Url;
+
+async fn connect(
+    url: Url,
+    config: WebSocketConfig,
+) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Response<()>), ConnectionError> {
+    let uri: Uri = url.as_str().parse()?;
+    let request = Request::get(uri).body(())?;
+
+    let port = request
+        .uri()
+        .port_u16()
+        .or_else(|| match request.uri().scheme_str() {
+            Some("wss") => Some(443),
+            Some("ws") => Some(80),
+            _ => None,
+        })
+        .ok_or_else(|| WebSocketError::Url(String::from(UNSUPPORTED_SCHEME)))?;
+
+    maybe_normalise_url(&request)?;
+
+    let domain = match request.uri().host() {
+        Some(d) => d.to_string(),
+        None => {
+            return Err(WebSocketError::Url(String::from("Malformatted URI. Missing host")).into())
+        }
+    };
+
+    let host = format!("{}:{}", domain, port);
+    let stream = build_stream(&host, domain, &config).await?;
+
+    match client_async_with_config(request, stream, None)
+        .await
+        .map_err(TungsteniteError)
+    {
+        Ok(r) => Ok(r),
+        Err(e) => Err(e.into()),
+    }
+}
+
+async fn build_stream(
+    host: &str,
+    domain: String,
+    config: &WebSocketConfig,
+) -> Result<MaybeTlsStream<TcpStream>, WebSocketError> {
+    let stream = TcpStream::connect(host)
+        .await
+        .map_err(|e| WebSocketError::Message(e.to_string()))?;
+
+    match &config.stream_type {
+        StreamType::Plain => Ok(StreamSwitcher::Plain(stream)),
+        StreamType::Tls(tls_config) => {
+            let mut tls_conn_builder = TlsConnector::builder();
+
+            // todo: make config obj
+            if let Some(path) = tls_config {
+                let mut reader = BufReader::new(
+                    File::open(path).map_err(|e| WebSocketError::Tls(e.to_string()))?,
+                );
+
+                let mut buf = vec![];
+                reader
+                    .read_to_end(&mut buf)
+                    .map_err(|e| WebSocketError::Tls(e.to_string()))?;
+
+                match Certificate::from_pem(&buf) {
+                    Ok(cert) => {
+                        tls_conn_builder.add_root_certificate(cert);
+                    }
+                    Err(e) => return Err(WebSocketError::Tls(e.to_string())),
+                }
+            }
+
+            let connector = tls_conn_builder
+                .build()
+                .map_err(|e| WebSocketError::Tls(e.to_string()))?;
+            let connector = TokioTlsConnector::from(connector);
+            let connected = connector.connect(&domain, stream).await;
+
+            match connected {
+                Ok(s) => Ok(StreamSwitcher::Tls(s)),
+                Err(e) => Err(WebSocketError::Tls(e.to_string())),
+            }
+        }
+    }
+}
 
 impl TungsteniteWsFactory {
     /// Create a tungstenite-tokio connection factory where the internal task uses the provided
@@ -80,7 +175,7 @@ impl TransformMut<Result<Message, TError>> for StreamTransformer {
             Ok(i) => match i {
                 Message::Text(s) => Ok(WsMessage::Text(s)),
                 Message::Binary(v) => Ok(WsMessage::Binary(v)),
-                _ => Err(ConnectionError::ReceiveMessageError),
+                m => panic!(m),
             },
             Err(_) => Err(ConnectionError::ConnectError),
         }
@@ -95,7 +190,12 @@ pub struct TungsteniteWsFactory {
 async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionError> {
     tracing::info!("Connecting to URL {:?}", &url);
 
-    match connect_async(url).await.map_err(TungsteniteError) {
+    let config = WebSocketConfig {
+        stream_type: StreamType::Tls(None),
+        // extensions: vec![],
+    };
+
+    match connect(url, config).await {
         Ok((ws_str, _)) => {
             let (tx, rx) = ws_str.split();
             let transformed_sink = TransformedSink::new(tx, SinkTransformer);
@@ -104,37 +204,37 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
             Ok((transformed_sink, transformed_stream))
         }
         Err(e) => {
-            match &*e {
-                Error::Url(m) => {
-                    // Malformatted URL, permanent error
-                    tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
-                }
-                Error::Io(io_err) => {
-                    // todo: This should be considered a fatal error. How should it be handled?
-                    tracing::error!(cause = %io_err, "IO error when attempting to connect to host");
-                }
-                Error::Tls(tls_err) => {
-                    // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
-                    tracing::error!(cause = %tls_err, "IO error when attempting to connect to host");
-                }
-                Error::Protocol(m) => {
-                    tracing::error!(cause = %m, "A protocol error occured when connecting to host");
-                }
-                Error::Http(code) => {
-                    // todo: This should be expanded and determined if it is possibly a transient error
-                    // but for now it will suffice
-                    tracing::error!(status_code = %code, "HTTP error when connecting to host");
-                }
-                Error::HttpFormat(http_err) => {
-                    // This should be expanded and determined if it is possibly a transient error
-                    // but for now it will suffice
-                    tracing::error!(cause = %http_err, "HTTP error when connecting to host");
-                }
-                e => {
-                    // Transient or unreachable errors
-                    tracing::error!(cause = %e, "Failed to connect to URL");
-                }
-            }
+            //
+            //
+            // Error::Url(m) => {
+            //     // Malformatted URL, permanent error
+            //     tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
+            // }
+            // Error::Io(io_err) => {
+            //     // todo: This should be considered a fatal error. How should it be handled?
+            //     tracing::error!(cause = %io_err, "IO error when attempting to connect to host");
+            // }
+            // Error::Tls(tls_err) => {
+            //     // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
+            //     tracing::error!(cause = %tls_err, "IO error when attempting to connect to host");
+            // }
+            // Error::Protocol(m) => {
+            //     tracing::error!(cause = %m, "A protocol error occured when connecting to host");
+            // }
+            // Error::Http(code) => {
+            //     // todo: This should be expanded and determined if it is possibly a transient error
+            //     // but for now it will suffice
+            //     tracing::error!(status_code = %code, "HTTP error when connecting to host");
+            // }
+            // Error::HttpFormat(http_err) => {
+            //     // This should be expanded and determined if it is possibly a transient error
+            //     // but for now it will suffice
+            //     tracing::error!(cause = %http_err, "HTTP error when connecting to host");
+            // }
+            // e => {
+            //     // Transient or unreachable errors
+            //     tracing::error!(cause = %e, "Failed to connect to URL");
+            // }
 
             Err(e.into())
         }

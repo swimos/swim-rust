@@ -87,6 +87,12 @@ impl Display for ConnectionError {
     }
 }
 
+impl From<WebSocketError> for ConnectionError {
+    fn from(e: WebSocketError) -> Self {
+        ConnectionError::SocketError(e)
+    }
+}
+
 impl From<RequestError> for ConnectionError {
     fn from(_: RequestError) -> Self {
         ConnectionError::ConnectError
@@ -110,14 +116,14 @@ impl From<TaskError> for ConnectionError {
     }
 }
 
-impl From<InvalidUri> for WebSocketError {
+impl From<InvalidUri> for ConnectionError {
     fn from(e: InvalidUri) -> Self {
-        WebSocketError::Url(e.to_string())
+        ConnectionError::SocketError(WebSocketError::Url(e.to_string()))
     }
 }
 
-impl From<Error> for WebSocketError {
+impl From<Error> for ConnectionError {
     fn from(e: Error) -> Self {
-        WebSocketError::Url(e.to_string())
+        ConnectionError::SocketError(WebSocketError::Url(e.to_string()))
     }
 }

@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::path::PathBuf;
+use std::str::FromStr;
+
+use futures::{Future, Sink, Stream};
+use http::header::{HeaderName, CONTENT_ENCODING, SEC_WEBSOCKET_EXTENSIONS};
+use http::uri::{InvalidUri, Scheme};
+use http::{HeaderValue, Request, Response};
 use url::Url;
 
 use crate::ws::error::{ConnectionError, WebSocketError};
-use futures::{Future, Sink, Stream};
-use http::header::{HeaderName, CONTENT_ENCODING, SEC_WEBSOCKET_EXTENSIONS};
-use http::uri::InvalidUri;
-use http::{HeaderValue, Request, Response};
-use std::path::PathBuf;
 
 mod compression;
 pub mod error;
-mod tung;
 
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
@@ -76,12 +77,35 @@ pub trait WebSocketHandler {
     fn on_response(&mut self, _response: &mut Response<()>) {}
 }
 
+#[derive(Clone)]
 pub enum StreamType {
     Plain,
     Tls(Option<PathBuf>),
 }
 
+#[derive(Clone)]
 pub struct WebSocketConfig {
-    stream_type: StreamType,
-    extensions: Vec<Box<dyn WebSocketHandler>>,
+    pub stream_type: StreamType,
+    // pub extensions: Vec<Box<dyn WebSocketHandler>>,
+}
+
+pub const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
+
+/// If the request scheme is `warp` or `warps` then it is replaced with a supported format.
+pub fn maybe_normalise_url<T>(request: &Request<T>) -> Result<(), ConnectionError> {
+    let uri = request.uri().clone();
+    let new_scheme = match uri.scheme_str() {
+        Some("warp") => Some("ws"),
+        Some("warps") => Some("wss"),
+        Some(s) => Some(s),
+        None => None,
+    }
+    .ok_or_else(|| WebSocketError::Url(String::from(UNSUPPORTED_SCHEME)))?;
+
+    request
+        .uri()
+        .scheme()
+        .replace(&Scheme::from_str(new_scheme)?);
+
+    Ok(())
 }

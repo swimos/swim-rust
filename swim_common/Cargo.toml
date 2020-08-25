@@ -26,10 +26,7 @@ base64 = "0.12.3"
 form_derive = { path = "form_derive" }
 im = "14.2.0"
 
-tokio-tungstenite = { version = "0.11.0", features = ["tls"] }
-native-tls = "0.2"
 http = "0.2.1"
-tokio-native-tls = "0.1"
 
 [dev-dependencies]
 hamcrest2 = "0.3"
