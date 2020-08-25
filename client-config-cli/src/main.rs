@@ -45,7 +45,7 @@ fn print_title(text: &str) {
 }
 
 fn main_menu(config: &mut Config) {
-    println!("Welcome to client configuration creator.");
+    println!("Welcome to the client configuration creator.");
     println!("A helper tool for creating Recon configuration files for the Rust client.");
 
     loop {
@@ -54,7 +54,7 @@ fn main_menu(config: &mut Config) {
         println!("2. Downlink parameters");
         println!("3. Host parameters");
         println!("4. Lane parameters");
-        print!("Select an option or `s` to save an exit: ");
+        print!("Select an option or `s` to save and exit: ");
         flush();
 
         let input = get_input();
@@ -135,7 +135,7 @@ pub(crate) fn downlinks_menu(downlinks_config: &mut DownlinkConfig) {
 
 fn downlinks_back_pressure(downlinks_config: &mut DownlinkConfig) {
     loop {
-        print!("Enter a value for back pressure mode, `h` for help or `b` to go back: ",);
+        print!("Enter a value for the back pressure mode, `h` for help or `b` to go back: ",);
         flush();
 
         let value = format!(
