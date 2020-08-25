@@ -16,8 +16,12 @@ use url::Url;
 
 use crate::ws::error::{ConnectionError, WebSocketError};
 use futures::{Future, Sink, Stream};
+use http::header::{HeaderName, CONTENT_ENCODING, SEC_WEBSOCKET_EXTENSIONS};
+use http::uri::InvalidUri;
+use http::{HeaderValue, Request, Response};
 use std::path::PathBuf;
 
+mod compression;
 pub mod error;
 mod tung;
 
@@ -66,11 +70,15 @@ pub trait WebsocketFactory: Send + Sync {
     fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
 }
 
-pub trait WebSocketHandler {}
+pub trait WebSocketHandler {
+    fn on_request(&mut self, _request: &mut Request<()>) {}
+
+    fn on_response(&mut self, _response: &mut Response<()>) {}
+}
 
 pub enum StreamType {
     Plain,
-    Tls(PathBuf),
+    Tls(Option<PathBuf>),
 }
 
 pub struct WebSocketConfig {

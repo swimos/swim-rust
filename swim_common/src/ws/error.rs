@@ -13,6 +13,8 @@
 // limitations under the License.
 
 use crate::request::request_future::RequestError;
+use http::uri::InvalidUri;
+use http::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use swim_runtime::task::TaskError;
@@ -45,6 +47,7 @@ pub enum WebSocketError {
     Protocol,
     /// A TLS error occurred.
     Tls(String),
+    Message(String),
 }
 
 impl Display for WebSocketError {
@@ -53,6 +56,7 @@ impl Display for WebSocketError {
             WebSocketError::Url(url) => write!(f, "An invalid URL ({}) was supplied", url),
             WebSocketError::Protocol => write!(f, "A protocol error occurred."),
             WebSocketError::Tls(msg) => write!(f, "A TLS error occurred: {}", msg),
+            WebSocketError::Message(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -103,5 +107,17 @@ impl ConnectionError {
 impl From<TaskError> for ConnectionError {
     fn from(_: TaskError) -> Self {
         ConnectionError::ConnectError
+    }
+}
+
+impl From<InvalidUri> for WebSocketError {
+    fn from(e: InvalidUri) -> Self {
+        WebSocketError::Url(e.to_string())
+    }
+}
+
+impl From<Error> for WebSocketError {
+    fn from(e: Error) -> Self {
+        WebSocketError::Url(e.to_string())
     }
 }
