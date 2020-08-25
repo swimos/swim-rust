@@ -51,7 +51,7 @@ pub(crate) fn save_to_file(config: Config) {
     flush();
 
     let input = get_input();
-    let mut file = File::create(format!("{}.recon", input)).unwrap();
+    let mut file = File::create(format!("{}.recon", input)).expect("Invalid file name!");
 
     let text_config = config_to_text(config);
     file.write_all(text_config.as_bytes()).unwrap();
@@ -261,11 +261,7 @@ fn write_block(name: &str, content: Vec<Option<String>>, level: usize, attr: boo
         block.push_str(&format!("{}: {}\n", name, "{",));
     }
 
-    let content: Vec<String> = content
-        .into_iter()
-        .filter(|c| c.is_some())
-        .map(|c| c.unwrap())
-        .collect();
+    let content: Vec<String> = content.into_iter().flatten().collect();
 
     if !content.is_empty() {
         for line_num in 0..content.len() - 1 {

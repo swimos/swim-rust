@@ -45,6 +45,9 @@ fn print_title(text: &str) {
 }
 
 fn main_menu(config: &mut Config) {
+    println!("Welcome to client configuration creator.");
+    println!("A helper tool for creating Recon configuration files for the Rust client.");
+
     loop {
         print_title("Configuration parameters");
         println!("1. Client parameters");

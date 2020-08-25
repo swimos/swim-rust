@@ -24,7 +24,7 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
-const DEFAULT_BUFFER_SIZE: usize = 100;
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
 
 const BUFFER_SIZE_TAG: &str = "buffer_size";
 const RETRY_STRATEGY_TAG: &str = "retry_strategy";
@@ -50,7 +50,7 @@ impl Default for RouterParams {
             retry_strategy: RetryStrategy::default(),
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
             conn_reaper_frequency: DEFAULT_CONN_REAPER_FREQUENCY,
-            buffer_size: NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap(),
+            buffer_size: DEFAULT_BUFFER_SIZE,
         }
     }
 }
@@ -141,8 +141,7 @@ impl RouterParams {
             retry_strategy = retry_strategy.or_else(|| Some(RetryStrategy::default()));
             idle_timeout = idle_timeout.or(Some(DEFAULT_IDLE_TIMEOUT));
             conn_reaper_frequency = conn_reaper_frequency.or(Some(DEFAULT_CONN_REAPER_FREQUENCY));
-            buffer_size =
-                buffer_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()));
+            buffer_size = buffer_size.or_else(|| Some(DEFAULT_BUFFER_SIZE));
         }
 
         Ok(RouterParams::new(
@@ -173,7 +172,7 @@ const MAX_INTERVAL_TAG: &str = "max_interval";
 const MAX_BACKOFF_TAG: &str = "max_backoff";
 const INDEFINITE_TAG: &str = "indefinite";
 
-const DEFAULT_RETRIES: usize = 5;
+const DEFAULT_RETRIES: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(5) };
 const DEFAULT_INTERVAL: u64 = 5;
 const DEFAULT_MAX_INTERVAL: u64 = 16;
 const DEFAULT_BACKOFF: u64 = 32;
@@ -261,7 +260,7 @@ fn try_immediate_strat_from_items(
     }
 
     if use_defaults {
-        retries = retries.or_else(|| Some(NonZeroUsize::new(DEFAULT_RETRIES).unwrap()));
+        retries = retries.or_else(|| Some(DEFAULT_RETRIES));
     }
 
     Ok(RetryStrategy::immediate(retries.ok_or(
@@ -318,11 +317,7 @@ fn try_interval_strat_from_items(
     }
 
     if use_defaults {
-        retries = retries.or_else(|| {
-            Some(Quantity::Finite(
-                NonZeroUsize::new(DEFAULT_RETRIES).unwrap(),
-            ))
-        });
+        retries = retries.or_else(|| Some(Quantity::Finite(DEFAULT_RETRIES)));
         delay = delay.or(Some(Duration::from_secs(DEFAULT_INTERVAL)));
     }
 
@@ -430,7 +425,7 @@ impl RouterParamBuilder {
             retry_strategy: Some(RetryStrategy::default()),
             idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
             conn_reaper_frequency: Some(DEFAULT_CONN_REAPER_FREQUENCY),
-            buffer_size: Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
+            buffer_size: Some(DEFAULT_BUFFER_SIZE),
         }
     }
 

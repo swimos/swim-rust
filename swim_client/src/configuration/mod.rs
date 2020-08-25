@@ -120,9 +120,9 @@ pub mod downlink {
     const BRIDGE_BUFFER_SIZE_TAG: &str = "bridge_buffer_size";
     const MAX_ACTIVE_KEYS_TAG: &str = "max_active_keys";
 
-    const DEFAULT_INPUT_BUFFER_SIZE: usize = 5;
-    const DEFAULT_BRIDGE_BUFFER_SIZE: usize = 5;
-    const DEFAULT_MAX_ACTIVE_KEYS: usize = 20;
+    const DEFAULT_INPUT_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(5) };
+    const DEFAULT_BRIDGE_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(5) };
+    const DEFAULT_MAX_ACTIVE_KEYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(20) };
 
     fn try_release_mode_from_items(
         items: Vec<Item>,
@@ -133,55 +133,44 @@ pub mod downlink {
         let mut max_active_keys: Option<NonZeroUsize> = None;
         let mut yield_after: Option<NonZeroUsize> = None;
 
+        let try_parse_value = |value: Value| -> Result<Option<NonZeroUsize>, ConfigParseError> {
+            let size = usize::try_from_value(&value)
+                .map_err(|_| ConfigParseError::InvalidValue(value, INPUT_BUFFER_SIZE_TAG))?;
+            Ok(Some(NonZeroUsize::new(size).unwrap()))
+        };
+
         for item in items {
             match item {
                 Item::Slot(Value::Text(name), value) => match name.as_str() {
                     INPUT_BUFFER_SIZE_TAG => {
-                        let size = usize::try_from_value(&value).map_err(|_| {
-                            ConfigParseError::InvalidValue(value, INPUT_BUFFER_SIZE_TAG)
-                        })?;
-                        input_buffer_size = Some(NonZeroUsize::new(size).unwrap());
+                        input_buffer_size = try_parse_value(value)?;
                     }
 
                     BRIDGE_BUFFER_SIZE_TAG => {
-                        let size = usize::try_from_value(&value).map_err(|_| {
-                            ConfigParseError::InvalidValue(value, BRIDGE_BUFFER_SIZE_TAG)
-                        })?;
-                        bridge_buffer_size = Some(NonZeroUsize::new(size).unwrap());
+                        bridge_buffer_size = try_parse_value(value)?;
                     }
 
                     MAX_ACTIVE_KEYS_TAG => {
-                        let size = usize::try_from_value(&value).map_err(|_| {
-                            ConfigParseError::InvalidValue(value, MAX_ACTIVE_KEYS_TAG)
-                        })?;
-                        max_active_keys = Some(NonZeroUsize::new(size).unwrap());
+                        max_active_keys = try_parse_value(value)?;
                     }
 
                     YIELD_AFTER_TAG => {
-                        let size = usize::try_from_value(&value)
-                            .map_err(|_| ConfigParseError::InvalidValue(value, YIELD_AFTER_TAG))?;
-                        yield_after = Some(NonZeroUsize::new(size).unwrap());
+                        yield_after = try_parse_value(value)?;
                     }
 
                     _ => return Err(ConfigParseError::UnexpectedKey(name, RELEASE_TAG)),
                 },
 
-                Item::Slot(value, _) => {
-                    return Err(ConfigParseError::UnexpectedValue(value, Some(RELEASE_TAG)))
-                }
-                Item::ValueItem(value) => {
+                Item::Slot(value, _) | Item::ValueItem(value) => {
                     return Err(ConfigParseError::UnexpectedValue(value, Some(RELEASE_TAG)))
                 }
             };
         }
 
         if use_defaults {
-            input_buffer_size = input_buffer_size
-                .or_else(|| Some(NonZeroUsize::new(DEFAULT_INPUT_BUFFER_SIZE).unwrap()));
-            bridge_buffer_size = bridge_buffer_size
-                .or_else(|| Some(NonZeroUsize::new(DEFAULT_BRIDGE_BUFFER_SIZE).unwrap()));
-            max_active_keys = max_active_keys
-                .or_else(|| Some(NonZeroUsize::new(DEFAULT_MAX_ACTIVE_KEYS).unwrap()));
+            input_buffer_size = input_buffer_size.or_else(|| Some(DEFAULT_INPUT_BUFFER_SIZE));
+            bridge_buffer_size = bridge_buffer_size.or_else(|| Some(DEFAULT_BRIDGE_BUFFER_SIZE));
+            max_active_keys = max_active_keys.or_else(|| Some(DEFAULT_MAX_ACTIVE_KEYS));
             yield_after =
                 yield_after.or_else(|| Some(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()));
         }
@@ -218,7 +207,7 @@ pub mod downlink {
     const BUFFERED_TAG: &str = "buffered";
     const QUEUE_SIZE_TAG: &str = "queue_size";
 
-    const DEFAULT_QUEUE_SIZE: usize = 5;
+    const DEFAULT_QUEUE_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(5) };
 
     /// Multiplexing strategy for the topic of events produced by a downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -236,7 +225,7 @@ pub mod downlink {
 
     impl Default for MuxMode {
         fn default() -> Self {
-            MuxMode::Queue(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
+            MuxMode::Queue(DEFAULT_QUEUE_SIZE)
         }
     }
 
@@ -318,8 +307,7 @@ pub mod downlink {
         }
 
         if use_defaults {
-            queue_size =
-                queue_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap()));
+            queue_size = queue_size.or_else(|| Some(DEFAULT_QUEUE_SIZE));
         }
 
         Ok(MuxMode::Queue(queue_size.ok_or(
@@ -355,8 +343,7 @@ pub mod downlink {
         }
 
         if use_defaults {
-            queue_size =
-                queue_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap()));
+            queue_size = queue_size.or_else(|| Some(DEFAULT_QUEUE_SIZE));
         }
 
         Ok(MuxMode::Buffered(queue_size.ok_or(
@@ -620,7 +607,7 @@ pub mod downlink {
         pub router_params: RouterParams,
     }
 
-    const DEFAULT_CLIENT_BUFFER_SIZE: usize = 2;
+    const DEFAULT_CLIENT_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2) };
 
     const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
     const BAD_YIELD_AFTER: &str = "Yield after count must be positive..";
@@ -670,8 +657,7 @@ pub mod downlink {
             }
 
             if use_defaults {
-                buffer_size = buffer_size
-                    .or_else(|| Some(NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap()));
+                buffer_size = buffer_size.or_else(|| Some(DEFAULT_CLIENT_BUFFER_SIZE));
                 router_params = router_params.or_else(|| Some(RouterParams::default()));
             }
 
@@ -684,10 +670,7 @@ pub mod downlink {
 
     impl Default for ClientParams {
         fn default() -> Self {
-            ClientParams::new(
-                NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap(),
-                Default::default(),
-            )
+            ClientParams::new(DEFAULT_CLIENT_BUFFER_SIZE, Default::default())
         }
     }
 
