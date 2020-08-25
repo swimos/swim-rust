@@ -20,6 +20,8 @@ use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::iter::{repeat, Repeat, Take};
+use tokio::sync::mpsc;
+use pin_utils::pin_mut;
 
 #[test]
 fn future_into() {
@@ -174,4 +176,55 @@ async fn unit_future() {
     let fut = async { 5 };
 
     assert_eq!(fut.unit().await, ());
+}
+
+#[tokio::test]
+async fn owning_scan() {
+    let inputs = iter(vec![1, 2, 3, 4].into_iter());
+
+    let (tx, rx) = mpsc::channel(10);
+
+    let scan_stream = inputs.owning_scan(tx, |mut sender, i| {
+        async move {
+            assert!(sender.send(i).await.is_ok());
+
+            Some((sender, i + 1))
+        }
+    });
+
+    let results = scan_stream.collect::<Vec<_>>().await;
+    let sent = rx.collect::<Vec<_>>().await;
+
+    assert_eq!(results, vec![2, 3, 4, 5]);
+    assert_eq!(sent, vec![1, 2, 3, 4]);
+}
+
+#[tokio::test]
+async fn owning_scan_done() {
+    let inputs = iter(vec![1, 2, 3, 4].into_iter());
+
+    let (tx, _rx) = mpsc::channel(10);
+
+    let scan_stream = inputs.owning_scan(tx, |mut sender, i| {
+        async move {
+            assert!(sender.send(i).await.is_ok());
+            if i < 3 {
+                Some((sender, i + 1))
+            } else {
+                None
+            }
+        }
+    });
+
+    pin_mut!(scan_stream);
+
+    assert!(!scan_stream.is_terminated());
+
+    loop {
+        if scan_stream.next().await.is_none() {
+            break;
+        }
+    }
+
+    assert!(scan_stream.is_terminated());
 }

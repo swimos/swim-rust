@@ -413,6 +413,18 @@ pub struct FlatmapStream<Str1: Stream, Trans: TransformMut<Str1::Item>> {
     done: bool,
 }
 
+#[pin_project(project = OwningScanProj)]
+#[derive(Debug)]
+pub struct OwningScan<Str, State, F, Fut> {
+    #[pin]
+    stream: Str,
+    scan_fun: F,
+    state: Option<State>,
+    #[pin]
+    current: Option<Fut>,
+    done: bool,
+}
+
 impl<Str, Trans> TransformedStream<Str, Trans>
 where
     Str: Stream,
@@ -568,6 +580,82 @@ where
         self.done
     }
 }
+
+impl<Str, State, F, Fut> OwningScan<Str, State, F, Fut>
+where
+    Str: Stream,
+    F: FnMut(State, Str::Item) -> Fut,
+{
+    pub fn new(stream: Str, init: State, scan_fun: F) -> Self {
+        OwningScan {
+            stream,
+            scan_fun,
+            state: Some(init),
+            current: None,
+            done: false,
+        }
+    }
+}
+
+impl<Str, State, F, Fut, B> Stream for OwningScan<Str, State, F, Fut>
+    where
+        Str: Stream,
+        F: FnMut(State, Str::Item) -> Fut,
+        Fut: Future<Output = Option<(State, B)>>,
+{
+    type Item = B;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let OwningScanProj {
+            mut stream,
+            scan_fun,
+            state,
+            mut current,
+            done
+        } = self.project();
+        loop {
+
+            if *done {
+                break Poll::Ready(None);
+            }
+            if let Some(fut) = current.as_mut().as_pin_mut() {
+                if let Some((new_state, item)) = ready!(fut.poll(cx)) {
+                    current.set(None);
+                    *state = Some(new_state);
+                    break Poll::Ready(Some(item));
+                } else {
+                    current.set(None);
+                    *done = true;
+                    break Poll::Ready(None);
+                }
+            } else {
+                let maybe_next_input = ready!(stream.as_mut().poll_next(cx));
+                if let Some(next_input) = maybe_next_input {
+                    let prev_state = state.take().expect("Owning scan stream in invalid state.");
+                    let fut = scan_fun(prev_state, next_input);
+                    current.set(Some(fut));
+                } else {
+                    *state = None;
+                    *done = true;
+                    break Poll::Ready(None);
+                }
+
+            }
+        }
+    }
+}
+
+impl<Str, State, F, Fut, B> FusedStream for OwningScan<Str, State, F, Fut>
+    where
+        Str: Stream,
+        F: FnMut(State, Str::Item) -> Fut,
+        Fut: Future<Output = Option<(State, B)>>,
+{
+    fn is_terminated(&self) -> bool {
+        self.done
+    }
+}
+
 
 /// A stream that runs another stream of [`Result`]s until an error is produces, yielding the
 /// OK values.
@@ -758,6 +846,33 @@ pub trait SwimStreamExt: Stream {
         Self: Sized,
     {
         NeverErrorStream(self)
+    }
+
+    /// Transform the items of a stream with a stateful operation. This differs from `scan` in
+    /// [`futures::FutureExt`] in that ownership of the state is passed through the scan function
+    /// rather than being maintained in the combinator.
+    ///
+    ///  # Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::StreamExt;
+    /// use futures::stream::iter;
+    /// use utilities::future::*;
+    /// use utilities::future::SwimStreamExt;
+    ///
+    /// let inputs = iter(vec![1, 2, 3, 4].into_iter());
+    /// let outputs: Vec<(i32, i32)> = block_on(inputs.owning_scan(0, |state, i| {
+    ///     Some((i, (state, i)))
+    /// }));
+    /// assert_eq!(outputs, vec![(0, 1), (1, 2), (2, 3), (3, 4)]);
+    /// ```
+    fn owning_scan<State, F, Fut, B>(self, initial_state: State, f: F) -> OwningScan<Self, State, F, Fut>
+    where
+        Self: Sized,
+        F: FnMut(State, Self::Item) -> Fut,
+        Fut: Future<Output = Option<(State, B)>>,
+    {
+        OwningScan::new(self, initial_state, f)
     }
 }
 
