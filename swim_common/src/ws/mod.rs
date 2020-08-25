@@ -26,6 +26,8 @@ use crate::ws::error::{ConnectionError, WebSocketError};
 mod compression;
 pub mod error;
 
+pub const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
+
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
@@ -88,8 +90,6 @@ pub struct WebSocketConfig {
     pub stream_type: StreamType,
     // pub extensions: Vec<Box<dyn WebSocketHandler>>,
 }
-
-pub const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
 
 /// If the request scheme is `warp` or `warps` then it is replaced with a supported format.
 pub fn maybe_normalise_url<T>(request: &Request<T>) -> Result<(), ConnectionError> {

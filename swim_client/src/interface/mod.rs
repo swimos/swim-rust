@@ -41,6 +41,8 @@ use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::ws::WebsocketFactory;
 
+mod t;
+
 /// Represents errors that can occur in the client.
 #[derive(Debug)]
 pub enum ClientError {

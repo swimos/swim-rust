@@ -76,8 +76,12 @@ async fn connect(
         }
     };
 
+    println!("Request: {:?}", request);
+    println!("Domain: {:?}", domain);
+
     let host = format!("{}:{}", domain, port);
     let stream = build_stream(&host, domain, &config).await?;
+    println!("Built stream");
 
     match client_async_with_config(request, stream, None)
         .await
@@ -129,7 +133,10 @@ async fn build_stream(
 
             match connected {
                 Ok(s) => Ok(StreamSwitcher::Tls(s)),
-                Err(e) => Err(WebSocketError::Tls(e.to_string())),
+                Err(e) => {
+                    println!("{}", e.to_string());
+                    Err(WebSocketError::Tls(e.to_string()))
+                }
             }
         }
     }
@@ -160,7 +167,10 @@ impl TransformMut<WsMessage> for SinkTransformer {
 
     fn transform(&mut self, input: WsMessage) -> Self::Out {
         match input {
-            WsMessage::Text(s) => Message::Text(s),
+            WsMessage::Text(s) => {
+                println!("{}", s);
+                Message::Text(s)
+            }
             WsMessage::Binary(v) => Message::Binary(v),
         }
     }
@@ -175,7 +185,7 @@ impl TransformMut<Result<Message, TError>> for StreamTransformer {
             Ok(i) => match i {
                 Message::Text(s) => Ok(WsMessage::Text(s)),
                 Message::Binary(v) => Ok(WsMessage::Binary(v)),
-                m => panic!(m),
+                m => todo!("{}", m),
             },
             Err(_) => Err(ConnectionError::ConnectError),
         }
@@ -204,8 +214,6 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
             Ok((transformed_sink, transformed_stream))
         }
         Err(e) => {
-            //
-            //
             // Error::Url(m) => {
             //     // Malformatted URL, permanent error
             //     tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
@@ -236,7 +244,7 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
             //     tracing::error!(cause = %e, "Failed to connect to URL");
             // }
 
-            Err(e.into())
+            Err(e)
         }
     }
 }
