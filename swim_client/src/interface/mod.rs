@@ -19,12 +19,13 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use swim_common::form::ValidatedForm;
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
 
 use crate::configuration::downlink::{Config, ConfigHierarchy, ConfigParseError};
 use crate::configuration::router::RouterParamBuilder;
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
@@ -106,22 +107,19 @@ pub struct SwimClient {
 
 impl SwimClient {
     /// Creates a new SWIM Client using the default configuration.
-    pub async fn new_with_default<Fac>(connection_factory: Fac) -> Self
-    where
-        Fac: WebsocketFactory + 'static,
-    {
+    pub async fn new_with_default() -> Self {
+        let config = ConfigHierarchy::default();
+        let buffer_size = config.client_params().dl_req_buffer_size.get();
+        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
+
         SwimClient::new(ConfigHierarchy::default(), connection_factory).await
     }
 
     /// Creates a new SWIM Client using configuration from a Recon file.
-    pub async fn new_from_file<Fac>(
+    pub async fn new_from_file(
         mut config_file: File,
         use_defaults: bool,
-        connection_factory: Fac,
-    ) -> Result<Self, ClientError>
-    where
-        Fac: WebsocketFactory + 'static,
-    {
+    ) -> Result<Self, ClientError> {
         let mut contents = String::new();
         config_file
             .read_to_string(&mut contents)
@@ -133,6 +131,9 @@ impl SwimClient {
             use_defaults,
         )
         .map_err(ClientError::ConfigError)?;
+
+        let buffer_size = config.client_params().dl_req_buffer_size.get();
+        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
 
         Ok(SwimClient::new(config, connection_factory).await)
     }
@@ -166,13 +167,16 @@ impl SwimClient {
     }
 
     /// Sends a command directly to the provided [`target`] lane.
-    pub async fn send_command(
+    pub async fn send_command<T: Form>(
         &mut self,
         target: AbsolutePath,
-        value: Value,
+        message: T,
     ) -> Result<(), ClientError> {
-        let envelope =
-            Envelope::make_command(target.node.clone(), target.lane.clone(), Some(value));
+        let envelope = Envelope::make_command(
+            target.node.clone(),
+            target.lane.clone(),
+            Some(message.into_value()),
+        );
 
         self.downlinks
             .send_command(target, envelope)

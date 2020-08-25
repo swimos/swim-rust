@@ -202,7 +202,7 @@ mod map {
         fn send_item(&'a mut self, value: MapAction) -> Self::SendFuture {
             let TestMapDl(state) = self;
             let result = match value {
-                MapAction::Insert { key, value, old } => {
+                MapAction::Update { key, value, old } => {
                     if matches!((&key, &value), (Value::Int32Value(_), Value::Int32Value(_))) {
                         let old_val = state.get(&key).map(Clone::clone);
                         state.insert(key, Arc::new(value));
@@ -268,7 +268,7 @@ mod map {
                         Err(DownlinkError::InvalidAction)
                     }
                 }
-                MapAction::Update {
+                MapAction::Modify {
                     key,
                     f,
                     before,
@@ -296,7 +296,7 @@ mod map {
                         Err(DownlinkError::InvalidAction)
                     }
                 }
-                MapAction::TryUpdate {
+                MapAction::TryModify {
                     key,
                     f,
                     before,
@@ -372,7 +372,7 @@ mod map {
     async fn map_insert() {
         let mut actions = TestMapDl::actions(make_map());
 
-        let result = actions.insert(4, 8).await;
+        let result = actions.update(4, 8).await;
         assert_that!(&result, ok());
 
         let map = result.unwrap();
@@ -384,20 +384,20 @@ mod map {
     }
 
     #[tokio::test]
-    async fn map_invalid_key_insert() {
+    async fn map_invalid_key_update() {
         let dl = TestMapDl::new(make_map());
         let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
 
-        let result = actions.insert("bad".to_string(), 8).await;
+        let result = actions.update("bad".to_string(), 8).await;
         assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
     }
 
     #[tokio::test]
-    async fn map_invalid_value_insert() {
+    async fn map_invalid_value_update() {
         let dl = TestMapDl::new(make_map());
         let mut actions: MapActions<TestMapDl, i32, String> = MapActions::new(dl);
 
-        let result = actions.insert(4, "bad".to_string()).await;
+        let result = actions.update(4, "bad".to_string()).await;
         assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
     }
 

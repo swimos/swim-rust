@@ -1,6 +1,5 @@
 use futures::StreamExt;
 use std::time::Duration;
-use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
 use swim_client::downlink::subscription::TypedValueReceiver;
 use swim_client::downlink::Downlink;
 use swim_client::downlink::Event::Remote;
@@ -31,7 +30,7 @@ async fn did_set(value_recv: TypedValueReceiver<String>, initial_value: String) 
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+    let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "unit/foo";
     let lane_uri = "info";
@@ -53,7 +52,7 @@ async fn main() {
 
     // Send using either the proxy command lane...
     client
-        .send_command(path, String::from("Hello from command, world!").into())
+        .send_command(path, "Hello from command, world!".to_string())
         .await
         .expect("Failed to send command!");
     tokio::time::delay_for(Duration::from_secs(2)).await;

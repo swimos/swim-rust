@@ -73,8 +73,7 @@ impl ChatClient {
         on_message_callback: js_sys::Function,
     ) -> ChatClient {
         let (tx, rx) = mpsc::channel(10);
-        let fac = WasmWsFactory::new(5);
-        let swim_client = SwimClient::new_with_default(fac).await;
+        let swim_client = SwimClient::new_with_default().await;
 
         spawn_local(ClientTask::new(swim_client, rx, on_load_callback, on_message_callback).run());
 
@@ -168,7 +167,7 @@ impl ClientTask {
                             let _r = on_load_callback.call1(&this, &records).unwrap();
                         }
 
-                        MapEvent::Insert(key) => {
+                        MapEvent::Update(key) => {
                             let record = inner.view.get(&key);
                             let message = Message::try_from_value(&*record.unwrap()).unwrap();
                             let message = JsValue::from_serde(&message).unwrap();

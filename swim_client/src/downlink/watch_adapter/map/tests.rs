@@ -27,8 +27,8 @@ const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
 
 type Modification = UntypedMapModification<Arc<Value>>;
 
-fn insert(key: i32, value: i32) -> Modification {
-    UntypedMapModification::Insert(Value::Int32Value(key), Arc::new(Value::Int32Value(value)))
+fn update(key: i32, value: i32) -> Modification {
+    UntypedMapModification::Update(Value::Int32Value(key), Arc::new(Value::Int32Value(value)))
 }
 
 fn remove(key: i32) -> Modification {
@@ -46,7 +46,7 @@ async fn validate_receive(
     let mut map = BTreeMap::new();
     while let Ok(Some(modification)) = timeout(SHORT_TIMEOUT, rx.recv()).await {
         match modification {
-            UntypedMapModification::Insert(k, v) => {
+            UntypedMapModification::Update(k, v) => {
                 map.insert(k, (*v).clone());
             }
             UntypedMapModification::Remove(k) => {
@@ -96,13 +96,13 @@ async fn single_pass_through() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(insert(1, 5)).await;
+    let result = watcher.send_item(update(1, 5)).await;
     assert_that!(result, ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
     assert_that!(&output, ok());
 
-    assert_that!(output.unwrap(), eq(Some(insert(1, 5))));
+    assert_that!(output.unwrap(), eq(Some(update(1, 5))));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -118,7 +118,7 @@ async fn multiple_one_key() {
     )
     .await;
 
-    let modifications = vec![insert(1, 5), remove(1), insert(1, 8)];
+    let modifications = vec![update(1, 5), remove(1), update(1, 8)];
 
     let mut expected = BTreeMap::new();
     expected.insert(1, 8);
@@ -150,7 +150,7 @@ async fn multiple_keys() {
     )
     .await;
 
-    let modifications = vec![insert(1, 5), insert(2, 8)];
+    let modifications = vec![update(1, 5), update(2, 8)];
 
     let mut expected = BTreeMap::new();
     expected.insert(1, 5);
@@ -183,7 +183,7 @@ async fn multiple_keys_multiple_values() {
     )
     .await;
 
-    let modifications = vec![insert(1, 5), insert(2, 8), insert(1, 22), remove(2)];
+    let modifications = vec![update(1, 5), update(2, 8), update(1, 22), remove(2)];
 
     let mut expected = BTreeMap::new();
     expected.insert(1, 22);
@@ -288,11 +288,11 @@ async fn special_action_ordering() {
     .await;
 
     let modifications = vec![
-        insert(1, 5),
-        insert(2, 8),
-        insert(3, 21),
+        update(1, 5),
+        update(2, 8),
+        update(3, 21),
         UntypedMapModification::Skip(2),
-        insert(1, 42),
+        update(1, 42),
     ];
 
     let mut expected = BTreeMap::new();
@@ -326,9 +326,9 @@ async fn overflow_active_keys() {
     )
     .await;
 
-    let mut modifications = (1..5).into_iter().map(|i| insert(i, i)).collect::<Vec<_>>();
+    let mut modifications = (1..5).into_iter().map(|i| update(i, i)).collect::<Vec<_>>();
 
-    modifications.push(insert(1, -1));
+    modifications.push(update(1, -1));
 
     let mut expected = BTreeMap::new();
     expected.insert(1, -1);

@@ -1,13 +1,11 @@
 use futures::StreamExt;
 use std::time::Duration;
-use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
-use swim_client::downlink::model::map::{MapAction, MapEvent};
+use swim_client::downlink::model::map::MapEvent;
 use swim_client::downlink::subscription::TypedMapReceiver;
 use swim_client::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
 use swim_client::downlink::Downlink;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::AbsolutePath;
 use tokio::task;
 
@@ -21,7 +19,7 @@ async fn did_update(
             match event {
                 Remote(TypedViewWithEvent {
                     view,
-                    event: MapEvent::Insert(key),
+                    event: MapEvent::Update(key),
                 }) => Some((key, view)),
                 Remote(TypedViewWithEvent {
                     view,
@@ -48,7 +46,7 @@ async fn did_update(
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+    let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "unit/foo";
     let cart_lane = "shoppingCart";
@@ -72,14 +70,14 @@ async fn main() {
 
     let path = AbsolutePath::new(host_uri, node_uri, add_lane);
     client
-        .send_command(path, "FromClientCommand".into())
+        .send_command(path, "FromClientCommand".to_string())
         .await
         .expect("Failed to send command!");
 
     tokio::time::delay_for(Duration::from_secs(2)).await;
 
     dl_sink
-        .insert("FromClientLink".to_string(), 25)
+        .update("FromClientLink".to_string(), 25)
         .await
         .expect("Failed to send message!");
 

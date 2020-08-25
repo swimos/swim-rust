@@ -52,7 +52,7 @@ fn test_handle_value_action_invalid() {
 
 #[test]
 fn test_handle_map_action_valid() {
-    let action = MapModification::Insert("Foo".to_string(), 3).into_value();
+    let action = MapModification::Update("Foo".to_string(), 3).into_value();
 
     let machine = CommandStateMachine::new(MapModification::<String, i32>::schema());
     let response = machine
@@ -72,7 +72,7 @@ fn test_handle_map_action_valid() {
 
 #[test]
 fn test_handle_map_action_invalid_key() {
-    let action = MapModification::Insert("Foo".to_string(), 3).into_value();
+    let action = MapModification::Update("Foo".to_string(), 3).into_value();
 
     let machine = CommandStateMachine::new(MapModification::<i32, i32>::schema());
     let response = machine
@@ -88,7 +88,7 @@ fn test_handle_map_action_invalid_key() {
 
 #[test]
 fn test_handle_map_action_invalid_value() {
-    let action = MapModification::Insert("Foo".to_string(), 3).into_value();
+    let action = MapModification::Update("Foo".to_string(), 3).into_value();
 
     let machine = CommandStateMachine::new(MapModification::<String, String>::schema());
     let response = machine

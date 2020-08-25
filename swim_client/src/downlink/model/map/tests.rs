@@ -168,7 +168,7 @@ fn insert_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -320,7 +320,7 @@ fn insert_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(
+        Operation::Message(Message::Action(UntypedMapModification::Update(
             k.clone(),
             v.clone(),
         ))),
@@ -459,7 +459,7 @@ fn insert_message_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(
+        Operation::Message(Message::Action(UntypedMapModification::Update(
             k.clone(),
             v.clone(),
         ))),
@@ -475,7 +475,7 @@ fn insert_message_synced() {
 
     let ViewWithEvent { view, event } = only_event(&response);
     assert!(view.ptr_eq(&model.state));
-    let expected_event = MapEvent::Insert(k);
+    let expected_event = MapEvent::Update(k);
     assert_that!(event, eq(&expected_event));
 }
 
@@ -706,7 +706,7 @@ fn get_by_undefined_key_action() {
     assert_that!(maybe_get_val, eq(Ok(None)));
 }
 
-fn make_insert(
+fn make_update(
     key: i32,
     value: String,
 ) -> (
@@ -715,7 +715,7 @@ fn make_insert(
 ) {
     let (tx, rx) = oneshot::channel();
     (
-        MapAction::insert_and_await(Value::Int32Value(key), Value::Text(value), Request::new(tx)),
+        MapAction::update_and_await(Value::Int32Value(key), Value::Text(value), Request::new(tx)),
         rx,
     )
 }
@@ -746,7 +746,7 @@ fn insert_to_undefined_action() {
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
     let machine = MapStateMachine::unvalidated();
-    let (action, mut rx) = make_insert(13, "stuff".to_owned());
+    let (action, mut rx) = make_update(13, "stuff".to_owned());
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
@@ -760,9 +760,9 @@ fn insert_to_undefined_action() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    assert_that!(event, eq(MapEvent::Update(k.clone())));
     match cmd {
-        UntypedMapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Update(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -786,7 +786,7 @@ fn insert_action_dropped_listener() {
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
     let machine = MapStateMachine::unvalidated();
-    let (action, rx) = make_insert(13, "stuff".to_owned());
+    let (action, rx) = make_update(13, "stuff".to_owned());
 
     drop(rx);
 
@@ -802,9 +802,9 @@ fn insert_action_dropped_listener() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    assert_that!(event, eq(MapEvent::Update(k.clone())));
     match cmd {
-        UntypedMapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Update(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -826,7 +826,7 @@ fn insert_to_defined_action() {
     let mut model = make_model_with(13, original_val.clone());
     let machine = MapStateMachine::unvalidated();
 
-    let (action, mut rx) = make_insert(13, new_val.clone());
+    let (action, mut rx) = make_update(13, new_val.clone());
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
@@ -840,9 +840,9 @@ fn insert_to_defined_action() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    assert_that!(event, eq(MapEvent::Update(k.clone())));
     match cmd {
-        UntypedMapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Update(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -875,7 +875,7 @@ fn invalid_key_insert_action() {
     let machine = MapStateMachine::new(key_schema.clone(), val_schema);
 
     let (tx, mut rx) = oneshot::channel();
-    let action = MapAction::Insert {
+    let action = MapAction::Update {
         key: Value::BooleanValue(false),
         value: Value::text("updated"),
         old: Some(Request::new(tx)),
@@ -911,7 +911,7 @@ fn invalid_value_insert_action() {
     let machine = MapStateMachine::new(key_schema, val_schema.clone());
 
     let (tx, mut rx) = oneshot::channel();
-    let action = MapAction::Insert {
+    let action = MapAction::Update {
         key: k.clone(),
         value: Value::BooleanValue(false),
         old: Some(Request::new(tx)),
@@ -1682,14 +1682,14 @@ pub fn simple_insert_to_value() {
     let body = Item::ValueItem(Value::Int32Value(2));
     let expected = Value::Record(vec![attr], vec![body]);
     assert_that!(
-        &Form::into_value(UntypedMapModification::Insert(
+        &Form::into_value(UntypedMapModification::Update(
             Value::text("hello"),
             Value::Int32Value(2)
         )),
         eq(&expected)
     );
     assert_that!(
-        &Form::as_value(&UntypedMapModification::Insert(
+        &Form::as_value(&UntypedMapModification::Update(
             Value::text("hello"),
             Value::Int32Value(2)
         )),
@@ -1705,7 +1705,7 @@ pub fn simple_insert_from_value() {
     let result1: MapModResult = Form::try_from_value(&rep);
     assert_that!(
         result1,
-        eq(Ok(UntypedMapModification::Insert(
+        eq(Ok(UntypedMapModification::Update(
             Value::text("hello"),
             Value::Int32Value(2)
         )))
@@ -1713,7 +1713,7 @@ pub fn simple_insert_from_value() {
     let result2: MapModResult = Form::try_convert(rep);
     assert_that!(
         result2,
-        eq(Ok(UntypedMapModification::Insert(
+        eq(Ok(UntypedMapModification::Update(
             Value::text("hello"),
             Value::Int32Value(2)
         )))
@@ -1729,14 +1729,14 @@ pub fn complex_insert_to_value() {
         vec![Item::slot("a", true)],
     );
     assert_that!(
-        &Form::into_value(UntypedMapModification::Insert(
+        &Form::into_value(UntypedMapModification::Update(
             Value::text("hello"),
             body.clone()
         )),
         eq(&expected)
     );
     assert_that!(
-        &Form::as_value(&UntypedMapModification::Insert(
+        &Form::as_value(&UntypedMapModification::Update(
             Value::text("hello"),
             body.clone()
         )),
@@ -1755,7 +1755,7 @@ pub fn complex_insert_from_value() {
     let result1: MapModResult = Form::try_from_value(&rep);
     assert_that!(
         result1,
-        eq(Ok(UntypedMapModification::Insert(
+        eq(Ok(UntypedMapModification::Update(
             Value::text("hello"),
             body.clone()
         )))
@@ -1763,7 +1763,7 @@ pub fn complex_insert_from_value() {
     let result2: MapModResult = Form::try_convert(rep);
     assert_that!(
         result2,
-        eq(Ok(UntypedMapModification::Insert(
+        eq(Ok(UntypedMapModification::Update(
             Value::text("hello"),
             body.clone()
         )))
@@ -1811,7 +1811,7 @@ fn invalid_insert_key_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -1836,7 +1836,7 @@ fn invalid_insert_value_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
     );
 
     assert_that!(&maybe_response, ok());
@@ -1885,7 +1885,7 @@ fn invalid_insert_key_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -1916,7 +1916,7 @@ fn invalid_insert_value_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -1977,7 +1977,7 @@ fn invalid_insert_key_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -2008,7 +2008,7 @@ fn invalid_insert_value_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Insert(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
     );
 
     assert_that!(&maybe_response, err());
@@ -2055,17 +2055,17 @@ fn invalid_remove_synced() {
     );
 }
 
-fn make_update(
+fn make_modify(
     key: i32,
 ) -> (
     MapAction,
     oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
     oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
 ) {
-    make_update_raw(Value::from(key))
+    make_modify_raw(Value::from(key))
 }
 
-fn make_update_raw(
+fn make_modify_raw(
     key: Value,
 ) -> (
     MapAction,
@@ -2079,13 +2079,13 @@ fn make_update_raw(
     let (tx_before, rx_before) = oneshot::channel();
     let (tx_after, rx_after) = oneshot::channel();
     (
-        MapAction::update_and_await(key, upd_fn, Request::new(tx_before), Request::new(tx_after)),
+        MapAction::modify_and_await(key, upd_fn, Request::new(tx_before), Request::new(tx_after)),
         rx_before,
         rx_after,
     )
 }
 
-fn make_update_bad(
+fn make_modify_bad(
     key: i32,
 ) -> (
     MapAction,
@@ -2099,7 +2099,7 @@ fn make_update_bad(
     let (tx_before, rx_before) = oneshot::channel();
     let (tx_after, rx_after) = oneshot::channel();
     (
-        MapAction::update_and_await(
+        MapAction::modify_and_await(
             Value::from(key),
             upd_fn,
             Request::new(tx_before),
@@ -2135,7 +2135,7 @@ fn make_try_update_raw(
     let (tx_before, rx_before) = oneshot::channel();
     let (tx_after, rx_after) = oneshot::channel();
     (
-        MapAction::try_update_and_await(
+        MapAction::try_modify_and_await(
             key,
             upd_fn,
             Request::new(tx_before),
@@ -2160,7 +2160,7 @@ fn make_try_update_bad(
     let (tx_before, rx_before) = oneshot::channel();
     let (tx_after, rx_after) = oneshot::channel();
     (
-        MapAction::try_update_and_await(
+        MapAction::try_modify_and_await(
             Value::from(key),
             upd_fn,
             Request::new(tx_before),
@@ -2182,7 +2182,7 @@ fn update_to_defined_action() {
     let mut model = make_model_with(13, original_val.clone());
     let machine = MapStateMachine::unvalidated();
 
-    let (action, mut rx_before, mut rx_after) = make_update(13);
+    let (action, mut rx_before, mut rx_after) = make_modify(13);
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
@@ -2196,9 +2196,9 @@ fn update_to_defined_action() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    assert_that!(event, eq(MapEvent::Update(k.clone())));
     match cmd {
-        UntypedMapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Update(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -2237,7 +2237,7 @@ fn update_to_undefined_action() {
     let mut model = make_model_with(13, original_val.clone());
     let machine = MapStateMachine::unvalidated();
 
-    let (action, mut rx_before, mut rx_after) = make_update(13);
+    let (action, mut rx_before, mut rx_after) = make_modify(13);
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
@@ -2290,7 +2290,7 @@ fn update_action_with_invalid_key() {
     let mut model = make_model_with(13, original_val.clone());
     let machine = MapStateMachine::new(key_schema.clone(), StandardSchema::OfKind(ValueKind::Text));
 
-    let (action, mut rx_before, mut rx_after) = make_update_raw(Value::text("a"));
+    let (action, mut rx_before, mut rx_after) = make_modify_raw(Value::text("a"));
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
@@ -2334,7 +2334,7 @@ fn update_action_with_invalid_value() {
         value_schema.clone(),
     );
 
-    let (action, mut rx_before, mut rx_after) = make_update_bad(13);
+    let (action, mut rx_before, mut rx_after) = make_modify_bad(13);
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
@@ -2375,7 +2375,7 @@ fn update_action_dropped_receiver() {
     let mut model = make_model_with(13, original_val.clone());
     let machine = MapStateMachine::unvalidated();
 
-    let (action, rx_before, mut rx_after) = make_update(13);
+    let (action, rx_before, mut rx_after) = make_modify(13);
 
     drop(rx_before);
 
@@ -2392,9 +2392,9 @@ fn update_action_dropped_receiver() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    assert_that!(event, eq(MapEvent::Update(k.clone())));
     match cmd {
-        UntypedMapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Update(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -2439,9 +2439,9 @@ fn try_update_to_successful_defined_action() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    assert_that!(event, eq(MapEvent::Update(k.clone())));
     match cmd {
-        UntypedMapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Update(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }
@@ -2681,9 +2681,9 @@ fn try_update_action_with_dropped_receiver() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_that!(event, eq(MapEvent::Insert(k.clone())));
+    assert_that!(event, eq(MapEvent::Update(k.clone())));
     match cmd {
-        UntypedMapModification::Insert(cmd_k, cmd_v) => {
+        UntypedMapModification::Update(cmd_k, cmd_v) => {
             assert_that!(&cmd_k, eq(&k));
             assert!(Arc::ptr_eq(&cmd_v, model.state.get(&k).unwrap()));
         }

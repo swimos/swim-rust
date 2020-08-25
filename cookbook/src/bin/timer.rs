@@ -1,12 +1,11 @@
 use std::time::Duration;
-use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
 use swim_client::interface::SwimClient;
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+    let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "unit/foo";
     let lane_uri = "publish";
