@@ -1,5 +1,5 @@
 [package]
-name = "config-cli"
+name = "client-config-cli"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"

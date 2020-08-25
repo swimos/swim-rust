@@ -11,5 +11,5 @@ members = [
 
 exclude = [
     "demos/",
-    "config-cli/"
+    "client-config-cli/"
 ]
