@@ -24,15 +24,15 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::{AgentContext, LaneTasks, SwimAgent};
-use futures::future::{ready, Ready};
-use futures_util::future::BoxFuture;
+use crate::agent::{AgentContext, LaneTasks, SwimAgent, LaneIo};
+use futures::future::{ready, Ready, BoxFuture};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use tokio::sync::{mpsc, Mutex};
+use std::collections::HashMap;
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle
 /// vents of the agent and its lanes are reported on an MPSC channel. When the agent starts it
@@ -274,7 +274,7 @@ impl TestAgentConfig {
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
     fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
         configuration: &TestAgentConfig,
-    ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
+    ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>, HashMap<String, Box<dyn LaneIo<Context>>>)
     where
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
@@ -329,6 +329,6 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             total_tasks.boxed(),
             action_tasks.boxed(),
         ];
-        (agent, tasks)
+        (agent, tasks, HashMap::new())
     }
 }

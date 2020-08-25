@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod context;
+mod dispatch;
+pub mod lane;
+pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
@@ -31,12 +35,12 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::TaggedClientEnvelope;
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
-use futures::stream::{once, repeat, unfold, BoxStream};
+use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
-use futures_util::stream::FuturesUnordered;
 use pin_utils::core_reexport::fmt::Formatter;
 use pin_utils::pin_mut;
 use std::any::Any;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::future::Future;
@@ -56,10 +60,6 @@ use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
-mod context;
-pub mod lane;
-pub mod lifecycle;
-
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
 /// TODO Write derive macro for SwimAgent.
@@ -67,7 +67,11 @@ pub trait SwimAgent<Config>: Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
     fn instantiate<Context>(
         configuration: &Config,
-    ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
+    ) -> (
+        Self,
+        Vec<Box<dyn LaneTasks<Self, Context>>>,
+        HashMap<String, Box<dyn LaneIo<Context>>>,
+    )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static;
 }
@@ -108,7 +112,8 @@ pub async fn run_agent<Config, Clk, Agent, L>(
 {
     let span = span!(Level::INFO, AGENT_TASK, %url);
     async {
-        let (agent, tasks) = Agent::instantiate::<
+        //TODO Attach lane IO.
+        let (agent, tasks, _io_providers) = Agent::instantiate::<
             ContextImpl<Agent, Clk, DiscardingSender<RoutingError>>,
         >(&configuration);
         let agent_ref = Arc::new(agent);
@@ -319,6 +324,14 @@ pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: mpsc::Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
 }
 
 struct ValueLaneIo<T, D> {
@@ -362,6 +375,10 @@ where
             route,
         )
         .boxed())
+    }
+
+    fn attach_boxed(self: Box<Self>, route: RelativePath, envelopes: Receiver<TaggedClientEnvelope>, config: AgentExecutionConfig, context: Context) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
     }
 }
 
@@ -416,6 +433,10 @@ where
         )
         .boxed())
     }
+
+    fn attach_boxed(self: Box<Self>, route: RelativePath, envelopes: Receiver<TaggedClientEnvelope>, config: AgentExecutionConfig, context: Context) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
 }
 
 struct ActionLaneIo<Command, Response> {
@@ -462,6 +483,10 @@ where
             lane, feedback, envelopes, config, context, route,
         )
         .boxed())
+    }
+
+    fn attach_boxed(self: Box<Self>, route: RelativePath, envelopes: Receiver<TaggedClientEnvelope>, config: AgentExecutionConfig, context: Context) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
     }
 }
 

@@ -17,12 +17,12 @@ use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::Stream;
-use futures_util::future::BoxFuture;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use tokio::time::Duration;
 use url::Url;
 use utilities::sync::trigger::Receiver;
+use futures::future::BoxFuture;
 
 struct TestModel;
 
