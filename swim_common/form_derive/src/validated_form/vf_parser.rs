@@ -144,7 +144,7 @@ impl ValidatedFormDescriptor {
         });
 
         ValidatedFormDescriptor {
-            label: label,
+            label,
             schema: schema_opt.unwrap_or(StandardSchema::None),
             all_items,
             form_descriptor,
