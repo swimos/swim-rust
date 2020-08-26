@@ -598,10 +598,10 @@ where
 }
 
 impl<Str, State, F, Fut, B> Stream for OwningScan<Str, State, F, Fut>
-    where
-        Str: Stream,
-        F: FnMut(State, Str::Item) -> Fut,
-        Fut: Future<Output = Option<(State, B)>>,
+where
+    Str: Stream,
+    F: FnMut(State, Str::Item) -> Fut,
+    Fut: Future<Output = Option<(State, B)>>,
 {
     type Item = B;
 
@@ -611,10 +611,9 @@ impl<Str, State, F, Fut, B> Stream for OwningScan<Str, State, F, Fut>
             scan_fun,
             state,
             mut current,
-            done
+            done,
         } = self.project();
         loop {
-
             if *done {
                 break Poll::Ready(None);
             }
@@ -639,23 +638,21 @@ impl<Str, State, F, Fut, B> Stream for OwningScan<Str, State, F, Fut>
                     *done = true;
                     break Poll::Ready(None);
                 }
-
             }
         }
     }
 }
 
 impl<Str, State, F, Fut, B> FusedStream for OwningScan<Str, State, F, Fut>
-    where
-        Str: Stream,
-        F: FnMut(State, Str::Item) -> Fut,
-        Fut: Future<Output = Option<(State, B)>>,
+where
+    Str: Stream,
+    F: FnMut(State, Str::Item) -> Fut,
+    Fut: Future<Output = Option<(State, B)>>,
 {
     fn is_terminated(&self) -> bool {
         self.done
     }
 }
-
 
 /// A stream that runs another stream of [`Result`]s until an error is produces, yielding the
 /// OK values.
@@ -866,7 +863,11 @@ pub trait SwimStreamExt: Stream {
     /// }));
     /// assert_eq!(outputs, vec![(0, 1), (1, 2), (2, 3), (3, 4)]);
     /// ```
-    fn owning_scan<State, F, Fut, B>(self, initial_state: State, f: F) -> OwningScan<Self, State, F, Fut>
+    fn owning_scan<State, F, Fut, B>(
+        self,
+        initial_state: State,
+        f: F,
+    ) -> OwningScan<Self, State, F, Fut>
     where
         Self: Sized,
         F: FnMut(State, Self::Item) -> Fut,

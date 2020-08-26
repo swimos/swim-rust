@@ -64,6 +64,12 @@ pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedClientEnvelope(pub RoutingAddr, pub OutgoingLinkMessage);
 
+impl TaggedClientEnvelope {
+    pub fn lane(&self) -> &str {
+        self.1.path.lane.as_str()
+    }
+}
+
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;

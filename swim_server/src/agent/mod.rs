@@ -13,7 +13,7 @@
 // limitations under the License.
 
 mod context;
-mod dispatch;
+pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;
 #[cfg(test)]
@@ -69,12 +69,15 @@ pub trait SwimAgent<Config>: Sized {
         configuration: &Config,
     ) -> (
         Self,
-        Vec<Box<dyn LaneTasks<Self, Context>>>,
-        HashMap<String, Box<dyn LaneIo<Context>>>,
+        DynamicLaneTasks<Self, Context>,
+        DynamicAgentIo<Context>,
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static;
 }
+
+pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
+pub type DynamicAgentIo<Context> = HashMap<String, Box<dyn LaneIo<Context>>>;
 
 const AGENT_TASK: &str = "Agent task";
 const AGENT_START: &str = "Agent start";
@@ -377,7 +380,13 @@ where
         .boxed())
     }
 
-    fn attach_boxed(self: Box<Self>, route: RelativePath, envelopes: Receiver<TaggedClientEnvelope>, config: AgentExecutionConfig, context: Context) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         (*self).attach(route, envelopes, config, context)
     }
 }
@@ -434,7 +443,13 @@ where
         .boxed())
     }
 
-    fn attach_boxed(self: Box<Self>, route: RelativePath, envelopes: Receiver<TaggedClientEnvelope>, config: AgentExecutionConfig, context: Context) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         (*self).attach(route, envelopes, config, context)
     }
 }
@@ -485,7 +500,13 @@ where
         .boxed())
     }
 
-    fn attach_boxed(self: Box<Self>, route: RelativePath, envelopes: Receiver<TaggedClientEnvelope>, config: AgentExecutionConfig, context: Context) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         (*self).attach(route, envelopes, config, context)
     }
 }

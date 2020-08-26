@@ -19,9 +19,9 @@ use futures::stream::{iter, FusedStream, Iter};
 use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use pin_utils::pin_mut;
 use std::iter::{repeat, Repeat, Take};
 use tokio::sync::mpsc;
-use pin_utils::pin_mut;
 
 #[test]
 fn future_into() {
@@ -184,12 +184,10 @@ async fn owning_scan() {
 
     let (tx, rx) = mpsc::channel(10);
 
-    let scan_stream = inputs.owning_scan(tx, |mut sender, i| {
-        async move {
-            assert!(sender.send(i).await.is_ok());
+    let scan_stream = inputs.owning_scan(tx, |mut sender, i| async move {
+        assert!(sender.send(i).await.is_ok());
 
-            Some((sender, i + 1))
-        }
+        Some((sender, i + 1))
     });
 
     let results = scan_stream.collect::<Vec<_>>().await;
@@ -205,14 +203,12 @@ async fn owning_scan_done() {
 
     let (tx, _rx) = mpsc::channel(10);
 
-    let scan_stream = inputs.owning_scan(tx, |mut sender, i| {
-        async move {
-            assert!(sender.send(i).await.is_ok());
-            if i < 3 {
-                Some((sender, i + 1))
-            } else {
-                None
-            }
+    let scan_stream = inputs.owning_scan(tx, |mut sender, i| async move {
+        assert!(sender.send(i).await.is_ok());
+        if i < 3 {
+            Some((sender, i + 1))
+        } else {
+            None
         }
     });
 

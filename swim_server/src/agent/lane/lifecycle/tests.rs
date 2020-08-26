@@ -16,13 +16,13 @@ use super::{StatefulLaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
+use futures::future::BoxFuture;
 use futures::Stream;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use tokio::time::Duration;
 use url::Url;
 use utilities::sync::trigger::Receiver;
-use futures::future::BoxFuture;
 
 struct TestModel;
 
