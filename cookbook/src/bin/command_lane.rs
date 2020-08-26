@@ -1,5 +1,4 @@
 use std::time::Duration;
-use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
 use swim_client::downlink::typed::SchemaViolations;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
@@ -7,7 +6,7 @@ use tokio::task;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+    let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "unit/foo";
     let lane_uri = "publish";
@@ -31,7 +30,7 @@ async fn main() {
     // the plane with hostUri "warp://localhost:9001"
     let msg = 9035768;
     client
-        .send_command(path, msg.into())
+        .send_command(path, msg)
         .await
         .expect("Failed to send a command!");
     tokio::time::delay_for(Duration::from_secs(2)).await;

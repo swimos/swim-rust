@@ -1,13 +1,12 @@
 use rand::seq::SliceRandom;
 use std::time::Duration;
-use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
 use swim_client::downlink::Downlink;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+    let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri_prefix = "/unit/";
 
@@ -25,7 +24,7 @@ async fn main() {
     let (_dl_topic, mut dl_sink) = map_downlink.split();
 
     dl_sink
-        .insert(String::from("FromClientLink"), 25)
+        .update(String::from("FromClientLink"), 25)
         .await
         .expect("Failed to send message!");
 
@@ -49,8 +48,7 @@ async fn main() {
                 items
                     .choose(&mut rand::thread_rng())
                     .expect("No items to send!")
-                    .to_owned()
-                    .into(),
+                    .to_string(),
             )
             .await
             .expect("Failed to send command!");

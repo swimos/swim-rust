@@ -1,6 +1,5 @@
 use futures::StreamExt;
 use std::time::Duration;
-use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
 use swim_client::downlink::model::map::MapEvent;
 use swim_client::downlink::subscription::TypedMapReceiver;
 use swim_client::downlink::typed::event::TypedViewWithEvent;
@@ -17,7 +16,7 @@ async fn did_update(map_recv: TypedMapReceiver<String, i32>, default: i32) {
             match event {
                 Remote(TypedViewWithEvent {
                     view,
-                    event: MapEvent::Insert(key),
+                    event: MapEvent::Update(key),
                 }) => {
                     let value = view.get(&key).unwrap_or(default);
 
@@ -38,8 +37,8 @@ async fn did_update(map_recv: TypedMapReceiver<String, i32>, default: i32) {
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let mut client = SwimClient::new_with_default().await;
+    let host_uri = url::Url::parse(&"ws://127.0.0.1:53556".to_string()).unwrap();
     let node_uri = "/join/state/all";
     let lane_uri = "join";
 
