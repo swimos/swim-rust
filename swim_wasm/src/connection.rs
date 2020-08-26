@@ -119,7 +119,7 @@ impl WebsocketFactory for WasmWsFactory {
     }
 }
 
-// A wrappper around the [`ws_stream_wasm::WsErr`] used to implement [`From`] for converting to
+// A wrapper around the [`ws_stream_wasm::WsErr`] used to implement [`From`] for converting to
 // [`ConnectionError`]s.
 struct WsError(WsErr);
 

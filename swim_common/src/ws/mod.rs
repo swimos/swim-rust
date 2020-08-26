@@ -28,8 +28,6 @@ use std::convert::TryFrom;
 mod compression;
 pub mod error;
 
-pub const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
-
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
@@ -100,10 +98,7 @@ pub fn maybe_resolve_scheme<T>(mut request: Request<T>) -> Result<Request<T>, Co
     let new_scheme = match uri.scheme_str() {
         Some("swim") | Some("warp") | Some("ws") => Ok("ws"),
         Some("swims") | Some("warps") | Some("wss") => Ok("wss"),
-        Some(s) => Err(WebSocketError::Url(format!(
-            "{}: {}",
-            UNSUPPORTED_SCHEME, s
-        ))),
+        Some(s) => Err(WebSocketError::unsupported_scheme(s)),
         None => Err(WebSocketError::Url("Missing scheme".into())),
     }?;
 

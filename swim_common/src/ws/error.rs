@@ -19,6 +19,9 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use swim_runtime::task::TaskError;
 
+const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
+const MISSING_SCHEME: &str = "Missing URL scheme";
+
 /// Connection error types returned by the connection pool and the connections.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConnectionError {
@@ -48,6 +51,21 @@ pub enum WebSocketError {
     /// A TLS error occurred.
     Tls(String),
     Message(String),
+}
+
+impl WebSocketError {
+    /// Creates a new `WebSocketError::Url` error detailing that the `found` scheme is unsupported.
+    pub fn unsupported_scheme<I>(scheme: I) -> WebSocketError
+    where
+        I: Into<String>,
+    {
+        WebSocketError::Url(format!("{}: {}", UNSUPPORTED_SCHEME, scheme.into()))
+    }
+
+    /// Creates a new `WebSocketError::Url` error detailing that the URL scheme is missing.
+    pub fn missing_scheme() -> WebSocketError {
+        WebSocketError::Url(MISSING_SCHEME.into())
+    }
 }
 
 impl Display for WebSocketError {

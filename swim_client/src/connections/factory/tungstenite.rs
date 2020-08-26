@@ -35,7 +35,6 @@ use swim_common::request::request_future::SendAndAwait;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{
     maybe_resolve_scheme, StreamType, WebSocketConfig, WebsocketFactory, WsMessage,
-    UNSUPPORTED_SCHEME,
 };
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
@@ -68,6 +67,7 @@ async fn connect(
         .unwrap_or_else(|| match request.uri().scheme_str() {
             Some("wss") => 443,
             Some("ws") => 80,
+            // resolved by `maybe_resolve_scheme`
             _ => unreachable!(),
         });
 
@@ -86,10 +86,7 @@ async fn connect(
         .map_err(TungsteniteError)
     {
         Ok(r) => Ok(r),
-        Err(e) => {
-            println!("{:?}", e);
-            Err(e.into())
-        }
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -103,10 +100,8 @@ fn get_stream_type<T>(
             StreamType::Plain => Ok(StreamType::Tls(None)),
             s => Ok(s.clone()),
         },
-        _ => {
-            println!("Stream type");
-            Err(WebSocketError::Url(String::from(UNSUPPORTED_SCHEME)))
-        }
+        Some(s) => Err(WebSocketError::unsupported_scheme(s)),
+        None => Err(WebSocketError::missing_scheme()),
     }
 }
 
