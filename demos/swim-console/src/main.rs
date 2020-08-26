@@ -19,8 +19,7 @@ use swim_common::warp::path::AbsolutePath;
 
 #[tokio::main]
 async fn main() {
-    let fac = ;
-    let mut client = SwimClient::new_with_default(fac).await;
+    let mut client = SwimClient::new_with_default().await;
     let path = AbsolutePath::new(
         url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
         "/unit/foo",
