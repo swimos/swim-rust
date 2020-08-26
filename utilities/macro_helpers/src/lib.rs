@@ -8,12 +8,12 @@ extern crate quote;
 extern crate syn;
 
 use core::fmt;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
-use syn::export::TokenStream2;
-use syn::{Data, Index, Meta, Path};
+use syn::export::{Formatter, TokenStream2};
+use syn::{Data, ExprPath, Index, Lit, Meta, Path};
 
 #[derive(Copy, Clone)]
 pub struct Symbol(pub &'static str);
@@ -73,54 +73,55 @@ pub enum CompoundTypeKind {
     Unit,
 }
 
-/// An enumeration representing a field in a compound type. This enumeration helps to keep track of
-/// fields that may have been renamed when transmuting it.
+/// An enumeration representing a field or a compound type. This enumeration helps to keep track of
+/// elements that may have been renamed when transmuting.
 #[derive(Clone)]
-pub enum FieldIdentity {
-    /// A named field containing its identifier.
+pub enum Label {
+    /// A named element containing its identifier.
     Named(Ident),
-    /// A renamed field containing its new identifier and original identifier. This field may have
-    /// previously been named or anonymous.
-    Renamed {
-        new_identity: String,
-        old_identity: Ident,
-    },
-    /// An anonymous field containing its index in the parent structure.
+    /// A renamed element containing its new identifier and original identifier. This element may
+    /// have previously been named or anonymous.
+    Renamed { new_label: String, old_label: Ident },
+    /// An anonymous element containing its index in the parent structure.
     Anonymous(Index),
 }
 
-impl FieldIdentity {
+impl Debug for Label {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+impl Label {
     /// Returns this [`FieldName`] represented as an [`Ident`]ifier. For renamed fields, this function
     /// returns the original field identifier represented and not the new name. For unnamed fields,
     /// this function returns a new identifier in the format of `__self_index`, where `index` is
     /// the ordinal of the field.
     pub fn as_ident(&self) -> Ident {
         match self {
-            FieldIdentity::Named(ident) => ident.clone(),
-            FieldIdentity::Renamed { old_identity, .. } => old_identity.clone(),
-            FieldIdentity::Anonymous(index) => {
-                Ident::new(&format!("__self_{}", index.index), index.span)
-            }
+            Label::Named(ident) => ident.clone(),
+            Label::Renamed { old_label, .. } => old_label.clone(),
+            Label::Anonymous(index) => Ident::new(&format!("__self_{}", index.index), index.span),
         }
     }
 }
 
-impl ToString for FieldIdentity {
+impl ToString for Label {
     fn to_string(&self) -> String {
         match self {
-            FieldIdentity::Named(ident) => ident.to_string(),
-            FieldIdentity::Renamed { new_identity, .. } => new_identity.to_string(),
-            FieldIdentity::Anonymous(index) => format!("__self_{}", index.index),
+            Label::Named(ident) => ident.to_string(),
+            Label::Renamed { new_label, .. } => new_label.to_string(),
+            Label::Anonymous(index) => format!("__self_{}", index.index),
         }
     }
 }
 
-impl ToTokens for FieldIdentity {
+impl ToTokens for Label {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            FieldIdentity::Named(ident) => ident.to_tokens(tokens),
-            FieldIdentity::Renamed { old_identity, .. } => old_identity.to_tokens(tokens),
-            FieldIdentity::Anonymous(index) => index.to_tokens(tokens),
+            Label::Named(ident) => ident.to_tokens(tokens),
+            Label::Renamed { old_label, .. } => old_label.to_tokens(tokens),
+            Label::Anonymous(index) => index.to_tokens(tokens),
         }
     }
 }
@@ -133,9 +134,9 @@ pub struct Context {
 
 impl Context {
     /// Pushes an error into the context.
-    pub fn error_spanned_by<A: ToTokens, T: Display>(&mut self, obj: A, msg: T) {
+    pub fn error_spanned_by<A: ToTokens, T: Display>(&mut self, location: A, msg: T) {
         self.errors
-            .push(syn::Error::new_spanned(obj.into_token_stream(), msg));
+            .push(syn::Error::new_spanned(location.into_token_stream(), msg));
     }
 
     /// Consumes the context and returns the underlying errors.
@@ -168,19 +169,19 @@ pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
 /// ```
 pub fn deconstruct_type(
     compound_type: &CompoundTypeKind,
-    fields: &[&FieldIdentity],
+    fields: &[&Label],
     as_ref: bool,
 ) -> TokenStream2 {
     let fields: Vec<_> = fields
         .iter()
         .map(|name| match &name {
-            FieldIdentity::Named(ident) => {
+            Label::Named(ident) => {
                 quote! { #ident }
             }
-            FieldIdentity::Renamed { old_identity, .. } => {
-                quote! { #old_identity }
+            Label::Renamed { old_label, .. } => {
+                quote! { #old_label }
             }
-            un @ FieldIdentity::Anonymous(_) => {
+            un @ Label::Anonymous(_) => {
                 let binding = &un.as_ident();
                 quote! { #binding }
             }
@@ -210,9 +211,9 @@ pub fn deconstruct_type(
 pub fn get_attribute_meta(
     ctx: &mut Context,
     attr: &syn::Attribute,
-    symbol: Symbol,
+    path: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
-    if attr.path != symbol {
+    if attr.path != path {
         Ok(Vec::new())
     } else {
         match attr.parse_meta() {
@@ -220,7 +221,7 @@ pub fn get_attribute_meta(
             Ok(other) => {
                 ctx.error_spanned_by(
                     other,
-                    &format!("Invalid attribute. Expected #[{}(...)]", symbol),
+                    &format!("Invalid attribute. Expected #[{}(...)]", path),
                 );
                 Err(())
             }
@@ -228,6 +229,27 @@ pub fn get_attribute_meta(
                 ctx.error_spanned_by(attr, e.to_compile_error());
                 Err(())
             }
+        }
+    }
+}
+
+pub fn lit_str_to_expr_path(ctx: &mut Context, lit: &Lit) -> Result<ExprPath, ()> {
+    match lit {
+        Lit::Str(lit_str) => {
+            let token_stream = syn::parse_str(&lit_str.value()).map_err(|e| {
+                ctx.error_spanned_by(lit_str, e.to_string());
+            })?;
+            match syn::parse2::<ExprPath>(token_stream) {
+                Ok(path) => Ok(path),
+                Err(e) => {
+                    ctx.error_spanned_by(lit, e.to_string());
+                    Err(())
+                }
+            }
+        }
+        _ => {
+            ctx.error_spanned_by(lit, "Expected a String literal");
+            Err(())
         }
     }
 }
