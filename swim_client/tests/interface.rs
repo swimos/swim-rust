@@ -14,7 +14,6 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
     use swim_client::downlink::model::map::{
         MapAction, MapEvent, MapModification, UntypedMapModification,
     };
@@ -675,7 +674,7 @@ mod tests {
         let mut sender_view = dl.write_only_sender::<String, i32>().await.unwrap();
         let (_, mut sink) = dl.split();
 
-        sink.modify(String::from("eggs").into(), 3.into())
+        sink.update(String::from("eggs").into(), 3.into())
             .await
             .unwrap();
 
@@ -697,7 +696,7 @@ mod tests {
         }
 
         sender_view
-            .modify(String::from("chocolate"), 10)
+            .update(String::from("chocolate"), 10)
             .await
             .unwrap();
 
