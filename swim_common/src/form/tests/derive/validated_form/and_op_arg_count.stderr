@@ -1,0 +1,5 @@
+error: At least two arguments must be provided to an AND operator
+  --> $DIR/and_op_arg_count.rs:20:23
+   |
+20 |         #[form(schema(and(num_items = 5)))]
+   |                       ^^^^^^^^^^^^^^^^^^
