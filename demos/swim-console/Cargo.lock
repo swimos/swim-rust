@@ -1128,6 +1128,7 @@ dependencies = [
  "futures-util",
  "http",
  "im 14.3.0",
+ "native-tls",
  "num-bigint",
  "num-traits",
  "pin-project",

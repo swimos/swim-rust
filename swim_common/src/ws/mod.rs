@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use futures::{Future, Sink, Stream};
@@ -21,9 +21,12 @@ use http::uri::{InvalidUri, Scheme};
 use http::{HeaderValue, Request, Response, Uri};
 use url::Url;
 
-use crate::ws::error::{ConnectionError, WebSocketError};
+use crate::ws::error::{CertificateError, ConnectionError, WebSocketError};
 use http::request::Parts;
+use native_tls::{Certificate, TlsConnector, TlsConnectorBuilder};
 use std::convert::TryFrom;
+use std::fs::File;
+use std::io::{BufReader, Read};
 
 mod compression;
 pub mod error;
@@ -79,13 +82,11 @@ pub trait WebSocketHandler {
     fn on_response(&mut self, _response: &mut Response<()>) {}
 }
 
-#[derive(Clone)]
 pub enum StreamType {
     Plain,
-    Tls(Option<PathBuf>),
+    Tls(Certificate),
 }
 
-#[derive(Clone)]
 pub struct WebSocketConfig {
     pub stream_type: StreamType,
     // pub extensions: Vec<Box<dyn WebSocketHandler>>,
@@ -111,4 +112,15 @@ pub fn maybe_resolve_scheme<T>(mut request: Request<T>) -> Result<Request<T>, Co
     request_parts.uri = uri;
 
     Ok(Request::from_parts(request_parts, request_t))
+}
+
+pub fn build_x509_certificate(path: impl AsRef<Path>) -> Result<Certificate, CertificateError> {
+    let mut reader = BufReader::new(File::open(path)?);
+    let mut buf = vec![];
+    reader.read_to_end(&mut buf)?;
+
+    match Certificate::from_pem(&buf) {
+        Ok(cert) => Ok(cert),
+        Err(e) => return Err(CertificateError::SSL(e.to_string())),
+    }
 }

@@ -41,16 +41,56 @@ pub enum ConnectionError {
     Closed,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum CertificateError {
+    /// An IO error occurred while attempting to read the certificate.
+    Io(String),
+    /// An error occurred while trying to deserialize the certificate.
+    SSL(String),
+}
+
+impl Display for CertificateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            CertificateError::Io(cause) => write!(f, "{}", cause),
+            CertificateError::SSL(cause) => write!(f, "{}", cause),
+        }
+    }
+}
+
 /// An error that occurred within the underlying WebSocket.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum WebSocketError {
+    /// The WebSocket was configured incorrectly. Detailed in the String field.
+    BadConfiguration(String),
     /// An invalid URL was supplied.
     Url(String),
     /// A protocol error occurred.
     Protocol,
-    /// A TLS error occurred.
-    Tls(String),
+    /// A custom mage detailing the error.
     Message(String),
+    /// A TLS error from the underlying implementation.
+    Tls(String),
+    /// An error from building or reading a certificate
+    CertificateError(CertificateError),
+}
+
+impl From<native_tls::Error> for WebSocketError {
+    fn from(e: native_tls::Error) -> Self {
+        WebSocketError::Tls(e.to_string())
+    }
+}
+
+impl From<std::io::Error> for CertificateError {
+    fn from(e: std::io::Error) -> Self {
+        CertificateError::Io(e.to_string())
+    }
+}
+
+impl From<CertificateError> for WebSocketError {
+    fn from(e: CertificateError) -> Self {
+        WebSocketError::CertificateError(e)
+    }
 }
 
 impl WebSocketError {
@@ -73,9 +113,23 @@ impl Display for WebSocketError {
         match &self {
             WebSocketError::Url(url) => write!(f, "An invalid URL ({}) was supplied", url),
             WebSocketError::Protocol => write!(f, "A protocol error occurred."),
-            WebSocketError::Tls(msg) => write!(f, "A TLS error occurred: {}", msg),
             WebSocketError::Message(msg) => write!(f, "{}", msg),
+            WebSocketError::BadConfiguration(reason) => {
+                write!(f, "Incorrect WebSocket configuration: {}", reason)
+            }
+            WebSocketError::Tls(e) => write!(f, "{}", e),
+            WebSocketError::CertificateError(e) => write!(
+                f,
+                "An error was produced while trying to build the certificate: {}",
+                e
+            ),
         }
+    }
+}
+
+impl From<CertificateError> for ConnectionError {
+    fn from(e: CertificateError) -> Self {
+        ConnectionError::SocketError(WebSocketError::CertificateError(e))
     }
 }
 
@@ -89,13 +143,13 @@ impl Display for ConnectionError {
                 write!(f, "An error was produced by the web socket: {}", wse)
             }
             ConnectionError::SendMessageError => {
-                write!(f, "An error occured when sending a message.")
+                write!(f, "An error occurred when sending a message.")
             }
             ConnectionError::ReceiveMessageError => {
-                write!(f, "An error occured when receiving a message.")
+                write!(f, "An error occurred when receiving a message.")
             }
             ConnectionError::AlreadyClosedError => {
-                write!(f, "An error occured when closing down connections.")
+                write!(f, "An error occurred when closing down connections.")
             }
             ConnectionError::Closed => write!(f, "The WebSocket closed successfully."),
             ConnectionError::ConnectionRefused => {
@@ -140,8 +194,8 @@ impl From<InvalidUri> for ConnectionError {
     }
 }
 
-impl From<Error> for ConnectionError {
-    fn from(e: Error) -> Self {
+impl From<http::Error> for ConnectionError {
+    fn from(e: http::Error) -> Self {
         ConnectionError::SocketError(WebSocketError::Url(e.to_string()))
     }
 }

@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fs::File;
 use std::io::ErrorKind;
-use std::io::{BufReader, Read};
 use std::ops::Deref;
 
 use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
 use futures::StreamExt;
 use http::{Request, Response, Uri};
-use native_tls::Certificate;
 use native_tls::TlsConnector;
 use tokio::net::TcpStream;
 use tokio_tls::{TlsConnector as TokioTlsConnector, TlsStream};
@@ -34,13 +31,13 @@ use url::Url;
 use swim_common::request::request_future::SendAndAwait;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{
-    maybe_resolve_scheme, StreamType, WebSocketConfig, WebsocketFactory, WsMessage,
+    build_x509_certificate, maybe_resolve_scheme, StreamType, WebSocketConfig, WebsocketFactory,
+    WsMessage,
 };
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 use super::async_factory;
-use std::env;
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
@@ -59,7 +56,7 @@ async fn connect(
     let request = Request::get(uri).body(())?;
 
     let request = maybe_resolve_scheme(request)?;
-    let stream_type = get_stream_type(&request, &config)?;
+    let stream_type = get_stream_type(&request, config)?;
 
     let port = request
         .uri()
@@ -92,13 +89,15 @@ async fn connect(
 
 fn get_stream_type<T>(
     request: &Request<T>,
-    config: &WebSocketConfig,
+    config: WebSocketConfig,
 ) -> Result<StreamType, WebSocketError> {
     match request.uri().scheme_str() {
         Some("ws") => Ok(StreamType::Plain),
-        Some("wss") => match &config.stream_type {
-            StreamType::Plain => Ok(StreamType::Tls(None)),
-            s => Ok(s.clone()),
+        Some("wss") => match config.stream_type {
+            StreamType::Plain => Err(WebSocketError::BadConfiguration(
+                "Attempted to connect to a secure WebSocket without a TLS configuration".into(),
+            )),
+            tls => Ok(tls),
         },
         Some(s) => Err(WebSocketError::unsupported_scheme(s)),
         None => Err(WebSocketError::missing_scheme()),
@@ -116,43 +115,17 @@ async fn build_stream(
 
     match stream_type {
         StreamType::Plain => Ok(StreamSwitcher::Plain(socket)),
-        StreamType::Tls(tls_config) => {
-            println!("{:?}", env::current_dir());
-
+        StreamType::Tls(certificate) => {
             let mut tls_conn_builder = TlsConnector::builder();
+            tls_conn_builder.add_root_certificate(certificate);
 
-            // todo: make config obj
-            if let Some(path) = tls_config {
-                let mut reader = BufReader::new(File::open(path).map_err(|e| {
-                    println!("{}", e.to_string());
-                    WebSocketError::Tls(e.to_string())
-                })?);
-
-                let mut buf = vec![];
-                reader
-                    .read_to_end(&mut buf)
-                    .map_err(|e| WebSocketError::Tls(e.to_string()))?;
-
-                match Certificate::from_pem(&buf) {
-                    Ok(cert) => {
-                        tls_conn_builder.add_root_certificate(cert);
-                    }
-                    Err(e) => return Err(WebSocketError::Tls(e.to_string())),
-                }
-            }
-
-            let connector = tls_conn_builder
-                .build()
-                .map_err(|e| WebSocketError::Tls(e.to_string()))?;
+            let connector = tls_conn_builder.build()?;
             let stream = TokioTlsConnector::from(connector);
             let connected = stream.connect(&domain, socket).await;
 
             match connected {
                 Ok(s) => Ok(StreamSwitcher::Tls(s)),
-                Err(e) => {
-                    println!("Connect err: {:?}", e);
-                    Err(WebSocketError::Tls(e.to_string()))
-                }
+                Err(e) => Err(WebSocketError::Tls(e.to_string())),
             }
         }
     }
@@ -215,9 +188,9 @@ pub struct TungsteniteWsFactory {
 async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionError> {
     tracing::info!("Connecting to URL {:?}", &url);
 
+    let certificate = build_x509_certificate("../certificate.cert")?;
     let config = WebSocketConfig {
-        stream_type: StreamType::Tls(Some("../certificate.cert".into())),
-        // extensions: vec![],
+        stream_type: StreamType::Tls(certificate),
     };
 
     match connect(url, config).await {
