@@ -12,43 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fs::File;
+use std::io::ErrorKind;
+use std::io::{BufReader, Read};
+use std::ops::Deref;
+
 use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
-
+use futures::StreamExt;
+use http::{Request, Response, Uri};
+use native_tls::Certificate;
+use native_tls::TlsConnector;
+use tokio::net::TcpStream;
+use tokio_tls::{TlsConnector as TokioTlsConnector, TlsStream};
+use tokio_tungstenite::stream::Stream as StreamSwitcher;
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::*;
+use tokio_tungstenite::{client_async_with_config, WebSocketStream};
+use url::Url;
 
 use swim_common::request::request_future::SendAndAwait;
-
-use super::async_factory;
-use std::io::ErrorKind;
-use std::ops::Deref;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{
-    maybe_normalise_url, StreamType, WebSocketConfig, WebsocketFactory, WsMessage,
+    maybe_resolve_scheme, StreamType, WebSocketConfig, WebsocketFactory, WsMessage,
     UNSUPPORTED_SCHEME,
 };
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
+use super::async_factory;
+use std::env;
+
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
 type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungSink, TungStream), ConnectionError>>;
 
-pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>>;
 pub type ConnReq = async_factory::ConnReq<TungSink, TungStream>;
 
-use futures::StreamExt;
-use http::{Request, Response, Uri};
-use native_tls::{Certificate, TlsConnector};
-use std::fs::File;
-use std::io::{BufReader, Read};
-use tokio::net::TcpStream;
-use tokio_native_tls::{TlsConnector as TokioTlsConnector, TlsStream};
-use tokio_tungstenite::stream::Stream as StreamSwitcher;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{client_async_with_config, WebSocketStream};
-use url::Url;
+pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 
 async fn connect(
     url: Url,
@@ -57,60 +59,79 @@ async fn connect(
     let uri: Uri = url.as_str().parse()?;
     let request = Request::get(uri).body(())?;
 
+    let request = maybe_resolve_scheme(request)?;
+    let stream_type = get_stream_type(&request, &config)?;
+
     let port = request
         .uri()
         .port_u16()
-        .or_else(|| match request.uri().scheme_str() {
-            Some("wss") => Some(443),
-            Some("ws") => Some(80),
-            _ => None,
-        })
-        .ok_or_else(|| WebSocketError::Url(String::from(UNSUPPORTED_SCHEME)))?;
-
-    maybe_normalise_url(&request)?;
+        .unwrap_or_else(|| match request.uri().scheme_str() {
+            Some("wss") => 443,
+            Some("ws") => 80,
+            _ => unreachable!(),
+        });
 
     let domain = match request.uri().host() {
         Some(d) => d.to_string(),
         None => {
-            return Err(WebSocketError::Url(String::from("Malformatted URI. Missing host")).into())
+            return Err(WebSocketError::Url(String::from("Malformatted URI. Missing host")).into());
         }
     };
 
-    println!("Request: {:?}", request);
-    println!("Domain: {:?}", domain);
-
     let host = format!("{}:{}", domain, port);
-    let stream = build_stream(&host, domain, &config).await?;
-    println!("Built stream");
+    let stream = build_stream(&host, domain, stream_type).await?;
 
     match client_async_with_config(request, stream, None)
         .await
         .map_err(TungsteniteError)
     {
         Ok(r) => Ok(r),
-        Err(e) => Err(e.into()),
+        Err(e) => {
+            println!("{:?}", e);
+            Err(e.into())
+        }
+    }
+}
+
+fn get_stream_type<T>(
+    request: &Request<T>,
+    config: &WebSocketConfig,
+) -> Result<StreamType, WebSocketError> {
+    match request.uri().scheme_str() {
+        Some("ws") => Ok(StreamType::Plain),
+        Some("wss") => match &config.stream_type {
+            StreamType::Plain => Ok(StreamType::Tls(None)),
+            s => Ok(s.clone()),
+        },
+        _ => {
+            println!("Stream type");
+            Err(WebSocketError::Url(String::from(UNSUPPORTED_SCHEME)))
+        }
     }
 }
 
 async fn build_stream(
     host: &str,
     domain: String,
-    config: &WebSocketConfig,
+    stream_type: StreamType,
 ) -> Result<MaybeTlsStream<TcpStream>, WebSocketError> {
-    let stream = TcpStream::connect(host)
+    let socket = TcpStream::connect(host)
         .await
         .map_err(|e| WebSocketError::Message(e.to_string()))?;
 
-    match &config.stream_type {
-        StreamType::Plain => Ok(StreamSwitcher::Plain(stream)),
+    match stream_type {
+        StreamType::Plain => Ok(StreamSwitcher::Plain(socket)),
         StreamType::Tls(tls_config) => {
+            println!("{:?}", env::current_dir());
+
             let mut tls_conn_builder = TlsConnector::builder();
 
             // todo: make config obj
             if let Some(path) = tls_config {
-                let mut reader = BufReader::new(
-                    File::open(path).map_err(|e| WebSocketError::Tls(e.to_string()))?,
-                );
+                let mut reader = BufReader::new(File::open(path).map_err(|e| {
+                    println!("{}", e.to_string());
+                    WebSocketError::Tls(e.to_string())
+                })?);
 
                 let mut buf = vec![];
                 reader
@@ -128,13 +149,13 @@ async fn build_stream(
             let connector = tls_conn_builder
                 .build()
                 .map_err(|e| WebSocketError::Tls(e.to_string()))?;
-            let connector = TokioTlsConnector::from(connector);
-            let connected = connector.connect(&domain, stream).await;
+            let stream = TokioTlsConnector::from(connector);
+            let connected = stream.connect(&domain, socket).await;
 
             match connected {
                 Ok(s) => Ok(StreamSwitcher::Tls(s)),
                 Err(e) => {
-                    println!("{}", e.to_string());
+                    println!("Connect err: {:?}", e);
                     Err(WebSocketError::Tls(e.to_string()))
                 }
             }
@@ -162,21 +183,20 @@ impl WebsocketFactory for TungsteniteWsFactory {
 }
 
 pub struct SinkTransformer;
+
 impl TransformMut<WsMessage> for SinkTransformer {
     type Out = Message;
 
     fn transform(&mut self, input: WsMessage) -> Self::Out {
         match input {
-            WsMessage::Text(s) => {
-                println!("{}", s);
-                Message::Text(s)
-            }
+            WsMessage::Text(s) => Message::Text(s),
             WsMessage::Binary(v) => Message::Binary(v),
         }
     }
 }
 
 pub struct StreamTransformer;
+
 impl TransformMut<Result<Message, TError>> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
 
@@ -201,7 +221,7 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
     tracing::info!("Connecting to URL {:?}", &url);
 
     let config = WebSocketConfig {
-        stream_type: StreamType::Tls(None),
+        stream_type: StreamType::Tls(Some("../certificate.cert".into())),
         // extensions: vec![],
     };
 
@@ -244,12 +264,16 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
             //     tracing::error!(cause = %e, "Failed to connect to URL");
             // }
 
+            println!("{}", e.to_string());
+
             Err(e)
         }
     }
 }
 
 type TError = tungstenite::error::Error;
+
+#[derive(Debug)]
 struct TungsteniteError(tungstenite::error::Error);
 
 impl Deref for TungsteniteError {
@@ -278,11 +302,11 @@ impl From<TungsteniteError> for ConnectionError {
 
 #[cfg(test)]
 mod tests {
+    use swim_common::ws::error::ConnectionError;
+
     use crate::configuration::router::ConnectionPoolParams;
     use crate::connections::factory::tungstenite::TungsteniteWsFactory;
     use crate::connections::{ConnectionPool, SwimConnPool};
-
-    use swim_common::ws::error::ConnectionError;
 
     #[tokio::test]
     async fn invalid_protocol() {

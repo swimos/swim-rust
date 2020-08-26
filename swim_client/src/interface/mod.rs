@@ -41,6 +41,7 @@ use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::ws::WebsocketFactory;
 
+#[allow(warnings)]
 mod t;
 
 /// Represents errors that can occur in the client.

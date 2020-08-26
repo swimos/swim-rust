@@ -18,10 +18,12 @@ use std::str::FromStr;
 use futures::{Future, Sink, Stream};
 use http::header::{HeaderName, CONTENT_ENCODING, SEC_WEBSOCKET_EXTENSIONS};
 use http::uri::{InvalidUri, Scheme};
-use http::{HeaderValue, Request, Response};
+use http::{HeaderValue, Request, Response, Uri};
 use url::Url;
 
 use crate::ws::error::{ConnectionError, WebSocketError};
+use http::request::Parts;
+use std::convert::TryFrom;
 
 mod compression;
 pub mod error;
@@ -91,21 +93,27 @@ pub struct WebSocketConfig {
     // pub extensions: Vec<Box<dyn WebSocketHandler>>,
 }
 
-/// If the request scheme is `warp` or `warps` then it is replaced with a supported format.
-pub fn maybe_normalise_url<T>(request: &Request<T>) -> Result<(), ConnectionError> {
+/// If the request scheme is `warp`, `swim`, `swims` or `warps` then it is replaced with a
+/// supported format.
+pub fn maybe_resolve_scheme<T>(mut request: Request<T>) -> Result<Request<T>, ConnectionError> {
     let uri = request.uri().clone();
     let new_scheme = match uri.scheme_str() {
-        Some("warp") => Some("ws"),
-        Some("warps") => Some("wss"),
-        Some(s) => Some(s),
-        None => None,
-    }
-    .ok_or_else(|| WebSocketError::Url(String::from(UNSUPPORTED_SCHEME)))?;
+        Some("swim") | Some("warp") | Some("ws") => Ok("ws"),
+        Some("swims") | Some("warps") | Some("wss") => Ok("wss"),
+        Some(s) => Err(WebSocketError::Url(format!(
+            "{}: {}",
+            UNSUPPORTED_SCHEME, s
+        ))),
+        None => Err(WebSocketError::Url("Missing scheme".into())),
+    }?;
 
-    request
-        .uri()
-        .scheme()
-        .replace(&Scheme::from_str(new_scheme)?);
+    let (mut request_parts, request_t) = request.into_parts();
+    let mut uri_parts = uri.into_parts();
+    uri_parts.scheme = Some(Scheme::from_str(new_scheme)?);
 
-    Ok(())
+    // infallible as `ws` and `wss` are valid schemes and the previous scheme already parsed.
+    let uri = Uri::from_parts(uri_parts).unwrap();
+    request_parts.uri = uri;
+
+    Ok(Request::from_parts(request_parts, request_t))
 }
