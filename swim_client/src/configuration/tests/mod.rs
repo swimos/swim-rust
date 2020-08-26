@@ -297,7 +297,12 @@ fn test_conf_from_file_full_unordered() {
 async fn test_client_file_conf_non_utf8_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/non-utf-8-config.recon").unwrap();
-    let result = SwimClient::new_from_file(file, false, TungsteniteWsFactory::new(5).await).await;
+    let result = SwimClient::new_from_file(
+        file,
+        false,
+        TungsteniteWsFactory::new(5, Default::default()).await,
+    )
+    .await;
 
     if let Err(err) = result {
         assert_eq!(
@@ -313,7 +318,12 @@ async fn test_client_file_conf_non_utf8_error() {
 async fn test_client_file_conf_recon_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/parse-err-config.recon").unwrap();
-    let result = SwimClient::new_from_file(file, false, TungsteniteWsFactory::new(5).await).await;
+    let result = SwimClient::new_from_file(
+        file,
+        false,
+        TungsteniteWsFactory::new(5, Default::default()).await,
+    )
+    .await;
 
     if let Err(err) = result {
         assert_eq!(

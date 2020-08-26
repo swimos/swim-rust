@@ -12,19 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 
 use futures::{Future, Sink, Stream};
-use http::header::{HeaderName, CONTENT_ENCODING, SEC_WEBSOCKET_EXTENSIONS};
-use http::uri::{InvalidUri, Scheme};
-use http::{HeaderValue, Request, Response, Uri};
-use url::Url;
+use http::uri::Scheme;
+use http::{Request, Response, Uri};
 
 use crate::ws::error::{CertificateError, ConnectionError, WebSocketError};
-use http::request::Parts;
-use native_tls::{Certificate, TlsConnector, TlsConnectorBuilder};
-use std::convert::TryFrom;
+use futures_util::core_reexport::fmt::{Debug, Formatter};
+use native_tls::Certificate;
+use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
@@ -82,25 +80,47 @@ pub trait WebSocketHandler {
     fn on_response(&mut self, _response: &mut Response<()>) {}
 }
 
-pub enum StreamType {
-    Plain,
+#[derive(Clone)]
+pub enum Protocol {
+    PlainText,
     Tls(Certificate),
 }
 
-pub struct WebSocketConfig {
-    pub stream_type: StreamType,
-    // pub extensions: Vec<Box<dyn WebSocketHandler>>,
+impl PartialEq for Protocol {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Protocol::PlainText, Protocol::PlainText) => true,
+            (Protocol::Tls(_), Protocol::Tls(_)) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Protocol {
+    pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, CertificateError> {
+        let cert = build_x509_certificate(path)?;
+        Ok(Protocol::Tls(cert))
+    }
+}
+
+impl Debug for Protocol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PlainText => write!(f, "Tls"),
+            Self::Tls(_) => write!(f, "PlainText"),
+        }
+    }
 }
 
 /// If the request scheme is `warp`, `swim`, `swims` or `warps` then it is replaced with a
-/// supported format.
-pub fn maybe_resolve_scheme<T>(mut request: Request<T>) -> Result<Request<T>, ConnectionError> {
+/// supported format. If the scheme is invalid then an error is returned.
+pub fn maybe_resolve_scheme<T>(request: Request<T>) -> Result<Request<T>, WebSocketError> {
     let uri = request.uri().clone();
     let new_scheme = match uri.scheme_str() {
         Some("swim") | Some("warp") | Some("ws") => Ok("ws"),
         Some("swims") | Some("warps") | Some("wss") => Ok("wss"),
         Some(s) => Err(WebSocketError::unsupported_scheme(s)),
-        None => Err(WebSocketError::Url("Missing scheme".into())),
+        None => Err(WebSocketError::missing_scheme()),
     }?;
 
     let (mut request_parts, request_t) = request.into_parts();
@@ -121,6 +141,6 @@ pub fn build_x509_certificate(path: impl AsRef<Path>) -> Result<Certificate, Cer
 
     match Certificate::from_pem(&buf) {
         Ok(cert) => Ok(cert),
-        Err(e) => return Err(CertificateError::SSL(e.to_string())),
+        Err(e) => Err(CertificateError::SSL(e.to_string())),
     }
 }

@@ -217,7 +217,6 @@ pub mod downlink {
     const DROPPING_TAG: &str = "dropping";
     const BUFFERED_TAG: &str = "buffered";
     const QUEUE_SIZE_TAG: &str = "queue_size";
-
     const DEFAULT_QUEUE_SIZE: usize = 5;
 
     /// Multiplexing strategy for the topic of events produced by a downlink.
@@ -389,7 +388,7 @@ pub mod downlink {
     const DEFAULT_YIELD_AFTER: usize = 256;
 
     /// Configuration parameters for a single downlink.
-    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    #[derive(Clone, Debug, PartialEq)]
     pub struct DownlinkParams {
         /// Whether the downlink propagates back-pressure.
         pub back_pressure: BackpressureMode,
@@ -693,7 +692,7 @@ pub mod downlink {
 
     /// Basic [`Config`] implementation which allows for configuration to be specified by absolute
     /// path or host and provides a default fallback.
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, PartialEq, Debug)]
     pub struct ConfigHierarchy {
         client_params: ClientParams,
         default: DownlinkParams,
@@ -1005,15 +1004,15 @@ pub mod downlink {
                 ..
             } = self;
             match by_lane.get(path) {
-                Some(params) => *params,
+                Some(params) => params.clone(),
                 _ => {
                     if path.host.has_host() {
                         match by_host.get(&path.host.clone()) {
-                            Some(params) => *params,
-                            _ => *default,
+                            Some(params) => params.clone(),
+                            _ => default.clone(),
                         }
                     } else {
-                        *default
+                        default.clone()
                     }
                 }
             }

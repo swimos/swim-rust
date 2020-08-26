@@ -108,6 +108,7 @@ impl IncomingHostTask {
                 IncomingRequest::Subscribe(SubscriberRequest {
                     path: relative_path,
                     subscriber_tx: event_tx,
+                    ..
                 }) => {
                     subscribers
                         .entry(relative_path)

@@ -19,7 +19,7 @@ use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::pin::Pin;
 use swim_common::ws::error::ConnectionError;
-use swim_common::ws::{WebsocketFactory, WsMessage};
+use swim_common::ws::{Protocol, WsMessage};
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);
@@ -55,7 +55,10 @@ impl Sink<WsMessage> for TestSink {
     }
 }
 
-async fn open_conn(url: url::Url) -> Result<(TestSink, TestStream), ConnectionError> {
+async fn open_conn(
+    url: url::Url,
+    _protocol: Protocol,
+) -> Result<(TestSink, TestStream), ConnectionError> {
     if url.scheme() == "fail" {
         Err(ConnectionError::ConnectError)
     } else {
@@ -79,7 +82,7 @@ fn bad_url() -> url::Url {
 async fn successfully_open() {
     let url = good_url();
     let mut fac = make_fac().await;
-    let result = fac.connect(url.clone()).await;
+    let result = fac.connect_using(url.clone(), Protocol::PlainText).await;
     assert_that!(&result, ok());
     let (snk, stream) = result.unwrap();
     assert_that!(&snk.0, eq(&url));
@@ -90,7 +93,7 @@ async fn successfully_open() {
 async fn fail_to_open() {
     let url = bad_url();
     let mut fac = make_fac().await;
-    let result = fac.connect(url.clone()).await;
+    let result = fac.connect_using(url.clone(), Protocol::PlainText).await;
     assert_that!(&result, err());
     let err = result.err().unwrap();
     assert_that!(err, eq(ConnectionError::ConnectError));

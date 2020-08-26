@@ -30,14 +30,12 @@ use url::Url;
 
 use swim_common::request::request_future::SendAndAwait;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{
-    build_x509_certificate, maybe_resolve_scheme, StreamType, WebSocketConfig, WebsocketFactory,
-    WsMessage,
-};
+use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory, WsMessage};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 use super::async_factory;
+use std::collections::HashMap;
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
@@ -50,13 +48,16 @@ pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 
 async fn connect(
     url: Url,
-    config: WebSocketConfig,
+    protocol: Protocol,
 ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Response<()>), ConnectionError> {
-    let uri: Uri = url.as_str().parse()?;
+    let uri: Uri = url
+        .as_str()
+        .parse()
+        .map_err(|e| ConnectionError::SocketError(WebSocketError::from(e)))?;
     let request = Request::get(uri).body(())?;
 
     let request = maybe_resolve_scheme(request)?;
-    let stream_type = get_stream_type(&request, config)?;
+    let stream_type = get_stream_type(&request, protocol)?;
 
     let port = request
         .uri()
@@ -89,12 +90,12 @@ async fn connect(
 
 fn get_stream_type<T>(
     request: &Request<T>,
-    config: WebSocketConfig,
-) -> Result<StreamType, WebSocketError> {
+    protocol: Protocol,
+) -> Result<Protocol, WebSocketError> {
     match request.uri().scheme_str() {
-        Some("ws") => Ok(StreamType::Plain),
-        Some("wss") => match config.stream_type {
-            StreamType::Plain => Err(WebSocketError::BadConfiguration(
+        Some("ws") => Ok(Protocol::PlainText),
+        Some("wss") => match protocol {
+            Protocol::PlainText => Err(WebSocketError::BadConfiguration(
                 "Attempted to connect to a secure WebSocket without a TLS configuration".into(),
             )),
             tls => Ok(tls),
@@ -107,15 +108,15 @@ fn get_stream_type<T>(
 async fn build_stream(
     host: &str,
     domain: String,
-    stream_type: StreamType,
+    stream_type: Protocol,
 ) -> Result<MaybeTlsStream<TcpStream>, WebSocketError> {
     let socket = TcpStream::connect(host)
         .await
         .map_err(|e| WebSocketError::Message(e.to_string()))?;
 
     match stream_type {
-        StreamType::Plain => Ok(StreamSwitcher::Plain(socket)),
-        StreamType::Tls(certificate) => {
+        Protocol::PlainText => Ok(StreamSwitcher::Plain(socket)),
+        Protocol::Tls(certificate) => {
             let mut tls_conn_builder = TlsConnector::builder();
             tls_conn_builder.add_root_certificate(certificate);
 
@@ -134,9 +135,15 @@ async fn build_stream(
 impl TungsteniteWsFactory {
     /// Create a tungstenite-tokio connection factory where the internal task uses the provided
     /// buffer size.
-    pub async fn new(buffer_size: usize) -> TungsteniteWsFactory {
+    pub async fn new(
+        buffer_size: usize,
+        host_protocols: HashMap<Url, Protocol>,
+    ) -> TungsteniteWsFactory {
         let inner = async_factory::AsyncFactory::new(buffer_size, open_conn).await;
-        TungsteniteWsFactory { inner }
+        TungsteniteWsFactory {
+            inner,
+            host_protocols,
+        }
     }
 }
 
@@ -146,7 +153,12 @@ impl WebsocketFactory for TungsteniteWsFactory {
     type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
     fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        self.inner.connect(url)
+        let protocol = match self.host_protocols.get(&url) {
+            Some(protocol) => protocol.clone(),
+            None => Protocol::PlainText,
+        };
+
+        self.inner.connect_using(url, protocol)
     }
 }
 
@@ -183,17 +195,16 @@ impl TransformMut<Result<Message, TError>> for StreamTransformer {
 /// Specialized [`AsyncFactory`] that creates tungstenite-tokio connections.
 pub struct TungsteniteWsFactory {
     inner: async_factory::AsyncFactory<TungSink, TungStream>,
+    host_protocols: HashMap<Url, Protocol>,
 }
 
-async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionError> {
+async fn open_conn(
+    url: url::Url,
+    protocol: Protocol,
+) -> Result<(TungSink, TungStream), ConnectionError> {
     tracing::info!("Connecting to URL {:?}", &url);
 
-    let certificate = build_x509_certificate("../certificate.cert")?;
-    let config = WebSocketConfig {
-        stream_type: StreamType::Tls(certificate),
-    };
-
-    match connect(url, config).await {
+    match connect(url, protocol).await {
         Ok((ws_str, _)) => {
             let (tx, rx) = ws_str.split();
             let transformed_sink = TransformedSink::new(tx, SinkTransformer);
@@ -202,38 +213,7 @@ async fn open_conn(url: url::Url) -> Result<(TungSink, TungStream), ConnectionEr
             Ok((transformed_sink, transformed_stream))
         }
         Err(e) => {
-            // Error::Url(m) => {
-            //     // Malformatted URL, permanent error
-            //     tracing::error!(cause = %m, "Failed to connect to the host due to an invalid URL");
-            // }
-            // Error::Io(io_err) => {
-            //     // todo: This should be considered a fatal error. How should it be handled?
-            //     tracing::error!(cause = %io_err, "IO error when attempting to connect to host");
-            // }
-            // Error::Tls(tls_err) => {
-            //     // Apart from any WouldBock, SSL session closed, or retry errors, these seem to be unrecoverable errors
-            //     tracing::error!(cause = %tls_err, "IO error when attempting to connect to host");
-            // }
-            // Error::Protocol(m) => {
-            //     tracing::error!(cause = %m, "A protocol error occured when connecting to host");
-            // }
-            // Error::Http(code) => {
-            //     // todo: This should be expanded and determined if it is possibly a transient error
-            //     // but for now it will suffice
-            //     tracing::error!(status_code = %code, "HTTP error when connecting to host");
-            // }
-            // Error::HttpFormat(http_err) => {
-            //     // This should be expanded and determined if it is possibly a transient error
-            //     // but for now it will suffice
-            //     tracing::error!(cause = %http_err, "HTTP error when connecting to host");
-            // }
-            // e => {
-            //     // Transient or unreachable errors
-            //     tracing::error!(cause = %e, "Failed to connect to URL");
-            // }
-
-            println!("{}", e.to_string());
-
+            tracing::error!(cause = %e, "Failed to connect to URL");
             Err(e)
         }
     }
@@ -281,7 +261,7 @@ mod tests {
         let buffer_size = 5;
         let mut connection_pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(buffer_size).await,
+            TungsteniteWsFactory::new(buffer_size, Default::default()).await,
         );
 
         let url = url::Url::parse("xyz://swim.ai").unwrap();

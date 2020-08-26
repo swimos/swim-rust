@@ -14,7 +14,6 @@
 
 use crate::request::request_future::RequestError;
 use http::uri::InvalidUri;
-use http::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use swim_runtime::task::TaskError;
@@ -41,23 +40,6 @@ pub enum ConnectionError {
     Closed,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum CertificateError {
-    /// An IO error occurred while attempting to read the certificate.
-    Io(String),
-    /// An error occurred while trying to deserialize the certificate.
-    SSL(String),
-}
-
-impl Display for CertificateError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            CertificateError::Io(cause) => write!(f, "{}", cause),
-            CertificateError::SSL(cause) => write!(f, "{}", cause),
-        }
-    }
-}
-
 /// An error that occurred within the underlying WebSocket.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum WebSocketError {
@@ -73,6 +55,23 @@ pub enum WebSocketError {
     Tls(String),
     /// An error from building or reading a certificate
     CertificateError(CertificateError),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum CertificateError {
+    /// An IO error occurred while attempting to read the certificate.
+    Io(String),
+    /// An error occurred while trying to deserialize the certificate.
+    SSL(String),
+}
+
+impl Display for CertificateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            CertificateError::Io(cause) => write!(f, "{}", cause),
+            CertificateError::SSL(cause) => write!(f, "{}", cause),
+        }
+    }
 }
 
 impl From<native_tls::Error> for WebSocketError {
@@ -188,9 +187,9 @@ impl From<TaskError> for ConnectionError {
     }
 }
 
-impl From<InvalidUri> for ConnectionError {
+impl From<InvalidUri> for WebSocketError {
     fn from(e: InvalidUri) -> Self {
-        ConnectionError::SocketError(WebSocketError::Url(e.to_string()))
+        WebSocketError::Url(e.to_string())
     }
 }
 

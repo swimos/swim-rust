@@ -25,6 +25,7 @@ use swim_common::warp::path::AbsolutePath;
 
 use crate::configuration::downlink::{Config, ConfigHierarchy, ConfigParseError};
 use crate::configuration::router::RouterParamBuilder;
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
@@ -34,15 +35,14 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::SwimRouter;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use swim_common::model::parser::parse_single;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
-use swim_common::ws::WebsocketFactory;
-
-#[allow(warnings)]
-mod t;
+use swim_common::ws::{Protocol, WebsocketFactory};
+use url::Url;
 
 /// Represents errors that can occur in the client.
 #[derive(Debug)]
@@ -99,7 +99,7 @@ impl Error for ClientError {
 /// - A `MapDownlink` synchronises a shared real-time key-value map with a remote map lane.
 ///
 /// Both value and map downlinks are available in typed and untyped flavours. Typed downlinks must
-/// conform to a contract that is imposed by a form implementation and all actions are verified
+/// conform to a contract that is imposed by a `Form` implementation and all actions are verified
 /// against the provided schema to ensure that its views are consistent.
 ///
 pub struct SwimClient {
@@ -108,6 +108,14 @@ pub struct SwimClient {
 }
 
 impl SwimClient {
+    pub async fn default_with_certs(certs: HashMap<Url, Protocol>) -> Self {
+        SwimClient::new(
+            ConfigHierarchy::default(),
+            TungsteniteWsFactory::new(5, certs).await,
+        )
+        .await
+    }
+
     /// Creates a new SWIM Client using the default configuration.
     pub async fn new_with_default<Fac>(connection_factory: Fac) -> Self
     where
