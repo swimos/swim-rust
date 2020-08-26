@@ -47,7 +47,7 @@ pub const NOT_PATH: Symbol = Symbol("not");
 
 #[derive(Debug)]
 pub struct ValidatedFormDescriptor {
-    pub identity: Label,
+    pub label: Label,
     pub schema: StandardSchema,
     pub all_items: bool,
     pub form_descriptor: FormDescriptor,
@@ -65,7 +65,7 @@ impl ValidatedFormDescriptor {
     ) -> ValidatedFormDescriptor {
         let mut schema_opt = None;
         let mut all_items = false;
-        let mut identity = Label::Named(ident.clone());
+        let mut label = Label::Named(ident.clone());
 
         attributes.iter().for_each(|meta: &NestedMeta| match meta {
             NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
@@ -74,9 +74,9 @@ impl ValidatedFormDescriptor {
                     if tag.is_empty() {
                         context.error_spanned_by(meta, "New name cannot be empty")
                     } else {
-                        identity = Label::Renamed {
-                            new_identity: tag,
-                            old_identity: ident.clone(),
+                        label = Label::Renamed {
+                            new_label: tag,
+                            old_label: ident.clone(),
                         }
                     }
                 }
@@ -144,7 +144,7 @@ impl ValidatedFormDescriptor {
         });
 
         ValidatedFormDescriptor {
-            identity,
+            label: label,
             schema: schema_opt.unwrap_or(StandardSchema::None),
             all_items,
             form_descriptor,
@@ -166,9 +166,9 @@ impl<'f> ValidatedField<'f> {
         } = self;
 
         let field_schema = field_schema.to_token_stream();
-        let ident = match &form_field.identity {
+        let ident = match &form_field.label {
             Label::Named(ident) => ident.to_string(),
-            Label::Renamed { new_identity, .. } => new_identity.clone(),
+            Label::Renamed { new_label, .. } => new_label.clone(),
             Label::Anonymous(_) => {
                 // Caught by the form descriptor parser
                 unreachable!()
@@ -205,9 +205,9 @@ impl<'f> ValidatedField<'f> {
             }
         };
 
-        match &form_field.identity {
+        match &form_field.label {
             Label::Named(ident) => build_named(ident.to_string()),
-            Label::Renamed { new_identity, .. } => build_named(new_identity.to_string()),
+            Label::Renamed { new_label, .. } => build_named(new_label.to_string()),
             Label::Anonymous(_) => quote!(
                 swim_common::model::schema::ItemSchema::ValueItem(#field_schema)
             ),

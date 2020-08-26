@@ -91,7 +91,7 @@ fn build_struct_as_value(
 ) -> TokenStream2 {
     let structure_name_str = descriptor.name.to_string();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
-    let field_names: Vec<_> = fields.iter().map(|f| &f.identity).collect();
+    let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
     quote! {
@@ -112,7 +112,7 @@ fn build_variant_as_value(
 ) -> TokenStream2 {
     let variant_name_str = variant_name.to_string();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
-    let field_names: Vec<_> = fields.iter().map(|f| &f.identity).collect();
+    let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
     quote! {
@@ -131,7 +131,7 @@ fn compute_as_value(
     let (mut headers, mut items, attributes) = fields
         .iter()
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut items, mut attributes), f| {
-            let name = &f.identity;
+            let name = &f.label;
             let manifest = &descriptor.manifest;
 
             match &f.kind {
@@ -158,7 +158,7 @@ fn compute_as_value(
                 }
                 FieldKind::Body => {
                     descriptor.body_replaced = true;
-                    let ident = f.identity.as_ident();
+                    let ident = f.label.as_ident();
                     let func = fn_factory(&ident);
 
                     items = quote!({

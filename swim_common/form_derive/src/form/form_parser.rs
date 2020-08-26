@@ -120,8 +120,8 @@ impl FormDescriptor {
                             Some(_) => context.error_spanned_by(s, "Duplicate tag"),
                             None => {
                                 name_opt = Some(Label::Renamed {
-                                    new_identity: tag,
-                                    old_identity: ident.clone(),
+                                    new_label: tag,
+                                    old_label: ident.clone(),
                                 });
                             }
                         }

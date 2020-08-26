@@ -81,10 +81,7 @@ pub enum Label {
     Named(Ident),
     /// A renamed element containing its new identifier and original identifier. This element may
     /// have previously been named or anonymous.
-    Renamed {
-        new_identity: String,
-        old_identity: Ident,
-    },
+    Renamed { new_label: String, old_label: Ident },
     /// An anonymous element containing its index in the parent structure.
     Anonymous(Index),
 }
@@ -103,7 +100,7 @@ impl Label {
     pub fn as_ident(&self) -> Ident {
         match self {
             Label::Named(ident) => ident.clone(),
-            Label::Renamed { old_identity, .. } => old_identity.clone(),
+            Label::Renamed { old_label, .. } => old_label.clone(),
             Label::Anonymous(index) => Ident::new(&format!("__self_{}", index.index), index.span),
         }
     }
@@ -113,7 +110,7 @@ impl ToString for Label {
     fn to_string(&self) -> String {
         match self {
             Label::Named(ident) => ident.to_string(),
-            Label::Renamed { new_identity, .. } => new_identity.to_string(),
+            Label::Renamed { new_label, .. } => new_label.to_string(),
             Label::Anonymous(index) => format!("__self_{}", index.index),
         }
     }
@@ -123,7 +120,7 @@ impl ToTokens for Label {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
             Label::Named(ident) => ident.to_tokens(tokens),
-            Label::Renamed { old_identity, .. } => old_identity.to_tokens(tokens),
+            Label::Renamed { old_label, .. } => old_label.to_tokens(tokens),
             Label::Anonymous(index) => index.to_tokens(tokens),
         }
     }
@@ -181,8 +178,8 @@ pub fn deconstruct_type(
             Label::Named(ident) => {
                 quote! { #ident }
             }
-            Label::Renamed { old_identity, .. } => {
-                quote! { #old_identity }
+            Label::Renamed { old_label, .. } => {
+                quote! { #old_label }
             }
             un @ Label::Anonymous(_) => {
                 let binding = &un.as_ident();

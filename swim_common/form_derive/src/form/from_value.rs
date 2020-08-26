@@ -184,8 +184,8 @@ fn parse_fields(
     fields.iter().fold(
         (TokenStream2::new(), TokenStream2::new()),
         |(field_opts, field_assignments), f| {
-            let ident = f.identity.as_ident();
-            let name = f.identity.as_ident().to_string();
+            let ident = f.label.as_ident();
+            let name = f.label.as_ident().to_string();
             let opt_name = Ident::new(&format!("__opt_{}", name), f.original.span());
 
             match &f.kind {
@@ -248,12 +248,12 @@ fn parse_elements(
         .iter()
         .filter(|f| f.kind != FieldKind::Skip)
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut header_body, mut items, mut attrs), f| {
-            let name = f.identity.as_ident();
+            let name = f.label.as_ident();
             let ident = Ident::new(&format!("__opt_{}", name), f.original.span());
 
             match f.kind {
                 FieldKind::Attr => {
-                    let name_str = f.identity.to_string();
+                    let name_str = f.label.to_string();
                     let fn_call = fn_factory(quote!(value));
 
                     attrs = quote! {
@@ -284,7 +284,7 @@ fn parse_elements(
                         }
                     };
 
-                    match &f.identity {
+                    match &f.label {
                         Label::Anonymous(_) => {
                             let fn_call = fn_factory(quote!(v));
 
@@ -304,7 +304,7 @@ fn parse_elements(
                     let fn_call = fn_factory(quote!(v));
 
                     if field_manifest.has_header_fields {
-                        let field_name_str = f.identity.to_string();
+                        let field_name_str = f.label.to_string();
 
                         headers = quote! {
                             swim_common::model::Item::ValueItem(v) => {
@@ -340,7 +340,7 @@ fn parse_elements(
                 _ => {
                     let fn_call = fn_factory(quote!(v));
 
-                    match &f.identity {
+                    match &f.label {
                         Label::Anonymous(_) => {
                             headers = quote! {
                                 swim_common::model::Item::ValueItem(v) => {

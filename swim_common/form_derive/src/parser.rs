@@ -71,7 +71,7 @@ pub struct FormField<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
     /// The name of the field.
-    pub identity: Label,
+    pub label: Label,
     /// The kind of the field from its attribute.
     pub kind: FieldKind,
 }
@@ -204,8 +204,8 @@ pub fn fields_from_ast<'t>(
                                     });
 
                                     renamed = Some(Label::Renamed {
-                                        new_identity: s.value(),
-                                        old_identity: old_ident,
+                                        new_label: s.value(),
+                                        old_label: old_ident,
                                     });
                                 }
                                 _ => ctx.error_spanned_by(meta, "Expected string argument"),
@@ -240,7 +240,7 @@ pub fn fields_from_ast<'t>(
 
             FormField {
                 original,
-                identity: name,
+                label: name,
                 kind: kind_opt.unwrap_or(FieldKind::Slot),
             }
         })

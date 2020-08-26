@@ -191,7 +191,7 @@ impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'
                     &repr.fields,
                     &repr.compound_type,
                     &repr.descriptor,
-                    &repr.descriptor.identity,
+                    &repr.descriptor.label,
                 );
 
                 schema.to_tokens(tokens);

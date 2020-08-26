@@ -21,14 +21,14 @@ use crate::validated_form::vf_parser::{StandardSchema, ValidatedField};
 
 /// Builds a `StandardSchema::HeadAttribute` schema for the compound type.
 ///
-/// * `compound_identity` - the identifier of the structure or the variant (not the identifier of the
+/// * `compound_label` - the identifier of the structure or the variant (not the identifier of the
 /// enumeration).
 /// * `remainder` - the remaining schema for the compound type. This could be a
 /// `StandardSchema::Layout` or similar.
 /// * `fields` - the fields in the structure or variant.
 /// * `manifest` - the `FieldManifest` for the structure or variant.
 pub fn build_head_attribute(
-    compound_identity: &Label,
+    compound_label: &Label,
     remainder: TokenStream2,
     fields: &[ValidatedField],
     manifest: &FieldManifest,
@@ -84,10 +84,10 @@ pub fn build_head_attribute(
         }
     };
 
-    let compound_identity = compound_identity.to_string();
+    let compound_label = compound_label.to_string();
     let attr_schema = quote! {
         swim_common::model::schema::attr::AttrSchema::named(
-            #compound_identity,
+            #compound_label,
             #tag_value_schema,
         )
     };
