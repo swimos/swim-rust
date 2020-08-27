@@ -53,6 +53,7 @@ pub mod async_factory {
     {
         /// Create a new factory where the task operates off a queue with [`buffer_size`] entries
         /// and uses [`connect_async`] to service the requests.
+        #[allow(dead_code)]
         pub(in crate::connections) async fn new<Fac, Fut>(
             buffer_size: usize,
             connect_async: Fac,
@@ -70,6 +71,7 @@ pub mod async_factory {
         }
     }
 
+    #[allow(dead_code)]
     async fn factory_task<Snk, Str, Fac, Fut>(
         mut receiver: mpsc::Receiver<ConnReq<Snk, Str>>,
         mut connect_async: Fac,

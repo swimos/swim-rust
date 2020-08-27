@@ -44,7 +44,7 @@ use swim_common::routing::RoutingError;
 #[cfg(test)]
 mod tests;
 
-const INSERT_NAME: &str = "update";
+const UPDATE_NAME: &str = "update";
 const REMOVE_NAME: &str = "remove";
 const TAKE_NAME: &str = "take";
 const SKIP_NAME: &str = "drop";
@@ -53,7 +53,7 @@ const KEY_FIELD: &str = "key";
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MapModification<K, V> {
-    Insert(K, V),
+    Update(K, V),
     Remove(K),
     Take(usize),
     Skip(usize),
@@ -63,7 +63,7 @@ pub enum MapModification<K, V> {
 impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
     fn as_value(&self) -> Value {
         match self {
-            MapModification::Insert(key, value) => insert(key.as_value(), value.as_value()),
+            MapModification::Update(key, value) => update(key.as_value(), value.as_value()),
             MapModification::Remove(key) => remove(key.as_value()),
             MapModification::Take(n) => take(*n),
             MapModification::Skip(n) => skip(*n),
@@ -73,7 +73,7 @@ impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
 
     fn into_value(self) -> Value {
         match self {
-            MapModification::Insert(key, value) => insert(key.into_value(), value.into_value()),
+            MapModification::Update(key, value) => update(key.into_value(), value.into_value()),
             MapModification::Remove(key) => remove(key.into_value()),
             MapModification::Take(n) => take(n),
             MapModification::Skip(n) => skip(n),
@@ -101,16 +101,16 @@ impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
                     Attr { name, value } if name == REMOVE_NAME => {
                         extract_key(value.clone()).map(MapModification::Remove)
                     }
-                    Attr { name, value } if name == INSERT_NAME => {
+                    Attr { name, value } if name == UPDATE_NAME => {
                         let key = extract_key(value.clone())?;
-                        Ok(MapModification::Insert(key, V::try_convert(Extant)?))
+                        Ok(MapModification::Update(key, V::try_convert(Extant)?))
                     }
                     _ => Err(FormErr::Malformatted),
                 },
-                Some(Attr { name, value }) if *name == INSERT_NAME => {
+                Some(Attr { name, value }) if *name == UPDATE_NAME => {
                     let key = extract_key(value.clone())?;
 
-                    let insert_value = if !has_more && items.len() < 2 {
+                    let update_value = if !has_more && items.len() < 2 {
                         match items.first() {
                             Some(Item::ValueItem(single)) => single.clone(),
                             _ => Value::record(items.clone()),
@@ -118,7 +118,7 @@ impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
                     } else {
                         Record(attrs.iter().skip(1).cloned().collect(), items.clone())
                     };
-                    Ok(MapModification::Insert(key, V::try_convert(insert_value)?))
+                    Ok(MapModification::Update(key, V::try_convert(update_value)?))
                 }
 
                 _ => Err(FormErr::Malformatted),
@@ -154,10 +154,10 @@ impl<K: ValidatedForm, V: ValidatedForm> ValidatedForm for MapModification<K, V>
 
         let remove_schema = AttrSchema::named(REMOVE_NAME, key_body_schema.clone()).only();
 
-        let insert_schema = AttrSchema::named(INSERT_NAME, key_body_schema).and_then(V::schema());
+        let update_schema = AttrSchema::named(UPDATE_NAME, key_body_schema).and_then(V::schema());
 
         StandardSchema::Or(vec![
-            insert_schema,
+            update_schema,
             remove_schema,
             clear_schema,
             take_schema,
@@ -223,8 +223,8 @@ fn remove(key: Value) -> Value {
     Value::of_attr((REMOVE_NAME, Value::singleton((KEY_FIELD, key))))
 }
 
-fn insert(key: Value, value: Value) -> Value {
-    let attr = Attr::of((INSERT_NAME, Value::singleton((KEY_FIELD, key))));
+fn update(key: Value, value: Value) -> Value {
+    let attr = Attr::of((UPDATE_NAME, Value::singleton((KEY_FIELD, key))));
     match value {
         Value::Extant => Value::of_attr(attr),
         Value::Record(mut attrs, items) => {
@@ -238,7 +238,7 @@ fn insert(key: Value, value: Value) -> Value {
 impl<V: Deref<Target = Value>> UntypedMapModification<V> {
     pub fn envelope_body(self) -> Value {
         match self {
-            UntypedMapModification::Insert(key, value) => insert(key, (*value).clone()),
+            UntypedMapModification::Update(key, value) => update(key, (*value).clone()),
             UntypedMapModification::Remove(key) => remove(key),
             UntypedMapModification::Take(n) => take(n),
             UntypedMapModification::Skip(n) => skip(n),
@@ -248,7 +248,7 @@ impl<V: Deref<Target = Value>> UntypedMapModification<V> {
 }
 
 pub enum MapAction {
-    Insert {
+    Update {
         key: Value,
         value: Value,
         old: Option<DownlinkRequest<Option<Arc<Value>>>>,
@@ -277,13 +277,13 @@ pub enum MapAction {
         key: Value,
         request: DownlinkRequest<Option<Arc<Value>>>,
     },
-    Update {
+    Modify {
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
         before: Option<DownlinkRequest<Option<Arc<Value>>>>,
         after: Option<DownlinkRequest<Option<Arc<Value>>>>,
     },
-    TryUpdate {
+    TryModify {
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send>,
         before: Option<DownlinkRequest<UpdateResult<Option<Arc<Value>>>>>,
@@ -292,20 +292,20 @@ pub enum MapAction {
 }
 
 impl MapAction {
-    pub fn insert(key: Value, value: Value) -> MapAction {
-        MapAction::Insert {
+    pub fn update(key: Value, value: Value) -> MapAction {
+        MapAction::Update {
             key,
             value,
             old: None,
         }
     }
 
-    pub fn insert_and_await(
+    pub fn update_and_await(
         key: Value,
         value: Value,
         request: DownlinkRequest<Option<Arc<Value>>>,
     ) -> MapAction {
-        MapAction::Insert {
+        MapAction::Update {
             key,
             value,
             old: Some(request),
@@ -381,11 +381,11 @@ impl MapAction {
         MapAction::GetByKey { key, request }
     }
 
-    pub fn update<F>(key: Value, f: F) -> MapAction
+    pub fn modify<F>(key: Value, f: F) -> MapAction
     where
         F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
     {
-        MapAction::Update {
+        MapAction::Modify {
             key,
             f: Box::new(f),
             before: None,
@@ -393,11 +393,11 @@ impl MapAction {
         }
     }
 
-    pub fn try_update<F>(key: Value, f: F) -> MapAction
+    pub fn try_modify<F>(key: Value, f: F) -> MapAction
     where
         F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
     {
-        MapAction::TryUpdate {
+        MapAction::TryModify {
             key,
             f: Box::new(f),
             before: None,
@@ -405,11 +405,11 @@ impl MapAction {
         }
     }
 
-    pub fn update_box(
+    pub fn modify_box(
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
     ) -> MapAction {
-        MapAction::Update {
+        MapAction::Modify {
             key,
             f: Box::new(f),
             before: None,
@@ -417,7 +417,7 @@ impl MapAction {
         }
     }
 
-    pub fn update_and_await<F>(
+    pub fn modify_and_await<F>(
         key: Value,
         f: F,
         val_before: DownlinkRequest<Option<Arc<Value>>>,
@@ -426,7 +426,7 @@ impl MapAction {
     where
         F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
     {
-        MapAction::Update {
+        MapAction::Modify {
             key,
             f: Box::new(f),
             before: Some(val_before),
@@ -434,7 +434,7 @@ impl MapAction {
         }
     }
 
-    pub fn try_update_and_await<F>(
+    pub fn try_modify_and_await<F>(
         key: Value,
         f: F,
         val_before: DownlinkRequest<UpdateResult<Option<Arc<Value>>>>,
@@ -443,7 +443,7 @@ impl MapAction {
     where
         F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
     {
-        MapAction::TryUpdate {
+        MapAction::TryModify {
             key,
             f: Box::new(f),
             before: Some(val_before),
@@ -451,13 +451,13 @@ impl MapAction {
         }
     }
 
-    pub fn update_box_and_await(
+    pub fn modify_box_and_await(
         key: Value,
         f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
         val_before: DownlinkRequest<Option<Arc<Value>>>,
         val_after: DownlinkRequest<Option<Arc<Value>>>,
     ) -> MapAction {
-        MapAction::Update {
+        MapAction::Modify {
             key,
             f: Box::new(f),
             before: Some(val_before),
@@ -469,8 +469,8 @@ impl MapAction {
 impl Debug for MapAction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            MapAction::Insert { key, value, old } => {
-                write!(f, "Insert({:?} => {:?}, {:?})", key, value, old)
+            MapAction::Update { key, value, old } => {
+                write!(f, "Update({:?} => {:?}, {:?})", key, value, old)
             }
             MapAction::Remove { key, old } => write!(f, "Remove({:?}, {:?})", key, old),
             MapAction::Take { n, before, after } => {
@@ -482,14 +482,14 @@ impl Debug for MapAction {
             MapAction::Clear { before } => write!(f, "Clear({:?})", before),
             MapAction::Get { request } => write!(f, "Get({:?})", request),
             MapAction::GetByKey { key, request } => write!(f, "GetByKey({:?}, {:?})", key, request),
-            MapAction::Update {
+            MapAction::Modify {
                 key, before, after, ..
-            } => write!(f, "Update({:?}, <closure>, {:?}, {:?})", key, before, after),
-            MapAction::TryUpdate {
+            } => write!(f, "Modify({:?}, <closure>, {:?}, {:?})", key, before, after),
+            MapAction::TryModify {
                 key, before, after, ..
             } => write!(
                 f,
-                "TryUpdate({:?}, <closure>, {:?}, {:?})",
+                "TryModify({:?}, <closure>, {:?}, {:?})",
                 key, before, after
             ),
         }
@@ -499,7 +499,7 @@ impl Debug for MapAction {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum MapEvent<K> {
     Initial,
-    Insert(K),
+    Update(K),
     Remove(K),
     Take(usize),
     Skip(usize),
@@ -522,10 +522,10 @@ impl ViewWithEvent {
         }
     }
 
-    fn insert(map: &ValMap, key: Value) -> ViewWithEvent {
+    fn update(map: &ValMap, key: Value) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
-            event: MapEvent::Insert(key),
+            event: MapEvent::Update(key),
         }
     }
 
@@ -725,7 +725,7 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
         message: UntypedMapModification<Value>,
     ) -> Result<(), DownlinkError> {
         match message {
-            UntypedMapModification::Insert(k, v) => {
+            UntypedMapModification::Update(k, v) => {
                 if self.key_schema.matches(&k) {
                     if self.value_schema.matches(&v) {
                         state.state.insert(k, Arc::new(v));
@@ -766,11 +766,11 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
         message: UntypedMapModification<Value>,
     ) -> Result<Option<Self::Ev>, DownlinkError> {
         match message {
-            UntypedMapModification::Insert(k, v) => {
+            UntypedMapModification::Update(k, v) => {
                 if self.key_schema.matches(&k) {
                     if self.value_schema.matches(&v) {
                         state.state.insert(k.clone(), Arc::new(v));
-                        Ok(Some(ViewWithEvent::insert(&state.state, k)))
+                        Ok(Some(ViewWithEvent::update(&state.state, k)))
                     } else {
                         Err(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
                     }
@@ -865,7 +865,7 @@ fn process_action(
     action: MapAction,
 ) -> BasicResponse<ViewWithEvent, UntypedMapModification<Arc<Value>>> {
     let (resp, err) = match action {
-        MapAction::Insert { key, value, old } => {
+        MapAction::Update { key, value, old } => {
             if !key_schema.matches(&key) {
                 (
                     BasicResponse::none(),
@@ -888,8 +888,8 @@ fn process_action(
                 );
                 (
                     BasicResponse::of(
-                        ViewWithEvent::insert(data_state, key.clone()),
-                        UntypedMapModification::Insert(key, v_arc),
+                        ViewWithEvent::update(data_state, key.clone()),
+                        UntypedMapModification::Update(key, v_arc),
                     ),
                     err.is_err(),
                 )
@@ -987,14 +987,14 @@ fn process_action(
             let err = request.send_ok(data_state.get(&key).cloned());
             (BasicResponse::none(), err.is_err())
         }
-        MapAction::Update {
+        MapAction::Modify {
             key,
             f,
             before,
             after,
         } => {
             if !key_schema.matches(&key) {
-                update_key_schema_errors(key_schema, key, before, after)
+                modify_key_schema_errors(key_schema, key, before, after)
             } else {
                 let prev = get_and_deref(data_state, &key);
                 let maybe_new_val = f(&prev);
@@ -1006,7 +1006,7 @@ fn process_action(
                     }
                     validated => {
                         let had_existing = prev.is_some();
-                        handle_update(
+                        handle_modify(
                             data_state,
                             key,
                             had_existing,
@@ -1019,14 +1019,14 @@ fn process_action(
                 }
             }
         }
-        MapAction::TryUpdate {
+        MapAction::TryModify {
             key,
             f,
             before,
             after,
         } => {
             if !key_schema.matches(&key) {
-                update_key_schema_errors(key_schema, key, before, after)
+                modify_key_schema_errors(key_schema, key, before, after)
             } else {
                 let prev = get_and_deref(data_state, &key);
                 match f(&prev) {
@@ -1038,7 +1038,7 @@ fn process_action(
                         }
                         validated => {
                             let had_existing = prev.is_some();
-                            handle_update(
+                            handle_modify(
                                 data_state,
                                 key,
                                 had_existing,
@@ -1069,7 +1069,7 @@ fn process_action(
     }
 }
 
-fn handle_update<F, T>(
+fn handle_modify<F, T>(
     data_state: &mut ValMap,
     key: Value,
     had_existing: bool,
@@ -1096,8 +1096,8 @@ where
                 .unwrap_or(false);
             (
                 BasicResponse::of(
-                    ViewWithEvent::insert(data_state, key.clone()),
-                    UntypedMapModification::Insert(key, v_arc),
+                    ViewWithEvent::update(data_state, key.clone()),
+                    UntypedMapModification::Update(key, v_arc),
                 ),
                 err1 || err2,
             )
@@ -1135,7 +1135,7 @@ fn send_error<T>(
     }
 }
 
-fn update_key_schema_errors<Ev, Cmd, T>(
+fn modify_key_schema_errors<Ev, Cmd, T>(
     key_schema: &StandardSchema,
     key: Value,
     before: Option<DownlinkRequest<T>>,
