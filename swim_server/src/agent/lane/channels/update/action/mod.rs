@@ -27,6 +27,9 @@ use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
+#[cfg(test)]
+mod tests;
+
 /// Asynchronous task to set a stream of values into a [`ValueLane`].
 pub struct ActionLaneUpdateTask<Command, Response> {
     lane: ActionLane<Command, Response>,
@@ -82,50 +85,43 @@ where
                 Some(mut resp_tx) => {
                     let messages = messages.fuse();
                     pin_mut!(messages);
+                    //TODO This maintains a total order of responses whereas all we need is a total order per address.
                     let mut responses = FuturesOrdered::new();
                     let result: Result<(), UpdateError> = loop {
-                        if responses.is_empty() {
-                            if let Some(result) = messages.next().await {
-                                match result {
-                                    Ok((_, msg)) => {
-                                        commander.command(msg).await;
-                                    }
-                                    Err(e) => {
-                                        break Err(e.into());
-                                    }
-                                }
-                            }
+                        let resp_or_msg = if responses.is_empty() {
+                            messages.next().await.map(Either::Right)
                         } else {
-                            let resp_or_msg = select_biased! {
+                            select_biased! {
                                 response = responses.next().fuse() => response.map(Either::Left),
                                 result = messages.next() => result.map(Either::Right),
-                            };
-                            match resp_or_msg {
-                                Some(Either::Left(Ok(addr_and_resp))) => {
-                                    if resp_tx.send(addr_and_resp).await.is_err() {
-                                        break Err(UpdateError::FeedbackChannelDropped);
-                                    }
+                            }
+                        };
+
+                        match resp_or_msg {
+                            Some(Either::Left(Ok(addr_and_resp))) => {
+                                if resp_tx.send(addr_and_resp).await.is_err() {
+                                    break Err(UpdateError::FeedbackChannelDropped);
                                 }
-                                Some(Either::Left(Err(_))) => {
-                                    event!(Level::WARN, NO_COMPLETION);
-                                }
-                                Some(Either::Right(Ok((addr, msg)))) => {
-                                    let rx = commander.command_and_await(msg).await;
-                                    responses
-                                        .push(rx.map(move |r| r.map(move |resp| (addr, resp))));
-                                }
-                                Some(Either::Right(Err(e))) => {
-                                    break Err(e.into());
-                                }
-                                _ => {
-                                    break Ok(());
-                                }
+                            }
+                            Some(Either::Left(Err(_))) => {
+                                event!(Level::WARN, NO_COMPLETION);
+                            }
+                            Some(Either::Right(Ok((addr, msg)))) => {
+                                let rx = commander.command_and_await(msg).await;
+                                responses
+                                    .push(rx.map(move |r| r.map(move |resp| (addr, resp))));
+                            }
+                            Some(Either::Right(Err(e))) => {
+                                break Err(e.into());
+                            }
+                            _ => {
+                                break Ok(());
                             }
                         }
                     };
                     match result {
                         e @ Err(UpdateError::FeedbackChannelDropped) => e,
-                        _ => {
+                        ow => {
                             loop {
                                 let resp =
                                     timeout::timeout(cleanup_timeout, responses.next()).await;
@@ -147,7 +143,7 @@ where
                                     }
                                 }
                             }
-                            Ok(())
+                            ow
                         }
                     }
                 }
