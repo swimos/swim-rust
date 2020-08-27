@@ -25,7 +25,6 @@ use swim_common::warp::path::AbsolutePath;
 
 use crate::configuration::downlink::{Config, ConfigHierarchy, ConfigParseError};
 use crate::configuration::router::RouterParamBuilder;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
@@ -41,6 +40,9 @@ use swim_common::connections::WebsocketFactory;
 use swim_common::model::parser::parse_single;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
+
+#[cfg(feature = "websocket")]
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 
 /// Represents errors that can occur in the client.
 #[derive(Debug)]
@@ -107,6 +109,7 @@ pub struct SwimClient {
 
 impl SwimClient {
     /// Creates a new SWIM Client using the default configuration.
+    #[cfg(feature = "websocket")]
     pub async fn new_with_default() -> Self {
         let config = ConfigHierarchy::default();
         let buffer_size = config.client_params().dl_req_buffer_size.get();
@@ -116,6 +119,7 @@ impl SwimClient {
     }
 
     /// Creates a new SWIM Client using configuration from a Recon file.
+    #[cfg(feature = "websocket")]
     pub async fn new_from_file(
         mut config_file: File,
         use_defaults: bool,

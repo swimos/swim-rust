@@ -16,11 +16,11 @@ use either::Either;
 use futures::{select, StreamExt};
 use js_sys::Promise;
 use serde::{Deserialize, Serialize};
+use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::model::map::{MapEvent, ViewWithEvent};
 use swim_client::downlink::Event;
 use swim_client::interface::SwimClient;
 use swim_common::form::Form;
-use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_wasm::connection::WasmWsFactory;
 use tokio::sync::{mpsc, oneshot};
@@ -73,7 +73,8 @@ impl ChatClient {
         on_message_callback: js_sys::Function,
     ) -> ChatClient {
         let (tx, rx) = mpsc::channel(10);
-        let swim_client = SwimClient::new_with_default().await;
+        let fac = WasmWsFactory::new(5);
+        let swim_client = SwimClient::new(ConfigHierarchy::default(), fac).await;
 
         spawn_local(ClientTask::new(swim_client, rx, on_load_callback, on_message_callback).run());
 
@@ -178,11 +179,13 @@ impl ClientTask {
                     }
                 }
                 Either::Right(Some((msg, tx))) => {
-                    let env = Envelope::make_command("/rooms", "post", Some(msg.as_value()));
-                    let target =
-                        AbsolutePath::new(url::Url::parse("ws://127.0.0.1:9001/").unwrap(), "", "");
+                    let target = AbsolutePath::new(
+                        url::Url::parse("ws://127.0.0.1:9001/").unwrap(),
+                        "/rooms",
+                        "post",
+                    );
 
-                    let res = swim_client.send_command(target, env).await.map_err(|_| ());
+                    let res = swim_client.send_command(target, msg).await.map_err(|_| ());
                     let _ = tx.send(res);
                 }
                 _ => break,
