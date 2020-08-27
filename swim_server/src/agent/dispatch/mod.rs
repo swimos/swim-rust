@@ -227,6 +227,7 @@ where
                 }
                 Some(Either::Right(Err(lane_io_err))) => {
                     event!(Level::ERROR, message = "Lane IO task failed.", error = ?lane_io_err);
+                    event!(Level::ERROR, message = "Lane IO task failed.", error = ?lane_io_err);
                     break Err(DispatcherError::LaneTaskFailed(lane_io_err));
                 }
                 _ => {
@@ -492,10 +493,20 @@ impl EnvelopeDispatcher {
 
             match next {
                 Some(Either::Left((label, Ok(mut sender)))) => {
+                    event!(
+                        Level::DEBUG,
+                        message = "Sender selected for dispatch.",
+                        ?label
+                    );
                     let succeeded = loop {
                         if let Some(envelope) = pending.pop(&label) {
                             match sender.try_send(envelope) {
                                 Err(TrySendError::Full(envelope)) => {
+                                    event!(
+                                        Level::TRACE,
+                                        message = "Returning sender to selector.",
+                                        ?label
+                                    );
                                     pending
                                         .replace(label.clone(), envelope)
                                         .expect(GUARANTEED_CAPACITY);
@@ -508,6 +519,11 @@ impl EnvelopeDispatcher {
                                 _ => {}
                             }
                         } else {
+                            event!(
+                                Level::TRACE,
+                                message = "Returning sender to the idle map.",
+                                ?label
+                            );
                             idle_senders.insert(label, Some(sender));
                             break true;
                         }
@@ -517,7 +533,10 @@ impl EnvelopeDispatcher {
                     }
                     if let Some((label, envelope)) = stalled.take() {
                         if let Err((label, envelope)) = pending.enqueue(label, envelope) {
+                            event!(Level::TRACE, message = "Stall was not resolved.");
                             *stalled = Some((label, envelope));
+                        } else {
+                            event!(Level::TRACE, message = "Dispatcher no longer stalled.");
                         }
                     }
                 }
@@ -525,11 +544,22 @@ impl EnvelopeDispatcher {
                     break false;
                 }
                 Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
+                    event!(
+                        Level::TRACE,
+                        message = "Attempting to dispatch envelope.",
+                        ?envelope
+                    );
                     if let Ok(envelope) = envelope.into_outgoing() {
                         if let Some(entry) = idle_senders.get_mut(lane(&envelope)) {
                             let maybe_pending = if let Some(mut sender) = entry.take() {
                                 match sender.try_send(TaggedClientEnvelope(addr, envelope)) {
                                     Err(TrySendError::Full(envelope)) => {
+                                        event!(
+                                            Level::TRACE,
+                                            message = "Lane busy.",
+                                            ?envelope,
+                                            lane = envelope.lane()
+                                        );
                                         selector.add(envelope.lane().to_string(), sender);
                                         Some(envelope)
                                     }
@@ -537,6 +567,10 @@ impl EnvelopeDispatcher {
                                         break false;
                                     }
                                     _ => {
+                                        event!(
+                                            Level::TRACE,
+                                            message = "Envelope dispatched successfully."
+                                        );
                                         *entry = Some(sender);
                                         None
                                     }
@@ -549,10 +583,16 @@ impl EnvelopeDispatcher {
                                 if let Err((label, envelope)) =
                                     pending.enqueue(envelope.lane().to_string(), envelope)
                                 {
+                                    event!(Level::TRACE, message = "Dispatcher has stalled.");
                                     *stalled = Some((label, envelope));
                                 }
                             }
                         } else {
+                            event!(
+                                Level::TRACE,
+                                message = "Requesting lane to be attached for envelope.",
+                                ?envelope
+                            );
                             let (req_tx, req_rx) = oneshot::channel();
 
                             if open_tx
@@ -567,6 +607,7 @@ impl EnvelopeDispatcher {
                                 lane(&envelope).to_string(),
                                 TaggedClientEnvelope(addr, envelope),
                             ) {
+                                event!(Level::TRACE, message = "Dispatcher has stalled.");
                                 *stalled = Some((label, envelope));
                             }
                         }
@@ -608,8 +649,18 @@ impl EnvelopeDispatcher {
                 }
             };
             if let Some((label, Ok(mut sender))) = next {
+                event!(
+                    Level::DEBUG,
+                    message = "Sender selected for dispatch.",
+                    ?label
+                );
                 while let Some(envelope) = pending.pop(&label) {
                     if let Err(TrySendError::Full(envelope)) = sender.try_send(envelope) {
+                        event!(
+                            Level::TRACE,
+                            message = "Returning sender to selector.",
+                            ?label
+                        );
                         pending
                             .replace(label.clone(), envelope)
                             .expect(GUARANTEED_CAPACITY);
@@ -619,7 +670,10 @@ impl EnvelopeDispatcher {
                 }
                 if let Some((label, envelope)) = stalled.take() {
                     if let Err((label, envelope)) = pending.enqueue(label, envelope) {
+                        event!(Level::TRACE, message = "Stall was not resolved.");
                         stalled = Some((label, envelope));
+                    } else {
+                        event!(Level::TRACE, message = "Dispatcher no longer stalled.");
                     }
                 }
             } else {
