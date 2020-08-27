@@ -51,12 +51,12 @@ fn apply_form_map() {
 
     let good = ViewWithEvent {
         view: good_map.clone(),
-        event: MapEvent::Insert(Value::text("b")),
+        event: MapEvent::Update(Value::text("b")),
     };
 
     let with_bad_event = ViewWithEvent {
         view: good_map.clone(),
-        event: MapEvent::Insert(Value::Int32Value(7)),
+        event: MapEvent::Update(Value::Int32Value(7)),
     };
 
     let apply: ApplyFormsMap<String, i32> = ApplyFormsMap::new();
@@ -70,7 +70,7 @@ fn apply_form_map() {
         expected_view.insert("b".to_string(), 2);
 
         assert_that!(view.as_ord_map(), eq(expected_view));
-        assert_that!(event, eq(MapEvent::Insert("b".to_string())));
+        assert_that!(event, eq(MapEvent::Update("b".to_string())));
 
         let result = apply.transform(Event::Local(with_bad_event));
         assert_that!(result, err());

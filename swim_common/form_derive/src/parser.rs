@@ -15,12 +15,9 @@
 use proc_macro2::Ident;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, Data, Type};
-use syn::{Lit, Meta, NestedMeta};
+use syn::{Attribute, DeriveInput, Lit, Meta, NestedMeta, Variant};
 
-use macro_helpers::{
-    get_attribute_meta, CompoundTypeKind, Context, FieldIdentity, StructureKind, Symbol,
-};
+use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Label, Symbol};
 
 pub const FORM_PATH: Symbol = Symbol("form");
 pub const HEADER_PATH: Symbol = Symbol("header");
@@ -31,118 +28,78 @@ pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
 pub const RENAME_PATH: Symbol = Symbol("rename");
 pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
+pub const SCHEMA_PATH: Symbol = Symbol("schema");
 
 /// An enumeration representing the contents of an input.
 #[derive(Clone)]
-pub enum TypeContents<'t> {
+pub enum TypeContents<'t, D, F> {
     /// An enumeration input. Containing a vector of enumeration variants.
-    Enum(Vec<EnumVariant<'t>>),
-    /// A struct input containing its respresentation.
-    Struct(StructRepr<'t>),
-}
-
-impl<'t> TypeContents<'t> {
-    /// Build a [`TypeContents`] input from an abstract syntax tree. Returns [`Option::None`] if
-    /// there was an error that was encountered while parsing the tree. The underlying error is
-    /// added to the [`Context]`.
-    pub fn from(context: &mut Context, input: &'t syn::DeriveInput) -> Option<Self> {
-        let type_contents = match &input.data {
-            Data::Enum(data) => {
-                let variants = data
-                    .variants
-                    .iter()
-                    .map(|variant| {
-                        let mut name_opt = None;
-
-                        variant
-                            .attrs
-                            .get_attributes(context, FORM_PATH)
-                            .iter()
-                            .for_each(|meta| match meta {
-                                NestedMeta::Meta(Meta::NameValue(name))
-                                    if name.path == TAG_PATH =>
-                                {
-                                    match &name.lit {
-                                        Lit::Str(s) => {
-                                            name_opt = Some(FieldIdentity::Renamed {
-                                                new_identity: s.value(),
-                                                old_identity: variant.ident.clone(),
-                                            });
-                                        }
-                                        _ => context
-                                            .error_spanned_by(meta, "Expected string argument"),
-                                    }
-                                }
-                                _ => context.error_spanned_by(meta, "Unknown attribute"),
-                            });
-
-                        let (compound_type, fields, manifest) =
-                            parse_struct(context, &variant.fields);
-
-                        EnumVariant {
-                            name: name_opt
-                                .unwrap_or_else(|| FieldIdentity::Named(variant.ident.clone())),
-                            compound_type,
-                            fields,
-                            manifest,
-                        }
-                    })
-                    .collect();
-
-                TypeContents::Enum(variants)
-            }
-            Data::Struct(data) => {
-                let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
-
-                TypeContents::Struct(StructRepr {
-                    compound_type,
-                    fields,
-                    manifest,
-                })
-            }
-            Data::Union(_) => {
-                context.error_spanned_by(input, "Unions are not supported");
-                return None;
-            }
-        };
-
-        Some(type_contents)
-    }
+    Enum(Vec<EnumVariant<'t, D, F>>),
+    /// A struct input containing its representation.
+    Struct(StructRepr<'t, D, F>),
 }
 
 /// A representation of a parsed struct from the AST.
 #[derive(Clone)]
-pub struct StructRepr<'t> {
+pub struct StructRepr<'t, D, F> {
+    pub input: &'t DeriveInput,
     /// The struct's type: tuple, named, unit.
     pub compound_type: CompoundTypeKind,
     /// The field members of the struct.
-    pub fields: Vec<Field<'t>>,
-    /// A derived [`FieldManifest`] from the attributes on the members.
-    pub manifest: FieldManifest,
+    pub fields: Vec<F>,
+    /// A form descriptor
+    pub descriptor: D,
 }
 
 /// A representation of a parsed enumeration from the AST.
 #[derive(Clone)]
-pub struct EnumVariant<'a> {
+pub struct EnumVariant<'t, D, F> {
+    pub syn_variant: &'t Variant,
     /// The name of the variant.
-    pub name: FieldIdentity,
+    pub name: Label,
     /// The variant's type: tuple, named, unit.
     pub compound_type: CompoundTypeKind,
     /// The field members of the variant.
-    pub fields: Vec<Field<'a>>,
-    /// A derived [`FieldManifest`] from the attributes on the members.
-    pub manifest: FieldManifest,
+    pub fields: Vec<F>,
+    /// A form descriptor
+    pub descriptor: D,
 }
 
-/// A representation of a parsed field from the AST.
+/// A representation of a parsed field for a form from the AST.
 #[derive(Clone)]
-pub struct Field<'a> {
+pub struct FormField<'a> {
     /// The original field from the [`DeriveInput`].
     pub original: &'a syn::Field,
     /// The name of the field.
-    pub name: FieldIdentity,
+    pub label: Label,
     /// The kind of the field from its attribute.
     pub kind: FieldKind,
+}
+
+impl<'a> FormField<'a> {
+    pub fn is_skipped(&self) -> bool {
+        self.kind == FieldKind::Skip
+    }
+
+    pub fn is_attr(&self) -> bool {
+        self.kind == FieldKind::Attr
+    }
+
+    pub fn is_slot(&self) -> bool {
+        self.kind == FieldKind::Slot
+    }
+
+    pub fn is_body(&self) -> bool {
+        self.kind == FieldKind::Body
+    }
+
+    pub fn is_header_body(&self) -> bool {
+        self.kind == FieldKind::HeaderBody
+    }
+
+    pub fn is_header(&self) -> bool {
+        self.kind == FieldKind::Header
+    }
 }
 
 /// Parse a structure's fields from the [`DeriveInput`]'s fields. Returns the type of the fields,
@@ -151,7 +108,7 @@ pub struct Field<'a> {
 pub fn parse_struct<'a>(
     context: &mut Context,
     fields: &'a syn::Fields,
-) -> (CompoundTypeKind, Vec<Field<'a>>, FieldManifest) {
+) -> (CompoundTypeKind, Vec<FormField<'a>>, FieldManifest) {
     match fields {
         syn::Fields::Named(fields) => {
             let (fields, manifest) = fields_from_ast(context, &fields.named);
@@ -174,7 +131,7 @@ pub fn parse_struct<'a>(
 pub fn fields_from_ast<'t>(
     ctx: &mut Context,
     fields: &'t Punctuated<syn::Field, syn::Token![,]>,
-) -> (Vec<Field<'t>>, FieldManifest) {
+) -> (Vec<FormField<'t>>, FieldManifest) {
     let mut manifest = FieldManifest::default();
     let fields = fields
         .iter()
@@ -246,9 +203,9 @@ pub fn fields_from_ast<'t>(
                                         Ident::new(&format!("__self_{}", index), original.span())
                                     });
 
-                                    renamed = Some(FieldIdentity::Renamed {
-                                        new_identity: s.value(),
-                                        old_identity: old_ident,
+                                    renamed = Some(Label::Renamed {
+                                        new_label: s.value(),
+                                        old_label: old_ident,
                                     });
                                 }
                                 _ => ctx.error_spanned_by(meta, "Expected string argument"),
@@ -257,6 +214,9 @@ pub fn fields_from_ast<'t>(
                         NestedMeta::Meta(Meta::Path(path)) if path == SKIP_PATH => {
                             set_kind(FieldKind::Skip, ctx);
                         }
+                        NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
+                            // no-op as this is parsed by the validated form derive macro
+                        }
                         _ => ctx.error_spanned_by(meta, "Unknown attribute"),
                     }
 
@@ -264,40 +224,29 @@ pub fn fields_from_ast<'t>(
                 },
             );
 
-            if let Type::Reference(_) = &original.ty {
-                ctx.error_spanned_by(original, "Borrowed fields are not allowed by forms")
-            }
-
             let name = renamed.unwrap_or_else(|| match &original.ident {
-                Some(ident) => FieldIdentity::Named(ident.clone()),
-                None => FieldIdentity::Anonymous(index.into()),
+                Some(ident) => Label::Named(ident.clone()),
+                None => Label::Anonymous(index.into()),
             });
+
             let kind = kind_opt.unwrap_or(FieldKind::Slot);
 
-            if let (FieldIdentity::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
+            if let (Label::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
                 ctx.error_spanned_by(
                     original,
                     "An unnamed field cannot be promoted to an attribute.",
                 )
             }
 
-            Field {
+            FormField {
                 original,
-                name,
+                label: name,
                 kind: kind_opt.unwrap_or(FieldKind::Slot),
             }
         })
         .collect();
 
     (fields, manifest)
-}
-
-#[derive(Debug, Clone)]
-pub struct Name {
-    /// The original name of the structure.
-    pub original_ident: Ident,
-    /// Tag for the structure.
-    pub tag_ident: Ident,
 }
 
 /// A trait for retrieving attributes on a field or compound type that are prefixed by the provided
@@ -307,7 +256,7 @@ pub struct Name {
 ///    #[form(skip)]
 ///    name: String,
 ///    age: i32,
-///}
+/// }
 ///```
 /// will return a [`Vector`] that contains the [`NestedMeta`] for the field [`name`].
 pub trait Attributes {
@@ -322,68 +271,6 @@ impl Attributes for Vec<Attribute> {
             .flat_map(|a| get_attribute_meta(ctx, a, symbol))
             .flatten()
             .collect()
-    }
-}
-
-/// A [`FormDescriptor`] is a representation of a [`Form`] that is built from a [`DeriveInput`],
-/// containing the name of the compound type that it represents and whether or not the body of the
-/// produced [`Value`] is replaced. A field annotated with [`[form(body)]` will cause this to
-/// happen. A compound type annotated with [`[form(tag = "name")]` will set the structure's output
-/// value to be replaced with the provided literal.
-#[derive(Debug, Clone)]
-pub struct FormDescriptor {
-    /// Denotes whether or not the body of the produced record is replaced by a field in the
-    /// compound type.
-    pub body_replaced: bool,
-    /// The name that the compound type will be transmuted with.
-    pub name: Name,
-}
-
-impl FormDescriptor {
-    /// Builds a [`FormDescriptor`] for the provided [`DeriveInput`]. An errors encountered while
-    /// parsing the [`DeriveInput`] will be added to the [`Context`].
-    pub fn from_ast(ctx: &mut Context, input: &syn::DeriveInput) -> FormDescriptor {
-        let kind = StructureKind::from(&input.data);
-
-        let mut desc = FormDescriptor {
-            body_replaced: false,
-            name: Name {
-                original_ident: input.ident.clone(),
-                tag_ident: input.ident.clone(),
-            },
-        };
-
-        input.attrs.get_attributes(ctx, FORM_PATH).iter().for_each(
-            |meta: &NestedMeta| match meta {
-                NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
-                    if let StructureKind::Enum = kind {
-                        ctx.error_spanned_by(
-                            meta,
-                            "Tags are only supported on enumeration variants.",
-                        )
-                    } else {
-                        match &name.lit {
-                            Lit::Str(s) => {
-                                let tag = s.value();
-                                if tag.is_empty() {
-                                    ctx.error_spanned_by(meta, "New name cannot be empty")
-                                } else {
-                                    desc.name.tag_ident = Ident::new(&*tag, s.span());
-                                }
-                            }
-                            _ => ctx.error_spanned_by(meta, "Expected string argument"),
-                        }
-                    }
-                }
-                _ => ctx.error_spanned_by(meta, "Unknown attribute"),
-            },
-        );
-
-        desc
-    }
-
-    pub fn has_body_replaced(&self) -> bool {
-        self.body_replaced
     }
 }
 
@@ -417,7 +304,7 @@ impl Default for FieldKind {
 }
 
 /// A structure representing what fields in the compound type are annotated with.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct FieldManifest {
     /// Whether or not there is a field in the compound type that replaces the body of the output
     /// record.

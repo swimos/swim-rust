@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::form::Form;
+use form_derive::*;
 
 fn main() {
-    #[derive(Form)]
-    enum S<'l, F>
-        where
-            F: Form,
-    {
-        A { f: &'l F },
+    #[derive(Form, ValidatedForm)]
+    struct S {
+        #[form(schema(or(num_items = 5)))]
+        a: i32,
     }
 }

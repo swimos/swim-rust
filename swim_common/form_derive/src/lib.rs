@@ -23,91 +23,27 @@ use proc_macro::TokenStream;
 
 use syn::DeriveInput;
 
-mod from_value;
-use from_value::from_value;
-mod to_value;
-use to_value::to_value;
+use macro_helpers::to_compile_errors;
 
-use macro_helpers::{to_compile_errors, Context};
+use crate::form::build_derive_form;
+use crate::validated_form::build_validated_form;
 
-use crate::parser::{FormDescriptor, TypeContents};
-
+mod form;
 mod parser;
+mod validated_form;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let mut context = Context::default();
-    let descriptor = FormDescriptor::from_ast(&mut context, &input);
-    let structure_name = descriptor.name.original_ident.clone();
-    let type_contents = match TypeContents::from(&mut context, &input) {
-        Some(cont) => cont,
-        None => return to_compile_errors(context.check().unwrap_err()).into(),
-    };
+    build_derive_form(input)
+        .unwrap_or_else(to_compile_errors)
+        .into()
+}
 
-    let from_value_body = from_value(
-        &type_contents,
-        &structure_name,
-        &descriptor,
-        |value| parse_quote!(swim_common::form::Form::try_from_value(#value)),
-        false,
-    );
-    let try_convert_body = from_value(
-        &type_contents,
-        &structure_name,
-        &descriptor,
-        |value| parse_quote!(swim_common::form::Form::try_convert(#value)),
-        true,
-    );
-    let as_value_body = to_value(
-        type_contents.clone(),
-        &structure_name,
-        descriptor.clone(),
-        |ident| parse_quote!(#ident.as_value()),
-        true,
-    );
-    let into_value_body = to_value(
-        type_contents,
-        &structure_name,
-        descriptor,
-        |ident| parse_quote!(#ident.into_value()),
-        false,
-    );
-
-    if let Err(e) = context.check() {
-        return to_compile_errors(e).into();
-    }
-
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
-
-    let ts = quote! {
-        impl #impl_generics swim_common::form::Form for #structure_name #ty_generics #where_clause
-        {
-            #[inline]
-            #[allow(non_snake_case)]
-            fn as_value(&self) -> swim_common::model::Value {
-                #as_value_body
-            }
-
-            #[inline]
-            #[allow(non_snake_case, unused_variables)]
-            fn into_value(self) -> swim_common::model::Value {
-                #into_value_body
-            }
-
-            #[inline]
-            #[allow(non_snake_case)]
-            fn try_from_value(value: &swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
-                #from_value_body
-            }
-
-            #[inline]
-            #[allow(non_snake_case)]
-            fn try_convert(value: swim_common::model::Value) -> Result<Self, swim_common::form::FormErr> {
-                #try_convert_body
-            }
-        }
-    };
-
-    ts.into()
+#[proc_macro_derive(ValidatedForm, attributes(form))]
+pub fn derive_validated_form(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    build_validated_form(input)
+        .unwrap_or_else(to_compile_errors)
+        .into()
 }
