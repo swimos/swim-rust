@@ -14,7 +14,6 @@
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::LaneIoError;
-use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
@@ -38,9 +37,11 @@ use swim_common::warp::envelope::OutgoingLinkMessage;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot};
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
 use utilities::sync::trigger;
 
-pub struct EnvelopeDispatcher<Context> {
+pub struct AgentDispatcher<Context> {
     agent_route: String,
     config: AgentExecutionConfig,
     context: Context,
@@ -82,7 +83,7 @@ impl Error for DispatcherError {
     }
 }
 
-impl<Context> EnvelopeDispatcher<Context>
+impl<Context> AgentDispatcher<Context>
 where
     Context: AgentExecutionContext + Clone + Send + Sync + 'static,
 {
@@ -92,7 +93,7 @@ where
         context: Context,
         lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
     ) -> Self {
-        EnvelopeDispatcher {
+        AgentDispatcher {
             agent_route,
             config,
             context,
@@ -104,84 +105,135 @@ where
         self,
         incoming: impl Stream<Item = TaggedEnvelope>,
     ) -> Result<(), DispatcherError> {
-        let EnvelopeDispatcher {
+        let AgentDispatcher {
             agent_route,
             config,
             context,
-            mut lanes,
+            lanes,
         } = self;
 
-        let (open_tx, open_rx) = mpsc::channel::<OpenRequest>(1);
+        let span = span!(Level::INFO, "Agent envelope dispatcher task.", ?agent_route);
+        let _enter = span.enter();
 
-        let open_config = config.clone();
-        let open_context: Context = context.clone();
+        let (open_tx, open_rx) = mpsc::channel(config.lane_attachment_buffer.get());
 
         let (tripwire_tx, tripwire_rx) = trigger::trigger();
 
-        let open_task = async move {
-            let _tripwire = tripwire_tx;
+        let attacher = LaneAttachmentTask::new(agent_route, lanes, &config, context);
+        let open_task = attacher
+            .run(open_rx, tripwire_tx)
+            .instrument(span!(Level::INFO, "Lane IO opener task."));
 
-            let mut lane_io_tasks = FuturesUnordered::new();
-
-            let requests = open_rx.fuse();
-            pin_mut!(requests);
-
-            loop {
-                let next: Option<Either<OpenRequest, Result<Vec<UplinkErrorReport>, LaneIoError>>> =
-                    if lane_io_tasks.is_empty() {
-                        requests.next().await.map(Either::Left)
-                    } else {
-                        select! {
-                            request = requests.next() => request.map(Either::Left),
-                            completed = lane_io_tasks.next() => completed.map(Either::Right),
-                        }
-                    };
-
-                match next {
-                    Some(Either::Left(OpenRequest { name, callback })) => {
-                        if let Some(lane_io) = lanes.remove(&name) {
-                            let (lane_tx, lane_rx) = mpsc::channel(5);
-                            let route = RelativePath::new(agent_route.as_str(), name.as_str());
-                            let task_result = lane_io.attach_boxed(
-                                route,
-                                lane_rx,
-                                open_config.clone(),
-                                open_context.clone(),
-                            );
-                            match task_result {
-                                Ok(task) => {
-                                    lane_io_tasks.push(task);
-                                    if callback.send(lane_tx).is_err() {
-                                        //TODO Log error.
-                                    }
-                                }
-                                Err(e) => {
-                                    //TODO Log error.
-                                    break Err(DispatcherError::AttachmentFailed(e));
-                                }
-                            }
-                        }
-                    }
-                    Some(Either::Right(Err(lane_io_err))) => {
-                        break Err(DispatcherError::LaneTaskFailed(lane_io_err))
-                    }
-                    _ => {
-                        break Ok(());
-                    }
-                }
-            }
-        };
-
-        let mut dispatcher = Dispatcher::new(config.max_concurrency, open_tx);
-        let dispatch_task = dispatcher.dispatch_envelopes(incoming.take_until(tripwire_rx));
+        let mut dispatcher = EnvelopeDispatcher::new(config.max_pending_envelopes, open_tx);
+        let dispatch_task = dispatcher
+            .dispatch_envelopes(incoming.take_until(tripwire_rx))
+            .instrument(span!(Level::INFO, "Envelope dispatcher task."));
 
         let (result, succeeded) = join(open_task, dispatch_task).await;
 
         if succeeded {
-            dispatcher.flush().await;
+            dispatcher
+                .flush()
+                .instrument(span!(Level::INFO, "Envelope dispatcher flush task."))
+                .await;
         }
 
         result
+    }
+}
+
+struct LaneAttachmentTask<'a, Context> {
+    agent_route: String,
+    lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+    config: &'a AgentExecutionConfig,
+    context: Context,
+}
+
+impl<'a, Context> LaneAttachmentTask<'a, Context>
+where
+    Context: AgentExecutionContext + Clone + Send + Sync + 'static,
+{
+    fn new(
+        agent_route: String,
+        lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+        config: &'a AgentExecutionConfig,
+        context: Context,
+    ) -> Self {
+        LaneAttachmentTask {
+            agent_route,
+            config,
+            lanes,
+            context,
+        }
+    }
+
+    async fn run(
+        self,
+        requests: mpsc::Receiver<OpenRequest>,
+        _tripwire: trigger::Sender,
+    ) -> Result<(), DispatcherError> {
+        let LaneAttachmentTask {
+            agent_route,
+            mut lanes,
+            config,
+            context,
+        } = self;
+
+        let mut lane_io_tasks = FuturesUnordered::new();
+
+        let requests = requests.fuse();
+        pin_mut!(requests);
+
+        loop {
+            let next = if lane_io_tasks.is_empty() {
+                requests.next().await.map(Either::Left)
+            } else {
+                select! {
+                    request = requests.next() => request.map(Either::Left),
+                    completed = lane_io_tasks.next() => completed.map(Either::Right),
+                }
+            };
+
+            match next {
+                Some(Either::Left(OpenRequest { name, callback })) => {
+                    event!(
+                        Level::DEBUG,
+                        message = "Attachment requested for lane.",
+                        ?name
+                    );
+                    if let Some(lane_io) = lanes.remove(&name) {
+                        let (lane_tx, lane_rx) = mpsc::channel(config.lane_buffer.get());
+                        let route = RelativePath::new(agent_route.as_str(), name.as_str());
+                        let task_result =
+                            lane_io.attach_boxed(route, lane_rx, config.clone(), context.clone());
+                        match task_result {
+                            Ok(task) => {
+                                lane_io_tasks.push(task);
+                                if callback.send(lane_tx).is_err() {
+                                    event!(Level::ERROR, message = "Could not send input channel to the envelope dispatcher.", ?name);
+                                }
+                            }
+                            Err(error) => {
+                                event!(
+                                    Level::ERROR,
+                                    message = "Attaching to a lane failed.",
+                                    ?name,
+                                    ?error
+                                );
+                                break Err(DispatcherError::AttachmentFailed(error));
+                            }
+                        }
+                    }
+                }
+                Some(Either::Right(Err(lane_io_err))) => {
+                    event!(Level::ERROR, message = "Lane IO task failed.", error = ?lane_io_err);
+                    break Err(DispatcherError::LaneTaskFailed(lane_io_err));
+                }
+                _ => {
+                    break Ok(());
+                }
+            }
+        }
     }
 }
 
@@ -288,7 +340,7 @@ where
     }
 }
 
-struct Dispatcher {
+struct EnvelopeDispatcher {
     selector: Selector<TaggedClientEnvelope, String>,
     idle_senders: HashMap<String, Option<mpsc::Sender<TaggedClientEnvelope>>>,
     open_tx: mpsc::Sender<OpenRequest>,
@@ -397,9 +449,9 @@ fn lane(env: &OutgoingLinkMessage) -> &str {
     env.path.lane.as_str()
 }
 
-impl Dispatcher {
+impl EnvelopeDispatcher {
     fn new(max_concurrency: usize, open_tx: mpsc::Sender<OpenRequest>) -> Self {
-        Dispatcher {
+        EnvelopeDispatcher {
             selector: Default::default(),
             idle_senders: Default::default(),
             open_tx,
@@ -410,7 +462,7 @@ impl Dispatcher {
     }
 
     async fn dispatch_envelopes(&mut self, envelopes: impl Stream<Item = TaggedEnvelope>) -> bool {
-        let Dispatcher {
+        let EnvelopeDispatcher {
             selector,
             idle_senders,
             open_tx,
@@ -528,7 +580,7 @@ impl Dispatcher {
     }
 
     async fn flush(self) {
-        let Dispatcher {
+        let EnvelopeDispatcher {
             mut selector,
             mut await_new,
             mut pending,

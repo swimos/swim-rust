@@ -26,8 +26,8 @@ pub mod uplink;
 /// Configuration parameters controlling how an agent and its lane are executed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentExecutionConfig {
-    /// Maximum level of concurrency for the task running the agent.
-    pub max_concurrency: usize,
+    /// Maximum number of pending envelopes in the agent dispatcher.
+    pub max_pending_envelopes: usize,
     /// Maximum buffer size, per lane, for accepting uplink actions.
     pub action_buffer: NonZeroUsize,
     /// Maximum buffer size, per lane, for accepting commands.
@@ -41,6 +41,7 @@ pub struct AgentExecutionConfig {
     /// Maximum number of times a lane will attempt to start a new uplink before failing.
     pub max_uplink_start_attempts: NonZeroUsize,
     pub lane_buffer: NonZeroUsize,
+    pub lane_attachment_buffer: NonZeroUsize,
     pub yield_after: NonZeroUsize,
     pub retry_strategy: RetryStrategy,
     pub cleanup_timeout: Duration,
@@ -51,7 +52,7 @@ impl Default for AgentExecutionConfig {
         let default_buffer = NonZeroUsize::new(4).unwrap();
 
         AgentExecutionConfig {
-            max_concurrency: 1,
+            max_pending_envelopes: 1,
             action_buffer: default_buffer,
             update_buffer: default_buffer,
             feedback_buffer: default_buffer,
@@ -59,6 +60,7 @@ impl Default for AgentExecutionConfig {
             max_fatal_uplink_errors: 0,
             max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
             lane_buffer: default_buffer,
+            lane_attachment_buffer: default_buffer,
             yield_after: NonZeroUsize::new(2048).unwrap(),
             retry_strategy: RetryStrategy::default(),
             cleanup_timeout: Duration::from_secs(30),

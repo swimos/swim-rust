@@ -372,7 +372,7 @@ fn yield_after() -> NonZeroUsize {
 
 fn make_config() -> AgentExecutionConfig {
     AgentExecutionConfig {
-        max_concurrency: 1,
+        max_pending_envelopes: 1,
         action_buffer: default_buffer(),
         update_buffer: default_buffer(),
         feedback_buffer: default_buffer(),
@@ -380,6 +380,7 @@ fn make_config() -> AgentExecutionConfig {
         max_fatal_uplink_errors: 1,
         max_uplink_start_attempts: default_buffer(),
         lane_buffer: default_buffer(),
+        lane_attachment_buffer: default_buffer(),
         yield_after: yield_after(),
         retry_strategy: RetryStrategy::default(),
         cleanup_timeout: Duration::from_secs(5),

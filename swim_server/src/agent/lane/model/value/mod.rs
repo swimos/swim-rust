@@ -21,7 +21,6 @@ use crate::agent::lane::strategy::{
 };
 use crate::agent::lane::{BroadcastStream, LaneModel};
 use futures::Stream;
-use pin_utils::core_reexport::num::NonZeroUsize;
 use std::any::Any;
 use std::sync::Arc;
 use stm::stm::Stm;
@@ -180,11 +179,7 @@ where
         let (tx_init, rx_init) = oneshot::channel();
         let deferred = DeferredChannelObserver::Uninitialized(rx_init);
         let joined = observer::join(observer, deferred);
-        let deferred_view = DeferredMpscView::new(
-            tx_init,
-            *n,
-            NonZeroUsize::new(config.yield_after.get()).unwrap(),
-        );
+        let deferred_view = DeferredMpscView::new(tx_init, *n, config.yield_after);
         (joined, rx, deferred_view)
     }
 }

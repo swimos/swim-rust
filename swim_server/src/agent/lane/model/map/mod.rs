@@ -44,7 +44,6 @@ use futures::Stream;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::num::NonZeroUsize;
 use stm::var::observer::{self, JoinObserver, StaticObserver};
 use swim_common::topic::BroadcastSender;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
@@ -558,12 +557,8 @@ where
         let (tx_init, rx_init) = oneshot::channel();
         let deferred = DeferredChannelObserver::Uninitialized(rx_init);
         let joined = observer::join(observer, deferred);
-        let deferred_view = DeferredMpscView::new(
-            tx_init,
-            *n,
-            NonZeroUsize::new(config.yield_after.get()).unwrap(),
-        )
-        .transform(ToTypedEvents::default());
+        let deferred_view = DeferredMpscView::new(tx_init, *n, config.yield_after)
+            .transform(ToTypedEvents::default());
         let str = rx.transform_flat_map(ToTypedEvents::default());
         (joined, str, deferred_view)
     }
