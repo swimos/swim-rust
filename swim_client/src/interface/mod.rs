@@ -23,7 +23,7 @@ use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
 
-use crate::configuration::downlink::{Config, ConfigHierarchy, ConfigParseError};
+use crate::configuration::downlink::{Config, ConfigParseError};
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
@@ -34,15 +34,16 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::SwimRouter;
-use std::fs::File;
-use std::io::Read;
 use swim_common::connections::WebsocketFactory;
-use swim_common::model::parser::parse_single;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 
 #[cfg(feature = "websocket")]
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use {
+    crate::configuration::downlink::ConfigHierarchy,
+    crate::connections::factory::tungstenite::TungsteniteWsFactory, std::fs::File, std::io::Read,
+    swim_common::model::parser::parse_single,
+};
 
 /// Represents errors that can occur in the client.
 #[derive(Debug)]
