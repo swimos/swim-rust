@@ -26,8 +26,8 @@ use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-mod compression;
 pub mod error;
+mod handlers;
 
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
@@ -74,10 +74,22 @@ pub trait WebsocketFactory: Send + Sync {
     fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
 }
 
-pub trait WebSocketHandler {
+pub trait WebSocketHandler: Clone + Send + Unpin + 'static {
     fn on_request(&mut self, _request: &mut Request<()>) {}
 
     fn on_response(&mut self, _response: &mut Response<()>) {}
+
+    fn on_send(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {
+        Ok(())
+    }
+
+    fn on_receive(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {
+        Ok(())
+    }
+
+    fn on_close(&mut self) {}
+
+    fn on_open(&mut self) {}
 }
 
 #[derive(Clone)]

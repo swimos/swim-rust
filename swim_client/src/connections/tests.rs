@@ -29,7 +29,7 @@ use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
-use swim_common::ws::Protocol;
+use swim_common::ws::{Protocol, WebSocketHandler};
 use utilities::errors::FlattenErrors;
 
 #[tokio::test]
@@ -662,14 +662,19 @@ impl Sink<WsMessage> for TestWriteStream {
     }
 }
 
+#[derive(Clone)]
+struct TestHandler;
+
+impl WebSocketHandler for TestHandler {}
+
 struct TestConnectionFactory {
-    inner: AsyncFactory<TestWriteStream, TestReadStream>,
+    inner: AsyncFactory<TestWriteStream, TestReadStream, TestHandler>,
 }
 
 impl TestConnectionFactory {
     async fn new(test_data: TestData) -> Self {
         let shared_data = Arc::new(test_data);
-        let inner = AsyncFactory::new(5, move |url, _protocol| {
+        let inner = AsyncFactory::new(5, move |url, _protocol, _handler| {
             let shared_data = shared_data.clone();
             async { shared_data.open_conn(url).await }
         })
@@ -684,7 +689,7 @@ impl TestConnectionFactory {
 
     async fn new_multiple_with_errs(test_data: Vec<Option<TestData>>) -> Self {
         let shared_data = Arc::new(MultipleTestData::new(test_data));
-        let inner = AsyncFactory::new(5, move |url, _protocol| {
+        let inner = AsyncFactory::new(5, move |url, _protocol, _handler| {
             let shared_data = shared_data.clone();
             async { shared_data.open_conn(url).await }
         })
@@ -693,7 +698,7 @@ impl TestConnectionFactory {
     }
 }
 
-type ConnReq = async_factory::ConnReq<TestWriteStream, TestReadStream>;
+type ConnReq = async_factory::ConnReq<TestWriteStream, TestReadStream, TestHandler>;
 type ConnectionFuture =
     SendAndAwait<ConnReq, Result<(TestWriteStream, TestReadStream), ConnectionError>>;
 
@@ -703,7 +708,8 @@ impl WebsocketFactory for TestConnectionFactory {
     type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
     fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        self.inner.connect_using(url, Protocol::PlainText)
+        self.inner
+            .connect_using(url, Protocol::PlainText, TestHandler)
     }
 }
 

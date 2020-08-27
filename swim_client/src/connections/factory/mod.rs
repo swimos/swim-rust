@@ -18,6 +18,8 @@ mod tests;
 #[cfg(feature = "websocket")]
 pub mod tungstenite;
 
+mod stream;
+
 #[cfg(not(target_arch = "wasm32"))]
 pub mod async_factory {
     use futures::future::ErrInto as FutErrInto;
@@ -30,27 +32,29 @@ pub mod async_factory {
     use swim_common::request::Request;
 
     use swim_common::ws::error::ConnectionError;
-    use swim_common::ws::{Protocol, WsMessage};
+    use swim_common::ws::{Protocol, WebSocketHandler, WsMessage};
     use swim_runtime::task::{spawn, TaskHandle};
     use utilities::errors::FlattenErrors;
 
     /// A request for a new connection.
-    pub struct ConnReq<Snk, Str> {
+    pub struct ConnReq<Snk, Str, H> {
         pub(crate) request: Request<Result<(Snk, Str), ConnectionError>>,
         url: url::Url,
         protocol: Protocol,
+        handler: H,
     }
 
     /// Abstract asynchronous factory where requests are serviced by an independent task.
-    pub struct AsyncFactory<Snk, Str> {
-        pub(in crate::connections::factory) sender: mpsc::Sender<ConnReq<Snk, Str>>,
+    pub struct AsyncFactory<Snk, Str, H> {
+        pub(in crate::connections::factory) sender: mpsc::Sender<ConnReq<Snk, Str, H>>,
         _task: TaskHandle<()>,
     }
 
-    impl<Snk, Str> AsyncFactory<Snk, Str>
+    impl<Snk, Str, H> AsyncFactory<Snk, Str, H>
     where
         Str: Send + 'static,
         Snk: Send + 'static,
+        H: WebSocketHandler,
     {
         /// Create a new factory where the task operates off a queue with [`buffer_size`] entries
         /// and uses [`connect_async`] to service the requests.
@@ -59,7 +63,7 @@ pub mod async_factory {
             connect_async: Fac,
         ) -> Self
         where
-            Fac: FnMut(url::Url, Protocol) -> Fut + Send + 'static,
+            Fac: FnMut(url::Url, Protocol, H) -> Fut + Send + 'static,
             Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
         {
             let (tx, rx) = mpsc::channel(buffer_size);
@@ -71,30 +75,32 @@ pub mod async_factory {
         }
     }
 
-    async fn factory_task<Snk, Str, Fac, Fut>(
-        mut receiver: mpsc::Receiver<ConnReq<Snk, Str>>,
+    async fn factory_task<Snk, Str, Fac, Fut, H>(
+        mut receiver: mpsc::Receiver<ConnReq<Snk, Str, H>>,
         mut connect_async: Fac,
     ) where
         Str: Send + 'static,
         Snk: Send + 'static,
-        Fac: FnMut(url::Url, Protocol) -> Fut + Send + 'static,
+        Fac: FnMut(url::Url, Protocol, H) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
     {
         while let Some(ConnReq {
             request,
             url,
             protocol,
+            handler,
         }) = receiver.next().await
         {
-            let conn: Result<(Snk, Str), ConnectionError> = connect_async(url, protocol).await;
+            let conn: Result<(Snk, Str), ConnectionError> =
+                connect_async(url, protocol, handler).await;
             let _ = request.send(conn);
         }
     }
 
-    pub type ConnectionFuture<Str, Snk> =
-        SendAndAwait<ConnReq<Snk, Str>, Result<(Snk, Str), ConnectionError>>;
+    pub type ConnectionFuture<Str, Snk, H> =
+        SendAndAwait<ConnReq<Snk, Str, H>, Result<(Snk, Str), ConnectionError>>;
 
-    impl<Snk, Str> AsyncFactory<Snk, Str>
+    impl<Snk, Str, H> AsyncFactory<Snk, Str, H>
     where
         Str: Stream<Item = Result<WsMessage, ConnectionError>> + Unpin + Send + 'static,
         Snk: Sink<WsMessage> + Unpin + Send + 'static,
@@ -103,12 +109,17 @@ pub mod async_factory {
             &mut self,
             url: url::Url,
             protocol: Protocol,
-        ) -> FlattenErrors<FutErrInto<ConnectionFuture<Str, Snk>, ConnectionError>> {
+            handler: H,
+        ) -> FlattenErrors<FutErrInto<ConnectionFuture<Str, Snk, H>, ConnectionError>>
+        where
+            H: WebSocketHandler,
+        {
             let (tx, rx) = oneshot::channel();
             let req = ConnReq {
                 request: Request::new(tx),
                 url,
                 protocol,
+                handler,
             };
             let req_fut = RequestFuture::new(self.sender.clone(), req);
             FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(
