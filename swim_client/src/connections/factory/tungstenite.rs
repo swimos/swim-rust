@@ -30,12 +30,13 @@ use url::Url;
 use swim_common::request::request_future::SendAndAwait;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{
-    maybe_resolve_scheme, Protocol, WebSocketHandler, WebsocketFactory, WsMessage,
+    maybe_resolve_scheme, CompressionKind, Protocol, WebSocketHandler, WebsocketFactory, WsMessage,
 };
 use utilities::errors::FlattenErrors;
 
 use super::async_factory;
 use crate::connections::factory::stream::TungStreamHandler;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 type TungSink = SplitSink<WsConnection, WsMessage>;
@@ -50,8 +51,7 @@ pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 
 async fn connect<H>(
     url: Url,
-    protocol: Protocol,
-    handler: &mut H,
+    config: &mut HostConfig<H>,
 ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Response<()>), ConnectionError>
 where
     H: WebSocketHandler,
@@ -62,8 +62,8 @@ where
         .map_err(|e| ConnectionError::SocketError(WebSocketError::from(e)))?;
     let request = Request::get(uri).body(())?;
 
-    let request = maybe_resolve_scheme(request)?;
-    let stream_type = get_stream_type(&request, protocol)?;
+    let mut request = maybe_resolve_scheme(request)?;
+    let stream_type = get_stream_type(&request, &config.protocol)?;
 
     let port = request
         .uri()
@@ -83,20 +83,25 @@ where
     };
 
     let host = format!("{}:{}", domain, port);
-    let stream = build_stream(&host, domain, stream_type, handler).await?;
+    let stream = build_stream(&host, domain, stream_type, &mut config.handler).await?;
+
+    config.handler.on_request(&mut request);
 
     match client_async_with_config(request, stream, None)
         .await
         .map_err(TungsteniteError)
     {
-        Ok(r) => Ok(r),
+        Ok((stream, mut response)) => {
+            config.handler.on_response(&mut response);
+            Ok((stream, response))
+        }
         Err(e) => Err(e.into()),
     }
 }
 
 fn get_stream_type<T>(
     request: &Request<T>,
-    protocol: Protocol,
+    protocol: &Protocol,
 ) -> Result<Protocol, WebSocketError> {
     match request.uri().scheme_str() {
         Some("ws") => Ok(Protocol::PlainText),
@@ -104,7 +109,7 @@ fn get_stream_type<T>(
             Protocol::PlainText => Err(WebSocketError::BadConfiguration(
                 "Attempted to connect to a secure WebSocket without a TLS configuration".into(),
             )),
-            tls => Ok(tls),
+            tls => Ok(tls.clone()),
         },
         Some(s) => Err(WebSocketError::unsupported_scheme(s)),
         None => Err(WebSocketError::missing_scheme()),
@@ -145,6 +150,16 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct HostConfig<H>
+where
+    H: WebSocketHandler,
+{
+    pub protocol: Protocol,
+    pub handler: H,
+    pub compression: CompressionKind,
+}
+
 impl TungsteniteWsFactory {
     /// Create a tungstenite-tokio connection factory where the internal task uses the provided
     /// buffer size.
@@ -153,10 +168,20 @@ impl TungsteniteWsFactory {
         host_protocols: HashMap<Url, Protocol>,
     ) -> TungsteniteWsFactory {
         let inner = async_factory::AsyncFactory::new(buffer_size, open_conn).await;
+        let host_configurations: HashMap<Url, HostConfig<TungWsHandler>> = host_protocols
+            .into_iter()
+            .map(|(url, protocol)| {
+                let config = HostConfig {
+                    protocol,
+                    handler: TungWsHandler,
+                    compression: CompressionKind::Deflate,
+                };
+                (url, config)
+            })
+            .collect();
         TungsteniteWsFactory {
             inner,
-            host_protocols,
-            host_handlers: Default::default(),
+            host_configurations,
         }
     }
 }
@@ -167,36 +192,73 @@ impl WebsocketFactory for TungsteniteWsFactory {
     type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
     fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        let protocol = match self.host_protocols.get(&url) {
-            Some(protocol) => protocol.clone(),
-            None => Protocol::PlainText,
+        let config = match self.host_configurations.entry(url.clone()) {
+            Entry::Occupied(o) => o.get().clone(),
+            Entry::Vacant(v) => v
+                .insert(HostConfig {
+                    protocol: Protocol::PlainText,
+                    handler: TungWsHandler,
+                    compression: CompressionKind::Deflate,
+                })
+                .clone(),
         };
 
-        self.inner.connect_using(url, protocol, TungWsHandler)
+        self.inner.connect_using(url, config)
     }
 }
 
+use swim_common::ws::handlers::DeflateHandler;
+use tracing::info;
+
 #[derive(Clone)]
 pub struct TungWsHandler;
-impl WebSocketHandler for TungWsHandler {}
+impl WebSocketHandler for TungWsHandler {
+    fn on_request(&mut self, request: &mut Request<()>) {
+        let mut df = DeflateHandler { enabled: true };
+
+        df.on_request(request);
+
+        info!("On request: {:?}", request);
+    }
+
+    fn on_response(&mut self, response: &mut Response<()>) {
+        info!("On response: {:?}", response);
+    }
+
+    fn on_send(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {
+        info!("On send");
+        Ok(())
+    }
+
+    fn on_receive(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {
+        info!("On receive");
+        Ok(())
+    }
+
+    fn on_close(&mut self) {
+        info!("On close");
+    }
+
+    fn on_open(&mut self) {
+        info!("On open");
+    }
+}
 
 /// Specialized [`AsyncFactory`] that creates tungstenite-tokio connections.
 pub struct TungsteniteWsFactory {
     inner: async_factory::AsyncFactory<TungSink, TungStream, TungWsHandler>,
-    host_protocols: HashMap<Url, Protocol>,
-    host_handlers: HashMap<Url, TungWsHandler>,
+    host_configurations: HashMap<Url, HostConfig<TungWsHandler>>,
 }
 
 async fn open_conn(
     url: url::Url,
-    protocol: Protocol,
-    mut handler: TungWsHandler,
+    mut config: HostConfig<TungWsHandler>,
 ) -> Result<(TungSink, TungStream), ConnectionError> {
     tracing::info!("Connecting to URL {:?}", &url);
 
-    match connect(url, protocol, &mut handler).await {
+    match connect(url, &mut config).await {
         Ok((ws_str, _)) => {
-            let stream = TungStreamHandler::wrap(ws_str, handler);
+            let stream = TungStreamHandler::wrap(ws_str, config.handler);
             let (sink, stream) = stream.split();
 
             Ok((sink, stream))

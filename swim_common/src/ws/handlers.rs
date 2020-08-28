@@ -16,10 +16,10 @@ use crate::ws::error::ConnectionError;
 use crate::ws::{WebSocketHandler, WsMessage};
 use http::header::CONTENT_ENCODING;
 use http::{HeaderValue, Request, Response};
-// use tracing::trace;
+use tracing::trace;
 
 #[derive(Clone)]
-struct LoggingHandler<I>
+pub struct LoggingHandler<I>
 where
     I: WebSocketHandler,
 {
@@ -32,26 +32,32 @@ where
     I: WebSocketHandler,
 {
     fn on_request(&mut self, request: &mut Request<()>) {
+        trace!("On request");
         self.inner.on_request(request);
     }
 
     fn on_response(&mut self, response: &mut Response<()>) {
+        trace!("On response: {:?}", response);
         self.inner.on_response(response);
     }
 
     fn on_send(&mut self, message: &mut WsMessage) -> Result<(), ConnectionError> {
+        trace!("On send");
         self.inner.on_send(message)
     }
 
     fn on_receive(&mut self, message: &mut WsMessage) -> Result<(), ConnectionError> {
+        trace!("On receive");
         self.inner.on_receive(message)
     }
 
     fn on_close(&mut self) {
+        trace!("On close");
         self.inner.on_close();
     }
 
     fn on_open(&mut self) {
+        trace!("On open");
         self.inner.on_open();
     }
 }
@@ -164,7 +170,7 @@ impl WebSocketHandler for BrotliHandler {
 
 #[derive(Clone)]
 pub struct DeflateHandler {
-    enabled: bool,
+    pub enabled: bool,
 }
 
 impl WebSocketHandler for DeflateHandler {

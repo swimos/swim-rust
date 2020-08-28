@@ -27,7 +27,7 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 
 pub mod error;
-mod handlers;
+pub mod handlers;
 
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
@@ -154,5 +154,19 @@ pub fn build_x509_certificate(path: impl AsRef<Path>) -> Result<Certificate, Cer
     match Certificate::from_pem(&buf) {
         Ok(cert) => Ok(cert),
         Err(e) => Err(CertificateError::SSL(e.to_string())),
+    }
+}
+
+#[derive(Copy, Clone, PartialOrd, PartialEq)]
+pub enum CompressionKind {
+    None,
+    Deflate,
+    Bzip,
+    Brotli,
+}
+
+impl CompressionKind {
+    pub fn is_some(&self) -> bool {
+        *self != CompressionKind::None
     }
 }

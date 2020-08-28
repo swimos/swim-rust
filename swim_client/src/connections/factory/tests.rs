@@ -13,13 +13,14 @@
 // limitations under the License.
 
 use super::async_factory::*;
+use crate::connections::factory::tungstenite::HostConfig;
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::pin::Pin;
 use swim_common::ws::error::ConnectionError;
-use swim_common::ws::{Protocol, WebSocketHandler, WsMessage};
+use swim_common::ws::{CompressionKind, Protocol, WebSocketHandler, WsMessage};
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);
@@ -62,8 +63,7 @@ impl WebSocketHandler for TestHandler {}
 
 async fn open_conn(
     url: url::Url,
-    _protocol: Protocol,
-    _handler: TestHandler,
+    _config: HostConfig<TestHandler>,
 ) -> Result<(TestSink, TestStream), ConnectionError> {
     if url.scheme() == "fail" {
         Err(ConnectionError::ConnectError)
@@ -89,7 +89,14 @@ async fn successfully_open() {
     let url = good_url();
     let mut fac = make_fac().await;
     let result = fac
-        .connect_using(url.clone(), Protocol::PlainText, TestHandler)
+        .connect_using(
+            url.clone(),
+            HostConfig {
+                protocol: Protocol::PlainText,
+                handler: TestHandler,
+                compression: CompressionKind::None,
+            },
+        )
         .await;
     assert_that!(&result, ok());
     let (snk, stream) = result.unwrap();
@@ -102,7 +109,14 @@ async fn fail_to_open() {
     let url = bad_url();
     let mut fac = make_fac().await;
     let result = fac
-        .connect_using(url.clone(), Protocol::PlainText, TestHandler)
+        .connect_using(
+            url.clone(),
+            HostConfig {
+                protocol: Protocol::PlainText,
+                handler: TestHandler,
+                compression: CompressionKind::None,
+            },
+        )
         .await;
     assert_that!(&result, err());
     let err = result.err().unwrap();
