@@ -204,9 +204,9 @@ impl ConsumerTask {
 
 fn classify(action: Mod) -> Either<KeyedAction, SpecialAction> {
     match action {
-        UntypedMapModification::Insert(key, value) => Either::Left(KeyedAction(
+        UntypedMapModification::Update(key, value) => Either::Left(KeyedAction(
             key.clone(),
-            UntypedMapModification::Insert(key, value),
+            UntypedMapModification::Update(key, value),
         )),
         UntypedMapModification::Remove(key) => Either::Left(KeyedAction(
             key.clone(),

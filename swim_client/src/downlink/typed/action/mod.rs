@@ -107,7 +107,7 @@ where
 }
 
 /// Wraps a sender up updates to a map downlink providing typed, asynchronous operations
-/// that can be performed on in.
+/// that can be performed on it.
 pub struct MapActions<Sender, K, V> {
     sender: Sender,
     _entry_type: PhantomData<(K, V)>,
@@ -138,12 +138,12 @@ where
         await_optional(rx).await
     }
 
-    /// Insert an entry into the map returning any existing value associated with the key.
-    pub async fn insert(&mut self, key: K, value: V) -> Result<Option<V>, DownlinkError> {
+    /// Update an entry into the map returning any existing value associated with the key.
+    pub async fn update(&mut self, key: K, value: V) -> Result<Option<V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
         self.sender
-            .send_item(MapAction::insert_and_await(
+            .send_item(MapAction::update_and_await(
                 key.into_value(),
                 value.into_value(),
                 req,
@@ -155,13 +155,13 @@ where
     /// Insert an entry into the map without waiting for the operation to complete.
     pub async fn insert_and_forget(&mut self, key: K, value: V) -> Result<(), DownlinkError> {
         self.sender
-            .send_item(MapAction::insert(key.into_value(), value.into_value()))
+            .send_item(MapAction::update(key.into_value(), value.into_value()))
             .await
     }
 
-    /// Update the value associated with a key, returning the values associated withe the key before
+    /// Modify the value associated with a key, returning the values associated withe the key before
     /// and after the operation.
-    pub async fn update<F>(
+    pub async fn modify<F>(
         &mut self,
         key: K,
         update_fn: F,
@@ -174,7 +174,7 @@ where
         let req1 = Request::new(tx1);
         let req2 = Request::new(tx2);
         self.sender
-            .send_item(MapAction::try_update_and_await(
+            .send_item(MapAction::try_modify_and_await(
                 key.into_value(),
                 wrap_option_update_fn(update_fn),
                 req1,
@@ -186,13 +186,13 @@ where
         Ok((before, after))
     }
 
-    /// Update the value associated with a key without waiting for the operation to complete.
-    pub async fn update_and_forget<F>(&mut self, key: K, update_fn: F) -> Result<(), DownlinkError>
+    /// Modify the value associated with a key without waiting for the operation to complete.
+    pub async fn modify_and_forget<F>(&mut self, key: K, update_fn: F) -> Result<(), DownlinkError>
     where
         F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
         self.sender
-            .send_item(MapAction::try_update(
+            .send_item(MapAction::try_modify(
                 key.into_value(),
                 wrap_option_update_fn(update_fn),
             ))

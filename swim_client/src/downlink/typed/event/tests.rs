@@ -191,10 +191,10 @@ fn typed_view_with_event_skip() {
 }
 
 #[test]
-fn typed_view_with_event_good_insert() {
+fn typed_view_with_event_good_update() {
     let raw = ViewWithEvent {
         view: make_raw(),
-        event: MapEvent::Insert(Value::Int32Value(2)),
+        event: MapEvent::Update(Value::Int32Value(2)),
     };
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
@@ -203,16 +203,16 @@ fn typed_view_with_event_good_insert() {
         typed,
         eq(Ok(TypedViewWithEvent {
             view: make_view(),
-            event: MapEvent::Insert(2)
+            event: MapEvent::Update(2)
         }))
     );
 }
 
 #[test]
-fn typed_view_with_event_bad_insert() {
+fn typed_view_with_event_bad_update() {
     let raw = ViewWithEvent {
         view: make_raw(),
-        event: MapEvent::Insert(Value::text("hello")),
+        event: MapEvent::Update(Value::text("hello")),
     };
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();

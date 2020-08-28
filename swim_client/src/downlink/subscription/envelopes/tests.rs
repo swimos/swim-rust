@@ -143,14 +143,14 @@ fn remove_map_command_to_envelope() {
 
 #[test]
 fn insert_map_command_to_envelope() {
-    let action = UntypedMapModification::Insert(Value::text("key"), Value::text("value"));
+    let action = UntypedMapModification::Update(Value::text("key"), Value::text("value"));
 
     let rep = Form::as_value(&action);
 
     let expected = LinkMessage::make_command("node", "lane", Some(rep));
 
     let arc_action =
-        UntypedMapModification::Insert(Value::text("key"), Arc::new(Value::text("value")));
+        UntypedMapModification::Update(Value::text("key"), Arc::new(Value::text("value")));
 
     let (host, envelope) = map_envelope(&path(), Command::Action(arc_action));
     assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
@@ -217,7 +217,7 @@ fn remove_map_message_from_envelope() {
 
 #[test]
 fn insert_map_message_from_envelope() {
-    let action = UntypedMapModification::Insert(Value::text("key"), Value::text("value"));
+    let action = UntypedMapModification::Update(Value::text("key"), Value::text("value"));
 
     let rep = Form::as_value(&action);
     let env = LinkMessage::make_event("node", "lane", Some(rep));

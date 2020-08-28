@@ -27,7 +27,8 @@ use num_traits::FromPrimitive;
 
 use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
-use crate::model::schema::StandardSchema;
+use crate::model::schema::slot::SlotSchema;
+use crate::model::schema::{ItemSchema, StandardSchema};
 use crate::model::{Item, Value, ValueKind};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
@@ -477,6 +478,16 @@ macro_rules! impl_seq_form {
                 }
             }
         }
+
+        impl<V $(, $typaram)*> ValidatedForm for $ty<V $(, $typaram)*>
+        where
+            V: ValidatedForm $(+ $tbound1 $(+ $tbound2)*)*,
+            $($typaram: ValidatedForm + $bound $(+ $bound2)*,)*
+        {
+            fn schema() -> StandardSchema {
+                StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(V::schema())))
+            }
+        }
     }
 }
 
@@ -540,6 +551,17 @@ macro_rules! impl_map_form {
                     }
                     v => Err(FormErr::incorrect_type("Value::Record", v)),
                 }
+            }
+        }
+
+        impl<K, V $(, $typaram)*> ValidatedForm for $ty<K, V $(, $typaram)*>
+        where
+            K: ValidatedForm $(+ $kbound1 $(+ $kbound2)*)*,
+            V: ValidatedForm $(+ $vbound1 $(+ $vbound2)*)*,
+            $($typaram: ValidatedForm + $bound $(+ $bound2)*,)*
+        {
+            fn schema() -> StandardSchema {
+                StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(K::schema(), V::schema()))))
             }
         }
     }
