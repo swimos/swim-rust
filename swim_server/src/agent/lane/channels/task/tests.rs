@@ -20,13 +20,14 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStat
 use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
+use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
-use futures::future::{join3, BoxFuture};
+use futures::future::{join, join3, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -390,7 +391,7 @@ fn route() -> RelativePath {
 #[derive(Clone)]
 struct TaskInput {
     envelope_tx: mpsc::Sender<TaggedClientEnvelope>,
-    _event_tx: mpsc::Sender<i32>,
+    _event_tx: Option<mpsc::Sender<i32>>,
 }
 
 impl TaskInput {
@@ -413,6 +414,14 @@ impl TaskInput {
         let env = TaggedClientEnvelope(
             addr,
             OutgoingLinkMessage::make_command("node", "lane", Some(value.into_value())),
+        );
+        assert!(self.envelope_tx.send(env).await.is_ok())
+    }
+
+    async fn send_raw(&mut self, addr: RoutingAddr, value: Value) {
+        let env = TaggedClientEnvelope(
+            addr,
+            OutgoingLinkMessage::make_command("node", "lane", Some(value)),
         );
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
@@ -470,7 +479,7 @@ fn make_task(
     .boxed();
     let input = TaskInput {
         envelope_tx,
-        _event_tx: event_tx,
+        _event_tx: Some(event_tx),
     };
 
     (input, output, task)
@@ -830,4 +839,480 @@ async fn report_uplink_failures_on_update_failure() {
     }
 
     outputs.check_history(vec![]).await;
+}
+
+fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>(
+    config: AgentExecutionConfig,
+    context: Context,
+) -> (
+    impl Future<Output = Result<Vec<UplinkErrorReport>, LaneIoError>>,
+    TaskInput,
+) {
+    let (feedback_tx, mut feedback_rx) = mpsc::channel::<Action<i32, i32>>(5);
+
+    let mock_lifecycle = async move {
+        while let Some(Action { command, responder }) = feedback_rx.recv().await {
+            if let Some(responder) = responder {
+                assert!(responder.send(command * 2).is_ok());
+            }
+        }
+    };
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedClientEnvelope>(5);
+
+    let lane: ActionLane<i32, i32> = ActionLane::new(feedback_tx);
+
+    let task = super::run_action_lane_io(lane, true, envelope_rx, config, context, route());
+
+    let input = TaskInput {
+        envelope_tx,
+        _event_tx: None,
+    };
+
+    (join(mock_lifecycle, task).map(|(_, r)| r), input)
+}
+
+fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>(
+    config: AgentExecutionConfig,
+    context: Context,
+) -> (
+    impl Future<Output = Result<Vec<UplinkErrorReport>, LaneIoError>>,
+    mpsc::Receiver<i32>,
+    TaskInput,
+) {
+    let (mut collector_tx, collector_rx) = mpsc::channel(5);
+    let (feedback_tx, mut feedback_rx) = mpsc::channel::<Action<i32, ()>>(5);
+
+    let mock_lifecycle = async move {
+        while let Some(Action { command, responder }) = feedback_rx.recv().await {
+            assert!(responder.is_none());
+            assert!(collector_tx.send(command).await.is_ok())
+        }
+    };
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedClientEnvelope>(5);
+
+    let lane: ActionLane<i32, ()> = ActionLane::new(feedback_tx);
+
+    let task = super::run_action_lane_io(lane, false, envelope_rx, config, context, route());
+
+    let input = TaskInput {
+        envelope_tx,
+        _event_tx: None,
+    };
+
+    (
+        join(mock_lifecycle, task).map(|(_, r)| r),
+        collector_rx,
+        input,
+    )
+}
+
+async fn expect_envelope(
+    router_rx: &mut mpsc::Receiver<TaggedEnvelope>,
+    expected_addr: RoutingAddr,
+    expected_envelope: Envelope,
+) {
+    let TaggedEnvelope(addr, env) = router_rx.recv().await.expect("Channel closed");
+    assert_eq!(addr, expected_addr);
+    assert_eq!(env, expected_envelope);
+}
+
+#[tokio::test]
+async fn handle_action_lane_link_request() {
+    let route = route();
+
+    let (context, mut router_rx, spawn_task) = make_context();
+    let config = make_config();
+
+    let (task, mut input) = make_action_lane_task(config, context);
+
+    let addr = RoutingAddr::remote(5);
+
+    let io_task = async move {
+        input.send_link(addr).await;
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+
+        drop(input);
+
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::unlinked(&route.node, &route.lane),
+        )
+        .await;
+    };
+
+    let (_, result, _) = join3(spawn_task, task, io_task).await;
+
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[tokio::test]
+async fn handle_action_lane_sync_request() {
+    let route = route();
+
+    let (context, mut router_rx, spawn_task) = make_context();
+    let config = make_config();
+
+    let (task, mut input) = make_action_lane_task(config, context);
+
+    let addr = RoutingAddr::remote(5);
+
+    let io_task = async move {
+        input.send_sync(addr).await;
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::synced(&route.node, &route.lane),
+        )
+        .await;
+
+        drop(input);
+
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::unlinked(&route.node, &route.lane),
+        )
+        .await;
+    };
+
+    let (_, result, _) = join3(spawn_task, task, io_task).await;
+
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[tokio::test]
+async fn handle_action_lane_immediate_unlink_request() {
+    let route = route();
+
+    let (context, mut router_rx, spawn_task) = make_context();
+    let config = make_config();
+
+    let (task, mut input) = make_action_lane_task(config, context);
+
+    let addr = RoutingAddr::remote(5);
+
+    let io_task = async move {
+        input.send_unlink(addr).await;
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::unlinked(&route.node, &route.lane),
+        )
+        .await;
+
+        drop(input);
+
+        router_rx
+    };
+
+    let (_, result, mut router_rx) = join3(spawn_task, task, io_task).await;
+
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+    assert!(router_rx.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn action_lane_responses_when_linked() {
+    let route = route();
+
+    let (context, mut router_rx, spawn_task) = make_context();
+    let config = make_config();
+
+    let (task, mut input) = make_action_lane_task(config, context);
+
+    let addr = RoutingAddr::remote(5);
+
+    let io_task = async move {
+        input.send_link(addr).await;
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+
+        input.send_command(addr, 2).await;
+
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
+        )
+        .await;
+
+        drop(input);
+
+        expect_envelope(
+            &mut router_rx,
+            addr,
+            Envelope::unlinked(&route.node, &route.lane),
+        )
+        .await;
+    };
+
+    let (_, result, _) = join3(spawn_task, task, io_task).await;
+
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[tokio::test]
+async fn action_lane_multiple_links() {
+    let route = route();
+
+    let (context, mut router_rx, spawn_task) = make_context();
+    let config = make_config();
+
+    let (task, mut input) = make_action_lane_task(config, context);
+
+    let addr1 = RoutingAddr::remote(5);
+    let addr2 = RoutingAddr::remote(10);
+
+    let io_task = async move {
+        input.send_link(addr1).await;
+        expect_envelope(
+            &mut router_rx,
+            addr1,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+
+        input.send_link(addr2).await;
+        expect_envelope(
+            &mut router_rx,
+            addr2,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+
+        input.send_command(addr1, 2).await;
+
+        expect_envelope(
+            &mut router_rx,
+            addr1,
+            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
+        )
+        .await;
+
+        input.send_command(addr2, 3).await;
+
+        expect_envelope(
+            &mut router_rx,
+            addr2,
+            Envelope::make_event(&route.node, &route.lane, Some(6.into())),
+        )
+        .await;
+
+        drop(input);
+
+        let expected_unlink = Envelope::unlinked(&route.node, &route.lane);
+
+        let TaggedEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
+        assert!(rec_addr1 == addr1 || rec_addr1 == addr2);
+        assert_eq!(env, expected_unlink);
+
+        let TaggedEnvelope(rec_addr2, env) = router_rx.recv().await.expect("Channel closed");
+        assert!(rec_addr2 == addr1 || rec_addr2 == addr2);
+        assert_ne!(rec_addr1, rec_addr2);
+        assert_eq!(env, expected_unlink);
+    };
+
+    let (_, result, _) = join3(spawn_task, task, io_task).await;
+
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[tokio::test]
+async fn handle_action_lane_update_failure() {
+    let (context, _router_rx, spawn_task) = make_context();
+    let config = make_config();
+
+    let (task, mut input) = make_action_lane_task(config, context);
+
+    let addr = RoutingAddr::remote(5);
+
+    let _input_cpy = input.clone();
+
+    let io_task = async move {
+        input.send_raw(addr, Value::Text("0".to_string())).await;
+    };
+
+    let (_, result, _) = join3(spawn_task, task, io_task).await;
+
+    assert!(result.is_err());
+    let expected_route = route();
+
+    let LaneIoError {
+        route,
+        update_error,
+        uplink_errors,
+    } = result.err().unwrap();
+
+    assert_eq!(route, expected_route);
+    assert!(uplink_errors.is_empty());
+
+    assert!(matches!(
+        update_error,
+        Some(UpdateError::BadEnvelopeBody(FormErr::IncorrectType(_)))
+    ));
+}
+
+#[derive(Default, Debug)]
+struct MultiTestContextInner {
+    senders: HashMap<RoutingAddr, mpsc::Sender<TaggedEnvelope>>,
+    receivers: HashMap<RoutingAddr, mpsc::Receiver<TaggedEnvelope>>,
+}
+
+#[derive(Debug, Clone)]
+struct MultiTestContext(
+    Arc<parking_lot::Mutex<MultiTestContextInner>>,
+    mpsc::Sender<Eff>,
+);
+
+impl MultiTestContext {
+    fn new(spawner: mpsc::Sender<Eff>) -> Self {
+        MultiTestContext(Default::default(), spawner)
+    }
+
+    fn take_receiver(&self, addr: RoutingAddr) -> Option<mpsc::Receiver<TaggedEnvelope>> {
+        let mut lock = self.0.lock();
+        if lock.senders.contains_key(&addr) {
+            lock.receivers.remove(&addr)
+        } else {
+            let (tx, rx) = mpsc::channel(5);
+            lock.senders.insert(addr, tx);
+            Some(rx)
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
+
+impl AgentExecutionContext for MultiTestContext {
+    type Router = MultiTestRouter;
+
+    fn router_handle(&self) -> Self::Router {
+        MultiTestRouter(self.0.clone())
+    }
+
+    fn spawner(&self) -> Sender<Eff> {
+        self.1.clone()
+    }
+}
+
+impl ServerRouter for MultiTestRouter {
+    type Sender = TestSender;
+
+    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
+        let mut lock = self.0.lock();
+        if let Some(sender) = lock.senders.get(&addr) {
+            Ok(TestSender {
+                addr,
+                inner: sender.clone(),
+            })
+        } else {
+            let (tx, rx) = mpsc::channel(5);
+            lock.senders.insert(addr, tx.clone());
+            lock.receivers.insert(addr, rx);
+            Ok(TestSender { addr, inner: tx })
+        }
+    }
+}
+
+fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
+    let (spawn_tx, spawn_rx) = mpsc::channel(5);
+
+    let context = MultiTestContext::new(spawn_tx);
+    let spawn_task = spawn_rx.for_each_concurrent(None, |t| t).boxed();
+
+    (context, spawn_task)
+}
+
+#[tokio::test]
+async fn handle_action_lane_non_fatal_uplink_error() {
+    let route = route();
+
+    let (context, spawn_task) = make_multi_context();
+    let config = make_config();
+
+    let (task, mut input) = make_action_lane_task(config, context.clone());
+
+    let addr1 = RoutingAddr::remote(5);
+    let addr2 = RoutingAddr::remote(10);
+
+    let mut router_rx1 = context.take_receiver(addr1).unwrap();
+    let mut router_rx2 = context.take_receiver(addr2).unwrap();
+
+    drop(context);
+
+    let io_task = async move {
+        input.send_link(addr1).await;
+        expect_envelope(
+            &mut router_rx1,
+            addr1,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+
+        drop(router_rx1);
+        input.send_command(addr1, 3).await;
+
+        input.send_link(addr2).await;
+        expect_envelope(
+            &mut router_rx2,
+            addr2,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+
+        drop(input);
+    };
+
+    let (_, result, _) = join3(spawn_task, task, io_task).await;
+
+    match result.as_ref().map(|v| v.as_slice()) {
+        Ok([report]) => {
+            let UplinkErrorReport { error, addr } = report;
+            assert_eq!(*addr, addr1);
+            assert!(matches!(error, UplinkError::ChannelDropped));
+        }
+        ow => {
+            panic!("Unexpected result {:?}", ow);
+        }
+    }
+}
+
+#[tokio::test]
+async fn handle_command_lane_commands() {
+    let (context, mut router_rx, spawn_task) = make_context();
+    let config = make_config();
+
+    let (task, mut collector_rx, mut input) = make_command_lane_task(config, context);
+
+    let addr = RoutingAddr::remote(5);
+
+    let io_task = async move {
+        input.send_command(addr, 45).await;
+        let received = collector_rx.recv().await;
+        assert_eq!(received, Some(45));
+        drop(input);
+    };
+
+    let (_, result, _) = join3(spawn_task, task, io_task).await;
+
+    assert!(router_rx.recv().await.is_none());
+
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }

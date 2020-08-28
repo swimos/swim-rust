@@ -456,12 +456,21 @@ async fn send_action(
     action: UplinkAction,
 ) -> bool {
     event!(Level::TRACE, DISPATCH_ACTION, ?route, ?addr, ?action);
-    sender
-        .send(TaggedAction(addr, UplinkAction::Link))
-        .await
-        .is_ok()
+    sender.send(TaggedAction(addr, action)).await.is_ok()
 }
 
+/// Run the [`Envelope`] IO for an action lane. This is different to the standard `run_lane_io` as
+/// the update and uplink components of an action lane are interleaved and different uplinks will
+/// receive entirely different messages.
+///
+/// #Arguments
+/// * `lane` - The action lane.
+/// * `feedback` - Whether the lane provides feedback (and so can have uplinks).
+/// * `envelopes` - The stream of incoming envelopes.
+/// * `config` - Agent configuration parameters.
+/// * `context` - The agent execution context, providing task scheduling and outgoing envelope
+/// routing.
+/// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_action_lane_io<Command, Response>(
     lane: ActionLane<Command, Response>,
     feedback: bool,
@@ -478,6 +487,8 @@ where
     let _enter = span.enter();
 
     let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
+    let (upd_done_tx, upd_done_rx) = trigger::trigger();
+    let envelopes = envelopes.take_until(upd_done_rx);
 
     if feedback {
         let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
@@ -487,10 +498,12 @@ where
         let updater =
             ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
 
-        let update_task =
-            updater
-                .run_update(update_rx)
-                .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
+        let update_task = async move {
+            let result = updater.run_update(update_rx).await;
+            upd_done_tx.trigger();
+            result
+        }
+        .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
         let uplinks = ActionLaneUplinks::new(feedback_rx, route.clone());
         let uplink_task = uplinks
@@ -510,7 +523,12 @@ where
         combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
     } else {
         let updater = ActionLaneUpdateTask::new(lane.clone(), None, config.cleanup_timeout);
-        let update_task = updater.run_update(update_rx);
+        let update_task = async move {
+            let result = updater.run_update(update_rx).await;
+            upd_done_tx.trigger();
+            result
+        }
+        .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
         let envelope_task = simple_action_envelope_task(envelopes, update_tx);
         let (upd_result, _) = join(update_task, envelope_task).await;
         combine_results(route, upd_result.err(), false, vec![])
