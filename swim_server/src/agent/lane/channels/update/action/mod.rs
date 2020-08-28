@@ -108,8 +108,7 @@ where
                             }
                             Some(Either::Right(Ok((addr, msg)))) => {
                                 let rx = commander.command_and_await(msg).await;
-                                responses
-                                    .push(rx.map(move |r| r.map(move |resp| (addr, resp))));
+                                responses.push(rx.map(move |r| r.map(move |resp| (addr, resp))));
                             }
                             Some(Either::Right(Err(e))) => {
                                 break Err(e.into());

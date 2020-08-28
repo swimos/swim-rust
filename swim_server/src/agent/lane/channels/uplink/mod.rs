@@ -68,7 +68,7 @@ pub enum UplinkMessage<Ev> {
 #[derive(Debug)]
 pub enum UplinkError {
     /// The subscriber to the uplink has stopped listening.
-    SenderDropped,
+    ChannelDropped,
     /// The lane stopped reporting its state changes.
     LaneStoppedReporting,
     /// The uplink attempted to execute a transaction against its lane but failed.
@@ -108,7 +108,7 @@ impl From<MapLaneSyncError> for UplinkError {
 impl Display for UplinkError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            UplinkError::SenderDropped => write!(f, "Uplink send channel was dropped."),
+            UplinkError::ChannelDropped => write!(f, "Uplink send channel was dropped."),
             UplinkError::LaneStoppedReporting => write!(f, "The lane stopped reporting its state."),
             UplinkError::FailedTransaction(err) => {
                 write!(f, "The uplink failed to execute a transaction: {}", err)
@@ -147,7 +147,7 @@ where
     sender
         .send_item(msg)
         .await
-        .map_err(|_| UplinkError::SenderDropped)
+        .map_err(|_| UplinkError::ChannelDropped)
 }
 
 /// Date required to run an uplink.
@@ -190,7 +190,7 @@ where
             Err(error) => {
                 event!(Level::ERROR, message = UPLINK_FAILED, ?error);
                 match error {
-                    UplinkError::SenderDropped => {
+                    UplinkError::ChannelDropped => {
                         event!(Level::ERROR, FAILED_UNLINK);
                         false
                     }

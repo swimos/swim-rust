@@ -56,7 +56,6 @@ use utilities::sync::trigger;
 pub struct LaneIoError {
     pub route: RelativePath,
     pub update_error: Option<UpdateError>,
-    pub uplink_cleanup_failed: bool,
     pub uplink_errors: Vec<UplinkErrorReport>,
 }
 
@@ -65,35 +64,23 @@ impl LaneIoError {
         LaneIoError {
             route,
             update_error: Some(err),
-            uplink_cleanup_failed: false,
             uplink_errors: vec![],
         }
     }
 
-    pub fn for_uplink_errors(
-        route: RelativePath,
-        uplink_cleanup_failed: bool,
-        errs: Vec<UplinkErrorReport>,
-    ) -> Self {
+    pub fn for_uplink_errors(route: RelativePath, errs: Vec<UplinkErrorReport>) -> Self {
         assert!(!errs.is_empty());
         LaneIoError {
             route,
             update_error: None,
-            uplink_cleanup_failed,
             uplink_errors: errs,
         }
     }
 
-    pub fn new(
-        route: RelativePath,
-        upd: UpdateError,
-        uplink_cleanup_failed: bool,
-        upl: Vec<UplinkErrorReport>,
-    ) -> Self {
+    pub fn new(route: RelativePath, upd: UpdateError, upl: Vec<UplinkErrorReport>) -> Self {
         LaneIoError {
             route,
             update_error: Some(upd),
-            uplink_cleanup_failed,
             uplink_errors: upl,
         }
     }
@@ -104,13 +91,9 @@ impl Display for LaneIoError {
         let LaneIoError {
             route,
             update_error,
-            uplink_cleanup_failed,
             uplink_errors,
         } = self;
         writeln!(f, "IO tasks failed for lane: \"{}\".", route)?;
-        if *uplink_cleanup_failed {
-            writeln!(f, "- Uplink cleanup failed.")?;
-        }
         if let Some(upd) = update_error {
             writeln!(f, "- update_error = {}", upd)?;
         }
@@ -311,7 +294,7 @@ where
 
     let (_, upd_res, (upl_fatal, upl_errs)) =
         join3(uplink_spawn_task, update_task, envelope_task).await;
-    combine_results(route, upd_res.err(), false, upl_fatal, upl_errs)
+    combine_results(route, upd_res.err(), upl_fatal, upl_errs)
 }
 
 impl<T> LaneMessageHandler for ValueLane<T>
@@ -509,7 +492,7 @@ where
                 .run_update(update_rx)
                 .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-        let uplinks = ActionLaneUplinks::new(feedback_rx, route.clone(), config.cleanup_timeout);
+        let uplinks = ActionLaneUplinks::new(feedback_rx, route.clone());
         let uplink_task = uplinks
             .run(uplink_rx, context.router_handle(), err_tx)
             .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
@@ -522,44 +505,28 @@ where
             uplink_tx,
             err_rx,
         );
-        let (upd_result, uplink_task_state, (uplink_fatal, uplink_errs)) =
+        let (upd_result, _, (uplink_fatal, uplink_errs)) =
             join3(update_task, uplink_task, envelope_task).await;
-        combine_results(
-            route,
-            upd_result.err(),
-            !uplink_task_state,
-            uplink_fatal,
-            uplink_errs,
-        )
+        combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
     } else {
         let updater = ActionLaneUpdateTask::new(lane.clone(), None, config.cleanup_timeout);
         let update_task = updater.run_update(update_rx);
         let envelope_task = simple_action_envelope_task(envelopes, update_tx);
         let (upd_result, _) = join(update_task, envelope_task).await;
-        combine_results(route, upd_result.err(), false, false, vec![])
+        combine_results(route, upd_result.err(), false, vec![])
     }
 }
 
 fn combine_results(
     route: RelativePath,
     update_error: Option<UpdateError>,
-    uplinks_task_state: bool,
     uplink_fatal: bool,
     uplink_errs: Vec<UplinkErrorReport>,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError> {
     if let Some(upd_err) = update_error {
-        Err(LaneIoError::new(
-            route,
-            upd_err,
-            uplinks_task_state,
-            uplink_errs,
-        ))
+        Err(LaneIoError::new(route, upd_err, uplink_errs))
     } else if uplink_fatal && !uplink_errs.is_empty() {
-        Err(LaneIoError::for_uplink_errors(
-            route,
-            uplinks_task_state,
-            uplink_errs,
-        ))
+        Err(LaneIoError::for_uplink_errors(route, uplink_errs))
     } else {
         Ok(uplink_errs)
     }

@@ -12,21 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::action::{ActionLane, Action};
-use tokio::sync::mpsc;
 use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
-use std::time::Duration;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
+use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::routing::RoutingAddr;
 use futures::future::join;
+use std::time::Duration;
 use swim_common::form::FormErr;
+use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn cmd_no_feedback() {
-
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) =
-        mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
 
     let lane: ActionLane<i32, ()> = ActionLane::new(act_tx);
 
@@ -53,10 +51,8 @@ async fn cmd_no_feedback() {
 
 #[tokio::test]
 async fn failure_no_feedback() {
-
     let (act_tx, _act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) =
-        mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
 
     let lane: ActionLane<i32, ()> = ActionLane::new(act_tx);
 
@@ -67,12 +63,17 @@ async fn failure_no_feedback() {
     let _msg_tx_cpy = msg_tx.clone();
 
     let assertion_task = async move {
-        assert!(msg_tx.send(Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))).await.is_ok());
-
+        assert!(msg_tx
+            .send(Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted)))
+            .await
+            .is_ok());
     };
 
     let (result, _) = join(update_task, assertion_task).await;
-    assert!(matches!(result, Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))));
+    assert!(matches!(
+        result,
+        Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
+    ));
 }
 
 async fn check_receive(act_rx: &mut mpsc::Receiver<Action<i32, i32>>, expect: i32, feedback: i32) {
@@ -83,16 +84,18 @@ async fn check_receive(act_rx: &mut mpsc::Receiver<Action<i32, i32>>, expect: i3
     match responder {
         Some(responder) => {
             assert!(responder.send(feedback).is_ok());
-        },
+        }
         _ => {
             panic!("Responder not provided.");
         }
     }
 }
 
-async fn check_feedback(feedback_rx: &mut mpsc::Receiver<(RoutingAddr, i32)>,
-                        expected_addr: RoutingAddr,
-                        expected_value: i32) {
+async fn check_feedback(
+    feedback_rx: &mut mpsc::Receiver<(RoutingAddr, i32)>,
+    expected_addr: RoutingAddr,
+    expected_value: i32,
+) {
     let maybe_fed_back = feedback_rx.recv().await;
     assert!(maybe_fed_back.is_some());
     let (fed_back_addr, fed_back_value) = maybe_fed_back.unwrap();
@@ -102,10 +105,8 @@ async fn check_feedback(feedback_rx: &mut mpsc::Receiver<(RoutingAddr, i32)>,
 
 #[tokio::test]
 async fn cmd_with_feedback() {
-
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) =
-        mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -131,10 +132,8 @@ async fn cmd_with_feedback() {
 
 #[tokio::test]
 async fn multiple_cmd_with_feedback() {
-
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) =
-        mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -164,10 +163,8 @@ async fn multiple_cmd_with_feedback() {
 
 #[tokio::test]
 async fn multiple_cmd_with_out_of_order_feedback() {
-
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) =
-        mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -183,8 +180,12 @@ async fn multiple_cmd_with_out_of_order_feedback() {
         assert!(msg_tx.send(Ok((addr1, 13))).await.is_ok());
         assert!(msg_tx.send(Ok((addr2, 42))).await.is_ok());
 
-        let Action { responder: first, .. } = act_rx.recv().await.unwrap();
-        let Action { responder: second, .. } = act_rx.recv().await.unwrap();
+        let Action {
+            responder: first, ..
+        } = act_rx.recv().await.unwrap();
+        let Action {
+            responder: second, ..
+        } = act_rx.recv().await.unwrap();
 
         assert!(second.unwrap().send(2).is_ok());
         assert!(first.unwrap().send(1).is_ok());
@@ -200,10 +201,8 @@ async fn multiple_cmd_with_out_of_order_feedback() {
 
 #[tokio::test]
 async fn cleanup_on_error() {
-
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) =
-        mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -224,23 +223,26 @@ async fn cleanup_on_error() {
         check_receive(&mut act_rx, 13, -4).await;
         check_feedback(&mut feedback_rx, addr1, -4).await;
 
-        assert!(msg_tx.send(Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))).await.is_ok());
+        assert!(msg_tx
+            .send(Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted)))
+            .await
+            .is_ok());
 
         check_receive(&mut act_rx, 42, 56).await;
         check_feedback(&mut feedback_rx, addr2, 56).await;
-
     };
 
     let (result, _) = join(update_task, assertion_task).await;
-    assert!(matches!(result, Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))));
+    assert!(matches!(
+        result,
+        Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
+    ));
 }
 
 #[tokio::test]
 async fn fail_on_feedback_dropped() {
-
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) =
-        mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -259,7 +261,6 @@ async fn fail_on_feedback_dropped() {
         assert!(msg_tx.send(Ok((addr1, 13))).await.is_ok());
 
         check_receive(&mut act_rx, 13, -4).await;
-
     };
 
     let (result, _) = join(update_task, assertion_task).await;

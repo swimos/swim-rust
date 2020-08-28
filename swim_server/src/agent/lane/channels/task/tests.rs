@@ -65,9 +65,8 @@ fn lane_io_err_display_uplink() {
     let route = RelativePath::new("node", "lane");
     let err = LaneIoError::for_uplink_errors(
         route,
-        false,
         vec![UplinkErrorReport {
-            error: UplinkError::SenderDropped,
+            error: UplinkError::ChannelDropped,
             addr: RoutingAddr::remote(1),
         }],
     );
@@ -85,9 +84,8 @@ fn lane_io_err_display_uplink() {
     let route = RelativePath::new("node", "lane");
     let err = LaneIoError::for_uplink_errors(
         route,
-        true,
         vec![UplinkErrorReport {
-            error: UplinkError::SenderDropped,
+            error: UplinkError::ChannelDropped,
             addr: RoutingAddr::remote(1),
         }],
     );
@@ -97,7 +95,6 @@ fn lane_io_err_display_uplink() {
         lines,
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
-            "- Uplink cleanup failed.",
             "- uplink_errors =",
             "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
         ]
@@ -110,9 +107,8 @@ fn lane_io_err_display_both() {
     let err = LaneIoError::new(
         route,
         UpdateError::BadEnvelopeBody(FormErr::Malformatted),
-        false,
         vec![UplinkErrorReport {
-            error: UplinkError::SenderDropped,
+            error: UplinkError::ChannelDropped,
             addr: RoutingAddr::remote(1),
         }],
     );
@@ -656,10 +652,8 @@ async fn fail_on_update_error() {
         Err(LaneIoError {
             route,
             update_error,
-            uplink_cleanup_failed,
             uplink_errors,
         }) => {
-            assert!(!uplink_cleanup_failed);
             assert_eq!(route, RelativePath::new("node", "lane"));
             assert!(matches!(
                 update_error,
@@ -744,10 +738,8 @@ async fn fail_after_too_many_fatal_uplink_errors() {
         Err(LaneIoError {
             route,
             update_error: None,
-            uplink_cleanup_failed,
             uplink_errors,
         }) => {
-            assert!(!uplink_cleanup_failed);
             assert_eq!(route, RelativePath::new("node", "lane"));
             match uplink_errors.as_slice() {
                 [UplinkErrorReport {
@@ -810,10 +802,8 @@ async fn report_uplink_failures_on_update_failure() {
         Err(LaneIoError {
             route,
             update_error,
-            uplink_cleanup_failed,
             uplink_errors,
         }) => {
-            assert!(!uplink_cleanup_failed);
             assert_eq!(route, RelativePath::new("node", "lane"));
             assert!(matches!(
                 update_error,

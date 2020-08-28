@@ -23,33 +23,25 @@ use futures::{select_biased, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{hash_map::Entry, HashMap};
 use std::marker::PhantomData;
-use std::time::Duration;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::RelativePath;
-use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
+#[cfg(test)]
+mod tests;
+
+/// Manages remote uplinks to an [`ActionLane`].
 pub struct ActionLaneUplinks<Response> {
-    /// Stream of updates to the lane.
     responses: mpsc::Receiver<(RoutingAddr, Response)>,
     route: RelativePath,
-    response_timeout: Duration,
 }
 
 impl<Response> ActionLaneUplinks<Response> {
-    pub fn new(
-        responses: mpsc::Receiver<(RoutingAddr, Response)>,
-        route: RelativePath,
-        response_timeout: Duration,
-    ) -> Self {
-        ActionLaneUplinks {
-            responses,
-            route,
-            response_timeout,
-        }
+    pub fn new(responses: mpsc::Receiver<(RoutingAddr, Response)>, route: RelativePath) -> Self {
+        ActionLaneUplinks { responses, route }
     }
 }
 
@@ -57,8 +49,8 @@ const LINKING: &str = "Linking uplink an action lane.";
 const SYNCING: &str = "Syncing with an action lane (this is a no-op).";
 const UNLINKING: &str = "Unlinking from an action lane.";
 const AWAITING_PENDING: &str = "Awaiting pending responses.";
-const RESPONSE_TIMEOUT: &str = "Awaiting pending responses timed out.";
 const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
+const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
 
 impl<Response> ActionLaneUplinks<Response>
 where
@@ -69,15 +61,10 @@ where
         uplink_actions: impl Stream<Item = TaggedAction>,
         router: Router,
         err_tx: mpsc::Sender<UplinkErrorReport>,
-    ) -> bool
-    where
+    ) where
         Router: ServerRouter,
     {
-        let ActionLaneUplinks {
-            responses,
-            route,
-            response_timeout,
-        } = self;
+        let ActionLaneUplinks { responses, route } = self;
 
         let mut uplinks: ActionUplinks<Response, Router> =
             ActionUplinks::new(router, err_tx, route);
@@ -97,9 +84,6 @@ where
                     uplinks
                         .send_if_open(UplinkMessage::Event(RespMsg(response)), addr)
                         .await;
-                }
-                Either::Left(_) => {
-                    return false;
                 }
                 Either::Right(Some(TaggedAction(addr, act))) => match act {
                     UplinkAction::Link => {
@@ -139,29 +123,21 @@ where
                         }
                     }
                 },
-                Either::Right(_) => {
+                _ => {
                     break;
                 }
             }
         }
 
-        loop {
-            event!(Level::DEBUG, AWAITING_PENDING);
-            match timeout(response_timeout, responses.next()).await {
-                Ok(Some((addr, response))) => {
-                    uplinks
-                        .send_if_open(UplinkMessage::Event(RespMsg(response)), addr)
-                        .await
-                }
-                Ok(None) => {
-                    break true;
-                }
-                _ => {
-                    event!(Level::ERROR, RESPONSE_TIMEOUT, ?response_timeout);
-                    break false;
-                }
-            }
+        event!(Level::DEBUG, AWAITING_PENDING);
+        while let Some((addr, response)) = responses.next().await {
+            uplinks
+                .send_if_open(UplinkMessage::Event(RespMsg(response)), addr)
+                .await;
         }
+
+        event!(Level::DEBUG, UNLINKING_ALL);
+        uplinks.unlink_all().await;
     }
 }
 
@@ -173,6 +149,7 @@ impl<R: Form> From<RespMsg<R>> for Value {
     }
 }
 
+/// Wraps a map of uplinks and provides compound operations on them to the uplink task.
 struct ActionUplinks<Msg, Router: ServerRouter> {
     router: Router,
     uplinks: HashMap<RoutingAddr, UplinkMessageSender<Router::Sender>>,
@@ -198,6 +175,7 @@ where
         }
     }
 
+    /// Get the router handle associated with an address or create a new one if necessary.
     fn get_sender(
         &mut self,
         addr: RoutingAddr,
@@ -230,6 +208,8 @@ where
         }
     }
 
+    /// Attempt to send a message to the specified endpoint, returning whether the operation
+    /// succeeded.
     async fn send_msg(
         &mut self,
         msg: UplinkMessage<RespMsg<Msg>>,
@@ -245,6 +225,8 @@ where
         }
     }
 
+    /// Send a message to the speciffied endpoint only if there is already a router handle in the
+    /// map.
     async fn send_if_open(&mut self, msg: UplinkMessage<RespMsg<Msg>>, addr: RoutingAddr) {
         if let Some(sender) = self.uplinks.get_mut(&addr) {
             if sender.send_item(msg).await.is_err() {
@@ -254,6 +236,7 @@ where
         }
     }
 
+    /// Remove the uplink to a specified endpoint, sending an unlink message if possible.
     async fn unlink(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping> {
         let ActionUplinks {
             router,
@@ -277,11 +260,26 @@ where
             Err(RouterStopping)
         }
     }
+
+    /// Attempt to send an unlink mesage to all remaining uplinks.
+    async fn unlink_all(self) {
+        let ActionUplinks {
+            uplinks,
+            mut err_tx,
+            ..
+        } = self;
+        for (addr, mut sender) in uplinks.into_iter() {
+            let msg: UplinkMessage<RespMsg<Msg>> = UplinkMessage::Unlinked;
+            if sender.send_item(msg).await.is_err() {
+                handle_err(&mut err_tx, addr).await;
+            }
+        }
+    }
 }
 
 async fn handle_err(err_tx: &mut mpsc::Sender<UplinkErrorReport>, addr: RoutingAddr) {
     if err_tx
-        .send(UplinkErrorReport::new(UplinkError::SenderDropped, addr))
+        .send(UplinkErrorReport::new(UplinkError::ChannelDropped, addr))
         .await
         .is_err()
     {
