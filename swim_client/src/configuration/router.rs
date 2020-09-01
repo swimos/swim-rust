@@ -323,7 +323,7 @@ fn try_interval_strat_from_items(
                 NonZeroUsize::new(DEFAULT_RETRIES).unwrap(),
             ))
         });
-        delay = delay.or(Some(Duration::from_secs(DEFAULT_INTERVAL)));
+        delay = delay.or_else(|| Some(Duration::from_secs(DEFAULT_INTERVAL)));
     }
 
     Ok(RetryStrategy::interval(
@@ -384,8 +384,9 @@ fn try_exponential_strat_from_items(
     }
 
     if use_defaults {
-        max_interval = max_interval.or(Some(Duration::from_secs(DEFAULT_MAX_INTERVAL)));
-        max_backoff = max_backoff.or(Some(Quantity::Finite(Duration::from_secs(DEFAULT_BACKOFF))));
+        max_interval = max_interval.or_else(|| Some(Duration::from_secs(DEFAULT_MAX_INTERVAL)));
+        max_backoff =
+            max_backoff.or_else(|| Some(Quantity::Finite(Duration::from_secs(DEFAULT_BACKOFF))));
     }
 
     Ok(RetryStrategy::exponential(
