@@ -853,14 +853,15 @@ pub trait SwimStreamExt: Stream {
     /// ```
     /// use futures::executor::block_on;
     /// use futures::StreamExt;
+    /// use futures::future::ready;
     /// use futures::stream::iter;
     /// use utilities::future::*;
     /// use utilities::future::SwimStreamExt;
     ///
     /// let inputs = iter(vec![1, 2, 3, 4].into_iter());
     /// let outputs: Vec<(i32, i32)> = block_on(inputs.owning_scan(0, |state, i| {
-    ///     Some((i, (state, i)))
-    /// }));
+    ///     ready(Some((i, (state, i))))
+    /// }).collect::<Vec<_>>());
     /// assert_eq!(outputs, vec![(0, 1), (1, 2), (2, 3), (3, 4)]);
     /// ```
     fn owning_scan<State, F, Fut, B>(

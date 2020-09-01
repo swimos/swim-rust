@@ -406,7 +406,7 @@ where
 
     let mut err_acc = UplinkErrorAcc::new(route.clone(), config.max_fatal_uplink_errors);
 
-    let failed: bool = loop {
+    let mut failed: bool = loop {
         let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
             maybe_env = envelopes.next() => maybe_env.map(Either::Left),
             maybe_err = err_rx.next() => maybe_err.map(Either::Right),
@@ -446,6 +446,13 @@ where
             }
         }
     };
+    drop(commands);
+    drop(actions);
+    while let Some(error) = err_rx.next().await {
+        if err_acc.add(error).is_err() {
+            failed = true;
+        }
+    }
     (failed, err_acc.take_errors())
 }
 

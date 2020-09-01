@@ -1255,6 +1255,8 @@ async fn handle_action_lane_non_fatal_uplink_error() {
     let mut router_rx1 = context.take_receiver(addr1).unwrap();
     let mut router_rx2 = context.take_receiver(addr2).unwrap();
 
+    let router_rx2_ref = &mut router_rx2;
+
     drop(context);
 
     let io_task = async move {
@@ -1271,7 +1273,7 @@ async fn handle_action_lane_non_fatal_uplink_error() {
 
         input.send_link(addr2).await;
         expect_envelope(
-            &mut router_rx2,
+            router_rx2_ref,
             addr2,
             Envelope::linked(&route.node, &route.lane),
         )
