@@ -12,26 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod pending;
+mod selector;
+
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
-use futures::future::{join, FusedFuture};
+use futures::future::join;
 use futures::stream::FuturesUnordered;
 use futures::task::{Context, Poll};
 use futures::{ready, select, select_biased, FutureExt};
 use futures::{Stream, StreamExt};
 use pin_utils::core_reexport::fmt::Formatter;
 use pin_utils::pin_mut;
-use std::borrow::Borrow;
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::future::Future;
-use std::hash::Hash;
 use std::pin::Pin;
 use swim_common::warp::envelope::OutgoingLinkMessage;
 use swim_common::warp::path::RelativePath;
@@ -238,41 +238,6 @@ where
     }
 }
 
-struct ReadyFutureInner<T, L> {
-    sender: mpsc::Sender<T>,
-    label: L,
-}
-
-struct ReadyFuture<T, L> {
-    inner: Option<ReadyFutureInner<T, L>>,
-}
-
-impl<T, L> ReadyFuture<T, L> {
-    fn new(label: L, sender: mpsc::Sender<T>) -> Self {
-        ReadyFuture {
-            inner: Some(ReadyFutureInner { label, sender }),
-        }
-    }
-}
-
-impl<T: Unpin, L: Unpin> Future for ReadyFuture<T, L> {
-    type Output = (L, Result<mpsc::Sender<T>, ()>);
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let ReadyFutureInner { sender, .. } = self
-            .as_mut()
-            .get_mut()
-            .inner
-            .as_mut()
-            .expect("Ready future polled twice.");
-        let result = ready!(sender.poll_ready(cx));
-        let ReadyFutureInner { sender, label } = match self.get_mut().inner.take() {
-            Some(inner) => inner,
-            _ => unreachable!(),
-        };
-        Poll::Ready((label, result.map(|_| sender).map_err(|_| ())))
-    }
-}
 
 struct AwaitNewLaneInner<T, L> {
     rx: oneshot::Receiver<mpsc::Sender<T>>,
@@ -310,138 +275,14 @@ impl<T: Unpin, L: Unpin> Future for AwaitNewLane<T, L> {
     }
 }
 
-struct Selector<T, L>(FuturesUnordered<ReadyFuture<T, L>>);
-
-impl<T, L> Default for Selector<T, L> {
-    fn default() -> Self {
-        Selector(FuturesUnordered::default())
-    }
-}
-
-type SelectResult<T, L> = Option<(L, Result<mpsc::Sender<T>, ()>)>;
-
-impl<T, L> Selector<T, L>
-where
-    T: Send + Unpin,
-    L: Send + Unpin,
-{
-    fn is_empty(&self) -> bool {
-        let Selector(inner) = self;
-        inner.is_empty()
-    }
-
-    fn add(&mut self, label: L, sender: mpsc::Sender<T>) {
-        let Selector(inner) = self;
-        inner.push(ReadyFuture::new(label, sender));
-    }
-
-    fn select<'a>(&'a mut self) -> impl FusedFuture<Output = SelectResult<T, L>> + Send + 'a {
-        let Selector(inner) = self;
-        inner.next()
-    }
-}
 
 struct EnvelopeDispatcher {
-    selector: Selector<TaggedClientEnvelope, String>,
+    selector: selector::Selector<TaggedClientEnvelope, String>,
     idle_senders: HashMap<String, Option<mpsc::Sender<TaggedClientEnvelope>>>,
     open_tx: mpsc::Sender<OpenRequest>,
     await_new: FuturesUnordered<AwaitNewLane<TaggedClientEnvelope, String>>,
-    pending: PendingEnvelopes,
+    pending: pending::PendingEnvelopes,
     stalled: Option<(String, TaggedClientEnvelope)>,
-}
-
-#[derive(Debug)]
-struct PendingEnvelopes {
-    max_pending: usize,
-    num_pending: usize,
-    pending: HashMap<String, VecDeque<TaggedClientEnvelope>>,
-    queue_store: Vec<VecDeque<TaggedClientEnvelope>>,
-}
-
-impl PendingEnvelopes {
-    fn new(max_pending: usize) -> Self {
-        PendingEnvelopes {
-            max_pending,
-            num_pending: 0,
-            pending: Default::default(),
-            queue_store: vec![],
-        }
-    }
-
-    fn enqueue(
-        &mut self,
-        lane: String,
-        envelope: TaggedClientEnvelope,
-    ) -> Result<(), (String, TaggedClientEnvelope)> {
-        self.push(lane, envelope, false)
-    }
-
-    fn replace(
-        &mut self,
-        lane: String,
-        envelope: TaggedClientEnvelope,
-    ) -> Result<(), (String, TaggedClientEnvelope)> {
-        self.push(lane, envelope, true)
-    }
-
-    fn push(
-        &mut self,
-        lane: String,
-        envelope: TaggedClientEnvelope,
-        front: bool,
-    ) -> Result<(), (String, TaggedClientEnvelope)> {
-        let PendingEnvelopes {
-            max_pending,
-            num_pending,
-            pending,
-            queue_store,
-        } = self;
-        if *num_pending < *max_pending {
-            let queue = match pending.entry(lane) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => {
-                    entry.insert(queue_store.pop().unwrap_or_else(VecDeque::new))
-                }
-            };
-            if front {
-                queue.push_front(envelope);
-            } else {
-                queue.push_back(envelope);
-            }
-            *num_pending += 1;
-            Ok(())
-        } else {
-            Err((lane, envelope))
-        }
-    }
-
-    fn pop<Q>(&mut self, lane: &Q) -> Option<TaggedClientEnvelope>
-    where
-        String: Borrow<Q>,
-        Q: Hash + Eq,
-    {
-        let PendingEnvelopes {
-            num_pending,
-            pending,
-            queue_store,
-            ..
-        } = self;
-        let (envelope, cleared_queue) = if let Some(queue) = pending.get_mut(lane) {
-            let envelope = queue.pop_front();
-            (envelope, queue.is_empty())
-        } else {
-            (None, false)
-        };
-        if cleared_queue {
-            if let Some(queue) = pending.remove(lane) {
-                queue_store.push(queue);
-            }
-        }
-        if envelope.is_some() {
-            *num_pending -= 1;
-        }
-        envelope
-    }
 }
 
 const GUARANTEED_CAPACITY: &str = "Inserting pending with guaranteed capacity should succeed.";
@@ -457,7 +298,7 @@ impl EnvelopeDispatcher {
             idle_senders: Default::default(),
             open_tx,
             await_new: Default::default(),
-            pending: PendingEnvelopes::new(max_concurrency),
+            pending: pending::PendingEnvelopes::new(max_concurrency),
             stalled: None,
         }
     }
