@@ -70,8 +70,7 @@ impl RustClient {
         on_remove_callback: js_sys::Function,
     ) -> RustClient {
         spawn_local(async move {
-            let fac = WasmWsFactory::new(5);
-            let mut swim_client = SwimClient::new_with_default(fac).await;
+            let mut swim_client = SwimClient::new_with_default().await;
 
             let (_downlink, mut receiver) = swim_client
                 .untyped_map_downlink(Self::path())

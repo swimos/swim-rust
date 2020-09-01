@@ -216,8 +216,8 @@ pub fn sync_map_lane<'a, K, V, Events, Retries>(
 where
     K: Form + Send + Sync + Debug + 'static,
     V: Any + Send + Sync,
-    Events: FusedStream<Item = MapLaneEvent<K, V>> + Unpin,
-    Retries: RetryManager + 'static,
+    Events: FusedStream<Item = MapLaneEvent<K, V>> + Send + Unpin,
+    Retries: RetryManager + Send + 'static,
 {
     let init = (events, MapLaneSyncState::Init(retry));
 
@@ -343,5 +343,5 @@ where
                 }
             }
         }
-    })
+    }).boxed()
 }

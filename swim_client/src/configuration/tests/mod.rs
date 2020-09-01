@@ -2,7 +2,6 @@ use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, MuxMode, OnInvalidMessage,
 };
 use crate::configuration::router::RouterParams;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::interface::SwimClient;
 use std::fs;
 use std::fs::File;
@@ -297,12 +296,7 @@ fn test_conf_from_file_full_unordered() {
 async fn test_client_file_conf_non_utf8_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/non-utf-8-config.recon").unwrap();
-    let result = SwimClient::new_from_file(
-        file,
-        false,
-        TungsteniteWsFactory::new(5, Default::default()).await,
-    )
-    .await;
+    let result = SwimClient::new_from_file(file, false).await;
 
     if let Err(err) = result {
         assert_eq!(
@@ -318,12 +312,7 @@ async fn test_client_file_conf_non_utf8_error() {
 async fn test_client_file_conf_recon_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/parse-err-config.recon").unwrap();
-    let result = SwimClient::new_from_file(
-        file,
-        false,
-        TungsteniteWsFactory::new(5, Default::default()).await,
-    )
-    .await;
+    let result = SwimClient::new_from_file(file, false).await;
 
     if let Err(err) = result {
         assert_eq!(

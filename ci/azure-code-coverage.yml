@@ -21,7 +21,7 @@ jobs:
     steps:
       - template: azure-install-rust.yml
         parameters:
-          rust_version: 1.45.2
+          rust_version: 1.46.0
       - template: azure-install-sccache.yml
 
       - script: cargo install cargo-tarpaulin
