@@ -559,7 +559,8 @@ pub mod downlink {
             if use_defaults {
                 back_pressure = back_pressure.or(Some(DEFAULT_BACK_PRESSURE));
                 mux_mode = mux_mode.or_else(|| Some(MuxMode::default()));
-                idle_timeout = idle_timeout.or(Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)));
+                idle_timeout =
+                    idle_timeout.or_else(|| Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)));
                 buffer_size = buffer_size.or(Some(DEFAULT_DOWNLINK_BUFFER_SIZE));
                 on_invalid = on_invalid.or(Some(DEFAULT_ON_INVALID));
                 yield_after = yield_after.or(Some(DEFAULT_YIELD_AFTER));
