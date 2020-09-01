@@ -19,6 +19,11 @@ use crate::routing::TaggedClientEnvelope;
 use std::borrow::Borrow;
 use std::hash::Hash;
 
+#[cfg(test)]
+mod tests;
+
+/// Queue of pending [`Envelope`]s, by lane, that will reject new envelopes when a maximum number
+/// is reached. Queues are recycled once they become empty and used for other lanes.
 #[derive(Debug)]
 pub struct PendingEnvelopes {
     max_pending: usize,
@@ -29,6 +34,7 @@ pub struct PendingEnvelopes {
 
 impl PendingEnvelopes {
 
+    /// The maximum number of envelopes that the queue will hold (for all lanes).
     pub fn new(max_pending: usize) -> Self {
         PendingEnvelopes {
             max_pending,
@@ -38,6 +44,7 @@ impl PendingEnvelopes {
         }
     }
 
+    /// Attempt to enqueue an envelope for a lane.
     pub fn enqueue(
         &mut self,
         lane: String,
@@ -46,6 +53,7 @@ impl PendingEnvelopes {
         self.push(lane, envelope, false)
     }
 
+    /// Replace a previously popped envelope (inserting it at the front of the appropriate queue).
     pub fn replace(
         &mut self,
         lane: String,
@@ -54,7 +62,7 @@ impl PendingEnvelopes {
         self.push(lane, envelope, true)
     }
 
-    pub fn push(
+    fn push(
         &mut self,
         lane: String,
         envelope: TaggedClientEnvelope,
@@ -85,10 +93,11 @@ impl PendingEnvelopes {
         }
     }
 
+    /// Pop an envelope from the front of the queue for a lane.
     pub fn pop<Q>(&mut self, lane: &Q) -> Option<TaggedClientEnvelope>
         where
             String: Borrow<Q>,
-            Q: Hash + Eq,
+            Q: ?Sized + Hash + Eq,
     {
         let PendingEnvelopes {
             num_pending,
