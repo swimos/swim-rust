@@ -231,7 +231,7 @@ pub mod timeout {
     }
 
     #[pin_project]
-    pub struct Timeout<F> {
+    pub struct Timeout<F: Future> {
         #[cfg(not(target_arch = "wasm32"))]
         #[pin]
         inner: tokio::time::Timeout<F>,
