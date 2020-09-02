@@ -14,6 +14,8 @@
 
 mod pending;
 mod selector;
+#[cfg(test)]
+mod tests;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::LaneIoError;
