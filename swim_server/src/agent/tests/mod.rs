@@ -14,6 +14,7 @@
 
 mod reporting_agent;
 pub(crate) mod test_clock;
+mod test_agent;
 
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
@@ -120,6 +121,7 @@ where
         model: &'a Lane,
         context: &'a C,
     ) -> Self::EventFuture
+
     where
         C: AgentContext<TestAgent<Lane>> + Send + Sync + 'static,
     {
