@@ -298,8 +298,12 @@ pub trait LaneTasks<Agent, Context: AgentContext<Agent> + Sized + Send + Sync + 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttachError {
+    /// Could not attach to the lane as the agent hosting it is stopping.
+    AgentStopping,
     /// The lane stopped reporting its state changes.
     LaneStoppedReporting,
+    /// Failed to attach to the lane because it does not exist.
+    LaneDoesNotExist(String),
 }
 
 impl Display for AttachError {
@@ -308,6 +312,15 @@ impl Display for AttachError {
             AttachError::LaneStoppedReporting => write!(
                 f,
                 "Failed to attach as the lane stopped reporting its state."
+            ),
+            AttachError::LaneDoesNotExist(name) => write!(
+                f,
+                "A lane named \"{}\" does not exist.",
+                name
+            ),
+            AttachError::AgentStopping => write!(
+                f,
+                "Could not attach to the lane as the agent is stoping."
             ),
         }
     }
@@ -335,6 +348,13 @@ pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
+
+    fn boxed(self) -> Box<dyn LaneIo<Context>>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
 }
 
 struct ValueLaneIo<T, D> {

@@ -62,6 +62,19 @@ impl PendingEnvelopes {
         self.push(lane, envelope, true)
     }
 
+    /// Clear all pending envelopes for a given label.
+    pub fn clear<Q>(&mut self, lane: &Q)
+        where
+            String: Borrow<Q>,
+            Q: ?Sized + Hash + Eq,
+    {
+        if let Some(mut queue) = self.pending.remove(&lane) {
+            self.num_pending -= queue.len();
+            queue.clear();
+            self.queue_store.push(queue);
+        }
+    }
+
     fn push(
         &mut self,
         lane: String,

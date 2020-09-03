@@ -140,3 +140,23 @@ fn push_front_pending_full() {
 
 }
 
+#[test]
+fn clear_pending_for_lane() {
+
+    let mut pending = PendingEnvelopes::new(4);
+
+    assert!(pending.enqueue("a".to_string(), make_envelope("a", 2)).is_ok());
+    assert!(pending.enqueue("a".to_string(), make_envelope("a", 3)).is_ok());
+    assert!(pending.enqueue("b".to_string(), make_envelope("b", 4)).is_ok());
+
+    pending.clear("a");
+
+    assert!(pending.pop("a").is_none());
+
+    let third = pending.pop("b");
+    assert!(third.is_some());
+    check_envelope("b", 4, third.unwrap());
+
+    assert!(pending.pop("b").is_none());
+}
+

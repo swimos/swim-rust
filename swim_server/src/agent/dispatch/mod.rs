@@ -38,25 +38,31 @@ use std::pin::Pin;
 use swim_common::warp::envelope::OutgoingLinkMessage;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
+use swim_common::sink::item::ItemSink;
 
 pub struct AgentDispatcher<Context> {
     agent_route: String,
     config: AgentExecutionConfig,
     context: Context,
     lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+    stalled_tx: watch::Sender<bool>,
+    stalled_rx: watch::Receiver<bool>,
 }
 
 struct OpenRequest {
     name: String,
-    callback: oneshot::Sender<mpsc::Sender<TaggedClientEnvelope>>,
+    callback: oneshot::Sender<Result<mpsc::Sender<TaggedClientEnvelope>, AttachError>>,
 }
 
 impl OpenRequest {
-    fn new(name: String, callback: oneshot::Sender<mpsc::Sender<TaggedClientEnvelope>>) -> Self {
+    fn new(
+        name: String,
+        callback: oneshot::Sender<Result<mpsc::Sender<TaggedClientEnvelope>, AttachError>>,
+    ) -> Self {
         OpenRequest { name, callback }
     }
 }
@@ -95,12 +101,19 @@ where
         context: Context,
         lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
     ) -> Self {
+        let (stalled_tx, stalled_rx) = watch::channel(false);
         AgentDispatcher {
             agent_route,
             config,
             context,
             lanes,
+            stalled_tx,
+            stalled_rx
         }
+    }
+
+    pub fn stall_watcher(&self) -> watch::Receiver<bool> {
+        self.stalled_rx.clone()
     }
 
     pub async fn run(
@@ -112,6 +125,8 @@ where
             config,
             context,
             lanes,
+            stalled_tx,
+            ..
         } = self;
 
         let span = span!(Level::INFO, "Agent envelope dispatcher task.", ?agent_route);
@@ -126,19 +141,22 @@ where
             .run(open_rx, tripwire_tx)
             .instrument(span!(Level::INFO, "Lane IO opener task."));
 
-        let mut dispatcher = EnvelopeDispatcher::new(config.max_pending_envelopes, open_tx);
-        let dispatch_task = dispatcher
-            .dispatch_envelopes(incoming.take_until(tripwire_rx))
-            .instrument(span!(Level::INFO, "Envelope dispatcher task."));
+        let mut dispatcher = EnvelopeDispatcher::new(config.max_pending_envelopes, open_tx, stalled_tx);
 
-        let (result, succeeded) = join(open_task, dispatch_task).await;
-
-        if succeeded {
-            dispatcher
-                .flush()
-                .instrument(span!(Level::INFO, "Envelope dispatcher flush task."))
+        let dispatch_task = async move {
+            let succeeded = dispatcher
+                .dispatch_envelopes(incoming.take_until(tripwire_rx))
                 .await;
+            if succeeded {
+                dispatcher
+                    .flush()
+                    .instrument(span!(Level::INFO, "Envelope dispatcher flush task."))
+                    .await;
+            }
         }
+        .instrument(span!(Level::INFO, "Envelope dispatcher task."));
+
+        let (result, _) = join(open_task, dispatch_task).await;
 
         result
     }
@@ -211,8 +229,8 @@ where
                         match task_result {
                             Ok(task) => {
                                 lane_io_tasks.push(task);
-                                if callback.send(lane_tx).is_err() {
-                                    event!(Level::ERROR, message = "Could not send input channel to the envelope dispatcher.", ?name);
+                                if callback.send(Ok(lane_tx)).is_err() {
+                                    event!(Level::ERROR, message = BAD_CALLBACK, ?name);
                                 }
                             }
                             Err(error) => {
@@ -222,8 +240,18 @@ where
                                     ?name,
                                     ?error
                                 );
+                                if callback.send(Err(error.clone())).is_err() {
+                                    event!(Level::ERROR, message = BAD_CALLBACK, ?name);
+                                }
                                 break Err(DispatcherError::AttachmentFailed(error));
                             }
+                        }
+                    } else {
+                        if callback
+                            .send(Err(AttachError::LaneDoesNotExist(name.clone())))
+                            .is_err()
+                        {
+                            event!(Level::ERROR, message = BAD_CALLBACK, ?name);
                         }
                     }
                 }
@@ -240,9 +268,8 @@ where
     }
 }
 
-
 struct AwaitNewLaneInner<T, L> {
-    rx: oneshot::Receiver<mpsc::Sender<T>>,
+    rx: oneshot::Receiver<Result<mpsc::Sender<T>, AttachError>>,
     label: L,
 }
 
@@ -251,7 +278,7 @@ struct AwaitNewLane<T, L> {
 }
 
 impl<T, L> AwaitNewLane<T, L> {
-    fn new(label: L, rx: oneshot::Receiver<mpsc::Sender<T>>) -> Self {
+    fn new(label: L, rx: oneshot::Receiver<Result<mpsc::Sender<T>, AttachError>>) -> Self {
         AwaitNewLane {
             inner: Some(AwaitNewLaneInner { rx, label }),
         }
@@ -259,7 +286,7 @@ impl<T, L> AwaitNewLane<T, L> {
 }
 
 impl<T: Unpin, L: Unpin> Future for AwaitNewLane<T, L> {
-    type Output = (L, Result<mpsc::Sender<T>, ()>);
+    type Output = (L, Result<mpsc::Sender<T>, Option<AttachError>>);
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let AwaitNewLaneInner { rx, .. } = self
@@ -273,10 +300,16 @@ impl<T: Unpin, L: Unpin> Future for AwaitNewLane<T, L> {
             Some(inner) => inner,
             _ => unreachable!(),
         };
-        Poll::Ready((label, result.map_err(|_| ())))
+        Poll::Ready((
+            label,
+            match result {
+                Ok(Ok(s)) => Ok(s),
+                Ok(Err(e)) => Err(Some(e)),
+                Err(_) => Err(Some(AttachError::AgentStopping)),
+            },
+        ))
     }
 }
-
 
 struct EnvelopeDispatcher {
     selector: selector::Selector<TaggedClientEnvelope, String>,
@@ -285,16 +318,29 @@ struct EnvelopeDispatcher {
     await_new: FuturesUnordered<AwaitNewLane<TaggedClientEnvelope, String>>,
     pending: pending::PendingEnvelopes,
     stalled: Option<(String, TaggedClientEnvelope)>,
+    stalled_tx: watch::Sender<bool>,
 }
 
 const GUARANTEED_CAPACITY: &str = "Inserting pending with guaranteed capacity should succeed.";
+const BAD_CALLBACK: &str = "Could not send input channel to the envelope dispatcher.";
 
 fn lane(env: &OutgoingLinkMessage) -> &str {
     env.path.lane.as_str()
 }
 
+fn convert_select_err<T>(
+    result: Option<(String, Result<T, ()>)>) -> Option<(String, Result<T, Option<AttachError>>)> {
+    match result {
+        Some((label, Ok(t))) => Some((label, Ok(t))),
+        Some((label, Err(_))) => Some((label, Err(None))),
+        None => None,
+    }
+}
+
 impl EnvelopeDispatcher {
-    fn new(max_concurrency: usize, open_tx: mpsc::Sender<OpenRequest>) -> Self {
+    fn new(max_concurrency: usize,
+           open_tx: mpsc::Sender<OpenRequest>,
+           stalled_tx: watch::Sender<bool>) -> Self {
         EnvelopeDispatcher {
             selector: Default::default(),
             idle_senders: Default::default(),
@@ -302,6 +348,7 @@ impl EnvelopeDispatcher {
             await_new: Default::default(),
             pending: pending::PendingEnvelopes::new(max_concurrency),
             stalled: None,
+            stalled_tx,
         }
     }
 
@@ -313,26 +360,35 @@ impl EnvelopeDispatcher {
             await_new,
             pending,
             stalled,
+            stalled_tx,
         } = self;
 
         let envelopes = envelopes.fuse();
         pin_mut!(envelopes);
 
+        //let mut i = 0;
+
         loop {
             let next = if stalled.is_some() {
                 select! {
-                    ready = selector.select() => ready.map(Either::Left),
+                    ready = selector.select() => convert_select_err(ready).map(Either::Left),
                     ready = await_new.next() => ready.map(Either::Left),
                 }
-            } else if selector.is_empty() {
+            } else if selector.is_empty() && await_new.is_empty() {
                 envelopes.next().await.map(Either::Right)
             } else {
                 select_biased! {
-                    ready = selector.select() => ready.map(Either::Left),
+                    ready = selector.select() => convert_select_err(ready).map(Either::Left),
                     ready = await_new.next() => ready.map(Either::Left),
                     envelope = envelopes.next() => envelope.map(Either::Right),
                 }
             };
+
+            /*if i == 4 {
+                panic!("{:?}", next);
+            } else {
+                i += 1;
+            }*/
 
             match next {
                 Some(Either::Left((label, Ok(mut sender)))) => {
@@ -380,11 +436,19 @@ impl EnvelopeDispatcher {
                             *stalled = Some((label, envelope));
                         } else {
                             event!(Level::TRACE, message = "Dispatcher no longer stalled.");
+                            let _ = stalled_tx.broadcast(false);
                         }
                     }
                 }
-                Some(Either::Left((_, Err(_)))) => {
-                    break false;
+                Some(Either::Left((_, Err(err)))) => {
+                    match err {
+                        Some(AttachError::LaneDoesNotExist(label)) => {
+                            pending.clear(&label);
+                        },
+                        _ => {
+                            break false;
+                        }
+                    }
                 }
                 Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
                     event!(
@@ -427,6 +491,7 @@ impl EnvelopeDispatcher {
                                     pending.enqueue(envelope.lane().to_string(), envelope)
                                 {
                                     event!(Level::TRACE, message = "Dispatcher has stalled.");
+                                    let _ = stalled_tx.send_item(true);
                                     *stalled = Some((label, envelope));
                                 }
                             }
@@ -438,19 +503,23 @@ impl EnvelopeDispatcher {
                             );
                             let (req_tx, req_rx) = oneshot::channel();
 
+                            let label = lane(&envelope).to_string();
+
                             if open_tx
-                                .send(OpenRequest::new(lane(&envelope).to_string(), req_tx))
+                                .send(OpenRequest::new(label.clone(), req_tx))
                                 .await
                                 .is_err()
                             {
                                 break false;
                             }
-                            await_new.push(AwaitNewLane::new(lane(&envelope).to_string(), req_rx));
+                            await_new.push(AwaitNewLane::new(label.clone(), req_rx));
+                            idle_senders.insert(label.clone(), None);
                             if let Err((label, envelope)) = pending.enqueue(
-                                lane(&envelope).to_string(),
+                                label,
                                 TaggedClientEnvelope(addr, envelope),
                             ) {
                                 event!(Level::TRACE, message = "Dispatcher has stalled.");
+                                let _ = stalled_tx.broadcast(true);
                                 *stalled = Some((label, envelope));
                             }
                         }
@@ -469,17 +538,18 @@ impl EnvelopeDispatcher {
             mut await_new,
             mut pending,
             mut stalled,
+            mut stalled_tx,
             ..
         } = self;
 
-        let mut new_terminated = false;
+        let mut new_terminated = await_new.is_empty();
 
         loop {
             let next = if new_terminated {
-                selector.select().await
+                convert_select_err(selector.select().await)
             } else {
                 select! {
-                  ready = selector.select() => ready,
+                  ready = selector.select() => convert_select_err(ready),
                   ready = await_new.next() => {
                        match ready {
                           present@Some(_) => present,
@@ -491,36 +561,41 @@ impl EnvelopeDispatcher {
                   },
                 }
             };
-            if let Some((label, Ok(mut sender))) = next {
-                event!(
+            match next {
+                Some((label, Ok(mut sender))) => {
+                    event!(
                     Level::DEBUG,
                     message = "Sender selected for dispatch.",
                     ?label
                 );
-                while let Some(envelope) = pending.pop(&label) {
-                    if let Err(TrySendError::Full(envelope)) = sender.try_send(envelope) {
-                        event!(
+                    while let Some(envelope) = pending.pop(&label) {
+                        if let Err(TrySendError::Full(envelope)) = sender.try_send(envelope) {
+                            event!(
                             Level::TRACE,
                             message = "Returning sender to selector.",
                             ?label
                         );
-                        pending
-                            .replace(label.clone(), envelope)
-                            .expect(GUARANTEED_CAPACITY);
-                        selector.add(label, sender);
-                        break;
+                            pending
+                                .replace(label.clone(), envelope)
+                                .expect(GUARANTEED_CAPACITY);
+                            selector.add(label, sender);
+                            break;
+                        }
                     }
-                }
-                if let Some((label, envelope)) = stalled.take() {
-                    if let Err((label, envelope)) = pending.enqueue(label, envelope) {
-                        event!(Level::TRACE, message = "Stall was not resolved.");
-                        stalled = Some((label, envelope));
-                    } else {
-                        event!(Level::TRACE, message = "Dispatcher no longer stalled.");
+                    if let Some((label, envelope)) = stalled.take() {
+                        if let Err((label, envelope)) = pending.enqueue(label, envelope) {
+                            event!(Level::TRACE, message = "Stall was not resolved.");
+                            stalled = Some((label, envelope));
+                        } else {
+                            event!(Level::TRACE, message = "Dispatcher no longer stalled.");
+                            let _ = stalled_tx.send_item(false);
+                        }
                     }
+                },
+                Some((_, Err(Some(AttachError::LaneDoesNotExist(_))))) => {},
+                _ => {
+                    break;
                 }
-            } else {
-                break;
             }
         }
     }

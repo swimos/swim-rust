@@ -51,10 +51,21 @@ impl<'a> ItemSink<'a, Envelope> for MockSender {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct MockRouterInner {
+    buffer_size: usize,
     senders: HashMap<RoutingAddr, mpsc::Sender<Envelope>>,
     receivers: HashMap<RoutingAddr, mpsc::Receiver<Envelope>>,
+}
+
+impl MockRouterInner {
+    fn new(buffer_size: usize) -> Self {
+        MockRouterInner {
+            buffer_size,
+            senders: Default::default(),
+            receivers: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -65,11 +76,15 @@ impl ServerRouter for MockRouter {
 
     fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
         let mut lock = self.0.lock();
-        let MockRouterInner { senders, receivers } = &mut *lock;
+        let MockRouterInner {
+            buffer_size,
+            senders,
+            receivers,
+        } = &mut *lock;
         let tx = match senders.entry(addr) {
             Entry::Occupied(entry) => entry.get().clone(),
             Entry::Vacant(entry) => {
-                let (tx, rx) = mpsc::channel(8);
+                let (tx, rx) = mpsc::channel(*buffer_size);
                 entry.insert(tx.clone());
                 receivers.insert(addr, rx);
                 tx
@@ -97,30 +112,28 @@ impl AgentExecutionContext for MockExecutionContext {
     }
 }
 
-pub enum RecvResult {
-    Received(Envelope),
-    Dropped,
-    NotOpened,
-}
-
 impl MockExecutionContext {
-    pub fn new(spawner: mpsc::Sender<Eff>) -> Self {
+    pub fn new(buffer_size: usize, spawner: mpsc::Sender<Eff>) -> Self {
         MockExecutionContext {
-            router: Default::default(),
+            router: Arc::new(Mutex::new(MockRouterInner::new(buffer_size))),
             spawner,
         }
     }
 
-    pub async fn recv(&self, addr: &RoutingAddr) -> RecvResult {
+    pub fn take_receiver(&self, addr: &RoutingAddr) -> Option<mpsc::Receiver<Envelope>> {
         let mut lock = self.router.lock();
-        if let Some(rx) = lock.receivers.get_mut(&addr) {
-            if let Some(env) = rx.recv().await {
-                RecvResult::Received(env)
-            } else {
-                RecvResult::Dropped
+        let MockRouterInner {
+            buffer_size,
+            senders,
+            receivers,
+        } = &mut *lock;
+        match senders.entry(*addr) {
+            Entry::Occupied(_) => receivers.remove(addr),
+            Entry::Vacant(entry) => {
+                let (tx, rx) = mpsc::channel(*buffer_size);
+                entry.insert(tx);
+                Some(rx)
             }
-        } else {
-            RecvResult::NotOpened
         }
     }
 }
@@ -138,13 +151,13 @@ impl LaneIo<MockExecutionContext> for MockLane {
             let mut senders: HashMap<RoutingAddr, MockSender> = HashMap::new();
             let mut err: Option<LaneIoError> = None;
             while let Some(TaggedClientEnvelope(
-                               addr,
-                               OutgoingLinkMessage {
-                                   header,
-                                   path: _,
-                                   body,
-                               },
-                           )) = envelopes.recv().await
+                addr,
+                OutgoingLinkMessage {
+                    header,
+                    path: _,
+                    body,
+                },
+            )) = envelopes.recv().await
             {
                 let response = echo(&route, header, body);
                 let sender = match senders.entry(addr) {
@@ -175,7 +188,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                 Ok(vec![])
             }
         }
-            .boxed())
+        .boxed())
     }
 
     fn attach_boxed(
@@ -189,7 +202,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
     }
 }
 
-fn echo(route: &RelativePath, header: OutgoingHeader, body: Option<Value>) -> Envelope {
+pub fn echo(route: &RelativePath, header: OutgoingHeader, body: Option<Value>) -> Envelope {
     match header {
         OutgoingHeader::Link(_) => Envelope::linked(&route.node, &route.lane),
         OutgoingHeader::Sync(_) => Envelope::synced(&route.node, &route.lane),
