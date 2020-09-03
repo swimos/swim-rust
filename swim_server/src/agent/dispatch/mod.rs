@@ -43,6 +43,7 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
 use swim_common::sink::item::ItemSink;
+use pin_utils::core_reexport::num::NonZeroUsize;
 
 pub struct AgentDispatcher<Context> {
     agent_route: String,
@@ -141,7 +142,7 @@ where
             .run(open_rx, tripwire_tx)
             .instrument(span!(Level::INFO, "Lane IO opener task."));
 
-        let mut dispatcher = EnvelopeDispatcher::new(config.max_pending_envelopes, open_tx, stalled_tx);
+        let mut dispatcher = EnvelopeDispatcher::new(config.max_pending_envelopes, open_tx, stalled_tx, config.yield_after);
 
         let dispatch_task = async move {
             let succeeded = dispatcher
@@ -204,6 +205,9 @@ where
         let requests = requests.fuse();
         pin_mut!(requests);
 
+        let yield_mod = config.yield_after.get();
+        let mut iteration_count: usize = 0;
+
         loop {
             let next = if lane_io_tasks.is_empty() {
                 requests.next().await.map(Either::Left)
@@ -264,6 +268,10 @@ where
                     break Ok(());
                 }
             }
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
+            }
         }
     }
 }
@@ -319,6 +327,7 @@ struct EnvelopeDispatcher {
     pending: pending::PendingEnvelopes,
     stalled: Option<(String, TaggedClientEnvelope)>,
     stalled_tx: watch::Sender<bool>,
+    yield_after: NonZeroUsize,
 }
 
 const GUARANTEED_CAPACITY: &str = "Inserting pending with guaranteed capacity should succeed.";
@@ -340,7 +349,8 @@ fn convert_select_err<T>(
 impl EnvelopeDispatcher {
     fn new(max_concurrency: usize,
            open_tx: mpsc::Sender<OpenRequest>,
-           stalled_tx: watch::Sender<bool>) -> Self {
+           stalled_tx: watch::Sender<bool>,
+            yield_after: NonZeroUsize) -> Self {
         EnvelopeDispatcher {
             selector: Default::default(),
             idle_senders: Default::default(),
@@ -349,6 +359,7 @@ impl EnvelopeDispatcher {
             pending: pending::PendingEnvelopes::new(max_concurrency),
             stalled: None,
             stalled_tx,
+            yield_after,
         }
     }
 
@@ -361,12 +372,14 @@ impl EnvelopeDispatcher {
             pending,
             stalled,
             stalled_tx,
+            yield_after,
         } = self;
 
         let envelopes = envelopes.fuse();
         pin_mut!(envelopes);
 
-        //let mut i = 0;
+        let yield_mod = yield_after.get();
+        let mut iteration_count: usize = 0;
 
         loop {
             let next = if stalled.is_some() {
@@ -384,12 +397,6 @@ impl EnvelopeDispatcher {
                 }
             };
 
-            /*if i == 4 {
-                panic!("{:?}", next);
-            } else {
-                i += 1;
-            }*/
-
             match next {
                 Some(Either::Left((label, Ok(mut sender)))) => {
                     event!(
@@ -397,6 +404,7 @@ impl EnvelopeDispatcher {
                         message = "Sender selected for dispatch.",
                         ?label
                     );
+
                     let succeeded = loop {
                         if let Some(envelope) = pending.pop(&label) {
                             match sender.try_send(envelope) {
@@ -529,6 +537,10 @@ impl EnvelopeDispatcher {
                     break true;
                 }
             }
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
+            }
         }
     }
 
@@ -539,11 +551,13 @@ impl EnvelopeDispatcher {
             mut pending,
             mut stalled,
             mut stalled_tx,
+            yield_after,
             ..
         } = self;
 
         let mut new_terminated = await_new.is_empty();
-
+        let yield_mod = yield_after.get();
+        let mut iteration_count: usize = 0;
         loop {
             let next = if new_terminated {
                 convert_select_err(selector.select().await)
@@ -596,6 +610,10 @@ impl EnvelopeDispatcher {
                 _ => {
                     break;
                 }
+            }
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
         }
     }
