@@ -16,3 +16,6 @@
 
 pub mod agent;
 pub mod routing;
+
+#[macro_use]
+extern crate lifecycle_derive;

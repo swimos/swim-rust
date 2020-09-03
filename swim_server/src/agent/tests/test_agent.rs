@@ -1,42 +1,70 @@
 use crate::agent;
 use crate::agent::context::ContextImpl;
+use crate::agent::lane::lifecycle::ActionLaneLifecycle;
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::tests::TestContext;
 use crate::agent::{
     AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks, SwimAgent,
 };
-use futures::future::BoxFuture;
+use futures::future::{ready, BoxFuture};
+use futures::{FutureExt, Stream, StreamExt};
 use futures_util::core_reexport::time::Duration;
+use std::future::Future;
 use std::num::NonZeroUsize;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use utilities::sync::trigger::Receiver;
 
 struct TestAgent {
     action: CommandLane<String>,
 }
 
-struct ActionLifecycle {}
+struct ActionLifecycle {
+    name: String,
+    event_stream: mpsc::Receiver<String>,
+}
+
+async fn custom_on_command() {
+    unimplemented!()
+}
 
 impl Lane for ActionLifecycle {
     fn name(&self) -> &str {
-        "action"
+        &self.name
     }
 }
 
-impl LaneTasks<TestAgent, ContextImpl<TestAgent, TestClock>> for ActionLifecycle {
-    fn start<'a>(&'a self, context: &'a ContextImpl<TestAgent, TestClock>) -> BoxFuture<'a, ()> {
-        unimplemented!()
+impl<Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static> LaneTasks<TestAgent, Context>
+    for ActionLifecycle
+{
+    fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
     }
 
-    fn events(
-        self: Box<Self>,
-        context: ContextImpl<TestAgent, TestClock>,
-    ) -> BoxFuture<'static, ()> {
-        unimplemented!()
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        unimplemented!();
+        // async move {
+        //     let ActionLifecycle { name, event_stream } = *self;
+        //
+        //
+        //     // let model = projection(context.agent()).clone();
+        //     let events = event_stream.take_until_completes(context.agent_stop_event());
+        //     pin_mut!(events);
+        //     while let Some(command) = events.next().await {
+        //         event!(Level::TRACE, COMMANDED, ?command);
+        //         lifecycle
+        //             .on_command(command, &model, &context)
+        //             .instrument(span!(Level::TRACE, ON_COMMAND))
+        //             .await;
+        //     }
+        // }
+        // .boxed()
     }
 }
 
@@ -51,29 +79,18 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
     {
         let buffer_size = NonZeroUsize::new(5).unwrap();
         let name = "action";
-        let projection = |agent: &TestAgent| &agent.action;
 
-        let lifecycle = ActionLifecycle {};
+        let (tx, event_stream) = mpsc::channel(buffer_size.get());
+        let action = ActionLane::new(tx);
 
-        let (action, event_stream) = model::action::make_lane_model(buffer_size);
-
-        let action_tasks = CommandLifecycleTasks(LifecycleTasks {
+        let task = ActionLifecycle {
             name: name.into(),
-            lifecycle,
             event_stream,
-            projection,
-        });
-
-        // let (action, action_tasks) = agent::make_command_lane(
-        //     "action",
-        //     ActionLifecycle {},
-        //     |agent: &TestAgent| &agent.action,
-        //     NonZeroUsize::new(5).unwrap(),
-        // );
+        };
 
         let agent = TestAgent { action };
 
-        let tasks = vec![action_tasks.boxed()];
+        let tasks = vec![task.boxed()];
         (agent, tasks)
     }
 }
