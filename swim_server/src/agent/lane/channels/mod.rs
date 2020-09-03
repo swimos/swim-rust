@@ -60,8 +60,6 @@ impl Default for AgentExecutionConfig {
             uplink_err_buffer: default_buffer,
             max_fatal_uplink_errors: 0,
             max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
-            //lane_buffer: default_buffer,
-            //lane_attachment_buffer: default_buffer,
             yield_after: NonZeroUsize::new(2048).unwrap(),
             retry_strategy: RetryStrategy::default(),
             cleanup_timeout: Duration::from_secs(30),
