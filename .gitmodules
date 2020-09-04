@@ -1,0 +1,3 @@
+[submodule "tungstenite-deflate"]
+	path = tungstenite-deflate
+	url = https://github.com/SirCipher/tungstenite-deflate.git

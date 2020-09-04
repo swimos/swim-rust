@@ -11,5 +11,6 @@ members = [
 
 exclude = [
     "demos/",
-    "cookbook"
+    "cookbook",
+    "tungstenite-deflate"
 ]

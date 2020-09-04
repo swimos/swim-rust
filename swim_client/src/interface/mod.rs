@@ -35,7 +35,6 @@ use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::SwimRouter;
 use std::collections::HashMap;
-use swim_common::connections::WebsocketFactory;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::ws::{Protocol, WebsocketFactory};
@@ -113,6 +112,9 @@ pub struct SwimClient {
 }
 
 impl SwimClient {
+    /// Creates a new Swim Client using the default configuration and the provided certificates for
+    /// each host.
+    #[cfg(feature = "websocket")]
     pub async fn default_with_certs(certs: HashMap<Url, Protocol>) -> Self {
         SwimClient::new(
             ConfigHierarchy::default(),
@@ -121,12 +123,16 @@ impl SwimClient {
         .await
     }
 
+    pub async fn config_with_certs(config: ConfigHierarchy, certs: HashMap<Url, Protocol>) -> Self {
+        SwimClient::new(config, TungsteniteWsFactory::new(5, certs).await).await
+    }
+
     /// Creates a new SWIM Client using the default configuration.
     #[cfg(feature = "websocket")]
     pub async fn new_with_default() -> Self {
         let config = ConfigHierarchy::default();
         let buffer_size = config.client_params().dl_req_buffer_size.get();
-        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
+        let connection_factory = TungsteniteWsFactory::new(buffer_size, Default::default()).await;
 
         SwimClient::new(ConfigHierarchy::default(), connection_factory).await
     }
@@ -150,7 +156,8 @@ impl SwimClient {
         .map_err(ClientError::ConfigError)?;
 
         let buffer_size = config.client_params().dl_req_buffer_size.get();
-        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
+        // todo: parse certs from file
+        let connection_factory = TungsteniteWsFactory::new(buffer_size, Default::default()).await;
 
         Ok(SwimClient::new(config, connection_factory).await)
     }

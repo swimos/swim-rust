@@ -18,7 +18,7 @@ use std::ops::Deref;
 use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
 use futures::StreamExt;
-use http::{Request, Response, Uri};
+use http::{HeaderValue, Request, Response, Uri};
 use native_tls::TlsConnector;
 use tokio::net::TcpStream;
 use tokio_tls::{TlsConnector as TokioTlsConnector, TlsStream};
@@ -60,7 +60,10 @@ where
         .as_str()
         .parse()
         .map_err(|e| ConnectionError::SocketError(WebSocketError::from(e)))?;
-    let request = Request::get(uri).body(())?;
+    let mut request = Request::get(uri).body(())?;
+    request
+        .headers_mut()
+        .insert("Sec-WebSocket-Protocol", HeaderValue::from_static("warp0"));
 
     let mut request = maybe_resolve_scheme(request)?;
     let stream_type = get_stream_type(&request, &config.protocol)?;
@@ -173,7 +176,9 @@ impl TungsteniteWsFactory {
             .map(|(url, protocol)| {
                 let config = HostConfig {
                     protocol,
-                    handler: TungWsHandler,
+                    handler: TungWsHandler {
+                        deflate_handler: DeflateHandler::default(),
+                    },
                     compression: CompressionKind::Deflate,
                 };
                 (url, config)
@@ -197,7 +202,9 @@ impl WebsocketFactory for TungsteniteWsFactory {
             Entry::Vacant(v) => v
                 .insert(HostConfig {
                     protocol: Protocol::PlainText,
-                    handler: TungWsHandler,
+                    handler: TungWsHandler {
+                        deflate_handler: DeflateHandler::default(),
+                    },
                     compression: CompressionKind::Deflate,
                 })
                 .clone(),
@@ -211,18 +218,18 @@ use swim_common::ws::handlers::DeflateHandler;
 use tracing::info;
 
 #[derive(Clone)]
-pub struct TungWsHandler;
+pub struct TungWsHandler {
+    deflate_handler: DeflateHandler,
+}
 impl WebSocketHandler for TungWsHandler {
     fn on_request(&mut self, request: &mut Request<()>) {
-        let mut df = DeflateHandler { enabled: true };
-
-        df.on_request(request);
-
         info!("On request: {:?}", request);
+        self.deflate_handler.on_request(request);
     }
 
     fn on_response(&mut self, response: &mut Response<()>) {
         info!("On response: {:?}", response);
+        self.deflate_handler.on_response(response);
     }
 
     fn on_send(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {

@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use http::header::{CONTENT_ENCODING, SEC_WEBSOCKET_EXTENSIONS};
+use http::{HeaderValue, Request, Response};
+use tracing::info;
+use tracing::trace;
+
 use crate::ws::error::ConnectionError;
 use crate::ws::{WebSocketHandler, WsMessage};
-use http::header::CONTENT_ENCODING;
-use http::{HeaderValue, Request, Response};
-use tracing::trace;
 
 #[derive(Clone)]
 pub struct LoggingHandler<I>
@@ -119,6 +121,7 @@ impl WebSocketHandler for CompressionHandler {
         }
     }
 }
+
 #[derive(Clone)]
 pub struct GzipHandler {
     enabled: bool,
@@ -126,6 +129,8 @@ pub struct GzipHandler {
 
 impl WebSocketHandler for GzipHandler {
     fn on_request(&mut self, request: &mut Request<()>) {
+        info!("Deflate handler on req");
+
         request
             .headers_mut()
             .insert(CONTENT_ENCODING, HeaderValue::from_static("deflate"));
@@ -143,6 +148,7 @@ impl WebSocketHandler for GzipHandler {
         unimplemented!()
     }
 }
+
 #[derive(Clone)]
 pub struct BrotliHandler {
     enabled: bool,
@@ -173,15 +179,30 @@ pub struct DeflateHandler {
     pub enabled: bool,
 }
 
+impl Default for DeflateHandler {
+    fn default() -> Self {
+        DeflateHandler { enabled: false }
+    }
+}
+
 impl WebSocketHandler for DeflateHandler {
-    fn on_request(&mut self, request: &mut Request<()>) {
-        request
-            .headers_mut()
-            .insert(CONTENT_ENCODING, HeaderValue::from_static("deflate"));
+    fn on_request(&mut self, _request: &mut Request<()>) {
+        info!("Deflate handler on req");
+
+        // request.headers_mut().insert(
+        //     SEC_WEBSOCKET_EXTENSIONS,
+        //     HeaderValue::from_static("permessage-deflate"),
+        // );
     }
 
-    fn on_response(&mut self, _response: &mut Response<()>) {
-        unimplemented!()
+    fn on_response(&mut self, response: &mut Response<()>) {
+        response.headers().iter().for_each(|(name, value)| {
+            if name == SEC_WEBSOCKET_EXTENSIONS
+                && value == HeaderValue::from_static("permessage-deflate")
+            {
+                self.enabled = true
+            }
+        });
     }
 
     fn on_send(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {

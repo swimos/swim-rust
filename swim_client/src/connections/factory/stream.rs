@@ -59,7 +59,10 @@ where
 
                 Poll::Ready(Some(Ok(ws_message)))
             }
-            Some(Err(_)) => unimplemented!(),
+            Some(Err(e)) => {
+                println!("{:?}", e);
+                unimplemented!()
+            }
             _ => Poll::Ready(None),
         }
     }
@@ -87,6 +90,8 @@ where
             WsMessage::Text(s) => Message::Text(s),
             WsMessage::Binary(v) => Message::Binary(v),
         };
+
+        println!("Sending message; {}", message);
 
         this.inner
             .start_send(message)

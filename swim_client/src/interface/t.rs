@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod t {
-    use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+    use crate::configuration::downlink::{ClientParams, ConfigHierarchy};
+    use crate::configuration::router::RouterParamBuilder;
     use crate::downlink::{Downlink, Event};
     use crate::interface::SwimClient;
+    use futures_util::core_reexport::num::NonZeroUsize;
     use std::collections::HashMap;
     use std::env;
     use swim_common::warp::path::AbsolutePath;
@@ -10,6 +12,7 @@ mod t {
     use tokio::stream::StreamExt;
     use tokio::time::Duration;
     use tracing::Level;
+    use utilities::future::retryable::strategy::RetryStrategy;
 
     #[tokio::test]
     async fn test_value_dl_recv() {
@@ -18,16 +21,25 @@ mod t {
             // .with_env_filter(filter)
             .init();
 
-        let host = format!("warps://127.0.0.1:{}", 9001);
+        let host = format!("warp://127.0.0.1:{}", 9001);
         let url = url::Url::parse(&host).unwrap();
         let mut protos = HashMap::new();
 
         println!("{:?}", env::current_dir());
 
-        protos.insert(url.clone(), Protocol::tls("../certificate.cert").unwrap());
+        // protos.insert(url.clone(), Protocol::tls("../certificate.cert").unwrap());
 
-        let mut client =
-            SwimClient::new_with_default(TungsteniteWsFactory::new(5, protos).await).await;
+        let config = ConfigHierarchy::new(
+            ClientParams::new(
+                NonZeroUsize::new(10).unwrap(),
+                RouterParamBuilder::new()
+                    .with_retry_stategy(RetryStrategy::none())
+                    .build(),
+            ),
+            Default::default(),
+        );
+
+        let mut client = SwimClient::config_with_certs(config, protos).await;
 
         let path = AbsolutePath::new(url, "unit/foo", "id");
 
