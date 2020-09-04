@@ -16,15 +16,16 @@ use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
 use crate::agent::dispatch::{AgentDispatcher, DispatcherError};
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::routing::{TaggedEnvelope, RoutingAddr};
-use futures::future::{join, BoxFuture};
+use futures::future::{join, join3, BoxFuture};
 use futures::{Stream, StreamExt, FutureExt};
 use std::collections::HashMap;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch, Barrier};
 use crate::agent::LaneIo;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use pin_utils::core_reexport::num::NonZeroUsize;
 use std::time::Duration;
+use std::sync::Arc;
 
 mod mock;
 
@@ -36,6 +37,7 @@ fn make_dispatcher(
 ) -> (
     BoxFuture<'static, Result<(), DispatcherError>>,
     MockExecutionContext,
+    watch::Receiver<bool>,
 ) {
     let (spawn_tx, spawn_rx) = mpsc::channel(8);
 
@@ -56,7 +58,7 @@ fn make_dispatcher(
         uplink_err_buffer: default_size,
         max_fatal_uplink_errors: 0,
         max_uplink_start_attempts: default_size,
-        lane_buffer: default_size,
+        lane_buffer: NonZeroUsize::new(buffer_size).unwrap(),
         lane_attachment_buffer: default_size,
         yield_after: NonZeroUsize::new(2048).unwrap(),
         retry_strategy: Default::default(),
@@ -70,6 +72,8 @@ fn make_dispatcher(
         boxed_lanes,
     );
 
+    let stall_watch = dispatcher.stall_watcher();
+
     let spawn_task = spawn_rx.for_each_concurrent(None, |eff| eff);
 
     let dispatch_task = dispatcher.run(envelopes);
@@ -77,6 +81,7 @@ fn make_dispatcher(
     (
         join(spawn_task, dispatch_task).map(|(_, r)| r).boxed(),
         context,
+        stall_watch
     )
 }
 
@@ -110,7 +115,7 @@ async fn expect_echo(rx: &mut mpsc::Receiver<Envelope>,
 async fn dispatch_nothing() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
 
     drop(envelope_tx);
     drop(context);
@@ -123,7 +128,7 @@ async fn dispatch_nothing() {
 async fn dispatch_single() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
 
     let addr = RoutingAddr::remote(1);
 
@@ -148,7 +153,7 @@ async fn dispatch_single() {
 async fn dispatch_two_lanes() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10,
+    let (task, context, _) = make_dispatcher(8, 10,
                                           lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
     let addr1 = RoutingAddr::remote(1);
@@ -180,7 +185,7 @@ async fn dispatch_two_lanes() {
 async fn dispatch_multiple_same_lane() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
 
     let addr = RoutingAddr::remote(1);
 
@@ -211,7 +216,7 @@ async fn dispatch_multiple_same_lane() {
 async fn blocked_lane() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(1, 10,
+    let (task, context, _) = make_dispatcher(1, 10,
                                           lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
     let addr1 = RoutingAddr::remote(1);
@@ -220,6 +225,7 @@ async fn blocked_lane() {
     let cmd1 = Envelope::make_command("node", "lane_a", Some(1.into()));
     let cmd2 = Envelope::make_command("node", "lane_a", Some(2.into()));
     let cmd3 = Envelope::make_command("node", "lane_a", Some(3.into()));
+    let cmd4 = Envelope::make_command("node", "lane_a", Some(4.into()));
     let link = Envelope::link("node", "lane_b");
 
     let assertion_task = async move {
@@ -229,9 +235,10 @@ async fn blocked_lane() {
         expect_echo(&mut rx1, "lane_a", cmd1).await;
         //Lane A is now attached.
 
-
         assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd2.clone())).await.is_ok());
         assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd3.clone())).await.is_ok());
+        assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd4.clone())).await.is_ok());
+
         assert!(envelope_tx.send(TaggedEnvelope(addr2, link.clone())).await.is_ok());
 
         //Wait until we receive the message for lane B indicating that lane A is definitely blocked
@@ -242,6 +249,7 @@ async fn blocked_lane() {
         //Unblock lane A and wait for both messages.
         expect_echo(&mut rx1, "lane_a", cmd2).await;
         expect_echo(&mut rx1, "lane_a", cmd3).await;
+        expect_echo(&mut rx1, "lane_a", cmd4).await;
 
         drop(envelope_tx);
         drop(context);
@@ -250,3 +258,71 @@ async fn blocked_lane() {
     let (result, _) = join(task, assertion_task).await;
     assert!(result.is_ok());
 }
+
+async fn await_stall(mut stalled: watch::Receiver<bool>) -> Result<(), ()> {
+    loop {
+        match stalled.recv().await {
+            Some(true) => break Ok(()),
+            None => break Err(()),
+            _ => {},
+        }
+    }
+}
+
+#[tokio::test]
+async fn recover_from_stall() {
+    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context, stall_rx) = make_dispatcher(1, 2,
+                                             lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+
+    let addr1 = RoutingAddr::remote(1);
+    let addr2 = RoutingAddr::remote(2);
+
+    let barrier1 = Arc::new(Barrier::new(2));
+    let barrier2 = barrier1.clone();
+
+    //Chosen to force a stall based on the buffer/pending sizes passed to the dispatcher.
+    let n= 4;
+
+    let send_task = async move {
+
+        for i in 0..n {
+            let cmda = Envelope::make_command("node", "lane_a", Some(i.into()));
+            assert!(envelope_tx.send(TaggedEnvelope(addr1, cmda.clone())).await.is_ok());
+            let cmdb = Envelope::make_command("node", "lane_b", Some(i.into()));
+            assert!(envelope_tx.send(TaggedEnvelope(addr2, cmdb.clone())).await.is_ok());
+        }
+
+        barrier1.wait().await;
+        drop(envelope_tx);
+
+    };
+
+    let receive_task = async move {
+
+        assert!(await_stall(stall_rx).await.is_ok());
+
+        let mut rx1 = context.take_receiver(&addr1).unwrap();
+        let mut rx2 = context.take_receiver(&addr2).unwrap();
+
+        for i in 0..n {
+            let cmd = Envelope::make_command("node", "lane_a", Some(i.into()));
+            expect_echo(&mut rx1, "lane_a", cmd).await;
+
+        }
+
+        for i in 0..n {
+            let cmd = Envelope::make_command("node", "lane_b", Some(i.into()));
+            expect_echo(&mut rx2, "lane_b", cmd).await;
+        }
+
+        barrier2.wait().await;
+        drop(context);
+    };
+
+    let (result, _, _) = join3(task, send_task, receive_task).await;
+    assert!(result.is_ok());
+}
+
+

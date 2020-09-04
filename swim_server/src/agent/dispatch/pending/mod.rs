@@ -49,7 +49,7 @@ impl PendingEnvelopes {
         &mut self,
         lane: String,
         envelope: TaggedClientEnvelope,
-    ) -> Result<(), (String, TaggedClientEnvelope)> {
+    ) -> Result<bool, (String, TaggedClientEnvelope)> {
         self.push(lane, envelope, false)
     }
 
@@ -58,12 +58,12 @@ impl PendingEnvelopes {
         &mut self,
         lane: String,
         envelope: TaggedClientEnvelope,
-    ) -> Result<(), (String, TaggedClientEnvelope)> {
+    ) -> Result<bool, (String, TaggedClientEnvelope)> {
         self.push(lane, envelope, true)
     }
 
     /// Clear all pending envelopes for a given label.
-    pub fn clear<Q>(&mut self, lane: &Q)
+    pub fn clear<Q>(&mut self, lane: &Q) -> bool
         where
             String: Borrow<Q>,
             Q: ?Sized + Hash + Eq,
@@ -73,6 +73,7 @@ impl PendingEnvelopes {
             queue.clear();
             self.queue_store.push(queue);
         }
+        self.num_pending < self.max_pending
     }
 
     fn push(
@@ -80,7 +81,7 @@ impl PendingEnvelopes {
         lane: String,
         envelope: TaggedClientEnvelope,
         front: bool,
-    ) -> Result<(), (String, TaggedClientEnvelope)> {
+    ) -> Result<bool, (String, TaggedClientEnvelope)> {
         let PendingEnvelopes {
             max_pending,
             num_pending,
@@ -100,7 +101,7 @@ impl PendingEnvelopes {
                 queue.push_back(envelope);
             }
             *num_pending += 1;
-            Ok(())
+            Ok(*num_pending < *max_pending)
         } else {
             Err((lane, envelope))
         }

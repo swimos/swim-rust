@@ -54,9 +54,9 @@ fn push_and_pop_pending() {
 
     let mut pending = PendingEnvelopes::new(4);
 
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 2)).is_ok());
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 3)).is_ok());
-    assert!(pending.enqueue("b".to_string(), make_envelope("b", 4)).is_ok());
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(true));
+    assert_eq!(pending.enqueue("b".to_string(), make_envelope("b", 4)), Ok(true));
 
     let first = pending.pop("a");
     assert!(first.is_some());
@@ -79,8 +79,8 @@ fn push_and_pop_pending() {
 fn pending_full() {
 
     let mut pending = PendingEnvelopes::new(2);
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 2)).is_ok());
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 3)).is_ok());
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(false));
 
     let result = pending.enqueue("a".to_string(), make_envelope("a", 4));
     assert!(result.is_err());
@@ -99,9 +99,9 @@ fn pending_full() {
 #[test]
 fn push_front_pending() {
     let mut pending = PendingEnvelopes::new(4);
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 2)).is_ok());
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 3)).is_ok());
-    assert!(pending.replace("a".to_string(), make_envelope("a", 1)).is_ok());
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(true));
+    assert_eq!(pending.replace("a".to_string(), make_envelope("a", 1)), Ok(true));
 
 
     let first = pending.pop("a");
@@ -123,8 +123,8 @@ fn push_front_pending() {
 fn push_front_pending_full() {
 
     let mut pending = PendingEnvelopes::new(2);
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 2)).is_ok());
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 3)).is_ok());
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(false));
 
     let result = pending.replace("a".to_string(), make_envelope("a", 4));
     assert!(result.is_err());
@@ -145,11 +145,11 @@ fn clear_pending_for_lane() {
 
     let mut pending = PendingEnvelopes::new(4);
 
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 2)).is_ok());
-    assert!(pending.enqueue("a".to_string(), make_envelope("a", 3)).is_ok());
-    assert!(pending.enqueue("b".to_string(), make_envelope("b", 4)).is_ok());
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
+    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(true));
+    assert_eq!(pending.enqueue("b".to_string(), make_envelope("b", 4)), Ok(true));
 
-    pending.clear("a");
+    assert!(pending.clear("a"));
 
     assert!(pending.pop("a").is_none());
 
