@@ -35,7 +35,7 @@ fn make_dispatcher(
     lanes: HashMap<String, MockLane>,
     envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
 ) -> (
-    BoxFuture<'static, Result<(), DispatcherErrors>>,
+    BoxFuture<'static, Result<DispatcherErrors, DispatcherErrors>>,
     MockExecutionContext,
     watch::Receiver<bool>,
 ) {
@@ -121,7 +121,7 @@ async fn dispatch_nothing() {
     drop(context);
 
     let result = task.await;
-    assert!(result.is_ok());
+    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
 }
 
 #[tokio::test]
@@ -146,7 +146,7 @@ async fn dispatch_single() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(result.is_ok());
+    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
 }
 
 #[tokio::test]
@@ -178,7 +178,7 @@ async fn dispatch_two_lanes() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(result.is_ok());
+    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
 }
 
 #[tokio::test]
@@ -209,7 +209,7 @@ async fn dispatch_multiple_same_lane() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(result.is_ok());
+    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
 }
 
 #[tokio::test]
@@ -256,7 +256,7 @@ async fn blocked_lane() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(result.is_ok());
+    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
 }
 
 async fn await_stall(mut stalled: watch::Receiver<bool>) -> Result<(), ()> {
@@ -322,7 +322,7 @@ async fn recover_from_stall() {
     };
 
     let (result, _, _) = join3(task, send_task, receive_task).await;
-    assert!(result.is_ok());
+    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
 }
 
 #[tokio::test]
@@ -373,7 +373,7 @@ async fn flush_pending() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(result.is_ok());
+    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
 }
 
 

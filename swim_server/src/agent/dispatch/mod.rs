@@ -75,17 +75,37 @@ pub enum DispatcherError {
     LaneTaskFailed(LaneIoError),
 }
 
+impl DispatcherError {
+
+    pub fn is_fatal(&self) -> bool {
+        !matches!(self, DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(_)))
+    }
+
+}
+
 #[derive(Debug)]
-pub struct DispatcherErrors(Vec<DispatcherError>);
+pub struct DispatcherErrors(bool, Vec<DispatcherError>);
 
 impl DispatcherErrors {
 
-    pub fn result_from(errors: Vec<DispatcherError>) -> Result<(), Self> {
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(DispatcherErrors(errors))
-        }
+    pub fn new() -> Self {
+        DispatcherErrors(false, vec![])
+    }
+
+    fn push(&mut self, error: DispatcherError) {
+        let DispatcherErrors(is_fatal, errors) = self;
+        *is_fatal = *is_fatal || error.is_fatal();
+        errors.push(error);
+    }
+
+    pub fn is_fatal(&self) -> bool {
+        let DispatcherErrors(is_fatal, _) = self;
+        *is_fatal
+    }
+
+    pub fn is_empty(&self) -> bool {
+        let DispatcherErrors(_, errors) = self;
+        errors.is_empty()
     }
 
 }
@@ -136,7 +156,7 @@ where
     pub async fn run(
         self,
         incoming: impl Stream<Item = TaggedEnvelope>,
-    ) -> Result<(), DispatcherErrors> {
+    ) -> Result<DispatcherErrors, DispatcherErrors> {
         let AgentDispatcher {
             agent_route,
             config,
@@ -263,7 +283,7 @@ where
         self,
         requests: mpsc::Receiver<OpenRequest>,
         tripwire: trigger::Sender,
-    ) -> Result<(), DispatcherErrors> {
+    ) -> Result<DispatcherErrors, DispatcherErrors> {
         let LaneAttachmentTask {
             agent_route,
             mut lanes,
@@ -281,7 +301,7 @@ where
         let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
-        let mut errors = vec![];
+        let mut errors = DispatcherErrors::new();
 
         loop {
             let next = next_attachment_event(&mut requests, &mut lane_io_tasks).await;
@@ -315,14 +335,18 @@ where
                                 if callback.send(Err(error.clone())).is_err() {
                                     event!(Level::ERROR, message = BAD_CALLBACK, ?name);
                                 }
-                                errors.push(DispatcherError::AttachmentFailed(error));
-                                if let Some(tx) = tripwire.take() {
-                                    tx.trigger();
+                                let dispatch_err = DispatcherError::AttachmentFailed(error);
+                                if dispatch_err.is_fatal() {
+                                    if let Some(tx) = tripwire.take() {
+                                        tx.trigger();
+                                    }
                                 }
+                                errors.push(dispatch_err);
                                 break;
                             }
                         }
                     } else {
+                        errors.push(DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(name.clone())));
                         if callback
                             .send(Err(AttachError::LaneDoesNotExist(name.clone())))
                             .is_err()
@@ -351,7 +375,11 @@ where
                 tokio::task::yield_now().await;
             }
         }
-        DispatcherErrors::result_from(errors)
+        if errors.is_fatal() {
+            Err(errors)
+        } else {
+            Ok(errors)
+        }
     }
 }
 
