@@ -14,8 +14,9 @@
 
 mod reporting_agent;
 pub(crate) mod test_clock;
-mod test_agent;
-mod test_macro_agent;
+mod test_command_agent;
+mod test_value_agent;
+mod test_command_macro_agent;
 
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,

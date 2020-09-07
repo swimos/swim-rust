@@ -40,12 +40,13 @@ where
     projection: T,
 }
 
-async fn custom_on_command<Context>(
+async fn custom_on_command<Context, Agent, Config>(
     command: String,
     model: &ActionLane<String, ()>,
     context: &Context,
 ) where
-    Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+    Agent: SwimAgent<Config> + Send + Sync + 'static,
+    Context: AgentContext<Agent> + Sized + Send + Sync + 'static,
 {
     unimplemented!()
 }
@@ -130,7 +131,6 @@ impl Clock for TestClock {
 
 struct TestAgentLifecycle {}
 
-//This needs to be implemented using LaneTasks
 impl AgentLifecycle<TestAgent> for TestAgentLifecycle {
     fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where
