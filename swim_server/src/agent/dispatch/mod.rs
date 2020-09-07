@@ -75,6 +75,21 @@ pub enum DispatcherError {
     LaneTaskFailed(LaneIoError),
 }
 
+#[derive(Debug)]
+pub struct DispatcherErrors(Vec<DispatcherError>);
+
+impl DispatcherErrors {
+
+    pub fn result_from(errors: Vec<DispatcherError>) -> Result<(), Self> {
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(DispatcherErrors(errors))
+        }
+    }
+
+}
+
 impl Display for DispatcherError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -121,7 +136,7 @@ where
     pub async fn run(
         self,
         incoming: impl Stream<Item = TaggedEnvelope>,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), DispatcherErrors> {
         let AgentDispatcher {
             agent_route,
             config,
@@ -248,7 +263,7 @@ where
         self,
         requests: mpsc::Receiver<OpenRequest>,
         tripwire: trigger::Sender,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), DispatcherErrors> {
         let LaneAttachmentTask {
             agent_route,
             mut lanes,
@@ -266,7 +281,7 @@ where
         let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
-        let mut result = Ok(());
+        let mut errors = vec![];
 
         loop {
             let next = next_attachment_event(&mut requests, &mut lane_io_tasks).await;
@@ -300,7 +315,7 @@ where
                                 if callback.send(Err(error.clone())).is_err() {
                                     event!(Level::ERROR, message = BAD_CALLBACK, ?name);
                                 }
-                                result = Err(DispatcherError::AttachmentFailed(error));
+                                errors.push(DispatcherError::AttachmentFailed(error));
                                 if let Some(tx) = tripwire.take() {
                                     tx.trigger();
                                 }
@@ -318,7 +333,7 @@ where
                 }
                 Some(LaneTaskEvent::LaneTaskFailure(lane_io_err)) => {
                     event!(Level::ERROR, message = "Lane IO task failed.", error = ?lane_io_err);
-                    result = Err(DispatcherError::LaneTaskFailed(lane_io_err));
+                    errors.push(DispatcherError::LaneTaskFailed(lane_io_err));
                     if let Some(tx) = tripwire.take() {
                         tx.trigger();
                     }
@@ -336,7 +351,7 @@ where
                 tokio::task::yield_now().await;
             }
         }
-        result
+        DispatcherErrors::result_from(errors)
     }
 }
 

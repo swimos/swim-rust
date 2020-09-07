@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
-use crate::agent::dispatch::{AgentDispatcher, DispatcherError};
+use crate::agent::dispatch::{AgentDispatcher, DispatcherErrors};
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::routing::{TaggedEnvelope, RoutingAddr};
 use futures::future::{join, join3, BoxFuture};
@@ -35,7 +35,7 @@ fn make_dispatcher(
     lanes: HashMap<String, MockLane>,
     envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
 ) -> (
-    BoxFuture<'static, Result<(), DispatcherError>>,
+    BoxFuture<'static, Result<(), DispatcherErrors>>,
     MockExecutionContext,
     watch::Receiver<bool>,
 ) {
