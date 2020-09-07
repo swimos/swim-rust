@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::AttachError;
 use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
-use crate::agent::dispatch::{AgentDispatcher, DispatcherErrors};
+use crate::agent::dispatch::{AgentDispatcher, DispatcherError, DispatcherErrors};
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::routing::{TaggedEnvelope, RoutingAddr};
 use futures::future::{join, join3, BoxFuture};
@@ -121,7 +122,7 @@ async fn dispatch_nothing() {
     drop(context);
 
     let result = task.await;
-    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
 #[tokio::test]
@@ -146,7 +147,7 @@ async fn dispatch_single() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
 #[tokio::test]
@@ -178,7 +179,7 @@ async fn dispatch_two_lanes() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
 #[tokio::test]
@@ -209,7 +210,7 @@ async fn dispatch_multiple_same_lane() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
 #[tokio::test]
@@ -256,7 +257,7 @@ async fn blocked_lane() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
 async fn await_stall(mut stalled: watch::Receiver<bool>) -> Result<(), ()> {
@@ -322,7 +323,7 @@ async fn recover_from_stall() {
     };
 
     let (result, _, _) = join3(task, send_task, receive_task).await;
-    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
 #[tokio::test]
@@ -373,7 +374,34 @@ async fn flush_pending() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(matches!(result, Ok(errs) if !errs.is_empty()));
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[tokio::test]
+async fn dispatch_to_non_existent() {
+    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+
+    let addr = RoutingAddr::remote(1);
+
+    let link = Envelope::link("node", "other");
+
+    let assertion_task = async move {
+
+        assert!(envelope_tx.send(TaggedEnvelope(addr, link)).await.is_ok());
+
+        drop(envelope_tx);
+        drop(context);
+    };
+
+    let (result, _) = join(task, assertion_task).await;
+    match result.as_ref().map(|e| e.errors()) {
+        Ok([DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(name))]) => {
+            assert_eq!(name, "other");
+        },
+        ow => panic!("Unexpected result {:?}.", ow),
+    }
 }
 
 

@@ -108,6 +108,11 @@ impl DispatcherErrors {
         errors.is_empty()
     }
 
+    pub fn errors(&self) -> &[DispatcherError] {
+        let DispatcherErrors(_, errors) = self;
+        errors.as_slice()
+    }
+
 }
 
 impl Display for DispatcherError {
