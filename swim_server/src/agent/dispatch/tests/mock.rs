@@ -149,39 +149,44 @@ impl LaneIo<MockExecutionContext> for MockLane {
         let mut router = context.router_handle();
         Ok(async move {
             let mut senders: HashMap<RoutingAddr, MockSender> = HashMap::new();
-            let mut err: Option<LaneIoError> = None;
-            while let Some(TaggedClientEnvelope(
-                addr,
-                OutgoingLinkMessage {
-                    header,
-                    path: _,
-                    body,
-                },
-            )) = envelopes.recv().await
-            {
-                let response = echo(&route, header, body);
-                let sender = match senders.entry(addr) {
-                    Entry::Occupied(entry) => entry.into_mut(),
-                    Entry::Vacant(entry) => {
-                        if let Ok(sender) = router.get_sender(addr) {
-                            entry.insert(sender)
-                        } else {
-                            err = Some(LaneIoError::for_uplink_errors(
-                                route.clone(),
-                                vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],
-                            ));
-                            break;
+
+            let err = loop {
+                let next = envelopes.recv().await;
+                if let Some(env) = next {
+                    let TaggedClientEnvelope(
+                        addr,
+                        OutgoingLinkMessage {
+                            header,
+                            path: _,
+                            body,
+                        },
+                    ) = env;
+
+                    let response = echo(&route, header, body);
+                    let sender = match senders.entry(addr) {
+                        Entry::Occupied(entry) => entry.into_mut(),
+                        Entry::Vacant(entry) => {
+                            if let Ok(sender) = router.get_sender(addr) {
+                                entry.insert(sender)
+                            } else {
+                                break Some(LaneIoError::for_uplink_errors(
+                                    route.clone(),
+                                    vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],
+                                ));
+                            }
                         }
+                    };
+                    if sender.send_item(response).await.is_err() {
+                        break Some(LaneIoError::for_uplink_errors(
+                            route.clone(),
+                            vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],
+                        ));
                     }
-                };
-                if sender.send_item(response).await.is_err() {
-                    err = Some(LaneIoError::for_uplink_errors(
-                        route.clone(),
-                        vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],
-                    ));
-                    break;
+                } else {
+                    break None;
                 }
-            }
+            };
+
             if let Some(error) = err {
                 Err(error)
             } else {

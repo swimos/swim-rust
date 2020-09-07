@@ -19,14 +19,15 @@ mod tests;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::LaneIoError;
+use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
-use futures::future::join;
+use futures::future::{join, BoxFuture};
 use futures::stream::{FusedStream, FuturesUnordered};
 use futures::task::{Context, Poll};
-use futures::{ready, select, select_biased, FutureExt};
+use futures::{ready, select_biased, FutureExt};
 use futures::{Stream, StreamExt};
 use pin_utils::core_reexport::fmt::Formatter;
 use pin_utils::core_reexport::num::NonZeroUsize;
@@ -175,6 +176,56 @@ struct LaneAttachmentTask<'a, Context> {
     context: Context,
 }
 
+enum LaneTaskEvent {
+    Request(OpenRequest),
+    LaneTaskSuccess(Vec<UplinkErrorReport>),
+    LaneTaskFailure(LaneIoError),
+}
+
+type IoTaskResult = Result<Vec<UplinkErrorReport>, LaneIoError>;
+
+async fn next_attachment_event(
+    requests: &mut (impl FusedStream<Item = OpenRequest> + Unpin),
+    lane_io_tasks: &mut FuturesUnordered<BoxFuture<'static, IoTaskResult>>,
+) -> Option<LaneTaskEvent> {
+    loop {
+        if requests.is_terminated() && lane_io_tasks.is_empty() {
+            break None;
+        } else if lane_io_tasks.is_empty() {
+            match requests.next().await {
+                Some(req) => {
+                    break Some(LaneTaskEvent::Request(req));
+                }
+                _ => {
+                    break None;
+                }
+            }
+        } else {
+            select_biased! {
+                completion = lane_io_tasks.next() => {
+                    match completion {
+                        Some(Ok(errs)) => {
+                            break Some(LaneTaskEvent::LaneTaskSuccess(errs));
+                        },
+                        Some(Err(err)) => {
+                            break Some(LaneTaskEvent::LaneTaskFailure(err));
+                        },
+                        _ => {}
+                    }
+                },
+                maybe_request = requests.next() => {
+                    match maybe_request {
+                        Some(req) => {
+                            break Some(LaneTaskEvent::Request(req));
+                        },
+                        _ => {},
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl<'a, Context> LaneAttachmentTask<'a, Context>
 where
     Context: AgentExecutionContext + Clone + Send + Sync + 'static,
@@ -196,7 +247,7 @@ where
     async fn run(
         self,
         requests: mpsc::Receiver<OpenRequest>,
-        _tripwire: trigger::Sender,
+        tripwire: trigger::Sender,
     ) -> Result<(), DispatcherError> {
         let LaneAttachmentTask {
             agent_route,
@@ -204,6 +255,8 @@ where
             config,
             context,
         } = self;
+
+        let mut tripwire = Some(tripwire);
 
         let mut lane_io_tasks = FuturesUnordered::new();
 
@@ -213,18 +266,13 @@ where
         let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
+        let mut result = Ok(());
+
         loop {
-            let next = if lane_io_tasks.is_empty() {
-                requests.next().await.map(Either::Left)
-            } else {
-                select! {
-                    request = requests.next() => request.map(Either::Left),
-                    completed = lane_io_tasks.next() => completed.map(Either::Right),
-                }
-            };
+            let next = next_attachment_event(&mut requests, &mut lane_io_tasks).await;
 
             match next {
-                Some(Either::Left(OpenRequest { name, callback })) => {
+                Some(LaneTaskEvent::Request(OpenRequest { name, callback })) => {
                     event!(
                         Level::DEBUG,
                         message = "Attachment requested for lane.",
@@ -252,7 +300,11 @@ where
                                 if callback.send(Err(error.clone())).is_err() {
                                     event!(Level::ERROR, message = BAD_CALLBACK, ?name);
                                 }
-                                break Err(DispatcherError::AttachmentFailed(error));
+                                result = Err(DispatcherError::AttachmentFailed(error));
+                                if let Some(tx) = tripwire.take() {
+                                    tx.trigger();
+                                }
+                                break;
                             }
                         }
                     } else {
@@ -264,13 +316,19 @@ where
                         }
                     }
                 }
-                Some(Either::Right(Err(lane_io_err))) => {
+                Some(LaneTaskEvent::LaneTaskFailure(lane_io_err)) => {
                     event!(Level::ERROR, message = "Lane IO task failed.", error = ?lane_io_err);
-                    event!(Level::ERROR, message = "Lane IO task failed.", error = ?lane_io_err);
-                    break Err(DispatcherError::LaneTaskFailed(lane_io_err));
+                    result = Err(DispatcherError::LaneTaskFailed(lane_io_err));
+                    if let Some(tx) = tripwire.take() {
+                        tx.trigger();
+                    }
+                    break;
+                }
+                Some(LaneTaskEvent::LaneTaskSuccess(uplink_errors)) => {
+                    event!(Level::DEBUG, message = "Lane task completed successfully.", ?uplink_errors);
                 }
                 _ => {
-                    break Ok(());
+                    break;
                 }
             }
             iteration_count += 1;
@@ -278,6 +336,7 @@ where
                 tokio::task::yield_now().await;
             }
         }
+        result
     }
 }
 
@@ -568,6 +627,7 @@ impl EnvelopeDispatcher {
         let mut iteration_count: usize = 0;
         loop {
             let next = select_next_no_envelopes(&mut selector, &mut await_new).await;
+
             match next {
                 Some((label, Ok(mut sender))) => {
                     event!(
@@ -575,31 +635,77 @@ impl EnvelopeDispatcher {
                         message = "Sender selected for dispatch.",
                         ?label
                     );
+                    let mut did_dispatch: bool = false;
                     while let Some(envelope) = pending.pop(&label) {
-                        if let Err(TrySendError::Full(envelope)) = sender.try_send(envelope) {
-                            event!(
-                                Level::TRACE,
-                                message = "Returning sender to selector.",
-                                ?label
-                            );
-                            pending
-                                .replace(label.clone(), envelope)
-                                .expect(GUARANTEED_CAPACITY);
-                            selector.add(label, sender);
-                            if stalled {
-                                event!(Level::TRACE, message = "Stall was not resolved.");
+                        match sender.try_send(envelope) {
+                            Err(TrySendError::Full(envelope)) => {
+                                event!(
+                                    Level::TRACE,
+                                    message = "Returning sender to selector.",
+                                    ?label
+                                );
+                                pending
+                                    .replace(label.clone(), envelope)
+                                    .expect(GUARANTEED_CAPACITY);
+                                selector.add(label, sender);
+                                if stalled {
+                                    event!(Level::TRACE, message = "Stall was not resolved.");
+                                }
+                                break;
                             }
-                            break;
-                        } else {
-                            if stalled {
-                                event!(Level::TRACE, message = "Dispatcher no longer stalled.");
-                                let _ = stalled_tx.send_item(false);
-                                stalled = false;
+                            Err(TrySendError::Closed(_)) => {
+                                did_dispatch = true;
+                                event!(
+                                    Level::WARN,
+                                    message =
+                                        "Lane IO task has stopped, dropping pending messages."
+                                );
+                                pending.clear(&label);
+                            }
+                            _ => {
+                                did_dispatch = true;
                             }
                         }
                     }
+                    if stalled && did_dispatch {
+                        event!(Level::TRACE, message = "Dispatcher no longer stalled.");
+                        let _ = stalled_tx.send_item(false);
+                        stalled = false;
+                    }
                 }
-                Some((_, Err(Some(AttachError::LaneDoesNotExist(_))))) => {}
+                Some((label, Err(e))) => {
+                    match e {
+                        Some(AttachError::LaneDoesNotExist(name)) => {
+                            event!(
+                                Level::WARN,
+                                message =
+                                    "Lane IO task failed to start, dropping pending messages.",
+                                ?name
+                            );
+                        }
+                        Some(error) => {
+                            event!(
+                                Level::WARN,
+                                message =
+                                    "Lane IO task failed to start, dropping pending messages.",
+                                ?error
+                            );
+                        }
+                        _ => {
+                            event!(
+                                Level::WARN,
+                                message = "Lane IO task has stopped, dropping pending messages."
+                            );
+                        }
+                    }
+                    if pending.clear(&label) {
+                        if stalled {
+                            event!(Level::TRACE, message = "Dispatcher no longer stalled.");
+                            let _ = stalled_tx.send_item(false);
+                            stalled = false;
+                        }
+                    }
+                }
                 _ => {
                     break;
                 }

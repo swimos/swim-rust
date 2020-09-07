@@ -242,7 +242,7 @@ async fn blocked_lane() {
         assert!(envelope_tx.send(TaggedEnvelope(addr2, link.clone())).await.is_ok());
 
         //Wait until we receive the message for lane B indicating that lane A is definitely blocked
-        //and the second message must be pending.
+        //and the remaining messages must be pending.
         let mut rx2 = context.take_receiver(&addr2).unwrap();
         expect_echo(&mut rx2, "lane_b", link).await;
 
@@ -322,6 +322,57 @@ async fn recover_from_stall() {
     };
 
     let (result, _, _) = join3(task, send_task, receive_task).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn flush_pending() {
+    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context, _) = make_dispatcher(1, 10,
+                                             lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+
+    let addr1 = RoutingAddr::remote(1);
+    let addr2 = RoutingAddr::remote(2);
+
+    let link = Envelope::link("node", "lane_b");
+
+    //Chose to ensure there are several pending messages when the dispatcher stops.
+    let n = 8;
+
+    let assertion_task = async move {
+
+        let cmd0 = Envelope::make_command("node", "lane_a", Some(0.into()));
+        assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd0.clone())).await.is_ok());
+        let mut rx1 = context.take_receiver(&addr1).unwrap();
+        expect_echo(&mut rx1, "lane_a", cmd0).await;
+
+        //Lane A is now attached.
+
+        for i in 0..n {
+            let cmd = Envelope::make_command("node", "lane_a", Some((i + 1).into()));
+            assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd.clone())).await.is_ok());
+        }
+
+        assert!(envelope_tx.send(TaggedEnvelope(addr2, link.clone())).await.is_ok());
+
+        //Wait until we receive the message for lane B indicating that lane A is definitely blocked
+        //and the remaining messages must be pending.
+        let mut rx2 = context.take_receiver(&addr2).unwrap();
+        expect_echo(&mut rx2, "lane_b", link).await;
+
+        //Drop the envelope sender to begin the shutdown process for the dispatcher.
+        drop(envelope_tx);
+
+        for i in 0..n {
+            let cmd = Envelope::make_command("node", "lane_a", Some((i + 1).into()));
+            expect_echo(&mut rx1, "lane_a", cmd).await;
+        }
+
+        drop(context);
+    };
+
+    let (result, _) = join(task, assertion_task).await;
     assert!(result.is_ok());
 }
 
