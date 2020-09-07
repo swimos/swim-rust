@@ -16,6 +16,7 @@ use crate::agent::AttachError;
 use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
 use crate::agent::dispatch::{AgentDispatcher, DispatcherError, DispatcherErrors};
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::lane::channels::task::LaneIoError;
 use crate::routing::{TaggedEnvelope, RoutingAddr};
 use futures::future::{join, join3, BoxFuture};
 use futures::{Stream, StreamExt, FutureExt};
@@ -27,6 +28,8 @@ use swim_common::warp::path::RelativePath;
 use pin_utils::core_reexport::num::NonZeroUsize;
 use std::time::Duration;
 use std::sync::Arc;
+use crate::agent::lane::channels::update::UpdateError;
+use stm::transaction::TransactionError;
 
 mod mock;
 
@@ -399,6 +402,38 @@ async fn dispatch_to_non_existent() {
     match result.as_ref().map(|e| e.errors()) {
         Ok([DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(name))]) => {
             assert_eq!(name, "other");
+        },
+        ow => panic!("Unexpected result {:?}.", ow),
+    }
+}
+
+#[tokio::test]
+async fn failed_lane_task() {
+    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+
+    let addr = RoutingAddr::remote(1);
+
+    let cmd = Envelope::make_command("node", "lane", Some(mock::POISON_PILL.into()));
+
+    let assertion_task = async move {
+
+        assert!(envelope_tx.send(TaggedEnvelope(addr, cmd.clone())).await.is_ok());
+        drop(context);
+    };
+
+    let (result, _) = join(task, assertion_task).await;
+    match result.as_ref().map_err(|e| e.errors()) {
+        Err([DispatcherError::LaneTaskFailed(err)]) => {
+            let LaneIoError {
+                route,
+                update_error,
+                uplink_errors
+            } = err;
+            assert_eq!(route, &RelativePath::new("node", "lane"));
+            assert!(uplink_errors.is_empty());
+            assert!(matches!(update_error, Some(UpdateError::FailedTransaction(TransactionError::InvalidRetry))));
         },
         ow => panic!("Unexpected result {:?}.", ow),
     }

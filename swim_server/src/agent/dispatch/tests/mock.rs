@@ -14,6 +14,7 @@
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::LaneIoError;
+use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -25,6 +26,7 @@ use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
+use stm::transaction::TransactionError;
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
@@ -138,6 +140,8 @@ impl MockExecutionContext {
     }
 }
 
+pub const POISON_PILL: &str = "FAIL";
+
 impl LaneIo<MockExecutionContext> for MockLane {
     fn attach(
         self,
@@ -162,25 +166,35 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         },
                     ) = env;
 
-                    let response = echo(&route, header, body);
-                    let sender = match senders.entry(addr) {
-                        Entry::Occupied(entry) => entry.into_mut(),
-                        Entry::Vacant(entry) => {
-                            if let Ok(sender) = router.get_sender(addr) {
-                                entry.insert(sender)
-                            } else {
-                                break Some(LaneIoError::for_uplink_errors(
-                                    route.clone(),
-                                    vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],
-                                ));
-                            }
-                        }
-                    };
-                    if sender.send_item(response).await.is_err() {
-                        break Some(LaneIoError::for_uplink_errors(
+                    if body == Some(Value::Text(POISON_PILL.to_string())) {
+                        break Some(LaneIoError::for_update_err(
                             route.clone(),
-                            vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],
+                            UpdateError::FailedTransaction(TransactionError::InvalidRetry),
                         ));
+                    } else {
+                        let response = echo(&route, header, body);
+                        let sender = match senders.entry(addr) {
+                            Entry::Occupied(entry) => entry.into_mut(),
+                            Entry::Vacant(entry) => {
+                                if let Ok(sender) = router.get_sender(addr) {
+                                    entry.insert(sender)
+                                } else {
+                                    break Some(LaneIoError::for_uplink_errors(
+                                        route.clone(),
+                                        vec![UplinkErrorReport::new(
+                                            UplinkError::ChannelDropped,
+                                            addr,
+                                        )],
+                                    ));
+                                }
+                            }
+                        };
+                        if sender.send_item(response).await.is_err() {
+                            break Some(LaneIoError::for_uplink_errors(
+                                route.clone(),
+                                vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],
+                            ));
+                        }
                     }
                 } else {
                     break None;
