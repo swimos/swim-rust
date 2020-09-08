@@ -14,7 +14,7 @@
 
 use crate::agent::AttachError;
 use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
-use crate::agent::dispatch::{AgentDispatcher, DispatcherError, DispatcherErrors};
+use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::routing::{TaggedEnvelope, RoutingAddr};
@@ -30,6 +30,7 @@ use std::time::Duration;
 use std::sync::Arc;
 use crate::agent::lane::channels::update::UpdateError;
 use stm::transaction::TransactionError;
+use crate::agent::dispatch::error::{DispatcherErrors, DispatcherError};
 
 mod mock;
 

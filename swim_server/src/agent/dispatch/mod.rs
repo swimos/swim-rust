@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod error;
 mod pending;
 mod selector;
 #[cfg(test)]
@@ -29,12 +30,8 @@ use futures::stream::{FusedStream, FuturesUnordered};
 use futures::task::{Context, Poll};
 use futures::{ready, select_biased, FutureExt};
 use futures::{Stream, StreamExt};
-use pin_utils::core_reexport::fmt::Formatter;
-use pin_utils::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt::Display;
 use std::future::Future;
 use std::pin::Pin;
 use swim_common::sink::item::ItemSink;
@@ -45,6 +42,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
+use crate::agent::dispatch::error::{DispatcherErrors, DispatcherError};
+use std::num::NonZeroUsize;
 
 pub struct AgentDispatcher<Context> {
     agent_route: String,
@@ -66,70 +65,6 @@ impl OpenRequest {
         callback: oneshot::Sender<Result<mpsc::Sender<TaggedClientEnvelope>, AttachError>>,
     ) -> Self {
         OpenRequest { name, callback }
-    }
-}
-
-#[derive(Debug)]
-pub enum DispatcherError {
-    AttachmentFailed(AttachError),
-    LaneTaskFailed(LaneIoError),
-}
-
-impl DispatcherError {
-
-    pub fn is_fatal(&self) -> bool {
-        !matches!(self, DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(_)))
-    }
-
-}
-
-#[derive(Debug)]
-pub struct DispatcherErrors(bool, Vec<DispatcherError>);
-
-impl DispatcherErrors {
-
-    pub fn new() -> Self {
-        DispatcherErrors(false, vec![])
-    }
-
-    fn push(&mut self, error: DispatcherError) {
-        let DispatcherErrors(is_fatal, errors) = self;
-        *is_fatal = *is_fatal || error.is_fatal();
-        errors.push(error);
-    }
-
-    pub fn is_fatal(&self) -> bool {
-        let DispatcherErrors(is_fatal, _) = self;
-        *is_fatal
-    }
-
-    pub fn is_empty(&self) -> bool {
-        let DispatcherErrors(_, errors) = self;
-        errors.is_empty()
-    }
-
-    pub fn errors(&self) -> &[DispatcherError] {
-        let DispatcherErrors(_, errors) = self;
-        errors.as_slice()
-    }
-
-}
-
-impl Display for DispatcherError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DispatcherError::AttachmentFailed(err) => write!(f, "{}", err),
-            DispatcherError::LaneTaskFailed(err) => write!(f, "{}", err),
-        }
-    }
-}
-
-impl Error for DispatcherError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            DispatcherError::AttachmentFailed(err) => Some(err),
-            DispatcherError::LaneTaskFailed(err) => Some(err),
-        }
     }
 }
 
