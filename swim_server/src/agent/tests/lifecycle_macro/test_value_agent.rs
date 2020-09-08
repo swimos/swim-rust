@@ -3,6 +3,8 @@ use crate::agent::context::ContextImpl;
 use crate::agent::lane::lifecycle::ActionLaneLifecycle;
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
+use crate::agent::lane::strategy::Queue;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::TestContext;
 use crate::agent::{
@@ -14,6 +16,8 @@ use futures_util::core_reexport::time::Duration;
 use pin_utils::pin_mut;
 use std::future::Future;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
+use stm::var::TVar;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
 use tokio::sync::mpsc;
@@ -25,52 +29,56 @@ use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
 
 const COMMANDED: &str = "Command received";
-const ON_COMMAND: &str = "On command handler";
+const ON_EVENT: &str = "On event handler";
 
 struct TestAgent {
-    action: CommandLane<String>,
+    value: ValueLane<i32>,
 }
 
-struct ActionLifecycle<T>
+struct ValueLifecycle<T>
 where
-    T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static,
+    T: Fn(&TestAgent) -> &ValueLane<i32> + Send + Sync + 'static,
 {
     name: String,
-    event_stream: mpsc::Receiver<String>,
+    event_stream: mpsc::Receiver<Arc<i32>>,
     projection: T,
 }
 
-async fn custom_on_command<Context, Agent, Config>(
-    command: String,
-    model: &ActionLane<String, ()>,
-    context: &Context,
-) where
-    Agent: SwimAgent<Config> + Send + Sync + 'static,
-    Context: AgentContext<Agent> + Sized + Send + Sync + 'static,
+async fn custom_on_start<Context>(model: &ValueLane<i32>, context: &Context)
+where
+    Context: AgentContext<TestAgent> + Sized + Send + Sync,
 {
     unimplemented!()
 }
 
-impl<T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static> Lane
-    for ActionLifecycle<T>
+async fn custom_on_event<Context>(event: &Arc<i32>, model: &ValueLane<i32>, context: &Context)
+where
+    Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 {
+    unimplemented!()
+}
+
+impl<T: Fn(&TestAgent) -> &ValueLane<i32> + Send + Sync + 'static> Lane for ValueLifecycle<T> {
     fn name(&self) -> &str {
         &self.name
     }
 }
 
-impl<Context, T> LaneTasks<TestAgent, Context> for ActionLifecycle<T>
+impl<Context, T> LaneTasks<TestAgent, Context> for ValueLifecycle<T>
 where
     Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
-    T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static,
+    T: Fn(&TestAgent) -> &ValueLane<i32> + Send + Sync + 'static,
 {
-    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
+    fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
+        let ValueLifecycle { projection, .. } = self;
+
+        let model = projection(context.agent());
+        custom_on_start(model, context).boxed()
     }
 
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
-            let ActionLifecycle {
+            let ValueLifecycle {
                 name,
                 event_stream,
                 projection,
@@ -79,10 +87,9 @@ where
             let model = projection(context.agent()).clone();
             let mut events = event_stream.take_until_completes(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(command) = events.next().await {
-                event!(Level::TRACE, COMMANDED, ?command);
-                custom_on_command(command, &model, &context)
-                    .instrument(span!(Level::TRACE, ON_COMMAND))
+            while let Some(event) = events.next().await {
+                custom_on_event(&event, &model, &context)
+                    .instrument(span!(Level::TRACE, ON_EVENT, ?event))
                     .await;
             }
         }
@@ -100,17 +107,20 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
         let buffer_size = NonZeroUsize::new(5).unwrap();
-        let name = "action";
+        let name = "value";
+        let init = 0;
 
-        let (tx, event_stream) = mpsc::channel(buffer_size.get());
-        let action = ActionLane::new(tx);
+        let value = Arc::new(init);
+        let (observer, event_stream) = Queue(buffer_size).make_watch(&value);
+        let var = TVar::from_arc_with_observer(value, observer);
+        let value = ValueLane::from_tvar(var);
 
-        let agent = TestAgent { action };
+        let agent = TestAgent { value };
 
-        let task = ActionLifecycle {
+        let task = ValueLifecycle {
             name: name.into(),
             event_stream,
-            projection: |agent: &TestAgent| &agent.action,
+            projection: |agent: &TestAgent| &agent.value,
         };
 
         let tasks = vec![task.boxed()];
@@ -149,5 +159,5 @@ async fn test_agent() {
     let clock = TestClock {};
     let (_stop, stop_sig) = trigger::trigger();
 
-    super::super::run_agent(config, lifecycle, url, buff_size, clock, stop_sig);
+    super::super::super::run_agent(config, lifecycle, url, buff_size, clock, stop_sig);
 }

@@ -7,11 +7,13 @@ use syn::{
 };
 
 #[proc_macro_attribute]
-pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as ItemFn);
+pub fn command_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
+    let input_ast = parse_macro_input!(input as DeriveInput);
     let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
 
-    let lifecycle_struct_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+    let struct_name = input_ast.ident;
+
+    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
         path,
         eq_token,
         lit: Lit::Str(lit),
@@ -22,7 +24,7 @@ pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStrea
         panic!("Missing lifecycle struct name!")
     };
 
-    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+    let command_type = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
         path,
         eq_token,
         lit: Lit::Str(lit),
@@ -30,28 +32,22 @@ pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStrea
     {
         Ident::new(&lit.value(), Span::call_site())
     } else {
-        panic!("Missing agent name!")
+        panic!("Missing command type!")
     };
 
-    let command_type =
-        if let FnArg::Typed(PatType { ty, .. }) = input_ast.sig.inputs.first().unwrap() {
-            if let Type::Path(TypePath {
-                path: Path { segments, .. },
-                ..
-            }) = *ty.to_owned()
-            {
-                segments.first().unwrap().ident.clone()
-            } else {
-                panic!("Invalid command type!")
-            }
-        } else {
-            panic!("Invalid command type!")
-        };
+    let on_command_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+        path,
+        eq_token,
+        lit: Lit::Str(lit),
+    })) = metadata_ast.get(2).unwrap()
+    {
+        Ident::new(&lit.value(), Span::call_site())
+    } else {
+        panic!("Missing custom `on_command` function!")
+    };
 
     let output_ast = quote! {
-        #input_ast
-
-        struct #lifecycle_struct_name<T>
+        struct #struct_name<T>
         where
             T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
         {
@@ -62,14 +58,14 @@ pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStrea
 
 
         impl<T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static> Lane
-        for #lifecycle_struct_name<T>
+        for #struct_name<T>
         {
             fn name(&self) -> &str {
                 &self.name
             }
         }
 
-        impl<Context, T> LaneTasks<#agent_name, Context> for #lifecycle_struct_name<T>
+        impl<Context, T> LaneTasks<#agent_name, Context> for #struct_name<T>
         where
             Context: AgentContext<#agent_name> + Sized + Send + Sync + 'static,
             T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
@@ -80,7 +76,7 @@ pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStrea
 
                 fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
                     async move {
-                        let #lifecycle_struct_name {
+                        let #struct_name {
                             name,
                             event_stream,
                             projection,
@@ -91,7 +87,7 @@ pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStrea
                         pin_mut!(events);
                         while let Some(command) = events.next().await {
                             event!(Level::TRACE, COMMANDED, ?command);
-                            custom_on_command(command, &model, &context)
+                            #on_command_func(command, &model, &context)
                                 .instrument(span!(Level::TRACE, ON_COMMAND))
                                 .await;
                         }
@@ -105,7 +101,7 @@ pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStrea
     TokenStream::from(output_ast)
 }
 
-юю#[proc_macro_attribute]
+#[proc_macro_attribute]
 pub fn value_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
     let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
@@ -132,7 +128,7 @@ pub fn value_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream
     {
         Ident::new(&lit.value(), Span::call_site())
     } else {
-        panic!("Missing lifecycle struct name!")
+        panic!("Missing event type!")
     };
 
     let on_start_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
@@ -143,7 +139,7 @@ pub fn value_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream
     {
         Ident::new(&lit.value(), Span::call_site())
     } else {
-        panic!("Missing lifecycle struct name!")
+        panic!("Missing custom `on_start` function!")
     };
 
     let on_event_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
@@ -154,7 +150,7 @@ pub fn value_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream
     {
         Ident::new(&lit.value(), Span::call_site())
     } else {
-        panic!("Missing lifecycle struct name!")
+        panic!("Missing custom `on_event` function!")
     };
 
     let output_ast = quote! {

@@ -35,14 +35,13 @@ struct TestAgent {
     value: ValueLane<i32>,
 }
 
-struct ValueLifecycle<T>
-where
-    T: Fn(&TestAgent) -> &ValueLane<i32> + Send + Sync + 'static,
-{
-    name: String,
-    event_stream: mpsc::Receiver<Arc<i32>>,
-    projection: T,
-}
+#[value_lifecycle(
+    agent = "TestAgent",
+    event_type = "i32",
+    on_start = "custom_on_start",
+    on_event = "custom_on_event"
+)]
+struct ValueLifecycle;
 
 async fn custom_on_start<Context>(model: &ValueLane<i32>, context: &Context)
 where
@@ -56,45 +55,6 @@ where
     Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 {
     unimplemented!()
-}
-
-impl<T: Fn(&TestAgent) -> &ValueLane<i32> + Send + Sync + 'static> Lane for ValueLifecycle<T> {
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl<Context, T> LaneTasks<TestAgent, Context> for ValueLifecycle<T>
-where
-    Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
-    T: Fn(&TestAgent) -> &ValueLane<i32> + Send + Sync + 'static,
-{
-    fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
-        let ValueLifecycle { projection, .. } = self;
-
-        let model = projection(context.agent());
-        custom_on_start(model, context).boxed()
-    }
-
-    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
-        async move {
-            let ValueLifecycle {
-                name,
-                event_stream,
-                projection,
-            } = *self;
-
-            let model = projection(context.agent()).clone();
-            let mut events = event_stream.take_until_completes(context.agent_stop_event());
-            pin_mut!(events);
-            while let Some(event) = events.next().await {
-                custom_on_event(&event, &model, &context)
-                    .instrument(span!(Level::TRACE, ON_EVENT, ?event))
-                    .await;
-            }
-        }
-        .boxed()
-    }
 }
 
 struct TestAgentConfig {}
@@ -159,5 +119,5 @@ async fn test_agent() {
     let clock = TestClock {};
     let (_stop, stop_sig) = trigger::trigger();
 
-    super::super::run_agent(config, lifecycle, url, buff_size, clock, stop_sig);
+    super::super::super::run_agent(config, lifecycle, url, buff_size, clock, stop_sig);
 }

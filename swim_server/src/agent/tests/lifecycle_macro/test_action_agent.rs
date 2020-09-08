@@ -24,8 +24,6 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
 
-use lifecycle_derive;
-
 const COMMANDED: &str = "Command received";
 const ON_COMMAND: &str = "On command handler";
 
@@ -33,15 +31,63 @@ struct TestAgent {
     action: CommandLane<String>,
 }
 
-#[action_lifecycle(name = "ActionLifecycle", agent = "TestAgent")]
-async fn custom_on_command<Context>(
+struct ActionLifecycle<T>
+    where
+        T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static,
+{
+    name: String,
+    event_stream: mpsc::Receiver<String>,
+    projection: T,
+}
+
+async fn custom_on_command<Context, Agent, Config>(
     command: String,
     model: &ActionLane<String, ()>,
     context: &Context,
 ) where
-    Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+    Agent: SwimAgent<Config> + Send + Sync + 'static,
+    Context: AgentContext<Agent> + Sized + Send + Sync + 'static,
 {
     unimplemented!()
+}
+
+impl<T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static> Lane
+for ActionLifecycle<T>
+{
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl<Context, T> LaneTasks<TestAgent, Context> for ActionLifecycle<T>
+    where
+        Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+        T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static,
+{
+    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
+
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        async move {
+            let ActionLifecycle {
+                name,
+                event_stream,
+                projection,
+            } = *self;
+
+            let model = projection(context.agent()).clone();
+            let mut events = event_stream.take_until_completes(context.agent_stop_event());
+            pin_mut!(events);
+            while let Some(command) = events.next().await {
+                event!(Level::TRACE, COMMANDED, ?command);
+                custom_on_command(command, &model, &context)
+                    .instrument(span!(Level::TRACE, ON_COMMAND))
+                    .await;
+            }
+        }
+            .boxed()
+    }
 }
 
 struct TestAgentConfig {}
@@ -50,8 +96,8 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
     fn instantiate<Context>(
         _configuration: &TestAgentConfig,
     ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
-    where
-        Context: AgentContext<Self> + Send + Sync + 'static,
+        where
+            Context: AgentContext<Self> + Send + Sync + 'static,
     {
         let buffer_size = NonZeroUsize::new(5).unwrap();
         let name = "action";
@@ -85,11 +131,10 @@ impl Clock for TestClock {
 
 struct TestAgentLifecycle {}
 
-//This needs to be implemented using LaneTasks
 impl AgentLifecycle<TestAgent> for TestAgentLifecycle {
     fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
-    where
-        C: AgentContext<TestAgent> + Send + Sync + 'a,
+        where
+            C: AgentContext<TestAgent> + Send + Sync + 'a,
     {
         unimplemented!()
     }
@@ -104,5 +149,5 @@ async fn test_agent() {
     let clock = TestClock {};
     let (_stop, stop_sig) = trigger::trigger();
 
-    super::super::run_agent(config, lifecycle, url, buff_size, clock, stop_sig);
+    super::super::super::run_agent(config, lifecycle, url, buff_size, clock, stop_sig);
 }
