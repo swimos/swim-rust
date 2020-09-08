@@ -419,7 +419,7 @@ async fn failed_lane_task() {
 
     let assertion_task = async move {
 
-        assert!(envelope_tx.send(TaggedEnvelope(addr, cmd.clone())).await.is_ok());
+        assert!(envelope_tx.send(TaggedEnvelope(addr, cmd)).await.is_ok());
         drop(context);
     };
 
@@ -434,6 +434,31 @@ async fn failed_lane_task() {
             assert_eq!(route, &RelativePath::new("node", "lane"));
             assert!(uplink_errors.is_empty());
             assert!(matches!(update_error, Some(UpdateError::FailedTransaction(TransactionError::InvalidRetry))));
+        },
+        ow => panic!("Unexpected result {:?}.", ow),
+    }
+}
+
+#[tokio::test]
+async fn fatal_failed_attachment() {
+    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec![mock::POISON_PILL]), envelope_rx);
+
+    let addr = RoutingAddr::remote(1);
+
+    let link = Envelope::link("node", mock::POISON_PILL);
+
+    let assertion_task = async move {
+
+        assert!(envelope_tx.send(TaggedEnvelope(addr, link)).await.is_ok());
+        drop(context);
+    };
+
+    let (result, _) = join(task, assertion_task).await;
+    match result.as_ref().map_err(|e| e.errors()) {
+        Err([DispatcherError::AttachmentFailed(err)]) => {
+            assert_eq!(err, &AttachError::LaneStoppedReporting);
         },
         ow => panic!("Unexpected result {:?}.", ow),
     }

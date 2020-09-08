@@ -151,6 +151,9 @@ impl LaneIo<MockExecutionContext> for MockLane {
         context: MockExecutionContext,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let mut router = context.router_handle();
+        if route.lane == POISON_PILL {
+            return Err(AttachError::LaneStoppedReporting);
+        }
         Ok(async move {
             let mut senders: HashMap<RoutingAddr, MockSender> = HashMap::new();
 
