@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use std::collections::{HashMap, VecDeque};
-use std::collections::hash_map::Entry;
 use crate::routing::TaggedClientEnvelope;
 use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
 #[cfg(test)]
@@ -33,7 +32,6 @@ pub struct PendingEnvelopes {
 }
 
 impl PendingEnvelopes {
-
     /// The maximum number of envelopes that the queue will hold (for all lanes).
     pub fn new(max_pending: usize) -> Self {
         PendingEnvelopes {
@@ -64,9 +62,9 @@ impl PendingEnvelopes {
 
     /// Clear all pending envelopes for a given label.
     pub fn clear<Q>(&mut self, lane: &Q) -> bool
-        where
-            String: Borrow<Q>,
-            Q: ?Sized + Hash + Eq,
+    where
+        String: Borrow<Q>,
+        Q: ?Sized + Hash + Eq,
     {
         if let Some(mut queue) = self.pending.remove(&lane) {
             self.num_pending -= queue.len();
@@ -109,9 +107,9 @@ impl PendingEnvelopes {
 
     /// Pop an envelope from the front of the queue for a lane.
     pub fn pop<Q>(&mut self, lane: &Q) -> Option<TaggedClientEnvelope>
-        where
-            String: Borrow<Q>,
-            Q: ?Sized + Hash + Eq,
+    where
+        String: Borrow<Q>,
+        Q: ?Sized + Hash + Eq,
     {
         let PendingEnvelopes {
             num_pending,

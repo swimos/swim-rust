@@ -12,25 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::AttachError;
+use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
 use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
 use crate::agent::dispatch::AgentDispatcher;
-use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::channels::task::LaneIoError;
-use crate::routing::{TaggedEnvelope, RoutingAddr};
-use futures::future::{join, join3, BoxFuture};
-use futures::{Stream, StreamExt, FutureExt};
-use std::collections::HashMap;
-use tokio::sync::{mpsc, watch, Barrier};
+use crate::agent::lane::channels::update::UpdateError;
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::AttachError;
 use crate::agent::LaneIo;
+use crate::routing::{RoutingAddr, TaggedEnvelope};
+use futures::future::{join, join3, BoxFuture};
+use futures::{FutureExt, Stream, StreamExt};
+use pin_utils::core_reexport::num::NonZeroUsize;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
-use pin_utils::core_reexport::num::NonZeroUsize;
-use std::time::Duration;
-use std::sync::Arc;
-use crate::agent::lane::channels::update::UpdateError;
-use stm::transaction::TransactionError;
-use crate::agent::dispatch::error::{DispatcherErrors, DispatcherError};
+use tokio::sync::{mpsc, watch, Barrier};
 
 mod mock;
 
@@ -70,12 +70,7 @@ fn make_dispatcher(
         cleanup_timeout: Duration::from_secs(1),
     };
 
-    let dispatcher = AgentDispatcher::new(
-        "node".to_string(),
-        config,
-        context.clone(),
-        boxed_lanes,
-    );
+    let dispatcher = AgentDispatcher::new("node".to_string(), config, context.clone(), boxed_lanes);
 
     let stall_watch = dispatcher.stall_watcher();
 
@@ -86,7 +81,7 @@ fn make_dispatcher(
     (
         join(spawn_task, dispatch_task).map(|(_, r)| r).boxed(),
         context,
-        stall_watch
+        stall_watch,
     )
 }
 
@@ -98,17 +93,17 @@ fn lanes(names: Vec<&str>) -> HashMap<String, MockLane> {
     map
 }
 
-async fn expect_echo(rx: &mut mpsc::Receiver<Envelope>,
-                     lane: &str,
-                     envelope: Envelope) {
+async fn expect_echo(rx: &mut mpsc::Receiver<Envelope>, lane: &str, envelope: Envelope) {
     let route = RelativePath::new("node", lane);
     let maybe_envelope = rx.recv().await;
     assert!(maybe_envelope.is_some());
     let rec_envelope = maybe_envelope.unwrap();
     if let Ok(OutgoingLinkMessage {
-                  header,
-                  path: _,
-                  body }) = envelope.into_outgoing() {
+        header,
+        path: _,
+        body,
+    }) = envelope.into_outgoing()
+    {
         let expected = mock::echo(&route, header, body);
         assert_eq!(rec_envelope, expected);
     } else {
@@ -140,8 +135,10 @@ async fn dispatch_single() {
     let link = Envelope::link("node", "lane");
 
     let assertion_task = async move {
-
-        assert!(envelope_tx.send(TaggedEnvelope(addr, link.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr, link.clone()))
+            .await
+            .is_ok());
 
         let mut rx = context.take_receiver(&addr).unwrap();
         expect_echo(&mut rx, "lane", link).await;
@@ -158,8 +155,7 @@ async fn dispatch_single() {
 async fn dispatch_two_lanes() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context, _) = make_dispatcher(8, 10,
-                                          lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -168,9 +164,14 @@ async fn dispatch_two_lanes() {
     let sync = Envelope::link("node", "lane_b");
 
     let assertion_task = async move {
-
-        assert!(envelope_tx.send(TaggedEnvelope(addr1, link.clone())).await.is_ok());
-        assert!(envelope_tx.send(TaggedEnvelope(addr2, sync.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr1, link.clone()))
+            .await
+            .is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr2, sync.clone()))
+            .await
+            .is_ok());
 
         let mut rx1 = context.take_receiver(&addr1).unwrap();
         expect_echo(&mut rx1, "lane_a", link).await;
@@ -199,15 +200,23 @@ async fn dispatch_multiple_same_lane() {
     let cmd2 = Envelope::make_command("node", "lane", Some(2.into()));
 
     let assertion_task = async move {
-
-        assert!(envelope_tx.send(TaggedEnvelope(addr, link.clone())).await.is_ok());
-        assert!(envelope_tx.send(TaggedEnvelope(addr, cmd1.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr, link.clone()))
+            .await
+            .is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr, cmd1.clone()))
+            .await
+            .is_ok());
 
         let mut rx = context.take_receiver(&addr).unwrap();
         expect_echo(&mut rx, "lane", link).await;
         expect_echo(&mut rx, "lane", cmd1).await;
 
-        assert!(envelope_tx.send(TaggedEnvelope(addr, cmd2.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr, cmd2.clone()))
+            .await
+            .is_ok());
         expect_echo(&mut rx, "lane", cmd2).await;
         drop(envelope_tx);
         drop(context);
@@ -221,8 +230,7 @@ async fn dispatch_multiple_same_lane() {
 async fn blocked_lane() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context, _) = make_dispatcher(1, 10,
-                                          lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+    let (task, context, _) = make_dispatcher(1, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -234,17 +242,31 @@ async fn blocked_lane() {
     let link = Envelope::link("node", "lane_b");
 
     let assertion_task = async move {
-
-        assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd1.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr1, cmd1.clone()))
+            .await
+            .is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
         expect_echo(&mut rx1, "lane_a", cmd1).await;
         //Lane A is now attached.
 
-        assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd2.clone())).await.is_ok());
-        assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd3.clone())).await.is_ok());
-        assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd4.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr1, cmd2.clone()))
+            .await
+            .is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr1, cmd3.clone()))
+            .await
+            .is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr1, cmd4.clone()))
+            .await
+            .is_ok());
 
-        assert!(envelope_tx.send(TaggedEnvelope(addr2, link.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr2, link.clone()))
+            .await
+            .is_ok());
 
         //Wait until we receive the message for lane B indicating that lane A is definitely blocked
         //and the remaining messages must be pending.
@@ -269,7 +291,7 @@ async fn await_stall(mut stalled: watch::Receiver<bool>) -> Result<(), ()> {
         match stalled.recv().await {
             Some(true) => break Ok(()),
             None => break Err(()),
-            _ => {},
+            _ => {}
         }
     }
 }
@@ -278,8 +300,8 @@ async fn await_stall(mut stalled: watch::Receiver<bool>) -> Result<(), ()> {
 async fn recover_from_stall() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context, stall_rx) = make_dispatcher(1, 2,
-                                             lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+    let (task, context, stall_rx) =
+        make_dispatcher(1, 2, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -288,24 +310,27 @@ async fn recover_from_stall() {
     let barrier2 = barrier1.clone();
 
     //Chosen to force a stall based on the buffer/pending sizes passed to the dispatcher.
-    let n= 4;
+    let n = 4;
 
     let send_task = async move {
-
         for i in 0..n {
             let cmda = Envelope::make_command("node", "lane_a", Some(i.into()));
-            assert!(envelope_tx.send(TaggedEnvelope(addr1, cmda.clone())).await.is_ok());
+            assert!(envelope_tx
+                .send(TaggedEnvelope(addr1, cmda.clone()))
+                .await
+                .is_ok());
             let cmdb = Envelope::make_command("node", "lane_b", Some(i.into()));
-            assert!(envelope_tx.send(TaggedEnvelope(addr2, cmdb.clone())).await.is_ok());
+            assert!(envelope_tx
+                .send(TaggedEnvelope(addr2, cmdb.clone()))
+                .await
+                .is_ok());
         }
 
         barrier1.wait().await;
         drop(envelope_tx);
-
     };
 
     let receive_task = async move {
-
         assert!(await_stall(stall_rx).await.is_ok());
 
         let mut rx1 = context.take_receiver(&addr1).unwrap();
@@ -314,7 +339,6 @@ async fn recover_from_stall() {
         for i in 0..n {
             let cmd = Envelope::make_command("node", "lane_a", Some(i.into()));
             expect_echo(&mut rx1, "lane_a", cmd).await;
-
         }
 
         for i in 0..n {
@@ -334,8 +358,7 @@ async fn recover_from_stall() {
 async fn flush_pending() {
     let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context, _) = make_dispatcher(1, 10,
-                                             lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+    let (task, context, _) = make_dispatcher(1, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -346,9 +369,11 @@ async fn flush_pending() {
     let n = 8;
 
     let assertion_task = async move {
-
         let cmd0 = Envelope::make_command("node", "lane_a", Some(0.into()));
-        assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd0.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr1, cmd0.clone()))
+            .await
+            .is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
         expect_echo(&mut rx1, "lane_a", cmd0).await;
 
@@ -356,10 +381,16 @@ async fn flush_pending() {
 
         for i in 0..n {
             let cmd = Envelope::make_command("node", "lane_a", Some((i + 1).into()));
-            assert!(envelope_tx.send(TaggedEnvelope(addr1, cmd.clone())).await.is_ok());
+            assert!(envelope_tx
+                .send(TaggedEnvelope(addr1, cmd.clone()))
+                .await
+                .is_ok());
         }
 
-        assert!(envelope_tx.send(TaggedEnvelope(addr2, link.clone())).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr2, link.clone()))
+            .await
+            .is_ok());
 
         //Wait until we receive the message for lane B indicating that lane A is definitely blocked
         //and the remaining messages must be pending.
@@ -392,7 +423,6 @@ async fn dispatch_to_non_existent() {
     let link = Envelope::link("node", "other");
 
     let assertion_task = async move {
-
         assert!(envelope_tx.send(TaggedEnvelope(addr, link)).await.is_ok());
 
         drop(envelope_tx);
@@ -403,7 +433,7 @@ async fn dispatch_to_non_existent() {
     match result.as_ref().map(|e| e.errors()) {
         Ok([DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(name))]) => {
             assert_eq!(name, "other");
-        },
+        }
         ow => panic!("Unexpected result {:?}.", ow),
     }
 }
@@ -419,7 +449,6 @@ async fn failed_lane_task() {
     let cmd = Envelope::make_command("node", "lane", Some(mock::POISON_PILL.into()));
 
     let assertion_task = async move {
-
         assert!(envelope_tx.send(TaggedEnvelope(addr, cmd)).await.is_ok());
         drop(context);
     };
@@ -430,12 +459,17 @@ async fn failed_lane_task() {
             let LaneIoError {
                 route,
                 update_error,
-                uplink_errors
+                uplink_errors,
             } = err;
             assert_eq!(route, &RelativePath::new("node", "lane"));
             assert!(uplink_errors.is_empty());
-            assert!(matches!(update_error, Some(UpdateError::FailedTransaction(TransactionError::InvalidRetry))));
-        },
+            assert!(matches!(
+                update_error,
+                Some(UpdateError::FailedTransaction(
+                    TransactionError::InvalidRetry
+                ))
+            ));
+        }
         ow => panic!("Unexpected result {:?}.", ow),
     }
 }
@@ -451,7 +485,6 @@ async fn fatal_failed_attachment() {
     let link = Envelope::link("node", mock::POISON_PILL);
 
     let assertion_task = async move {
-
         assert!(envelope_tx.send(TaggedEnvelope(addr, link)).await.is_ok());
         drop(context);
     };
@@ -460,9 +493,7 @@ async fn fatal_failed_attachment() {
     match result.as_ref().map_err(|e| e.errors()) {
         Err([DispatcherError::AttachmentFailed(err)]) => {
             assert_eq!(err, &AttachError::LaneStoppedReporting);
-        },
+        }
         ow => panic!("Unexpected result {:?}.", ow),
     }
 }
-
-

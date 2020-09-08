@@ -15,13 +15,13 @@
 #[cfg(test)]
 mod tests;
 
-use futures::{ready, StreamExt, FutureExt};
-use futures::stream::FuturesUnordered;
-use tokio::sync::mpsc;
 use futures::future::FusedFuture;
-use std::task::{Context, Poll};
-use std::pin::Pin;
+use futures::stream::FuturesUnordered;
+use futures::{ready, FutureExt, StreamExt};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use tokio::sync::mpsc;
 
 /// Selects between a dynamic collection of Tokio MPSC senders, pseudo-randomly choosing one that
 /// is ready to take accept a value. Failed senders will remain in the selector and are counted
@@ -45,11 +45,10 @@ where
 type SelectResult<T, L> = Option<(L, Result<mpsc::Sender<T>, ()>)>;
 
 impl<T, L> Selector<T, L>
-    where
-        T: Send + Unpin,
-        L: Send + Unpin,
+where
+    T: Send + Unpin,
+    L: Send + Unpin,
 {
-
     /// True when there are no pending senders in the selector. Note that this will still be true
     /// when the selector contains only failed senders.
     pub fn is_empty(&self) -> bool {

@@ -13,18 +13,16 @@
 // limitations under the License.
 
 use crate::agent::dispatch::selector::Selector;
-use tokio::sync::mpsc;
-use swim_runtime::time::timeout::timeout;
 use std::time::Duration;
+use swim_runtime::time::timeout::timeout;
+use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn empty_selector() {
-
     let mut selector: Selector<i32, String> = Selector::default();
 
     assert!(selector.is_empty());
     assert!(selector.select().await.is_none());
-
 }
 
 #[tokio::test]
@@ -36,12 +34,10 @@ async fn selector_add_sender() {
     selector.add("a".to_string(), tx);
 
     assert!(!selector.is_empty());
-
 }
 
 #[tokio::test]
 async fn selector_select_available() {
-
     let mut selector: Selector<i32, String> = Selector::default();
 
     let (tx, mut rx) = mpsc::channel(1);
@@ -61,12 +57,10 @@ async fn selector_select_available() {
     assert!(tx.send(4).await.is_ok());
 
     assert_eq!(rx.recv().await, Some(4));
-
 }
 
 #[tokio::test]
 async fn selector_correct() {
-
     let mut selector: Selector<i32, String> = Selector::default();
 
     let (mut tx1, _rx1) = mpsc::channel(1);
@@ -94,7 +88,6 @@ async fn selector_correct() {
 
 #[tokio::test]
 async fn selector_select_dropped() {
-
     let mut selector: Selector<i32, String> = Selector::default();
 
     let (tx, rx) = mpsc::channel(1);
@@ -113,12 +106,10 @@ async fn selector_select_dropped() {
     let (label, result) = selected.unwrap();
     assert_eq!(label, "a");
     assert!(result.is_err());
-
 }
 
 #[tokio::test]
 async fn selector_none_available() {
-
     let mut selector: Selector<i32, String> = Selector::default();
 
     let (mut tx1, _rx1) = mpsc::channel(1);
@@ -134,12 +125,10 @@ async fn selector_none_available() {
 
     assert!(!selector.is_empty());
     assert!(result.is_err());
-
 }
 
 #[tokio::test]
 async fn selector_after_failure() {
-
     let mut selector: Selector<i32, String> = Selector::default();
 
     let (mut tx1, mut rx1) = mpsc::channel(1);

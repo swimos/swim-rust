@@ -35,6 +35,12 @@ impl DispatcherError {
 #[derive(Debug)]
 pub struct DispatcherErrors(bool, Vec<DispatcherError>);
 
+impl Default for DispatcherErrors {
+    fn default() -> Self {
+        DispatcherErrors::new()
+    }
+}
+
 impl Display for DispatcherErrors {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let DispatcherErrors(is_fatal, errors) = self;
@@ -50,7 +56,7 @@ impl Display for DispatcherErrors {
             if let Some(first) = it.next() {
                 write!(f, "{}", first)?;
             }
-            while let Some(err) = it.next() {
+            for err in it {
                 write!(f, ", {}", err)?;
             }
             write!(f, "]")

@@ -313,15 +313,12 @@ impl Display for AttachError {
                 f,
                 "Failed to attach as the lane stopped reporting its state."
             ),
-            AttachError::LaneDoesNotExist(name) => write!(
-                f,
-                "A lane named \"{}\" does not exist.",
-                name
-            ),
-            AttachError::AgentStopping => write!(
-                f,
-                "Could not attach to the lane as the agent is stoping."
-            ),
+            AttachError::LaneDoesNotExist(name) => {
+                write!(f, "A lane named \"{}\" does not exist.", name)
+            }
+            AttachError::AgentStopping => {
+                write!(f, "Could not attach to the lane as the agent is stoping.")
+            }
         }
     }
 }

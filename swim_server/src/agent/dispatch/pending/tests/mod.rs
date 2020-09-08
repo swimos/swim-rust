@@ -13,35 +13,29 @@
 // limitations under the License.
 
 use crate::agent::dispatch::pending::PendingEnvelopes;
-use crate::routing::{TaggedClientEnvelope, RoutingAddr};
-use swim_common::warp::envelope::{LinkMessage, OutgoingHeader, OutgoingLinkMessage};
+use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_common::form::Form;
 use swim_common::model::Value;
+use swim_common::warp::envelope::{LinkMessage, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 
 #[test]
 fn empty_pending_envelopes() {
-
     let mut pending = PendingEnvelopes::new(1);
     assert!(pending.pop("a").is_none());
-
 }
 
 const ADDR: RoutingAddr = RoutingAddr::remote(1);
 
 fn make_envelope(lane: &str, n: i32) -> TaggedClientEnvelope {
-    TaggedClientEnvelope(ADDR, OutgoingLinkMessage::make_command(
-        "node", lane, Some(n.into_value())))
+    TaggedClientEnvelope(
+        ADDR,
+        OutgoingLinkMessage::make_command("node", lane, Some(n.into_value())),
+    )
 }
 
 fn check_envelope(expected_lane: &str, n: i32, envelope: TaggedClientEnvelope) {
-    let TaggedClientEnvelope(
-        addr,
-        LinkMessage {
-            header,
-            path,
-            body
-        }) = envelope;
+    let TaggedClientEnvelope(addr, LinkMessage { header, path, body }) = envelope;
 
     assert_eq!(addr, ADDR);
     assert!(matches!(header, OutgoingHeader::Command));
@@ -51,12 +45,20 @@ fn check_envelope(expected_lane: &str, n: i32, envelope: TaggedClientEnvelope) {
 
 #[test]
 fn push_and_pop_pending() {
-
     let mut pending = PendingEnvelopes::new(4);
 
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(true));
-    assert_eq!(pending.enqueue("b".to_string(), make_envelope("b", 4)), Ok(true));
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 2)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 3)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.enqueue("b".to_string(), make_envelope("b", 4)),
+        Ok(true)
+    );
 
     let first = pending.pop("a");
     assert!(first.is_some());
@@ -77,10 +79,15 @@ fn push_and_pop_pending() {
 
 #[test]
 fn pending_full() {
-
     let mut pending = PendingEnvelopes::new(2);
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(false));
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 2)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 3)),
+        Ok(false)
+    );
 
     let result = pending.enqueue("a".to_string(), make_envelope("a", 4));
     assert!(result.is_err());
@@ -93,16 +100,23 @@ fn pending_full() {
     let (label, envelope) = result.err().unwrap();
     assert_eq!(label, "b");
     check_envelope("b", 5, envelope);
-
 }
 
 #[test]
 fn push_front_pending() {
     let mut pending = PendingEnvelopes::new(4);
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(true));
-    assert_eq!(pending.replace("a".to_string(), make_envelope("a", 1)), Ok(true));
-
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 2)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 3)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.replace("a".to_string(), make_envelope("a", 1)),
+        Ok(true)
+    );
 
     let first = pending.pop("a");
     assert!(first.is_some());
@@ -121,10 +135,15 @@ fn push_front_pending() {
 
 #[test]
 fn push_front_pending_full() {
-
     let mut pending = PendingEnvelopes::new(2);
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(false));
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 2)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 3)),
+        Ok(false)
+    );
 
     let result = pending.replace("a".to_string(), make_envelope("a", 4));
     assert!(result.is_err());
@@ -137,17 +156,24 @@ fn push_front_pending_full() {
     let (label, envelope) = result.err().unwrap();
     assert_eq!(label, "b");
     check_envelope("b", 5, envelope);
-
 }
 
 #[test]
 fn clear_pending_for_lane() {
-
     let mut pending = PendingEnvelopes::new(4);
 
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 2)), Ok(true));
-    assert_eq!(pending.enqueue("a".to_string(), make_envelope("a", 3)), Ok(true));
-    assert_eq!(pending.enqueue("b".to_string(), make_envelope("b", 4)), Ok(true));
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 2)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.enqueue("a".to_string(), make_envelope("a", 3)),
+        Ok(true)
+    );
+    assert_eq!(
+        pending.enqueue("b".to_string(), make_envelope("b", 4)),
+        Ok(true)
+    );
 
     assert!(pending.clear("a"));
 
@@ -159,4 +185,3 @@ fn clear_pending_for_lane() {
 
     assert!(pending.pop("b").is_none());
 }
-
