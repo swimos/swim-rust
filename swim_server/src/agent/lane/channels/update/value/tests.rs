@@ -16,6 +16,7 @@ use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value;
 use crate::agent::lane::strategy::Queue;
+use crate::routing::RoutingAddr;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
@@ -28,7 +29,8 @@ async fn update_task_vale_lane() {
 
     let task = ValueLaneUpdateTask::new(lane);
 
-    let value: Result<i32, UpdateError> = Ok(7);
+    let addr = RoutingAddr::remote(2);
+    let value: Result<(RoutingAddr, i32), UpdateError> = Ok((addr, 7));
 
     let updates = once(ready(value));
 

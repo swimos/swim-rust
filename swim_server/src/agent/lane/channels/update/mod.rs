@@ -12,15 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod action;
 pub mod map;
 pub mod value;
 
-use futures::future::BoxFuture;
+use crate::routing::RoutingAddr;
+use futures::future::{ready, BoxFuture, Either, Ready};
+use futures::stream::{iter, Iter};
 use futures::Stream;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use stm::transaction::TransactionError;
+use std::time::Duration;
+use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::FormErr;
+use swim_runtime::time::delay::{delay_for, Delay};
+use utilities::future::retryable::strategy::RetryStrategy;
+use utilities::future::{
+    SwimFutureExt, SwimStreamExt, Transform, TransformedFuture, TransformedStreamFut,
+};
 
 #[cfg(test)]
 mod tests;
@@ -30,6 +39,7 @@ mod tests;
 pub enum UpdateError {
     FailedTransaction(TransactionError),
     BadEnvelopeBody(FormErr),
+    FeedbackChannelDropped,
 }
 
 impl Display for UpdateError {
@@ -41,6 +51,9 @@ impl Display for UpdateError {
             UpdateError::BadEnvelopeBody(err) => {
                 write!(f, "The body of an incoming envelope was invalid: {}", err)
             }
+            UpdateError::FeedbackChannelDropped => {
+                write!(f, "Action lane feedback channel dropped.")
+            }
         }
     }
 }
@@ -50,6 +63,7 @@ impl Error for UpdateError {
         match self {
             UpdateError::FailedTransaction(err) => Some(err),
             UpdateError::BadEnvelopeBody(err) => Some(err),
+            _ => None,
         }
     }
 }
@@ -74,7 +88,72 @@ pub trait LaneUpdate {
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>;
+}
+
+/// Wraps a [`RetryStrategy`] as an STM [`RetryManager`].
+#[derive(Clone, Copy, Debug, Eq)]
+pub struct StmRetryStrategy {
+    template: RetryStrategy,
+    retries: RetryStrategy,
+}
+
+impl PartialEq for StmRetryStrategy {
+    fn eq(&self, other: &Self) -> bool {
+        self.template.eq(other.template)
+    }
+}
+
+impl StmRetryStrategy {
+    pub fn new(strategy: RetryStrategy) -> Self {
+        StmRetryStrategy {
+            template: strategy,
+            retries: strategy,
+        }
+    }
+}
+
+pub struct ToTrue;
+impl Transform<()> for ToTrue {
+    type Out = bool;
+
+    fn transform(&self, _: ()) -> Self::Out {
+        true
+    }
+}
+
+pub struct WaitForDelay;
+
+impl Transform<Option<Duration>> for WaitForDelay {
+    type Out = Either<Ready<()>, Delay>;
+
+    fn transform(&self, dur: Option<Duration>) -> Self::Out {
+        if let Some(dur) = dur {
+            Either::Right(delay_for(dur))
+        } else {
+            Either::Left(ready(()))
+        }
+    }
+}
+
+impl RetryManager for StmRetryStrategy {
+    type ContentionManager =
+        TransformedStreamFut<Iter<RetryStrategy>, WaitForDelay, Either<Ready<()>, Delay>>;
+    type RetryFut = Either<Ready<bool>, TransformedFuture<Delay, ToTrue>>;
+
+    fn contention_manager(&self) -> Self::ContentionManager {
+        iter(self.template).transform_fut(WaitForDelay)
+    }
+
+    fn retry(&mut self) -> Self::RetryFut {
+        match self.retries.next() {
+            Some(Some(dur)) => {
+                Either::Right(swim_runtime::time::delay::delay_for(dur).transform(ToTrue))
+            }
+            Some(_) => Either::Left(ready(true)),
+            _ => Either::Left(ready(false)),
+        }
+    }
 }

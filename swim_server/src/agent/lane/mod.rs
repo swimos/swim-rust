@@ -60,6 +60,12 @@ impl Error for InvalidForm {
 #[pin_project]
 pub struct BroadcastStream<T>(#[pin] broadcast::Receiver<T>);
 
+impl<T> BroadcastStream<T> {
+    pub fn new(rx: broadcast::Receiver<T>) -> Self {
+        BroadcastStream(rx)
+    }
+}
+
 impl<T: Clone> Stream for BroadcastStream<T> {
     type Item = T;
 

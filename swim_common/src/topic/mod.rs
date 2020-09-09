@@ -28,10 +28,14 @@ use futures::task::{Context, Poll};
 use futures::{future, ready, Future, FutureExt, Stream, StreamExt, TryFutureExt};
 use futures_util::select_biased;
 use pin_project::pin_project;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
+use utilities::future::{
+    FlatmapStream, SwimFutureExt, SwimStreamExt, TransformMut, TransformOnce, TransformedFuture,
+};
 
 #[cfg(test)]
 mod tests;
@@ -74,6 +78,16 @@ pub trait Topic<T> {
         let boxing_topic = BoxingTopic(self);
         let boxed: BoxTopic<T> = Box::new(boxing_topic);
         boxed
+    }
+
+    /// Create a new topic that transforms the subscription streams.
+    fn transform<Trans>(self, transform: Trans) -> TransformedTopic<T, Self, Trans>
+    where
+        Self: Sized,
+        Trans: TransformMut<T> + Clone + Send + 'static,
+        Trans::Out: Stream + Send + 'static,
+    {
+        TransformedTopic::new(self, transform)
     }
 }
 
@@ -483,5 +497,60 @@ impl<T: Clone + 'static> Topic<T> for BoxTopic<T> {
         Self: Sized + 'static,
     {
         self
+    }
+}
+
+/// Transforms a single topic subscription.
+pub struct ApplyTopicTransform<Trans>(Trans);
+
+impl<Str, Trans> TransformOnce<Result<Str, TopicError>> for ApplyTopicTransform<Trans>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item> + Clone,
+    Trans::Out: Stream,
+{
+    type Out = Result<FlatmapStream<Str, Trans>, TopicError>;
+
+    fn transform(self, result: Result<Str, TopicError>) -> Self::Out {
+        result.map(|input| input.transform_flat_map(self.0))
+    }
+}
+
+/// Applies a transformation to the stream produced when subscribing to a topic.
+pub struct TransformedTopic<T, Top: Topic<T>, Trans> {
+    _type: PhantomData<fn(T) -> T>,
+    inner: Top,
+    transform: Trans,
+}
+
+impl<T, Top, Trans> TransformedTopic<T, Top, Trans>
+where
+    Top: Topic<T>,
+    Trans: TransformMut<T> + Clone,
+    Trans::Out: Stream,
+{
+    pub fn new(inner: Top, transform: Trans) -> Self {
+        TransformedTopic {
+            _type: PhantomData,
+            inner,
+            transform,
+        }
+    }
+}
+
+impl<T, Top, Trans> Topic<<<Trans as TransformMut<T>>::Out as Stream>::Item>
+    for TransformedTopic<T, Top, Trans>
+where
+    Top: Topic<T>,
+    Trans: TransformMut<T> + Clone + Send + 'static,
+    Trans::Out: Stream + Send + 'static,
+{
+    type Receiver = FlatmapStream<Top::Receiver, Trans>;
+    type Fut = TransformedFuture<Top::Fut, ApplyTopicTransform<Trans>>;
+
+    fn subscribe(&mut self) -> Self::Fut {
+        self.inner
+            .subscribe()
+            .transform(ApplyTopicTransform(self.transform.clone()))
     }
 }
