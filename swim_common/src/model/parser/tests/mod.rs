@@ -57,21 +57,21 @@ fn consume_to_value(repr: &str) -> Result<Value, ParseFailure> {
 
 #[test]
 fn unescape_strings() {
-    assert_that!(unescape("no escapes").unwrap(), eq("no escapes"));
-    assert_that!(unescape(r"\r\n\t").unwrap(), eq("\r\n\t"));
-    assert_that!(
+    assert_eq!(unescape("no escapes").unwrap(), "no escapes");
+    assert_eq!(unescape(r"\r\n\t").unwrap(), "\r\n\t");
+    assert_eq!(
         unescape(r"A string with \n two lines.").unwrap(),
-        eq("A string with \n two lines.")
+        "A string with \n two lines."
     );
-    assert_that!(
+    assert_eq!(
         unescape(r#"A string with a \"quoted\" section."#).unwrap(),
-        eq("A string with a \"quoted\" section.")
+        "A string with a \"quoted\" section."
     );
-    assert_that!(
+    assert_eq!(
         unescape(r"Escaped escapes \\r\\t.").unwrap(),
-        eq(r"Escaped escapes \r\t.")
+        r"Escaped escapes \r\t."
     );
-    assert_that!(unescape(r"\u0015").unwrap(), eq("\u{15}"));
+    assert_eq!(unescape(r"\u0015").unwrap(), "\u{15}");
 }
 
 #[test]

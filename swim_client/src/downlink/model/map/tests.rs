@@ -24,7 +24,7 @@ use swim_common::request::Request;
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);
-    let v = Arc::new(Value::Text(value));
+    let v = Arc::new(Value::text(value));
     MapModel {
         state: OrdMap::from(vec![(k, v)]),
     }
@@ -160,7 +160,7 @@ fn unlinked_message() {
 #[test]
 fn insert_message_unlinked() {
     let k = Value::Int32Value(4);
-    let v = Value::Text("hello".to_owned());
+    let v = Value::text("hello");
 
     let mut state = DownlinkState::Unlinked;
     let machine = MapStateMachine::unvalidated();
@@ -182,7 +182,7 @@ fn insert_message_unlinked() {
 #[test]
 fn remove_message_unlinked() {
     let k = Value::Int32Value(4);
-    let v = Value::Text("hello".to_owned());
+    let v = Value::text("hello");
 
     let mut state = DownlinkState::Unlinked;
     let machine = MapStateMachine::unvalidated();
@@ -207,8 +207,8 @@ fn remove_message_unlinked() {
 fn take_message_unlinked() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Unlinked;
     let mut model = MapModel {
@@ -242,8 +242,8 @@ fn take_message_unlinked() {
 fn skip_message_unlinked() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Unlinked;
     let mut model = MapModel {
@@ -278,8 +278,8 @@ fn skip_message_unlinked() {
 fn clear_message_unlinked() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Unlinked;
     let mut model = MapModel {
@@ -312,7 +312,7 @@ fn clear_message_unlinked() {
 #[test]
 fn insert_message_linked() {
     let k = Value::Int32Value(4);
-    let v = Value::Text("hello".to_owned());
+    let v = Value::text("hello");
 
     let mut state = DownlinkState::Linked;
     let mut model = MapModel::new();
@@ -361,8 +361,8 @@ fn remove_message_linked() {
 fn take_message_linked() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Linked;
     let mut model = MapModel {
@@ -392,8 +392,8 @@ fn take_message_linked() {
 fn skip_message_linked() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Linked;
     let mut model = MapModel {
@@ -423,8 +423,8 @@ fn skip_message_linked() {
 fn clear_message_linked() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Linked;
     let mut model = MapModel {
@@ -451,7 +451,7 @@ fn clear_message_linked() {
 #[test]
 fn insert_message_synced() {
     let k = Value::Int32Value(4);
-    let v = Value::Text("hello".to_owned());
+    let v = Value::text("hello");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
@@ -508,8 +508,8 @@ fn remove_message_synced() {
 fn take_message_synced() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -543,8 +543,8 @@ fn take_message_synced() {
 fn skip_message_synced() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -578,8 +578,8 @@ fn skip_message_synced() {
 fn clear_message_synced() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -626,7 +626,7 @@ fn make_get(
 #[test]
 fn get_action() {
     let k = Value::Int32Value(13);
-    let v = Value::Text("stuff".to_owned());
+    let v = Value::text("stuff");
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, "stuff".to_owned());
@@ -654,7 +654,7 @@ fn get_action() {
 #[test]
 fn get_by_defined_key_action() {
     let k = Value::Int32Value(13);
-    let v = Value::Text("stuff".to_owned());
+    let v = Value::text("stuff");
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, "stuff".to_owned());
@@ -683,7 +683,7 @@ fn get_by_defined_key_action() {
 #[test]
 fn get_by_undefined_key_action() {
     let k = Value::Int32Value(13);
-    let v = Value::Text("stuff".to_owned());
+    let v = Value::text("stuff");
 
     let mut state = DownlinkState::Synced;
     let mut model = make_model_with(13, "stuff".to_owned());
@@ -715,7 +715,7 @@ fn make_update(
 ) {
     let (tx, rx) = oneshot::channel();
     (
-        MapAction::update_and_await(Value::Int32Value(key), Value::Text(value), Request::new(tx)),
+        MapAction::update_and_await(Value::Int32Value(key), Value::text(value), Request::new(tx)),
         rx,
     )
 }
@@ -741,7 +741,7 @@ fn event_and_cmd(
 #[test]
 fn insert_to_undefined_action() {
     let k = Value::Int32Value(13);
-    let v = Value::Text("stuff".to_owned());
+    let v = Value::text("stuff");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
@@ -781,7 +781,7 @@ fn insert_to_undefined_action() {
 #[test]
 fn insert_action_dropped_listener() {
     let k = Value::Int32Value(13);
-    let v = Value::Text("stuff".to_owned());
+    let v = Value::text("stuff");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
@@ -859,7 +859,7 @@ fn insert_to_defined_action() {
     let maybe_old_val = response.unwrap();
     assert_that!(&maybe_old_val, some());
     let old_val = maybe_old_val.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))))
+    assert_that!(old_val, eq(Arc::new(Value::text(original_val))))
 }
 
 #[test]
@@ -1044,7 +1044,7 @@ fn remove_defined_action() {
     let maybe_old_val = response.unwrap();
     assert_that!(&maybe_old_val, some());
     let old_val = maybe_old_val.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(original_val))))
+    assert_that!(old_val, eq(Arc::new(Value::text(original_val))))
 }
 
 #[test]
@@ -1102,8 +1102,8 @@ fn make_take(
 fn take_action() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1155,8 +1155,8 @@ fn take_action() {
 fn take_action_dropped_before() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1201,8 +1201,8 @@ fn take_action_dropped_before() {
 fn take_action_dropped_after() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1249,8 +1249,8 @@ fn take_action_dropped_after() {
 fn take_action_both_dropped() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1305,8 +1305,8 @@ fn make_skip(
 fn skip_action() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1358,8 +1358,8 @@ fn skip_action() {
 fn skip_action_dropped_before() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1404,8 +1404,8 @@ fn skip_action_dropped_before() {
 fn skip_action_dropped_after() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1452,8 +1452,8 @@ fn skip_action_dropped_after() {
 fn skip_action_dropped_both() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1497,8 +1497,8 @@ fn make_clear() -> (MapAction, oneshot::Receiver<Result<ValMap, DownlinkError>>)
 fn clear_action() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1541,8 +1541,8 @@ fn clear_action() {
 fn clear_action_dropped_receiver() {
     let k1 = Value::Int32Value(4);
     let k2 = Value::Int32Value(6);
-    let v1 = Value::Text("hello".to_owned());
-    let v2 = Value::Text("world".to_owned());
+    let v1 = Value::text("hello");
+    let v2 = Value::text("world");
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel {
@@ -1800,7 +1800,7 @@ pub fn map_modification_schema() {
 #[test]
 fn invalid_insert_key_unlinked() {
     let k = Value::Extant;
-    let v = Value::Text("hello".to_owned());
+    let v = Value::text("hello");
 
     let mut state = DownlinkState::Unlinked;
     let machine = MapStateMachine::new(
@@ -1874,7 +1874,7 @@ fn invalid_remove_unlinked() {
 #[test]
 fn invalid_insert_key_linked() {
     let k = Value::Extant;
-    let v = Value::Text("hello".to_owned());
+    let v = Value::text("hello");
 
     let mut state = DownlinkState::Linked;
     let machine = MapStateMachine::new(
@@ -1966,7 +1966,7 @@ fn invalid_remove_linked() {
 #[test]
 fn invalid_insert_key_synced() {
     let k = Value::Extant;
-    let v = Value::Text("hello".to_owned());
+    let v = Value::text("hello");
 
     let mut state = DownlinkState::Synced;
     let machine = MapStateMachine::new(
@@ -2073,7 +2073,7 @@ fn make_modify_raw(
     oneshot::Receiver<Result<Option<Arc<Value>>, DownlinkError>>,
 ) {
     let upd_fn = |maybe_v: &Option<&Value>| match maybe_v {
-        Some(Value::Text(t)) if !t.is_empty() => Some(Value::Text(t.to_uppercase())),
+        Some(Value::Text(t)) if !t.is_empty() => Some(Value::text(t.as_str().to_uppercase())),
         _ => None,
     };
     let (tx_before, rx_before) = oneshot::channel();
@@ -2128,7 +2128,7 @@ fn make_try_update_raw(
     oneshot::Receiver<Result<UpdateResult<Option<Arc<Value>>>, DownlinkError>>,
 ) {
     let upd_fn = |maybe_v: &Option<&Value>| match maybe_v {
-        Some(Value::Text(t)) if t.len() > 1 => Ok(Some(Value::Text(t.to_uppercase()))),
+        Some(Value::Text(t)) if t.len() > 1 => Ok(Some(Value::text(t.as_str().to_uppercase()))),
         Some(Value::Text(t)) if t.is_empty() => Ok(None),
         _ => Err(UpdateFailure("Update failed.".to_string())),
     };
@@ -2215,7 +2215,7 @@ fn update_to_defined_action() {
     let maybe_old_val = response.unwrap();
     assert_that!(&maybe_old_val, some());
     let old_val = maybe_old_val.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+    assert_that!(old_val, eq(Arc::new(Value::text(original_val))));
 
     let result = rx_after.try_recv();
     assert_that!(&result, ok());
@@ -2224,7 +2224,7 @@ fn update_to_defined_action() {
     let maybe_new_val = response.unwrap();
     assert_that!(&maybe_new_val, some());
     let new_val = maybe_new_val.unwrap();
-    assert_that!(new_val, eq(Arc::new(Value::Text(expected_val.clone()))));
+    assert_that!(new_val, eq(Arc::new(Value::text(expected_val))));
 }
 
 #[test]
@@ -2269,7 +2269,7 @@ fn update_to_undefined_action() {
     let maybe_old_val = response.unwrap();
     assert_that!(&maybe_old_val, some());
     let old_val = maybe_old_val.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+    assert_that!(old_val, eq(Arc::new(Value::text(original_val))));
 
     let result = rx_after.try_recv();
     assert_that!(&result, ok());
@@ -2411,7 +2411,7 @@ fn update_action_dropped_receiver() {
     let maybe_new_val = response.unwrap();
     assert_that!(&maybe_new_val, some());
     let old_val = maybe_new_val.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(expected_val.clone()))));
+    assert_that!(old_val, eq(Arc::new(Value::text(expected_val))));
 }
 
 #[test]
@@ -2433,7 +2433,7 @@ fn try_update_to_successful_defined_action() {
     let response = maybe_response.unwrap();
 
     assert_that!(state, eq(DownlinkState::Synced));
-    let expected = ValMap::from(vec![(k.clone(), Value::text(expected_val.clone()))]);
+    let expected = ValMap::from(vec![(k.clone(), Value::text(&expected_val))]);
     assert_that!(&model.state, eq(&expected));
 
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
@@ -2460,7 +2460,7 @@ fn try_update_to_successful_defined_action() {
     let old_result = maybe_old_val.unwrap();
     assert_that!(&old_result, some());
     let old_val = old_result.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+    assert_that!(old_val, eq(Arc::new(Value::text(original_val))));
 
     let result = rx_after.try_recv();
     assert_that!(&result, ok());
@@ -2471,7 +2471,7 @@ fn try_update_to_successful_defined_action() {
     let new_result = maybe_new_val.unwrap();
     assert_that!(&new_result, some());
     let new_val = new_result.unwrap();
-    assert_that!(new_val, eq(Arc::new(Value::Text(expected_val.clone()))));
+    assert_that!(new_val, eq(Arc::new(Value::text(&expected_val))));
 }
 
 #[test]
@@ -2518,7 +2518,7 @@ fn try_update_to_undefined_action() {
     let old_result = maybe_old_val.unwrap();
     assert_that!(&old_result, some());
     let old_val = old_result.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+    assert_that!(old_val, eq(Arc::new(Value::text(original_val))));
 
     let result = rx_after.try_recv();
     assert_that!(&result, ok());
@@ -2702,7 +2702,7 @@ fn try_update_action_with_dropped_receiver() {
     let old_result = maybe_old_val.unwrap();
     assert_that!(&old_result, some());
     let old_val = old_result.unwrap();
-    assert_that!(old_val, eq(Arc::new(Value::Text(original_val.clone()))));
+    assert_that!(old_val, eq(Arc::new(Value::text(original_val))));
 }
 
 #[test]

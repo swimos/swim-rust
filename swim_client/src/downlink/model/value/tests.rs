@@ -631,7 +631,7 @@ fn invalid_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(Value::Text(String::from("foo")))),
+        Operation::Message(Message::Action(Value::text("foo"))),
     );
 
     assert_that!(&maybe_response, err());
@@ -641,10 +641,7 @@ fn invalid_message_linked() {
     assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
     assert_that!(
         error,
-        eq(DownlinkError::SchemaViolation(
-            Value::Text(String::from("foo")),
-            schema
-        ))
+        eq(DownlinkError::SchemaViolation(Value::text("foo"), schema))
     );
 }
 
