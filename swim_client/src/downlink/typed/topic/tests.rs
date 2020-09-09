@@ -20,8 +20,6 @@ use crate::downlink::Event;
 use futures::future::{ready, Ready};
 use futures::stream::StreamExt;
 use futures_util::stream::{iter, Iter};
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use im::OrdMap;
 use std::num::ParseIntError;
 use std::sync::Arc;
@@ -37,10 +35,10 @@ fn apply_form_value() {
 
     let apply: ApplyForm<i32> = ApplyForm::new();
     let result = apply.transform(Event::Local(good));
-    assert_that!(result, eq(Ok(Event::Local(7))));
+    assert_eq!(result, Ok(Event::Local(7)));
 
     let result = apply.transform(Event::Local(bad));
-    assert_that!(result, err());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -62,18 +60,18 @@ fn apply_form_map() {
     let apply: ApplyFormsMap<String, i32> = ApplyFormsMap::new();
 
     let result = apply.transform(Event::Remote(good));
-    assert_that!(&result, ok());
+    assert!(result.is_ok());
 
     if let Event::Remote(TypedViewWithEvent { view, event }) = result.unwrap() {
         let mut expected_view = OrdMap::new();
         expected_view.insert("a".to_string(), 1);
         expected_view.insert("b".to_string(), 2);
 
-        assert_that!(view.as_ord_map(), eq(expected_view));
-        assert_that!(event, eq(MapEvent::Update("b".to_string())));
+        assert_eq!(view.as_ord_map(), expected_view);
+        assert_eq!(event, MapEvent::Update("b".to_string()));
 
         let result = apply.transform(Event::Local(with_bad_event));
-        assert_that!(result, err());
+        assert!(result.is_err());
     } else {
         panic!("Expected remote event!")
     }
@@ -119,17 +117,17 @@ async fn try_transform_topic() {
 
     let sub1 = transformed.subscribe().await;
 
-    assert_that!(&sub1, ok());
+    assert!(sub1.is_ok());
     let stream1 = sub1.unwrap();
 
     let results1 = stream1.collect::<Vec<_>>().await;
-    assert_that!(&results1, eq(&expected));
+    assert_eq!(&results1, &expected);
 
     let sub2 = transformed.subscribe().await;
 
-    assert_that!(&sub2, ok());
+    assert!(sub2.is_ok());
     let stream2 = sub2.unwrap();
 
     let results2 = stream2.collect::<Vec<_>>().await;
-    assert_that!(&results2, eq(&expected));
+    assert_eq!(&results2, &expected);
 }

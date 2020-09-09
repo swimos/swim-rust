@@ -13,24 +13,22 @@
 // limitations under the License.
 
 use futures::StreamExt;
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 
 #[tokio::test]
 async fn send_and_receive() {
     let (mut tx, mut rx) = super::channel(0);
     let first = rx.recv().await;
-    assert_that!(first, eq(Some(0)));
+    assert_eq!(first, Some(0));
 
     let handle = tokio::task::spawn(async move {
         let mut rx = rx;
         rx.recv().await
     });
 
-    assert_that!(tx.broadcast(3), ok());
+    assert!(tx.broadcast(3).is_ok());
 
     let second = handle.await.unwrap();
-    assert_that!(second, eq(Some(3)));
+    assert_eq!(second, Some(3));
 }
 
 #[tokio::test]
@@ -42,11 +40,11 @@ async fn receive_defined() {
         rx.recv_defined().await
     });
 
-    assert_that!(tx.broadcast(None), ok());
-    assert_that!(tx.broadcast(Some(42)), ok());
+    assert!(tx.broadcast(None).is_ok());
+    assert!(tx.broadcast(Some(42)).is_ok());
 
     let first = handle.await.unwrap();
-    assert_that!(first, eq(Some(42)));
+    assert_eq!(first, Some(42));
 }
 
 #[tokio::test]
@@ -57,7 +55,7 @@ async fn receive_stream() {
     drop(tx);
 
     let output = handle.await.unwrap();
-    assert_that!(output, eq(vec![-4]));
+    assert_eq!(output, vec![-4]);
 }
 
 #[tokio::test]
@@ -73,13 +71,13 @@ async fn in_order_no_duplicates_recv() {
         results
     });
     for i in 1..1000 {
-        assert_that!(tx.broadcast(i), ok());
+        assert!(tx.broadcast(i).is_ok());
     }
     drop(tx);
 
     let output = handle.await.unwrap();
 
-    assert_that!(output.len(), not(eq(0)));
+    assert_ne!(output.len(), 0);
 
     let mut prev = None;
     for n in output.into_iter() {
@@ -96,12 +94,12 @@ async fn in_order_no_duplicates_stream() {
 
     let handle = tokio::task::spawn(async move { rx.collect::<Vec<_>>().await });
     for i in 1..1000 {
-        assert_that!(tx.broadcast(i), ok());
+        assert!(tx.broadcast(i).is_ok());
     }
     drop(tx);
 
     let output = handle.await.unwrap();
-    assert_that!(output.len(), not(eq(0)));
+    assert_ne!(output.len(), 0);
 
     let mut prev = None;
     for n in output.into_iter() {

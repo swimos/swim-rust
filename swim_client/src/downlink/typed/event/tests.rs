@@ -14,8 +14,6 @@
 
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use crate::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
@@ -40,22 +38,22 @@ fn make_view() -> TypedMapView<i32, i32> {
 fn typed_map_view_get() {
     let view = make_view();
 
-    assert_that!(view.get(&1), eq(Some(2)));
-    assert_that!(view.get(&7), eq(None));
+    assert_eq!(view.get(&1), Some(2));
+    assert_eq!(view.get(&7), None);
 }
 
 #[test]
 fn typed_map_view_len() {
     let view = make_view();
 
-    assert_that!(view.len(), eq(3));
+    assert_eq!(view.len(), 3);
 }
 
 #[test]
 fn typed_map_view_is_empty() {
     let view = make_view();
 
-    assert_that!(view.is_empty(), eq(false));
+    assert_eq!(view.is_empty(), false);
 }
 
 #[test]
@@ -64,7 +62,7 @@ fn typed_map_view_entries() {
 
     let entries = view.iter().collect::<Vec<_>>();
 
-    assert_that!(entries, eq(vec![(1, 2), (2, 4), (3, 6)]));
+    assert_eq!(entries, vec![(1, 2), (2, 4), (3, 6)]);
 }
 
 #[test]
@@ -73,7 +71,7 @@ fn typed_map_view_keys() {
 
     let entries = view.keys().collect::<Vec<_>>();
 
-    assert_that!(entries, eq(vec![1, 2, 3]));
+    assert_eq!(entries, vec![1, 2, 3]);
 }
 
 #[test]
@@ -87,7 +85,7 @@ fn typed_map_view_to_hashmap() {
     expected.insert(2, 4);
     expected.insert(3, 6);
 
-    assert_that!(map, eq(expected));
+    assert_eq!(map, expected);
 }
 
 #[test]
@@ -101,7 +99,7 @@ fn typed_map_view_to_btreemap() {
     expected.insert(2, 4);
     expected.insert(3, 6);
 
-    assert_that!(map, eq(expected));
+    assert_eq!(map, expected);
 }
 
 #[test]
@@ -115,7 +113,7 @@ fn typed_map_view_to_ordmap() {
     expected.insert(2, 4);
     expected.insert(3, 6);
 
-    assert_that!(map, eq(expected));
+    assert_eq!(map, expected);
 }
 
 #[test]
@@ -127,12 +125,12 @@ fn typed_view_with_event_initial() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(
+    assert_eq!(
         typed,
-        eq(Ok(TypedViewWithEvent {
+        Ok(TypedViewWithEvent {
             view: make_view(),
             event: MapEvent::Initial
-        }))
+        })
     );
 }
 
@@ -145,12 +143,12 @@ fn typed_view_with_event_clear() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(
+    assert_eq!(
         typed,
-        eq(Ok(TypedViewWithEvent {
+        Ok(TypedViewWithEvent {
             view: make_view(),
             event: MapEvent::Clear
-        }))
+        })
     );
 }
 
@@ -163,12 +161,12 @@ fn typed_view_with_event_take() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(
+    assert_eq!(
         typed,
-        eq(Ok(TypedViewWithEvent {
+        Ok(TypedViewWithEvent {
             view: make_view(),
             event: MapEvent::Take(1)
-        }))
+        })
     );
 }
 
@@ -181,12 +179,12 @@ fn typed_view_with_event_skip() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(
+    assert_eq!(
         typed,
-        eq(Ok(TypedViewWithEvent {
+        Ok(TypedViewWithEvent {
             view: make_view(),
             event: MapEvent::Skip(1)
-        }))
+        })
     );
 }
 
@@ -199,12 +197,12 @@ fn typed_view_with_event_good_update() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(
+    assert_eq!(
         typed,
-        eq(Ok(TypedViewWithEvent {
+        Ok(TypedViewWithEvent {
             view: make_view(),
             event: MapEvent::Update(2)
-        }))
+        })
     );
 }
 
@@ -217,7 +215,7 @@ fn typed_view_with_event_bad_update() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(typed, err());
+    assert!(typed.is_err());
 }
 
 #[test]
@@ -229,12 +227,12 @@ fn typed_view_with_event_good_remove() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(
+    assert_eq!(
         typed,
-        eq(Ok(TypedViewWithEvent {
+        Ok(TypedViewWithEvent {
             view: make_view(),
             event: MapEvent::Remove(2)
-        }))
+        })
     );
 }
 
@@ -247,5 +245,5 @@ fn typed_view_with_event_bad_remove() {
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
-    assert_that!(typed, err());
+    assert!(typed.is_err());
 }
