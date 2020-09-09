@@ -22,27 +22,27 @@ use swim_common::ws::{Protocol, WsMessage};
 use tokio::net::TcpStream;
 use tokio_tls::TlsConnector as TokioTlsConnector;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
-use tokio_tungstenite::tungstenite::ext::deflate::DeflateExtension;
-use tokio_tungstenite::tungstenite::ext::uncompressed::UncompressedExt;
-use tokio_tungstenite::tungstenite::ext::WebSocketExtension;
+use tokio_tungstenite::tungstenite::extensions::deflate::DeflateExt;
+use tokio_tungstenite::tungstenite::extensions::uncompressed::PlainTextExt;
+use tokio_tungstenite::tungstenite::extensions::WebSocketExtension;
 use tokio_tungstenite::tungstenite::protocol::frame::Frame;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;
 
 #[derive(Clone)]
 pub enum MaybeCompressed {
-    Compressed(DeflateExtension),
-    Uncompressed(UncompressedExt),
+    Compressed(DeflateExt),
+    Uncompressed(PlainTextExt),
 }
 
 impl MaybeCompressed {
     pub fn new_from_config(config: CompressionConfig) -> MaybeCompressed {
         match config {
             CompressionConfig::Uncompressed => {
-                MaybeCompressed::Uncompressed(UncompressedExt::new(Some(64 << 20)))
+                MaybeCompressed::Uncompressed(PlainTextExt::new(Some(64 << 20)))
             }
             CompressionConfig::Deflate(config) => {
-                MaybeCompressed::Compressed(DeflateExtension::new(config.clone()))
+                MaybeCompressed::Compressed(DeflateExt::new(config.clone()))
             }
         }
     }
@@ -50,7 +50,7 @@ impl MaybeCompressed {
 
 impl Default for MaybeCompressed {
     fn default() -> Self {
-        MaybeCompressed::Uncompressed(UncompressedExt::default())
+        MaybeCompressed::Uncompressed(PlainTextExt::default())
     }
 }
 

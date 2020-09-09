@@ -19,7 +19,7 @@ optional = true
 [dependencies.tokio-tungstenite]
 version = "0.11.0"
 path = "../tungstenite-deflate/tokio-tungstenite"
-features = ["tls"]
+features = ["tls", "deflate"]
 optional = true
 
 [dependencies.tokio-tls]

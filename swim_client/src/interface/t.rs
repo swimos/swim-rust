@@ -12,7 +12,7 @@ mod t {
     use swim_common::ws::Protocol;
     use tokio::stream::StreamExt;
     use tokio::time::Duration;
-    use tokio_tungstenite::tungstenite::ext::deflate::DeflateConfig;
+    use tokio_tungstenite::tungstenite::extensions::deflate::DeflateConfig;
     use tracing::Level;
     use utilities::future::retryable::strategy::RetryStrategy;
 

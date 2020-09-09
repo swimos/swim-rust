@@ -35,7 +35,7 @@ use std::collections::HashMap;
 use swim_common::request::request_future::SendAndAwait;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory};
-use tokio_tungstenite::tungstenite::ext::deflate::DeflateConfig;
+use tokio_tungstenite::tungstenite::extensions::deflate::DeflateConfig;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::errors::FlattenErrors;
