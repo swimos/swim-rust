@@ -599,10 +599,7 @@ mod tests {
 
         sender_view.set(String::from("chocolate")).await.unwrap();
         let message = recv.next().await.unwrap();
-        assert_eq!(
-            message,
-            Event::Local(Value::text("chocolate"))
-        );
+        assert_eq!(message, Event::Local(Value::text("chocolate")));
     }
 
     #[tokio::test]
@@ -716,10 +713,7 @@ mod tests {
                 view.get(&Value::text("chocolate")).unwrap(),
                 Value::UInt32Value(10)
             );
-            assert_eq!(
-                event,
-                MapEvent::Update(Value::text("chocolate"))
-            );
+            assert_eq!(event, MapEvent::Update(Value::text("chocolate")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
