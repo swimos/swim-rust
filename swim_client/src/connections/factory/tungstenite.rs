@@ -19,115 +19,35 @@ use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
 use futures::StreamExt;
 use http::{HeaderValue, Request, Response, Uri};
-use native_tls::TlsConnector;
 use tokio::net::TcpStream;
-use tokio_tls::{TlsConnector as TokioTlsConnector, TlsStream};
+use tokio_tls::TlsStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::*;
 use tokio_tungstenite::{client_async_with_config, WebSocketStream};
 use url::Url;
 
-use swim_common::request::request_future::SendAndAwait;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory, WsMessage};
-use utilities::errors::FlattenErrors;
-
 use super::async_factory;
+use crate::connections::factory::stream::{
+    build_stream, get_stream_type, MaybeCompressed, SinkTransformer, StreamTransformer,
+};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use swim_common::request::request_future::SendAndAwait;
+use swim_common::ws::error::{ConnectionError, WebSocketError};
+use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory};
+use tokio_tungstenite::tungstenite::ext::deflate::DeflateConfig;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use tokio_tungstenite::tungstenite::Message;
+use utilities::errors::FlattenErrors;
+use utilities::future::{TransformedSink, TransformedStream};
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
 type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungSink, TungStream), ConnectionError>>;
 
-pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>, MaybeCompressed>;
-
-pub type ConnReq = async_factory::ConnReq<TungSink, TungStream>;
-
-#[derive(Clone)]
-pub enum MaybeCompressed {
-    Compressed(DeflateExtension),
-    Uncompressed(UncompressedExt),
-}
-
-impl Default for MaybeCompressed {
-    fn default() -> Self {
-        MaybeCompressed::Uncompressed(UncompressedExt::default())
-    }
-}
-
-#[derive(Debug)]
-pub struct CompressionError(String);
-
-impl From<CompressionError> for TError {
-    fn from(_: CompressionError) -> Self {
-        unimplemented!()
-    }
-}
-
-impl Display for CompressionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompressionError")
-            .field("error", &self.0)
-            .finish()
-    }
-}
-
-impl WebSocketExtension for MaybeCompressed {
-    type Error = CompressionError;
-
-    fn enabled(&self) -> bool {
-        match self {
-            MaybeCompressed::Uncompressed(ext) => ext.enabled(),
-            MaybeCompressed::Compressed(ext) => ext.enabled(),
-        }
-    }
-
-    fn rsv1(&self) -> bool {
-        match self {
-            MaybeCompressed::Uncompressed(ext) => ext.rsv1(),
-            MaybeCompressed::Compressed(ext) => ext.rsv1(),
-        }
-    }
-
-    fn on_request<T>(&mut self, request: Request<T>) -> Request<T> {
-        match self {
-            MaybeCompressed::Uncompressed(ext) => ext.on_request(request),
-            MaybeCompressed::Compressed(ext) => ext.on_request(request),
-        }
-    }
-
-    fn on_response<T>(&mut self, response: &Response<T>) {
-        match self {
-            MaybeCompressed::Uncompressed(ext) => ext.on_response(response),
-            MaybeCompressed::Compressed(ext) => ext.on_response(response),
-        }
-    }
-
-    fn on_send_frame(&mut self, frame: Frame) -> Result<Frame, Self::Error> {
-        match self {
-            MaybeCompressed::Uncompressed(ext) => ext
-                .on_send_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-            MaybeCompressed::Compressed(ext) => ext
-                .on_send_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-        }
-    }
-
-    fn on_receive_frame(&mut self, frame: Frame) -> Result<Option<Message>, Self::Error> {
-        match self {
-            MaybeCompressed::Uncompressed(ext) => ext
-                .on_receive_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-            MaybeCompressed::Compressed(ext) => ext
-                .on_receive_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-        }
-    }
-}
-
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
+pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>, MaybeCompressed>;
+pub type ConnReq = async_factory::ConnReq<TungSink, TungStream>;
 
 async fn connect(
     url: Url,
@@ -171,56 +91,18 @@ async fn connect(
     let host = format!("{}:{}", domain, port);
     let stream = build_stream(&host, domain, stream_type).await?;
 
-    match client_async_with_config(request, stream, None)
-        .await
-        .map_err(TungsteniteError)
+    match client_async_with_config(
+        request,
+        stream,
+        Some(WebSocketConfig::default_with_encoder(
+            MaybeCompressed::new_from_config(config.compression_config.clone()),
+        )),
+    )
+    .await
+    .map_err(TungsteniteError)
     {
         Ok((stream, response)) => Ok((stream, response)),
         Err(e) => Err(e.into()),
-    }
-}
-
-fn get_stream_type<T>(
-    request: &Request<T>,
-    protocol: &Protocol,
-) -> Result<Protocol, WebSocketError> {
-    match request.uri().scheme_str() {
-        Some("ws") => Ok(Protocol::PlainText),
-        Some("wss") => match protocol {
-            Protocol::PlainText => Err(WebSocketError::BadConfiguration(
-                "Attempted to connect to a secure WebSocket without a TLS configuration".into(),
-            )),
-            tls => Ok(tls.clone()),
-        },
-        Some(s) => Err(WebSocketError::unsupported_scheme(s)),
-        None => Err(WebSocketError::missing_scheme()),
-    }
-}
-
-async fn build_stream(
-    host: &str,
-    domain: String,
-    stream_type: Protocol,
-) -> Result<MaybeTlsStream<TcpStream>, WebSocketError> {
-    let socket = TcpStream::connect(host)
-        .await
-        .map_err(|e| WebSocketError::Message(e.to_string()))?;
-
-    match stream_type {
-        Protocol::PlainText => Ok(StreamSwitcher::Plain(socket)),
-        Protocol::Tls(certificate) => {
-            let mut tls_conn_builder = TlsConnector::builder();
-            tls_conn_builder.add_root_certificate(certificate);
-
-            let connector = tls_conn_builder.build()?;
-            let stream = TokioTlsConnector::from(connector);
-            let connected = stream.connect(&domain, socket).await;
-
-            match connected {
-                Ok(s) => Ok(StreamSwitcher::Tls(s)),
-                Err(e) => Err(WebSocketError::Tls(e.to_string())),
-            }
-        }
     }
 }
 
@@ -272,47 +154,10 @@ impl WebsocketFactory for TungsteniteWsFactory {
     }
 }
 
-use futures_util::core_reexport::fmt::Formatter;
-use std::fmt::Display;
-use tokio_tungstenite::tungstenite::ext::deflate::{DeflateConfig, DeflateExtension};
-use tokio_tungstenite::tungstenite::ext::uncompressed::UncompressedExt;
-use tokio_tungstenite::tungstenite::ext::WebSocketExtension;
-use tokio_tungstenite::tungstenite::protocol::frame::Frame;
-use tokio_tungstenite::tungstenite::Message;
-use utilities::future::{TransformMut, TransformedSink, TransformedStream};
-
 /// Specialized [`AsyncFactory`] that creates tungstenite-tokio connections.
 pub struct TungsteniteWsFactory {
     inner: async_factory::AsyncFactory<TungSink, TungStream>,
     host_configurations: HashMap<Url, HostConfig>,
-}
-
-pub struct SinkTransformer;
-impl TransformMut<WsMessage> for SinkTransformer {
-    type Out = Message;
-
-    fn transform(&mut self, input: WsMessage) -> Self::Out {
-        match input {
-            WsMessage::Text(s) => Message::Text(s),
-            WsMessage::Binary(v) => Message::Binary(v),
-        }
-    }
-}
-
-pub struct StreamTransformer;
-impl TransformMut<Result<Message, TError>> for StreamTransformer {
-    type Out = Result<WsMessage, ConnectionError>;
-
-    fn transform(&mut self, input: Result<Message, TError>) -> Self::Out {
-        match input {
-            Ok(i) => match i {
-                Message::Text(s) => Ok(WsMessage::Text(s)),
-                Message::Binary(v) => Ok(WsMessage::Binary(v)),
-                _ => Err(ConnectionError::ReceiveMessageError),
-            },
-            Err(_) => Err(ConnectionError::ConnectError),
-        }
-    }
 }
 
 async fn open_conn(
@@ -336,7 +181,7 @@ async fn open_conn(
     }
 }
 
-type TError = tungstenite::error::Error;
+pub type TError = tungstenite::error::Error;
 
 #[derive(Debug)]
 struct TungsteniteError(tungstenite::error::Error);

@@ -16,6 +16,8 @@
 mod tests;
 
 #[cfg(feature = "websocket")]
+pub mod stream;
+#[cfg(feature = "websocket")]
 pub mod tungstenite;
 
 #[cfg(not(target_arch = "wasm32"))]
