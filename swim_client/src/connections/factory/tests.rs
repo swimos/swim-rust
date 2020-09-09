@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use super::async_factory::*;
-use crate::connections::factory::tungstenite::HostConfig;
+use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
 use std::pin::Pin;
 use swim_common::ws::error::ConnectionError;
-use swim_common::ws::{CompressionKind, Protocol, WebSocketHandler, WsMessage};
+use swim_common::ws::{Protocol, WsMessage};
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);
@@ -56,14 +56,9 @@ impl Sink<WsMessage> for TestSink {
     }
 }
 
-#[derive(Clone)]
-struct TestHandler;
-
-impl WebSocketHandler for TestHandler {}
-
 async fn open_conn(
     url: url::Url,
-    _config: HostConfig<TestHandler>,
+    _config: HostConfig,
 ) -> Result<(TestSink, TestStream), ConnectionError> {
     if url.scheme() == "fail" {
         Err(ConnectionError::ConnectError)
@@ -72,7 +67,7 @@ async fn open_conn(
     }
 }
 
-async fn make_fac() -> AsyncFactory<TestSink, TestStream, TestHandler> {
+async fn make_fac() -> AsyncFactory<TestSink, TestStream> {
     AsyncFactory::new(5, open_conn).await
 }
 
@@ -93,8 +88,7 @@ async fn successfully_open() {
             url.clone(),
             HostConfig {
                 protocol: Protocol::PlainText,
-                handler: TestHandler,
-                compression: CompressionKind::None,
+                compression_config: CompressionConfig::Uncompressed,
             },
         )
         .await;
@@ -113,8 +107,7 @@ async fn fail_to_open() {
             url.clone(),
             HostConfig {
                 protocol: Protocol::PlainText,
-                handler: TestHandler,
-                compression: CompressionKind::None,
+                compression_config: CompressionConfig::Uncompressed,
             },
         )
         .await;

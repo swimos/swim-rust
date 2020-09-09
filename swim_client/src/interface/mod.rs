@@ -37,10 +37,11 @@ use crate::router::SwimRouter;
 use std::collections::HashMap;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
-use swim_common::ws::{Protocol, WebsocketFactory};
+use swim_common::ws::WebsocketFactory;
 use url::Url;
 mod t;
 
+use crate::connections::factory::tungstenite::HostConfig;
 #[cfg(feature = "websocket")]
 use {
     crate::configuration::downlink::ConfigHierarchy,
@@ -115,16 +116,19 @@ impl SwimClient {
     /// Creates a new Swim Client using the default configuration and the provided certificates for
     /// each host.
     #[cfg(feature = "websocket")]
-    pub async fn default_with_certs(certs: HashMap<Url, Protocol>) -> Self {
+    pub async fn default_with_host_configs(configs: HashMap<Url, HostConfig>) -> Self {
         SwimClient::new(
             ConfigHierarchy::default(),
-            TungsteniteWsFactory::new(5, certs).await,
+            TungsteniteWsFactory::new(5, configs).await,
         )
         .await
     }
 
-    pub async fn config_with_certs(config: ConfigHierarchy, certs: HashMap<Url, Protocol>) -> Self {
-        SwimClient::new(config, TungsteniteWsFactory::new(5, certs).await).await
+    pub async fn config_with_certs(
+        config: ConfigHierarchy,
+        host_configs: HashMap<Url, HostConfig>,
+    ) -> Self {
+        SwimClient::new(config, TungsteniteWsFactory::new(5, host_configs).await).await
     }
 
     /// Creates a new SWIM Client using the default configuration.

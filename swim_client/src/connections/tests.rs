@@ -29,8 +29,8 @@ use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
-use crate::connections::factory::tungstenite::HostConfig;
-use swim_common::ws::{CompressionKind, Protocol, WebSocketHandler};
+use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
+use swim_common::ws::Protocol;
 use utilities::errors::FlattenErrors;
 
 #[tokio::test]
@@ -663,13 +663,8 @@ impl Sink<WsMessage> for TestWriteStream {
     }
 }
 
-#[derive(Clone)]
-struct TestHandler;
-
-impl WebSocketHandler for TestHandler {}
-
 struct TestConnectionFactory {
-    inner: AsyncFactory<TestWriteStream, TestReadStream, TestHandler>,
+    inner: AsyncFactory<TestWriteStream, TestReadStream>,
 }
 
 impl TestConnectionFactory {
@@ -699,7 +694,7 @@ impl TestConnectionFactory {
     }
 }
 
-type ConnReq = async_factory::ConnReq<TestWriteStream, TestReadStream, TestHandler>;
+type ConnReq = async_factory::ConnReq<TestWriteStream, TestReadStream>;
 type ConnectionFuture =
     SendAndAwait<ConnReq, Result<(TestWriteStream, TestReadStream), ConnectionError>>;
 
@@ -713,8 +708,7 @@ impl WebsocketFactory for TestConnectionFactory {
             url,
             HostConfig {
                 protocol: Protocol::PlainText,
-                handler: TestHandler,
-                compression: CompressionKind::None,
+                compression_config: CompressionConfig::Uncompressed,
             },
         )
     }

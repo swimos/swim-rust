@@ -8,7 +8,6 @@ mod t {
     use std::collections::HashMap;
     use std::env;
     use swim_common::warp::path::AbsolutePath;
-    use swim_common::ws::Protocol;
     use tokio::stream::StreamExt;
     use tokio::time::Duration;
     use tracing::Level;
@@ -23,7 +22,7 @@ mod t {
 
         let host = format!("warp://127.0.0.1:{}", 9001);
         let url = url::Url::parse(&host).unwrap();
-        let mut protos = HashMap::new();
+        let protos = HashMap::new();
 
         println!("{:?}", env::current_dir());
 

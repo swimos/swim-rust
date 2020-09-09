@@ -17,7 +17,7 @@ use std::str::FromStr;
 
 use futures::{Future, Sink, Stream};
 use http::uri::Scheme;
-use http::{Request, Response, Uri};
+use http::{Request, Uri};
 
 use crate::ws::error::{CertificateError, ConnectionError, WebSocketError};
 use futures_util::core_reexport::fmt::{Debug, Formatter};
@@ -27,7 +27,6 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 
 pub mod error;
-pub mod handlers;
 
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
@@ -72,24 +71,6 @@ pub trait WebsocketFactory: Send + Sync {
 
     /// Open a connection to the provided remote URL.
     fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
-}
-
-pub trait WebSocketHandler: Clone + Send + Unpin + 'static {
-    fn on_request(&mut self, _request: &mut Request<()>) {}
-
-    fn on_response(&mut self, _response: &mut Response<()>) {}
-
-    fn on_send(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {
-        Ok(())
-    }
-
-    fn on_receive(&mut self, _message: &mut WsMessage) -> Result<(), ConnectionError> {
-        Ok(())
-    }
-
-    fn on_close(&mut self) {}
-
-    fn on_open(&mut self) {}
 }
 
 #[derive(Clone)]
@@ -166,7 +147,7 @@ pub enum CompressionKind {
 }
 
 impl CompressionKind {
-    pub fn is_some(&self) -> bool {
+    pub fn is_compressed(&self) -> bool {
         *self != CompressionKind::None
     }
 }
