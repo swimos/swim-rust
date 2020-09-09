@@ -37,6 +37,37 @@ pub trait ItemSink<'a, T> {
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
 }
 
+/// Sender that discards everything sent to it.
+#[derive(Debug)]
+pub struct DiscardingSender<E>(PhantomData<E>);
+
+impl<E> DiscardingSender<E> {
+    pub fn new() -> Self {
+        DiscardingSender(PhantomData)
+    }
+}
+
+impl<E> Default for DiscardingSender<E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<E> Clone for DiscardingSender<E> {
+    fn clone(&self) -> Self {
+        Default::default()
+    }
+}
+
+impl<'a, T, E: Send + 'static> ItemSink<'a, T> for DiscardingSender<E> {
+    type Error = E;
+    type SendFuture = Ready<Result<(), E>>;
+
+    fn send_item(&'a mut self, _value: T) -> Self::SendFuture {
+        ready(Ok(()))
+    }
+}
+
 pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
     fn map_err_into<E2>(self) -> map_err::SenderErrInto<Self, E2>
     where

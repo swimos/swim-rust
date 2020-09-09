@@ -15,7 +15,7 @@
 use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::Display;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
+use swim_common::sink::item::{ItemSender, ItemSink};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 
 #[cfg(test)]
@@ -64,9 +64,64 @@ pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedClientEnvelope(pub RoutingAddr, pub OutgoingLinkMessage);
 
+impl TaggedClientEnvelope {
+    pub fn lane(&self) -> &str {
+        self.1.path.lane.as_str()
+    }
+}
+
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
     fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError>;
+}
+
+pub struct SingleChannelRouter<Inner>(Inner);
+
+impl<Inner> SingleChannelRouter<Inner>
+where
+    Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone,
+{
+    pub(crate) fn new(sender: Inner) -> Self {
+        SingleChannelRouter(sender)
+    }
+}
+
+pub struct SingleChannelSender<Inner> {
+    inner: Inner,
+    destination: RoutingAddr,
+}
+
+impl<Inner> SingleChannelSender<Inner>
+where
+    Inner: ItemSender<TaggedEnvelope, RoutingError>,
+{
+    fn new(inner: Inner, destination: RoutingAddr) -> Self {
+        SingleChannelSender { inner, destination }
+    }
+}
+
+impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
+where
+    Inner: ItemSink<'a, TaggedEnvelope, Error = RoutingError>,
+{
+    type Error = RoutingError;
+    type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
+
+    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
+        let msg = TaggedEnvelope(self.destination, value);
+        self.inner.send_item(msg)
+    }
+}
+
+impl<Inner> ServerRouter for SingleChannelRouter<Inner>
+where
+    Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+{
+    type Sender = SingleChannelSender<Inner>;
+
+    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
+        Ok(SingleChannelSender::new(self.0.clone(), addr))
+    }
 }

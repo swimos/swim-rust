@@ -18,8 +18,8 @@ tracing = "0.1.16"
 [dependencies]
 either = "1.5.3"
 futures = "0.3.4"
-futures-util = "0.3.4"
 im = "15.0.0"
+parking_lot = "0.11.0"
 pin-project = "0.4.20"
 pin-utils = "0.1.0"
 tokio = { version = "0.2.21", features = ["stream", "rt-core"] }
@@ -28,7 +28,7 @@ swim_common = { path = "../swim_common" }
 utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
-tracing-futures = "0.2.3"
+tracing-futures = "0.2.4"
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }

@@ -13,10 +13,13 @@
 // limitations under the License.
 
 use super::*;
+use futures::stream::{iter, Iter};
 use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
+use std::iter::{repeat, Repeat, Take};
 use tokio::sync::{mpsc, watch};
+use utilities::future::Transform;
 
 #[tokio::test]
 pub async fn receive_from_watch_topic() {
@@ -316,4 +319,31 @@ pub async fn all_receivers_dropped_for_mpsc_topic() {
     assert_that!(tx.send(7).await, ok());
 
     assert_that!(topic.subscribe().await, ok());
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Repeater(usize);
+
+impl Transform<i32> for Repeater {
+    type Out = Iter<Take<Repeat<i32>>>;
+
+    fn transform(&self, input: i32) -> Self::Out {
+        iter(repeat(input).take(self.0))
+    }
+}
+
+#[tokio::test]
+pub async fn transform_topic() {
+    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (topic, _) = MpscTopic::new(rx, buffer_size(), yield_after());
+    let mut transformed = topic.transform(Repeater(2));
+
+    let mut rec = transformed.subscribe().await.expect("Subscription failed.");
+
+    assert!(tx.send(7).await.is_ok());
+    assert!(tx.send(12).await.is_ok());
+    assert_eq!(rec.next().await, Some(7));
+    assert_eq!(rec.next().await, Some(7));
+    assert_eq!(rec.next().await, Some(12));
+    assert_eq!(rec.next().await, Some(12));
 }

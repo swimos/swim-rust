@@ -13,15 +13,15 @@
 // limitations under the License.
 
 use super::{SwimFutureExt, SwimStreamExt, SwimTryFutureExt, TransformMut};
-use crate::sync::trigger;
 use futures::executor::block_on;
 use futures::future::{ready, Ready};
-use futures::stream::iter;
+use futures::stream::{iter, FusedStream, Iter};
 use futures::StreamExt;
 use hamcrest2::assert_that;
 use hamcrest2::prelude::*;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Barrier};
+use pin_utils::pin_mut;
+use std::iter::{repeat, Repeat, Take};
+use tokio::sync::mpsc;
 
 #[test]
 fn future_into() {
@@ -54,11 +54,39 @@ impl TransformMut<i32> for Plus {
     }
 }
 
+struct PlusReady(i32);
+
+impl TransformMut<i32> for PlusReady {
+    type Out = Ready<i32>;
+
+    fn transform(&mut self, input: i32) -> Self::Out {
+        ready(input + self.0)
+    }
+}
+
+struct RepeatStream(usize);
+
+impl TransformMut<i32> for RepeatStream {
+    type Out = Iter<Take<Repeat<i32>>>;
+
+    fn transform(&mut self, input: i32) -> Self::Out {
+        iter(repeat(input).take(self.0))
+    }
+}
+
 #[test]
 fn transform_future() {
     let fut = ready(2);
     let plus = Plus(3);
     let n = block_on(fut.transform(plus));
+    assert_that!(n, eq(5));
+}
+
+#[test]
+fn chain_future() {
+    let fut = ready(2);
+    let plus = PlusReady(3);
+    let n = block_on(fut.chain(plus));
     assert_that!(n, eq(5));
 }
 
@@ -69,6 +97,57 @@ fn transform_stream() {
     let outputs: Vec<i32> = block_on(inputs.transform(Plus(3)).collect::<Vec<i32>>());
 
     assert_that!(outputs, eq(vec![3, 4, 5, 6, 7]));
+}
+
+#[test]
+fn transform_stream_fut() {
+    let inputs = iter((0..5).into_iter());
+
+    let outputs: Vec<i32> = block_on(inputs.transform_fut(PlusReady(3)).collect::<Vec<i32>>());
+
+    assert_that!(outputs, eq(vec![3, 4, 5, 6, 7]));
+}
+
+#[test]
+fn flatmap_stream() {
+    let inputs = iter((0..5).into_iter());
+
+    let outputs: Vec<i32> = block_on(
+        inputs
+            .transform_flat_map(RepeatStream(3))
+            .collect::<Vec<i32>>(),
+    );
+
+    assert_that!(
+        outputs,
+        eq(vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
+    );
+}
+
+#[test]
+fn flatmap_stream_done() {
+    let inputs = iter((0..5).into_iter());
+
+    let mut stream = inputs.transform_flat_map(RepeatStream(3));
+
+    assert!(!stream.is_terminated());
+
+    block_on((&mut stream).collect::<Vec<i32>>());
+
+    assert!(stream.is_terminated());
+}
+
+#[test]
+fn transform_stream_fut_done() {
+    let inputs = iter((0..5).into_iter());
+
+    let mut stream = inputs.transform_fut(PlusReady(3));
+
+    assert!(!stream.is_terminated());
+
+    block_on((&mut stream).collect::<Vec<i32>>());
+
+    assert!(stream.is_terminated());
 }
 
 struct PlusIfNonNeg(i32);
@@ -92,39 +171,56 @@ fn until_failure() {
     assert_eq!(outputs, vec![3, 4, 5]);
 }
 
-#[tokio::test(threaded_scheduler)]
-async fn take_until() {
-    let (mut tx, rx) = mpsc::channel(5);
-
-    let (stop, stop_sig) = trigger::trigger();
-
-    let barrier1 = Arc::new(Barrier::new(2));
-    let barrier2 = barrier1.clone();
-
-    let stream_task = swim_runtime::task::spawn(async move {
-        let mut stream = rx.take_until_completes(stop_sig);
-        assert_eq!(stream.next().await, Some(1));
-        assert_eq!(stream.next().await, Some(2));
-        assert_eq!(stream.next().await, Some(3));
-        barrier1.wait().await;
-        assert!(stream.next().await.is_none());
-    });
-
-    assert!(tx.send(1).await.is_ok());
-    assert!(tx.send(2).await.is_ok());
-    assert!(tx.send(3).await.is_ok());
-    barrier2.wait().await;
-    stop.trigger();
-    //Further sends are not guaranteed to succeed but it doesn't matter if they fail.
-    let _ = tx.send(4).await;
-    let _ = tx.send(5).await;
-
-    assert!(stream_task.await.is_ok());
-}
-
 #[tokio::test]
 async fn unit_future() {
     let fut = async { 5 };
 
     assert_eq!(fut.unit().await, ());
+}
+
+#[tokio::test]
+async fn owning_scan() {
+    let inputs = iter(vec![1, 2, 3, 4].into_iter());
+
+    let (tx, rx) = mpsc::channel(10);
+
+    let scan_stream = inputs.owning_scan(tx, |mut sender, i| async move {
+        assert!(sender.send(i).await.is_ok());
+
+        Some((sender, i + 1))
+    });
+
+    let results = scan_stream.collect::<Vec<_>>().await;
+    let sent = rx.collect::<Vec<_>>().await;
+
+    assert_eq!(results, vec![2, 3, 4, 5]);
+    assert_eq!(sent, vec![1, 2, 3, 4]);
+}
+
+#[tokio::test]
+async fn owning_scan_done() {
+    let inputs = iter(vec![1, 2, 3, 4].into_iter());
+
+    let (tx, _rx) = mpsc::channel(10);
+
+    let scan_stream = inputs.owning_scan(tx, |mut sender, i| async move {
+        assert!(sender.send(i).await.is_ok());
+        if i < 3 {
+            Some((sender, i + 1))
+        } else {
+            None
+        }
+    });
+
+    pin_mut!(scan_stream);
+
+    assert!(!scan_stream.is_terminated());
+
+    loop {
+        if scan_stream.next().await.is_none() {
+            break;
+        }
+    }
+
+    assert!(scan_stream.is_terminated());
 }

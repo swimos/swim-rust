@@ -362,7 +362,7 @@ async fn map_state_machine_sync() {
 #[test]
 fn uplink_error_display() {
     assert_eq!(
-        format!("{}", UplinkError::SenderDropped),
+        format!("{}", UplinkError::ChannelDropped),
         "Uplink send channel was dropped."
     );
     assert_eq!(
@@ -376,7 +376,7 @@ fn uplink_error_display() {
         "A form implementation used by a lane is inconsistent: Malformatted"
     );
     assert_eq!(
-        format!("{}", UplinkError::SenderDropped),
+        format!("{}", UplinkError::ChannelDropped),
         "Uplink send channel was dropped."
     );
     assert_eq!(

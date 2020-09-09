@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
-use crate::agent::lane::channels::{
-    AgentExecutionConfig, AgentExecutionContext, LaneMessageHandler, TaggedAction,
-};
+use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::future::{join, join3, ready};
@@ -39,6 +39,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use utilities::future::retryable::strategy::RetryStrategy;
 
 const INIT: i32 = 42;
 
@@ -145,7 +146,7 @@ impl LaneUpdate for TestUpdater {
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>,
     {
@@ -153,7 +154,7 @@ impl LaneUpdate for TestUpdater {
 
         async move {
             pin_mut!(messages);
-            while let Some(Ok(Message(n))) = messages.next().await {
+            while let Some(Ok((_, Message(n)))) = messages.next().await {
                 if tx.send(n).await.is_err() {
                     break;
                 }
@@ -210,10 +211,7 @@ impl UplinkSpawnerOutputs {
         .expect("Timeout awaiting outputs.")
     }
 
-    fn split(
-        self,
-        expected: HashSet<RoutingAddr>,
-    ) -> (UplinkSpawnerSplitOutputs, BoxFuture<'static, ()>) {
+    fn split(self, expected: HashSet<RoutingAddr>) -> (UplinkSpawnerSplitOutputs, Eff) {
         let UplinkSpawnerOutputs {
             _update_rx,
             mut router_rx,
@@ -275,16 +273,20 @@ impl UplinkSpawnerSplitOutputs {
 
 fn make_config() -> AgentExecutionConfig {
     AgentExecutionConfig {
-        max_concurrency: 1,
+        max_pending_envelopes: 1,
         action_buffer: default_buffer(),
         update_buffer: default_buffer(),
         uplink_err_buffer: default_buffer(),
+        feedback_buffer: default_buffer(),
         max_fatal_uplink_errors: 1,
         max_uplink_start_attempts: max_attempts(),
+        yield_after: yield_after(),
+        retry_strategy: RetryStrategy::default(),
+        cleanup_timeout: Duration::from_secs(5),
     }
 }
 
-struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<BoxFuture<'static, ()>>);
+struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<Eff>);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
@@ -293,7 +295,7 @@ impl AgentExecutionContext for TestContext {
         TestRouter(self.0.clone())
     }
 
-    fn spawner(&self) -> Sender<BoxFuture<'static, ()>> {
+    fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
     }
 }
