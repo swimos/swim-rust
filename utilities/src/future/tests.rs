@@ -20,8 +20,6 @@ use futures::StreamExt;
 use pin_utils::pin_mut;
 use std::iter::{repeat, Repeat, Take};
 use tokio::sync::mpsc;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Barrier};
 
 #[test]
 fn future_into() {
@@ -87,7 +85,7 @@ fn chain_future() {
     let fut = ready(2);
     let plus = PlusReady(3);
     let n = block_on(fut.chain(plus));
-    assert_that!(n, eq(5));
+    assert_eq!(n, 5);
 }
 
 #[test]
@@ -105,7 +103,7 @@ fn transform_stream_fut() {
 
     let outputs: Vec<i32> = block_on(inputs.transform_fut(PlusReady(3)).collect::<Vec<i32>>());
 
-    assert_that!(outputs, eq(vec![3, 4, 5, 6, 7]));
+    assert_eq!(outputs, vec![3, 4, 5, 6, 7]);
 }
 
 #[test]
@@ -118,10 +116,7 @@ fn flatmap_stream() {
             .collect::<Vec<i32>>(),
     );
 
-    assert_that!(
-        outputs,
-        eq(vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
-    );
+    assert_eq!(outputs, vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4]);
 }
 
 #[test]
