@@ -3,6 +3,9 @@ use crate::agent::context::ContextImpl;
 use crate::agent::lane::lifecycle::ActionLaneLifecycle;
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapLaneWatch};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
+use crate::agent::lane::strategy::Queue;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::TestContext;
 use crate::agent::{
@@ -13,10 +16,14 @@ use futures::{FutureExt, Stream, StreamExt};
 use futures_util::core_reexport::time::Duration;
 use pin_utils::pin_mut;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
+use stm::local::TLocal;
+use stm::var::TVar;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
@@ -25,52 +32,65 @@ use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
 
 const COMMANDED: &str = "Command received";
-const ON_COMMAND: &str = "On command handler";
+const ON_EVENT: &str = "On event handler";
 
 struct TestAgent {
-    command: CommandLane<String>,
+    map: MapLane<i64, bool>,
 }
 
-struct CommandLifecycle<T>
+struct MapLifecycle<T, S>
 where
-    T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static,
+    T: Fn(&TestAgent) -> &MapLane<i64, bool> + Send + Sync + 'static,
+    S: Stream<Item = MapLaneEvent<i64, bool>> + Send + Sync + 'static,
 {
     name: String,
-    event_stream: mpsc::Receiver<String>,
+    event_stream: S,
     projection: T,
 }
 
-async fn custom_on_command<Context, Agent, Config>(
-    command: String,
-    model: &ActionLane<String, ()>,
-    context: &Context,
-) where
-    Agent: SwimAgent<Config> + Send + Sync + 'static,
-    Context: AgentContext<Agent> + Sized + Send + Sync + 'static,
+async fn custom_on_start<Context>(model: &MapLane<i64, bool>, context: &Context)
+where
+    Context: AgentContext<TestAgent> + Sized + Send + Sync,
 {
     unimplemented!()
 }
 
-impl<T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static> Lane
-    for CommandLifecycle<T>
+async fn custom_on_event<Context>(
+    event: &MapLaneEvent<i64, bool>,
+    model: &MapLane<i64, bool>,
+    context: &Context,
+) where
+    Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+{
+    unimplemented!()
+}
+
+impl<T, S> Lane for MapLifecycle<T, S>
+where
+    T: Fn(&TestAgent) -> &MapLane<i64, bool> + Send + Sync + 'static,
+    S: Stream<Item = MapLaneEvent<i64, bool>> + Send + Sync + 'static,
 {
     fn name(&self) -> &str {
         &self.name
     }
 }
 
-impl<Context, T> LaneTasks<TestAgent, Context> for CommandLifecycle<T>
+impl<Context, T, S> LaneTasks<TestAgent, Context> for MapLifecycle<T, S>
 where
     Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
-    T: Fn(&TestAgent) -> &CommandLane<String> + Send + Sync + 'static,
+    S: Stream<Item = MapLaneEvent<i64, bool>> + Send + Sync + 'static,
+    T: Fn(&TestAgent) -> &MapLane<i64, bool> + Send + Sync + 'static,
 {
-    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
+    fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
+        let MapLifecycle { projection, .. } = self;
+
+        let model = projection(context.agent());
+        custom_on_start(model, context).boxed()
     }
 
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
-            let CommandLifecycle {
+            let MapLifecycle {
                 name,
                 event_stream,
                 projection,
@@ -79,10 +99,9 @@ where
             let model = projection(context.agent()).clone();
             let mut events = event_stream.take_until_completes(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(command) = events.next().await {
-                event!(Level::TRACE, COMMANDED, ?command);
-                custom_on_command(command, &model, &context)
-                    .instrument(span!(Level::TRACE, ON_COMMAND))
+            while let Some(event) = events.next().await {
+                custom_on_event(&event, &model, &context)
+                    .instrument(span!(Level::TRACE, ON_EVENT, ?event))
                     .await;
             }
         }
@@ -99,18 +118,18 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
     where
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
-        let buffer_size = NonZeroUsize::new(5).unwrap();
-        let name = "action";
+        let name = "map";
+        let (observer, event_stream) =
+            agent::lane::model::map::MapLaneWatch::make_watch(&Queue::default());
+        let summary = TVar::new_with_observer(Default::default(), observer);
+        let map = MapLane::from_summary(summary);
 
-        let (tx, event_stream) = mpsc::channel(buffer_size.get());
-        let command = ActionLane::new(tx);
+        let agent = TestAgent { map };
 
-        let agent = TestAgent { command };
-
-        let task = CommandLifecycle {
+        let task = MapLifecycle {
             name: name.into(),
             event_stream,
-            projection: |agent: &TestAgent| &agent.command,
+            projection: |agent: &TestAgent| &agent.map,
         };
 
         let tasks = vec![task.boxed()];

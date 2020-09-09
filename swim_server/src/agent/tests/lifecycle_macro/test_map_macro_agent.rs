@@ -3,6 +3,9 @@ use crate::agent::context::ContextImpl;
 use crate::agent::lane::lifecycle::ActionLaneLifecycle;
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapLaneWatch};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
+use crate::agent::lane::strategy::Queue;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::TestContext;
 use crate::agent::{
@@ -13,10 +16,14 @@ use futures::{FutureExt, Stream, StreamExt};
 use futures_util::core_reexport::time::Duration;
 use pin_utils::pin_mut;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
+use stm::local::TLocal;
+use stm::var::TVar;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
@@ -24,25 +31,32 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
 
-use lifecycle_derive;
-
 const COMMANDED: &str = "Command received";
-const ON_COMMAND: &str = "On command handler";
+const ON_EVENT: &str = "On event handler";
 
 struct TestAgent {
-    command: CommandLane<String>,
+    map: MapLane<i64, bool>,
 }
 
-#[command_lifecycle(
+#[map_lifecycle(
     agent = "TestAgent",
-    command_type = "String",
-    on_command = "custom_on_command"
+    key_type = "i64",
+    value_type = "bool",
+    on_start = "custom_on_start",
+    on_event = "custom_on_event"
 )]
-struct CommandLifecycle {}
+struct MapLifecycle {}
 
-async fn custom_on_command<Context>(
-    command: String,
-    model: &ActionLane<String, ()>,
+async fn custom_on_start<Context>(model: &MapLane<i64, bool>, context: &Context)
+where
+    Context: AgentContext<TestAgent> + Sized + Send + Sync,
+{
+    unimplemented!()
+}
+
+async fn custom_on_event<Context>(
+    event: &MapLaneEvent<i64, bool>,
+    model: &MapLane<i64, bool>,
     context: &Context,
 ) where
     Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
@@ -59,18 +73,18 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
     where
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
-        let buffer_size = NonZeroUsize::new(5).unwrap();
-        let name = "command";
+        let name = "map";
+        let (observer, event_stream) =
+            agent::lane::model::map::MapLaneWatch::make_watch(&Queue::default());
+        let summary = TVar::new_with_observer(Default::default(), observer);
+        let map = MapLane::from_summary(summary);
 
-        let (tx, event_stream) = mpsc::channel(buffer_size.get());
-        let command = ActionLane::new(tx);
+        let agent = TestAgent { map };
 
-        let agent = TestAgent { command };
-
-        let task = CommandLifecycle {
+        let task = MapLifecycle {
             name: name.into(),
             event_stream,
-            projection: |agent: &TestAgent| &agent.command,
+            projection: |agent: &TestAgent| &agent.map,
         };
 
         let tasks = vec![task.boxed()];
@@ -91,7 +105,6 @@ impl Clock for TestClock {
 
 struct TestAgentLifecycle {}
 
-//This needs to be implemented using LaneTasks
 impl AgentLifecycle<TestAgent> for TestAgentLifecycle {
     fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where

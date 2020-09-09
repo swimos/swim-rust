@@ -24,28 +24,30 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
 
-use lifecycle_derive;
-
 const COMMANDED: &str = "Command received";
 const ON_COMMAND: &str = "On command handler";
+const ACTION_RESULT: &str = "Action result";
 
 struct TestAgent {
-    command: CommandLane<String>,
+    action: ActionLane<String, usize>,
 }
 
-#[command_lifecycle(
+#[action_lifecycle(
     agent = "TestAgent",
     command_type = "String",
+    response_type = "usize",
     on_command = "custom_on_command"
 )]
-struct CommandLifecycle {}
+struct ActionLifecycle {}
 
-async fn custom_on_command<Context>(
+async fn custom_on_command<Context, Agent, Config>(
     command: String,
-    model: &ActionLane<String, ()>,
+    model: &ActionLane<String, usize>,
     context: &Context,
-) where
-    Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+) -> usize
+where
+    Agent: SwimAgent<Config> + Send + Sync + 'static,
+    Context: AgentContext<Agent> + Sized + Send + Sync + 'static,
 {
     unimplemented!()
 }
@@ -60,17 +62,17 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
         let buffer_size = NonZeroUsize::new(5).unwrap();
-        let name = "command";
+        let name = "action";
 
         let (tx, event_stream) = mpsc::channel(buffer_size.get());
-        let command = ActionLane::new(tx);
+        let action = ActionLane::new(tx);
 
-        let agent = TestAgent { command };
+        let agent = TestAgent { action };
 
-        let task = CommandLifecycle {
+        let task = ActionLifecycle {
             name: name.into(),
             event_stream,
-            projection: |agent: &TestAgent| &agent.command,
+            projection: |agent: &TestAgent| &agent.action,
         };
 
         let tasks = vec![task.boxed()];
@@ -91,7 +93,6 @@ impl Clock for TestClock {
 
 struct TestAgentLifecycle {}
 
-//This needs to be implemented using LaneTasks
 impl AgentLifecycle<TestAgent> for TestAgentLifecycle {
     fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where
