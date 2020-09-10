@@ -1,39 +1,26 @@
+use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, ValueAttrs};
+use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::quote;
-use syn::{
-    parse_macro_input, AttributeArgs, DeriveInput, FnArg, ItemFn, Lit, LitStr, Meta, MetaNameValue,
-    NestedMeta, PatType, Path, PathSegment, Type, TypePath,
-};
+use syn::{parse_macro_input, AttributeArgs, DeriveInput};
+mod args;
 
 #[proc_macro_attribute]
-pub fn agent_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
+pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
-    let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
+    let attr_args = parse_macro_input!(args as AttributeArgs);
+
+    let args = match AgentAttrs::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        }
+    };
 
     let struct_name = input_ast.ident;
-
-    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(0).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing agent name!")
-    };
-
-    let on_start_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(1).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing custom `on_start` function!")
-    };
+    let agent_name = Ident::new(&args.agent, Span::call_site());
+    let on_start_func = Ident::new(&args.on_start, Span::call_site());
 
     let output_ast = quote! {
 
@@ -54,44 +41,21 @@ pub fn agent_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream
 }
 
 #[proc_macro_attribute]
-pub fn command_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
+pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
-    let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
+    let attr_args = parse_macro_input!(args as AttributeArgs);
+
+    let args = match CommandAttrs::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        }
+    };
 
     let struct_name = input_ast.ident;
-
-    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(0).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing agent name!")
-    };
-
-    let command_type = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(1).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing command type!")
-    };
-
-    let on_command_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(2).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing custom `on_command` function!")
-    };
+    let agent_name = Ident::new(&args.agent, Span::call_site());
+    let command_type = Ident::new(&args.command_type, Span::call_site());
+    let on_command_func = Ident::new(&args.on_command, Span::call_site());
 
     let output_ast = quote! {
         struct #struct_name<T>
@@ -149,55 +113,22 @@ pub fn command_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStre
 }
 
 #[proc_macro_attribute]
-pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
+pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
-    let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
+    let attr_args = parse_macro_input!(args as AttributeArgs);
+
+    let args = match ActionAttrs::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        }
+    };
 
     let struct_name = input_ast.ident;
-
-    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(0).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing lifecycle struct name!")
-    };
-
-    let command_type = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(1).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing command type!")
-    };
-
-    let response_type = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(2).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing response type!")
-    };
-
-    let on_command_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(3).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing custom `on_command` function!")
-    };
+    let agent_name = Ident::new(&args.agent, Span::call_site());
+    let command_type = Ident::new(&args.command_type, Span::call_site());
+    let response_type = Ident::new(&args.response_type, Span::call_site());
+    let on_command_func = Ident::new(&args.on_command, Span::call_site());
 
     let output_ast = quote! {
         struct #struct_name<T>
@@ -255,56 +186,22 @@ pub fn action_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStrea
 }
 
 #[proc_macro_attribute]
-pub fn value_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
+pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
-    let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
+    let attr_args = parse_macro_input!(args as AttributeArgs);
+
+    let args = match ValueAttrs::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        }
+    };
 
     let struct_name = input_ast.ident;
-
-    //Todo refactor into a function
-    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(0).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing agent name!")
-    };
-
-    let event_type = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(1).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing event type!")
-    };
-
-    let on_start_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(2).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing custom `on_start` function!")
-    };
-
-    let on_event_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(3).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing custom `on_event` function!")
-    };
+    let agent_name = Ident::new(&args.agent, Span::call_site());
+    let event_type = Ident::new(&args.event_type, Span::call_site());
+    let on_start_func = Ident::new(&args.on_start, Span::call_site());
+    let on_event_func = Ident::new(&args.on_event, Span::call_site());
 
     let output_ast = quote! {
 
@@ -362,66 +259,23 @@ pub fn value_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream
 }
 
 #[proc_macro_attribute]
-pub fn map_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
+pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
-    let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
+    let attr_args = parse_macro_input!(args as AttributeArgs);
+
+    let args = match MapAttrs::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        }
+    };
 
     let struct_name = input_ast.ident;
-
-    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(0).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing agent name!")
-    };
-
-    let key_type = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(1).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing key type!")
-    };
-
-    let value_type = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(2).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing value type!")
-    };
-
-    let on_start_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(3).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing custom `on_start` function!")
-    };
-
-    let on_event_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-        path,
-        eq_token,
-        lit: Lit::Str(lit),
-    })) = metadata_ast.get(4).unwrap()
-    {
-        Ident::new(&lit.value(), Span::call_site())
-    } else {
-        panic!("Missing custom `on_event` function!")
-    };
+    let agent_name = Ident::new(&args.agent, Span::call_site());
+    let key_type = Ident::new(&args.key_type, Span::call_site());
+    let value_type = Ident::new(&args.value_type, Span::call_site());
+    let on_start_func = Ident::new(&args.on_start, Span::call_site());
+    let on_event_func = Ident::new(&args.on_event, Span::call_site());
 
     let output_ast = quote! {
 

@@ -1,18 +1,10 @@
-use crate::agent;
-use crate::agent::context::ContextImpl;
-use crate::agent::lane::lifecycle::ActionLaneLifecycle;
-use crate::agent::lane::model;
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::tests::TestContext;
-use crate::agent::{
-    AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks, SwimAgent,
-};
+use crate::agent::{AgentContext, Lane, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture};
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, StreamExt};
 use futures_util::core_reexport::time::Duration;
 use pin_utils::pin_mut;
-use std::future::Future;
 use std::num::NonZeroUsize;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
@@ -22,7 +14,6 @@ use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use utilities::sync::trigger::Receiver;
 
 const COMMANDED: &str = "Command received";
 const ON_COMMAND: &str = "On command handler";
