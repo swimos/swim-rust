@@ -90,17 +90,36 @@ impl WebSocketExtension for MaybeCompressed {
         }
     }
 
-    fn on_request<T>(&mut self, request: Request<T>) -> Request<T> {
+    fn on_make_request<T>(&mut self, request: Request<T>) -> Request<T> {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext.on_request(request),
-            MaybeCompressed::Compressed(ext) => ext.on_request(request),
+            MaybeCompressed::Uncompressed(ext) => ext.on_make_request(request),
+            MaybeCompressed::Compressed(ext) => ext.on_make_request(request),
         }
     }
 
-    fn on_response<T>(&mut self, response: &Response<T>) {
+    fn on_receive_request<T>(
+        &mut self,
+        request: &Request<T>,
+        response: &mut Response<T>,
+    ) -> Result<(), Self::Error> {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext.on_response(response),
-            MaybeCompressed::Compressed(ext) => ext.on_response(response),
+            MaybeCompressed::Uncompressed(ext) => ext
+                .on_receive_request(request, response)
+                .map_err(|e| CompressionError(e.to_string())),
+            MaybeCompressed::Compressed(ext) => ext
+                .on_receive_request(request, response)
+                .map_err(|e| CompressionError(e.to_string())),
+        }
+    }
+
+    fn on_response<T>(&mut self, response: &Response<T>) -> Result<(), Self::Error> {
+        match self {
+            MaybeCompressed::Uncompressed(ext) => ext
+                .on_response(response)
+                .map_err(|e| CompressionError(e.to_string())),
+            MaybeCompressed::Compressed(ext) => ext
+                .on_response(response)
+                .map_err(|e| CompressionError(e.to_string())),
         }
     }
 
