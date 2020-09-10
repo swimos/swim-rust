@@ -7,6 +7,53 @@ use syn::{
 };
 
 #[proc_macro_attribute]
+pub fn agent_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
+    let input_ast = parse_macro_input!(input as DeriveInput);
+    let metadata_ast = parse_macro_input!(metadata as AttributeArgs);
+
+    let struct_name = input_ast.ident;
+
+    let agent_name = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+        path,
+        eq_token,
+        lit: Lit::Str(lit),
+    })) = metadata_ast.get(0).unwrap()
+    {
+        Ident::new(&lit.value(), Span::call_site())
+    } else {
+        panic!("Missing agent name!")
+    };
+
+    let on_start_func = if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+        path,
+        eq_token,
+        lit: Lit::Str(lit),
+    })) = metadata_ast.get(1).unwrap()
+    {
+        Ident::new(&lit.value(), Span::call_site())
+    } else {
+        panic!("Missing custom `on_start` function!")
+    };
+
+    let output_ast = quote! {
+
+    struct #struct_name {}
+
+    impl AgentLifecycle<#agent_name> for #struct_name {
+        fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+        where
+            C: AgentContext<#agent_name> + Send + Sync + 'a,
+        {
+            #on_start_func(self, context).boxed()
+        }
+    }
+
+    };
+
+    TokenStream::from(output_ast)
+}
+
+#[proc_macro_attribute]
 pub fn command_lifecycle(metadata: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
     let metadata_ast = parse_macro_input!(metadata as AttributeArgs);

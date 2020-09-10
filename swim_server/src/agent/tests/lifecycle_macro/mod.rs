@@ -1,5 +1,7 @@
 mod test_action_agent;
 mod test_action_macro_agent;
+mod test_agent;
+mod test_agent_macro;
 mod test_command_agent;
 mod test_command_macro_agent;
 mod test_map_agent;
