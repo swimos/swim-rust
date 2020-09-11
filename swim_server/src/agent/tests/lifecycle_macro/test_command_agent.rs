@@ -1,18 +1,18 @@
-use crate::agent;
-use crate::agent::context::ContextImpl;
-use crate::agent::lane::lifecycle::ActionLaneLifecycle;
-use crate::agent::lane::model;
+
+
+
+
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::tests::TestContext;
+
 use crate::agent::{
     AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks, SwimAgent,
 };
 use futures::future::{ready, BoxFuture};
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, StreamExt};
 use futures_util::core_reexport::time::Duration;
 use pin_utils::pin_mut;
-use std::future::Future;
+
 use std::num::NonZeroUsize;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
@@ -22,7 +22,7 @@ use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use utilities::sync::trigger::Receiver;
+
 
 const COMMANDED: &str = "Command received";
 const ON_COMMAND: &str = "On command handler";
@@ -71,13 +71,13 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let CommandLifecycle {
-                name,
+                name: _,
                 event_stream,
                 projection,
             } = *self;
 
             let model = projection(context.agent()).clone();
-            let mut events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until_completes(context.agent_stop_event());
             pin_mut!(events);
             while let Some(command) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);

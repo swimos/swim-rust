@@ -1,32 +1,26 @@
-use crate::agent;
-use crate::agent::context::ContextImpl;
-use crate::agent::lane::lifecycle::ActionLaneLifecycle;
-use crate::agent::lane::model;
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::tests::TestContext;
+
 use crate::agent::{
     AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks, SwimAgent,
 };
-use futures::future::{ready, BoxFuture};
-use futures::{FutureExt, Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::{FutureExt, StreamExt};
 use futures_util::core_reexport::time::Duration;
 use pin_utils::pin_mut;
-use std::future::Future;
+
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::var::TVar;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
 use tokio::sync::mpsc;
-use tracing::{event, span, Level};
+use tracing::{span, Level};
 use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use utilities::sync::trigger::Receiver;
 
 const COMMANDED: &str = "Command received";
 const ON_EVENT: &str = "On event handler";
@@ -41,17 +35,21 @@ struct TestAgent {
     on_start = "custom_on_start",
     on_event = "custom_on_event"
 )]
-struct ValueLifecycle;
+struct ValueInner {}
 
-async fn custom_on_start<Context>(model: &ValueLane<i32>, context: &Context)
+async fn custom_on_start<Context>(inner: &ValueInner, model: &ValueLane<i32>, context: &Context)
 where
     Context: AgentContext<TestAgent> + Sized + Send + Sync,
 {
     unimplemented!()
 }
 
-async fn custom_on_event<Context>(event: &Arc<i32>, model: &ValueLane<i32>, context: &Context)
-where
+async fn custom_on_event<Context>(
+    inner: &ValueInner,
+    event: &Arc<i32>,
+    model: &ValueLane<i32>,
+    context: &Context,
+) where
     Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 {
     unimplemented!()
@@ -77,7 +75,8 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
 
         let agent = TestAgent { value };
 
-        let task = ValueLifecycle {
+        let task = ValueInnerLifecycle {
+            inner: ValueInner {},
             name: name.into(),
             event_stream,
             projection: |agent: &TestAgent| &agent.value,

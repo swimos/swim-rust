@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod reporting_agent;
-pub(crate) mod test_clock;
 mod lifecycle_macro;
+mod reporting_agent;
+mod reporting_macro_agent;
+pub(crate) mod test_clock;
 
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,

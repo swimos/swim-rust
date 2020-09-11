@@ -1,18 +1,14 @@
-use crate::agent;
-use crate::agent::context::ContextImpl;
-use crate::agent::lane::lifecycle::ActionLaneLifecycle;
-use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::tests::TestContext;
+
 use crate::agent::{
     AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks, SwimAgent,
 };
 use futures::future::{ready, BoxFuture};
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, StreamExt};
 use futures_util::core_reexport::time::Duration;
 use pin_utils::pin_mut;
-use std::future::Future;
+
 use std::num::NonZeroUsize;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::delay;
@@ -22,9 +18,6 @@ use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use utilities::sync::trigger::Receiver;
-
-use lifecycle_derive;
 
 const COMMANDED: &str = "Command received";
 const ON_COMMAND: &str = "On command handler";
@@ -38,9 +31,18 @@ struct TestAgent {
     command_type = "String",
     on_command = "custom_on_command"
 )]
-struct CommandLifecycle {}
+struct Command {
+    foo: String,
+}
+
+impl Command {
+    fn new(foo: String) -> Self {
+        return Command { foo };
+    }
+}
 
 async fn custom_on_command<Context>(
+    inner: &Command,
     command: String,
     model: &ActionLane<String, ()>,
     context: &Context,
@@ -68,6 +70,7 @@ impl SwimAgent<TestAgentConfig> for TestAgent {
         let agent = TestAgent { command };
 
         let task = CommandLifecycle {
+            inner: Command::new("Test".to_string()),
             name: name.into(),
             event_stream,
             projection: |agent: &TestAgent| &agent.command,

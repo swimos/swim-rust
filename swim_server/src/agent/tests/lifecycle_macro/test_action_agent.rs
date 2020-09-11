@@ -64,13 +64,13 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let ActionLifecycle {
-                name,
+                name: _,
                 event_stream,
                 projection,
             } = *self;
 
             let model = projection(context.agent()).clone();
-            let mut events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until_completes(context.agent_stop_event());
             pin_mut!(events);
             while let Some(command) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
