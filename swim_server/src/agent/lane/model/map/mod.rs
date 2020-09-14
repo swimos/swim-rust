@@ -73,15 +73,6 @@ where
             _key_type: PhantomData,
         }
     }
-
-    pub fn from_summary(summary: TVar<TransactionSummary<Value, V>>) -> MapLane<K, V> {
-        MapLane {
-            map_state: Default::default(),
-            summary,
-            transaction_started: TLocal::new(false),
-            _key_type: PhantomData,
-        }
-    }
 }
 
 impl<K, V> Default for MapLane<K, V>

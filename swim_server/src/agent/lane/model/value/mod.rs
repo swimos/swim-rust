@@ -45,10 +45,6 @@ impl<T: Any + Send + Sync> ValueLane<T> {
             value: TVar::new(init),
         }
     }
-
-    pub fn from_tvar(value: TVar<T>) -> Self {
-        ValueLane { value }
-    }
 }
 
 impl<T> LaneModel for ValueLane<T>

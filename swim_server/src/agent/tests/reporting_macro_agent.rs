@@ -13,19 +13,19 @@
 // limitations under the License.
 
 use crate::agent;
-use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
-};
+use crate::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapLaneWatch};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::tests::test_clock::TestClock;
 use crate::agent::Lane;
 use crate::agent::Stream;
 use crate::agent::{AgentContext, LaneTasks, SwimAgent};
-use futures::future::{ready, Ready};
+use futures::future::ready;
 use futures::{FutureExt, StreamExt};
 use futures_util::future::BoxFuture;
 use pin_utils::pin_mut;
@@ -38,9 +38,8 @@ use stm::var::TVar;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::future::SwimStreamExt;
 use url::Url;
-use crate::agent::tests::test_clock::TestClock;
+use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
 const ON_COMMAND: &str = "On command handler";
@@ -98,15 +97,15 @@ impl EventCollectorHandler {
 }
 
 #[agent_lifecycle(agent = "ReportingAgent", on_start = "agent_on_start")]
-struct RepoAgent {
+struct ReportingAgentLifecycle {
     event_handler: EventCollectorHandler,
 }
 
-async fn agent_on_start<Context>(inner: &RepoAgent, context: &Context)
+async fn agent_on_start<Context>(lifecycle: &ReportingAgentLifecycle, context: &Context)
 where
     Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
 {
-    inner
+    lifecycle
         .event_handler
         .push(ReportingAgentEvent::AgentStart)
         .await;
@@ -138,19 +137,19 @@ where
     command_type = "String",
     on_command = "action_on_command"
 )]
-struct ReportingAction {
+struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
 
 async fn action_on_command<Context>(
-    inner: &ReportingAction,
+    lifecycle: &ActionLifecycle,
     command: String,
     _model: &ActionLane<String, ()>,
     context: &Context,
 ) where
     Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
 {
-    inner
+    lifecycle
         .event_handler
         .push(ReportingAgentEvent::Command(command.clone()))
         .await;
@@ -162,7 +161,7 @@ async fn action_on_command<Context>(
         .await
         .is_err()
     {
-        inner
+        lifecycle
             .event_handler
             .push(ReportingAgentEvent::TransactionFailed)
             .await;
@@ -176,12 +175,20 @@ async fn action_on_command<Context>(
     on_start = "data_on_start",
     on_event = "data_on_event"
 )]
-struct ReportingData {
+struct DataLifecycle {
     event_handler: EventCollectorHandler,
 }
 
+impl StatefulLaneLifecycleBase for DataLifecycle {
+    type WatchStrategy = Queue;
+
+    fn create_strategy(&self) -> Self::WatchStrategy {
+        Queue::default()
+    }
+}
+
 async fn data_on_start<Context>(
-    _inner: &ReportingData,
+    _lifecycle: &DataLifecycle,
     _model: &MapLane<String, i32>,
     _context: &Context,
 ) where
@@ -190,14 +197,14 @@ async fn data_on_start<Context>(
 }
 
 async fn data_on_event<Context>(
-    inner: &ReportingData,
+    lifecycle: &DataLifecycle,
     event: &MapLaneEvent<String, i32>,
     _model: &MapLane<String, i32>,
     context: &Context,
 ) where
     Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
 {
-    inner
+    lifecycle
         .event_handler
         .push(ReportingAgentEvent::DataEvent(event.clone()))
         .await;
@@ -209,7 +216,7 @@ async fn data_on_event<Context>(
         let add = total.get().and_then(move |n| total.set(*n + i));
 
         if atomically(&add, ExactlyOnce).await.is_err() {
-            inner
+            lifecycle
                 .event_handler
                 .push(ReportingAgentEvent::TransactionFailed)
                 .await;
@@ -223,12 +230,20 @@ async fn data_on_event<Context>(
     on_start = "total_on_start",
     on_event = "total_on_event"
 )]
-struct ReportingTotal {
+struct TotalLifecycle {
     event_handler: EventCollectorHandler,
 }
 
+impl StatefulLaneLifecycleBase for TotalLifecycle {
+    type WatchStrategy = Queue;
+
+    fn create_strategy(&self) -> Self::WatchStrategy {
+        Queue::default()
+    }
+}
+
 async fn total_on_start<Context>(
-    _inner: &ReportingTotal,
+    _lifecycle: &TotalLifecycle,
     _model: &ValueLane<i32>,
     _context: &Context,
 ) where
@@ -237,7 +252,7 @@ async fn total_on_start<Context>(
 }
 
 async fn total_on_event<Context>(
-    inner: &ReportingTotal,
+    lifecycle: &TotalLifecycle,
     event: &Arc<i32>,
     _model: &ValueLane<i32>,
     _context: &Context,
@@ -245,29 +260,12 @@ async fn total_on_event<Context>(
     Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
 {
     let n = **event;
-    inner
+    lifecycle
         .event_handler
         .push(ReportingAgentEvent::TotalEvent(n))
         .await;
 }
 
-// impl StatefulLaneLifecycleBase for ReportingDataLifecycle {
-//     type WatchStrategy = Queue;
-//
-//     fn create_strategy(&self) -> Self::WatchStrategy {
-//         Queue::default()
-//     }
-// }
-//
-// impl StatefulLaneLifecycleBase for ReportingTotalLifecycle {
-//     type WatchStrategy = Queue;
-//
-//     fn create_strategy(&self) -> Self::WatchStrategy {
-//         Queue::default()
-//     }
-// }
-
-/// The event reporter is injected into the agent as ersatz configuration.
 #[derive(Debug)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
@@ -283,8 +281,8 @@ impl TestAgentConfig {
     }
 
     pub fn agent_lifecycle(&self) -> impl AgentLifecycle<ReportingAgent> {
-        RepoAgentLifecycle {
-            inner: RepoAgent {
+        ReportingAgentLifecycleTask {
+            lifecycle: ReportingAgentLifecycle {
                 event_handler: EventCollectorHandler(self.collector.clone()),
             },
         }
@@ -305,12 +303,10 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
 
         let event_handler = EventCollectorHandler(collector.clone());
 
-        let buffer_size = NonZeroUsize::new(5).unwrap();
-        let (tx, event_stream) = mpsc::channel(buffer_size.get());
-        let action = ActionLane::new(tx);
-
-        let action_tasks = ReportingActionLifecycle {
-            inner: ReportingAction {
+        // Command lifecycle
+        let (action, event_stream) = model::action::make_lane_model(*command_buffer_size);
+        let action_tasks = ActionLifecycleTask {
+            lifecycle: ActionLifecycle {
                 event_handler: event_handler.clone(),
             },
             name: "action".into(),
@@ -318,31 +314,28 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             projection: |agent: &ReportingAgent| &agent.action,
         };
 
-        let init_val = 0;
-        let value = Arc::new(init_val);
-        let (observer, event_stream) =
-            agent::lane::model::value::ValueLaneWatch::make_watch(&Queue::default(), &value);
-        let var = TVar::from_arc_with_observer(value, observer);
-        let total = ValueLane::from_tvar(var);
+        // Value lifecycle
+        let total_lifecycle = TotalLifecycle {
+            event_handler: event_handler.clone(),
+        };
+        let (total, event_stream) =
+            model::value::make_lane_model(0, total_lifecycle.create_strategy());
 
-        let total_tasks = ReportingTotalLifecycle {
-            inner: ReportingTotal {
-                event_handler: event_handler.clone(),
-            },
+        let total_tasks = TotalLifecycleTask {
+            lifecycle: total_lifecycle,
             name: "total".into(),
             event_stream,
             projection: |agent: &ReportingAgent| &agent.total,
         };
 
-        let (observer, event_stream) =
-            agent::lane::model::map::MapLaneWatch::make_watch(&Queue::default());
-        let summary = TVar::new_with_observer(Default::default(), observer);
-        let data = MapLane::from_summary(summary);
+        // Map lifecycle
+        let data_lifecycle = DataLifecycle {
+            event_handler: event_handler.clone(),
+        };
+        let (data, event_stream) = model::map::make_lane_model(data_lifecycle.create_strategy());
 
-        let data_tasks = ReportingDataLifecycle {
-            inner: ReportingData {
-                event_handler: event_handler.clone(),
-            },
+        let data_tasks = DataLifecycleTask {
+            lifecycle: data_lifecycle,
             name: "data".into(),
             event_stream,
             projection: |agent: &ReportingAgent| &agent.data,
@@ -427,6 +420,5 @@ async fn agent_loop() {
     expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
 
     assert!(stop.trigger());
-
     assert!(agent_task.await.is_ok());
 }
