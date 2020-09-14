@@ -23,6 +23,7 @@ use std::num::NonZeroUsize;
 use tokio::time::Duration;
 use url::Url;
 use utilities::sync::trigger::Receiver;
+use std::collections::HashMap;
 
 struct TestModel;
 
@@ -58,6 +59,14 @@ impl AgentContext<TestAgent> for TestContext {
 
     fn agent_stop_event(&self) -> Receiver {
         panic!("Default lifecycles should do nothing.")
+    }
+
+    fn parameter(&self, _key: &str) -> Option<&String> {
+        None
+    }
+
+    fn parameters(&self) -> HashMap<String, String> {
+        HashMap::new()
     }
 }
 

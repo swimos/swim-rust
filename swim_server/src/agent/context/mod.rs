@@ -31,6 +31,7 @@ use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use std::collections::HashMap;
 
 #[cfg(test)]
 mod tests;
@@ -46,6 +47,7 @@ pub(super) struct ContextImpl<Agent, Clk, Router> {
     clock: Clk,
     stop_signal: trigger::Receiver,
     router: Router,
+    parameters: HashMap<String, String>,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -63,6 +65,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
             clock: self.clock.clone(),
             stop_signal: self.stop_signal.clone(),
             router: self.router.clone(),
+            parameters: self.parameters.clone(),
         }
     }
 }
@@ -75,6 +78,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
         clock: Clk,
         stop_signal: trigger::Receiver,
         router: Router,
+        parameters: HashMap<String, String>,
     ) -> Self {
         ContextImpl {
             agent_ref,
@@ -84,6 +88,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             clock,
             stop_signal,
             router,
+            parameters,
         }
     }
 }
@@ -139,6 +144,14 @@ where
 
     fn agent_stop_event(&self) -> trigger::Receiver {
         self.stop_signal.clone()
+    }
+
+    fn parameter(&self, key: &str) -> Option<&String> {
+        self.parameters.get(key)
+    }
+
+    fn parameters(&self) -> HashMap<String, String> {
+        self.parameters.clone()
     }
 }
 

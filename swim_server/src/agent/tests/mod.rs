@@ -41,6 +41,7 @@ use tokio::time::{timeout, Duration};
 use url::Url;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
+use std::collections::HashMap;
 
 struct TestAgent<Lane> {
     name: &'static str,
@@ -215,6 +216,14 @@ where
 
     fn agent_stop_event(&self) -> Receiver {
         self.closed.clone()
+    }
+
+    fn parameter(&self, _key: &str) -> Option<&String> {
+        None
+    }
+
+    fn parameters(&self) -> HashMap<String, String> {
+        HashMap::new()
     }
 }
 
@@ -646,6 +655,7 @@ async fn agent_loop() {
         url,
         exec_config,
         clock.clone(),
+        HashMap::new(),
         envelope_rx,
     );
 

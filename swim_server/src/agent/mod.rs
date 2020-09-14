@@ -124,12 +124,15 @@ impl AgentResult {
 /// * `url` - The node URL for the agent instance.
 /// * `clock` - Clock for timing asynchronous events.
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
+/// * `parameters` - Parameters extracted from the agent node route pattern.
+/// * `incoming_envelopes` - The stream of envelopes routed to the agent.
 pub async fn run_agent<Config, Clk, Agent, L>(
     configuration: Config,
     lifecycle: L,
     url: Url,
     execution_config: AgentExecutionConfig,
     clock: Clk,
+    parameters: HashMap<String, String>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
 ) -> AgentResult
 where
@@ -152,6 +155,7 @@ where
             clock,
             stop_trigger.clone(),
             DiscardingSender::default(),
+            parameters,
         );
 
         lifecycle
@@ -312,6 +316,12 @@ pub trait AgentContext<Agent> {
 
     /// Get a future that will complete when the agent is stopping.
     fn agent_stop_event(&self) -> trigger::Receiver;
+
+    /// Get the value of a parameter extracted from the agent node route.
+    fn parameter(&self, key: &str) -> Option<&String>;
+
+    /// Get a copy of all parameters extracted from the agent node route.
+    fn parameters(&self) -> HashMap<String, String>;
 }
 
 pub trait Lane {

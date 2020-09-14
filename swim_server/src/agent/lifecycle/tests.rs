@@ -20,6 +20,7 @@ use std::future::Future;
 use std::time::Duration;
 use url::Url;
 use utilities::sync::trigger::Receiver;
+use std::collections::HashMap;
 
 struct TestAgent;
 
@@ -45,6 +46,14 @@ impl AgentContext<TestAgent> for TestContext {
 
     fn agent_stop_event(&self) -> Receiver {
         panic!("Default lifecycles should do nothing.")
+    }
+
+    fn parameter(&self, _key: &str) -> Option<&String> {
+        None
+    }
+
+    fn parameters(&self) -> HashMap<String, String> {
+        HashMap::new()
     }
 }
 

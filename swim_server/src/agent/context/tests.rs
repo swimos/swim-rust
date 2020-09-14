@@ -23,6 +23,7 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
 use utilities::sync::trigger;
+use std::collections::HashMap;
 
 #[test]
 fn simple_accessors() {
@@ -37,6 +38,7 @@ fn simple_accessors() {
         TestClock::default(),
         close_sig.clone(),
         (),
+        HashMap::new(),
     );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_url(), &url);
@@ -58,7 +60,7 @@ fn create_context(
 
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    ContextImpl::new(agent.clone(), url.clone(), tx, clock, close_trigger, ())
+    ContextImpl::new(agent.clone(), url.clone(), tx, clock, close_trigger, (), HashMap::new())
 }
 
 #[tokio::test]
