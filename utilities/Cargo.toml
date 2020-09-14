@@ -8,6 +8,7 @@ edition = "2018"
 futures = "0.3.4"
 futures-util = "0.3.4"
 parking_lot = "0.11.0"
+percent-encoding = "2.1.0"
 pin-utils = "0.1.0"
 parking_lot_core = "0.8.0"
 pin-project = "0.4.20"
@@ -18,6 +19,7 @@ tokio = { version = "0.2.21", features = ["sync", "rt-core"] }
 swim_runtime = { path = "../swim_runtime" }
 slab = "0.4.2"
 macro_helpers = { path = "macro_helpers" }
+url = "2.1.1"
 
 [dev-dependencies]
 hamcrest2 = "0.3"
