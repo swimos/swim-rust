@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-
 use tokio::sync::mpsc;
 
 use super::*;
@@ -37,10 +34,10 @@ async fn single_pass_through() {
 
     let result = pump.send_item(6).await;
 
-    assert_that!(result, ok());
+    assert!(result.is_ok());
 
     let value = timeout(TIMEOUT, receiver).await.unwrap().unwrap();
-    assert_that!(value, eq(6));
+    assert_eq!(value, 6);
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -73,14 +70,14 @@ async fn send_multiple() {
 
     for n in 0..10 {
         let result = pump.send_item(n).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let (in_order, observed, prev) = timeout(TIMEOUT, receiver).await.unwrap().unwrap();
 
     assert!(in_order);
-    assert_that!(observed, leq(10));
-    assert_that!(prev, eq(Some(9)));
+    assert!(observed <= 10);
+    assert_eq!(prev, Some(9));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -113,13 +110,13 @@ async fn send_multiple_chunks() {
 
     for n in 0..5 {
         let result = pump.send_item(n).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let (mut rx, in_order1, observed1, prev) = timeout(TIMEOUT, receiver1).await.unwrap().unwrap();
 
     assert!(in_order1);
-    assert_that!(prev, eq(Some(4)));
+    assert_eq!(prev, Some(4));
 
     let receiver2 = tokio::task::spawn(async move {
         let mut observed: i32 = 0;
@@ -145,12 +142,12 @@ async fn send_multiple_chunks() {
 
     for n in 5..10 {
         let result = pump.send_item(n).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let (in_order2, observed2, prev) = timeout(TIMEOUT, receiver2).await.unwrap().unwrap();
 
     assert!(in_order2);
-    assert_that!(observed1 + observed2, leq(10));
-    assert_that!(prev, eq(Some(9)));
+    assert!(observed1 + observed2 <= 10);
+    assert_eq!(prev, Some(9));
 }
