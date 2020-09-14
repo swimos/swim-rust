@@ -39,6 +39,9 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::future::SwimStreamExt;
+use url::Url;
+use crate::agent::tests::test_clock::TestClock;
+use utilities::sync::trigger;
 
 const ON_COMMAND: &str = "On command handler";
 const COMMANDED: &str = "Command received";
@@ -358,4 +361,72 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         ];
         (agent, tasks)
     }
+}
+
+#[tokio::test]
+async fn agent_loop() {
+    let (tx, mut rx) = mpsc::channel(5);
+
+    let config = TestAgentConfig::new(tx);
+
+    let url = Url::parse("test://").unwrap();
+    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let clock = TestClock::default();
+    let (stop, stop_sig) = trigger::trigger();
+
+    let agent_lifecycle = config.agent_lifecycle();
+
+    // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
+    // a specific order. We can then safely expect these events in that order to verify the agent
+    // loop.
+    let agent_proc = super::super::run_agent(
+        config,
+        agent_lifecycle,
+        url,
+        buffer_size,
+        clock.clone(),
+        stop_sig,
+    );
+
+    let agent_task = swim_runtime::task::spawn(agent_proc);
+
+    async fn expect(rx: &mut mpsc::Receiver<ReportingAgentEvent>, expected: ReportingAgentEvent) {
+        let result = rx.next().await;
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event, expected);
+    }
+
+    expect(&mut rx, ReportingAgentEvent::AgentStart).await;
+
+    clock.advance_when_blocked(Duration::from_secs(1)).await;
+    expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name0".to_string(), 1.into())),
+    )
+    .await;
+    expect(&mut rx, ReportingAgentEvent::TotalEvent(1)).await;
+
+    clock.advance_when_blocked(Duration::from_secs(1)).await;
+    expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name1".to_string(), 1.into())),
+    )
+    .await;
+    expect(&mut rx, ReportingAgentEvent::TotalEvent(2)).await;
+
+    clock.advance_when_blocked(Duration::from_secs(1)).await;
+    expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name2".to_string(), 1.into())),
+    )
+    .await;
+    expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
+
+    assert!(stop.trigger());
+
+    assert!(agent_task.await.is_ok());
 }
