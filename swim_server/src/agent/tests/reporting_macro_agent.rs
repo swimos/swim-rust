@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent;
 use crate::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
@@ -25,6 +24,7 @@ use crate::agent::tests::test_clock::TestClock;
 use crate::agent::Lane;
 use crate::agent::Stream;
 use crate::agent::{AgentContext, LaneTasks, SwimAgent};
+use crate::agent::{COMMANDED, ON_COMMAND, ON_EVENT};
 use futures::future::ready;
 use futures::{FutureExt, StreamExt};
 use futures_util::future::BoxFuture;
@@ -34,17 +34,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use stm::var::TVar;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-
-const ON_COMMAND: &str = "On command handler";
-const COMMANDED: &str = "Command received";
-const ON_EVENT: &str = "On event handler";
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle
 /// vents of the agent and its lanes are reported on an MPSC channel. When the agent starts it
