@@ -19,7 +19,7 @@ pub(crate) mod test_clock;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
@@ -490,7 +490,7 @@ async fn action_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(x).await;
+            let _ = tx.send(Action::forget(x)).await;
         }
         drop(tx);
     };
@@ -573,7 +573,7 @@ async fn command_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(x).await;
+            let _ = tx.send(Action::forget(x)).await;
         }
         drop(tx);
     };

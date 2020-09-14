@@ -22,7 +22,7 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{event, Level};
 
 /// Model for a lane that can receive commands and optionally produce responses.
@@ -32,20 +32,40 @@ use tracing::{event, Level};
 /// * `Command` - The type of commands that the lane can handle.
 /// * `Response` - The type of messages that will be received by a subscriber to the lane.
 pub struct ActionLane<Command, Response> {
-    sender: mpsc::Sender<Command>,
+    sender: mpsc::Sender<Action<Command, Response>>,
     id: Arc<()>,
-    _handler_type: PhantomData<fn(Command) -> Response>,
+}
+
+#[derive(Debug)]
+pub struct Action<Command, Response> {
+    pub(crate) command: Command,
+    pub(crate) responder: Option<oneshot::Sender<Response>>,
+}
+
+impl<Command, Response> Action<Command, Response> {
+    pub(crate) fn forget(command: Command) -> Self {
+        Action {
+            command,
+            responder: None,
+        }
+    }
+
+    pub(crate) fn new(command: Command, responder: oneshot::Sender<Response>) -> Self {
+        Action {
+            command,
+            responder: Some(responder),
+        }
+    }
 }
 
 impl<Command, Response> ActionLane<Command, Response>
 where
     Command: Send + Sync + 'static,
 {
-    pub(crate) fn new(sender: mpsc::Sender<Command>) -> Self {
+    pub(crate) fn new(sender: mpsc::Sender<Action<Command, Response>>) -> Self {
         ActionLane {
             sender,
             id: Default::default(),
-            _handler_type: PhantomData,
         }
     }
 }
@@ -55,7 +75,6 @@ impl<Command, Response> Clone for ActionLane<Command, Response> {
         ActionLane {
             sender: self.sender.clone(),
             id: self.id.clone(),
-            _handler_type: PhantomData,
         }
     }
 }
@@ -65,25 +84,35 @@ impl<Command, Response> Clone for ActionLane<Command, Response> {
 ///
 /// * `Command` - The type of commands that the lane can handle.
 #[derive(Clone, Debug)]
-pub struct Commander<Command>(mpsc::Sender<Command>);
+pub struct Commander<Command, Response>(mpsc::Sender<Action<Command, Response>>);
 
 const SENDING_COMMAND: &str = "Sending command";
 
 impl<Command: Debug, Response> ActionLane<Command, Response> {
     /// Create a [`Commander`] that can send multiple commands to the lane.
-    pub fn commander(&self) -> Commander<Command> {
+    pub fn commander(&self) -> Commander<Command, Response> {
         Commander(self.sender.clone())
     }
 }
 
-impl<Command: Debug> Commander<Command> {
+impl<Command: Debug, Response> Commander<Command, Response> {
     /// Asynchronously send a command to the lane.
     pub async fn command(&mut self, cmd: Command) {
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
-        if tx.send(cmd).await.is_err() {
+        if tx.send(Action::forget(cmd)).await.is_err() {
             panic!("Lane commanded after the agent stopped.")
         }
+    }
+
+    pub async fn command_and_await(&mut self, cmd: Command) -> oneshot::Receiver<Response> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        event!(Level::TRACE, SENDING_COMMAND, ?cmd);
+        let Commander(tx) = self;
+        if tx.send(Action::new(cmd, resp_tx)).await.is_err() {
+            panic!("Lane commanded after the agent stopped.")
+        }
+        resp_rx
     }
 }
 
@@ -96,10 +125,11 @@ pub fn make_lane_model<Command, Response>(
     buffer_size: NonZeroUsize,
 ) -> (
     ActionLane<Command, Response>,
-    impl Stream<Item = Command> + Send + 'static,
+    impl Stream<Item = Action<Command, Response>> + Send + 'static,
 )
 where
     Command: Send + Sync + 'static,
+    Response: Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
     let lane = ActionLane::new(tx);

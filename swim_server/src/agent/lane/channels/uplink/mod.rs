@@ -27,12 +27,15 @@ use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::sink::item::ItemSender;
+use swim_common::sink::item::{ItemSender, ItemSink};
+use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::RelativePath;
 use tracing::{event, span, Level};
 
 #[cfg(test)]
 mod tests;
 
+pub mod action;
 pub mod map;
 pub(crate) mod spawn;
 
@@ -65,7 +68,7 @@ pub enum UplinkMessage<Ev> {
 #[derive(Debug)]
 pub enum UplinkError {
     /// The subscriber to the uplink has stopped listening.
-    SenderDropped,
+    ChannelDropped,
     /// The lane stopped reporting its state changes.
     LaneStoppedReporting,
     /// The uplink attempted to execute a transaction against its lane but failed.
@@ -105,7 +108,7 @@ impl From<MapLaneSyncError> for UplinkError {
 impl Display for UplinkError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            UplinkError::SenderDropped => write!(f, "Uplink send channel was dropped."),
+            UplinkError::ChannelDropped => write!(f, "Uplink send channel was dropped."),
             UplinkError::LaneStoppedReporting => write!(f, "The lane stopped reporting its state."),
             UplinkError::FailedTransaction(err) => {
                 write!(f, "The uplink failed to execute a transaction: {}", err)
@@ -144,7 +147,7 @@ where
     sender
         .send_item(msg)
         .await
-        .map_err(|_| UplinkError::SenderDropped)
+        .map_err(|_| UplinkError::ChannelDropped)
 }
 
 /// Date required to run an uplink.
@@ -187,7 +190,7 @@ where
             Err(error) => {
                 event!(Level::ERROR, message = UPLINK_FAILED, ?error);
                 match error {
-                    UplinkError::SenderDropped => {
+                    UplinkError::ChannelDropped => {
                         event!(Level::ERROR, FAILED_UNLINK);
                         false
                     }
@@ -472,5 +475,38 @@ where
                 })
             }),
         )
+    }
+}
+
+pub(crate) struct UplinkMessageSender<S> {
+    inner: S,
+    route: RelativePath,
+}
+
+impl<S> UplinkMessageSender<S> {
+    pub(crate) fn new(inner: S, route: RelativePath) -> Self {
+        UplinkMessageSender { inner, route }
+    }
+}
+
+impl<'a, Msg, S> ItemSink<'a, UplinkMessage<Msg>> for UplinkMessageSender<S>
+where
+    S: ItemSink<'a, Envelope>,
+    Msg: Into<Value>,
+{
+    type Error = S::Error;
+    type SendFuture = S::SendFuture;
+
+    fn send_item(&'a mut self, msg: UplinkMessage<Msg>) -> Self::SendFuture {
+        let UplinkMessageSender { inner, route } = self;
+        let envelope = match msg {
+            UplinkMessage::Linked => Envelope::linked(&route.node, &route.lane),
+            UplinkMessage::Synced => Envelope::synced(&route.node, &route.lane),
+            UplinkMessage::Unlinked => Envelope::unlinked(&route.node, &route.lane),
+            UplinkMessage::Event(ev) => {
+                Envelope::make_event(&route.node, &route.lane, Some(ev.into()))
+            }
+        };
+        inner.send_item(envelope)
     }
 }

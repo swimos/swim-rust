@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use stm::var::observer::Observer;
 use swim_common::sink::item::MpscSend;
+use swim_common::topic::BroadcastSender;
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
@@ -141,7 +142,37 @@ where
     }
 }
 
+impl<'a, T> Observer<'a, Arc<T>> for ChannelObserver<watch::Sender<Option<Arc<T>>>>
+where
+    T: Any + Send + Sync,
+{
+    type RecFuture = Ready<()>;
+
+    fn notify(&'a mut self, value: Arc<T>) -> Self::RecFuture {
+        let ChannelObserver(sender, is_dead) = self;
+        if !*is_dead && sender.broadcast(Some(value)).is_err() {
+            *is_dead = true;
+        }
+        ready(())
+    }
+}
+
 impl<'a, T> Observer<'a, Arc<T>> for ChannelObserver<broadcast::Sender<Arc<T>>>
+where
+    T: Any + Send + Sync,
+{
+    type RecFuture = Ready<()>;
+
+    fn notify(&'a mut self, value: Arc<T>) -> Self::RecFuture {
+        let ChannelObserver(sender, is_dead) = self;
+        if !*is_dead && sender.send(value).is_err() {
+            *is_dead = true;
+        }
+        ready(())
+    }
+}
+
+impl<'a, T> Observer<'a, Arc<T>> for ChannelObserver<BroadcastSender<Arc<T>>>
 where
     T: Any + Send + Sync,
 {
