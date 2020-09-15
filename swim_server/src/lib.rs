@@ -17,5 +17,6 @@
 pub mod agent;
 pub mod routing;
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate lifecycle_derive;
