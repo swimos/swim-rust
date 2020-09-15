@@ -35,10 +35,10 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             lifecycle: #lifecycle_name
         }
 
-        impl AgentLifecycle<#agent_name> for #task_name {
-            fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+        impl swim_server::agent::lifecycle::AgentLifecycle<#agent_name> for #task_name {
+            fn on_start<'a, C>(&'a self, context: &'a C) -> futures::future::BoxFuture<'a, ()>
             where
-                C: AgentContext<#agent_name> + Send + Sync + 'a,
+                C: swim_server::agent::AgentContext<#agent_name> + Send + Sync + 'a,
             {
                 #on_start_func(&self.lifecycle, context).boxed()
             }
@@ -73,8 +73,8 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         struct #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
-            S: Stream<Item = Action<#command_type, ()>> + Send + Sync + 'static
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::action::CommandLane<#command_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, ()>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
@@ -83,27 +83,27 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
 
-        impl<T, S> Lane for #task_name<T, S>
+        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
-            S: Stream<Item = Action<#command_type, ()>> + Send + Sync + 'static
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::action::CommandLane<#command_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, ()>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
             }
         }
 
-        impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
+        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
-            T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
-            S: Stream<Item = Action<#command_type, ()>> + Send + Sync + 'static
+            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::action::CommandLane<#command_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, ()>> + Send + Sync + 'static
             {
-                fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
-                    ready(()).boxed()
+                fn start<'a>(&'a self, _context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
+                    futures::future::ready(()).boxed()
                 }
 
-                fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+                fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
                     async move {
                         let #task_name {
                             lifecycle,
@@ -114,15 +114,21 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                         let model = projection(context.agent()).clone();
                         let mut events = event_stream.take_until(context.agent_stop_event());
-                        pin_mut!(events);
-                        while let Some(Action { command, responder }) = events.next().await {
-                            event!(Level::TRACE, COMMANDED, ?command);
-                            #on_command_func(&lifecycle, command, &model, &context)
-                                .instrument(span!(Level::TRACE, ON_COMMAND))
-                                .await;
+                        pin_utils::pin_mut!(events);
+                        while let Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
+
+                        // Todo Failing to compile with swim_server::agent::COMMANDED
+                            tracing::event!(tracing::Level::TRACE, COMMANDED, ?command);
+
+                            tracing_futures::Instrument::instrument(
+                                #on_command_func(&lifecycle, command, &model, &context),
+                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
+                            ).await;
+
                             if let Some(tx) = responder {
                                 if tx.send(()).is_err() {
-                                    event!(Level::WARN, RESPONSE_IGNORED);
+                                    // Todo Failing to compile with swim_server::agent::RESPONSE_IGNORED
+                                    tracing::event!(tracing::Level::WARN, RESPONSE_IGNORED);
                                 }
                             }
                         }
@@ -161,8 +167,8 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         struct #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
-            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
@@ -170,27 +176,27 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             projection: T,
         }
 
-        impl<T, S> Lane for #task_name<T, S>
+        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
-            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
             }
         }
 
-        impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
+        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
-            T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
-            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
+            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + Send + Sync + 'static
         {
-            fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
-                ready(()).boxed()
+            fn start<'a>(&'a self, _context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
+                futures::future::ready(()).boxed()
             }
 
-            fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
                 async move {
                     let #task_name {
                         lifecycle,
@@ -201,16 +207,20 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_mut!(events);
-                    while let Some(Action { command, responder }) = events.next().await {
-                        event!(Level::TRACE, COMMANDED, ?command);
-                        let response = #on_command_func(&lifecycle, command, &model, &context)
-                            .instrument(span!(Level::TRACE, ON_COMMAND))
-                            .await;
-                        event!(Level::TRACE, ACTION_RESULT, ?response);
+                    pin_utils::pin_mut!(events);
+                    while let Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
+                        tracing::event!(tracing::Level::TRACE, swim_server::agent::COMMANDED, ?command);
+
+                        let response = tracing_futures::Instrument::instrument(
+                                #on_command_func(&lifecycle, command, &model, &context),
+                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
+                            ).await;
+
+                        tracing::event!(Level::TRACE, ACTION_RESULT, ?response);
+
                         if let Some(tx) = responder {
                             if tx.send(response).is_err() {
-                                event!(Level::WARN, RESPONSE_IGNORED);
+                                tracing::event!(tracing::Level::WARN, RESPONSE_IGNORED);
                             }
                         }
                     }
@@ -249,8 +259,8 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         struct #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &ValueLane<#event_type> + Send + Sync + 'static,
-            S: Stream<Item = Arc<#event_type>> + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = std::sync::Arc<#event_type>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
@@ -258,30 +268,30 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             projection: T,
         }
 
-        impl<T, S> Lane for #task_name<T, S>
+        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &ValueLane<#event_type> + Send + Sync + 'static,
-            S: Stream<Item = Arc<#event_type>> + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = std::sync::Arc<#event_type>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
             }
         }
 
-        impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
+        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
-            T: Fn(&#agent_name) -> &ValueLane<i32> + Send + Sync + 'static,
-            S: Stream<Item = Arc<#event_type>> + Send + Sync + 'static,
+            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = std::sync::Arc<#event_type>> + Send + Sync + 'static
         {
-            fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
+            fn start<'a>(&'a self, context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
                 let #task_name { lifecycle, projection, .. } = self;
 
                 let model = projection(context.agent());
                 #on_start_func(lifecycle, model, context).boxed()
             }
 
-            fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
                 async move {
                     let #task_name {
                         lifecycle,
@@ -292,11 +302,12 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_mut!(events);
+                    pin_utils::pin_mut!(events);
                     while let Some(event) = events.next().await {
-                        #on_event_func(&lifecycle, &event, &model, &context)
-                            .instrument(span!(Level::TRACE, ON_EVENT, ?event))
-                            .await;
+                        tracing_futures::Instrument::instrument(
+                                #on_event_func(&lifecycle, &event, &model, &context),
+                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
+                        ).await;
                     }
                 }
                 .boxed()
@@ -334,8 +345,8 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         struct #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &MapLane<#key_type, #value_type> + Send + Sync + 'static,
-            S: Stream<Item = MapLaneEvent<#key_type, #value_type>> + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::map::MapLane<#key_type, #value_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::map::MapLaneEvent<#key_type, #value_type>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
@@ -343,30 +354,30 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             projection: T,
         }
 
-        impl<T, S> Lane for #task_name<T, S>
+        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
         where
-            T: Fn(&#agent_name) -> &MapLane<#key_type, #value_type> + Send + Sync + 'static,
-            S: Stream<Item = MapLaneEvent<#key_type, #value_type>> + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::map::MapLane<#key_type, #value_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::map::MapLaneEvent<#key_type, #value_type>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
             }
         }
 
-        impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
+        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
-            S: Stream<Item = MapLaneEvent<#key_type, #value_type>> + Send + Sync + 'static,
-            T: Fn(&#agent_name) -> &MapLane<#key_type, #value_type> + Send + Sync + 'static,
+            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &swim_server::agent::lane::model::map::MapLane<#key_type, #value_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::map::MapLaneEvent<#key_type, #value_type>> + Send + Sync + 'static
         {
-            fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
+            fn start<'a>(&'a self, context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
                 let #task_name { lifecycle, projection, .. } = self;
 
                 let model = projection(context.agent());
                 #on_start_func(lifecycle, model, context).boxed()
             }
 
-            fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
                 async move {
                     let #task_name {
                         lifecycle,
@@ -377,11 +388,12 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_mut!(events);
+                    pin_utils::pin_mut!(events);
                     while let Some(event) = events.next().await {
-                        #on_event_func(&lifecycle, &event, &model, &context)
-                            .instrument(span!(Level::TRACE, ON_EVENT, ?event))
-                            .await;
+                        tracing_futures::Instrument::instrument(
+                                #on_event_func(&lifecycle, &event, &model, &context),
+                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
+                        ).await;
                     }
                 }
                 .boxed()

@@ -15,20 +15,17 @@
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use crate::agent::lane::model;
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::test_clock::TestClock;
+use crate::agent::LaneIo;
 use crate::agent::{AgentContext, LaneTasks, SwimAgent};
-use crate::agent::{Lane, LaneIo};
-use crate::agent::{COMMANDED, ON_COMMAND, ON_EVENT, RESPONSE_IGNORED};
-use futures::future::{ready, BoxFuture};
-use futures::Stream;
+use crate::agent::{COMMANDED, RESPONSE_IGNORED};
 use futures::{FutureExt, StreamExt};
-use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -36,10 +33,12 @@ use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use tokio::sync::{mpsc, Mutex};
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
 use url::Url;
 use utilities::sync::trigger;
+
+mod swim_server {
+    pub use crate::*;
+}
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle
 /// vents of the agent and its lanes are reported on an MPSC channel. When the agent starts it
