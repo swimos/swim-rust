@@ -95,7 +95,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + Sized + Send + Sync + 'static,
+            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
             T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
             S: Stream<Item = Action<#command_type, ()>> + Send + Sync + 'static
             {

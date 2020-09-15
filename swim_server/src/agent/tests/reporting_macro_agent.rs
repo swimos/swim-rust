@@ -24,9 +24,9 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, LaneTasks, SwimAgent};
 use crate::agent::{Lane, LaneIo};
-use futures::Stream;
 use crate::agent::{COMMANDED, ON_COMMAND, ON_EVENT, RESPONSE_IGNORED};
 use futures::future::{ready, BoxFuture};
+use futures::Stream;
 use futures::{FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
@@ -284,73 +284,6 @@ impl TestAgentConfig {
     }
 }
 
-// impl SwimAgent<TestAgentConfig> for ReportingAgent {
-//     fn instantiate<Context: AgentContext<Self>>(
-//         configuration: &TestAgentConfig,
-//     ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
-//     where
-//         Context: AgentContext<Self> + Send + Sync + 'static,
-//     {
-//         let TestAgentConfig {
-//             collector,
-//             command_buffer_size,
-//         } = configuration;
-//
-//         let event_handler = EventCollectorHandler(collector.clone());
-//
-//         // Command lifecycle
-//         let (action, event_stream) = model::action::make_lane_model(*command_buffer_size);
-//         let action_tasks = ActionLifecycleTask {
-//             lifecycle: ActionLifecycle {
-//                 event_handler: event_handler.clone(),
-//             },
-//             name: "action".into(),
-//             event_stream,
-//             projection: |agent: &ReportingAgent| &agent.action,
-//         };
-//
-//         // Value lifecycle
-//         let total_lifecycle = TotalLifecycle {
-//             event_handler: event_handler.clone(),
-//         };
-//         let (total, event_stream) =
-//             model::value::make_lane_model(0, total_lifecycle.create_strategy());
-//
-//         let total_tasks = TotalLifecycleTask {
-//             lifecycle: total_lifecycle,
-//             name: "total".into(),
-//             event_stream,
-//             projection: |agent: &ReportingAgent| &agent.total,
-//         };
-//
-//         // Map lifecycle
-//         let data_lifecycle = DataLifecycle {
-//             event_handler: event_handler.clone(),
-//         };
-//         let (data, event_stream) = model::map::make_lane_model(data_lifecycle.create_strategy());
-//
-//         let data_tasks = DataLifecycleTask {
-//             lifecycle: data_lifecycle,
-//             name: "data".into(),
-//             event_stream,
-//             projection: |agent: &ReportingAgent| &agent.data,
-//         };
-//
-//         let agent = ReportingAgent {
-//             data,
-//             total,
-//             action,
-//         };
-//
-//         let tasks = vec![
-//             data_tasks.boxed(),
-//             total_tasks.boxed(),
-//             action_tasks.boxed(),
-//         ];
-//         (agent, tasks)
-//     }
-// }
-
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
     fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
         configuration: &TestAgentConfig,
@@ -360,7 +293,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         HashMap<String, Box<dyn LaneIo<Context>>>,
     )
     where
-        Context: AgentContext<Self> + Send + Sync + 'static,
+        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
     {
         let TestAgentConfig {
             collector,
