@@ -12,23 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use crate::agent::lane::model;
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::Lane;
-use crate::agent::Stream;
 use crate::agent::{AgentContext, LaneTasks, SwimAgent};
-use crate::agent::{COMMANDED, ON_COMMAND, ON_EVENT};
-use futures::future::ready;
+use crate::agent::{Lane, LaneIo};
+use futures::Stream;
+use crate::agent::{COMMANDED, ON_COMMAND, ON_EVENT, RESPONSE_IGNORED};
+use futures::future::{ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
-use futures_util::future::BoxFuture;
 use pin_utils::pin_mut;
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,7 +39,6 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
-use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle
@@ -284,10 +284,81 @@ impl TestAgentConfig {
     }
 }
 
+// impl SwimAgent<TestAgentConfig> for ReportingAgent {
+//     fn instantiate<Context: AgentContext<Self>>(
+//         configuration: &TestAgentConfig,
+//     ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
+//     where
+//         Context: AgentContext<Self> + Send + Sync + 'static,
+//     {
+//         let TestAgentConfig {
+//             collector,
+//             command_buffer_size,
+//         } = configuration;
+//
+//         let event_handler = EventCollectorHandler(collector.clone());
+//
+//         // Command lifecycle
+//         let (action, event_stream) = model::action::make_lane_model(*command_buffer_size);
+//         let action_tasks = ActionLifecycleTask {
+//             lifecycle: ActionLifecycle {
+//                 event_handler: event_handler.clone(),
+//             },
+//             name: "action".into(),
+//             event_stream,
+//             projection: |agent: &ReportingAgent| &agent.action,
+//         };
+//
+//         // Value lifecycle
+//         let total_lifecycle = TotalLifecycle {
+//             event_handler: event_handler.clone(),
+//         };
+//         let (total, event_stream) =
+//             model::value::make_lane_model(0, total_lifecycle.create_strategy());
+//
+//         let total_tasks = TotalLifecycleTask {
+//             lifecycle: total_lifecycle,
+//             name: "total".into(),
+//             event_stream,
+//             projection: |agent: &ReportingAgent| &agent.total,
+//         };
+//
+//         // Map lifecycle
+//         let data_lifecycle = DataLifecycle {
+//             event_handler: event_handler.clone(),
+//         };
+//         let (data, event_stream) = model::map::make_lane_model(data_lifecycle.create_strategy());
+//
+//         let data_tasks = DataLifecycleTask {
+//             lifecycle: data_lifecycle,
+//             name: "data".into(),
+//             event_stream,
+//             projection: |agent: &ReportingAgent| &agent.data,
+//         };
+//
+//         let agent = ReportingAgent {
+//             data,
+//             total,
+//             action,
+//         };
+//
+//         let tasks = vec![
+//             data_tasks.boxed(),
+//             total_tasks.boxed(),
+//             action_tasks.boxed(),
+//         ];
+//         (agent, tasks)
+//     }
+// }
+
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
-    fn instantiate<Context: AgentContext<Self>>(
+    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
         configuration: &TestAgentConfig,
-    ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
+    ) -> (
+        Self,
+        Vec<Box<dyn LaneTasks<Self, Context>>>,
+        HashMap<String, Box<dyn LaneIo<Context>>>,
+    )
     where
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
@@ -347,7 +418,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             total_tasks.boxed(),
             action_tasks.boxed(),
         ];
-        (agent, tasks)
+        (agent, tasks, HashMap::new())
     }
 }
 

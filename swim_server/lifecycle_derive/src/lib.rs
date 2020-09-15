@@ -74,7 +74,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         struct #task_name<T, S>
         where
             T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
-            S: Stream<Item = #command_type> + Send + Sync + 'static
+            S: Stream<Item = Action<#command_type, ()>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
@@ -86,7 +86,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         impl<T, S> Lane for #task_name<T, S>
         where
             T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
-            S: Stream<Item = #command_type> + Send + Sync + 'static
+            S: Stream<Item = Action<#command_type, ()>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
@@ -97,7 +97,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         where
             Context: AgentContext<#agent_name> + Sized + Send + Sync + 'static,
             T: Fn(&#agent_name) -> &CommandLane<#command_type> + Send + Sync + 'static,
-            S: Stream<Item = #command_type> + Send + Sync + 'static
+            S: Stream<Item = Action<#command_type, ()>> + Send + Sync + 'static
             {
                 fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
                     ready(()).boxed()
@@ -113,13 +113,18 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                         } = *self;
 
                         let model = projection(context.agent()).clone();
-                        let mut events = event_stream.take_until_completes(context.agent_stop_event());
+                        let mut events = event_stream.take_until(context.agent_stop_event());
                         pin_mut!(events);
-                        while let Some(command) = events.next().await {
+                        while let Some(Action { command, responder }) = events.next().await {
                             event!(Level::TRACE, COMMANDED, ?command);
                             #on_command_func(&lifecycle, command, &model, &context)
                                 .instrument(span!(Level::TRACE, ON_COMMAND))
                                 .await;
+                            if let Some(tx) = responder {
+                                if tx.send(()).is_err() {
+                                    event!(Level::WARN, RESPONSE_IGNORED);
+                                }
+                            }
                         }
                     }
                     .boxed()
@@ -157,7 +162,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         struct #task_name<T, S>
         where
             T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
-            S: Stream<Item = #command_type> + Send + Sync + 'static
+            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
@@ -168,7 +173,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         impl<T, S> Lane for #task_name<T, S>
         where
             T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
-            S: Stream<Item = #command_type> + Send + Sync + 'static
+            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
@@ -177,9 +182,9 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + Sized + Send + Sync + 'static,
+            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
             T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
-            S: Stream<Item = #command_type> + Send + Sync + 'static
+            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
         {
             fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
                 ready(()).boxed()
@@ -195,14 +200,19 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     } = *self;
 
                     let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until_completes(context.agent_stop_event());
+                    let mut events = event_stream.take_until(context.agent_stop_event());
                     pin_mut!(events);
-                    while let Some(command) = events.next().await {
+                    while let Some(Action { command, responder }) = events.next().await {
                         event!(Level::TRACE, COMMANDED, ?command);
                         let response = #on_command_func(&lifecycle, command, &model, &context)
                             .instrument(span!(Level::TRACE, ON_COMMAND))
                             .await;
                         event!(Level::TRACE, ACTION_RESULT, ?response);
+                        if let Some(tx) = responder {
+                            if tx.send(response).is_err() {
+                                event!(Level::WARN, RESPONSE_IGNORED);
+                            }
+                        }
                     }
                 }
                 .boxed()
@@ -260,7 +270,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + Sized + Send + Sync + 'static,
+            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
             T: Fn(&#agent_name) -> &ValueLane<i32> + Send + Sync + 'static,
             S: Stream<Item = Arc<#event_type>> + Send + Sync + 'static,
         {
@@ -281,7 +291,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     } = *self;
 
                     let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until_completes(context.agent_stop_event());
+                    let mut events = event_stream.take_until(context.agent_stop_event());
                     pin_mut!(events);
                     while let Some(event) = events.next().await {
                         #on_event_func(&lifecycle, &event, &model, &context)
@@ -345,7 +355,7 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: AgentContext<#agent_name> + Sized + Send + Sync + 'static,
+            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
             S: Stream<Item = MapLaneEvent<#key_type, #value_type>> + Send + Sync + 'static,
             T: Fn(&#agent_name) -> &MapLane<#key_type, #value_type> + Send + Sync + 'static,
         {
@@ -366,7 +376,7 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     } = *self;
 
                     let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until_completes(context.agent_stop_event());
+                    let mut events = event_stream.take_until(context.agent_stop_event());
                     pin_mut!(events);
                     while let Some(event) = events.next().await {
                         #on_event_func(&lifecycle, &event, &model, &context)
