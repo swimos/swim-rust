@@ -34,7 +34,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
@@ -50,8 +50,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::DiscardingSender;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -65,7 +63,7 @@ use utilities::sync::trigger;
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
 /// TODO Write derive macro for SwimAgent.
-pub trait SwimAgent<Config>: Sized {
+pub trait SwimAgent<Config>: Any + Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
     fn instantiate<Context>(
         configuration: &Config,
@@ -115,6 +113,30 @@ impl AgentResult {
     }
 }
 
+#[derive(Debug)]
+pub struct AgentParameters<Config> {
+    agent_config: Config,
+    execution_config: AgentExecutionConfig,
+    url: Url,
+    parameters: HashMap<String, String>,
+}
+
+impl<Config> AgentParameters<Config> {
+    pub fn new(
+        agent_config: Config,
+        execution_config: AgentExecutionConfig,
+        url: Url,
+        parameters: HashMap<String, String>,
+    ) -> Self {
+        AgentParameters {
+            agent_config,
+            execution_config,
+            url,
+            parameters,
+        }
+    }
+}
+
 /// Creates a single, asynchronous task that manages the lifecycle of an agent, all of its lanes
 /// and any events that are scheduled within it.
 ///
@@ -126,26 +148,31 @@ impl AgentResult {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub async fn run_agent<Config, Clk, Agent, L>(
-    configuration: Config,
+pub async fn run_agent<Config, Clk, Agent, L, Router>(
     lifecycle: L,
-    url: Url,
-    execution_config: AgentExecutionConfig,
     clock: Clk,
-    parameters: HashMap<String, String>,
+    parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
+    router: Router,
 ) -> AgentResult
 where
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent>,
+    Router: ServerRouter + Clone + 'static,
 {
+    let AgentParameters {
+        agent_config,
+        execution_config,
+        url,
+        parameters,
+    } = parameters;
+
     let span = span!(Level::INFO, AGENT_TASK, %url);
     let (tripwire, stop_trigger) = trigger::trigger();
     async {
-        let (agent, tasks, io_providers) = Agent::instantiate::<
-            ContextImpl<Agent, Clk, DiscardingSender<RoutingError>>,
-        >(&configuration);
+        let (agent, tasks, io_providers) =
+            Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config);
         let agent_ref = Arc::new(agent);
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let context = ContextImpl::new(
@@ -154,7 +181,7 @@ where
             tx,
             clock,
             stop_trigger.clone(),
-            DiscardingSender::default(),
+            router,
             parameters,
         );
 

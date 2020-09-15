@@ -25,23 +25,82 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
+use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
-    ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
-    MapLifecycleTasks, ValueLifecycleTasks,
+    ActionLifecycleTasks, AgentContext, AgentParameters, CommandLifecycleTasks, Lane, LaneTasks,
+    LifecycleTasks, MapLifecycleTasks, ValueLifecycleTasks,
 };
 use futures::future::{join, BoxFuture};
 use futures::{Stream, StreamExt};
+use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::sink::item::DiscardingSender;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use url::Url;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
-use std::collections::HashMap;
+
+mod stub_router {
+    use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+    use swim_common::routing::RoutingError;
+    use swim_common::sink::item::{ItemSender, ItemSink};
+    use swim_common::warp::envelope::Envelope;
+
+    #[derive(Clone)]
+    pub struct SingleChannelRouter<Inner>(Inner);
+
+    impl<Inner> SingleChannelRouter<Inner>
+    where
+        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone,
+    {
+        pub(crate) fn new(sender: Inner) -> Self {
+            SingleChannelRouter(sender)
+        }
+    }
+
+    pub struct SingleChannelSender<Inner> {
+        inner: Inner,
+        destination: RoutingAddr,
+    }
+
+    impl<Inner> SingleChannelSender<Inner>
+    where
+        Inner: ItemSender<TaggedEnvelope, RoutingError>,
+    {
+        fn new(inner: Inner, destination: RoutingAddr) -> Self {
+            SingleChannelSender { inner, destination }
+        }
+    }
+
+    impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
+    where
+        Inner: ItemSink<'a, TaggedEnvelope, Error = RoutingError>,
+    {
+        type Error = RoutingError;
+        type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
+
+        fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
+            let msg = TaggedEnvelope(self.destination, value);
+            self.inner.send_item(msg)
+        }
+    }
+
+    impl<Inner> ServerRouter for SingleChannelRouter<Inner>
+    where
+        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+    {
+        type Sender = SingleChannelSender<Inner>;
+
+        fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
+            Ok(SingleChannelSender::new(self.0.clone(), addr))
+        }
+    }
+}
 
 struct TestAgent<Lane> {
     name: &'static str,
@@ -646,17 +705,17 @@ async fn agent_loop() {
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
+    let parameters = AgentParameters::new(config, exec_config, url, HashMap::new());
+
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
     let agent_proc = super::run_agent(
-        config,
         agent_lifecycle,
-        url,
-        exec_config,
         clock.clone(),
-        HashMap::new(),
+        parameters,
         envelope_rx,
+        SingleChannelRouter::new(DiscardingSender::default()),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

@@ -18,12 +18,12 @@ use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;
+use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use tokio::time::Duration;
 use url::Url;
 use utilities::sync::trigger::Receiver;
-use std::collections::HashMap;
 
 struct TestModel;
 

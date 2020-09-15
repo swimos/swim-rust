@@ -16,6 +16,7 @@ use crate::agent::context::ContextImpl;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
@@ -23,7 +24,6 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
 use utilities::sync::trigger;
-use std::collections::HashMap;
 
 #[test]
 fn simple_accessors() {
@@ -60,7 +60,15 @@ fn create_context(
 
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    ContextImpl::new(agent.clone(), url.clone(), tx, clock, close_trigger, (), HashMap::new())
+    ContextImpl::new(
+        agent.clone(),
+        url.clone(),
+        tx,
+        clock,
+        close_trigger,
+        (),
+        HashMap::new(),
+    )
 }
 
 #[tokio::test]

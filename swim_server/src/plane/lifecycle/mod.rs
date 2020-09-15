@@ -12,8 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+use crate::plane::context::PlaneContext;
+use futures::future::BoxFuture;
+use std::fmt::Debug;
 
-pub mod agent;
-pub mod plane;
-pub mod routing;
+pub trait PlaneLifecycle: Debug {
+    fn on_start<'a>(&'a self, context: &'a dyn PlaneContext) -> BoxFuture<'a, ()>;
+
+    fn on_stop<'a>(&'a self, context: &'a dyn PlaneContext) -> BoxFuture<'a, ()>;
+
+    fn boxed(self) -> Box<dyn PlaneLifecycle>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
+}

@@ -16,11 +16,11 @@ use super::AgentLifecycle;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;
+use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 use url::Url;
 use utilities::sync::trigger::Receiver;
-use std::collections::HashMap;
 
 struct TestAgent;
 

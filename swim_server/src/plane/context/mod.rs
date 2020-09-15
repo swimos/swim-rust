@@ -12,8 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+use futures::future::BoxFuture;
+use std::any::Any;
+use std::sync::Arc;
+use utilities::route_pattern::RoutePattern;
 
-pub mod agent;
-pub mod plane;
-pub mod routing;
+pub struct NoAgentAtRoute(String);
+
+pub trait PlaneContext {
+    fn get_agent(&self, route: String) -> BoxFuture<'static, Result<Arc<dyn Any>, NoAgentAtRoute>>;
+
+    fn routes(&self) -> Vec<RoutePattern>;
+}

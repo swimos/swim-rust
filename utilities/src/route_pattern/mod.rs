@@ -24,13 +24,13 @@ mod tests;
 
 ///Pattern to match a '/'-separated route specifier. Pattern components can either be literal
 ///strings or named parameters, starting with ':'. For example "/path/:id".
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RoutePattern {
     pattern: String,
     segments: Vec<Segment>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct Segment {
     start: usize,
     end: usize,

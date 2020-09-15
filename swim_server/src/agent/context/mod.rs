@@ -13,15 +13,14 @@
 // limitations under the License.
 
 use crate::agent::{AgentContext, Eff};
-use crate::routing::{ServerRouter, SingleChannelRouter, TaggedEnvelope};
+use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -31,7 +30,6 @@ use tracing_futures::Instrument;
 use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use std::collections::HashMap;
 
 #[cfg(test)]
 mod tests;
@@ -168,12 +166,12 @@ pub trait AgentExecutionContext {
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
 where
-    RouterInner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+    RouterInner: ServerRouter + Clone + 'static,
 {
-    type Router = SingleChannelRouter<RouterInner>;
+    type Router = RouterInner;
 
     fn router_handle(&self) -> Self::Router {
-        SingleChannelRouter::new(self.router.clone())
+        self.router.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {
