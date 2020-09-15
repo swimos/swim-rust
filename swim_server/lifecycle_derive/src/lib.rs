@@ -24,8 +24,8 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let lifecycle_name = &input_ast.ident;
     let task_name = get_lifecycle_task_ident(&input_ast.ident.to_string());
-    let agent_name = Ident::new(&args.agent, Span::call_site());
-    let on_start_func = Ident::new(&args.on_start, Span::call_site());
+    let agent_name = &args.agent;
+    let on_start_func = &args.on_start;
 
     let output_ast = quote! {
 
@@ -63,9 +63,9 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let lifecycle_name = &input_ast.ident;
     let task_name = get_lifecycle_task_ident(&input_ast.ident.to_string());
-    let agent_name = Ident::new(&args.agent, Span::call_site());
-    let command_type = Ident::new(&args.command_type, Span::call_site());
-    let on_command_func = Ident::new(&args.on_command, Span::call_site());
+    let agent_name = &args.agent;
+    let command_type = &args.command_type;
+    let on_command_func = &args.on_command;
 
     let output_ast = quote! {
 
@@ -150,10 +150,10 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let lifecycle_name = &input_ast.ident;
     let task_name = get_lifecycle_task_ident(&input_ast.ident.to_string());
-    let agent_name = Ident::new(&args.agent, Span::call_site());
-    let command_type = Ident::new(&args.command_type, Span::call_site());
-    let response_type = Ident::new(&args.response_type, Span::call_site());
-    let on_command_func = Ident::new(&args.on_command, Span::call_site());
+    let agent_name = &args.agent;
+    let command_type = &args.command_type;
+    let response_type = &args.response_type;
+    let on_command_func = &args.on_command;
 
     let output_ast = quote! {
 
@@ -238,10 +238,10 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let lifecycle_name = &input_ast.ident;
     let task_name = get_lifecycle_task_ident(&input_ast.ident.to_string());
-    let agent_name = Ident::new(&args.agent, Span::call_site());
-    let event_type = Ident::new(&args.event_type, Span::call_site());
-    let on_start_func = Ident::new(&args.on_start, Span::call_site());
-    let on_event_func = Ident::new(&args.on_event, Span::call_site());
+    let agent_name = &args.agent;
+    let event_type = &args.event_type;
+    let on_start_func = &args.on_start;
+    let on_event_func = &args.on_event;
 
     let output_ast = quote! {
 
@@ -322,11 +322,11 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let lifecycle_name = &input_ast.ident;
     let task_name = get_lifecycle_task_ident(&input_ast.ident.to_string());
-    let agent_name = Ident::new(&args.agent, Span::call_site());
-    let key_type = Ident::new(&args.key_type, Span::call_site());
-    let value_type = Ident::new(&args.value_type, Span::call_site());
-    let on_start_func = Ident::new(&args.on_start, Span::call_site());
-    let on_event_func = Ident::new(&args.on_event, Span::call_site());
+    let agent_name = &args.agent;
+    let key_type = &args.key_type;
+    let value_type = &args.value_type;
+    let on_start_func = &args.on_start;
+    let on_event_func = &args.on_event;
 
     let output_ast = quote! {
 
