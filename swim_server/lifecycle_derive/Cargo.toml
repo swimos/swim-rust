@@ -11,8 +11,6 @@ syn = {version = "1.0.39"}
 quote = "1.0.7"
 proc-macro2 = "1.0.19"
 darling = "0.10.2"
-tracing = "0.1.16"
-pin-project = "0.4.20"
 
 [lib]
 proc-macro = true
