@@ -117,8 +117,10 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                         pin_utils::pin_mut!(events);
                         while let Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
 
-                        // Todo Failing to compile with swim_server::agent::COMMANDED
-                            tracing::event!(tracing::Level::TRACE, COMMANDED, ?command);
+                        let commanded = swim_server::agent::COMMANDED;
+                        let response_ingored = swim_server::agent::RESPONSE_IGNORED;
+
+                            tracing::event!(tracing::Level::TRACE, commanded, ?command);
 
                             tracing_futures::Instrument::instrument(
                                 #on_command_func(&lifecycle, command, &model, &context),
@@ -127,8 +129,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                             if let Some(tx) = responder {
                                 if tx.send(()).is_err() {
-                                    // Todo Failing to compile with swim_server::agent::RESPONSE_IGNORED
-                                    tracing::event!(tracing::Level::WARN, RESPONSE_IGNORED);
+                                    tracing::event!(tracing::Level::WARN, response_ingored);
                                 }
                             }
                         }
@@ -216,11 +217,11 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
                             ).await;
 
-                        tracing::event!(Level::TRACE, ACTION_RESULT, ?response);
+                        tracing::event!(Level::TRACE, swim_server::agent::ACTION_RESULT, ?response);
 
                         if let Some(tx) = responder {
                             if tx.send(response).is_err() {
-                                tracing::event!(tracing::Level::WARN, RESPONSE_IGNORED);
+                                tracing::event!(tracing::Level::WARN, swim_server::agent::RESPONSE_IGNORED);
                             }
                         }
                     }

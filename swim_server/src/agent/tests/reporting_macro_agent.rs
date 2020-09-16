@@ -24,7 +24,6 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::LaneIo;
 use crate::agent::{AgentContext, LaneTasks, SwimAgent};
-use crate::agent::{COMMANDED, RESPONSE_IGNORED};
 use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle};
 use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
