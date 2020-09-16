@@ -76,17 +76,14 @@ impl Display for CompressionError {
 impl WebSocketExtension for MaybeCompressed {
     type Error = CompressionError;
 
+    fn new(max_message_size: Option<usize>) -> Self {
+        MaybeCompressed::Uncompressed(PlainTextExt::new(max_message_size))
+    }
+
     fn enabled(&self) -> bool {
         match self {
             MaybeCompressed::Uncompressed(ext) => ext.enabled(),
             MaybeCompressed::Compressed(ext) => ext.enabled(),
-        }
-    }
-
-    fn rsv1(&self) -> bool {
-        match self {
-            MaybeCompressed::Uncompressed(ext) => ext.rsv1(),
-            MaybeCompressed::Compressed(ext) => ext.rsv1(),
         }
     }
 
