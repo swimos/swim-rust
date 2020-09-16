@@ -17,6 +17,7 @@ mod tests;
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value::ValueLane;
+use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -48,7 +49,7 @@ where
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>,
     {
@@ -56,7 +57,7 @@ where
         async move {
             pin_mut!(messages);
             while let Some(msg_result) = messages.next().await {
-                let msg = msg_result?;
+                let (_, msg) = msg_result?;
                 event!(Level::TRACE, message = APPLYING_UPDATE, value = ?msg);
                 lane.store(msg).await;
             }

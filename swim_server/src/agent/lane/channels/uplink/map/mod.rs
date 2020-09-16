@@ -17,10 +17,9 @@ mod tests;
 
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use either::Either;
-use futures::stream::{unfold, FusedStream};
+use futures::stream::{unfold, FusedStream, FuturesUnordered};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures::{Stream, TryFutureExt};
-use futures_util::stream::FuturesUnordered;
 use im::OrdMap;
 use std::any::Any;
 use std::collections::HashMap;

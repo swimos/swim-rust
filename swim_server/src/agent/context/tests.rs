@@ -36,6 +36,7 @@ fn simple_accessors() {
         tx,
         TestClock::default(),
         close_sig.clone(),
+        (),
     );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_url(), &url);
@@ -49,7 +50,7 @@ fn create_context(
     n: usize,
     clock: TestClock,
     close_trigger: trigger::Receiver,
-) -> ContextImpl<&'static str, impl Clock> {
+) -> ContextImpl<&'static str, impl Clock, ()> {
     let (tx, rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -57,7 +58,7 @@ fn create_context(
 
     let agent = Arc::new("agent");
     let url: Url = Url::parse("swim://host/node").unwrap();
-    ContextImpl::new(agent.clone(), url.clone(), tx, clock, close_trigger)
+    ContextImpl::new(agent.clone(), url.clone(), tx, clock, close_trigger, ())
 }
 
 #[tokio::test]

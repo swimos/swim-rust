@@ -18,6 +18,7 @@ use crate::agent::lane::model::map;
 use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
+use crate::routing::RoutingAddr;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
@@ -31,7 +32,9 @@ async fn update_task_map_lane_update() {
 
     let task = MapLaneUpdateTask::new(lane, || ExactlyOnce);
 
-    let upd: Result<MapUpdate<i32, i32>, UpdateError> = Ok(MapUpdate::Update(4, Arc::new(7)));
+    let addr = RoutingAddr::remote(2);
+    let upd: Result<(RoutingAddr, MapUpdate<i32, i32>), UpdateError> =
+        Ok((addr, MapUpdate::Update(4, Arc::new(7))));
 
     let updates = once(ready(upd));
 
@@ -57,8 +60,9 @@ async fn update_task_map_lane_remove() {
     assert!(events.next().await.is_some());
 
     let task = MapLaneUpdateTask::new(lane, || ExactlyOnce);
-
-    let rem: Result<MapUpdate<i32, i32>, UpdateError> = Ok(MapUpdate::Remove(4));
+    let addr = RoutingAddr::remote(2);
+    let rem: Result<(RoutingAddr, MapUpdate<i32, i32>), UpdateError> =
+        Ok((addr, MapUpdate::Remove(4)));
 
     let updates = once(ready(rem));
 
@@ -84,7 +88,9 @@ async fn update_task_map_lane_clear() {
     assert!(events.next().await.is_some());
 
     let task = MapLaneUpdateTask::new(lane, || ExactlyOnce);
-    let clear: Result<MapUpdate<i32, i32>, UpdateError> = Ok(MapUpdate::Clear);
+    let addr = RoutingAddr::remote(2);
+    let clear: Result<(RoutingAddr, MapUpdate<i32, i32>), UpdateError> =
+        Ok((addr, MapUpdate::Clear));
 
     let updates = once(ready(clear));
 

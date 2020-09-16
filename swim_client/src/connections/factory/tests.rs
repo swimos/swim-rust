@@ -16,8 +16,6 @@ use super::async_factory::*;
 use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use std::pin::Pin;
 use swim_common::ws::error::ConnectionError;
 use swim_common::ws::{Protocol, WsMessage};
@@ -92,10 +90,10 @@ async fn successfully_open() {
             },
         )
         .await;
-    assert_that!(&result, ok());
+    assert!(result.is_ok());
     let (snk, stream) = result.unwrap();
-    assert_that!(&snk.0, eq(&url));
-    assert_that!(&stream.0, eq(&url));
+    assert_eq!(snk.0, url);
+    assert_eq!(stream.0, url);
 }
 
 #[tokio::test]
@@ -111,7 +109,7 @@ async fn fail_to_open() {
             },
         )
         .await;
-    assert_that!(&result, err());
+    assert!(result.is_err());
     let err = result.err().unwrap();
-    assert_that!(err, eq(ConnectionError::ConnectError));
+    assert_eq!(err, ConnectionError::ConnectError);
 }

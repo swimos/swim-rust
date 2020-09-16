@@ -13,14 +13,18 @@
 // limitations under the License.
 
 use crate::agent::{AgentContext, Eff};
+use crate::routing::{ServerRouter, SingleChannelRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use swim_common::routing::RoutingError;
+use swim_common::sink::item::ItemSender;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 use tokio::time::Duration;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
@@ -34,13 +38,14 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk> {
+pub(super) struct ContextImpl<Agent, Clk, Router> {
     agent_ref: Arc<Agent>,
     url: Url,
     scheduler: mpsc::Sender<Eff>,
     schedule_count: Arc<AtomicU64>,
     clock: Clk,
     stop_signal: trigger::Receiver,
+    router: Router,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -48,7 +53,7 @@ const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk: Clone> Clone for ContextImpl<Agent, Clk> {
+impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router> {
     fn clone(&self) -> Self {
         ContextImpl {
             agent_ref: self.agent_ref.clone(),
@@ -57,17 +62,19 @@ impl<Agent, Clk: Clone> Clone for ContextImpl<Agent, Clk> {
             schedule_count: self.schedule_count.clone(),
             clock: self.clock.clone(),
             stop_signal: self.stop_signal.clone(),
+            router: self.router.clone(),
         }
     }
 }
 
-impl<Agent, Clk> ContextImpl<Agent, Clk> {
+impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
         url: Url,
         scheduler: mpsc::Sender<Eff>,
         clock: Clk,
         stop_signal: trigger::Receiver,
+        router: Router,
     ) -> Self {
         ContextImpl {
             agent_ref,
@@ -76,11 +83,12 @@ impl<Agent, Clk> ContextImpl<Agent, Clk> {
             schedule_count: Default::default(),
             clock,
             stop_signal,
+            router,
         }
     }
 }
 
-impl<Agent, Clk> AgentContext<Agent> for ContextImpl<Agent, Clk>
+impl<Agent, Clk, Router> AgentContext<Agent> for ContextImpl<Agent, Clk, Router>
 where
     Agent: Send + Sync + 'static,
     Clk: Clock,
@@ -105,7 +113,7 @@ where
                     eff.await;
                 }
             })
-            .take_until_completes(self.stop_signal.clone())
+            .take_until(self.stop_signal.clone())
             .never_error()
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can drop the errors.
@@ -131,5 +139,31 @@ where
 
     fn agent_stop_event(&self) -> trigger::Receiver {
         self.stop_signal.clone()
+    }
+}
+
+/// A context, scoped to an agent, to provide shared functionality to each of its lanes.
+pub trait AgentExecutionContext {
+    type Router: ServerRouter + 'static;
+
+    /// Create a handle to the envelope router for the agent.
+    fn router_handle(&self) -> Self::Router;
+
+    /// Provide a channel to dispatch events to the agent scheduler.
+    fn spawner(&self) -> mpsc::Sender<Eff>;
+}
+
+impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
+where
+    RouterInner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+{
+    type Router = SingleChannelRouter<RouterInner>;
+
+    fn router_handle(&self) -> Self::Router {
+        SingleChannelRouter::new(self.router.clone())
+    }
+
+    fn spawner(&self) -> Sender<Eff> {
+        self.scheduler.clone()
     }
 }
