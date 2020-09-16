@@ -39,7 +39,6 @@ use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::ws::WebsocketFactory;
 use url::Url;
-mod t;
 
 use crate::connections::factory::tungstenite::HostConfig;
 #[cfg(feature = "websocket")]
