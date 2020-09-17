@@ -116,7 +116,7 @@ impl SwimClient {
     pub async fn default_with_host_configs(configs: HashMap<Url, HostConfig>) -> Self {
         SwimClient::new(
             ConfigHierarchy::default(),
-            TungsteniteWsFactory::new(5, configs).await,
+            TungsteniteWsFactory::new_with_configs(5, configs).await,
         )
         .await
     }
@@ -126,7 +126,11 @@ impl SwimClient {
         config: ConfigHierarchy,
         host_configs: HashMap<Url, HostConfig>,
     ) -> Self {
-        SwimClient::new(config, TungsteniteWsFactory::new(5, host_configs).await).await
+        SwimClient::new(
+            config,
+            TungsteniteWsFactory::new_with_configs(5, host_configs).await,
+        )
+        .await
     }
 
     /// Creates a new SWIM Client using the default configuration.
@@ -134,7 +138,7 @@ impl SwimClient {
     pub async fn new_with_default() -> Self {
         let config = ConfigHierarchy::default();
         let buffer_size = config.client_params().dl_req_buffer_size.get();
-        let connection_factory = TungsteniteWsFactory::new(buffer_size, Default::default()).await;
+        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
 
         SwimClient::new(ConfigHierarchy::default(), connection_factory).await
     }
@@ -159,7 +163,7 @@ impl SwimClient {
 
         let buffer_size = config.client_params().dl_req_buffer_size.get();
         // todo: parse certs from file
-        let connection_factory = TungsteniteWsFactory::new(buffer_size, Default::default()).await;
+        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
 
         Ok(SwimClient::new(config, connection_factory).await)
     }

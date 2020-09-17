@@ -121,7 +121,7 @@ pub struct HostConfig {
 impl TungsteniteWsFactory {
     /// Create a tungstenite-tokio connection factory where the internal task uses the provided
     /// buffer size.
-    pub async fn new(
+    pub async fn new_with_configs(
         buffer_size: usize,
         host_configurations: HashMap<Url, HostConfig>,
     ) -> TungsteniteWsFactory {
@@ -131,6 +131,10 @@ impl TungsteniteWsFactory {
             inner,
             host_configurations,
         }
+    }
+
+    pub async fn new(buffer_size: usize) -> TungsteniteWsFactory {
+        TungsteniteWsFactory::new_with_configs(buffer_size, Default::default()).await
     }
 }
 
@@ -223,7 +227,7 @@ mod tests {
         let buffer_size = 5;
         let mut connection_pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(buffer_size, Default::default()).await,
+            TungsteniteWsFactory::new(buffer_size).await,
         );
 
         let url = url::Url::parse("xyz://swim.ai").unwrap();
