@@ -296,16 +296,13 @@ impl PlaneRouter {
 
 impl ServerRouter for PlaneRouter {
     type Sender = PlaneRouterSender;
-    type Fut = BoxFuture<'static, Result<Self::Sender, RoutingError>>;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
-        let PlaneRouter {
-            tag,
-            request_sender,
-        } = self;
-        let mut request_sender = request_sender.clone();
-        let tag = *tag;
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
         async move {
+            let PlaneRouter {
+                tag,
+                request_sender,
+            } = self;
             let (tx, rx) = oneshot::channel();
             if request_sender
                 .send(PlaneRequest::Endpoint {
@@ -318,7 +315,7 @@ impl ServerRouter for PlaneRouter {
                 Err(RoutingError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(sender)) => Ok(PlaneRouterSender::new(tag, sender)),
+                    Ok(Ok(sender)) => Ok(PlaneRouterSender::new(*tag, sender)),
                     Ok(Err(_)) => Err(RoutingError::HostUnreachable),
                     Err(_) => Err(RoutingError::RouterDropped),
                 }

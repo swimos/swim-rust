@@ -20,7 +20,7 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStat
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
-use futures::future::{join, join3, ready, BoxFuture, Ready};
+use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
@@ -84,13 +84,13 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
-    type Fut = Ready<Result<Self::Sender, RoutingError>>;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
         ready(Ok(TestSender {
             addr,
             inner: self.0.clone(),
         }))
+        .boxed()
     }
 }
 

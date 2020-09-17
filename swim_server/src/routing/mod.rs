@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::Future;
-use pin_utils::core_reexport::fmt::Formatter;
-use std::fmt::Display;
+use futures::future::BoxFuture;
+use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -82,7 +81,6 @@ impl TaggedClientEnvelope {
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
-    type Fut: Future<Output = Result<Self::Sender, RoutingError>> + Send + 'static;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut;
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>>;
 }

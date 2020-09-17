@@ -46,7 +46,8 @@ use utilities::sync::trigger::Receiver;
 
 mod stub_router {
     use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
-    use futures::future::{ready, Ready};
+    use futures::future::BoxFuture;
+    use futures::FutureExt;
     use swim_common::routing::RoutingError;
     use swim_common::sink::item::{ItemSender, ItemSink};
     use swim_common::warp::envelope::Envelope;
@@ -95,10 +96,12 @@ mod stub_router {
         Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
     {
         type Sender = SingleChannelSender<Inner>;
-        type Fut = Ready<Result<Self::Sender, RoutingError>>;
 
-        fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
-            ready(Ok(SingleChannelSender::new(self.0.clone(), addr)))
+        fn get_sender(
+            &mut self,
+            addr: RoutingAddr,
+        ) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+            FutureExt::boxed(async move { Ok(SingleChannelSender::new(self.0.clone(), addr)) })
         }
     }
 }

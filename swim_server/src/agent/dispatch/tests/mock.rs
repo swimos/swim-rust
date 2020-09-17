@@ -20,7 +20,7 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope};
-use futures::future::{ready, BoxFuture, Ready};
+use futures::future::BoxFuture;
 use futures::{FutureExt, TryFutureExt};
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
@@ -75,25 +75,27 @@ pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
 impl ServerRouter for MockRouter {
     type Sender = MockSender;
-    type Fut = Ready<Result<Self::Sender, RoutingError>>;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
-        let mut lock = self.0.lock();
-        let MockRouterInner {
-            buffer_size,
-            senders,
-            receivers,
-        } = &mut *lock;
-        let tx = match senders.entry(addr) {
-            Entry::Occupied(entry) => entry.get().clone(),
-            Entry::Vacant(entry) => {
-                let (tx, rx) = mpsc::channel(*buffer_size);
-                entry.insert(tx.clone());
-                receivers.insert(addr, rx);
-                tx
-            }
-        };
-        ready(Ok(MockSender(tx)))
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        async move {
+            let mut lock = self.0.lock();
+            let MockRouterInner {
+                buffer_size,
+                senders,
+                receivers,
+            } = &mut *lock;
+            let tx = match senders.entry(addr) {
+                Entry::Occupied(entry) => entry.get().clone(),
+                Entry::Vacant(entry) => {
+                    let (tx, rx) = mpsc::channel(*buffer_size);
+                    entry.insert(tx.clone());
+                    receivers.insert(addr, rx);
+                    tx
+                }
+            };
+            Ok(MockSender(tx))
+        }
+        .boxed()
     }
 }
 
