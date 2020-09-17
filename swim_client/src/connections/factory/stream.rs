@@ -42,7 +42,7 @@ impl MaybeCompressed {
                 MaybeCompressed::Uncompressed(PlainTextExt::new(Some(64 << 20)))
             }
             CompressionConfig::Deflate(config) => {
-                MaybeCompressed::Compressed(DeflateExt::new(config.clone()))
+                MaybeCompressed::Compressed(DeflateExt::new(config))
             }
         }
     }
