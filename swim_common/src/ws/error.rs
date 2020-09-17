@@ -52,11 +52,14 @@ pub enum WebSocketError {
     /// A custom mage detailing the error.
     Message(String),
     /// A TLS error from the underlying implementation.
+    #[cfg(feature = "tls")]
     Tls(String),
     /// An error from building or reading a certificate
+    #[cfg(feature = "tls")]
     CertificateError(CertificateError),
 }
 
+#[cfg(feature = "tls")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CertificateError {
     /// An IO error occurred while attempting to read the certificate.
@@ -65,6 +68,7 @@ pub enum CertificateError {
     SSL(String),
 }
 
+#[cfg(feature = "tls")]
 impl Display for CertificateError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -74,18 +78,21 @@ impl Display for CertificateError {
     }
 }
 
+#[cfg(feature = "tls")]
 impl From<native_tls::Error> for WebSocketError {
     fn from(e: native_tls::Error) -> Self {
         WebSocketError::Tls(e.to_string())
     }
 }
 
+#[cfg(feature = "tls")]
 impl From<std::io::Error> for CertificateError {
     fn from(e: std::io::Error) -> Self {
         CertificateError::Io(e.to_string())
     }
 }
 
+#[cfg(feature = "tls")]
 impl From<CertificateError> for WebSocketError {
     fn from(e: CertificateError) -> Self {
         WebSocketError::CertificateError(e)
@@ -116,7 +123,9 @@ impl Display for WebSocketError {
             WebSocketError::BadConfiguration(reason) => {
                 write!(f, "Incorrect WebSocket configuration: {}", reason)
             }
+            #[cfg(feature = "tls")]
             WebSocketError::Tls(e) => write!(f, "{}", e),
+            #[cfg(feature = "tls")]
             WebSocketError::CertificateError(e) => write!(
                 f,
                 "An error was produced while trying to build the certificate: {}",
@@ -126,6 +135,7 @@ impl Display for WebSocketError {
     }
 }
 
+#[cfg(feature = "tls")]
 impl From<CertificateError> for ConnectionError {
     fn from(e: CertificateError) -> Self {
         ConnectionError::SocketError(WebSocketError::CertificateError(e))

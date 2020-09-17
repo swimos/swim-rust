@@ -37,6 +37,7 @@ use swim_common::request::request_future::{RequestError, RequestFuture, Sequence
 
 use crate::configuration::router::ConnectionPoolParams;
 
+#[cfg(feature = "websocket")]
 pub mod factory;
 
 #[cfg(test)]

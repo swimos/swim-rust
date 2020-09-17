@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::path::Path;
+#[cfg(feature = "tls")]
+use {
+    crate::ws::error::CertificateError,
+    native_tls::Certificate,
+    std::fs::File,
+    std::io::{BufReader, Read},
+    std::path::Path,
+};
+
 use std::str::FromStr;
 
 use futures::{Future, Sink, Stream};
 use http::uri::Scheme;
 use http::{Request, Uri};
 
-use crate::ws::error::{CertificateError, ConnectionError, WebSocketError};
+use crate::ws::error::{ConnectionError, WebSocketError};
 use futures_util::core_reexport::fmt::{Debug, Formatter};
-use native_tls::Certificate;
 use std::fmt;
-use std::fs::File;
-use std::io::{BufReader, Read};
 
 pub mod error;
 
@@ -76,6 +81,7 @@ pub trait WebsocketFactory: Send + Sync {
 #[derive(Clone)]
 pub enum Protocol {
     PlainText,
+    #[cfg(feature = "tls")]
     Tls(Certificate),
 }
 
@@ -83,13 +89,16 @@ impl PartialEq for Protocol {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Protocol::PlainText, Protocol::PlainText) => true,
+            #[cfg(feature = "tls")]
             (Protocol::Tls(_), Protocol::Tls(_)) => true,
+            #[cfg(feature = "tls")]
             _ => false,
         }
     }
 }
 
 impl Protocol {
+    #[cfg(feature = "tls")]
     pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, CertificateError> {
         let cert = build_x509_certificate(path)?;
         Ok(Protocol::Tls(cert))
@@ -99,8 +108,9 @@ impl Protocol {
 impl Debug for Protocol {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PlainText => write!(f, "Tls"),
-            Self::Tls(_) => write!(f, "PlainText"),
+            Self::PlainText => write!(f, "PlainText"),
+            #[cfg(feature = "tls")]
+            Self::Tls(_) => write!(f, "Tls"),
         }
     }
 }
@@ -127,6 +137,7 @@ pub fn maybe_resolve_scheme<T>(request: Request<T>) -> Result<Request<T>, WebSoc
     Ok(Request::from_parts(request_parts, request_t))
 }
 
+#[cfg(feature = "tls")]
 pub fn build_x509_certificate(path: impl AsRef<Path>) -> Result<Certificate, CertificateError> {
     let mut reader = BufReader::new(File::open(path)?);
     let mut buf = vec![];

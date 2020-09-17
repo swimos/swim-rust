@@ -15,12 +15,9 @@
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "websocket")]
 pub mod stream;
-#[cfg(feature = "websocket")]
 pub mod tungstenite;
 
-#[cfg(not(target_arch = "wasm32"))]
 pub mod async_factory {
     use futures::future::ErrInto as FutErrInto;
     use futures::stream::StreamExt;

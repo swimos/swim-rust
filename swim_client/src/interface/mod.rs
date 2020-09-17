@@ -34,18 +34,16 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::SwimRouter;
-use std::collections::HashMap;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::ws::WebsocketFactory;
-use url::Url;
 
-use crate::connections::factory::tungstenite::HostConfig;
 #[cfg(feature = "websocket")]
 use {
     crate::configuration::downlink::ConfigHierarchy,
-    crate::connections::factory::tungstenite::TungsteniteWsFactory, std::fs::File, std::io::Read,
-    swim_common::model::parser::parse_single,
+    crate::connections::factory::tungstenite::HostConfig,
+    crate::connections::factory::tungstenite::TungsteniteWsFactory, std::collections::HashMap,
+    std::fs::File, std::io::Read, swim_common::model::parser::parse_single, url::Url,
 };
 
 /// Represents errors that can occur in the client.
@@ -123,6 +121,7 @@ impl SwimClient {
         .await
     }
 
+    #[cfg(feature = "websocket")]
     pub async fn config_with_certs(
         config: ConfigHierarchy,
         host_configs: HashMap<Url, HostConfig>,

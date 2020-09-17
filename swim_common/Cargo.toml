@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = []
+tls = ["native-tls"]
+
 [dependencies]
 swim_runtime = { path = "../swim_runtime" }
 pin-utils = "0.1.0"
@@ -25,8 +29,12 @@ num-traits = "0.2.12"
 base64 = "0.12.3"
 form_derive = { path = "form_derive" }
 im = "14.2.0"
-native-tls = "0.2"
 http = "0.2.1"
+
+[dependencies.native-tls]
+version = "0.2"
+features = ["vendored"]
+optional = true
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["fs", "macros"] }
