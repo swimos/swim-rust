@@ -22,7 +22,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use tokio::time::Duration;
-use url::Url;
 use utilities::sync::trigger::Receiver;
 
 struct TestModel;
@@ -53,7 +52,7 @@ impl AgentContext<TestAgent> for TestContext {
         panic!("Default lifecycles should do nothing.")
     }
 
-    fn node_url(&self) -> &Url {
+    fn node_uri(&self) -> &str {
         panic!("Default lifecycles should do nothing.")
     }
 

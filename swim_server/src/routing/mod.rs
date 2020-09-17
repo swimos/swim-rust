@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::Future;
 use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::Display;
 use swim_common::routing::RoutingError;
@@ -44,6 +45,14 @@ impl RoutingAddr {
     pub const fn local(id: u32) -> Self {
         RoutingAddr(Location::Local(id))
     }
+
+    pub fn is_local(&self) -> bool {
+        matches!(self, RoutingAddr(Location::Local(_)))
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, RoutingAddr(Location::RemoteEndpoint(_)))
+    }
 }
 
 impl Display for RoutingAddr {
@@ -73,6 +82,7 @@ impl TaggedClientEnvelope {
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
+    type Fut: Future<Output = Result<Self::Sender, RoutingError>> + Send + 'static;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError>;
+    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut;
 }

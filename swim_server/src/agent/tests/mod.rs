@@ -41,12 +41,12 @@ use swim_common::sink::item::DiscardingSender;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
-use url::Url;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
 
 mod stub_router {
     use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+    use futures::future::{ready, Ready};
     use swim_common::routing::RoutingError;
     use swim_common::sink::item::{ItemSender, ItemSink};
     use swim_common::warp::envelope::Envelope;
@@ -95,9 +95,10 @@ mod stub_router {
         Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
     {
         type Sender = SingleChannelSender<Inner>;
+        type Fut = Ready<Result<Self::Sender, RoutingError>>;
 
-        fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-            Ok(SingleChannelSender::new(self.0.clone(), addr))
+        fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
+            ready(Ok(SingleChannelSender::new(self.0.clone(), addr)))
         }
     }
 }
@@ -242,13 +243,13 @@ impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
 
 struct TestContext<Lane> {
     lane: Arc<TestAgent<Lane>>,
-    url: Url,
+    uri: String,
     closed: trigger::Receiver,
 }
 
 impl<Lane> TestContext<Lane> {
-    fn new(lane: Arc<TestAgent<Lane>>, url: Url, closed: trigger::Receiver) -> Self {
-        TestContext { lane, url, closed }
+    fn new(lane: Arc<TestAgent<Lane>>, uri: String, closed: trigger::Receiver) -> Self {
+        TestContext { lane, uri, closed }
     }
 }
 
@@ -269,8 +270,8 @@ where
         self.lane.as_ref()
     }
 
-    fn node_url(&self) -> &Url {
-        &self.url
+    fn node_uri(&self) -> &str {
+        self.uri.as_str()
     }
 
     fn agent_stop_event(&self) -> Receiver {
@@ -313,7 +314,7 @@ async fn value_lane_start_task() {
         lane: lane.clone(),
     });
 
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     tasks.start(&context).await;
 
@@ -346,7 +347,7 @@ async fn value_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -396,7 +397,7 @@ async fn value_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -428,7 +429,7 @@ async fn map_lane_start_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     tasks.start(&context).await;
 
@@ -461,7 +462,7 @@ async fn map_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -513,7 +514,7 @@ async fn map_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -546,7 +547,7 @@ async fn action_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -596,7 +597,7 @@ async fn action_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -629,7 +630,7 @@ async fn command_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -679,7 +680,7 @@ async fn command_lane_events_task_terminates() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "test".to_string(), stop_sig);
 
     let events = tasks.events(context);
 
@@ -695,7 +696,7 @@ async fn agent_loop() {
 
     let config = TestAgentConfig::new(tx);
 
-    let url = Url::parse("test://").unwrap();
+    let uri = "test".to_string();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
@@ -705,12 +706,12 @@ async fn agent_loop() {
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
-    let parameters = AgentParameters::new(config, exec_config, url, HashMap::new());
+    let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
-    let agent_proc = super::run_agent(
+    let (_, agent_proc) = super::run_agent(
         agent_lifecycle,
         clock.clone(),
         parameters,

@@ -14,13 +14,19 @@
 
 use futures::future::BoxFuture;
 use std::any::Any;
+use std::collections::HashSet;
 use std::sync::Arc;
 use utilities::route_pattern::RoutePattern;
 
-pub struct NoAgentAtRoute(String);
+pub struct NoAgentAtRoute(pub String);
 
 pub trait PlaneContext {
-    fn get_agent(&self, route: String) -> BoxFuture<'static, Result<Arc<dyn Any>, NoAgentAtRoute>>;
+    fn get_agent(
+        &self,
+        route: String,
+    ) -> BoxFuture<'static, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 
-    fn routes(&self) -> Vec<RoutePattern>;
+    fn routes(&self) -> &Vec<RoutePattern>;
+
+    fn active_routes(&self) -> BoxFuture<'static, HashSet<String>>;
 }

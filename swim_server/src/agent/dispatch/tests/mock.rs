@@ -20,7 +20,7 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope};
-use futures::future::BoxFuture;
+use futures::future::{ready, BoxFuture, Ready};
 use futures::{FutureExt, TryFutureExt};
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
@@ -75,8 +75,9 @@ pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
 impl ServerRouter for MockRouter {
     type Sender = MockSender;
+    type Fut = Ready<Result<Self::Sender, RoutingError>>;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
+    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
         let mut lock = self.0.lock();
         let MockRouterInner {
             buffer_size,
@@ -92,7 +93,7 @@ impl ServerRouter for MockRouter {
                 tx
             }
         };
-        Ok(MockSender(tx))
+        ready(Ok(MockSender(tx)))
     }
 }
 
@@ -179,7 +180,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
-                                if let Ok(sender) = router.get_sender(addr) {
+                                if let Ok(sender) = router.get_sender(addr).await {
                                     entry.insert(sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(

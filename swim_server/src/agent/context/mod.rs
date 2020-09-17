@@ -27,7 +27,6 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::Duration;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
@@ -39,7 +38,7 @@ mod tests;
 #[derive(Debug)]
 pub(super) struct ContextImpl<Agent, Clk, Router> {
     agent_ref: Arc<Agent>,
-    url: Url,
+    uri: String,
     scheduler: mpsc::Sender<Eff>,
     schedule_count: Arc<AtomicU64>,
     clock: Clk,
@@ -57,7 +56,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
     fn clone(&self) -> Self {
         ContextImpl {
             agent_ref: self.agent_ref.clone(),
-            url: self.url.clone(),
+            uri: self.uri.clone(),
             scheduler: self.scheduler.clone(),
             schedule_count: self.schedule_count.clone(),
             clock: self.clock.clone(),
@@ -71,7 +70,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
 impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        url: Url,
+        uri: String,
         scheduler: mpsc::Sender<Eff>,
         clock: Clk,
         stop_signal: trigger::Receiver,
@@ -80,7 +79,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     ) -> Self {
         ContextImpl {
             agent_ref,
-            url,
+            uri,
             scheduler,
             schedule_count: Default::default(),
             clock,
@@ -136,8 +135,8 @@ where
         self.agent_ref.as_ref()
     }
 
-    fn node_url(&self) -> &Url {
-        &self.url
+    fn node_uri(&self) -> &str {
+        self.uri.as_str()
     }
 
     fn agent_stop_event(&self) -> trigger::Receiver {

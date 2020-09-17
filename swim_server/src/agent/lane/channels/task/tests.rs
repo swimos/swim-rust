@@ -23,7 +23,7 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
-use futures::future::{join, join3, BoxFuture};
+use futures::future::{join, join3, ready, BoxFuture, Ready};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -337,12 +337,13 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
+    type Fut = Ready<Result<Self::Sender, RoutingError>>;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        Ok(TestSender {
+    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
+        ready(Ok(TestSender {
             addr,
             inner: self.0.clone(),
-        })
+        }))
     }
 }
 
@@ -1200,19 +1201,20 @@ impl AgentExecutionContext for MultiTestContext {
 
 impl ServerRouter for MultiTestRouter {
     type Sender = TestSender;
+    type Fut = Ready<Result<Self::Sender, RoutingError>>;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
+    fn get_sender(&mut self, addr: RoutingAddr) -> Self::Fut {
         let mut lock = self.0.lock();
         if let Some(sender) = lock.senders.get(&addr) {
-            Ok(TestSender {
+            ready(Ok(TestSender {
                 addr,
                 inner: sender.clone(),
-            })
+            }))
         } else {
             let (tx, rx) = mpsc::channel(5);
             lock.senders.insert(addr, tx.clone());
             lock.receivers.insert(addr, rx);
-            Ok(TestSender { addr, inner: tx })
+            ready(Ok(TestSender { addr, inner: tx }))
         }
     }
 }
