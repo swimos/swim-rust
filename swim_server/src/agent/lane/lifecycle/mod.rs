@@ -186,3 +186,7 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Bu
         ready(())
     }
 }
+
+pub trait LaneLifecycle<Config> {
+    fn create(config: &Config) -> Self;
+}

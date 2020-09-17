@@ -1,9 +1,11 @@
-use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, ValueAttrs};
-use darling::FromMeta;
+use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgent, ValueAttrs};
+use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::quote;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput};
+use syn::punctuated::Punctuated;
+use syn::{parse_macro_input, AttributeArgs, DeriveInput, Path, Type, TypePath};
+
 mod args;
 
 fn get_lifecycle_task_ident(name: &str) -> Ident {
@@ -406,6 +408,110 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
                 .boxed()
+            }
+        }
+
+    };
+
+    TokenStream::from(output_ast)
+}
+
+#[proc_macro_derive(SwimAgent, attributes(lifecycle))]
+pub fn swim_agent(input: TokenStream) -> TokenStream {
+    let input_ast = parse_macro_input!(input as DeriveInput);
+
+    let args = match SwimAgent::from_derive_input(&input_ast) {
+        Ok(v) => v,
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        }
+    };
+
+    for arg in args.data.take_struct().unwrap().iter() {
+        let lane_name = arg.ident.clone().unwrap().to_string();
+        // let lane_type = arg.ty
+
+        if let Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+        }) = &arg.ty
+        {
+            let lane_type = segments.first().unwrap().ident.to_string();
+        }
+
+        let lifecycle_name = &arg.name.clone().unwrap();
+        let lifecycle_task_name = get_lifecycle_task_ident(lifecycle_name);
+
+        println!("{:?}", &lifecycle_task_name);
+        break;
+    }
+
+    let agent_name = args.ident;
+
+    // Todo add param for config.
+    let config_name = Ident::new("TestAgentConfig", Span::call_site());
+
+    let output_ast = quote! {
+
+        #[automatically_derived]
+        impl SwimAgent<#config_name> for #agent_name {
+            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+                configuration: &#config_name,
+            ) -> (
+                Self,
+                Vec<Box<dyn LaneTasks<Self, Context>>>,
+                HashMap<String, Box<dyn LaneIo<Context>>>,
+            )
+                where
+                    Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+            {
+
+                // Command lifecycle
+                let action_lifecycle = ActionLifecycle::create(configuration);
+                let (action, event_stream) = model::action::make_lane_model(configuration.command_buffer_size.clone());
+                let action_tasks = ActionLifecycleTask {
+                    lifecycle: action_lifecycle,
+                    name: "action".into(),
+                    event_stream,
+                    projection: |agent: &#agent_name| &agent.action,
+                };
+
+                // Value lifecycle
+                let total_lifecycle = TotalLifecycle::create(configuration);
+                let (total, event_stream) =
+                    model::value::make_lane_model(0, total_lifecycle.create_strategy());
+
+                let total_tasks = TotalLifecycleTask {
+                    lifecycle: total_lifecycle,
+                    name: "total".into(),
+                    event_stream,
+                    projection: |agent: &#agent_name| &agent.total,
+                };
+
+                // Map lifecycle
+                let data_lifecycle = DataLifecycle::create(configuration);
+                let (data, event_stream) = model::map::make_lane_model(data_lifecycle.create_strategy());
+
+                let data_tasks = DataLifecycleTask {
+                    lifecycle: data_lifecycle,
+                    name: "data".into(),
+                    event_stream,
+                    projection: |agent: &#agent_name| &agent.data,
+                };
+
+                let agent = #agent_name {
+                    data,
+                    total,
+                    action,
+                };
+
+                let tasks = vec![
+                    data_tasks.boxed(),
+                    total_tasks.boxed(),
+                    action_tasks.boxed(),
+                ];
+
+                (agent, tasks, HashMap::new())
             }
         }
 

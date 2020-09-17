@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::AgentExecutionContext;
-use crate::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -24,7 +24,7 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::LaneIo;
 use crate::agent::{AgentContext, LaneTasks, SwimAgent};
-use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle};
+use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent};
 use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -45,10 +45,13 @@ mod swim_server {
 /// creates a periodic schedule that fires every second. For each event of the schedule, an entry
 /// will be inserted into the the `data` lane with keys "Name0", "Name1" and so forth. For each
 /// entry inserted, the value of the `total` lane will be incremented by the inserted value.
-#[derive(Debug)]
+#[derive(Debug, SwimAgent)]
 pub struct ReportingAgent {
+    #[lifecycle(name = "DataLifecycle")]
     data: MapLane<String, i32>,
+    #[lifecycle(name = "TotalLifecycle")]
     total: ValueLane<i32>,
+    #[lifecycle(name = "ActionLifecycle")]
     action: CommandLane<String>,
 }
 
@@ -135,6 +138,13 @@ struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
 
+impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
+    fn create(config: &TestAgentConfig) -> Self {
+        let event_handler = EventCollectorHandler(config.collector.clone());
+        ActionLifecycle { event_handler }
+    }
+}
+
 async fn action_on_command<Context>(
     lifecycle: &ActionLifecycle,
     command: String,
@@ -171,6 +181,13 @@ async fn action_on_command<Context>(
 )]
 struct DataLifecycle {
     event_handler: EventCollectorHandler,
+}
+
+impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
+    fn create(config: &TestAgentConfig) -> Self {
+        let event_handler = EventCollectorHandler(config.collector.clone());
+        DataLifecycle { event_handler }
+    }
 }
 
 impl StatefulLaneLifecycleBase for DataLifecycle {
@@ -228,6 +245,13 @@ struct TotalLifecycle {
     event_handler: EventCollectorHandler,
 }
 
+impl LaneLifecycle<TestAgentConfig> for TotalLifecycle {
+    fn create(config: &TestAgentConfig) -> Self {
+        let event_handler = EventCollectorHandler(config.collector.clone());
+        TotalLifecycle { event_handler }
+    }
+}
+
 impl StatefulLaneLifecycleBase for TotalLifecycle {
     type WatchStrategy = Queue;
 
@@ -280,77 +304,6 @@ impl TestAgentConfig {
                 event_handler: EventCollectorHandler(self.collector.clone()),
             },
         }
-    }
-}
-
-impl SwimAgent<TestAgentConfig> for ReportingAgent {
-    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
-        configuration: &TestAgentConfig,
-    ) -> (
-        Self,
-        Vec<Box<dyn LaneTasks<Self, Context>>>,
-        HashMap<String, Box<dyn LaneIo<Context>>>,
-    )
-    where
-        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
-    {
-        let TestAgentConfig {
-            collector,
-            command_buffer_size,
-        } = configuration;
-
-        let event_handler = EventCollectorHandler(collector.clone());
-
-        // Command lifecycle
-        let (action, event_stream) = model::action::make_lane_model(*command_buffer_size);
-        let action_tasks = ActionLifecycleTask {
-            lifecycle: ActionLifecycle {
-                event_handler: event_handler.clone(),
-            },
-            name: "action".into(),
-            event_stream,
-            projection: |agent: &ReportingAgent| &agent.action,
-        };
-
-        // Value lifecycle
-        let total_lifecycle = TotalLifecycle {
-            event_handler: event_handler.clone(),
-        };
-        let (total, event_stream) =
-            model::value::make_lane_model(0, total_lifecycle.create_strategy());
-
-        let total_tasks = TotalLifecycleTask {
-            lifecycle: total_lifecycle,
-            name: "total".into(),
-            event_stream,
-            projection: |agent: &ReportingAgent| &agent.total,
-        };
-
-        // Map lifecycle
-        let data_lifecycle = DataLifecycle {
-            event_handler: event_handler.clone(),
-        };
-        let (data, event_stream) = model::map::make_lane_model(data_lifecycle.create_strategy());
-
-        let data_tasks = DataLifecycleTask {
-            lifecycle: data_lifecycle,
-            name: "data".into(),
-            event_stream,
-            projection: |agent: &ReportingAgent| &agent.data,
-        };
-
-        let agent = ReportingAgent {
-            data,
-            total,
-            action,
-        };
-
-        let tasks = vec![
-            data_tasks.boxed(),
-            total_tasks.boxed(),
-            action_tasks.boxed(),
-        ];
-        (agent, tasks, HashMap::new())
     }
 }
 
