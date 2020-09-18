@@ -14,19 +14,16 @@
 
 use super::*;
 
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-
 #[tokio::test]
 async fn send_left() {
     let left: Vec<i32> = vec![];
     let right: Vec<String> = vec![];
     let mut either_sink = EitherSink::new(left, right);
     let result = either_sink.send_item(Either::Left(7)).await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
     let expected: Vec<i32> = vec![7];
-    assert_that!(&either_sink.left, eq(&expected));
-    assert_that!(&either_sink.right, empty());
+    assert_eq!(&either_sink.left, &expected);
+    assert!(either_sink.right.is_empty());
 }
 
 #[tokio::test]
@@ -37,10 +34,10 @@ async fn send_right() {
     let result = either_sink
         .send_item(Either::Right("hello".to_string()))
         .await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
     let expected: Vec<String> = vec!["hello".to_string()];
-    assert_that!(&either_sink.left, empty());
-    assert_that!(&either_sink.right, eq(&expected));
+    assert!(either_sink.left.is_empty());
+    assert_eq!(&either_sink.right, &expected);
 }
 
 #[tokio::test]
@@ -49,15 +46,15 @@ async fn send_both() {
     let right: Vec<String> = vec![];
     let mut either_sink = EitherSink::new(left, right);
     let result = either_sink.send_item(Either::Left(7)).await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
     let result = either_sink
         .send_item(Either::Right("hello".to_string()))
         .await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
     let expected_left: Vec<i32> = vec![7];
-    assert_that!(&either_sink.left, eq(&expected_left));
+    assert_eq!(&either_sink.left, &expected_left);
     let expected_right: Vec<String> = vec!["hello".to_string()];
-    assert_that!(&either_sink.right, eq(&expected_right));
+    assert_eq!(&either_sink.right, &expected_right);
 }
 
 #[tokio::test]
@@ -75,11 +72,11 @@ async fn send_interleaved() {
 
     for input in inputs.into_iter() {
         let result = either_sink.send_item(input).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let expected_left: Vec<i32> = vec![12, -1];
-    assert_that!(&either_sink.left, eq(&expected_left));
+    assert_eq!(&either_sink.left, &expected_left);
     let expected_right: Vec<String> = vec!["hello".to_string(), "world".to_string()];
-    assert_that!(&either_sink.right, eq(&expected_right));
+    assert_eq!(&either_sink.right, &expected_right);
 }

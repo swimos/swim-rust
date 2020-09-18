@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-
 use tokio::sync::mpsc;
 
 use super::*;
@@ -97,12 +94,12 @@ async fn single_pass_through() {
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
     let result = watcher.send_item(update(1, 5)).await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), eq(Some(update(1, 5))));
+    assert_eq!(output.unwrap(), Some(update(1, 5)));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -127,14 +124,14 @@ async fn multiple_one_key() {
 
     for m in modifications.into_iter() {
         let result = watcher.send_item(m).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
 
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), ok());
+    assert!(output.unwrap().is_ok());
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -160,14 +157,14 @@ async fn multiple_keys() {
 
     for m in modifications.into_iter() {
         let result = watcher.send_item(m).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
 
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), ok());
+    assert!(output.unwrap().is_ok());
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -192,14 +189,14 @@ async fn multiple_keys_multiple_values() {
 
     for m in modifications.into_iter() {
         let result = watcher.send_item(m).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
 
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), ok());
+    assert!(output.unwrap().is_ok());
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -218,12 +215,12 @@ async fn single_clear() {
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
     let result = watcher.send_item(UntypedMapModification::Clear).await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), eq(Some(UntypedMapModification::Clear)));
+    assert_eq!(output.unwrap(), Some(UntypedMapModification::Clear));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -242,12 +239,12 @@ async fn single_take() {
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
     let result = watcher.send_item(UntypedMapModification::Take(4)).await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), eq(Some(UntypedMapModification::Take(4))));
+    assert_eq!(output.unwrap(), Some(UntypedMapModification::Take(4)));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -266,12 +263,12 @@ async fn single_skip() {
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
     let result = watcher.send_item(UntypedMapModification::Skip(4)).await;
-    assert_that!(result, ok());
+    assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), eq(Some(UntypedMapModification::Skip(4))));
+    assert_eq!(output.unwrap(), Some(UntypedMapModification::Skip(4)));
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -303,14 +300,14 @@ async fn special_action_ordering() {
 
     for m in modifications.into_iter() {
         let result = watcher.send_item(m).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
 
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), ok());
+    assert!(output.unwrap().is_ok());
 }
 
 #[tokio::test(threaded_scheduler)]
@@ -340,12 +337,12 @@ async fn overflow_active_keys() {
 
     for m in modifications.into_iter() {
         let result = watcher.send_item(m).await;
-        assert_that!(result, ok());
+        assert!(result.is_ok());
     }
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
 
-    assert_that!(&output, ok());
+    assert!(output.is_ok());
 
-    assert_that!(output.unwrap(), ok());
+    assert!(output.unwrap().is_ok());
 }
