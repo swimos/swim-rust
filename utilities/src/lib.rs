@@ -23,6 +23,7 @@ pub mod iteratee;
 pub mod lru_cache;
 pub mod num;
 pub mod ptr;
+pub mod route_pattern;
 pub mod sync;
 pub mod trace;
 
