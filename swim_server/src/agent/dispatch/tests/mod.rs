@@ -24,13 +24,13 @@ use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::future::{join, join3, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::{mpsc, watch, Barrier};
-use std::num::NonZeroUsize;
 
 mod mock;
 

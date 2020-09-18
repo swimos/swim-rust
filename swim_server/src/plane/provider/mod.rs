@@ -35,9 +35,9 @@ pub struct AgentProvider<Agent, Config, Lifecycle> {
 
 impl<Agent, Config, Lifecycle> AgentProvider<Agent, Config, Lifecycle>
 where
-    Config: Debug,
-    Agent: SwimAgent<Config> + Debug,
-    Lifecycle: AgentLifecycle<Agent> + Debug,
+    Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
+    Config: Send + Sync + Clone + Debug + 'static,
+    Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
 {
     pub fn new(configuration: Config, lifecycle: Lifecycle) -> Self {
         AgentProvider {
@@ -45,6 +45,39 @@ where
             configuration,
             lifecycle,
         }
+    }
+
+    pub fn run<Clk, Envelopes, Router>(
+        &self,
+        uri: String,
+        parameters: HashMap<String, String>,
+        execution_config: AgentExecutionConfig,
+        clock: Clk,
+        incoming_envelopes: Envelopes,
+        router: Router,
+    ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
+    where
+        Clk: Clock,
+        Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
+        Router: ServerRouter + Clone + 'static,
+    {
+        let AgentProvider {
+            configuration,
+            lifecycle,
+            ..
+        } = self;
+
+        let parameters =
+            AgentParameters::new(configuration.clone(), execution_config, uri, parameters);
+
+        let (agent, task) = crate::agent::run_agent(
+            lifecycle.clone(),
+            clock,
+            parameters,
+            incoming_envelopes,
+            router,
+        );
+        (agent, task.boxed())
     }
 }
 
@@ -67,22 +100,13 @@ where
         incoming_envelopes: Envelopes,
         router: Router,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
-        let AgentProvider {
-            configuration,
-            lifecycle,
-            ..
-        } = self;
-
-        let parameters =
-            AgentParameters::new(configuration.clone(), execution_config, uri, parameters);
-
-        let (agent, task) = crate::agent::run_agent(
-            lifecycle.clone(),
-            clock,
+        self.run(
+            uri,
             parameters,
+            execution_config,
+            clock,
             incoming_envelopes,
             router,
-        );
-        (agent, task.boxed())
+        )
     }
 }

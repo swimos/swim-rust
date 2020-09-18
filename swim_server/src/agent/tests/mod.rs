@@ -28,9 +28,10 @@ use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig}
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
-    ActionLifecycleTasks, AgentContext, AgentParameters, CommandLifecycleTasks, Lane, LaneTasks,
-    LifecycleTasks, MapLifecycleTasks, ValueLifecycleTasks,
+    ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
+    MapLifecycleTasks, ValueLifecycleTasks,
 };
+use crate::plane::provider::AgentProvider;
 use futures::future::{join, BoxFuture};
 use futures::{Stream, StreamExt};
 use std::collections::HashMap;
@@ -709,15 +710,16 @@ async fn agent_loop() {
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
-    let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
+    let provider = AgentProvider::new(config, agent_lifecycle);
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
-    let (_, agent_proc) = super::run_agent(
-        agent_lifecycle,
+    let (_, agent_proc) = provider.run(
+        uri,
+        HashMap::new(),
+        exec_config,
         clock.clone(),
-        parameters,
         envelope_rx,
         SingleChannelRouter::new(DiscardingSender::default()),
     );

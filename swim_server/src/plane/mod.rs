@@ -15,7 +15,7 @@
 pub mod context;
 pub mod error;
 pub mod lifecycle;
-mod provider;
+pub(crate) mod provider;
 mod router;
 pub mod spec;
 

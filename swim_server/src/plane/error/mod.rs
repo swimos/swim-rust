@@ -16,8 +16,8 @@
 mod tests;
 
 use crate::routing::RoutingAddr;
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
 pub struct NoAgentAtRoute(pub String);

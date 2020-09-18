@@ -15,9 +15,9 @@
 use crate::agent::lane::channels::update::LaneUpdate;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::routing::RoutingAddr;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 use utilities::future::retryable::strategy::RetryStrategy;
-use std::num::NonZeroUsize;
 
 pub mod task;
 pub mod update;

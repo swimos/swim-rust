@@ -30,5 +30,4 @@ fn unresolvable_display() {
     let string = err.to_string();
 
     assert_eq!(string, "No active endpoint with ID: Local(4)");
-
 }

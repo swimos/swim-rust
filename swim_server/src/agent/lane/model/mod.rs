@@ -16,12 +16,12 @@ use crate::agent::AttachError;
 use futures::Stream;
 use std::any::Any;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use swim_common::topic::{
     BroadcastSender, BroadcastTopic, MpscTopic, Topic, TransformedTopic, WatchTopic,
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use utilities::future::TransformMut;
-use std::num::NonZeroUsize;
 
 pub mod action;
 pub mod map;
