@@ -372,6 +372,7 @@ fn route_for<'a, Clk>(
     route: &str,
     routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter>],
 ) -> Result<(&'a PlaneAgentRoute<Clk>, HashMap<String, String>), NoAgentAtRoute> {
+    //TODO This could be a lot more efficient though it would probably only matter for planes with a large number of routes.
     let matched = routes
         .iter()
         .filter_map(
