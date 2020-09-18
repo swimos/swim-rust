@@ -40,6 +40,10 @@ pub struct AgentExecutionConfig {
     pub max_fatal_uplink_errors: usize,
     /// Maximum number of times a lane will attempt to start a new uplink before failing.
     pub max_uplink_start_attempts: NonZeroUsize,
+    /// Size of the buffer used by the agent envelope dispatcher to communicate with lanes.
+    pub lane_buffer: NonZeroUsize,
+    /// Buffer size for the task that attaches lanes to the dispatcher.
+    pub lane_attachment_buffer: NonZeroUsize,
     /// Number of values to process before yielding to the runtime.
     pub yield_after: NonZeroUsize,
     /// Retry strategy to use for transactions on lanes.
@@ -60,6 +64,8 @@ impl Default for AgentExecutionConfig {
             uplink_err_buffer: default_buffer,
             max_fatal_uplink_errors: 0,
             max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
+            lane_buffer: default_buffer,
+            lane_attachment_buffer: default_buffer,
             yield_after: NonZeroUsize::new(2048).unwrap(),
             retry_strategy: RetryStrategy::default(),
             cleanup_timeout: Duration::from_secs(30),

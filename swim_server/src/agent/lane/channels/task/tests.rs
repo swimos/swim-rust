@@ -376,6 +376,8 @@ fn make_config() -> AgentExecutionConfig {
         uplink_err_buffer: default_buffer(),
         max_fatal_uplink_errors: 1,
         max_uplink_start_attempts: default_buffer(),
+        lane_buffer: default_buffer(),
+        lane_attachment_buffer: default_buffer(),
         yield_after: yield_after(),
         retry_strategy: RetryStrategy::default(),
         cleanup_timeout: Duration::from_secs(5),
