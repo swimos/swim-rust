@@ -326,14 +326,14 @@ pub async fn run_plane<Clk, S>(
                         {
                             Ok(tx)
                         } else {
-                            Err(Unresolvable)
+                            Err(Unresolvable(id))
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
                         }
                     } else {
                         //TODO Attach external routing here.
-                        if request.send_err(Unresolvable).is_err() {
+                        if request.send_err(Unresolvable(id)).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
                         }
                     }

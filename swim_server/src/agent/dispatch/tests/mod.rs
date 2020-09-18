@@ -23,7 +23,6 @@ use crate::agent::LaneIo;
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::future::{join, join3, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,6 +30,7 @@ use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::{mpsc, watch, Barrier};
+use std::num::NonZeroUsize;
 
 mod mock;
 

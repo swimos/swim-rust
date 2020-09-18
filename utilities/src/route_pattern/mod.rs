@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use percent_encoding::percent_decode_str;
-use pin_utils::core_reexport::fmt::Formatter;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use url::Url;
 
 #[cfg(test)]

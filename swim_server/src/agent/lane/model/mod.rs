@@ -14,7 +14,6 @@
 
 use crate::agent::AttachError;
 use futures::Stream;
-use pin_utils::core_reexport::num::NonZeroUsize;
 use std::any::Any;
 use std::marker::PhantomData;
 use swim_common::topic::{
@@ -22,6 +21,7 @@ use swim_common::topic::{
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use utilities::future::TransformMut;
+use std::num::NonZeroUsize;
 
 pub mod action;
 pub mod map;

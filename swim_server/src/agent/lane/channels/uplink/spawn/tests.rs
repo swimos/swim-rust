@@ -24,7 +24,6 @@ use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -38,6 +37,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use std::num::NonZeroUsize;
 
 const INIT: i32 = 42;
 
