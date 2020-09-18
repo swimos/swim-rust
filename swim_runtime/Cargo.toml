@@ -19,5 +19,4 @@ wasm-timer = "0.2.4"
 wasm-bindgen-futures = "0.4.14"
 
 [dev-dependencies]
-hamcrest2 = "0.3"
 tokio = { version = "0.2.21", features = [ "rt-threaded", "macros"] }
