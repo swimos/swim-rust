@@ -12,13 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::plane::error::{NoAgentAtRoute, Unresolvable};
 use crate::routing::RoutingAddr;
 
 #[test]
-fn routing_addr_display() {
-    let string = format!("{}", RoutingAddr::remote(0x1));
-    assert_eq!(string, "Remote(1)");
+fn no_agent_at_route_display() {
+    let err = NoAgentAtRoute("/test".to_string());
+    let string = err.to_string();
 
-    let string = format!("{}", RoutingAddr::local(0x1a));
-    assert_eq!(string, "Local(1A)");
+    assert_eq!(string, "No agent at route: '/test'");
+}
+
+#[test]
+fn unresolvable_display() {
+    let err = Unresolvable(RoutingAddr::local(4));
+
+    let string = err.to_string();
+
+    assert_eq!(string, "No active endpoint with ID: Local(4)");
+
 }

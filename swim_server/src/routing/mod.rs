@@ -57,8 +57,8 @@ impl RoutingAddr {
 impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote Endpoint ({:X})", id),
-            RoutingAddr(Location::Local(id)) => write!(f, "Local consumer ({:X})", id),
+            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
+            RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
         }
     }
 }

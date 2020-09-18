@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::routing::RoutingAddr;
 use std::fmt::{Display, Formatter};
 use std::error::Error;
@@ -22,7 +25,7 @@ pub struct NoAgentAtRoute(pub String);
 impl Display for NoAgentAtRoute {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let NoAgentAtRoute(route) = self;
-        write!(f, "No agent at route: {}", route)
+        write!(f, "No agent at route: '{}'", route)
     }
 }
 
@@ -34,7 +37,7 @@ pub struct Unresolvable(pub RoutingAddr);
 impl Display for Unresolvable {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Unresolvable(addr) = self;
-        write!(f, "No active endpoints with ID: {}", addr)
+        write!(f, "No active endpoint with ID: {}", addr)
     }
 }
 
