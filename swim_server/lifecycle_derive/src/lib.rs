@@ -3,10 +3,13 @@ use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::quote;
+use std::collections::HashMap;
 use syn::punctuated::Punctuated;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, Path, Type, TypePath};
 
 mod args;
+#[macro_use]
+mod utils;
 
 fn get_lifecycle_task_ident(name: &str) -> Ident {
     Ident::new(&format!("{}Task", name), Span::call_site())
@@ -427,9 +430,16 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         }
     };
 
+    let agent_name = args.ident;
+
+    // Todo add param for config.
+    let config_name = Ident::new("TestAgentConfig", Span::call_site());
+
+    // Extract lifecycles info from the agent
+    let mut lifecycles: HashMap<String, (String, String)> = HashMap::new();
     for arg in args.data.take_struct().unwrap().iter() {
         let lane_name = arg.ident.clone().unwrap().to_string();
-        // let lane_type = arg.ty
+        let lifecycle_name = &arg.name.clone().unwrap();
 
         if let Type::Path(TypePath {
             path: Path { segments, .. },
@@ -437,19 +447,99 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         }) = &arg.ty
         {
             let lane_type = segments.first().unwrap().ident.to_string();
+            lifecycles.insert(lane_name, (lifecycle_name.to_string(), lane_type));
         }
+    }
+    println!("{:?}", lifecycles);
 
-        let lifecycle_name = &arg.name.clone().unwrap();
-        let lifecycle_task_name = get_lifecycle_task_ident(lifecycle_name);
+    let mut lifecycle_asts: Vec<TokenStream> = Vec::new();
 
-        println!("{:?}", &lifecycle_task_name);
-        break;
+    for (lane_name, (lifecycle_name, lane_type)) in lifecycles {
+        match lane_type.as_str() {
+            "CommandLane" => {
+                println!("Command")
+            },
+            "ValueLane" => {
+                println!("Value")
+            },
+            "MapLane" => {
+                println!("MapLane")
+            },
+            _ => {}
+        }
     }
 
-    let agent_name = args.ident;
+    let map_ast = quote! {
+        let data_lifecycle = DataLifecycle::create(configuration);
+        let (data, event_stream) = model::map::make_lane_model(data_lifecycle.create_strategy());
 
-    // Todo add param for config.
-    let config_name = Ident::new("TestAgentConfig", Span::call_site());
+        let data_tasks = DataLifecycleTask {
+            lifecycle: data_lifecycle,
+            name: "data".into(),
+            event_stream,
+            projection: |agent: &#agent_name| &agent.data,
+        };
+    };
+
+    let value_ast = quote! {
+        let total_lifecycle = TotalLifecycle::create(configuration);
+        let (total, event_stream) =
+            model::value::make_lane_model(0, total_lifecycle.create_strategy());
+
+        let total_tasks = TotalLifecycleTask {
+            lifecycle: total_lifecycle,
+            name: "total".into(),
+            event_stream,
+            projection: |agent: &#agent_name| &agent.total,
+        };
+    };
+
+    let command_ast = quote! {
+        let action_lifecycle = ActionLifecycle::create(configuration);
+        let (action, event_stream) = model::action::make_lane_model(configuration.command_buffer_size.clone());
+        let action_tasks = ActionLifecycleTask {
+            lifecycle: action_lifecycle,
+            name: "action".into(),
+            event_stream,
+            projection: |agent: &#agent_name| &agent.action,
+        };
+    };
+
+    let lifecycles_ast = create_lifecycles_ast!(map_ast, value_ast, command_ast);
+
+    let data_taskss = Ident::new("data_tasks", Span::call_site());
+    let total_taskss = Ident::new("total_tasks", Span::call_site());
+    let action_taskss = Ident::new("action_tasks", Span::call_site());
+
+    let tasks_ast = create_tasks_ast!(data_taskss, total_taskss, action_taskss);
+
+    let datas = Ident::new("data", Span::call_site());
+    let totals = Ident::new("total", Span::call_site());
+    let actions = Ident::new("action", Span::call_site());
+
+    let agent_ast = create_agent_ast!(agent_name, datas, totals, actions);
+
+    //let lifecycles_ast = quote!{
+    //      #map_ast
+    //      #value_ast
+    //      #command_ast
+    // };
+
+    // let agent_ast = quote! {
+    //     #agent_name {
+    //         data,
+    //         total,
+    //         action,
+    //     };
+    // };
+
+    // let tasks_ast = quote! {
+    //     vec![
+    //             data_tasks.boxed(),
+    //             total_tasks.boxed(),
+    //             action_tasks.boxed(),
+    //     ];
+    // };
 
     let output_ast = quote! {
 
@@ -466,50 +556,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
                     Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
             {
 
-                // Command lifecycle
-                let action_lifecycle = ActionLifecycle::create(configuration);
-                let (action, event_stream) = model::action::make_lane_model(configuration.command_buffer_size.clone());
-                let action_tasks = ActionLifecycleTask {
-                    lifecycle: action_lifecycle,
-                    name: "action".into(),
-                    event_stream,
-                    projection: |agent: &#agent_name| &agent.action,
-                };
-
-                // Value lifecycle
-                let total_lifecycle = TotalLifecycle::create(configuration);
-                let (total, event_stream) =
-                    model::value::make_lane_model(0, total_lifecycle.create_strategy());
-
-                let total_tasks = TotalLifecycleTask {
-                    lifecycle: total_lifecycle,
-                    name: "total".into(),
-                    event_stream,
-                    projection: |agent: &#agent_name| &agent.total,
-                };
-
-                // Map lifecycle
-                let data_lifecycle = DataLifecycle::create(configuration);
-                let (data, event_stream) = model::map::make_lane_model(data_lifecycle.create_strategy());
-
-                let data_tasks = DataLifecycleTask {
-                    lifecycle: data_lifecycle,
-                    name: "data".into(),
-                    event_stream,
-                    projection: |agent: &#agent_name| &agent.data,
-                };
-
-                let agent = #agent_name {
-                    data,
-                    total,
-                    action,
-                };
-
-                let tasks = vec![
-                    data_tasks.boxed(),
-                    total_tasks.boxed(),
-                    action_tasks.boxed(),
-                ];
+                #lifecycles_ast
+                let agent = #agent_ast
+                let tasks = #tasks_ast
 
                 (agent, tasks, HashMap::new())
             }
