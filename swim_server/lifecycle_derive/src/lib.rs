@@ -116,7 +116,8 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                         let model = projection(context.agent()).clone();
                         let mut events = event_stream.take_until(context.agent_stop_event());
-                        pin_utils::pin_mut!(events);
+                        let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                         while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
 
                         let commanded = swim_server::agent::COMMANDED;
@@ -212,7 +213,8 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_utils::pin_mut!(events);
+                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                     while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
                         tracing::event!(tracing::Level::TRACE, swim_server::agent::COMMANDED, ?command);
 
@@ -309,7 +311,8 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_utils::pin_mut!(events);
+                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                     while let std::option::Option::Some(event) = events.next().await {
                         tracing_futures::Instrument::instrument(
                                 lifecycle.#on_event_func(&event, &model, &context),
@@ -397,7 +400,8 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_utils::pin_mut!(events);
+                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                     while let std::option::Option::Some(event) = events.next().await {
                         tracing_futures::Instrument::instrument(
                                 lifecycle.#on_event_func(&event, &model, &context),
