@@ -22,6 +22,9 @@ use swim_common::sink::item::{ItemSink, MpscSend};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(test)]
+mod tests;
+
 pub struct PlaneRouterSender {
     tag: RoutingAddr,
     inner: mpsc::Sender<TaggedEnvelope>,

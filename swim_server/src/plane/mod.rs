@@ -131,6 +131,7 @@ type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable>>;
 type RoutesRequest = Request<HashSet<String>>;
 
+#[derive(Debug)]
 enum PlaneRequest {
     Agent {
         name: String,
