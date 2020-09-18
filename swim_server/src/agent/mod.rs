@@ -92,12 +92,14 @@ const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.
 
 #[derive(Debug)]
 pub struct AgentResult {
+    pub route: String,
     pub dispatcher_errors: DispatcherErrors,
     pub failed: bool,
 }
 
 impl AgentResult {
     fn from(
+        route: String,
         result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
     ) -> Self {
         let (errs, failed) = match result {
@@ -106,6 +108,7 @@ impl AgentResult {
             _ => (Default::default(), true),
         };
         AgentResult {
+            route,
             dispatcher_errors: errs,
             failed,
         }
@@ -219,7 +222,8 @@ where
             );
         }
 
-        let dispatcher = AgentDispatcher::new(uri, execution_config, context.clone(), io_providers);
+        let dispatcher =
+            AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
 
         let (result_tx, result_rx) = oneshot::channel();
 
@@ -241,7 +245,7 @@ where
             .map(|_| ()) //Never is an empty type so we can discard the errors.
             .await;
 
-        AgentResult::from(result_rx.await)
+        AgentResult::from(uri, result_rx.await)
     }
     .instrument(span);
     (agent_cpy, task)

@@ -27,7 +27,7 @@ use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use either::Either;
-use futures::future::BoxFuture;
+use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
 use pin_utils::pin_mut;
@@ -39,6 +39,8 @@ use std::sync::{Arc, Weak};
 use swim_common::request::Request;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
@@ -248,6 +250,11 @@ impl<Clk: Clock> RouteResolver<Clk> {
     }
 }
 
+const DROPPED_REQUEST: &str = "A plane request was dropped before it could be fulfilled.";
+const AGENT_TASK_FAILED: &str = "An agent task failed.";
+const PLANE_START_TASK: &str = "Plane on_start event task.";
+const PLANE_EVENT_LOOP: &str = "Plane main event loop.";
+
 pub async fn run_plane<Clk, S>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
@@ -267,87 +274,96 @@ pub async fn run_plane<Clk, S>(
 
     let PlaneSpec { routes, lifecycle } = spec;
 
-    if let Some(lc) = lifecycle {
-        lc.on_start(&context).await;
+    let start_task = async move {
+        if let Some(lc) = lifecycle {
+            lc.on_start(&context).await;
+        }
     }
+    .instrument(span!(Level::DEBUG, PLANE_START_TASK));
 
-    let mut resolver = RouteResolver {
-        clock,
-        execution_config,
-        routes,
-        router_fac: PlaneRouterFactory::new(context_tx),
-        stop_trigger,
-        active_routes: PlaneActiveRoutes::default(),
-        counter: 0,
-    };
-
-    loop {
-        let req_or_res = if spawner.is_empty() {
-            requests.next().await.map(Either::Left)
-        } else {
-            select_biased! {
-                request = requests.next() => request.map(Either::Left),
-                result = spawner.next() => result.map(Either::Right),
-            }
+    let event_loop = async move {
+        let mut resolver = RouteResolver {
+            clock,
+            execution_config,
+            routes,
+            router_fac: PlaneRouterFactory::new(context_tx),
+            stop_trigger,
+            active_routes: PlaneActiveRoutes::default(),
+            counter: 0,
         };
 
-        match req_or_res {
-            Some(Either::Left(PlaneRequest::Agent { name, request })) => {
-                let result = if let Some(agent) = resolver
-                    .active_routes
-                    .get_endpoint_for_route(name.as_str())
-                    .and_then(|ep| ep.agent_handle.upgrade())
-                {
-                    Ok(agent)
-                } else {
-                    resolver.try_open_route(name.clone(), spawner.deref())
-                };
-                if request.send(result).is_err() {
-                    //TODO Log error.
+        loop {
+            let req_or_res = if spawner.is_empty() {
+                requests.next().await.map(Either::Left)
+            } else {
+                select_biased! {
+                    request = requests.next() => request.map(Either::Left),
+                    result = spawner.next() => result.map(Either::Right),
                 }
-            }
-            Some(Either::Left(PlaneRequest::Endpoint { id, request })) => {
-                if id.is_local() {
-                    let result = if let Some(tx) = resolver
+            };
+
+            match req_or_res {
+                Some(Either::Left(PlaneRequest::Agent { name, request })) => {
+                    let result = if let Some(agent) = resolver
                         .active_routes
-                        .get_endpoint(&id)
-                        .map(|ep| ep.channel.clone())
+                        .get_endpoint_for_route(name.as_str())
+                        .and_then(|ep| ep.agent_handle.upgrade())
                     {
-                        Ok(tx)
+                        Ok(agent)
                     } else {
-                        Err(Unresolvable)
+                        resolver.try_open_route(name.clone(), spawner.deref())
                     };
                     if request.send(result).is_err() {
-                        //TODO Log error.
-                    }
-                } else {
-                    //TODO Attach external routing here.
-                    if request.send_err(Unresolvable).is_err() {
-                        //TODO Log error.
+                        event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-            }
-            Some(Either::Left(PlaneRequest::Routes(request))) => {
-                if request
-                    .send(resolver.active_routes.routes().map(Clone::clone).collect())
-                    .is_err()
-                {
-                    //TODO Log error.
+                Some(Either::Left(PlaneRequest::Endpoint { id, request })) => {
+                    if id.is_local() {
+                        let result = if let Some(tx) = resolver
+                            .active_routes
+                            .get_endpoint(&id)
+                            .map(|ep| ep.channel.clone())
+                        {
+                            Ok(tx)
+                        } else {
+                            Err(Unresolvable)
+                        };
+                        if request.send(result).is_err() {
+                            event!(Level::WARN, DROPPED_REQUEST);
+                        }
+                    } else {
+                        //TODO Attach external routing here.
+                        if request.send_err(Unresolvable).is_err() {
+                            event!(Level::WARN, DROPPED_REQUEST);
+                        }
+                    }
                 }
-            }
-            Some(Either::Right(AgentResult {
-                dispatcher_errors: _,
-                failed,
-            })) => {
-                if failed {
-                    //TODO Log failed agents.
+                Some(Either::Left(PlaneRequest::Routes(request))) => {
+                    if request
+                        .send(resolver.active_routes.routes().map(Clone::clone).collect())
+                        .is_err()
+                    {
+                        event!(Level::WARN, DROPPED_REQUEST);
+                    }
                 }
-            }
-            _ => {
-                break;
+                Some(Either::Right(AgentResult {
+                    route,
+                    dispatcher_errors,
+                    failed,
+                })) => {
+                    if failed {
+                        event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_errors);
+                    }
+                }
+                _ => {
+                    break;
+                }
             }
         }
     }
+    .instrument(span!(Level::DEBUG, PLANE_EVENT_LOOP));
+
+    join(start_task, event_loop).await;
 }
 
 type PlaneAgentRoute<Clk> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter>;
