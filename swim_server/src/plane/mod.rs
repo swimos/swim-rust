@@ -13,37 +13,37 @@
 // limitations under the License.
 
 pub mod context;
+pub mod error;
 pub mod lifecycle;
+mod provider;
+mod router;
+pub mod spec;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::{AgentParameters, AgentResult, SwimAgent};
-use crate::plane::context::{NoAgentAtRoute, PlaneContext};
-use crate::plane::lifecycle::PlaneLifecycle;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::agent::AgentResult;
+use crate::plane::context::PlaneContext;
+use crate::plane::error::{NoAgentAtRoute, Unresolvable};
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
+use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::routing::{RoutingAddr, TaggedEnvelope};
 use either::Either;
 use futures::future::BoxFuture;
-use futures::{select_biased, FutureExt, Stream, StreamExt};
+use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
-use std::marker::PhantomData;
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSink, MpscSend};
-use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
-pub trait AgentRoute<Clk, Envelopes, Router>: Debug {
+trait AgentRoute<Clk, Envelopes, Router>: Debug {
     fn run_agent(
         &self,
         uri: String,
@@ -65,167 +65,6 @@ pub trait AgentRoute<Clk, Envelopes, Router>: Debug {
 type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, Router>>;
 
 #[derive(Debug)]
-struct AgentProvider<Agent, Config, Lifecycle> {
-    _agent_type: PhantomData<fn(Config) -> Agent>,
-    configuration: Config,
-    lifecycle: Lifecycle,
-}
-
-impl<Agent, Config, Lifecycle> AgentProvider<Agent, Config, Lifecycle>
-where
-    Config: Debug,
-    Agent: SwimAgent<Config> + Debug,
-    Lifecycle: AgentLifecycle<Agent> + Debug,
-{
-    fn new(configuration: Config, lifecycle: Lifecycle) -> Self {
-        AgentProvider {
-            _agent_type: PhantomData,
-            configuration,
-            lifecycle,
-        }
-    }
-}
-
-impl<Clk, Envelopes, Router, Agent, Config, Lifecycle> AgentRoute<Clk, Envelopes, Router>
-    for AgentProvider<Agent, Config, Lifecycle>
-where
-    Clk: Clock,
-    Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
-    Router: ServerRouter + Clone + 'static,
-    Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
-    Config: Send + Sync + Clone + Debug + 'static,
-    Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
-{
-    fn run_agent(
-        &self,
-        uri: String,
-        parameters: HashMap<String, String>,
-        execution_config: AgentExecutionConfig,
-        clock: Clk,
-        incoming_envelopes: Envelopes,
-        router: Router,
-    ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
-        let AgentProvider {
-            configuration,
-            lifecycle,
-            ..
-        } = self;
-
-        let parameters =
-            AgentParameters::new(configuration.clone(), execution_config, uri, parameters);
-
-        let (agent, task) = crate::agent::run_agent(
-            lifecycle.clone(),
-            clock,
-            parameters,
-            incoming_envelopes,
-            router,
-        );
-        (agent, task.boxed())
-    }
-}
-
-#[derive(Debug)]
-struct RouteSpec<Clk, Envelopes, Router> {
-    pattern: RoutePattern,
-    agent_route: BoxAgentRoute<Clk, Envelopes, Router>,
-}
-
-impl<Clk, Envelopes, Router> RouteSpec<Clk, Envelopes, Router> {
-    fn new(pattern: RoutePattern, agent_route: BoxAgentRoute<Clk, Envelopes, Router>) -> Self {
-        RouteSpec {
-            pattern,
-            agent_route,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct PlaneSpec<Clk, Envelopes, Router> {
-    routes: Vec<RouteSpec<Clk, Envelopes, Router>>,
-    lifecycle: Option<Box<dyn PlaneLifecycle>>,
-}
-
-impl<Clk, Envelopes, Router> PlaneSpec<Clk, Envelopes, Router> {
-    fn routes(&self) -> Vec<RoutePattern> {
-        self.routes
-            .iter()
-            .map(|RouteSpec { pattern, .. }| pattern.clone())
-            .collect()
-    }
-}
-
-#[derive(Debug)]
-pub struct PlaneBuilder<Clk, Envelopes, Router>(PlaneSpec<Clk, Envelopes, Router>);
-
-impl<Clk, Envelopes, Router> Default for PlaneBuilder<Clk, Envelopes, Router> {
-    fn default() -> Self {
-        PlaneBuilder(PlaneSpec {
-            routes: vec![],
-            lifecycle: None,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AmbiguousRoutes(RoutePattern, RoutePattern);
-
-impl Display for AmbiguousRoutes {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Routes '{}' and '{}' are ambiguous.", &self.0, &self.1)
-    }
-}
-
-impl Error for AmbiguousRoutes {}
-
-impl<Clk, Envelopes, Router> PlaneBuilder<Clk, Envelopes, Router>
-where
-    Clk: Clock,
-    Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
-    Router: ServerRouter + Clone + 'static,
-{
-    pub fn add_route<Agent, Config, Lifecycle>(
-        &mut self,
-        route: RoutePattern,
-        config: Config,
-        lifecycle: Lifecycle,
-    ) -> Result<(), AmbiguousRoutes>
-    where
-        Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
-        Config: Send + Sync + Clone + Debug + 'static,
-        Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
-    {
-        let PlaneBuilder(PlaneSpec { routes, .. }) = self;
-        for RouteSpec {
-            pattern: existing_route,
-            ..
-        } in routes.iter()
-        {
-            if RoutePattern::are_ambiguous(existing_route, &route) {
-                return Err(AmbiguousRoutes(existing_route.clone(), route));
-            }
-        }
-        routes.push(RouteSpec::new(
-            route,
-            AgentProvider::new(config, lifecycle).boxed(),
-        ));
-        Ok(())
-    }
-
-    pub fn build(self) -> PlaneSpec<Clk, Envelopes, Router> {
-        self.0
-    }
-
-    pub fn build_with_lifecycle(
-        mut self,
-        custom_lc: Box<dyn PlaneLifecycle>,
-    ) -> PlaneSpec<Clk, Envelopes, Router> {
-        self.0.lifecycle = Some(custom_lc);
-        self.0
-    }
-}
-
-#[derive(Debug)]
 struct LocalEndpoint {
     agent_handle: Weak<dyn Any + Send + Sync>,
     channel: mpsc::Sender<TaggedEnvelope>,
@@ -240,88 +79,6 @@ impl LocalEndpoint {
             agent_handle,
             channel,
         }
-    }
-}
-
-pub struct PlaneRouterSender {
-    tag: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
-}
-
-impl PlaneRouterSender {
-    fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
-        PlaneRouterSender { tag, inner }
-    }
-}
-
-impl<'a> ItemSink<'a, Envelope> for PlaneRouterSender {
-    type Error = RoutingError;
-    type SendFuture = MpscSend<'a, TaggedEnvelope, RoutingError>;
-
-    fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
-        let PlaneRouterSender { tag, inner } = self;
-        MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
-    }
-}
-
-#[derive(Debug)]
-pub struct PlaneRouterFactory {
-    request_sender: mpsc::Sender<PlaneRequest>,
-}
-
-impl PlaneRouterFactory {
-    fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
-        PlaneRouterFactory { request_sender }
-    }
-
-    fn create(&self, tag: RoutingAddr) -> PlaneRouter {
-        PlaneRouter::new(tag, self.request_sender.clone())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PlaneRouter {
-    tag: RoutingAddr,
-    request_sender: mpsc::Sender<PlaneRequest>,
-}
-
-impl PlaneRouter {
-    fn new(tag: RoutingAddr, request_sender: mpsc::Sender<PlaneRequest>) -> Self {
-        PlaneRouter {
-            tag,
-            request_sender,
-        }
-    }
-}
-
-impl ServerRouter for PlaneRouter {
-    type Sender = PlaneRouterSender;
-
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
-        async move {
-            let PlaneRouter {
-                tag,
-                request_sender,
-            } = self;
-            let (tx, rx) = oneshot::channel();
-            if request_sender
-                .send(PlaneRequest::Endpoint {
-                    id: addr,
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(RoutingError::RouterDropped)
-            } else {
-                match rx.await {
-                    Ok(Ok(sender)) => Ok(PlaneRouterSender::new(*tag, sender)),
-                    Ok(Err(_)) => Err(RoutingError::HostUnreachable),
-                    Err(_) => Err(RoutingError::RouterDropped),
-                }
-            }
-        }
-        .boxed()
     }
 }
 
@@ -367,8 +124,6 @@ impl PlaneActiveRoutes {
         self.local_routes.get(route).map(|addr| *addr)
     }*/
 }
-
-struct Unresolvable;
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable>>;

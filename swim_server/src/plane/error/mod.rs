@@ -12,20 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::NoAgentAtRoute;
-use futures::future::BoxFuture;
-use std::any::Any;
-use std::collections::HashSet;
-use std::sync::Arc;
-use utilities::route_pattern::RoutePattern;
+pub struct NoAgentAtRoute(pub String);
 
-pub trait PlaneContext {
-    fn get_agent(
-        &self,
-        route: String,
-    ) -> BoxFuture<'static, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-
-    fn routes(&self) -> &Vec<RoutePattern>;
-
-    fn active_routes(&self) -> BoxFuture<'static, HashSet<String>>;
-}
+pub struct Unresolvable;

@@ -1,0 +1,88 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::{AgentParameters, AgentResult, SwimAgent};
+use crate::plane::AgentRoute;
+use crate::routing::{ServerRouter, TaggedEnvelope};
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream};
+use std::any::Any;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::sync::Arc;
+use swim_runtime::time::clock::Clock;
+
+#[derive(Debug)]
+pub struct AgentProvider<Agent, Config, Lifecycle> {
+    _agent_type: PhantomData<fn(Config) -> Agent>,
+    configuration: Config,
+    lifecycle: Lifecycle,
+}
+
+impl<Agent, Config, Lifecycle> AgentProvider<Agent, Config, Lifecycle>
+where
+    Config: Debug,
+    Agent: SwimAgent<Config> + Debug,
+    Lifecycle: AgentLifecycle<Agent> + Debug,
+{
+    pub fn new(configuration: Config, lifecycle: Lifecycle) -> Self {
+        AgentProvider {
+            _agent_type: PhantomData,
+            configuration,
+            lifecycle,
+        }
+    }
+}
+
+impl<Clk, Envelopes, Router, Agent, Config, Lifecycle> AgentRoute<Clk, Envelopes, Router>
+    for AgentProvider<Agent, Config, Lifecycle>
+where
+    Clk: Clock,
+    Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
+    Router: ServerRouter + Clone + 'static,
+    Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
+    Config: Send + Sync + Clone + Debug + 'static,
+    Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
+{
+    fn run_agent(
+        &self,
+        uri: String,
+        parameters: HashMap<String, String>,
+        execution_config: AgentExecutionConfig,
+        clock: Clk,
+        incoming_envelopes: Envelopes,
+        router: Router,
+    ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let AgentProvider {
+            configuration,
+            lifecycle,
+            ..
+        } = self;
+
+        let parameters =
+            AgentParameters::new(configuration.clone(), execution_config, uri, parameters);
+
+        let (agent, task) = crate::agent::run_agent(
+            lifecycle.clone(),
+            clock,
+            parameters,
+            incoming_envelopes,
+            router,
+        );
+        (agent, task.boxed())
+    }
+}
