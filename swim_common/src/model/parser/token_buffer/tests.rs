@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-
 use crate::model::parser::TokenStr;
 
 use super::*;
@@ -55,16 +52,16 @@ where
     buffer.update(Some((0, 'a')));
     buffer.update(Some((1, 'b')));
 
-    assert_that!(buffer.take_ref(0, 1), eq("a"));
+    assert_eq!(buffer.take_ref(0, 1), "a");
 
     buffer.update(Some((2, 'c')));
     buffer.update(Some((3, 'd')));
 
-    assert_that!(buffer.take_all_ref(2), eq("c"));
+    assert_eq!(buffer.take_all_ref(2), "c");
 
     buffer.update(None);
 
-    assert_that!(buffer.take_all_ref(3), eq("d"));
+    assert_eq!(buffer.take_all_ref(3), "d");
 }
 
 fn take_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
@@ -116,7 +113,7 @@ where
     buffer.update(Some((3, 'd')));
     buffer.update(Some((4, ' ')));
 
-    assert_that!(buffer.take_ref(0, 4), eq("abcd"));
+    assert_eq!(buffer.take_ref(0, 4), "abcd");
 
     buffer.update(Some((5, 'e')));
     buffer.update(Some((6, 'f')));
@@ -125,14 +122,14 @@ where
     buffer.update(Some((8, 'h')));
     buffer.update(Some((9, ' ')));
 
-    assert_that!(buffer.take_all_ref(6), eq("fgh"));
+    assert_eq!(buffer.take_all_ref(6), "fgh");
 
     buffer.update(Some((10, 'i')));
     buffer.update(Some((11, 'j')));
     buffer.mark(true);
     buffer.update(None);
 
-    assert_that!(buffer.take_all_ref(10), eq("ij"));
+    assert_eq!(buffer.take_all_ref(10), "ij");
 }
 
 #[test]

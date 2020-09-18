@@ -18,8 +18,6 @@ mod value {
     use crate::downlink::typed::action::ValueActions;
     use crate::downlink::DownlinkError;
     use futures::future::{ready, Ready};
-    use hamcrest2::assert_that;
-    use hamcrest2::prelude::*;
     use swim_common::model::Value;
     use swim_common::sink::item::ItemSink;
 
@@ -100,7 +98,7 @@ mod value {
         let mut actions = TestValueDl::actions(2);
 
         let n = actions.get().await;
-        assert_that!(n, eq(Ok(2)));
+        assert_eq!(n, Ok(2));
     }
 
     #[tokio::test]
@@ -108,10 +106,10 @@ mod value {
         let mut actions = TestValueDl::actions(2);
 
         let result = actions.set(7).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let n = actions.get().await;
-        assert_that!(n, eq(Ok(7)));
+        assert_eq!(n, Ok(7));
     }
 
     #[tokio::test]
@@ -120,7 +118,7 @@ mod value {
         let mut actions: ValueActions<TestValueDl, String> = ValueActions::new(dl);
 
         let result = actions.set("hello".to_string()).await;
-        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+        assert_eq!(result, Err(DownlinkError::InvalidAction));
     }
 
     #[tokio::test]
@@ -128,10 +126,10 @@ mod value {
         let mut actions = TestValueDl::actions(2);
 
         let result = actions.set_and_forget(7).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let n = actions.get().await;
-        assert_that!(n, eq(Ok(7)));
+        assert_eq!(n, Ok(7));
     }
 
     #[tokio::test]
@@ -139,10 +137,10 @@ mod value {
         let mut actions = TestValueDl::actions(2);
 
         let result = actions.update(|n| n + 2).await;
-        assert_that!(result, eq(Ok(2)));
+        assert_eq!(result, Ok(2));
 
         let n = actions.get().await;
-        assert_that!(n, eq(Ok(4)));
+        assert_eq!(n, Ok(4));
     }
 
     #[tokio::test]
@@ -151,7 +149,7 @@ mod value {
         let mut actions: ValueActions<TestValueDl, Value> = ValueActions::new(dl);
 
         let result = actions.update(|_| Value::Extant).await;
-        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+        assert_eq!(result, Err(DownlinkError::InvalidAction));
     }
 
     #[tokio::test]
@@ -159,10 +157,10 @@ mod value {
         let mut actions = TestValueDl::actions(2);
 
         let result = actions.update_and_forget(|n| n + 2).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let n = actions.get().await;
-        assert_that!(n, eq(Ok(4)));
+        assert_eq!(n, Ok(4));
     }
 }
 
@@ -172,8 +170,6 @@ mod map {
     use crate::downlink::typed::action::MapActions;
     use crate::downlink::DownlinkError;
     use futures::future::{ready, Ready};
-    use hamcrest2::assert_that;
-    use hamcrest2::prelude::*;
     use im::OrdMap;
     use std::sync::Arc;
     use swim_common::model::Value;
@@ -349,11 +345,11 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
 
         let map = result.unwrap().as_ord_map();
 
-        assert_that!(map, eq(make_map()));
+        assert_eq!(map, make_map());
     }
 
     #[tokio::test]
@@ -361,11 +357,11 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.get(2).await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
 
         let map = result.unwrap();
 
-        assert_that!(map, eq(Some(4)));
+        assert_eq!(map, Some(4));
     }
 
     #[tokio::test]
@@ -373,14 +369,14 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.update(4, 8).await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
 
         let map = result.unwrap();
 
-        assert_that!(map, eq(None));
+        assert_eq!(map, None);
 
         let result = actions.get(4).await;
-        assert_that!(result, eq(Ok(Some(8))));
+        assert_eq!(result, Ok(Some(8)));
     }
 
     #[tokio::test]
@@ -389,7 +385,7 @@ mod map {
         let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
 
         let result = actions.update("bad".to_string(), 8).await;
-        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+        assert_eq!(result, Err(DownlinkError::InvalidAction));
     }
 
     #[tokio::test]
@@ -398,7 +394,7 @@ mod map {
         let mut actions: MapActions<TestMapDl, i32, String> = MapActions::new(dl);
 
         let result = actions.update(4, "bad".to_string()).await;
-        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+        assert_eq!(result, Err(DownlinkError::InvalidAction));
     }
 
     #[tokio::test]
@@ -406,10 +402,10 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.insert_and_forget(4, 8).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.get(4).await;
-        assert_that!(result, eq(Ok(Some(8))));
+        assert_eq!(result, Ok(Some(8)));
     }
 
     #[tokio::test]
@@ -417,14 +413,14 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.remove(2).await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
 
         let map = result.unwrap();
 
-        assert_that!(map, eq(Some(4)));
+        assert_eq!(map, Some(4));
 
         let result = actions.get(2).await;
-        assert_that!(result, eq(Ok(None)));
+        assert_eq!(result, Ok(None));
     }
 
     #[tokio::test]
@@ -433,7 +429,7 @@ mod map {
         let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
 
         let result = actions.remove("bad".to_string()).await;
-        assert_that!(result, eq(Err(DownlinkError::InvalidAction)));
+        assert_eq!(result, Err(DownlinkError::InvalidAction));
     }
 
     #[tokio::test]
@@ -441,10 +437,10 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.remove_and_forget(2).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.get(2).await;
-        assert_that!(result, eq(Ok(None)));
+        assert_eq!(result, Ok(None));
     }
 
     #[tokio::test]
@@ -452,7 +448,7 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.clear().await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.view().await;
         let map = result.unwrap();
@@ -465,7 +461,7 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.clear_and_forget().await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.view().await;
         let map = result.unwrap();
@@ -478,14 +474,14 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.remove_all().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
 
         let map = result.unwrap().as_ord_map();
 
-        assert_that!(map, eq(make_map()));
+        assert_eq!(map, make_map());
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
         let map = result.unwrap();
 
         assert!(map.is_empty());
@@ -496,15 +492,15 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.take(1).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
         let map = result.unwrap().as_ord_map();
 
         let mut expected = OrdMap::new();
         expected.insert(1, 2);
-        assert_that!(map, eq(expected));
+        assert_eq!(map, expected);
     }
 
     #[tokio::test]
@@ -512,15 +508,15 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.take_and_forget(1).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
         let map = result.unwrap().as_ord_map();
 
         let mut expected = OrdMap::new();
         expected.insert(1, 2);
-        assert_that!(map, eq(expected));
+        assert_eq!(map, expected);
     }
 
     #[tokio::test]
@@ -532,18 +528,18 @@ mod map {
         let mut expected = OrdMap::new();
         expected.insert(1, 2);
 
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
 
         let (before, after) = result.unwrap();
 
-        assert_that!(before.as_ord_map(), eq(make_map()));
-        assert_that!(after.as_ord_map(), eq(expected.clone()));
+        assert_eq!(before.as_ord_map(), make_map());
+        assert_eq!(after.as_ord_map(), expected.clone());
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
         let map = result.unwrap().as_ord_map();
 
-        assert_that!(map, eq(expected));
+        assert_eq!(map, expected);
     }
 
     #[tokio::test]
@@ -551,15 +547,15 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.skip(2).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
         let map = result.unwrap().as_ord_map();
 
         let mut expected = OrdMap::new();
         expected.insert(3, 6);
-        assert_that!(map, eq(expected));
+        assert_eq!(map, expected);
     }
 
     #[tokio::test]
@@ -567,15 +563,15 @@ mod map {
         let mut actions = TestMapDl::actions(make_map());
 
         let result = actions.skip_and_forget(2).await;
-        assert_that!(result, eq(Ok(())));
+        assert_eq!(result, Ok(()));
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
         let map = result.unwrap().as_ord_map();
 
         let mut expected = OrdMap::new();
         expected.insert(3, 6);
-        assert_that!(map, eq(expected));
+        assert_eq!(map, expected);
     }
 
     #[tokio::test]
@@ -587,17 +583,17 @@ mod map {
         let mut expected = OrdMap::new();
         expected.insert(3, 6);
 
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
 
         let (before, after) = result.unwrap();
 
-        assert_that!(before.as_ord_map(), eq(make_map()));
-        assert_that!(after.as_ord_map(), eq(expected.clone()));
+        assert_eq!(before.as_ord_map(), make_map());
+        assert_eq!(after.as_ord_map(), expected.clone());
 
         let result = actions.view().await;
-        assert_that!(&result, ok());
+        assert!(result.is_ok());
         let map = result.unwrap().as_ord_map();
 
-        assert_that!(map, eq(expected));
+        assert_eq!(map, expected);
     }
 }

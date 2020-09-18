@@ -42,12 +42,10 @@ impl<'a, T, E: Clone + Send + 'static> ItemSink<'a, T> for FailAll<T, E> {
 pub mod tests {
 
     use super::*;
-    use hamcrest2::assert_that;
-    use hamcrest2::prelude::*;
 
     #[tokio::test]
     async fn send_fails() {
         let mut sink: FailAll<i32, String> = fail_all("boom!".to_string());
-        assert_that!(sink.send_item(2).await, eq(Err("boom!".to_string())));
+        assert_eq!(sink.send_item(2).await, Err("boom!".to_string()));
     }
 }

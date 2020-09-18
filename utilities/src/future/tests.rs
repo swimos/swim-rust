@@ -17,8 +17,6 @@ use futures::executor::block_on;
 use futures::future::{ready, Ready};
 use futures::stream::{iter, FusedStream, Iter};
 use futures::StreamExt;
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use pin_utils::pin_mut;
 use std::iter::{repeat, Repeat, Take};
 use tokio::sync::mpsc;
@@ -27,21 +25,21 @@ use tokio::sync::mpsc;
 fn future_into() {
     let fut = ready(4);
     let n: i64 = block_on(fut.output_into());
-    assert_that!(n, eq(4));
+    assert_eq!(n, 4);
 }
 
 #[test]
 fn ok_into_ok_case() {
     let fut: Ready<Result<i32, String>> = ready(Ok(4));
     let r: Result<i64, String> = block_on(fut.ok_into());
-    assert_that!(r, eq(Ok(4i64)));
+    assert_eq!(r, Ok(4i64));
 }
 
 #[test]
 fn ok_into_err_case() {
     let fut: Ready<Result<i32, String>> = ready(Err("hello".to_string()));
     let r: Result<i64, String> = block_on(fut.ok_into());
-    assert_that!(r, eq(Err("hello".to_string())));
+    assert_eq!(r, Err("hello".to_string()));
 }
 
 struct Plus(i32);
@@ -79,7 +77,7 @@ fn transform_future() {
     let fut = ready(2);
     let plus = Plus(3);
     let n = block_on(fut.transform(plus));
-    assert_that!(n, eq(5));
+    assert_eq!(n, 5);
 }
 
 #[test]
@@ -87,7 +85,7 @@ fn chain_future() {
     let fut = ready(2);
     let plus = PlusReady(3);
     let n = block_on(fut.chain(plus));
-    assert_that!(n, eq(5));
+    assert_eq!(n, 5);
 }
 
 #[test]
@@ -96,7 +94,7 @@ fn transform_stream() {
 
     let outputs: Vec<i32> = block_on(inputs.transform(Plus(3)).collect::<Vec<i32>>());
 
-    assert_that!(outputs, eq(vec![3, 4, 5, 6, 7]));
+    assert_eq!(outputs, vec![3, 4, 5, 6, 7]);
 }
 
 #[test]
@@ -105,7 +103,7 @@ fn transform_stream_fut() {
 
     let outputs: Vec<i32> = block_on(inputs.transform_fut(PlusReady(3)).collect::<Vec<i32>>());
 
-    assert_that!(outputs, eq(vec![3, 4, 5, 6, 7]));
+    assert_eq!(outputs, vec![3, 4, 5, 6, 7]);
 }
 
 #[test]
@@ -118,10 +116,7 @@ fn flatmap_stream() {
             .collect::<Vec<i32>>(),
     );
 
-    assert_that!(
-        outputs,
-        eq(vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
-    );
+    assert_eq!(outputs, vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4]);
 }
 
 #[test]
