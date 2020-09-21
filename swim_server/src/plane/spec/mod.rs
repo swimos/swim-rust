@@ -14,15 +14,18 @@
 
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::SwimAgent;
+use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::provider::AgentProvider;
 use crate::plane::{AgentRoute, BoxAgentRoute};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::Stream;
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 use swim_runtime::time::clock::Clock;
 use utilities::route_pattern::RoutePattern;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub(super) struct RouteSpec<Clk, Envelopes, Router> {
@@ -57,6 +60,12 @@ impl<Clk, Envelopes, Router> PlaneSpec<Clk, Envelopes, Router> {
 #[derive(Debug)]
 pub struct PlaneBuilder<Clk, Envelopes, Router>(PlaneSpec<Clk, Envelopes, Router>);
 
+impl<Clk, Envelopes, Router> PlaneBuilder<Clk, Envelopes, Router> {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
 impl<Clk, Envelopes, Router> Default for PlaneBuilder<Clk, Envelopes, Router> {
     fn default() -> Self {
         PlaneBuilder(PlaneSpec {
@@ -65,17 +74,6 @@ impl<Clk, Envelopes, Router> Default for PlaneBuilder<Clk, Envelopes, Router> {
         })
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct AmbiguousRoutes(RoutePattern, RoutePattern);
-
-impl Display for AmbiguousRoutes {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Routes '{}' and '{}' are ambiguous.", &self.0, &self.1)
-    }
-}
-
-impl Error for AmbiguousRoutes {}
 
 impl<Clk, Envelopes, Router> PlaneBuilder<Clk, Envelopes, Router>
 where
@@ -101,7 +99,7 @@ where
         } in routes.iter()
         {
             if RoutePattern::are_ambiguous(existing_route, &route) {
-                return Err(AmbiguousRoutes(existing_route.clone(), route));
+                return Err(AmbiguousRoutes::new(existing_route.clone(), route));
             }
         }
         routes.push(RouteSpec::new(

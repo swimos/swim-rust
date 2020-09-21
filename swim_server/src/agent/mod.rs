@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod context;
+pub(crate) mod context;
 pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;

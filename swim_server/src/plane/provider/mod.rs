@@ -19,6 +19,7 @@ use crate::plane::AgentRoute;
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
+use pin_utils::core_reexport::fmt::Formatter;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -26,11 +27,24 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
 
-#[derive(Debug)]
 pub struct AgentProvider<Agent, Config, Lifecycle> {
     _agent_type: PhantomData<fn(Config) -> Agent>,
     configuration: Config,
     lifecycle: Lifecycle,
+}
+
+impl<Agent, Config: Debug, Lifecycle: Debug> Debug for AgentProvider<Agent, Config, Lifecycle> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let AgentProvider {
+            configuration,
+            lifecycle,
+            ..
+        } = self;
+        f.debug_struct("AgentProvider")
+            .field("configuration", configuration)
+            .field("lifecycle", lifecycle)
+            .finish()
+    }
 }
 
 impl<Agent, Config, Lifecycle> AgentProvider<Agent, Config, Lifecycle>

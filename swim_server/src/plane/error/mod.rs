@@ -18,6 +18,7 @@ mod tests;
 use crate::routing::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use utilities::route_pattern::RoutePattern;
 
 #[derive(Debug, Clone)]
 pub struct NoAgentAtRoute(pub String);
@@ -42,3 +43,20 @@ impl Display for Unresolvable {
 }
 
 impl Error for Unresolvable {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbiguousRoutes(RoutePattern, RoutePattern);
+
+impl AmbiguousRoutes {
+    pub fn new(first: RoutePattern, second: RoutePattern) -> Self {
+        AmbiguousRoutes(first, second)
+    }
+}
+
+impl Display for AmbiguousRoutes {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Routes '{}' and '{}' are ambiguous.", &self.0, &self.1)
+    }
+}
+
+impl Error for AmbiguousRoutes {}
