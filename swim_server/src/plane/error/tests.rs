@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::{AmbiguousRoutes, NoAgentAtRoute, Unresolvable};
+use crate::plane::error::{AmbiguousRoutes, NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::routing::RoutingAddr;
+use swim_common::routing::RoutingError;
 use utilities::route_pattern::RoutePattern;
 
 #[test]
@@ -43,4 +44,18 @@ fn ambiguous_routes_display() {
     let string = err.to_string();
 
     assert_eq!(string, "Routes '/:id' and '/path' are ambiguous.");
+}
+
+#[test]
+fn resolution_error_display() {
+    let err = ResolutionError::NoRoute(RoutingError::HostUnreachable);
+
+    assert_eq!(err.to_string(), RoutingError::HostUnreachable.to_string());
+
+    let err = ResolutionError::NoAgent(NoAgentAtRoute("path".to_string()));
+
+    assert_eq!(
+        err.to_string(),
+        NoAgentAtRoute("path".to_string()).to_string()
+    );
 }

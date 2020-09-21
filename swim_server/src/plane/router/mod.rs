@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::plane::error::ResolutionError;
 use crate::plane::PlaneRequest;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
@@ -21,6 +22,7 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSink, MpscSend};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
+use url::Url;
 
 #[cfg(test)]
 mod tests;
@@ -100,6 +102,35 @@ impl ServerRouter for PlaneRouter {
                     Ok(Ok(sender)) => Ok(PlaneRouterSender::new(*tag, sender)),
                     Ok(Err(_)) => Err(RoutingError::HostUnreachable),
                     Err(_) => Err(RoutingError::RouterDropped),
+                }
+            }
+        }
+        .boxed()
+    }
+
+    fn resolve(
+        &mut self,
+        host: Option<Url>,
+        route: String,
+    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+        async move {
+            let PlaneRouter { request_sender, .. } = self;
+            let (tx, rx) = oneshot::channel();
+            if request_sender
+                .send(PlaneRequest::Resolve {
+                    host,
+                    name: route,
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::NoRoute(RoutingError::RouterDropped))
+            } else {
+                match rx.await {
+                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err(ResolutionError::NoRoute(RoutingError::RouterDropped)),
                 }
             }
         }

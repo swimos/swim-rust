@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::plane::error::ResolutionError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
+use url::Url;
 
 #[cfg(test)]
 mod tests;
@@ -83,4 +85,10 @@ pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
     fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>>;
+
+    fn resolve(
+        &mut self,
+        host: Option<Url>,
+        route: String,
+    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
 }

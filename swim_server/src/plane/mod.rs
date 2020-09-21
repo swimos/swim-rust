@@ -22,7 +22,7 @@ pub mod spec;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AgentResult;
 use crate::plane::context::PlaneContext;
-use crate::plane::error::{NoAgentAtRoute, Unresolvable};
+use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
@@ -37,13 +37,18 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
+use swim_common::routing::RoutingError;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use url::Url;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
+
+#[cfg(test)]
+mod tests;
 
 trait AgentRoute<Clk, Envelopes, Router>: Debug {
     fn run_agent(
@@ -122,14 +127,15 @@ impl PlaneActiveRoutes {
         self.local_routes.keys()
     }
 
-    /*fn addr_for_route(&self, route: &str) -> Option<RoutingAddr> {
-        self.local_routes.get(route).map(|addr| *addr)
-    }*/
+    fn addr_for_route(&self, route: &str) -> Option<RoutingAddr> {
+        self.local_routes.get(route).copied()
+    }
 }
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable>>;
 type RoutesRequest = Request<HashSet<String>>;
+type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
 
 #[derive(Debug)]
 enum PlaneRequest {
@@ -140,6 +146,11 @@ enum PlaneRequest {
     Endpoint {
         id: RoutingAddr,
         request: EndpointRequest,
+    },
+    Resolve {
+        host: Option<Url>,
+        name: String,
+        request: ResolutionRequest,
     },
     Routes(RoutesRequest),
 }
@@ -220,7 +231,7 @@ impl<Clk: Clock> RouteResolver<Clk> {
         &mut self,
         route: String,
         spawner: &S,
-    ) -> Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>
+    ) -> Result<(Arc<dyn Any + Send + Sync>, RoutingAddr), NoAgentAtRoute>
     where
         S: Spawner<BoxFuture<'static, AgentResult>>,
     {
@@ -247,7 +258,7 @@ impl<Clk: Clock> RouteResolver<Clk> {
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
         spawner.add(task);
-        Ok(agent)
+        Ok((agent, addr))
     }
 }
 
@@ -312,7 +323,9 @@ pub async fn run_plane<Clk, S>(
                     {
                         Ok(agent)
                     } else {
-                        resolver.try_open_route(name.clone(), spawner.deref())
+                        resolver
+                            .try_open_route(name.clone(), spawner.deref())
+                            .map(|(agent, _)| agent)
                     };
                     if request.send(result).is_err() {
                         event!(Level::WARN, DROPPED_REQUEST);
@@ -337,6 +350,37 @@ pub async fn run_plane<Clk, S>(
                         if request.send_err(Unresolvable(id)).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
                         }
+                    }
+                }
+                Some(Either::Left(PlaneRequest::Resolve {
+                    host: None,
+                    name,
+                    request,
+                })) => {
+                    let result =
+                        if let Some(addr) = resolver.active_routes.addr_for_route(name.as_str()) {
+                            Ok(addr)
+                        } else {
+                            match resolver.try_open_route(name.clone(), spawner.deref()) {
+                                Ok((_, addr)) => Ok(addr),
+                                Err(err) => Err(ResolutionError::NoAgent(err)),
+                            }
+                        };
+                    if request.send(result).is_err() {
+                        event!(Level::WARN, DROPPED_REQUEST);
+                    }
+                }
+                Some(Either::Left(PlaneRequest::Resolve {
+                    host: Some(_host_url),
+                    name: _,
+                    request,
+                })) => {
+                    //TODO Attach external resolution here.
+                    if request
+                        .send_err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+                        .is_err()
+                    {
+                        event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
                 Some(Either::Left(PlaneRequest::Routes(request))) => {

@@ -18,9 +18,10 @@ mod tests;
 use crate::routing::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use swim_common::routing::RoutingError;
 use utilities::route_pattern::RoutePattern;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoAgentAtRoute(pub String);
 
 impl Display for NoAgentAtRoute {
@@ -60,3 +61,27 @@ impl Display for AmbiguousRoutes {
 }
 
 impl Error for AmbiguousRoutes {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResolutionError {
+    NoAgent(NoAgentAtRoute),
+    NoRoute(RoutingError),
+}
+
+impl Display for ResolutionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolutionError::NoAgent(err) => err.fmt(f),
+            ResolutionError::NoRoute(err) => err.fmt(f),
+        }
+    }
+}
+
+impl Error for ResolutionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ResolutionError::NoAgent(err) => Some(err),
+            ResolutionError::NoRoute(err) => Some(err),
+        }
+    }
+}
