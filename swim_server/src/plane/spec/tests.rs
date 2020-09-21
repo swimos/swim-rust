@@ -75,11 +75,11 @@ impl AgentLifecycle<DummyAgent> for DummyLifecycle {
 }
 
 impl PlaneLifecycle for DummyPlaneLifecycle {
-    fn on_start<'a>(&'a self, _context: &'a dyn PlaneContext) -> BoxFuture<'a, ()> {
+    fn on_start<'a>(&'a mut self, _context: &'a dyn PlaneContext) -> BoxFuture<'a, ()> {
         ready(()).boxed()
     }
 
-    fn on_stop<'a>(&'a self, _context: &'a dyn PlaneContext) -> BoxFuture<'a, ()> {
+    fn on_stop(&mut self) -> BoxFuture<()> {
         ready(()).boxed()
     }
 }

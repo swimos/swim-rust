@@ -284,12 +284,16 @@ pub async fn run_plane<Clk, S>(
 
     let mut requests = context_rx.fuse();
 
-    let PlaneSpec { routes, lifecycle } = spec;
+    let PlaneSpec {
+        routes,
+        mut lifecycle,
+    } = spec;
 
     let start_task = async move {
-        if let Some(lc) = lifecycle {
+        if let Some(lc) = &mut lifecycle {
             lc.on_start(&context).await;
         }
+        lifecycle
     }
     .instrument(span!(Level::DEBUG, PLANE_START_TASK));
 
@@ -408,7 +412,10 @@ pub async fn run_plane<Clk, S>(
     }
     .instrument(span!(Level::DEBUG, PLANE_EVENT_LOOP));
 
-    join(start_task, event_loop).await;
+    let (lifecycle, _) = join(start_task, event_loop).await;
+    if let Some(mut lc) = lifecycle {
+        lc.on_stop().await;
+    }
 }
 
 type PlaneAgentRoute<Clk> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter>;

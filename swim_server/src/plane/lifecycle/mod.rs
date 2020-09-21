@@ -17,9 +17,9 @@ use futures::future::BoxFuture;
 use std::fmt::Debug;
 
 pub trait PlaneLifecycle: Debug {
-    fn on_start<'a>(&'a self, context: &'a dyn PlaneContext) -> BoxFuture<'a, ()>;
+    fn on_start<'a>(&'a mut self, context: &'a dyn PlaneContext) -> BoxFuture<'a, ()>;
 
-    fn on_stop<'a>(&'a self, context: &'a dyn PlaneContext) -> BoxFuture<'a, ()>;
+    fn on_stop(&mut self) -> BoxFuture<()>;
 
     fn boxed(self) -> Box<dyn PlaneLifecycle>
     where

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::Unresolvable;
+use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory, PlaneRouterSender};
 use crate::plane::PlaneRequest;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
@@ -21,6 +21,7 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
+use url::Url;
 
 #[tokio::test]
 async fn plane_router_sender() {
@@ -92,4 +93,61 @@ async fn plane_router_factory() {
     let fac = PlaneRouterFactory::new(req_tx);
     let router = fac.create(RoutingAddr::local(56));
     assert_eq!(router.tag, RoutingAddr::local(56));
+}
+
+#[tokio::test]
+async fn plane_router_resolve() {
+    let host = Url::parse("warp:://somewhere").unwrap();
+    let addr = RoutingAddr::remote(5);
+
+    let (req_tx, mut req_rx) = mpsc::channel(8);
+
+    let mut router = PlaneRouter::new(addr, req_tx);
+
+    let host_cpy = host.clone();
+
+    let provider_task = async move {
+        while let Some(req) = req_rx.recv().await {
+            if let PlaneRequest::Resolve {
+                host,
+                name,
+                request,
+            } = req
+            {
+                if host == Some(host_cpy.clone()) && name == "node" {
+                    assert!(request.send_ok(addr).is_ok());
+                } else if host.is_some() {
+                    assert!(request
+                        .send_err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+                        .is_ok());
+                } else {
+                    assert!(request
+                        .send_err(ResolutionError::NoAgent(NoAgentAtRoute(name)))
+                        .is_ok());
+                }
+            } else {
+                panic!("Unexpected request {:?}!", req);
+            }
+        }
+    };
+
+    let send_task = async move {
+        let result1 = router.resolve(Some(host), "node".to_string()).await;
+        assert!(matches!(result1, Ok(a) if a == addr));
+
+        let other_host = Url::parse("warp://other").unwrap();
+
+        let result2 = router.resolve(Some(other_host), "node".to_string()).await;
+        assert!(matches!(
+            result2,
+            Err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+        ));
+
+        let result3 = router.resolve(None, "node".to_string()).await;
+        assert!(
+            matches!(result3, Err(ResolutionError::NoAgent(NoAgentAtRoute(name))) if name == "node")
+        );
+    };
+
+    join(provider_task, send_task).await;
 }
