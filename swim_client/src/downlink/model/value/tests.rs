@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use tokio::sync::oneshot;
 
 use super::*;
@@ -35,7 +33,7 @@ fn start_downlink() {
         let machine = ValueStateMachine::unvalidated(Value::from(0));
         let maybe_response = machine.handle_operation(&mut state, &mut model, Operation::Start);
 
-        assert_that!(&maybe_response, ok());
+        assert!(maybe_response.is_ok());
         let response = maybe_response.unwrap();
 
         let Response {
@@ -46,18 +44,18 @@ fn start_downlink() {
         } = response;
 
         assert!(!terminate);
-        assert_that!(error, none());
-        assert_that!(event, none());
+        assert!(error.is_none());
+        assert!(event.is_none());
 
-        assert_that!(state, eq(*s));
+        assert_eq!(state, *s);
 
         match command {
             Some(cmd) => {
-                assert_that!(*s, not(eq(DownlinkState::Synced)));
-                assert_that!(cmd, eq(Command::Sync));
+                assert_ne!(*s, DownlinkState::Synced);
+                assert_eq!(cmd, Command::Sync);
             }
             _ => {
-                assert_that!(*s, eq(DownlinkState::Synced));
+                assert_eq!(*s, DownlinkState::Synced);
             }
         }
     }
@@ -70,11 +68,11 @@ fn linked_response(start_state: DownlinkState) {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Linked));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Linked));
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(state, DownlinkState::Linked);
+    assert_eq!(response, Response::none());
 }
 
 #[test]
@@ -103,12 +101,12 @@ fn synced_response(start_state: DownlinkState) {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Message(Message::Synced));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     if start_state == DownlinkState::Synced {
-        assert_that!(response, eq(Response::none()));
+        assert_eq!(response, Response::none());
     } else {
         let ev = only_event(&response);
         assert!(Arc::ptr_eq(ev, &model.state));
@@ -132,11 +130,11 @@ fn unlinked_response(start_state: DownlinkState) {
         Operation::Message(Message::Unlinked),
     );
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Unlinked));
-    assert_that!(response, eq(Response::none().then_terminate()));
+    assert_eq!(state, DownlinkState::Unlinked);
+    assert_eq!(response, Response::none().then_terminate());
 }
 
 #[test]
@@ -157,12 +155,12 @@ fn update_message_unlinked() {
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Unlinked));
-    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(state, DownlinkState::Unlinked);
+    assert_eq!(model.state, Arc::new(Value::Int32Value(1)));
+    assert_eq!(response, Response::none());
 }
 
 #[test]
@@ -176,12 +174,12 @@ fn update_message_linked() {
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Linked));
-    assert_that!(model.state, eq(Arc::new(Value::Int32Value(3))));
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(state, DownlinkState::Linked);
+    assert_eq!(model.state, Arc::new(Value::Int32Value(3)));
+    assert_eq!(response, Response::none());
 }
 
 #[test]
@@ -195,12 +193,12 @@ fn update_message_synced() {
         Operation::Message(Message::Action(Value::Int32Value(3))),
     );
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(3));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
     let ev = only_event(&response);
     assert!(Arc::ptr_eq(ev, &model.state));
 }
@@ -219,18 +217,18 @@ fn get_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(13));
-    assert_that!(&model.state, eq(&expected));
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(&model.state, &expected);
+    assert_eq!(response, Response::none());
 
     let result = rx.try_recv();
-    assert_that!(&result, ok());
+    assert!(result.is_ok());
     let response = result.unwrap();
-    assert_that!(&response, ok());
+    assert!(response.is_ok());
     let get_val = response.unwrap();
     assert!(Arc::ptr_eq(&get_val, &model.state));
 }
@@ -245,18 +243,15 @@ fn dropped_get() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(13));
-    assert_that!(&model.state, eq(&expected));
-    assert_that!(
+    assert_eq!(&model.state, &expected);
+    assert_eq!(
         response,
-        eq(with_error(
-            Response::none(),
-            TransitionError::ReceiverDropped
-        ))
+        with_error(Response::none(), TransitionError::ReceiverDropped)
     );
 }
 
@@ -296,18 +291,18 @@ fn set_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(67));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.state));
     assert!(Arc::ptr_eq(&cmd, &model.state));
-    assert_that!(err, none());
+    assert!(err.is_none());
 
-    assert_that!(rx.try_recv(), ok());
+    assert!(rx.try_recv().is_ok());
 }
 
 #[test]
@@ -320,16 +315,16 @@ fn invalid_set_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::text(""));
-    assert_that!(&model.state, eq(&expected));
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(&model.state, &expected);
+    assert_eq!(response, Response::none());
 
     let expected_error = DownlinkError::SchemaViolation(Value::Int32Value(67), schema);
-    assert_that!(rx.try_recv(), eq(Ok(Err(expected_error))));
+    assert_eq!(rx.try_recv(), Ok(Err(expected_error)));
 }
 
 #[test]
@@ -344,17 +339,17 @@ fn dropped_set_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(67));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.state));
     assert!(Arc::ptr_eq(&cmd, &model.state));
-    assert_that!(&err, some());
-    assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
+    assert!(err.is_some());
+    assert_eq!(err.unwrap(), TransitionError::ReceiverDropped);
 }
 
 fn make_update() -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkError>>) {
@@ -389,22 +384,22 @@ fn update_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
 
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.state));
     assert!(Arc::ptr_eq(&cmd, &model.state));
-    assert_that!(err, none());
+    assert!(err.is_none());
 
     let result = rx.try_recv();
-    assert_that!(&result, ok());
+    assert!(result.is_ok());
     let response = result.unwrap();
-    assert_that!(&response, ok());
+    assert!(response.is_ok());
     let upd_val = response.unwrap();
     assert!(Arc::ptr_eq(&upd_val, &old));
 }
@@ -419,19 +414,19 @@ fn invalid_update_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::text(""));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
 
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(response, Response::none());
 
     let expected_err = DownlinkError::SchemaViolation(Value::Int32Value(7), schema);
 
     let result = rx.try_recv();
-    assert_that!(result, eq(Ok(Err(expected_err))))
+    assert_eq!(result, Ok(Err(expected_err)))
 }
 
 #[test]
@@ -446,18 +441,18 @@ fn dropped_update_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
 
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.state));
     assert!(Arc::ptr_eq(&cmd, &model.state));
-    assert_that!(&err, some());
-    assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
+    assert!(err.is_some());
+    assert_eq!(err.unwrap(), TransitionError::ReceiverDropped);
 }
 
 fn make_try_update() -> (
@@ -500,24 +495,24 @@ fn successful_try_update_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
 
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.state));
     assert!(Arc::ptr_eq(&cmd, &model.state));
-    assert_that!(err, none());
+    assert!(err.is_none());
 
     let result = rx.try_recv();
-    assert_that!(&result, ok());
+    assert!(result.is_ok());
     let response = result.unwrap();
-    assert_that!(&response, ok());
+    assert!(response.is_ok());
     let upd_res = response.unwrap();
-    assert_that!(&upd_res, ok());
+    assert!(upd_res.is_ok());
     let upd_val = upd_res.unwrap();
     assert!(Arc::ptr_eq(&upd_val, &old));
 }
@@ -532,21 +527,21 @@ fn unsuccessful_try_update_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
 
     assert!(Arc::ptr_eq(&model.state, &old));
 
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(response, Response::none());
 
     let result = rx.try_recv();
-    assert_that!(&result, ok());
+    assert!(result.is_ok());
     let response = result.unwrap();
-    assert_that!(&response, ok());
+    assert!(response.is_ok());
     let upd_res = response.unwrap();
-    assert_that!(&upd_res, err());
+    assert!(upd_res.is_err());
 }
 
 #[test]
@@ -559,19 +554,19 @@ fn invalid_try_update_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::text(""));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
 
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(response, Response::none());
 
     let expected_err = DownlinkError::SchemaViolation(Value::Int32Value(7), schema);
 
     let result = rx.try_recv();
-    assert_that!(result, eq(Ok(Err(expected_err))))
+    assert_eq!(result, Ok(Err(expected_err)))
 }
 
 #[test]
@@ -586,18 +581,18 @@ fn dropped_try_update_action() {
     let maybe_response =
         machine.handle_operation(&mut state, &mut model, Operation::Action(action));
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
+    assert_eq!(state, DownlinkState::Synced);
     let expected = Arc::new(Value::Int32Value(26));
-    assert_that!(&model.state, eq(&expected));
+    assert_eq!(&model.state, &expected);
 
     let (ev, cmd, err) = event_and_cmd(response);
     assert!(Arc::ptr_eq(&ev, &model.state));
     assert!(Arc::ptr_eq(&cmd, &model.state));
-    assert_that!(&err, some());
-    assert_that!(err.unwrap(), eq(TransitionError::ReceiverDropped));
+    assert!(err.is_some());
+    assert_eq!(err.unwrap(), TransitionError::ReceiverDropped);
 }
 
 #[test]
@@ -613,12 +608,12 @@ fn invalid_message_unlinked() {
         Operation::Message(Message::Action(Value::Extant)),
     );
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Unlinked));
-    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(state, DownlinkState::Unlinked);
+    assert_eq!(model.state, Arc::new(Value::Int32Value(1)));
+    assert_eq!(response, Response::none());
 }
 
 #[test]
@@ -634,14 +629,14 @@ fn invalid_message_linked() {
         Operation::Message(Message::Action(Value::text("foo"))),
     );
 
-    assert_that!(&maybe_response, err());
+    assert!(maybe_response.is_err());
     let error = maybe_response.err().unwrap();
 
-    assert_that!(state, eq(DownlinkState::Linked));
-    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
-    assert_that!(
+    assert_eq!(state, DownlinkState::Linked);
+    assert_eq!(model.state, Arc::new(Value::Int32Value(1)));
+    assert_eq!(
         error,
-        eq(DownlinkError::SchemaViolation(Value::text("foo"), schema))
+        DownlinkError::SchemaViolation(Value::text("foo"), schema)
     );
 }
 
@@ -658,12 +653,12 @@ fn extant_message_linked() {
         Operation::Message(Message::Action(Value::Extant)),
     );
 
-    assert_that!(&maybe_response, ok());
+    assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    assert_that!(state, eq(DownlinkState::Linked));
-    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
-    assert_that!(response, eq(Response::none()));
+    assert_eq!(state, DownlinkState::Linked);
+    assert_eq!(model.state, Arc::new(Value::Int32Value(1)));
+    assert_eq!(response, Response::none());
 }
 
 #[test]
@@ -679,13 +674,10 @@ fn invalid_message_synced() {
         Operation::Message(Message::Action(Value::Extant)),
     );
 
-    assert_that!(&maybe_response, err());
+    assert!(maybe_response.is_err());
     let error = maybe_response.err().unwrap();
 
-    assert_that!(state, eq(DownlinkState::Synced));
-    assert_that!(model.state, eq(Arc::new(Value::Int32Value(1))));
-    assert_that!(
-        error,
-        eq(DownlinkError::SchemaViolation(Value::Extant, schema))
-    );
+    assert_eq!(state, DownlinkState::Synced);
+    assert_eq!(model.state, Arc::new(Value::Int32Value(1)));
+    assert_eq!(error, DownlinkError::SchemaViolation(Value::Extant, schema));
 }

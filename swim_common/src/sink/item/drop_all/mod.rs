@@ -46,12 +46,10 @@ impl<'a, T, E: Send + 'static> ItemSink<'a, T> for DropAll<T, E> {
 pub mod tests {
 
     use super::*;
-    use hamcrest2::assert_that;
-    use hamcrest2::prelude::*;
 
     #[tokio::test]
     async fn send_succeeds() {
         let mut sink: DropAll<i32, String> = drop_all();
-        assert_that!(sink.send_item(2).await, eq(Ok(())));
+        assert_eq!(sink.send_item(2).await, Ok(()));
     }
 }

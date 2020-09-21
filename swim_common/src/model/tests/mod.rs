@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-
 use super::*;
 use std::collections::hash_map::DefaultHasher;
 
@@ -22,176 +19,170 @@ mod coercion;
 
 #[test]
 fn extant_to_string() {
-    assert_that!(Value::Extant.to_string(), eq(""));
+    assert_eq!(Value::Extant.to_string(), "");
 }
 
 #[test]
 fn identifiers_to_string() {
-    assert_that!(Value::text("name").to_string(), eq("name"));
-    assert_that!(Value::text("اسم").to_string(), eq("اسم"));
-    assert_that!(Value::text("name2").to_string(), eq("name2"));
-    assert_that!(Value::text("first_second").to_string(), eq("first_second"));
-    assert_that!(Value::text("_name").to_string(), eq("_name"));
+    assert_eq!(Value::text("name").to_string(), "name");
+    assert_eq!(Value::text("اسم").to_string(), "اسم");
+    assert_eq!(Value::text("name2").to_string(), "name2");
+    assert_eq!(Value::text("first_second").to_string(), "first_second");
+    assert_eq!(Value::text("_name").to_string(), "_name");
 }
 
 #[test]
 fn text_to_string() {
-    assert_that!(Value::text("").to_string(), eq(r#""""#));
-    assert_that!(Value::text("2name").to_string(), eq(r#""2name""#));
-    assert_that!(Value::text("true").to_string(), eq(r#""true""#));
-    assert_that!(Value::text("false").to_string(), eq(r#""false""#));
-    assert_that!(Value::text("two words").to_string(), eq(r#""two words""#));
-    assert_that!(Value::text("£%^$&*").to_string(), eq(r#""£%^$&*""#));
-    assert_that!(Value::text("\r\n\t").to_string(), eq(r#""\r\n\t""#));
-    assert_that!(Value::text("\"\\\"").to_string(), eq(r#""\"\\\"""#));
-    assert_that!(Value::text("\u{b}").to_string(), eq(r#""\u000b""#));
-    assert_that!(Value::text("\u{c}").to_string(), eq(r#""\f""#));
-    assert_that!(Value::text("\u{8}").to_string(), eq(r#""\b""#));
+    assert_eq!(Value::text("").to_string(), r#""""#);
+    assert_eq!(Value::text("2name").to_string(), r#""2name""#);
+    assert_eq!(Value::text("true").to_string(), r#""true""#);
+    assert_eq!(Value::text("false").to_string(), r#""false""#);
+    assert_eq!(Value::text("two words").to_string(), r#""two words""#);
+    assert_eq!(Value::text("£%^$&*").to_string(), r#""£%^$&*""#);
+    assert_eq!(Value::text("\r\n\t").to_string(), r#""\r\n\t""#);
+    assert_eq!(Value::text("\"\\\"").to_string(), r#""\"\\\"""#);
+    assert_eq!(Value::text("\u{b}").to_string(), r#""\u000b""#);
+    assert_eq!(Value::text("\u{c}").to_string(), r#""\f""#);
+    assert_eq!(Value::text("\u{8}").to_string(), r#""\b""#);
 }
 
 #[test]
 fn int32_value_to_string() {
-    assert_that!(Value::Int32Value(0).to_string(), eq("0"));
-    assert_that!(Value::Int32Value(34).to_string(), eq("34"));
-    assert_that!(Value::Int32Value(-56).to_string(), eq("-56"));
+    assert_eq!(Value::Int32Value(0).to_string(), "0");
+    assert_eq!(Value::Int32Value(34).to_string(), "34");
+    assert_eq!(Value::Int32Value(-56).to_string(), "-56");
 }
 
 #[test]
 fn int64_value_to_string() {
-    assert_that!(Value::Int64Value(0).to_string(), eq("0"));
-    assert_that!(Value::Int64Value(34).to_string(), eq("34"));
-    assert_that!(Value::Int64Value(-56).to_string(), eq("-56"));
-    assert_that!(
+    assert_eq!(Value::Int64Value(0).to_string(), "0");
+    assert_eq!(Value::Int64Value(34).to_string(), "34");
+    assert_eq!(Value::Int64Value(-56).to_string(), "-56");
+    assert_eq!(
         Value::Int64Value(12_456_765_984i64).to_string(),
-        eq("12456765984")
+        "12456765984"
     );
-    assert_that!(
+    assert_eq!(
         Value::Int64Value(-12_456_765_984i64).to_string(),
-        eq("-12456765984")
+        "-12456765984"
     );
 }
 
 #[test]
 fn uint32_value_to_string() {
-    assert_that!(Value::UInt32Value(0).to_string(), eq("0"));
-    assert_that!(Value::UInt32Value(34).to_string(), eq("34"));
-    assert_that!(Value::UInt32Value(5000).to_string(), eq("5000"));
+    assert_eq!(Value::UInt32Value(0).to_string(), "0");
+    assert_eq!(Value::UInt32Value(34).to_string(), "34");
+    assert_eq!(Value::UInt32Value(5000).to_string(), "5000");
 }
 
 #[test]
 fn uint64_value_to_string() {
-    assert_that!(Value::UInt64Value(0).to_string(), eq("0"));
-    assert_that!(Value::UInt64Value(34).to_string(), eq("34"));
-    assert_that!(
+    assert_eq!(Value::UInt64Value(0).to_string(), "0");
+    assert_eq!(Value::UInt64Value(34).to_string(), "34");
+    assert_eq!(
         Value::UInt64Value(u64::max_value()).to_string(),
-        eq(u64::max_value().to_string())
+        u64::max_value().to_string()
     );
-    assert_that!(
+    assert_eq!(
         Value::UInt64Value(12_456_765_984u64).to_string(),
-        eq("12456765984")
+        "12456765984"
     );
 }
 
 #[test]
 fn boolean_value_to_string() {
-    assert_that!(Value::BooleanValue(true).to_string(), eq("true"));
-    assert_that!(Value::BooleanValue(false).to_string(), eq("false"));
+    assert_eq!(Value::BooleanValue(true).to_string(), "true");
+    assert_eq!(Value::BooleanValue(false).to_string(), "false");
 }
 
 #[test]
 fn float64_value_to_string() {
-    assert_that!(Value::Float64Value(0.0).to_string(), eq("0e0"));
-    assert_that!(Value::Float64Value(0.5).to_string(), eq("5e-1"));
-    assert_that!(Value::Float64Value(3.56e45).to_string(), eq("3.56e45"));
-    assert_that!(Value::Float64Value(-3.56e45).to_string(), eq("-3.56e45"));
+    assert_eq!(Value::Float64Value(0.0).to_string(), "0e0");
+    assert_eq!(Value::Float64Value(0.5).to_string(), "5e-1");
+    assert_eq!(Value::Float64Value(3.56e45).to_string(), "3.56e45");
+    assert_eq!(Value::Float64Value(-3.56e45).to_string(), "-3.56e45");
 }
 
 #[test]
 fn attribute_to_string() {
-    assert_that!(Attr::of("name").to_string(), eq("@name"));
-    assert_that!(Attr::of("two words").to_string(), eq(r#"@"two words""#));
-    assert_that!(Attr::of(("name", 1)).to_string(), eq("@name(1)"));
+    assert_eq!(Attr::of("name").to_string(), "@name");
+    assert_eq!(Attr::of("two words").to_string(), r#"@"two words""#);
+    assert_eq!(Attr::of(("name", 1)).to_string(), "@name(1)");
 }
 
 #[test]
 fn item_to_string() {
-    assert_that!(Item::of(0).to_string(), eq("0"));
+    assert_eq!(Item::of(0).to_string(), "0");
     let slot1: Item = ("name", 7).into();
-    assert_that!(slot1.to_string(), eq("name:7"));
+    assert_eq!(slot1.to_string(), "name:7");
     let slot2: Item = (-5, "two words").into();
-    assert_that!(slot2.to_string(), eq(r#"-5:"two words""#));
+    assert_eq!(slot2.to_string(), r#"-5:"two words""#);
     let slot3 = Item::Slot("empty".into(), Value::Extant);
-    assert_that!(slot3.to_string(), eq("empty:"));
+    assert_eq!(slot3.to_string(), "empty:");
 }
 
 #[test]
 fn no_attr_record_to_string() {
-    assert_that!(Value::empty_record().to_string(), eq("{}"));
-    assert_that!(Value::singleton(0).to_string(), eq("{0}"));
-    assert_that!(
-        Value::singleton(Item::slot("a", 2)).to_string(),
-        eq("{a:2}")
-    );
-    assert_that!(Value::from_vec(vec![1, 2, 3]).to_string(), eq("{1,2,3}"));
-    assert_that!(
-        Value::from_vec(vec!["a", "b", "c"]).to_string(),
-        eq("{a,b,c}")
-    );
-    assert_that!(
+    assert_eq!(Value::empty_record().to_string(), "{}");
+    assert_eq!(Value::singleton(0).to_string(), "{0}");
+    assert_eq!(Value::singleton(Item::slot("a", 2)).to_string(), "{a:2}");
+    assert_eq!(Value::from_vec(vec![1, 2, 3]).to_string(), "{1,2,3}");
+    assert_eq!(Value::from_vec(vec!["a", "b", "c"]).to_string(), "{a,b,c}");
+    assert_eq!(
         Value::record(vec![("a", 1).into(), 2.into(), ("c", 3).into()]).to_string(),
-        eq("{a:1,2,c:3}")
+        "{a:1,2,c:3}"
     );
 }
 
 #[test]
 fn with_attr_record_to_string() {
     let rec1 = Value::of_attr(Attr::of("name"));
-    assert_that!(rec1.to_string(), eq("@name"));
+    assert_eq!(rec1.to_string(), "@name");
     let rec2 = Value::of_attrs(vec![Attr::of("name1"), Attr::of("name2")]);
-    assert_that!(rec2.to_string(), eq("@name1@name2"));
+    assert_eq!(rec2.to_string(), "@name1@name2");
     let rec3 = Value::Record(vec![Attr::of("name")], vec![Item::of(3)]);
-    assert_that!(rec3.to_string(), eq("@name{3}"));
+    assert_eq!(rec3.to_string(), "@name{3}");
     let rec4 = Value::Record(vec![Attr::of("name")], vec![(true, -1).into()]);
-    assert_that!(rec4.to_string(), eq("@name{true:-1}"));
+    assert_eq!(rec4.to_string(), "@name{true:-1}");
     let rec5 = Value::Record(vec![("name", 1).into()], vec![("a", 1).into(), 7.into()]);
-    assert_that!(rec5.to_string(), eq("@name(1){a:1,7}"));
+    assert_eq!(rec5.to_string(), "@name(1){a:1,7}");
 }
 
 #[test]
 fn attrs_with_record_bodies_to_string() {
     let attr1: Attr = ("name", Value::empty_record()).into();
-    assert_that!(attr1.to_string(), eq("@name({})"));
+    assert_eq!(attr1.to_string(), "@name({})");
     let attr2: Attr = ("name", Value::singleton(0)).into();
-    assert_that!(attr2.to_string(), eq("@name({0})"));
+    assert_eq!(attr2.to_string(), "@name({0})");
     let attr3: Attr = ("name", Value::singleton(("a", 1))).into();
-    assert_that!(attr3.to_string(), eq("@name(a:1)"));
+    assert_eq!(attr3.to_string(), "@name(a:1)");
     let attr4: Attr = (
         "name",
         Value::record(vec![("a", 1).into(), ("b", 2).into()]),
     )
         .into();
-    assert_that!(attr4.to_string(), eq("@name(a:1,b:2)"));
+    assert_eq!(attr4.to_string(), "@name(a:1,b:2)");
 }
 
 #[test]
 fn nested_records_to_string() {
     let double_empty = Value::from_vec(vec![Value::empty_record()]);
-    assert_that!(double_empty.to_string(), eq("{{}}"));
+    assert_eq!(double_empty.to_string(), "{{}}");
     let inner = Value::from_vec(vec!["a", "b", "c"]);
     let nested1 = Value::from_vec(vec![inner.clone()]);
-    assert_that!(nested1.to_string(), eq("{{a,b,c}}"));
+    assert_eq!(nested1.to_string(), "{{a,b,c}}");
     let nested2 = Value::record(vec![
         ("aa", 10).into(),
         inner.clone().into(),
         ("zz", 99).into(),
     ]);
-    assert_that!(nested2.to_string(), eq("{aa:10,{a,b,c},zz:99}"));
+    assert_eq!(nested2.to_string(), "{aa:10,{a,b,c},zz:99}");
     let attr_inner = Value::Record(vec![("name", 1).into()], vec![]);
     let nested3 = Value::from_vec(vec![attr_inner.clone()]);
-    assert_that!(nested3.to_string(), eq("{@name(1)}"));
+    assert_eq!(nested3.to_string(), "{@name(1)}");
     let complex_inner = Value::Record(vec![("inner", 1).into()], vec![("a", 1).into(), 7.into()]);
     let nested_attr: Attr = ("outer", complex_inner.clone()).into();
-    assert_that!(nested_attr.to_string(), eq("@outer(@inner(1){a:1,7})"));
+    assert_eq!(nested_attr.to_string(), "@outer(@inner(1){a:1,7})");
 }
 
 #[test]
