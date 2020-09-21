@@ -95,7 +95,4 @@ pub struct LifecycleAttrs {
 
     #[darling(default)]
     pub name: Option<String>,
-
-    // #[darling(default)]
-    // buffer_size: Option<NonZeroUsize>,
 }
