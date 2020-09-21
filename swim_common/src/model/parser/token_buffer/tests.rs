@@ -29,19 +29,19 @@ where
 
     let t1 = buffer.take(0, 1).into();
 
-    assert_eq!(t1, "a".to_owned());
+    assert_eq!(t1, "a");
 
     buffer.update(Some((2, 'c')));
     buffer.update(Some((3, 'd')));
 
     let t2 = buffer.take_all(2).into();
 
-    assert_eq!(t2, "c".to_owned());
+    assert_eq!(t2, "c");
 
     buffer.update(None);
 
     let t2 = buffer.take_all(3).into();
-    assert_eq!(t2, "d".to_owned());
+    assert_eq!(t2, "d");
 }
 
 fn take_by_ref_without_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)
@@ -78,7 +78,7 @@ where
 
     let t1 = buffer.take(0, 4).into();
 
-    assert_eq!(t1, "abcd".to_owned());
+    assert_eq!(t1, "abcd");
 
     buffer.update(Some((5, 'e')));
     buffer.update(Some((6, 'f')));
@@ -89,7 +89,7 @@ where
 
     let t2 = buffer.take_all(6).into();
 
-    assert_eq!(t2, "fgh".to_owned());
+    assert_eq!(t2, "fgh");
 
     buffer.update(Some((10, 'i')));
     buffer.update(Some((11, 'j')));
@@ -98,7 +98,7 @@ where
 
     let t3 = buffer.take_all(10).into();
 
-    assert_eq!(t3, "ij".to_owned());
+    assert_eq!(t3, "ij");
 }
 
 fn take_by_ref_with_mark<T: TokenStr, B: TokenBuffer<T>, F>(factory: F)

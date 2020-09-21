@@ -169,7 +169,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         },
                     ) = env;
 
-                    if body == Some(Value::Text(POISON_PILL.to_string())) {
+                    if body == Some(Value::text(POISON_PILL)) {
                         break Some(LaneIoError::for_update_err(
                             route.clone(),
                             UpdateError::FailedTransaction(TransactionError::InvalidRetry),

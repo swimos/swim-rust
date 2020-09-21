@@ -1145,7 +1145,7 @@ async fn handle_action_lane_update_failure() {
     let _input_cpy = input.clone();
 
     let io_task = async move {
-        input.send_raw(addr, Value::Text("0".to_string())).await;
+        input.send_raw(addr, Value::text("0")).await;
     };
 
     let (_, result, _) = join3(spawn_task, task, io_task).await;

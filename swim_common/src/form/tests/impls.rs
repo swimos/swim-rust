@@ -68,7 +68,7 @@ fn blob() {
         Value::Record(
             vec![Attr::of("S")],
             vec![Item::Slot(
-                Value::Text(String::from("b")),
+                Value::text("b"),
                 Value::Data(Blob::from_vec(vec![89, 109, 120, 118, 89, 109, 74, 53]))
             )]
         )
@@ -102,7 +102,7 @@ mod primitive {
         test_string,
         String,
         String::from("test"),
-        Value::Text(String::from("test"))
+        Value::text("test")
     );
     test_impl!(
         test_bigint,
@@ -430,7 +430,7 @@ mod field_collections {
                 let val = Test { member: $initial };
                 let rec = Value::Record(
                     vec![Attr::of("Test")],
-                    vec![Item::Slot(Value::Text(String::from("member")), expected())],
+                    vec![Item::Slot(Value::text("member"), expected())],
                 );
 
                 assert_eq!(val.as_value(), rec);

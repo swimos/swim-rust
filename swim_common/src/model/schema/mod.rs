@@ -673,7 +673,7 @@ fn equal_cmp(this: &Value, other: &StandardSchema) -> Option<Ordering> {
             Some(Ordering::Equal)
         }
         (Value::Text(this_val), StandardSchema::Text(TextSchema::Matches(regex)))
-            if regex.is_match(this_val) =>
+            if regex.is_match(this_val.as_str()) =>
         {
             Some(Ordering::Less)
         }

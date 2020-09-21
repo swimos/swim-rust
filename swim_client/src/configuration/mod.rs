@@ -100,7 +100,7 @@ pub mod downlink {
                                 }
                             }
                             _ => Err(ConfigParseError::UnexpectedAttribute(
-                                name,
+                                name.to_string(),
                                 Some(BACK_PRESSURE_TAG),
                             )),
                         }
@@ -163,7 +163,12 @@ pub mod downlink {
                         yield_after = Some(NonZeroUsize::new(size).unwrap());
                     }
 
-                    _ => return Err(ConfigParseError::UnexpectedKey(name, RELEASE_TAG)),
+                    _ => {
+                        return Err(ConfigParseError::UnexpectedKey(
+                            name.to_string(),
+                            RELEASE_TAG,
+                        ))
+                    }
                 },
 
                 Item::Slot(value, _) => {
@@ -274,7 +279,7 @@ pub mod downlink {
                                 }
                             }
                             _ => Err(ConfigParseError::UnexpectedAttribute(
-                                name,
+                                name.to_string(),
                                 Some(MUX_MODE_TAG),
                             )),
                         }
@@ -305,7 +310,7 @@ pub mod downlink {
                         queue_size = Some(NonZeroUsize::new(size).unwrap());
                     }
 
-                    _ => return Err(ConfigParseError::UnexpectedKey(name, QUEUE_TAG)),
+                    _ => return Err(ConfigParseError::UnexpectedKey(name.to_string(), QUEUE_TAG)),
                 },
 
                 Item::Slot(value, _) => {
@@ -342,7 +347,12 @@ pub mod downlink {
                         queue_size = Some(NonZeroUsize::new(size).unwrap());
                     }
 
-                    _ => return Err(ConfigParseError::UnexpectedKey(name, BUFFERED_TAG)),
+                    _ => {
+                        return Err(ConfigParseError::UnexpectedKey(
+                            name.to_string(),
+                            BUFFERED_TAG,
+                        ))
+                    }
                 },
 
                 Item::Slot(value, _) => {
@@ -539,7 +549,12 @@ pub mod downlink {
                             yield_after = Some(size);
                         }
 
-                        _ => return Err(ConfigParseError::UnexpectedKey(name, DOWNLINKS_TAG)),
+                        _ => {
+                            return Err(ConfigParseError::UnexpectedKey(
+                                name.to_string(),
+                                DOWNLINKS_TAG,
+                            ))
+                        }
                     },
                     Item::Slot(value, _) => {
                         return Err(ConfigParseError::UnexpectedValue(
@@ -592,7 +607,7 @@ pub mod downlink {
             IGNORE_TAG => Ok(OnInvalidMessage::Ignore),
             TERMINATE_TAG => Ok(OnInvalidMessage::Terminate),
             _ => Err(ConfigParseError::InvalidValue(
-                Value::Text(on_invalid_str),
+                Value::text(on_invalid_str),
                 ON_INVALID_TAG,
             )),
         }
@@ -659,7 +674,12 @@ pub mod downlink {
                                 ));
                             }
                         }
-                        _ => return Err(ConfigParseError::UnexpectedKey(name, CLIENT_TAG)),
+                        _ => {
+                            return Err(ConfigParseError::UnexpectedKey(
+                                name.to_string(),
+                                CLIENT_TAG,
+                            ))
+                        }
                     },
                     Item::Slot(value, _) => {
                         return Err(ConfigParseError::UnexpectedValue(value, Some(CLIENT_TAG)))
@@ -734,7 +754,10 @@ pub mod downlink {
                 if name == CONFIG_TAG {
                     ConfigHierarchy::try_from_items(items, use_defaults)
                 } else {
-                    Err(ConfigParseError::UnexpectedAttribute(name, None))
+                    Err(ConfigParseError::UnexpectedAttribute(
+                        name.to_string(),
+                        None,
+                    ))
                 }
             } else {
                 Err(ConfigParseError::UnnamedRecord(
@@ -789,7 +812,7 @@ pub mod downlink {
                                 }
                                 _ => {
                                     return Err(ConfigParseError::UnexpectedAttribute(
-                                        name,
+                                        name.to_string(),
                                         Some(CONFIG_TAG),
                                     ))
                                 }
@@ -829,7 +852,7 @@ pub mod downlink {
     ) -> Result<(Url, DownlinkParams), ConfigParseError> {
         match item {
             Item::Slot(Value::Text(name), Value::Record(_, items)) => {
-                let host = Url::parse(&name)
+                let host = Url::parse(name.as_str())
                     .map_err(|_| ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG))?;
                 let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
                 Ok((host, downlink_params))
@@ -851,7 +874,10 @@ pub mod downlink {
                         let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
                         Ok((path, downlink_params))
                     } else {
-                        Err(ConfigParseError::UnexpectedAttribute(name, Some(LANE_TAG)))
+                        Err(ConfigParseError::UnexpectedAttribute(
+                            name.to_string(),
+                            Some(LANE_TAG),
+                        ))
                     }
                 } else {
                     Err(ConfigParseError::UnnamedRecord(
@@ -876,13 +902,18 @@ pub mod downlink {
                     match item {
                         Item::Slot(Value::Text(name), Value::Text(value)) => match name.as_str() {
                             HOST_TAG => {
-                                host = Some(Url::parse(&value).map_err(|_| {
+                                host = Some(Url::parse(value.as_str()).map_err(|_| {
                                     ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG)
                                 })?)
                             }
-                            NODE_TAG => node = Some(value),
-                            LANE_TAG => lane = Some(value),
-                            _ => return Err(ConfigParseError::UnexpectedKey(name, PATH_TAG)),
+                            NODE_TAG => node = Some(value.to_string()),
+                            LANE_TAG => lane = Some(value.to_string()),
+                            _ => {
+                                return Err(ConfigParseError::UnexpectedKey(
+                                    name.to_string(),
+                                    PATH_TAG,
+                                ))
+                            }
                         },
                         Item::Slot(Value::Text(_), value) => {
                             return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))

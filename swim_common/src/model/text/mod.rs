@@ -276,6 +276,12 @@ impl PartialEq<&mut Text> for Text {
     }
 }
 
+impl PartialEq<str> for Text {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
 impl PartialEq<Box<str>> for Text {
     fn eq(&self, other: &Box<str>) -> bool {
         self.as_str() == &**other
