@@ -18,6 +18,8 @@ pub mod lifecycle;
 pub(crate) mod provider;
 mod router;
 pub mod spec;
+#[cfg(test)]
+mod tests;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AgentResult;
@@ -46,9 +48,6 @@ use url::Url;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
-
-#[cfg(test)]
-mod tests;
 
 trait AgentRoute<Clk, Envelopes, Router>: Debug {
     fn run_agent(

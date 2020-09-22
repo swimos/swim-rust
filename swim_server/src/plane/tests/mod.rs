@@ -12,24 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::context::PlaneContext;
-use futures::future::{ready, BoxFuture};
-use futures::FutureExt;
-use std::fmt::Debug;
-
-pub trait PlaneLifecycle: Debug {
-    fn on_start<'a>(&'a mut self, _context: &'a dyn PlaneContext) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
-    }
-
-    fn on_stop(&mut self) -> BoxFuture<()> {
-        ready(()).boxed()
-    }
-
-    fn boxed(self) -> Box<dyn PlaneLifecycle>
-    where
-        Self: Sized + 'static,
-    {
-        Box::new(self)
-    }
-}
+mod fixture;

@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use utilities::route_pattern::RoutePattern;
 
-pub trait PlaneContext {
+pub trait PlaneContext: Send + Sync {
     fn get_agent(
         &self,
         route: String,
