@@ -34,7 +34,10 @@ pub(super) struct RouteSpec<Clk, Envelopes, Router> {
 }
 
 impl<Clk, Envelopes, Router> RouteSpec<Clk, Envelopes, Router> {
-    fn new(pattern: RoutePattern, agent_route: BoxAgentRoute<Clk, Envelopes, Router>) -> Self {
+    pub(super) fn new(
+        pattern: RoutePattern,
+        agent_route: BoxAgentRoute<Clk, Envelopes, Router>,
+    ) -> Self {
         RouteSpec {
             pattern,
             agent_route,

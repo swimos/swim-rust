@@ -281,7 +281,7 @@ pub async fn run_plane<Clk, S>(
     let (context_tx, context_rx) = mpsc::channel(8);
     let context = ContextImpl::new(context_tx.clone(), spec.routes());
 
-    let mut requests = context_rx.fuse();
+    let mut requests = context_rx.take_until(stop_trigger.clone()).fuse();
 
     let PlaneSpec {
         routes,
@@ -307,18 +307,26 @@ pub async fn run_plane<Clk, S>(
             counter: 0,
         };
 
+        let mut stopping = false;
+
         loop {
-            let req_or_res = if spawner.is_empty() {
-                requests.next().await.map(Either::Left)
+            let req_or_res = if stopping {
+                if spawner.is_empty() {
+                    Either::Right(None)
+                } else {
+                    Either::Right(spawner.next().await)
+                }
+            } else if spawner.is_empty() {
+                Either::Left(requests.next().await)
             } else {
                 select_biased! {
-                    request = requests.next() => request.map(Either::Left),
-                    result = spawner.next() => result.map(Either::Right),
+                    request = requests.next() => Either::Left(request),
+                    result = spawner.next() => Either::Right(result),
                 }
             };
 
             match req_or_res {
-                Some(Either::Left(PlaneRequest::Agent { name, request })) => {
+                Either::Left(Some(PlaneRequest::Agent { name, request })) => {
                     let result = if let Some(agent) = resolver
                         .active_routes
                         .get_endpoint_for_route(name.as_str())
@@ -334,7 +342,7 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Some(Either::Left(PlaneRequest::Endpoint { id, request })) => {
+                Either::Left(Some(PlaneRequest::Endpoint { id, request })) => {
                     if id.is_local() {
                         let result = if let Some(tx) = resolver
                             .active_routes
@@ -355,7 +363,7 @@ pub async fn run_plane<Clk, S>(
                         }
                     }
                 }
-                Some(Either::Left(PlaneRequest::Resolve {
+                Either::Left(Some(PlaneRequest::Resolve {
                     host: None,
                     name,
                     request,
@@ -373,7 +381,7 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Some(Either::Left(PlaneRequest::Resolve {
+                Either::Left(Some(PlaneRequest::Resolve {
                     host: Some(_host_url),
                     name: _,
                     request,
@@ -386,7 +394,7 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Some(Either::Left(PlaneRequest::Routes(request))) => {
+                Either::Left(Some(PlaneRequest::Routes(request))) => {
                     if request
                         .send(resolver.active_routes.routes().map(Clone::clone).collect())
                         .is_err()
@@ -394,7 +402,7 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Some(Either::Right(AgentResult {
+                Either::Right(Some(AgentResult {
                     route,
                     dispatcher_errors,
                     failed,
@@ -403,8 +411,16 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_errors);
                     }
                 }
+                Either::Left(None) => {
+                    stopping = true;
+                    if spawner.is_empty() {
+                        break;
+                    }
+                }
                 _ => {
-                    break;
+                    if stopping {
+                        break;
+                    }
                 }
             }
         }

@@ -64,7 +64,7 @@ impl ReceiveAgentRoute {
 }
 
 #[derive(Debug)]
-pub struct TestLifecycle {}
+pub struct TestLifecycle;
 
 pub fn make_config() -> AgentExecutionConfig {
     let buffer_size = NonZeroUsize::new(8).unwrap();
@@ -85,9 +85,9 @@ pub fn make_config() -> AgentExecutionConfig {
     }
 }
 
-const PARAM_NAME: &str = "id";
-const SENDER_PREFIX: &str = "sender";
-const RECEIVER_PREFIX: &str = "receiver";
+pub const PARAM_NAME: &str = "id";
+pub const SENDER_PREFIX: &str = "sender";
+pub const RECEIVER_PREFIX: &str = "receiver";
 const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
@@ -108,14 +108,12 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
         assert_eq!(uri, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {
-            let addr = router
-                .resolve(None, format!("/{}/{}", RECEIVER_PREFIX, target))
-                .await
-                .unwrap();
+            let target_node = format!("/{}/{}", RECEIVER_PREFIX, target);
+            let addr = router.resolve(None, target_node.clone()).await.unwrap();
             let mut tx = router.get_sender(addr).await.unwrap();
             assert!(tx
                 .send_item(Envelope::make_event(
-                    expected_route.as_str(),
+                    target_node.as_str(),
                     LANE_NAME,
                     Some(MESSAGE.into())
                 ))
@@ -170,7 +168,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
                         tx.trigger();
                     }
                 } else {
-                    panic!("Unexpected envelope");
+                    panic!("Expected {:?}, received {:?}.", expected_envelope, env);
                 }
             }
             AgentResult {

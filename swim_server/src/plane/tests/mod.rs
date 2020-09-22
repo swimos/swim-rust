@@ -12,4 +12,76 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::plane::lifecycle::PlaneLifecycle;
+use crate::plane::router::PlaneRouter;
+use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
+use crate::plane::{AgentRoute, EnvChannel};
+use futures::future::join;
+use futures::stream::FuturesUnordered;
+use std::time::Duration;
+use swim_runtime::time::clock::Clock;
+use swim_runtime::time::timeout;
+use utilities::route_pattern::RoutePattern;
+use utilities::sync::trigger;
+
 mod fixture;
+
+fn make_spec<Clk: Clock>() -> (PlaneSpec<Clk, EnvChannel, PlaneRouter>, trigger::Receiver) {
+    let send_pattern = RoutePattern::parse(
+        format!("/{}/:{}", fixture::SENDER_PREFIX, fixture::PARAM_NAME).chars(),
+    )
+    .unwrap();
+    let receive_pattern = RoutePattern::parse(
+        format!("/{}/:{}", fixture::RECEIVER_PREFIX, fixture::PARAM_NAME).chars(),
+    )
+    .unwrap();
+
+    let sender = RouteSpec::new(
+        send_pattern,
+        SendAgentRoute::new("target".to_string()).boxed(),
+    );
+
+    let (tx, rx) = trigger::trigger();
+
+    let reciever = RouteSpec::new(
+        receive_pattern,
+        ReceiveAgentRoute::new("target".to_string(), tx).boxed(),
+    );
+
+    let lifecycle = TestLifecycle;
+    (
+        PlaneSpec {
+            routes: vec![sender, reciever],
+            lifecycle: Some(lifecycle.boxed()),
+        },
+        rx,
+    )
+}
+
+#[tokio::test]
+async fn plane_event_loop() {
+    let (spec, done_rx) = make_spec();
+
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let config = fixture::make_config();
+    let plane_task = super::run_plane(
+        config,
+        swim_runtime::time::clock::runtime_clock(),
+        spec,
+        stop_rx,
+        FuturesUnordered::new(),
+    );
+
+    let completion_task = async move {
+        let result = timeout::timeout(Duration::from_secs(10), done_rx).await;
+        match result {
+            Ok(Err(_)) => panic!("Completion trigger dropped."),
+            Err(_) => panic!("Plane timeout out."),
+            _ => {}
+        }
+        stop_tx.trigger();
+    };
+
+    join(plane_task, completion_task).await;
+}
