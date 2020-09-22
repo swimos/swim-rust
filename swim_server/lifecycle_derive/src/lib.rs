@@ -513,7 +513,7 @@ fn create_command_lane(
     )
 }
 
-#[proc_macro_derive(SwimAgent, attributes(lifecycle))]
+#[proc_macro_derive(SwimAgent, attributes(lifecycle, config))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
 
@@ -525,9 +525,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     };
 
     let agent_name = args.ident;
-
-    // Todo add param for config.
-    let config_name = Ident::new("TestAgentConfig", Span::call_site());
+    let config_name = args.config;
 
     // Todo extract into function
     let mut lifecycles: HashMap<Ident, (Ident, String)> = HashMap::new();
@@ -536,9 +534,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         let lifecycle_name = Ident::new(&arg.name.clone().unwrap(), Span::call_site());
 
         if let Type::Path(TypePath {
-                              path: Path { segments, .. },
-                              ..
-                          }) = &arg.ty
+            path: Path { segments, .. },
+            ..
+        }) = &arg.ty
         {
             let lane_type = segments.first().unwrap().ident.to_string();
             lifecycles.insert(lane_name, (lifecycle_name, lane_type));

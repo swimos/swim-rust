@@ -1,6 +1,5 @@
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
 use proc_macro2::{Ident, Span};
-use std::num::NonZeroUsize;
 
 #[derive(Debug, FromMeta)]
 pub struct AgentAttrs {
@@ -82,9 +81,13 @@ fn default_on_command() -> Ident {
 }
 
 #[derive(Debug, FromDeriveInput)]
+#[darling(attributes(config))]
 pub struct SwimAgent {
     pub ident: syn::Ident,
     pub data: ast::Data<(), LifecycleAttrs>,
+
+    #[darling(map = "to_ident")]
+    pub config: Ident,
 }
 
 #[derive(Debug, FromField)]
