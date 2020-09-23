@@ -15,8 +15,6 @@
 use crate::model::parser::ParseFailure;
 use crate::model::parser::{parse_document, parse_document_iteratee};
 use crate::model::{Attr, Item, Value};
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use utilities::iteratee::Iteratee;
 
 type ReadDocument = fn(&str) -> Result<Vec<Item>, ParseFailure>;
@@ -32,10 +30,10 @@ fn run_document_iteratee(repr: &str) -> Result<Vec<Item>, ParseFailure> {
 }
 
 fn empty_document(read_doc: ReadDocument) {
-    assert_that!(read_doc(""), eq(Ok(vec![])));
-    assert_that!(read_doc("    "), eq(Ok(vec![])));
-    assert_that!(read_doc("\n"), eq(Ok(vec![])));
-    assert_that!(read_doc(" \r\n "), eq(Ok(vec![])));
+    assert_eq!(read_doc(""), Ok(vec![]));
+    assert_eq!(read_doc("    "), Ok(vec![]));
+    assert_eq!(read_doc("\n"), Ok(vec![]));
+    assert_eq!(read_doc(" \r\n "), Ok(vec![]));
 }
 
 #[test]
@@ -49,34 +47,34 @@ fn iteratee_empty_document() {
 }
 
 fn single_value_document(read_doc: ReadDocument) {
-    assert_that!(read_doc("3"), eq(Ok(vec![Item::of(3u32)])));
-    assert_that!(read_doc("name"), eq(Ok(vec![Item::of("name")])));
-    assert_that!(
+    assert_eq!(read_doc("3"), Ok(vec![Item::of(3u32)]));
+    assert_eq!(read_doc("name"), Ok(vec![Item::of("name")]));
+    assert_eq!(
         read_doc("@name"),
-        eq(Ok(vec![Item::of(Value::of_attr("name"))]))
+        Ok(vec![Item::of(Value::of_attr("name"))])
     );
-    assert_that!(
+    assert_eq!(
         read_doc("{1, 2, 3}"),
-        eq(Ok(vec![Item::of(Value::from_vec(vec![1u32, 2u32, 3u32]))]))
+        Ok(vec![Item::of(Value::from_vec(vec![1u32, 2u32, 3u32]))])
     );
     let complex = Value::Record(
         vec![Attr::of(("name", 0u32))],
         vec![Item::slot("a", 1u32), Item::slot("b", 2u32)],
     );
-    assert_that!(
+    assert_eq!(
         read_doc("@name(0){a:1, b:2}"),
-        eq(Ok(vec![Item::of(complex.clone())]))
+        Ok(vec![Item::of(complex.clone())])
     );
 
-    assert_that!(read_doc("3  "), eq(Ok(vec![Item::of(3u32)])));
-    assert_that!(read_doc("3\n "), eq(Ok(vec![Item::of(3u32)])));
-    assert_that!(
+    assert_eq!(read_doc("3  "), Ok(vec![Item::of(3u32)]));
+    assert_eq!(read_doc("3\n "), Ok(vec![Item::of(3u32)]));
+    assert_eq!(
         read_doc(" @name(0){a:1, b:2} "),
-        eq(Ok(vec![Item::of(complex.clone())]))
+        Ok(vec![Item::of(complex.clone())])
     );
-    assert_that!(
+    assert_eq!(
         read_doc("@name(0){a:1, b:2}  \n  "),
-        eq(Ok(vec![Item::of(complex.clone())]))
+        Ok(vec![Item::of(complex.clone())])
     );
 }
 
@@ -91,23 +89,14 @@ fn iteratee_single_value_document() {
 }
 
 fn single_slot_document(read_doc: ReadDocument) {
-    assert_that!(read_doc("a:3"), eq(Ok(vec![Item::slot("a", 3u32)])));
-    assert_that!(
-        read_doc("\"a\":"),
-        eq(Ok(vec![Item::slot("a", Value::Extant)]))
-    );
-    assert_that!(
+    assert_eq!(read_doc("a:3"), Ok(vec![Item::slot("a", 3u32)]));
+    assert_eq!(read_doc("\"a\":"), Ok(vec![Item::slot("a", Value::Extant)]));
+    assert_eq!(
         read_doc("my_slot:@name(1)"),
-        eq(Ok(vec![Item::slot(
-            "my_slot",
-            Value::of_attr(("name", 1u32))
-        )]))
+        Ok(vec![Item::slot("my_slot", Value::of_attr(("name", 1u32)))])
     );
-    assert_that!(read_doc("  a :3   "), eq(Ok(vec![Item::slot("a", 3u32)])));
-    assert_that!(
-        read_doc("  a :   3   \n"),
-        eq(Ok(vec![Item::slot("a", 3u32)]))
-    );
+    assert_eq!(read_doc("  a :3   "), Ok(vec![Item::slot("a", 3u32)]));
+    assert_eq!(read_doc("  a :   3   \n"), Ok(vec![Item::slot("a", 3u32)]));
 }
 
 #[test]
@@ -121,20 +110,20 @@ fn iteratee_single_slot_document() {
 }
 
 fn multiple_value_document(read_doc: ReadDocument) {
-    assert_that!(
+    assert_eq!(
         read_doc("1, 2, hello"),
-        eq(Ok(vec![Item::of(1u32), Item::of(2u32), Item::of("hello")]))
+        Ok(vec![Item::of(1u32), Item::of(2u32), Item::of("hello")])
     );
-    assert_that!(
+    assert_eq!(
         read_doc("simple,\n @medium,\n @complex(3) { a, b, c }"),
-        eq(Ok(vec![
+        Ok(vec![
             Item::of("simple"),
             Item::of(Value::of_attr("medium")),
             Item::of(Value::Record(
                 vec![Attr::of(("complex", 3u32))],
                 vec![Item::of("a"), Item::of("b"), Item::of("c")]
             ))
-        ]))
+        ])
     );
 }
 
@@ -149,17 +138,17 @@ fn iteratee_multiple_value_document() {
 }
 
 fn mixed_document(read_doc: ReadDocument) {
-    assert_that!(
+    assert_eq!(
         read_doc("1, name: 2, hello"),
-        eq(Ok(vec![
+        Ok(vec![
             Item::of(1u32),
             Item::slot("name", 2u32),
             Item::of("hello")
-        ]))
+        ])
     );
-    assert_that!(
+    assert_eq!(
         read_doc("first: simple,\n @medium,\n last: @complex(3) { a, b, c }"),
-        eq(Ok(vec![
+        Ok(vec![
             Item::slot("first", "simple"),
             Item::of(Value::of_attr("medium")),
             Item::slot(
@@ -169,7 +158,7 @@ fn mixed_document(read_doc: ReadDocument) {
                     vec![Item::of("a"), Item::of("b"), Item::of("c")]
                 )
             )
-        ]))
+        ])
     );
 }
 
@@ -184,11 +173,11 @@ fn iteratee_mixed_document() {
 }
 
 fn no_extant_after_trailing_sep(read_doc: ReadDocument) {
-    assert_that!(read_doc("3,"), eq(Ok(vec![Item::of(3u32)])));
+    assert_eq!(read_doc("3,"), Ok(vec![Item::of(3u32)]));
 
-    assert_that!(
+    assert_eq!(
         read_doc("name: true,\n"),
-        eq(Ok(vec![Item::slot("name", true)]))
+        Ok(vec![Item::slot("name", true)])
     );
 }
 
@@ -203,18 +192,15 @@ fn iteratee_no_extant_after_trailing_sep() {
 }
 
 fn fails_on_top_level_close(read_doc: ReadDocument) {
-    assert_that!(read_doc("}"), err());
+    assert!(read_doc("}").is_err());
 
-    assert_that!(read_doc(")"), err());
+    assert!(read_doc(")").is_err());
 
-    assert_that!(read_doc("0 \n }"), err());
+    assert!(read_doc("0 \n }").is_err());
 
-    assert_that!(read_doc("0 \n )"), err());
+    assert!(read_doc("0 \n )").is_err());
 
-    assert_that!(
-        read_doc("first: simple,\n @medium,\n last: @complex(3) { a, b, c }}"),
-        err()
-    );
+    assert!(read_doc("first: simple,\n @medium,\n last: @complex(3) { a, b, c }}").is_err());
 }
 
 #[test]

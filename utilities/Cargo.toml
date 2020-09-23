@@ -22,5 +22,4 @@ macro_helpers = { path = "macro_helpers" }
 url = "2.1.1"
 
 [dev-dependencies]
-hamcrest2 = "0.3"
 tokio = { version = "0.2.21", features = [ "rt-threaded", "macros"] }
