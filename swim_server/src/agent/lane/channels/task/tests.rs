@@ -79,7 +79,7 @@ fn lane_io_err_display_uplink() {
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
             "- uplink_errors =",
-            "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
+            "* Uplink to Remote(1) failed: Uplink send channel was dropped."
         ]
     );
 
@@ -98,7 +98,7 @@ fn lane_io_err_display_uplink() {
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
             "- uplink_errors =",
-            "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
+            "* Uplink to Remote(1) failed: Uplink send channel was dropped."
         ]
     );
 }
@@ -122,7 +122,7 @@ fn lane_io_err_display_both() {
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
             "- update_error = The body of an incoming envelope was invalid: Malformatted",
             "- uplink_errors =",
-            "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
+            "* Uplink to Remote(1) failed: Uplink send channel was dropped."
         ]
     );
 }
