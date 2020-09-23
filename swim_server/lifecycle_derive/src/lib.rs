@@ -1,21 +1,12 @@
-use crate::args::{
-    ActionAttrs, AgentAttrs, CommandAttrs, LaneType, MapAttrs, SwimAgent, ValueAttrs,
-};
+use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgent, ValueAttrs};
+use crate::utils::{get_agent_data, get_task_struct_name};
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Literal, Span};
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 mod args;
-
-fn get_task_struct_name(name: &str) -> Ident {
-    Ident::new(&format!("{}Task", name), Span::call_site())
-}
-
-fn get_task_var_name(name: &str) -> Ident {
-    Ident::new(&format!("{}_task", name), Span::call_site())
-}
+mod utils;
 
 #[proc_macro_attribute]
 pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -23,7 +14,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     let args = match AgentAttrs::from_list(&attr_args) {
-        Ok(v) => v,
+        Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
         }
@@ -63,7 +54,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     let args = match CommandAttrs::from_list(&attr_args) {
-        Ok(v) => v,
+        Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
         }
@@ -158,7 +149,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     let args = match ActionAttrs::from_list(&attr_args) {
-        Ok(v) => v,
+        Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
         }
@@ -252,7 +243,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     let args = match ValueAttrs::from_list(&attr_args) {
-        Ok(v) => v,
+        Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
         }
@@ -339,7 +330,7 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     let args = match MapAttrs::from_list(&attr_args) {
-        Ok(v) => v,
+        Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
         }
@@ -421,147 +412,28 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(output_ast)
 }
 
-fn create_lane(
-    lane_type: &LaneType,
-    agent_name: &Ident,
-    lifecycle: &Ident,
-    lane_name: &Ident,
-) -> (proc_macro2::TokenStream, Ident) {
-    match lane_type {
-        LaneType::Command => create_command_lane(&agent_name, &lifecycle, &lane_name),
-        LaneType::Value => create_value_lane(&agent_name, &lifecycle, &lane_name),
-        LaneType::Map => create_map_lane(&agent_name, &lifecycle, &lane_name),
-    }
-}
-
-fn create_map_lane(
-    agent_name: &Ident,
-    lifecycle: &Ident,
-    lane_name: &Ident,
-) -> (proc_macro2::TokenStream, Ident) {
-    let lane_name_str = lane_name.to_string();
-    let task_var_ident = get_task_var_name(&lane_name_str);
-    let task_struct_ident = get_task_struct_name(&lifecycle.to_string());
-    let lane_name_lit = Literal::string(&lane_name_str);
-
-    (
-        quote! {
-            let lifecycle = #lifecycle::create(configuration);
-            let (#lane_name, event_stream) = model::map::make_lane_model(lifecycle.create_strategy());
-
-            let #task_var_ident = #task_struct_ident {
-                lifecycle,
-                name: #lane_name_lit.into(),
-                event_stream,
-                projection: |agent: &#agent_name| &agent.#lane_name,
-            };
-        },
-        task_var_ident,
-    )
-}
-
-//Todo add init
-fn create_value_lane(
-    agent_name: &Ident,
-    lifecycle: &Ident,
-    lane_name: &Ident,
-) -> (proc_macro2::TokenStream, Ident) {
-    //Todo extract this
-    let lane_name_str = lane_name.to_string();
-    let task_var_ident = get_task_var_name(&lane_name_str);
-    let task_struct_ident = get_task_struct_name(&lifecycle.to_string());
-    let lane_name_lit = Literal::string(&lane_name_str);
-
-    (
-        quote! {
-            let lifecycle = #lifecycle::create(configuration);
-            let (#lane_name, event_stream) =
-                model::value::make_lane_model(0, lifecycle.create_strategy());
-
-            let #task_var_ident = #task_struct_ident {
-                lifecycle,
-                name: #lane_name_lit.into(),
-                event_stream,
-                projection: |agent: &#agent_name| &agent.#lane_name,
-            };
-        },
-        task_var_ident,
-    )
-}
-
-fn create_command_lane(
-    agent_name: &Ident,
-    lifecycle: &Ident,
-    lane_name: &Ident,
-) -> (proc_macro2::TokenStream, Ident) {
-    let lane_name_str = lane_name.to_string();
-    let task_var_ident = get_task_var_name(&lane_name_str);
-    let task_struct_ident = get_task_struct_name(&lifecycle.to_string());
-    let lane_name_lit = Literal::string(&lane_name_str);
-
-    (
-        quote! {
-            let lifecycle = #lifecycle::create(configuration);
-            let (#lane_name, event_stream) = model::action::make_lane_model(configuration.command_buffer_size.clone());
-            let #task_var_ident = #task_struct_ident {
-                lifecycle,
-                name: #lane_name_lit.into(),
-                event_stream,
-                projection: |agent: &#agent_name| &agent.#lane_name,
-            };
-        },
-        task_var_ident,
-    )
-}
-
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
 
     let args = match SwimAgent::from_derive_input(&input_ast) {
-        Ok(v) => v,
+        Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
         }
     };
 
-    let agent_name = args.ident;
-    let config_name = args.config;
+    let (agent_name, config_name, agent_fields) = get_agent_data(args);
 
-    let mut lifecycles_ast = Vec::new();
-    let mut tasks = Vec::new();
-    let mut lanes = Vec::new();
-
-    // Todo extract into function
-    args.data.map_struct_fields(|arg| {
-        if let (Some(lane_name), Some(lifecycle_name), Some(lane_type)) =
-            (arg.ident.as_ref(), arg.name.as_ref(), arg.get_lane_type())
-        {
-            let lifecycle_name = Ident::new(lifecycle_name, Span::call_site());
-
-            let (ast, task_name) = create_lane(&lane_type, &agent_name, &lifecycle_name, lane_name);
-
-            lifecycles_ast.push(ast);
-            tasks.push(task_name);
-            lanes.push(lane_name.clone());
-        }
-    });
-
-    let lifecycles_ast = quote! {
-         #(#lifecycles_ast)*
-    };
-
-    let agent_ast = quote! {
-        #agent_name {
-            #(#lanes),*
-        };
-    };
-
-    let tasks_ast = quote! {
-        vec![
-                #(#tasks.boxed()),*
-        ];
-    };
+    let lanes = agent_fields
+        .iter()
+        .map(|agent_field| &agent_field.lane_name);
+    let tasks = agent_fields
+        .iter()
+        .map(|agent_field| &agent_field.task_name);
+    let lifecycles_ast = agent_fields
+        .iter()
+        .map(|agent_field| &agent_field.lifecycle_ast);
 
     let output_ast = quote! {
 
@@ -578,9 +450,15 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
                     Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
             {
 
-                #lifecycles_ast
-                let agent = #agent_ast
-                let tasks = #tasks_ast
+                #(#lifecycles_ast)*
+
+                let agent = #agent_name {
+                    #(#lanes),*
+                };
+
+                let tasks = vec![
+                    #(#tasks.boxed()),*
+                ];
 
                 (agent, tasks, HashMap::new())
             }
