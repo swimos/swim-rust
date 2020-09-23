@@ -23,23 +23,23 @@ use tokio::net::TcpStream;
 use tokio_tls::TlsConnector as TokioTlsConnector;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::extensions::deflate::DeflateExt;
-use tokio_tungstenite::tungstenite::extensions::uncompressed::PlainTextExt;
+use tokio_tungstenite::tungstenite::extensions::uncompressed::UncompressedExt;
 use tokio_tungstenite::tungstenite::extensions::WebSocketExtension;
 use tokio_tungstenite::tungstenite::protocol::frame::Frame;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;
+use std::borrow::Cow;
 
-#[derive(Clone)]
 pub enum MaybeCompressed {
     Compressed(DeflateExt),
-    Uncompressed(PlainTextExt),
+    Uncompressed(UncompressedExt),
 }
 
 impl MaybeCompressed {
     pub fn new_from_config(config: CompressionConfig) -> MaybeCompressed {
         match config {
             CompressionConfig::Uncompressed => {
-                MaybeCompressed::Uncompressed(PlainTextExt::new(Some(64 << 20)))
+                MaybeCompressed::Uncompressed(UncompressedExt::new(Some(64 << 20)))
             }
             CompressionConfig::Deflate(config) => {
                 MaybeCompressed::Compressed(DeflateExt::new(config))
@@ -50,7 +50,7 @@ impl MaybeCompressed {
 
 impl Default for MaybeCompressed {
     fn default() -> Self {
-        MaybeCompressed::Uncompressed(PlainTextExt::default())
+        MaybeCompressed::Uncompressed(UncompressedExt::default())
     }
 }
 
@@ -61,7 +61,7 @@ impl Error for CompressionError {}
 
 impl From<CompressionError> for TError {
     fn from(e: CompressionError) -> Self {
-        TError::ExtensionError(Box::new(e))
+        TError::ExtensionError(Cow::from(e.to_string()))
     }
 }
 
@@ -77,7 +77,7 @@ impl WebSocketExtension for MaybeCompressed {
     type Error = CompressionError;
 
     fn new(max_message_size: Option<usize>) -> Self {
-        MaybeCompressed::Uncompressed(PlainTextExt::new(max_message_size))
+        MaybeCompressed::Uncompressed(UncompressedExt::new(max_message_size))
     }
 
     fn enabled(&self) -> bool {
