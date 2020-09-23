@@ -97,7 +97,7 @@ impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
                     Attr {
                         name,
                         value: Int32Value(n),
-                    } => extract_take_or_skip(&name, *n),
+                    } => extract_take_or_skip(name.as_str(), *n),
                     Attr { name, value } if name == REMOVE_NAME => {
                         extract_key(value.clone()).map(MapModification::Remove)
                     }

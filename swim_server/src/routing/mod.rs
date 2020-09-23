@@ -37,11 +37,11 @@ enum Location {
 pub struct RoutingAddr(Location);
 
 impl RoutingAddr {
-    pub fn remote(id: u32) -> Self {
+    pub const fn remote(id: u32) -> Self {
         RoutingAddr(Location::RemoteEndpoint(id))
     }
 
-    pub fn local(id: u32) -> Self {
+    pub const fn local(id: u32) -> Self {
         RoutingAddr(Location::Local(id))
     }
 }
