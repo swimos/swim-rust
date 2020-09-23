@@ -48,6 +48,19 @@ fn get_task_var_name(name: &str) -> Ident {
     Ident::new(&format!("{}_task", name), Span::call_site())
 }
 
+fn create_lane(
+    lane_type: &LaneType,
+    agent_name: &Ident,
+    lifecycle: &Ident,
+    lane_name: &Ident,
+) -> (proc_macro2::TokenStream, Ident) {
+    match lane_type {
+        LaneType::Command => create_command_lane(&agent_name, &lifecycle, &lane_name),
+        LaneType::Value => create_value_lane(&agent_name, &lifecycle, &lane_name),
+        LaneType::Map => create_map_lane(&agent_name, &lifecycle, &lane_name),
+    }
+}
+
 fn create_command_lane(
     agent_name: &Ident,
     lifecycle: &Ident,
@@ -73,20 +86,6 @@ fn create_command_lane(
     )
 }
 
-fn create_lane(
-    lane_type: &LaneType,
-    agent_name: &Ident,
-    lifecycle: &Ident,
-    lane_name: &Ident,
-) -> (proc_macro2::TokenStream, Ident) {
-    match lane_type {
-        LaneType::Command => create_command_lane(&agent_name, &lifecycle, &lane_name),
-        LaneType::Value => create_value_lane(&agent_name, &lifecycle, &lane_name),
-        LaneType::Map => create_map_lane(&agent_name, &lifecycle, &lane_name),
-    }
-}
-
-//Todo add init
 fn create_value_lane(
     agent_name: &Ident,
     lifecycle: &Ident,
@@ -102,7 +101,7 @@ fn create_value_lane(
         quote! {
             let lifecycle = #lifecycle::create(configuration);
             let (#lane_name, event_stream) =
-                model::value::make_lane_model(0, lifecycle.create_strategy());
+                model::value::make_lane_model(Default::default(), lifecycle.create_strategy());
 
             let #task_var_ident = #task_struct_ident {
                 lifecycle,

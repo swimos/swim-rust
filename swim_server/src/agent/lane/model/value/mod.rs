@@ -68,7 +68,7 @@ where
 /// Create a new value lane with the specified watch strategy.
 pub fn make_lane_model<T, W>(init: T, watch: W) -> (ValueLane<T>, W::View)
 where
-    T: Any + Send + Sync,
+    T: Any + Send + Sync + Default,
     W: ValueLaneWatch<T>,
 {
     let value = Arc::new(init);

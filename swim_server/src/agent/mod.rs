@@ -594,7 +594,7 @@ pub fn make_value_lane<Agent, Context, T, L>(
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    T: Any + Send + Sync + Form + Debug,
+    T: Any + Send + Sync + Form + Debug + Default,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
     L::WatchStrategy: ValueLaneWatch<T>,
 {
