@@ -55,7 +55,6 @@ pub struct PlaneRouterFactory {
 }
 
 impl PlaneRouterFactory {
-
     /// Create a factory from a channel back to the owning plane.
     pub(super) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
         PlaneRouterFactory { request_sender }

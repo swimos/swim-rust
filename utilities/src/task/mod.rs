@@ -12,37 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::FutureObj;
+#[cfg(test)]
+mod tests;
+
 use futures::stream::FusedStream;
-use futures::task::{Context, Poll, Spawn, SpawnError};
-use futures::{Stream, StreamExt};
+use futures::task::{Context, Poll};
+use futures::{ready, Stream, StreamExt};
 use futures_util::stream::FuturesUnordered;
 use std::future::Future;
-use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
-pub struct TokioSpawn;
+/// Trait for task spawners that will concurrently execute futures passed to them.
+pub trait Spawner<F: Future>: FusedStream<Item = F::Output> {
+    /// Add a new future to the spawner.
+    fn add(&self, fut: F);
 
-pub struct TokioSpawner<Fut: Future> {
-    _consume: PhantomData<fn(Fut)>,
-    reporter: mpsc::Sender<Fut::Output>,
-    receiver: mpsc::Receiver<Fut::Output>,
-    count: AtomicUsize,
+    /// Determine if the spawner is running any tasks.
+    fn is_empty(&self) -> bool;
 }
 
-impl Spawn for TokioSpawn {
-    fn spawn_obj(&self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
-        tokio::task::spawn(future);
-        Ok(())
+#[derive(Debug)]
+pub struct TokioSpawner<Fut: Future>(FuturesUnordered<JoinHandle<Fut::Output>>);
+
+impl<Fut: Future> Default for TokioSpawner<Fut> {
+    fn default() -> Self {
+        TokioSpawner(Default::default())
     }
 }
 
-pub trait Spawner<F: Future>: FusedStream<Item = F::Output> {
-    fn add(&self, fut: F);
-
-    fn is_empty(&self) -> bool;
+impl<Fut: Future> TokioSpawner<Fut> {
+    pub fn new() -> Self {
+        Default::default()
+    }
 }
 
 impl<F> Spawner<F> for FuturesUnordered<F>
@@ -64,15 +66,23 @@ where
 {
     type Item = Fut::Output;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let TokioSpawner {
-            receiver, count, ..
-        } = self.get_mut();
-        let poll_result = receiver.poll_next_unpin(cx);
-        if matches!(poll_result, Poll::Ready(Some(_))) {
-            count.fetch_sub(1, Ordering::Relaxed);
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            let poll_result = ready!(self.as_mut().get_mut().0.poll_next_unpin(cx));
+            match poll_result {
+                Some(Ok(out)) => {
+                    break Poll::Ready(Some(out));
+                }
+                Some(Err(e)) => {
+                    if e.is_panic() {
+                        std::panic::resume_unwind(e.into_panic());
+                    }
+                }
+                _ => {
+                    break Poll::Ready(None);
+                }
+            }
         }
-        poll_result
     }
 }
 
@@ -81,7 +91,7 @@ where
     Fut: Future + Send + 'static,
 {
     fn is_terminated(&self) -> bool {
-        self.count.load(Ordering::Relaxed) == 0
+        self.0.is_terminated()
     }
 }
 
@@ -91,15 +101,11 @@ where
     Fut::Output: Send,
 {
     fn add(&self, fut: Fut) {
-        let mut tx = self.reporter.clone();
-        let task = async move {
-            let _ = tx.send(fut.await).await;
-        };
-        self.count.fetch_add(1, Ordering::Relaxed);
-        tokio::task::spawn(task);
+        let TokioSpawner(inner) = self;
+        inner.push(tokio::task::spawn(fut));
     }
 
     fn is_empty(&self) -> bool {
-        self.count.load(Ordering::Relaxed) == 0
+        self.0.is_empty()
     }
 }

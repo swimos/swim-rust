@@ -52,7 +52,6 @@ use utilities::task::Spawner;
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
 trait AgentRoute<Clk, Envelopes, Router>: Debug {
-
     /// Run an instance of the agent.
     ///
     /// #Arguments
@@ -155,10 +154,7 @@ type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
 #[derive(Debug)]
 enum PlaneRequest {
     /// Get a handle to an agent (starting it where necessary).
-    Agent {
-        name: String,
-        request: AgentRequest,
-    },
+    Agent { name: String, request: AgentRequest },
     /// Get channel to route messages to a specified routing address.
     Endpoint {
         id: RoutingAddr,
@@ -187,14 +183,14 @@ impl ContextImpl {
 }
 
 impl PlaneContext for ContextImpl {
-
     fn get_agent<'a>(
         &'a mut self,
         route: String,
     ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
         let (tx, rx) = oneshot::channel();
         async move {
-            if self.request_tx
+            if self
+                .request_tx
                 .send(PlaneRequest::Agent {
                     name: route.to_string(),
                     request: Request::new(tx),
@@ -219,7 +215,8 @@ impl PlaneContext for ContextImpl {
     fn active_routes(&mut self) -> BoxFuture<HashSet<String>> {
         let (tx, rx) = oneshot::channel();
         async move {
-            if self.request_tx
+            if self
+                .request_tx
                 .send(PlaneRequest::Routes(Request::new(tx)))
                 .await
                 .is_err()
@@ -254,7 +251,6 @@ struct RouteResolver<Clk> {
 }
 
 impl<Clk: Clock> RouteResolver<Clk> {
-
     /// Attempts to open an agent at a specified route.
     fn try_open_route<S>(
         &mut self,
@@ -275,7 +271,9 @@ impl<Clk: Clock> RouteResolver<Clk> {
         } = self;
         let (agent_route, params) = route_for(route.as_str(), routes)?;
         let (tx, rx) = mpsc::channel(8);
-        *counter = counter.checked_add(1).expect("Local endpoint counter overflow.");
+        *counter = counter
+            .checked_add(1)
+            .expect("Local endpoint counter overflow.");
         let addr = RoutingAddr::local(*counter);
         let (agent, task) = agent_route.run_agent(
             route.clone(),

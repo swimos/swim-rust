@@ -21,7 +21,6 @@ use utilities::route_pattern::RoutePattern;
 
 /// The context that is available in [`PlaneLifecycle`] event handlers.
 pub trait PlaneContext: Send + Sync {
-
     /// Get a reference to an agent in this plane.
     ///
     /// #Notes

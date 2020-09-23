@@ -91,7 +91,6 @@ where
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
     Router: ServerRouter + Clone + 'static,
 {
-
     /// Attempt to add a new agent route to the plane.
     ///
     /// #Arguments
