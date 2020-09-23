@@ -46,7 +46,7 @@ mod swim_server {
 /// will be inserted into the the `data` lane with keys "Name0", "Name1" and so forth. For each
 /// entry inserted, the value of the `total` lane will be incremented by the inserted value.
 #[derive(Debug, SwimAgent)]
-#[config(config = "TestAgentConfig")]
+#[agent(config = "TestAgentConfig")]
 pub struct ReportingAgent {
     #[lifecycle(name = "DataLifecycle")]
     data: MapLane<String, i32>,

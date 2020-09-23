@@ -1,5 +1,10 @@
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
 use proc_macro2::{Ident, Span};
+use syn::{Path, Type, TypePath};
+
+const COMMAND_LANE: &str = "CommandLane";
+const VALUE_LANE: &str = "ValueLane";
+const MAP_LANE: &str = "MapLane";
 
 #[derive(Debug, FromMeta)]
 pub struct AgentAttrs {
@@ -81,11 +86,10 @@ fn default_on_command() -> Ident {
 }
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(attributes(config))]
+#[darling(attributes(agent))]
 pub struct SwimAgent {
     pub ident: syn::Ident,
     pub data: ast::Data<(), LifecycleAttrs>,
-
     #[darling(map = "to_ident")]
     pub config: Ident,
 }
@@ -95,7 +99,32 @@ pub struct SwimAgent {
 pub struct LifecycleAttrs {
     pub ident: Option<syn::Ident>,
     pub ty: syn::Type,
-
-    #[darling(default)]
     pub name: Option<String>,
+}
+
+impl LifecycleAttrs {
+    pub fn get_lane_type(&self) -> Option<LaneType> {
+        if let Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+        }) = &self.ty
+        {
+            if let Some(path_segment) = segments.last() {
+                return match path_segment.ident.to_string().as_str() {
+                    COMMAND_LANE => Some(LaneType::Command),
+                    VALUE_LANE => Some(LaneType::Value),
+                    MAP_LANE => Some(LaneType::Map),
+                    _ => None,
+                };
+            }
+        }
+
+        None
+    }
+}
+
+pub enum LaneType {
+    Command,
+    Value,
+    Map,
 }

@@ -1,10 +1,11 @@
-use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgent, ValueAttrs};
+use crate::args::{
+    ActionAttrs, AgentAttrs, CommandAttrs, LaneType, MapAttrs, SwimAgent, ValueAttrs,
+};
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Literal, Span};
 use quote::quote;
-use std::collections::HashMap;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput, Path, Type, TypePath};
+use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 mod args;
 
@@ -421,16 +422,15 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 fn create_lane(
-    lane_type: String,
+    lane_type: &LaneType,
     agent_name: &Ident,
     lifecycle: &Ident,
     lane_name: &Ident,
 ) -> (proc_macro2::TokenStream, Ident) {
-    match lane_type.as_str() {
-        "CommandLane" => create_command_lane(&agent_name, &lifecycle, &lane_name),
-        "ValueLane" => create_value_lane(&agent_name, &lifecycle, &lane_name),
-        "MapLane" => create_map_lane(&agent_name, &lifecycle, &lane_name),
-        _ => unimplemented!(),
+    match lane_type {
+        LaneType::Command => create_command_lane(&agent_name, &lifecycle, &lane_name),
+        LaneType::Value => create_value_lane(&agent_name, &lifecycle, &lane_name),
+        LaneType::Map => create_map_lane(&agent_name, &lifecycle, &lane_name),
     }
 }
 
@@ -466,6 +466,7 @@ fn create_value_lane(
     lifecycle: &Ident,
     lane_name: &Ident,
 ) -> (proc_macro2::TokenStream, Ident) {
+    //Todo extract this
     let lane_name_str = lane_name.to_string();
     let task_var_ident = get_task_var_name(&lane_name_str);
     let task_struct_ident = get_task_struct_name(&lifecycle.to_string());
@@ -513,7 +514,7 @@ fn create_command_lane(
     )
 }
 
-#[proc_macro_derive(SwimAgent, attributes(lifecycle, config))]
+#[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
 
@@ -527,33 +528,24 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     let agent_name = args.ident;
     let config_name = args.config;
 
-    // Todo extract into function
-    let mut lifecycles: HashMap<Ident, (Ident, String)> = HashMap::new();
-    for arg in args.data.take_struct().unwrap().iter() {
-        let lane_name = arg.ident.clone().unwrap();
-        let lifecycle_name = Ident::new(&arg.name.clone().unwrap(), Span::call_site());
-
-        if let Type::Path(TypePath {
-            path: Path { segments, .. },
-            ..
-        }) = &arg.ty
-        {
-            let lane_type = segments.first().unwrap().ident.to_string();
-            lifecycles.insert(lane_name, (lifecycle_name, lane_type));
-        }
-    }
-
     let mut lifecycles_ast = Vec::new();
     let mut tasks = Vec::new();
     let mut lanes = Vec::new();
 
-    for (lane_name, (lifecycle_name, lane_type)) in lifecycles {
-        let (ast, task_name) = create_lane(lane_type, &agent_name, &lifecycle_name, &lane_name);
+    // Todo extract into function
+    args.data.map_struct_fields(|arg| {
+        if let (Some(lane_name), Some(lifecycle_name), Some(lane_type)) =
+            (arg.ident.as_ref(), arg.name.as_ref(), arg.get_lane_type())
+        {
+            let lifecycle_name = Ident::new(lifecycle_name, Span::call_site());
 
-        lifecycles_ast.push(ast);
-        tasks.push(task_name);
-        lanes.push(lane_name);
-    }
+            let (ast, task_name) = create_lane(&lane_type, &agent_name, &lifecycle_name, lane_name);
+
+            lifecycles_ast.push(ast);
+            tasks.push(task_name);
+            lanes.push(lane_name.clone());
+        }
+    });
 
     let lifecycles_ast = quote! {
          #(#lifecycles_ast)*
