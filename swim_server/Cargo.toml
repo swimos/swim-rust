@@ -29,7 +29,7 @@ utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
 tracing-futures = "0.2.4"
-lifecycle_derive = { path = "lifecycle_derive" }
+agent_derive = { path = "agent_derive" }
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }

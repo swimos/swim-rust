@@ -17,4 +17,4 @@
 pub mod agent;
 pub mod routing;
 
-pub use lifecycle_derive::*;
+pub use agent_derive::*;

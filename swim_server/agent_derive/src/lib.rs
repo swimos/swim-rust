@@ -8,6 +8,63 @@ use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 mod args;
 mod utils;
 
+#[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
+pub fn swim_agent(input: TokenStream) -> TokenStream {
+    let input_ast = parse_macro_input!(input as DeriveInput);
+
+    let args = match SwimAgent::from_derive_input(&input_ast) {
+        Ok(args) => args,
+        Err(e) => {
+            return TokenStream::from(e.write_errors());
+        }
+    };
+
+    let (agent_name, config_name, agent_fields) = get_agent_data(args);
+
+    let lanes = agent_fields
+        .iter()
+        .map(|agent_field| &agent_field.lane_name);
+    let tasks = agent_fields
+        .iter()
+        .map(|agent_field| &agent_field.task_name);
+    let lifecycles_ast = agent_fields
+        .iter()
+        .map(|agent_field| &agent_field.lifecycle_ast);
+
+    let output_ast = quote! {
+
+        #[automatically_derived]
+        impl SwimAgent<#config_name> for #agent_name {
+            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+                configuration: &#config_name,
+            ) -> (
+                Self,
+                Vec<Box<dyn LaneTasks<Self, Context>>>,
+                HashMap<String, Box<dyn LaneIo<Context>>>,
+            )
+                where
+                    Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+            {
+
+                #(#lifecycles_ast)*
+
+                let agent = #agent_name {
+                    #(#lanes),*
+                };
+
+                let tasks = vec![
+                    #(#tasks.boxed()),*
+                ];
+
+                (agent, tasks, HashMap::new())
+            }
+        }
+
+    };
+
+    TokenStream::from(output_ast)
+}
+
 #[proc_macro_attribute]
 pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -404,63 +461,6 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
                 .boxed()
-            }
-        }
-
-    };
-
-    TokenStream::from(output_ast)
-}
-
-#[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
-pub fn swim_agent(input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-
-    let args = match SwimAgent::from_derive_input(&input_ast) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
-    };
-
-    let (agent_name, config_name, agent_fields) = get_agent_data(args);
-
-    let lanes = agent_fields
-        .iter()
-        .map(|agent_field| &agent_field.lane_name);
-    let tasks = agent_fields
-        .iter()
-        .map(|agent_field| &agent_field.task_name);
-    let lifecycles_ast = agent_fields
-        .iter()
-        .map(|agent_field| &agent_field.lifecycle_ast);
-
-    let output_ast = quote! {
-
-        #[automatically_derived]
-        impl SwimAgent<#config_name> for #agent_name {
-            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
-                configuration: &#config_name,
-            ) -> (
-                Self,
-                Vec<Box<dyn LaneTasks<Self, Context>>>,
-                HashMap<String, Box<dyn LaneIo<Context>>>,
-            )
-                where
-                    Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
-            {
-
-                #(#lifecycles_ast)*
-
-                let agent = #agent_name {
-                    #(#lanes),*
-                };
-
-                let tasks = vec![
-                    #(#tasks.boxed()),*
-                ];
-
-                (agent, tasks, HashMap::new())
             }
         }
 
