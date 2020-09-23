@@ -8,6 +8,8 @@ use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 mod args;
 mod utils;
 
+//Todo change imports
+//Todo change constant strings
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -269,18 +271,22 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     let mut events = event_stream.take_until(context.agent_stop_event());
                     pin_utils::pin_mut!(events);
                     while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
-                        tracing::event!(tracing::Level::TRACE, swim_server::agent::COMMANDED, ?command);
+                        let commanded = swim_server::agent::COMMANDED;
+                        let action_result = swim_server::agent::ACTION_RESULT;
+                        let response_ingored = swim_server::agent::RESPONSE_IGNORED;
+
+                        tracing::event!(tracing::Level::TRACE, commanded, ?command);
 
                         let response = tracing_futures::Instrument::instrument(
                                 #on_command_func(&lifecycle, command, &model, &context),
                                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
                             ).await;
 
-                        tracing::event!(Level::TRACE, swim_server::agent::ACTION_RESULT, ?response);
+                        tracing::event!(tracing::Level::TRACE, action_result, ?response);
 
                         if let std::option::Option::Some(tx) = responder {
                             if tx.send(response).is_err() {
-                                tracing::event!(tracing::Level::WARN, swim_server::agent::RESPONSE_IGNORED);
+                                tracing::event!(tracing::Level::WARN, response_ingored);
                             }
                         }
                     }

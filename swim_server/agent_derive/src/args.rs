@@ -3,6 +3,7 @@ use proc_macro2::{Ident, Span};
 use syn::{Path, Type, TypePath};
 
 const COMMAND_LANE: &str = "CommandLane";
+const ACTION_LANE: &str = "ActionLane";
 const VALUE_LANE: &str = "ValueLane";
 const MAP_LANE: &str = "MapLane";
 
@@ -112,6 +113,7 @@ impl LifecycleAttrs {
             if let Some(path_segment) = segments.last() {
                 return match path_segment.ident.to_string().as_str() {
                     COMMAND_LANE => Some(LaneType::Command),
+                    ACTION_LANE => Some(LaneType::Action),
                     VALUE_LANE => Some(LaneType::Value),
                     MAP_LANE => Some(LaneType::Map),
                     _ => None,
@@ -126,6 +128,7 @@ impl LifecycleAttrs {
 //Todo add action lane
 pub(crate) enum LaneType {
     Command,
+    Action,
     Value,
     Map,
 }

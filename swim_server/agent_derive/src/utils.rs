@@ -78,13 +78,14 @@ fn create_lane(
     };
 
     match lane_type {
-        LaneType::Command => (create_command_lane(lane_data), task_variable),
+        LaneType::Command => (create_action_lane(lane_data), task_variable),
+        LaneType::Action => (create_action_lane(lane_data), task_variable),
         LaneType::Value => (create_value_lane(lane_data), task_variable),
         LaneType::Map => (create_map_lane(lane_data), task_variable),
     }
 }
 
-fn create_command_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
+fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
     let LaneData {
         agent_name,
         lifecycle,
