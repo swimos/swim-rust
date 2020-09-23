@@ -15,6 +15,7 @@
 use crate::connections::factory::tungstenite::{CompressionConfig, MaybeTlsStream, TError};
 use http::{Request, Response};
 use native_tls::TlsConnector;
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::ws::error::{ConnectionError, WebSocketError};
@@ -28,7 +29,6 @@ use tokio_tungstenite::tungstenite::extensions::WebSocketExtension;
 use tokio_tungstenite::tungstenite::protocol::frame::Frame;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;
-use std::borrow::Cow;
 
 pub enum MaybeCompressed {
     Compressed(DeflateExt),
