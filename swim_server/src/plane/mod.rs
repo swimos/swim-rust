@@ -49,7 +49,20 @@ use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
+/// Trait for agent routes. An agent route can construct and run any number of instances of a
+/// [`SwimAgent`] type.
 trait AgentRoute<Clk, Envelopes, Router>: Debug {
+
+    /// Run an instance of the agent.
+    ///
+    /// #Arguments
+    ///
+    /// * `uri` The specific URI of the agent instance.
+    /// * `parameters` - Named parameters extracted from the agent URI with the route pattern.
+    /// * `execution_config` - Configuration parameters controlling how the agent runs.
+    /// * `clock` - Clock for scheduling events.
+    /// * `incoming_envelopes`- The stream of envelopes routed to the agent.
+    /// * `router` - The router by which the agent can send messages.
     fn run_agent(
         &self,
         uri: String,
@@ -70,6 +83,7 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug {
 
 type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, Router>>;
 
+/// Endpoing connected to an agent within the plane.
 #[derive(Debug)]
 struct LocalEndpoint {
     agent_handle: Weak<dyn Any + Send + Sync>,
@@ -90,6 +104,7 @@ impl LocalEndpoint {
 
 type EnvChannel = TakeUntil<mpsc::Receiver<TaggedEnvelope>, trigger::Receiver>;
 
+/// Container for the running routes within a plane.
 #[derive(Debug, Default)]
 struct PlaneActiveRoutes {
     local_endpoints: HashMap<RoutingAddr, LocalEndpoint>,
@@ -136,24 +151,30 @@ type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable
 type RoutesRequest = Request<HashSet<String>>;
 type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
 
+/// Requests that can be serviced by the plane event loop.
 #[derive(Debug)]
 enum PlaneRequest {
+    /// Get a handle to an agent (starting it where necessary).
     Agent {
         name: String,
         request: AgentRequest,
     },
+    /// Get channel to route messages to a specified routing address.
     Endpoint {
         id: RoutingAddr,
         request: EndpointRequest,
     },
+    /// Resolve the routing address for an agent.
     Resolve {
         host: Option<Url>,
         name: String,
         request: ResolutionRequest,
     },
+    /// Get all of the active routes for the plane.
     Routes(RoutesRequest),
 }
 
+/// Plane context implementation.
 struct ContextImpl {
     request_tx: mpsc::Sender<PlaneRequest>,
     routes: Vec<RoutePattern>,
@@ -166,14 +187,14 @@ impl ContextImpl {
 }
 
 impl PlaneContext for ContextImpl {
-    fn get_agent(
-        &self,
+
+    fn get_agent<'a>(
+        &'a mut self,
         route: String,
-    ) -> BoxFuture<'static, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
-        let mut req_tx = self.request_tx.clone();
+    ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
         let (tx, rx) = oneshot::channel();
         async move {
-            if req_tx
+            if self.request_tx
                 .send(PlaneRequest::Agent {
                     name: route.to_string(),
                     request: Request::new(tx),
@@ -195,11 +216,10 @@ impl PlaneContext for ContextImpl {
         &self.routes
     }
 
-    fn active_routes(&self) -> BoxFuture<'static, HashSet<String>> {
-        let mut req_tx = self.request_tx.clone();
+    fn active_routes(&mut self) -> BoxFuture<HashSet<String>> {
         let (tx, rx) = oneshot::channel();
         async move {
-            if req_tx
+            if self.request_tx
                 .send(PlaneRequest::Routes(Request::new(tx)))
                 .await
                 .is_err()
@@ -214,18 +234,28 @@ impl PlaneContext for ContextImpl {
         .boxed()
     }
 }
-
+/// Contains the specifications of all routes that are within a plane and maintains the map of
+/// currently active routes.
 struct RouteResolver<Clk> {
+    /// Clock for scheduling tasks.
     clock: Clk,
+    /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
+    /// The routes for the plane.
     routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter>>,
+    /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory,
+    /// External trigger that is fired when the plane should stop.
     stop_trigger: trigger::Receiver,
+    /// The map of currently active routes.
     active_routes: PlaneActiveRoutes,
+    /// Monotonically increasing counter for assigning local routing addresses.
     counter: u32,
 }
 
 impl<Clk: Clock> RouteResolver<Clk> {
+
+    /// Attempts to open an agent at a specified route.
     fn try_open_route<S>(
         &mut self,
         route: String,
@@ -245,7 +275,7 @@ impl<Clk: Clock> RouteResolver<Clk> {
         } = self;
         let (agent_route, params) = route_for(route.as_str(), routes)?;
         let (tx, rx) = mpsc::channel(8);
-        *counter += 1;
+        *counter = counter.checked_add(1).expect("Local endpoint counter overflow.");
         let addr = RoutingAddr::local(*counter);
         let (agent, task) = agent_route.run_agent(
             route.clone(),
@@ -266,6 +296,16 @@ const AGENT_TASK_FAILED: &str = "An agent task failed.";
 const PLANE_START_TASK: &str = "Plane on_start event task.";
 const PLANE_EVENT_LOOP: &str = "Plane main event loop.";
 
+/// The main event loop for a plane. Handles [`PlaneRequests`] until the external stop trigger is
+/// fired. This task is infallible and will merely report if one of its agents fails rather than
+/// stopping.
+///
+/// #Arguments
+/// * `execution_config` - The configuration for agents that belong to this plane.
+/// * `clock` - The clock to use for scheduling tasks.
+/// * `spec` - The specification for the plane.
+/// * `stop_trigger` - Trigger to fire externally when the plane should stop.
+/// * `spawner` - Spawns tasks to run the agents for the plane.
 pub async fn run_plane<Clk, S>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
@@ -279,7 +319,7 @@ pub async fn run_plane<Clk, S>(
     pin_mut!(spawner);
 
     let (context_tx, context_rx) = mpsc::channel(8);
-    let context = ContextImpl::new(context_tx.clone(), spec.routes());
+    let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
 
     let mut requests = context_rx.take_until(stop_trigger.clone()).fuse();
 
@@ -290,7 +330,7 @@ pub async fn run_plane<Clk, S>(
 
     let start_task = async move {
         if let Some(lc) = &mut lifecycle {
-            lc.on_start(&context).await;
+            lc.on_start(&mut context).await;
         }
         lifecycle
     }
@@ -435,6 +475,8 @@ pub async fn run_plane<Clk, S>(
 
 type PlaneAgentRoute<Clk> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter>;
 
+/// Find he appropriate specification for a route along with any parameters derived from the
+/// route pattern.
 fn route_for<'a, Clk>(
     route: &str,
     routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter>],

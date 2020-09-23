@@ -21,6 +21,7 @@ use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use utilities::route_pattern::RoutePattern;
 
+/// Error indicating that request to route to a plane-local agent failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoAgentAtRoute(pub String);
 
@@ -33,6 +34,8 @@ impl Display for NoAgentAtRoute {
 
 impl Error for NoAgentAtRoute {}
 
+/// Error indicating that a routing address is invalid. (Typically, this should not occur and
+/// suggests a bug).
 #[derive(Debug, Clone, Copy)]
 pub struct Unresolvable(pub RoutingAddr);
 
@@ -45,6 +48,7 @@ impl Display for Unresolvable {
 
 impl Error for Unresolvable {}
 
+/// Indicates that ambiguous routes were specified when defining a plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AmbiguousRoutes(RoutePattern, RoutePattern);
 
@@ -62,9 +66,12 @@ impl Display for AmbiguousRoutes {
 
 impl Error for AmbiguousRoutes {}
 
+/// General error type for a failed agent resolution.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolutionError {
+    /// Local error where we can be sure that there is no agent for a specified route.
     NoAgent(NoAgentAtRoute),
+    /// We failed to route a message to a remote endpoint.
     NoRoute(RoutingError),
 }
 

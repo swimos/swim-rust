@@ -26,7 +26,7 @@ use url::Url;
 
 #[cfg(test)]
 mod tests;
-
+/// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
 pub struct PlaneRouterSender {
     tag: RoutingAddr,
     inner: mpsc::Sender<TaggedEnvelope>,
@@ -48,21 +48,26 @@ impl<'a> ItemSink<'a, Envelope> for PlaneRouterSender {
     }
 }
 
+/// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
 pub struct PlaneRouterFactory {
     request_sender: mpsc::Sender<PlaneRequest>,
 }
 
 impl PlaneRouterFactory {
+
+    /// Create a factory from a channel back to the owning plane.
     pub(super) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
         PlaneRouterFactory { request_sender }
     }
 
+    /// Create a router instance for a specific endpoint.
     pub fn create(&self, tag: RoutingAddr) -> PlaneRouter {
         PlaneRouter::new(tag, self.request_sender.clone())
     }
 }
 
+/// An implementation of [`ServerRouter`] tied to a plane.
 #[derive(Debug, Clone)]
 pub struct PlaneRouter {
     tag: RoutingAddr,

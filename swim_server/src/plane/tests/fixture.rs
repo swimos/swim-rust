@@ -183,7 +183,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
 }
 
 impl PlaneLifecycle for TestLifecycle {
-    fn on_start<'a>(&'a mut self, context: &'a dyn PlaneContext) -> BoxFuture<'a, ()> {
+    fn on_start<'a>(&'a mut self, context: &'a mut dyn PlaneContext) -> BoxFuture<'a, ()> {
         async move {
             let result = context.get_agent(format!("/{}/hello", SENDER_PREFIX)).await;
             assert!(result.is_ok());

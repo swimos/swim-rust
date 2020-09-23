@@ -27,6 +27,8 @@ use utilities::route_pattern::RoutePattern;
 #[cfg(test)]
 mod tests;
 
+/// Specification of an agent route in a plane. The route pattern describes a parameterized
+/// family of agents, all of which share an implementation.
 #[derive(Debug)]
 pub(super) struct RouteSpec<Clk, Envelopes, Router> {
     pub pattern: RoutePattern,
@@ -45,6 +47,8 @@ impl<Clk, Envelopes, Router> RouteSpec<Clk, Envelopes, Router> {
     }
 }
 
+/// A specification of a plane, consisting of the defined routes and an optional custom lifecycle
+/// for the plane.
 #[derive(Debug)]
 pub struct PlaneSpec<Clk, Envelopes, Router> {
     pub(super) routes: Vec<RouteSpec<Clk, Envelopes, Router>>,
@@ -60,6 +64,9 @@ impl<Clk, Envelopes, Router> PlaneSpec<Clk, Envelopes, Router> {
     }
 }
 
+/// Builder to create a valid plane specification. Agent routes are added successively with
+/// ambiguous routes generating an error. The specification can then be constructed with or
+/// without a place lifecycle.
 #[derive(Debug)]
 pub struct PlaneBuilder<Clk, Envelopes, Router>(PlaneSpec<Clk, Envelopes, Router>);
 
@@ -84,6 +91,14 @@ where
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
     Router: ServerRouter + Clone + 'static,
 {
+
+    /// Attempt to add a new agent route to the plane.
+    ///
+    /// #Arguments
+    ///
+    /// * `route` - The parameterized route pattern.
+    /// * `config` - Configuration to instantiate the agent.
+    /// * `lifecycle` - The agent lifecycle.
     pub fn add_route<Agent, Config, Lifecycle>(
         &mut self,
         route: RoutePattern,
@@ -112,10 +127,12 @@ where
         Ok(())
     }
 
+    /// Construct the specification without adding a plane lifecycle.
     pub fn build(self) -> PlaneSpec<Clk, Envelopes, Router> {
         self.0
     }
 
+    /// Construct the specification adding a plane lifecycle.
     pub fn build_with_lifecycle(
         mut self,
         custom_lc: Box<dyn PlaneLifecycle>,

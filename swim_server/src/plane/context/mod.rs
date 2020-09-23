@@ -19,13 +19,22 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use utilities::route_pattern::RoutePattern;
 
+/// The context that is available in [`PlaneLifecycle`] event handlers.
 pub trait PlaneContext: Send + Sync {
-    fn get_agent(
-        &self,
-        route: String,
-    ) -> BoxFuture<'static, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 
+    /// Get a reference to an agent in this plane.
+    ///
+    /// #Notes
+    ///
+    /// This will cause the agent to start if has not already.
+    fn get_agent<'a>(
+        &'a mut self,
+        route: String,
+    ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
+
+    /// Get all of the routes in this plane.
     fn routes(&self) -> &Vec<RoutePattern>;
 
-    fn active_routes(&self) -> BoxFuture<'static, HashSet<String>>;
+    /// Get an instantaneous snapshot of the routes currently active on this plane.
+    fn active_routes(&mut self) -> BoxFuture<HashSet<String>>;
 }

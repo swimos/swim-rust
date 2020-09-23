@@ -27,6 +27,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
 
+/// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {
     _agent_type: PhantomData<fn(Config) -> Agent>,
     configuration: Config,
