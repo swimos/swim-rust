@@ -291,8 +291,19 @@ impl<Clk: Clock> RouteResolver<Clk> {
 
 const DROPPED_REQUEST: &str = "A plane request was dropped before it could be fulfilled.";
 const AGENT_TASK_FAILED: &str = "An agent task failed.";
+const AGENT_TASK_COMPLETE: &str = "An agent task completed normally.";
 const PLANE_START_TASK: &str = "Plane on_start event task.";
 const PLANE_EVENT_LOOP: &str = "Plane main event loop.";
+const STARTING: &str = "Plane starting.";
+const ON_START_EVENT: &str = "Running plane on_start handler.";
+const GETTING_HANDLE: &str = "Attempting to provide agent handle.";
+const GETTING_LOCAL_ENDPOINT: &str = "Attempting to get a local endpoint.";
+const GETTING_REMOTE_ENDPOINT: &str = "Attempting to get a remote endpoint.";
+const RESOLVING: &str = "Attempting to resolve a target.";
+const PROVIDING_ROUTES: &str = "Providing all running routes in the plane.";
+const PLANE_STOPPING: &str = "The plane is stopping.";
+const ON_STOP_EVENT: &str = "Running plane on_stop handler.";
+const PLANE_STOPPED: &str = "The plane has stopped.";
 
 /// The main event loop for a plane. Handles [`PlaneRequests`] until the external stop trigger is
 /// fired. This task is infallible and will merely report if one of its agents fails rather than
@@ -314,6 +325,7 @@ pub async fn run_plane<Clk, S>(
     Clk: Clock,
     S: Spawner<BoxFuture<'static, AgentResult>>,
 {
+    event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
 
     let (context_tx, context_rx) = mpsc::channel(8);
@@ -328,6 +340,7 @@ pub async fn run_plane<Clk, S>(
 
     let start_task = async move {
         if let Some(lc) = &mut lifecycle {
+            event!(Level::TRACE, ON_START_EVENT);
             lc.on_start(&mut context).await;
         }
         lifecycle
@@ -365,6 +378,7 @@ pub async fn run_plane<Clk, S>(
 
             match req_or_res {
                 Either::Left(Some(PlaneRequest::Agent { name, request })) => {
+                    event!(Level::TRACE, GETTING_HANDLE, ?name);
                     let result = if let Some(agent) = resolver
                         .active_routes
                         .get_endpoint_for_route(name.as_str())
@@ -382,6 +396,7 @@ pub async fn run_plane<Clk, S>(
                 }
                 Either::Left(Some(PlaneRequest::Endpoint { id, request })) => {
                     if id.is_local() {
+                        event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
                             .active_routes
                             .get_endpoint(&id)
@@ -395,6 +410,7 @@ pub async fn run_plane<Clk, S>(
                             event!(Level::WARN, DROPPED_REQUEST);
                         }
                     } else {
+                        event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.
                         if request.send_err(Unresolvable(id)).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -406,6 +422,7 @@ pub async fn run_plane<Clk, S>(
                     name,
                     request,
                 })) => {
+                    event!(Level::TRACE, RESOLVING, ?name);
                     let result =
                         if let Some(addr) = resolver.active_routes.addr_for_route(name.as_str()) {
                             Ok(addr)
@@ -420,10 +437,11 @@ pub async fn run_plane<Clk, S>(
                     }
                 }
                 Either::Left(Some(PlaneRequest::Resolve {
-                    host: Some(_host_url),
-                    name: _,
+                    host: Some(host_url),
+                    name,
                     request,
                 })) => {
+                    event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
                         .send_err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
@@ -433,6 +451,7 @@ pub async fn run_plane<Clk, S>(
                     }
                 }
                 Either::Left(Some(PlaneRequest::Routes(request))) => {
+                    event!(Level::TRACE, PROVIDING_ROUTES);
                     if request
                         .send(resolver.active_routes.routes().map(Clone::clone).collect())
                         .is_err()
@@ -447,9 +466,17 @@ pub async fn run_plane<Clk, S>(
                 })) => {
                     if failed {
                         event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_errors);
+                    } else {
+                        event!(
+                            Level::DEBUG,
+                            AGENT_TASK_COMPLETE,
+                            ?route,
+                            ?dispatcher_errors
+                        );
                     }
                 }
                 Either::Left(None) => {
+                    event!(Level::DEBUG, PLANE_STOPPING);
                     stopping = true;
                     if spawner.is_empty() {
                         break;
@@ -467,8 +494,10 @@ pub async fn run_plane<Clk, S>(
 
     let (lifecycle, _) = join(start_task, event_loop).await;
     if let Some(mut lc) = lifecycle {
+        event!(Level::TRACE, ON_STOP_EVENT);
         lc.on_stop().await;
     }
+    event!(Level::DEBUG, PLANE_STOPPED);
 }
 
 type PlaneAgentRoute<Clk> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter>;
