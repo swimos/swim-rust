@@ -39,7 +39,6 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use utilities::future::retryable::strategy::RetryStrategy;
 
 const INIT: i32 = 42;
 
@@ -173,10 +172,6 @@ fn yield_after() -> NonZeroUsize {
     NonZeroUsize::new(256).unwrap()
 }
 
-fn max_attempts() -> NonZeroUsize {
-    NonZeroUsize::new(2).unwrap()
-}
-
 fn route() -> RelativePath {
     RelativePath::new("node", "lane")
 }
@@ -272,20 +267,7 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig {
-        max_pending_envelopes: 1,
-        action_buffer: default_buffer(),
-        update_buffer: default_buffer(),
-        uplink_err_buffer: default_buffer(),
-        feedback_buffer: default_buffer(),
-        max_fatal_uplink_errors: 1,
-        max_uplink_start_attempts: max_attempts(),
-        lane_buffer: default_buffer(),
-        lane_attachment_buffer: default_buffer(),
-        yield_after: yield_after(),
-        retry_strategy: RetryStrategy::default(),
-        cleanup_timeout: Duration::from_secs(5),
-    }
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
 }
 
 struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<Eff>);

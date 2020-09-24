@@ -71,7 +71,6 @@ impl OpenRequest {
     }
 }
 
-const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
 const LANE_ATTACH_TASK: &str = "Lane IO attachment task.";
 const DISPATCHER_FLUSH_TASK: &str = "Envelope dispatcher flush task.";
 const INTERNAL_DISPATCH_TASK: &str = "Internal envelope dispatcher task.";
@@ -126,9 +125,6 @@ where
             stalled_tx,
             ..
         } = self;
-
-        let span = span!(Level::INFO, ROOT_DISPATCHER_TASK, ?agent_route);
-        let _enter = span.enter();
 
         let (open_tx, open_rx) = mpsc::channel(config.lane_attachment_buffer.get());
 
