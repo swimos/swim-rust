@@ -125,7 +125,6 @@ impl LifecycleAttrs {
     }
 }
 
-//Todo add action lane
 pub(crate) enum LaneType {
     Command,
     Action,
