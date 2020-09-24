@@ -8,8 +8,6 @@ use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 mod args;
 mod utils;
 
-//Todo change imports
-//Todo change constant strings
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -36,16 +34,16 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     let output_ast = quote! {
 
         #[automatically_derived]
-        impl SwimAgent<#config_name> for #agent_name {
-            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+        impl swim_server::agent::SwimAgent<#config_name> for #agent_name {
+            fn instantiate<Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext>(
                 configuration: &#config_name,
             ) -> (
                 Self,
-                Vec<Box<dyn LaneTasks<Self, Context>>>,
-                HashMap<String, Box<dyn LaneIo<Context>>>,
+                std::vec::Vec<std::boxed::Box<dyn swim_server::agent::LaneTasks<Self, Context>>>,
+                std::collections::HashMap<std::string::String, std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>>,
             )
                 where
-                    Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+                    Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
             {
 
                 #(#lifecycles_ast)*
@@ -54,11 +52,11 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
                     #(#lanes),*
                 };
 
-                let tasks = vec![
+                let tasks = std::vec![
                     #(#tasks.boxed()),*
                 ];
 
-                (agent, tasks, HashMap::new())
+                (agent, tasks, std::collections::HashMap::new())
             }
         }
 
@@ -157,30 +155,27 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
             T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::CommandLane<#command_type> + core::marker::Send + core::marker::Sync + 'static,
             S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, ()>> + core::marker::Send + core::marker::Sync + 'static
-            {
-                fn start<'a>(&'a self, _context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
-                    futures::future::ready(()).boxed()
-                }
+        {
+            fn start<'a>(&'a self, _context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
+                futures::future::ready(()).boxed()
+            }
 
-                fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
-                    async move {
-                        let #task_name {
-                            lifecycle,
-                            event_stream,
-                            projection,
-                            ..
-                        } = *self;
+            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
+                async move {
+                    let #task_name {
+                        lifecycle,
+                        event_stream,
+                        projection,
+                        ..
+                    } = *self;
 
-                        let model = projection(context.agent()).clone();
-                        let mut events = event_stream.take_until(context.agent_stop_event());
-                        let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+                    let model = projection(context.agent()).clone();
+                    let mut events = event_stream.take_until(context.agent_stop_event());
+                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
 
-                        while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
+                    while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
 
-                        let commanded = swim_server::agent::COMMANDED;
-                        let response_ingored = swim_server::agent::RESPONSE_IGNORED;
-
-                        tracing::event!(tracing::Level::TRACE, commanded, ?command);
+                        tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
                         tracing_futures::Instrument::instrument(
                             lifecycle.#on_command_func(command, &model, &context),
@@ -189,7 +184,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                         if let std::option::Option::Some(tx) = responder {
                             if tx.send(()).is_err() {
-                                tracing::event!(tracing::Level::WARN, response_ingored);
+                                tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
                             }
                         }
                     }
@@ -273,22 +268,19 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
 
                     while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
-                        let commanded = swim_server::agent::COMMANDED;
-                        let action_result = swim_server::agent::ACTION_RESULT;
-                        let response_ingored = swim_server::agent::RESPONSE_IGNORED;
 
-                        tracing::event!(tracing::Level::TRACE, commanded, ?command);
+                        tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
                         let response = tracing_futures::Instrument::instrument(
                                 lifecycle.#on_command_func(command, &model, &context),
                                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
                             ).await;
 
-                        tracing::event!(tracing::Level::TRACE, action_result, ?response);
+                        tracing::event!(tracing::Level::TRACE, action_result = swim_server::agent::ACTION_RESULT, ?response);
 
                         if let std::option::Option::Some(tx) = responder {
                             if tx.send(response).is_err() {
-                                tracing::event!(tracing::Level::WARN, response_ingored);
+                                tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
                             }
                         }
                     }

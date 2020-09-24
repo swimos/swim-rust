@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
-use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
@@ -23,11 +21,9 @@ use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::LaneIo;
-use crate::agent::{AgentContext, LaneTasks, SwimAgent};
+use crate::agent::{AgentContext, LaneTasks};
 use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent};
 use futures::{FutureExt, StreamExt};
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -185,13 +181,6 @@ struct DataLifecycle {
     event_handler: EventCollectorHandler,
 }
 
-impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
-    fn create(config: &TestAgentConfig) -> Self {
-        let event_handler = EventCollectorHandler(config.collector.clone());
-        DataLifecycle { event_handler }
-    }
-}
-
 impl DataLifecycle {
     async fn data_on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
     where
@@ -223,6 +212,13 @@ impl DataLifecycle {
                     .await;
             }
         }
+    }
+}
+
+impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
+    fn create(config: &TestAgentConfig) -> Self {
+        let event_handler = EventCollectorHandler(config.collector.clone());
+        DataLifecycle { event_handler }
     }
 }
 
