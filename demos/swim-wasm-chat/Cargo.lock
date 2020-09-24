@@ -1110,6 +1110,7 @@ dependencies = [
  "macro_helpers",
  "parking_lot",
  "parking_lot_core",
+ "percent-encoding",
  "pin-project",
  "pin-utils",
  "rand",
@@ -1118,6 +1119,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
