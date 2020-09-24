@@ -1,3 +1,6 @@
+git:
+  submodules: false
+
 language: rust
 
 branches:
