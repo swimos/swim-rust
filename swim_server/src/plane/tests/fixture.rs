@@ -23,12 +23,12 @@ use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
-use pin_utils::core_reexport::num::NonZeroUsize;
-use pin_utils::core_reexport::time::Duration;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use std::time::Duration;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::clock::Clock;
@@ -185,7 +185,9 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
 impl PlaneLifecycle for TestLifecycle {
     fn on_start<'a>(&'a mut self, context: &'a mut dyn PlaneContext) -> BoxFuture<'a, ()> {
         async move {
-            let result = context.get_agent(format!("/{}/hello", SENDER_PREFIX)).await;
+            let result = context
+                .get_agent_ref(format!("/{}/hello", SENDER_PREFIX))
+                .await;
             assert!(result.is_ok());
             let agent = result.unwrap();
             if let Ok(agent) = agent.downcast::<SendAgent>() {
