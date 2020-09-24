@@ -53,22 +53,12 @@ fn make_dispatcher(
 
     let context = MockExecutionContext::new(buffer_size, spawn_tx);
 
-    let default_size = NonZeroUsize::new(8).unwrap();
-
-    let config = AgentExecutionConfig {
-        max_pending_envelopes: max_pending,
-        action_buffer: default_size,
-        update_buffer: default_size,
-        feedback_buffer: default_size,
-        uplink_err_buffer: default_size,
-        max_fatal_uplink_errors: 0,
-        max_uplink_start_attempts: default_size,
-        lane_buffer: NonZeroUsize::new(buffer_size).unwrap(),
-        lane_attachment_buffer: default_size,
-        yield_after: NonZeroUsize::new(2048).unwrap(),
-        retry_strategy: Default::default(),
-        cleanup_timeout: Duration::from_secs(1),
-    };
+    let config = AgentExecutionConfig::with(
+        NonZeroUsize::new(8).unwrap(),
+        max_pending,
+        0,
+        Duration::from_secs(1),
+    );
 
     let dispatcher = AgentDispatcher::new("node".to_string(), config, context.clone(), boxed_lanes);
 
