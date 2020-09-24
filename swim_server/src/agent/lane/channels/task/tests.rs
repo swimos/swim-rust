@@ -41,7 +41,6 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
-use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
 
 #[test]
@@ -363,23 +362,8 @@ fn default_buffer() -> NonZeroUsize {
     NonZeroUsize::new(5).unwrap()
 }
 
-fn yield_after() -> NonZeroUsize {
-    NonZeroUsize::new(256).unwrap()
-}
-
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig {
-        max_pending_envelopes: 1,
-        action_buffer: default_buffer(),
-        update_buffer: default_buffer(),
-        feedback_buffer: default_buffer(),
-        uplink_err_buffer: default_buffer(),
-        max_fatal_uplink_errors: 1,
-        max_uplink_start_attempts: default_buffer(),
-        yield_after: yield_after(),
-        retry_strategy: RetryStrategy::default(),
-        cleanup_timeout: Duration::from_secs(5),
-    }
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
 }
 
 fn route() -> RelativePath {
@@ -444,6 +428,10 @@ impl TaskOutput {
         .await
         .expect("Timeout awaiting outputs.")
     }
+}
+
+fn yield_after() -> NonZeroUsize {
+    NonZeroUsize::new(256).unwrap()
 }
 
 fn make_task(
@@ -1143,7 +1131,7 @@ async fn handle_action_lane_update_failure() {
     let _input_cpy = input.clone();
 
     let io_task = async move {
-        input.send_raw(addr, Value::Text("0".to_string())).await;
+        input.send_raw(addr, Value::text("0")).await;
     };
 
     let (_, result, _) = join3(spawn_task, task, io_task).await;

@@ -3930,7 +3930,7 @@ fn compare_of_kind_text() {
         StandardSchema::Text(TextSchema::NonEmpty),
         StandardSchema::Text(TextSchema::Exact("foo".to_string())),
         StandardSchema::Text(TextSchema::regex("^ab*a$").unwrap()),
-        StandardSchema::Equal(Value::Text("qux".to_string())),
+        StandardSchema::Equal(Value::text("qux")),
     ];
 
     let equal_schemas = vec![StandardSchema::OfKind(ValueKind::Text)];
@@ -4188,7 +4188,7 @@ fn compare_equal_f64() {
 
 #[test]
 fn compare_equal_text() {
-    let schema = StandardSchema::Equal(Value::Text("this_is_a_test".to_string()));
+    let schema = StandardSchema::Equal(Value::text("this_is_a_test"));
 
     let greater_schemas = vec![
         StandardSchema::Text(TextSchema::NonEmpty),
@@ -4196,7 +4196,7 @@ fn compare_equal_text() {
     ];
 
     let equal_schemas = vec![
-        StandardSchema::Equal(Value::Text("this_is_a_test".to_string())),
+        StandardSchema::Equal(Value::text("this_is_a_test")),
         StandardSchema::Text(TextSchema::Exact("this_is_a_test".to_string())),
     ];
 

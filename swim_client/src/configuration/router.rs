@@ -126,7 +126,12 @@ impl RouterParams {
                             .map_err(|_| ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG))?;
                         buffer_size = Some(NonZeroUsize::new(size).unwrap());
                     }
-                    _ => return Err(ConfigParseError::UnexpectedKey(name, ROUTER_TAG)),
+                    _ => {
+                        return Err(ConfigParseError::UnexpectedKey(
+                            name.to_string(),
+                            ROUTER_TAG,
+                        ))
+                    }
                 },
                 Item::Slot(value, _) => {
                     return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
@@ -217,7 +222,7 @@ fn try_retry_strat_from_value(
                 }
             }
             _ => Err(ConfigParseError::UnexpectedAttribute(
-                name,
+                name.to_string(),
                 Some(RETRY_STRATEGY_TAG),
             )),
         }
@@ -243,7 +248,12 @@ fn try_immediate_strat_from_items(
                         .map_err(|_| ConfigParseError::InvalidValue(value, RETRIES_TAG))?;
                     retries = Some(NonZeroUsize::new(num_tries).unwrap());
                 }
-                _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_IMMEDIATE_TAG)),
+                _ => {
+                    return Err(ConfigParseError::UnexpectedKey(
+                        name.to_string(),
+                        RETRY_IMMEDIATE_TAG,
+                    ))
+                }
             },
             Item::Slot(value, _) => {
                 return Err(ConfigParseError::UnexpectedValue(
@@ -300,7 +310,12 @@ fn try_interval_strat_from_items(
                         retries = Some(Quantity::Finite(NonZeroUsize::new(num_tries).unwrap()));
                     }
                 }
-                _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_INTERVAL_TAG)),
+                _ => {
+                    return Err(ConfigParseError::UnexpectedKey(
+                        name.to_string(),
+                        RETRY_INTERVAL_TAG,
+                    ))
+                }
             },
             Item::Slot(value, _) => {
                 return Err(ConfigParseError::UnexpectedValue(
@@ -366,7 +381,12 @@ fn try_exponential_strat_from_items(
                         max_backoff = Some(Quantity::Finite(Duration::from_secs(backoff)));
                     }
                 }
-                _ => return Err(ConfigParseError::UnexpectedKey(name, RETRY_EXPONENTIAL_TAG)),
+                _ => {
+                    return Err(ConfigParseError::UnexpectedKey(
+                        name.to_string(),
+                        RETRY_EXPONENTIAL_TAG,
+                    ))
+                }
             },
             Item::Slot(value, _) => {
                 return Err(ConfigParseError::UnexpectedValue(

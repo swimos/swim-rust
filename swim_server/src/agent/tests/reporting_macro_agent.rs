@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::AgentExecutionContext;
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
@@ -34,7 +35,6 @@ use stm::stm::Stm;
 use stm::transaction::atomically;
 use tokio::sync::{mpsc, Mutex};
 use url::Url;
-use utilities::sync::trigger;
 
 mod swim_server {
     pub use crate::*;
@@ -99,35 +99,36 @@ struct ReportingAgentLifecycle {
     event_handler: EventCollectorHandler,
 }
 
-async fn agent_on_start<Context>(lifecycle: &ReportingAgentLifecycle, context: &Context)
-where
-    Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
-{
-    lifecycle
-        .event_handler
-        .push(ReportingAgentEvent::AgentStart)
-        .await;
+impl ReportingAgentLifecycle {
+    async fn agent_on_start<Context>(&self, context: &Context)
+    where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
+    {
+        self.event_handler
+            .push(ReportingAgentEvent::AgentStart)
+            .await;
 
-    let mut count = 0;
-    let cmd = context.agent().action.clone();
+        let mut count = 0;
+        let cmd = context.agent().action.clone();
 
-    context
-        .periodically(
-            move || {
-                let index = count;
-                count += 1;
+        context
+            .periodically(
+                move || {
+                    let index = count;
+                    count += 1;
 
-                let key = format!("Name{}", index);
-                let mut commander = cmd.commander();
+                    let key = format!("Name{}", index);
+                    let mut commander = cmd.commander();
 
-                Box::pin(async move {
-                    commander.command(key).await;
-                })
-            },
-            Duration::from_secs(1),
-            None,
-        )
-        .await;
+                    Box::pin(async move {
+                        commander.command(key).await;
+                    })
+                },
+                Duration::from_secs(1),
+                None,
+            )
+            .await;
+    }
 }
 
 #[command_lifecycle(
@@ -139,37 +140,37 @@ struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
 
+impl ActionLifecycle {
+    async fn action_on_command<Context>(
+        &self,
+        command: String,
+        _model: &ActionLane<String, ()>,
+        context: &Context,
+    ) where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
+    {
+        self.event_handler
+            .push(ReportingAgentEvent::Command(command.clone()))
+            .await;
+        if context
+            .agent()
+            .data
+            .update_direct(command, 1.into())
+            .apply(ExactlyOnce)
+            .await
+            .is_err()
+        {
+            self.event_handler
+                .push(ReportingAgentEvent::TransactionFailed)
+                .await;
+        }
+    }
+}
+
 impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
     fn create(config: &TestAgentConfig) -> Self {
         let event_handler = EventCollectorHandler(config.collector.clone());
         ActionLifecycle { event_handler }
-    }
-}
-
-async fn action_on_command<Context>(
-    lifecycle: &ActionLifecycle,
-    command: String,
-    _model: &ActionLane<String, ()>,
-    context: &Context,
-) where
-    Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
-{
-    lifecycle
-        .event_handler
-        .push(ReportingAgentEvent::Command(command.clone()))
-        .await;
-    if context
-        .agent()
-        .data
-        .update_direct(command, 1.into())
-        .apply(ExactlyOnce)
-        .await
-        .is_err()
-    {
-        lifecycle
-            .event_handler
-            .push(ReportingAgentEvent::TransactionFailed)
-            .await;
     }
 }
 
@@ -191,48 +192,45 @@ impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
     }
 }
 
+impl DataLifecycle {
+    async fn data_on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+    where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
+    {
+    }
+
+    async fn data_on_event<Context>(
+        &self,
+        event: &MapLaneEvent<String, i32>,
+        _model: &MapLane<String, i32>,
+        context: &Context,
+    ) where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
+    {
+        self.event_handler
+            .push(ReportingAgentEvent::DataEvent(event.clone()))
+            .await;
+        if let MapLaneEvent::Update(_, v) = event {
+            let i = **v;
+
+            let total = &context.agent().total;
+
+            let add = total.get().and_then(move |n| total.set(*n + i));
+
+            if atomically(&add, ExactlyOnce).await.is_err() {
+                self.event_handler
+                    .push(ReportingAgentEvent::TransactionFailed)
+                    .await;
+            }
+        }
+    }
+}
+
 impl StatefulLaneLifecycleBase for DataLifecycle {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
         Queue::default()
-    }
-}
-
-async fn data_on_start<Context>(
-    _lifecycle: &DataLifecycle,
-    _model: &MapLane<String, i32>,
-    _context: &Context,
-) where
-    Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
-{
-}
-
-async fn data_on_event<Context>(
-    lifecycle: &DataLifecycle,
-    event: &MapLaneEvent<String, i32>,
-    _model: &MapLane<String, i32>,
-    context: &Context,
-) where
-    Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
-{
-    lifecycle
-        .event_handler
-        .push(ReportingAgentEvent::DataEvent(event.clone()))
-        .await;
-    if let MapLaneEvent::Update(_, v) = event {
-        let i = **v;
-
-        let total = &context.agent().total;
-
-        let add = total.get().and_then(move |n| total.set(*n + i));
-
-        if atomically(&add, ExactlyOnce).await.is_err() {
-            lifecycle
-                .event_handler
-                .push(ReportingAgentEvent::TransactionFailed)
-                .await;
-        }
     }
 }
 
@@ -244,6 +242,28 @@ async fn data_on_event<Context>(
 )]
 struct TotalLifecycle {
     event_handler: EventCollectorHandler,
+}
+
+impl TotalLifecycle {
+    async fn total_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+    where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
+    {
+    }
+
+    async fn total_on_event<Context>(
+        &self,
+        event: &Arc<i32>,
+        _model: &ValueLane<i32>,
+        _context: &Context,
+    ) where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
+    {
+        let n = **event;
+        self.event_handler
+            .push(ReportingAgentEvent::TotalEvent(n))
+            .await;
+    }
 }
 
 impl LaneLifecycle<TestAgentConfig> for TotalLifecycle {
@@ -259,30 +279,6 @@ impl StatefulLaneLifecycleBase for TotalLifecycle {
     fn create_strategy(&self) -> Self::WatchStrategy {
         Queue::default()
     }
-}
-
-async fn total_on_start<Context>(
-    _lifecycle: &TotalLifecycle,
-    _model: &ValueLane<i32>,
-    _context: &Context,
-) where
-    Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
-{
-}
-
-async fn total_on_event<Context>(
-    lifecycle: &TotalLifecycle,
-    event: &Arc<i32>,
-    _model: &ValueLane<i32>,
-    _context: &Context,
-) where
-    Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
-{
-    let n = **event;
-    lifecycle
-        .event_handler
-        .push(ReportingAgentEvent::TotalEvent(n))
-        .await;
 }
 
 #[derive(Debug)]
@@ -317,9 +313,12 @@ async fn agent_loop() {
     let url = Url::parse("test://").unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
-    let (stop, stop_sig) = trigger::trigger();
 
     let agent_lifecycle = config.agent_lifecycle();
+
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+
+    let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
@@ -328,9 +327,9 @@ async fn agent_loop() {
         config,
         agent_lifecycle,
         url,
-        buffer_size,
+        exec_config,
         clock.clone(),
-        stop_sig,
+        envelope_rx,
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);
@@ -371,6 +370,6 @@ async fn agent_loop() {
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
 
-    assert!(stop.trigger());
+    drop(envelope_tx);
     assert!(agent_task.await.is_ok());
 }

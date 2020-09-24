@@ -14,6 +14,7 @@
 
 use crate::model::blob::Blob;
 use crate::model::parser::is_identifier;
+use crate::model::text::Text;
 use bytes::*;
 use either::Either;
 use num_bigint::{BigInt, BigUint, ToBigInt};
@@ -88,7 +89,7 @@ pub enum Value {
     /// assert_eq!(Value::text("true").to_string(), r#""true""#);
     /// ```
     ///
-    Text(String),
+    Text(Text),
 
     ///
     /// A compound [`Value`] consisting of any number of [`Attr`]s and [`Item`]s.
@@ -243,8 +244,8 @@ impl Value {
     }
 
     /// Create a text value from anything that can be converted to a ['String'].
-    pub fn text<T: ToString>(x: T) -> Value {
-        Value::Text(x.to_string())
+    pub fn text<T: Into<Text>>(x: T) -> Value {
+        Value::Text(x.into())
     }
 
     /// Create a record from a vector of ['Item']s.
@@ -831,13 +832,19 @@ impl From<bool> for Value {
 
 impl From<String> for Value {
     fn from(s: String) -> Self {
-        Value::Text(s)
+        Value::Text(s.into())
+    }
+}
+
+impl From<Text> for Value {
+    fn from(t: Text) -> Self {
+        Value::Text(t)
     }
 }
 
 impl From<&str> for Value {
     fn from(s: &str) -> Self {
-        Value::Text(s.to_owned())
+        Value::Text(s.into())
     }
 }
 
@@ -857,7 +864,7 @@ impl From<BigUint> for Value {
 /// a ['String'] and the value can be any ['Value'].
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Attr {
-    pub name: String,
+    pub name: Text,
     pub value: Value,
 }
 
@@ -868,9 +875,10 @@ impl Attr {
     ///
     /// ```
     /// use swim_common::model::{Attr, Value};
+    /// use swim_common::model::text::Text;
     ///
-    /// assert_eq!(Attr::of("name"), Attr { name: String::from("name"), value: Value::Extant, });
-    /// assert_eq!(Attr::of(("key", 1)), Attr { name: String::from("key"), value: Value::Int32Value(1), });
+    /// assert_eq!(Attr::of("name"), Attr { name: Text::from("name"), value: Value::Extant, });
+    /// assert_eq!(Attr::of(("key", 1)), Attr { name: Text::from("key"), value: Value::Int32Value(1), });
     /// ```
     pub fn of<T: Into<Attr>>(rep: T) -> Attr {
         rep.into()
@@ -882,8 +890,9 @@ impl Attr {
     ///
     /// ```
     /// use swim_common::model::{Attr, Value};
+    /// use swim_common::model::text::Text;
     ///
-    /// assert_eq!(Attr::with_value("name", 1), Attr { name: String::from("name"), value: Value::Int32Value(1), });
+    /// assert_eq!(Attr::with_value("name", 1), Attr { name: Text::from("name"), value: Value::Int32Value(1), });
     ///
     /// ```
     pub fn with_value<V: Into<Value>>(name: &str, value: V) -> Attr {
@@ -896,12 +905,13 @@ impl Attr {
     ///
     /// ```
     /// use swim_common::model::{Attr, Value, Item};
+    /// use swim_common::model::text::Text;
     ///
     /// assert_eq!(
     ///     Attr::with_field("name", "inner", 1),
     ///     Attr {
-    ///         name: String::from("name"),
-    ///         value: Value::Record(vec![], vec![Item::Slot(Value::Text(String::from("inner")), Value::Int32Value(1))]),
+    ///         name: Text::from("name"),
+    ///         value: Value::Record(vec![], vec![Item::Slot(Value::Text(Text::from("inner")), Value::Int32Value(1))]),
     ///     }
     /// );
     ///
@@ -916,11 +926,12 @@ impl Attr {
     ///
     /// ```
     /// use swim_common::model::{Attr, Value, Item};
+    /// use swim_common::model::text::Text;
     ///
     /// assert_eq!(
     ///     Attr::with_item("name", 1),
     ///     Attr {
-    ///         name: String::from("name"),
+    ///         name: Text::from("name"),
     ///         value: Value::Record(vec![], vec![Item::ValueItem(Value::Int32Value(1))]),
     ///     }
     /// );
@@ -936,11 +947,12 @@ impl Attr {
     ///
     /// ```
     /// use swim_common::model::{Attr, Value, Item};
+    /// use swim_common::model::text::Text;
     ///
     /// assert_eq!(
     ///     Attr::with_items("name", vec![0, 1]),
     ///     Attr {
-    ///         name: String::from("name"),
+    ///         name: Text::from("name"),
     ///         value: Value::Record(vec![], vec![Item::ValueItem(Value::Int32Value(0)), Item::ValueItem(Value::Int32Value(1))]),
     ///     }
     /// );
@@ -979,7 +991,7 @@ impl Ord for Attr {
 impl From<&str> for Attr {
     fn from(s: &str) -> Self {
         Attr {
-            name: s.to_owned(),
+            name: s.into(),
             value: Value::Extant,
         }
     }
@@ -987,6 +999,15 @@ impl From<&str> for Attr {
 
 impl From<String> for Attr {
     fn from(name: String) -> Self {
+        Attr {
+            name: name.into(),
+            value: Value::Extant,
+        }
+    }
+}
+
+impl From<Text> for Attr {
+    fn from(name: Text) -> Self {
         Attr {
             name,
             value: Value::Extant,
@@ -998,7 +1019,7 @@ impl<V: Into<Value>> From<(&str, V)> for Attr {
     fn from(pair: (&str, V)) -> Self {
         let (name_str, v) = pair;
         Attr {
-            name: name_str.to_owned(),
+            name: name_str.into(),
             value: v.into(),
         }
     }
@@ -1006,6 +1027,16 @@ impl<V: Into<Value>> From<(&str, V)> for Attr {
 
 impl<V: Into<Value>> From<(String, V)> for Attr {
     fn from(pair: (String, V)) -> Self {
+        let (name, v) = pair;
+        Attr {
+            name: name.into(),
+            value: v.into(),
+        }
+    }
+}
+
+impl<V: Into<Value>> From<(Text, V)> for Attr {
+    fn from(pair: (Text, V)) -> Self {
         let (name, v) = pair;
         Attr {
             name,
@@ -1116,7 +1147,7 @@ impl Display for Value {
             Value::UInt64Value(n) => write!(f, "{}", n),
             Value::Float64Value(x) => write!(f, "{:e}", x),
             Value::BooleanValue(p) => write!(f, "{}", p),
-            Value::Text(s) => write_string_literal(s, f),
+            Value::Text(s) => write_string_literal(s.as_str(), f),
             Value::Record(attrs, body) => {
                 if attrs.is_empty() && body.is_empty() {
                     f.write_str("{}")
@@ -1163,7 +1194,7 @@ impl Display for Attr {
             }
             Value::Record(attrs, body) if attrs.is_empty() && body.len() == 1 => {
                 f.write_str("@")?;
-                write_string_literal(&self.name, f)?;
+                write_string_literal(self.name.as_str(), f)?;
                 match body.first() {
                     Some(slot @ Item::Slot(_, _)) => write!(f, "({})", slot),
                     _ => write!(f, "({})", &self.value),
@@ -1171,11 +1202,11 @@ impl Display for Attr {
             }
             Value::Extant => {
                 f.write_str("@")?;
-                write_string_literal(&self.name, f)
+                write_string_literal(self.name.as_str(), f)
             }
             ow => {
                 f.write_str("@")?;
-                write_string_literal(&self.name, f)?;
+                write_string_literal(self.name.as_str(), f)?;
                 write!(f, "({})", ow)
             }
         }
@@ -1331,7 +1362,7 @@ fn encode_attr(
     dst: &mut BytesMut,
 ) -> Result<(), ValueEncodeErr> {
     dst.put_u8(b'@');
-    ValueEncoder::encode_text(dst, &attr.name)?;
+    ValueEncoder::encode_text(dst, attr.name.as_str())?;
     if attr.value != Value::Extant {
         dst.put_u8(b'(');
         match attr.value {
@@ -1410,7 +1441,7 @@ impl ValueEncoder {
                 }
                 Ok(())
             }
-            Value::Text(s) => ValueEncoder::encode_text(dst, &s),
+            Value::Text(s) => ValueEncoder::encode_text(dst, s.as_str()),
             Value::Record(attrs, items) => {
                 if attrs.is_empty() && items.is_empty() {
                     dst.put_u8(b'{');

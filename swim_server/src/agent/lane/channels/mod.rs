@@ -40,12 +40,45 @@ pub struct AgentExecutionConfig {
     pub max_fatal_uplink_errors: usize,
     /// Maximum number of times a lane will attempt to start a new uplink before failing.
     pub max_uplink_start_attempts: NonZeroUsize,
+    /// Size of the buffer used by the agent envelope dispatcher to communicate with lanes.
+    pub lane_buffer: NonZeroUsize,
+    /// Buffer size for the task that attaches lanes to the dispatcher.
+    pub lane_attachment_buffer: NonZeroUsize,
     /// Number of values to process before yielding to the runtime.
     pub yield_after: NonZeroUsize,
     /// Retry strategy to use for transactions on lanes.
     pub retry_strategy: RetryStrategy,
     /// Time to wait for action lane responses when stopping.
     pub cleanup_timeout: Duration,
+    /// The buffer size for the MPSC channel used by the agent to schedule events.
+    pub scheduler_buffer: NonZeroUsize,
+}
+
+const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
+
+impl AgentExecutionConfig {
+    pub fn with(
+        default_buffer: NonZeroUsize,
+        max_pending_envelopes: usize,
+        error_threshold: usize,
+        cleanup_timeout: Duration,
+    ) -> Self {
+        AgentExecutionConfig {
+            max_pending_envelopes,
+            action_buffer: default_buffer,
+            update_buffer: default_buffer,
+            feedback_buffer: default_buffer,
+            uplink_err_buffer: default_buffer,
+            max_fatal_uplink_errors: error_threshold,
+            max_uplink_start_attempts: NonZeroUsize::new(error_threshold + 1).unwrap(),
+            lane_buffer: default_buffer,
+            lane_attachment_buffer: default_buffer,
+            yield_after: DEFAULT_YIELD_COUNT,
+            retry_strategy: Default::default(),
+            cleanup_timeout,
+            scheduler_buffer: default_buffer,
+        }
+    }
 }
 
 impl Default for AgentExecutionConfig {
@@ -60,9 +93,12 @@ impl Default for AgentExecutionConfig {
             uplink_err_buffer: default_buffer,
             max_fatal_uplink_errors: 0,
             max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
-            yield_after: NonZeroUsize::new(2048).unwrap(),
+            lane_buffer: default_buffer,
+            lane_attachment_buffer: default_buffer,
+            yield_after: DEFAULT_YIELD_COUNT,
             retry_strategy: RetryStrategy::default(),
             cleanup_timeout: Duration::from_secs(30),
+            scheduler_buffer: default_buffer,
         }
     }
 }

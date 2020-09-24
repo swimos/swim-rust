@@ -98,7 +98,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             where
                 C: swim_server::agent::AgentContext<#agent_name> + core::marker::Send + core::marker::Sync + 'a,
             {
-                #on_start_func(&self.lifecycle, context).boxed()
+                self.lifecycle.#on_start_func(context).boxed()
             }
         }
 
@@ -173,29 +173,30 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                         let model = projection(context.agent()).clone();
                         let mut events = event_stream.take_until(context.agent_stop_event());
-                        pin_utils::pin_mut!(events);
+                        let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                         while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
 
                         let commanded = swim_server::agent::COMMANDED;
                         let response_ingored = swim_server::agent::RESPONSE_IGNORED;
 
-                            tracing::event!(tracing::Level::TRACE, commanded, ?command);
+                        tracing::event!(tracing::Level::TRACE, commanded, ?command);
 
-                            tracing_futures::Instrument::instrument(
-                                #on_command_func(&lifecycle, command, &model, &context),
-                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
-                            ).await;
+                        tracing_futures::Instrument::instrument(
+                            lifecycle.#on_command_func(command, &model, &context),
+                            tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
+                        ).await;
 
-                            if let std::option::Option::Some(tx) = responder {
-                                if tx.send(()).is_err() {
-                                    tracing::event!(tracing::Level::WARN, response_ingored);
-                                }
+                        if let std::option::Option::Some(tx) = responder {
+                            if tx.send(()).is_err() {
+                                tracing::event!(tracing::Level::WARN, response_ingored);
                             }
                         }
                     }
-                    .boxed()
                 }
+                .boxed()
             }
+        }
 
     };
 
@@ -269,7 +270,8 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_utils::pin_mut!(events);
+                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                     while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
                         let commanded = swim_server::agent::COMMANDED;
                         let action_result = swim_server::agent::ACTION_RESULT;
@@ -278,7 +280,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                         tracing::event!(tracing::Level::TRACE, commanded, ?command);
 
                         let response = tracing_futures::Instrument::instrument(
-                                #on_command_func(&lifecycle, command, &model, &context),
+                                lifecycle.#on_command_func(command, &model, &context),
                                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
                             ).await;
 
@@ -356,7 +358,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                 let #task_name { lifecycle, projection, .. } = self;
 
                 let model = projection(context.agent());
-                #on_start_func(lifecycle, model, context).boxed()
+                lifecycle.#on_start_func(model, context).boxed()
             }
 
             fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
@@ -370,10 +372,11 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_utils::pin_mut!(events);
+                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                     while let std::option::Option::Some(event) = events.next().await {
                         tracing_futures::Instrument::instrument(
-                                #on_event_func(&lifecycle, &event, &model, &context),
+                                lifecycle.#on_event_func(&event, &model, &context),
                                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
                         ).await;
                     }
@@ -444,7 +447,7 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                 let #task_name { lifecycle, projection, .. } = self;
 
                 let model = projection(context.agent());
-                #on_start_func(lifecycle, model, context).boxed()
+                lifecycle.#on_start_func(model, context).boxed()
             }
 
             fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
@@ -458,10 +461,11 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    pin_utils::pin_mut!(events);
+                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+
                     while let std::option::Option::Some(event) = events.next().await {
                         tracing_futures::Instrument::instrument(
-                                #on_event_func(&lifecycle, &event, &model, &context),
+                                lifecycle.#on_event_func(&event, &model, &context),
                                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
                         ).await;
                     }
