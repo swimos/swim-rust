@@ -164,7 +164,7 @@ mod tests {
 
         let incoming = event_dl.recv().await.unwrap();
 
-        assert_eq!(incoming, Value::Text("Hello, from Rust!".to_string()));
+        assert_eq!(incoming, Value::text("Hello, from Rust!"));
     }
 
     #[tokio::test]
@@ -517,14 +517,14 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(1)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                view.get(&Value::text("eggs")).unwrap(),
                 Value::UInt32Value(2)
             );
-            assert_eq!(event, MapEvent::Update(Value::Text(String::from("eggs"))));
+            assert_eq!(event, MapEvent::Update(Value::text("eggs")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
@@ -588,21 +588,18 @@ mod tests {
         let (mut dl, mut recv) = client.value_downlink(path, Value::Extant).await.unwrap();
 
         let message = recv.next().await.unwrap();
-        assert_eq!(message, Event::Remote(Value::Text(String::from("milk"))));
+        assert_eq!(message, Event::Remote(Value::text("milk")));
 
         let mut sender_view = dl.write_only_sender::<String>().await.unwrap();
         let (_, mut sink) = dl.split();
 
         sink.set(String::from("bread").into()).await.unwrap();
         let message = recv.next().await.unwrap();
-        assert_eq!(message, Event::Local(Value::Text(String::from("bread"))));
+        assert_eq!(message, Event::Local(Value::text("bread")));
 
         sender_view.set(String::from("chocolate")).await.unwrap();
         let message = recv.next().await.unwrap();
-        assert_eq!(
-            message,
-            Event::Local(Value::Text(String::from("chocolate")))
-        );
+        assert_eq!(message, Event::Local(Value::text("chocolate")));
     }
 
     #[tokio::test]
@@ -663,7 +660,7 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(5)
             );
             assert_eq!(event, MapEvent::Initial);
@@ -683,14 +680,14 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(5)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                view.get(&Value::text("eggs")).unwrap(),
                 Value::UInt32Value(3)
             );
-            assert_eq!(event, MapEvent::Update(Value::Text(String::from("eggs"))));
+            assert_eq!(event, MapEvent::Update(Value::text("eggs")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
@@ -705,21 +702,18 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(5)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                view.get(&Value::text("eggs")).unwrap(),
                 Value::UInt32Value(3)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("chocolate"))).unwrap(),
+                view.get(&Value::text("chocolate")).unwrap(),
                 Value::UInt32Value(10)
             );
-            assert_eq!(
-                event,
-                MapEvent::Update(Value::Text(String::from("chocolate")))
-            );
+            assert_eq!(event, MapEvent::Update(Value::text("chocolate")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }

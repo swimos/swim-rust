@@ -42,57 +42,36 @@ fn test_body() -> Value {
 
 fn link_named_headers() -> Vec<Item> {
     vec![
-        Item::Slot(
-            Value::Text(String::from("node")),
-            Value::Text(String::from(TEST_NODE)),
-        ),
-        Item::Slot(
-            Value::Text(String::from("lane")),
-            Value::Text(String::from(TEST_LANE)),
-        ),
-        Item::Slot(
-            Value::Text(String::from("prio")),
-            Value::Float64Value(TEST_PRIO),
-        ),
-        Item::Slot(
-            Value::Text(String::from("rate")),
-            Value::Float64Value(TEST_RATE),
-        ),
+        Item::Slot(Value::text("node"), Value::text(TEST_NODE)),
+        Item::Slot(Value::text("lane"), Value::text(TEST_LANE)),
+        Item::Slot(Value::text("prio"), Value::Float64Value(TEST_PRIO)),
+        Item::Slot(Value::text("rate"), Value::Float64Value(TEST_RATE)),
     ]
 }
 
 fn lane_named_headers() -> Vec<Item> {
     vec![
+        Item::Slot(Value::text("node"), Value::text(TEST_NODE)),
         Item::Slot(
-            Value::Text(String::from("node")),
-            Value::Text(String::from(TEST_NODE)),
-        ),
-        Item::Slot(
-            Value::Text(String::from("lane")),
-            Value::Text(String::from(TEST_LANE)),
+            Value::text(String::from("lane")),
+            Value::text(String::from(TEST_LANE)),
         ),
     ]
 }
 
 fn lane_positional_headers() -> Vec<Item> {
     vec![
-        Item::ValueItem(Value::Text(String::from(TEST_NODE))),
-        Item::ValueItem(Value::Text(String::from(TEST_LANE))),
+        Item::ValueItem(Value::text(TEST_NODE)),
+        Item::ValueItem(Value::text(TEST_LANE)),
     ]
 }
 
 fn link_positional_headers() -> Vec<Item> {
     vec![
-        Item::ValueItem(Value::Text(String::from(TEST_NODE))),
-        Item::ValueItem(Value::Text(String::from(TEST_LANE))),
-        Item::Slot(
-            Value::Text(String::from("prio")),
-            Value::Float64Value(TEST_PRIO),
-        ),
-        Item::Slot(
-            Value::Text(String::from("rate")),
-            Value::Float64Value(TEST_RATE),
-        ),
+        Item::ValueItem(Value::text(TEST_NODE)),
+        Item::ValueItem(Value::text(TEST_LANE)),
+        Item::Slot(Value::text("prio"), Value::Float64Value(TEST_PRIO)),
+        Item::Slot(Value::text("rate"), Value::Float64Value(TEST_RATE)),
     ]
 }
 
@@ -434,7 +413,7 @@ fn unknown_tag() {
     let tag = "unknown_tag";
     let record = create_record_with_test(tag, lane_named_headers());
 
-    run_test_expect_err(record, EnvelopeParseErr::UnknownTag(String::from(tag)));
+    run_test_expect_err(record, EnvelopeParseErr::UnknownTag(tag.into()));
 }
 
 fn run_test_expect_err(record: Value, expected: EnvelopeParseErr) {
@@ -456,24 +435,15 @@ fn unexpected_key() {
             Value::Record(
                 Vec::new(),
                 vec![
-                    Item::Slot(
-                        Value::Text(String::from("not_a_node")),
-                        Value::Text(String::from(TEST_NODE)),
-                    ),
-                    Item::Slot(
-                        Value::Text(String::from("node_a_lane")),
-                        Value::Text(String::from(TEST_LANE)),
-                    ),
+                    Item::Slot(Value::text("not_a_node"), Value::text(TEST_NODE)),
+                    Item::Slot(Value::text("node_a_lane"), Value::text(TEST_LANE)),
                 ],
             ),
         ))],
         Vec::new(),
     );
 
-    run_test_expect_err(
-        record,
-        EnvelopeParseErr::UnexpectedKey(String::from("not_a_node")),
-    );
+    run_test_expect_err(record, EnvelopeParseErr::UnexpectedKey("not_a_node".into()));
 }
 
 #[test]
@@ -495,33 +465,15 @@ fn too_many_named_headers() {
     let record = create_record(
         "sync",
         vec![
-            Item::Slot(
-                Value::Text(String::from("node")),
-                Value::Text(String::from(TEST_NODE)),
-            ),
-            Item::Slot(
-                Value::Text(String::from("lane")),
-                Value::Text(String::from(TEST_LANE)),
-            ),
-            Item::Slot(
-                Value::Text(String::from("prio")),
-                Value::Float64Value(TEST_PRIO),
-            ),
-            Item::Slot(
-                Value::Text(String::from("rate")),
-                Value::Float64Value(TEST_RATE),
-            ),
-            Item::Slot(
-                Value::Text(String::from("host")),
-                Value::Text(String::from("swim.ai")),
-            ),
+            Item::Slot(Value::text("node"), Value::text(TEST_NODE)),
+            Item::Slot(Value::text("lane"), Value::text(TEST_LANE)),
+            Item::Slot(Value::text("prio"), Value::Float64Value(TEST_PRIO)),
+            Item::Slot(Value::text("rate"), Value::Float64Value(TEST_RATE)),
+            Item::Slot(Value::text("host"), Value::text("swim.ai")),
         ],
     );
 
-    run_test_expect_err(
-        record,
-        EnvelopeParseErr::UnexpectedKey(String::from("host")),
-    );
+    run_test_expect_err(record, EnvelopeParseErr::UnexpectedKey("host".into()));
 }
 
 #[test]
@@ -529,23 +481,17 @@ fn too_many_positional_headers() {
     let record = create_record(
         "sync",
         vec![
-            Item::ValueItem(Value::Text(String::from(TEST_NODE))),
-            Item::ValueItem(Value::Text(String::from(TEST_LANE))),
-            Item::Slot(
-                Value::Text(String::from("prio")),
-                Value::Float64Value(TEST_PRIO),
-            ),
-            Item::Slot(
-                Value::Text(String::from("rate")),
-                Value::Float64Value(TEST_RATE),
-            ),
-            Item::ValueItem(Value::Text(String::from("swim.ai"))),
+            Item::ValueItem(Value::text(TEST_NODE)),
+            Item::ValueItem(Value::text(TEST_LANE)),
+            Item::Slot(Value::text("prio"), Value::Float64Value(TEST_PRIO)),
+            Item::Slot(Value::text("rate"), Value::Float64Value(TEST_RATE)),
+            Item::ValueItem(Value::text("swim.ai")),
         ],
     );
 
     run_test_expect_err(
         record,
-        EnvelopeParseErr::UnexpectedItem(Item::ValueItem(Value::Text(String::from("swim.ai")))),
+        EnvelopeParseErr::UnexpectedItem(Item::ValueItem(Value::text("swim.ai"))),
     );
 }
 
@@ -554,19 +500,10 @@ fn mixed_headers() {
     let record = create_record(
         "sync",
         vec![
-            Item::Slot(
-                Value::Text(String::from("node")),
-                Value::Text(String::from(TEST_NODE)),
-            ),
-            Item::ValueItem(Value::Text(String::from(TEST_LANE))),
-            Item::Slot(
-                Value::Text(String::from("prio")),
-                Value::Float64Value(TEST_PRIO),
-            ),
-            Item::Slot(
-                Value::Text(String::from("rate")),
-                Value::Float64Value(TEST_RATE),
-            ),
+            Item::Slot(Value::text("node"), Value::text(TEST_NODE)),
+            Item::ValueItem(Value::text(TEST_LANE)),
+            Item::Slot(Value::text("prio"), Value::Float64Value(TEST_PRIO)),
+            Item::Slot(Value::text("rate"), Value::Float64Value(TEST_RATE)),
         ],
     );
 
@@ -593,15 +530,15 @@ fn parse_body_multiple_attributes() {
         Envelope::make_auth(Some(Value::Record(
             vec![
                 Attr {
-                    name: String::from("first"),
+                    name: "first".into(),
                     value: Value::Extant,
                 },
                 Attr {
-                    name: String::from("second"),
+                    name: "second".into(),
                     value: Value::Extant,
                 },
                 Attr {
-                    name: String::from("third"),
+                    name: "third".into(),
                     value: Value::Extant,
                 },
             ],
@@ -618,24 +555,15 @@ fn duplicate_headers() {
             Value::Record(
                 Vec::new(),
                 vec![
-                    Item::Slot(
-                        Value::Text(String::from("node")),
-                        Value::Text(String::from(TEST_NODE)),
-                    ),
-                    Item::Slot(
-                        Value::Text(String::from("node")),
-                        Value::Text(String::from(TEST_NODE)),
-                    ),
+                    Item::Slot(Value::text("node"), Value::text(TEST_NODE)),
+                    Item::Slot(Value::text("node"), Value::text(TEST_NODE)),
                 ],
             ),
         ))],
         Vec::new(),
     );
 
-    run_test_expect_err(
-        record,
-        EnvelopeParseErr::DuplicateHeader(String::from("node")),
-    );
+    run_test_expect_err(record, EnvelopeParseErr::DuplicateHeader("node".into()));
 }
 
 #[test]
@@ -645,19 +573,13 @@ fn missing_header() {
             "synced",
             Value::Record(
                 Vec::new(),
-                vec![Item::Slot(
-                    Value::Text(String::from("node")),
-                    Value::Text(String::from(TEST_NODE)),
-                )],
+                vec![Item::Slot(Value::text("node"), Value::text(TEST_NODE))],
             ),
         ))],
         Vec::new(),
     );
 
-    run_test_expect_err(
-        record,
-        EnvelopeParseErr::MissingHeader(String::from("lane")),
-    );
+    run_test_expect_err(record, EnvelopeParseErr::MissingHeader("lane".into()));
 }
 
 #[test]
@@ -668,16 +590,10 @@ fn multiple_attributes() {
             Value::Record(
                 Vec::new(),
                 vec![
-                    Item::ValueItem(Value::Text(String::from(TEST_NODE))),
-                    Item::ValueItem(Value::Text(String::from(TEST_LANE))),
-                    Item::Slot(
-                        Value::Text(String::from("prio")),
-                        Value::Float64Value(TEST_PRIO),
-                    ),
-                    Item::Slot(
-                        Value::Text(String::from("rate")),
-                        Value::Float64Value(TEST_RATE),
-                    ),
+                    Item::ValueItem(Value::text(TEST_NODE)),
+                    Item::ValueItem(Value::text(TEST_LANE)),
+                    Item::Slot(Value::text("prio"), Value::Float64Value(TEST_PRIO)),
+                    Item::Slot(Value::text("rate"), Value::Float64Value(TEST_RATE)),
                 ],
             ),
         ))],

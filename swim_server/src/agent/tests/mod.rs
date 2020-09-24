@@ -16,6 +16,7 @@ mod reporting_agent;
 mod reporting_macro_agent;
 pub(crate) mod test_clock;
 
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
@@ -630,9 +631,12 @@ async fn agent_loop() {
     let url = Url::parse("test://").unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
-    let (stop, stop_sig) = trigger::trigger();
 
     let agent_lifecycle = config.agent_lifecycle();
+
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+
+    let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
@@ -641,9 +645,9 @@ async fn agent_loop() {
         config,
         agent_lifecycle,
         url,
-        buffer_size,
+        exec_config,
         clock.clone(),
-        stop_sig,
+        envelope_rx,
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);
@@ -684,7 +688,7 @@ async fn agent_loop() {
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
 
-    assert!(stop.trigger());
+    drop(envelope_tx);
 
     assert!(agent_task.await.is_ok());
 }

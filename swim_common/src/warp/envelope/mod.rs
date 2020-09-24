@@ -14,6 +14,7 @@
 
 use std::convert::TryFrom;
 
+use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use crate::warp::path::RelativePath;
 use either::Either;
@@ -131,12 +132,7 @@ pub type IncomingLinkMessage = LinkMessage<IncomingHeader>;
 pub type AnyLinkMessage = LinkMessage<LinkHeader>;
 
 impl<Header> LinkMessage<Header> {
-    fn make_message<S: Into<String>>(
-        header: Header,
-        node: S,
-        lane: S,
-        body: Option<Value>,
-    ) -> Self {
+    fn make_message<S: Into<Text>>(header: Header, node: S, lane: S, body: Option<Value>) -> Self {
         let path = RelativePath {
             node: node.into(),
             lane: lane.into(),
@@ -146,7 +142,7 @@ impl<Header> LinkMessage<Header> {
 }
 
 impl LinkMessage<OutgoingHeader> {
-    pub fn make_link<S: Into<String>>(
+    pub fn make_link<S: Into<Text>>(
         node: S,
         lane: S,
         rate: Option<f64>,
@@ -161,11 +157,11 @@ impl LinkMessage<OutgoingHeader> {
         )
     }
 
-    pub fn make_unlink<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_unlink<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_message(OutgoingHeader::Unlink, node, lane, body)
     }
 
-    pub fn make_sync<S: Into<String>>(
+    pub fn make_sync<S: Into<Text>>(
         node: S,
         lane: S,
         rate: Option<f64>,
@@ -180,25 +176,25 @@ impl LinkMessage<OutgoingHeader> {
         )
     }
 
-    pub fn make_command<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_command<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_message(OutgoingHeader::Command, node, lane, body)
     }
 
-    pub fn link<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn link<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_link(node, lane, None, None, None)
     }
 
-    pub fn sync<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn sync<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_sync(node, lane, None, None, None)
     }
 
-    pub fn unlink<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn unlink<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_unlink(node, lane, None)
     }
 }
 
 impl LinkMessage<IncomingHeader> {
-    pub fn make_linked<S: Into<String>>(
+    pub fn make_linked<S: Into<Text>>(
         node: S,
         lane: S,
         rate: Option<f64>,
@@ -213,27 +209,27 @@ impl LinkMessage<IncomingHeader> {
         )
     }
 
-    pub fn make_unlinked<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_unlinked<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_message(IncomingHeader::Unlinked, node, lane, body)
     }
 
-    pub fn make_synced<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_synced<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_message(IncomingHeader::Synced, node, lane, body)
     }
 
-    pub fn make_event<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_event<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_message(IncomingHeader::Event, node, lane, body)
     }
 
-    pub fn unlinked<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn unlinked<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_unlinked(node, lane, None)
     }
 
-    pub fn linked<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn linked<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_linked(node, lane, None, None, None)
     }
 
-    pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn synced<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_synced(node, lane, None)
     }
 }
@@ -309,7 +305,7 @@ impl Envelope {
         }
     }
 
-    fn make_incoming<S: Into<String>>(
+    fn make_incoming<S: Into<Text>>(
         header: IncomingHeader,
         node: S,
         lane: S,
@@ -325,7 +321,7 @@ impl Envelope {
         }
     }
 
-    fn make_outgoing<S: Into<String>>(
+    fn make_outgoing<S: Into<Text>>(
         header: OutgoingHeader,
         node: S,
         lane: S,
@@ -341,7 +337,7 @@ impl Envelope {
         }
     }
 
-    pub fn make_sync<S: Into<String>>(
+    pub fn make_sync<S: Into<Text>>(
         node: S,
         lane: S,
         rate: Option<f64>,
@@ -356,7 +352,7 @@ impl Envelope {
         )
     }
 
-    pub fn make_link<S: Into<String>>(
+    pub fn make_link<S: Into<Text>>(
         node: S,
         lane: S,
         rate: Option<f64>,
@@ -371,7 +367,7 @@ impl Envelope {
         )
     }
 
-    pub fn make_linked<S: Into<String>>(
+    pub fn make_linked<S: Into<Text>>(
         node: S,
         lane: S,
         rate: Option<f64>,
@@ -414,23 +410,23 @@ impl Envelope {
         }
     }
 
-    pub fn make_unlink<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_unlink<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_outgoing(OutgoingHeader::Unlink, node, lane, body)
     }
 
-    pub fn make_unlinked<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_unlinked<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_incoming(IncomingHeader::Unlinked, node, lane, body)
     }
 
-    pub fn make_command<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_command<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_outgoing(OutgoingHeader::Command, node, lane, body)
     }
 
-    pub fn make_event<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_event<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_incoming(IncomingHeader::Event, node, lane, body)
     }
 
-    pub fn make_synced<S: Into<String>>(node: S, lane: S, body: Option<Value>) -> Self {
+    pub fn make_synced<S: Into<Text>>(node: S, lane: S, body: Option<Value>) -> Self {
         Self::make_incoming(IncomingHeader::Synced, node, lane, body)
     }
 }
@@ -514,56 +510,44 @@ impl Envelope {
         Value::Record(vec![attr], body_vec)
     }
 
-    pub fn link<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn link<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_link(node, lane, None, None, None)
     }
 
-    pub fn sync<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn sync<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_sync(node, lane, None, None, None)
     }
 
-    pub fn unlink<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn unlink<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_unlink(node, lane, None)
     }
 
-    pub fn unlinked<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn unlinked<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_unlinked(node, lane, None)
     }
 
-    pub fn linked<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn linked<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_linked(node, lane, None, None, None)
     }
 
-    pub fn synced<S: Into<String>>(node: S, lane: S) -> Self {
+    pub fn synced<S: Into<Text>>(node: S, lane: S) -> Self {
         Self::make_synced(node, lane, None)
     }
 }
 
 fn add_path(headers: &mut Vec<Item>, path: RelativePath) {
-    headers.push(Item::Slot(
-        Value::Text(String::from("node")),
-        Value::Text(path.node),
-    ));
+    headers.push(Item::Slot(Value::text("node"), Value::Text(path.node)));
 
-    headers.push(Item::Slot(
-        Value::Text(String::from("lane")),
-        Value::Text(path.lane),
-    ));
+    headers.push(Item::Slot(Value::text("lane"), Value::Text(path.lane)));
 }
 
 fn add_params(headers: &mut Vec<Item>, params: LinkParams) {
     if let Some(prio) = params.prio {
-        headers.push(Item::Slot(
-            Value::Text(String::from("prio")),
-            Value::Float64Value(prio),
-        ));
+        headers.push(Item::Slot(Value::text("prio"), Value::Float64Value(prio)));
     }
 
     if let Some(rate) = params.rate {
-        headers.push(Item::Slot(
-            Value::Text(String::from("rate")),
-            Value::Float64Value(rate),
-        ));
+        headers.push(Item::Slot(Value::text("rate"), Value::Float64Value(rate)));
     }
 }
 
@@ -571,14 +555,14 @@ fn add_params(headers: &mut Vec<Item>, params: LinkParams) {
 /// data is the cause of the error.
 #[derive(Debug, PartialEq)]
 pub enum EnvelopeParseErr {
-    MissingHeader(String),
-    UnexpectedKey(String),
-    DuplicateKey(String),
+    MissingHeader(Text),
+    UnexpectedKey(Text),
+    DuplicateKey(Text),
     UnexpectedType(Value),
     UnexpectedItem(Item),
     Malformatted,
-    DuplicateHeader(String),
-    UnknownTag(String),
+    DuplicateHeader(Text),
+    UnknownTag(Text),
 }
 
 /// Attempt to parse a ['Value'] in to an ['Envelope']. Returning either the parsed [`Envelope`] or
@@ -595,8 +579,8 @@ pub enum EnvelopeParseErr {
 ///             Attr::of(("command", Value::Record(
 ///                 Vec::new(),
 ///                 vec![
-///                   Item::Slot(Value::Text(String::from("node")), Value::Text(String::from("node_uri"))),
-///                   Item::Slot(Value::Text(String::from("lane")), Value::Text(String::from("lane_uri"))),
+///                   Item::Slot(Value::text("node"), Value::text("node_uri")),
+///                   Item::Slot(Value::text("lane"), Value::text("lane_uri")),
 ///               ],
 ///             ))),
 ///         ],
@@ -752,7 +736,7 @@ impl TryFrom<Value> for Envelope {
                     })
                 }
             }
-            s => Err(EnvelopeParseErr::UnknownTag(String::from(s))),
+            s => Err(EnvelopeParseErr::UnknownTag(Text::from(s))),
         }
     }
 }
@@ -767,9 +751,9 @@ fn extract_path(items: Value) -> Result<RelativePath, EnvelopeParseErr> {
             },
         ) => Ok(path),
         (_, LinkParams { rate: Some(_), .. }) => {
-            Err(EnvelopeParseErr::UnexpectedKey(RATE_FIELD.to_string()))
+            Err(EnvelopeParseErr::UnexpectedKey(RATE_FIELD.into()))
         }
-        _ => Err(EnvelopeParseErr::UnexpectedKey(PRIO_FIELD.to_string())),
+        _ => Err(EnvelopeParseErr::UnexpectedKey(PRIO_FIELD.into())),
     }
 }
 
@@ -814,17 +798,17 @@ fn extract_path_and_params(items: Value) -> Result<(RelativePath, LinkParams), E
                 (Some(node), Some(lane), rate, prio) => {
                     Ok((RelativePath { node, lane }, LinkParams { rate, prio }))
                 }
-                (Some(_), _, _, _) => Err(EnvelopeParseErr::MissingHeader(LANE_FIELD.to_string())),
-                _ => Err(EnvelopeParseErr::MissingHeader(NODE_FIELD.to_string())),
+                (Some(_), _, _, _) => Err(EnvelopeParseErr::MissingHeader(LANE_FIELD.into())),
+                _ => Err(EnvelopeParseErr::MissingHeader(NODE_FIELD.into())),
             }
         }
         ow => Err(EnvelopeParseErr::UnexpectedType(ow)),
     }
 }
 
-fn get_text(name: &str, target: &mut Option<String>, value: Value) -> Result<(), EnvelopeParseErr> {
+fn get_text(name: &str, target: &mut Option<Text>, value: Value) -> Result<(), EnvelopeParseErr> {
     if target.is_some() {
-        Err(EnvelopeParseErr::DuplicateHeader(name.to_string()))
+        Err(EnvelopeParseErr::DuplicateHeader(name.into()))
     } else {
         match value {
             Value::Text(node_str) => {
@@ -838,7 +822,7 @@ fn get_text(name: &str, target: &mut Option<String>, value: Value) -> Result<(),
 
 fn get_float(name: &str, target: &mut Option<f64>, value: Value) -> Result<(), EnvelopeParseErr> {
     if target.is_some() {
-        Err(EnvelopeParseErr::DuplicateHeader(name.to_string()))
+        Err(EnvelopeParseErr::DuplicateHeader(name.into()))
     } else {
         match value {
             Value::Float64Value(x) => {

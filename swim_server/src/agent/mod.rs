@@ -13,12 +13,15 @@
 // limitations under the License.
 
 mod context;
+pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
 use crate::agent::context::{AgentExecutionContext, ContextImpl};
+use crate::agent::dispatch::error::DispatcherErrors;
+use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::{LaneIoError, MapLaneMessageHandler};
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
@@ -31,7 +34,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::routing::TaggedClientEnvelope;
+use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
@@ -51,8 +54,8 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::DiscardingSender;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use url::Url;
@@ -82,12 +85,35 @@ const AGENT_TASK: &str = "Agent task";
 const AGENT_START: &str = "Agent start";
 const LANE_START: &str = "Lane start";
 const SCHEDULER_TASK: &str = "Agent scheduler";
+const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
 const LANE_EVENTS: &str = "Lane events";
 const ON_EVENT: &str = "On event handler";
 const COMMANDED: &str = "Command received";
 const ON_COMMAND: &str = "On command handler";
 const ACTION_RESULT: &str = "Action result";
 const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.";
+
+#[derive(Debug)]
+pub struct AgentResult {
+    pub dispatcher_errors: DispatcherErrors,
+    pub failed: bool,
+}
+
+impl AgentResult {
+    fn from(
+        result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
+    ) -> Self {
+        let (errs, failed) = match result {
+            Ok(Ok(errs)) => (errs, false),
+            Ok(Err(errs)) => (errs, true),
+            _ => (Default::default(), true),
+        };
+        AgentResult {
+            dispatcher_errors: errs,
+            failed,
+        }
+    }
+}
 
 /// Creates a single, asynchronous task that manages the lifecycle of an agent, all of its lanes
 /// and any events that are scheduled within it.
@@ -96,33 +122,32 @@ const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.
 ///
 /// * `lifecycle` - Life-cycle event handler for the agent.
 /// * `url` - The node URL for the agent instance.
-/// * `schedule_buffer_size` - The buffer size for the MPSC channel used by the agent to schedule
-/// events.
 /// * `clock` - Clock for timing asynchronous events.
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 pub async fn run_agent<Config, Clk, Agent, L>(
     configuration: Config,
     lifecycle: L,
     url: Url,
-    scheduler_buffer_size: NonZeroUsize,
+    execution_config: AgentExecutionConfig,
     clock: Clk,
-    stop_trigger: trigger::Receiver,
-) where
+    incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
+) -> AgentResult
+where
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent>,
 {
     let span = span!(Level::INFO, AGENT_TASK, %url);
+    let (tripwire, stop_trigger) = trigger::trigger();
     async {
-        //TODO Attach lane IO.
-        let (agent, tasks, _io_providers) = Agent::instantiate::<
+        let (agent, tasks, io_providers) = Agent::instantiate::<
             ContextImpl<Agent, Clk, DiscardingSender<RoutingError>>,
         >(&configuration);
         let agent_ref = Arc::new(agent);
-        let (tx, rx) = mpsc::channel(scheduler_buffer_size.get());
+        let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let context = ContextImpl::new(
             agent_ref,
-            url,
+            url.clone(),
             tx,
             clock,
             stop_trigger.clone(),
@@ -160,13 +185,34 @@ pub async fn run_agent<Config, Clk, Agent, L>(
             );
         }
 
+        let dispatcher = AgentDispatcher::new(
+            url.to_string(),
+            execution_config,
+            context.clone(),
+            io_providers,
+        );
+
+        let (result_tx, result_rx) = oneshot::channel();
+
+        let dispatch_task = async move {
+            let tripwire = tripwire;
+            let result = dispatcher.run(incoming_envelopes).await;
+            tripwire.trigger();
+            let _ = result_tx.send(result);
+        }
+        .boxed()
+        .instrument(span!(Level::INFO, ROOT_DISPATCHER_TASK));
+        task_manager.push(dispatch_task);
+
         drop(context);
 
         task_manager
             .never_error()
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can discard the errors.
-            .await
+            .await;
+
+        AgentResult::from(result_rx.await)
     }
     .instrument(span)
     .await
@@ -297,8 +343,12 @@ pub trait LaneTasks<Agent, Context: AgentContext<Agent> + Sized + Send + Sync + 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttachError {
+    /// Could not attach to the lane as the agent hosting it is stopping.
+    AgentStopping,
     /// The lane stopped reporting its state changes.
     LaneStoppedReporting,
+    /// Failed to attach to the lane because it does not exist.
+    LaneDoesNotExist(String),
 }
 
 impl Display for AttachError {
@@ -308,6 +358,12 @@ impl Display for AttachError {
                 f,
                 "Failed to attach as the lane stopped reporting its state."
             ),
+            AttachError::LaneDoesNotExist(name) => {
+                write!(f, "A lane named \"{}\" does not exist.", name)
+            }
+            AttachError::AgentStopping => {
+                write!(f, "Could not attach to the lane as the agent is stoping.")
+            }
         }
     }
 }
@@ -334,6 +390,13 @@ pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
+
+    fn boxed(self) -> Box<dyn LaneIo<Context>>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
 }
 
 struct ValueLaneIo<T, D> {
