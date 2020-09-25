@@ -22,6 +22,7 @@ use url::Url;
 
 #[cfg(test)]
 mod tests;
+pub mod ws;
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a

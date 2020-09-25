@@ -30,6 +30,9 @@ utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
 tracing-futures = "0.2.4"
+tokio-tungstenite = "0.10.1"
+tokio-tls = "0.3.1"
+tungstenite = "0.10.1"
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }
