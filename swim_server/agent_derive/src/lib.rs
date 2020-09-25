@@ -1,8 +1,7 @@
 use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgentAttrs, ValueAttrs};
-use crate::utils::{get_agent_data, get_task_struct_name, IOField};
+use crate::utils::{get_agent_data, get_task_struct_name};
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
-use proc_macro2::Literal;
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
@@ -28,10 +27,6 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     let tasks = agent_fields
         .iter()
         .map(|agent_field| &agent_field.task_name);
-    let io_tasks = agent_fields.iter().map(|agent_field| IOField {
-        lane_name: Literal::string(&agent_field.lane_name.to_string()),
-        io_task: &agent_field.io_name,
-    });
     let lifecycles_ast = agent_fields
         .iter()
         .map(|agent_field| &agent_field.lifecycle_ast);
@@ -51,6 +46,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
                 where
                     Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
             {
+                let mut io_map = std::collections::HashMap::new();
 
                 #(#lifecycles_ast)*
 
@@ -61,10 +57,6 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
                 let tasks = std::vec![
                     #(#tasks.boxed()),*
                 ];
-
-
-                let mut io_map = std::collections::HashMap::new();
-                #(io_map.insert(#io_tasks);)*
 
                 (agent, tasks, io_map)
             }
