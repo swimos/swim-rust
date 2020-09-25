@@ -1,12 +1,28 @@
 use crate::args::{LaneType, SwimAgentAttrs};
-use proc_macro2::{Ident, Literal, Span};
-use quote::quote;
+use proc_macro2::{Ident, Literal, Span, TokenStream};
+use quote::{quote, ToTokens};
 
+#[derive(Debug)]
 pub struct AgentField {
     pub lane_name: Ident,
     pub task_name: Ident,
     pub io_name: Ident,
     pub lifecycle_ast: proc_macro2::TokenStream,
+}
+
+#[derive(Debug)]
+pub struct IOField<'a> {
+    pub lane_name: Literal,
+    pub io_task: &'a Ident,
+}
+
+impl ToTokens for IOField<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let lane_name = &self.lane_name;
+        let io_task = self.io_task;
+        // Todo check for None
+        *tokens = quote! { #lane_name.to_string(), std::boxed::Box::new(#io_task.unwrap()) as std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>};
+    }
 }
 
 type ConfigName = Ident;
