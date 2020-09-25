@@ -274,6 +274,7 @@ impl TestAgentConfig {
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
     fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
         configuration: &TestAgentConfig,
+        exec_conf: &AgentExecutionConfig,
     ) -> (
         Self,
         Vec<Box<dyn LaneTasks<Self, Context>>>,
@@ -287,14 +288,12 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             command_buffer_size,
         } = configuration;
 
-        let exec_conf = AgentExecutionConfig::default();
-
         let inner = ReportingLifecycleInner(collector.clone());
 
         let (data, data_tasks, _) = agent::make_map_lane(
             "data",
             false,
-            &exec_conf,
+            exec_conf,
             DataLifecycle {
                 inner: inner.clone(),
             },
@@ -304,7 +303,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         let (total, total_tasks, _) = agent::make_value_lane(
             "total",
             false,
-            &exec_conf,
+            exec_conf,
             0,
             TotalLifecycle {
                 inner: inner.clone(),

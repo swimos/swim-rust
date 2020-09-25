@@ -1,4 +1,4 @@
-use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgent, ValueAttrs};
+use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgentAttrs, ValueAttrs};
 use crate::utils::{get_agent_data, get_task_struct_name};
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
@@ -12,7 +12,7 @@ mod utils;
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
 
-    let args = match SwimAgent::from_derive_input(&input_ast) {
+    let args = match SwimAgentAttrs::from_derive_input(&input_ast) {
         Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
@@ -27,9 +27,14 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     let tasks = agent_fields
         .iter()
         .map(|agent_field| &agent_field.task_name);
+    let io_tasks = agent_fields.iter().map(|agent_field| &agent_field.io_name);
     let lifecycles_ast = agent_fields
         .iter()
         .map(|agent_field| &agent_field.lifecycle_ast);
+
+    for task in io_tasks{
+        eprintln!("task = {:?}", task);
+    }
 
     let output_ast = quote! {
 
@@ -37,6 +42,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         impl swim_server::agent::SwimAgent<#config_name> for #agent_name {
             fn instantiate<Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext>(
                 configuration: &#config_name,
+                exec_conf: &swim_server::agent::lane::channels::AgentExecutionConfig,
             ) -> (
                 Self,
                 std::vec::Vec<std::boxed::Box<dyn swim_server::agent::LaneTasks<Self, Context>>>,
@@ -56,7 +62,11 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
                     #(#tasks.boxed()),*
                 ];
 
-                (agent, tasks, std::collections::HashMap::new())
+
+                let mut io_map = std::collections::HashMap::new();
+                // #(io_map.insert("test".to_string(), #io_tasks);)*
+
+                (agent, tasks, io_map)
             }
         }
 

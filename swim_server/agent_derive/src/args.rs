@@ -8,66 +8,66 @@ const VALUE_LANE: &str = "ValueLane";
 const MAP_LANE: &str = "MapLane";
 
 #[derive(Debug, FromMeta)]
-pub(crate) struct AgentAttrs {
+pub struct AgentAttrs {
     #[darling(map = "to_ident")]
-    pub(crate) agent: Ident,
+    pub agent: Ident,
     #[darling(default = "default_on_start")]
     #[darling(map = "to_ident")]
-    pub(crate) on_start: Ident,
+    pub on_start: Ident,
 }
 
 #[derive(Debug, FromMeta)]
-pub(crate) struct CommandAttrs {
+pub struct CommandAttrs {
     #[darling(map = "to_ident")]
-    pub(crate) agent: Ident,
+    pub agent: Ident,
     #[darling(map = "to_ident")]
-    pub(crate) command_type: Ident,
+    pub command_type: Ident,
     #[darling(default = "default_on_command")]
     #[darling(map = "to_ident")]
-    pub(crate) on_command: Ident,
+    pub on_command: Ident,
 }
 
 #[derive(Debug, FromMeta)]
-pub(crate) struct ActionAttrs {
+pub struct ActionAttrs {
     #[darling(map = "to_ident")]
-    pub(crate) agent: Ident,
+    pub agent: Ident,
     #[darling(map = "to_ident")]
-    pub(crate) command_type: Ident,
+    pub command_type: Ident,
     #[darling(map = "to_ident")]
-    pub(crate) response_type: Ident,
+    pub response_type: Ident,
     #[darling(default = "default_on_command")]
     #[darling(map = "to_ident")]
-    pub(crate) on_command: Ident,
+    pub on_command: Ident,
 }
 
 #[derive(Debug, FromMeta)]
-pub(crate) struct ValueAttrs {
+pub struct ValueAttrs {
     #[darling(map = "to_ident")]
-    pub(crate) agent: Ident,
+    pub agent: Ident,
     #[darling(map = "to_ident")]
-    pub(crate) event_type: Ident,
+    pub event_type: Ident,
     #[darling(default = "default_on_start")]
     #[darling(map = "to_ident")]
-    pub(crate) on_start: Ident,
+    pub on_start: Ident,
     #[darling(default = "default_on_event")]
     #[darling(map = "to_ident")]
-    pub(crate) on_event: Ident,
+    pub on_event: Ident,
 }
 
 #[derive(Debug, FromMeta)]
-pub(crate) struct MapAttrs {
+pub struct MapAttrs {
     #[darling(map = "to_ident")]
-    pub(crate) agent: Ident,
+    pub agent: Ident,
     #[darling(map = "to_ident")]
-    pub(crate) key_type: Ident,
+    pub key_type: Ident,
     #[darling(map = "to_ident")]
-    pub(crate) value_type: Ident,
+    pub value_type: Ident,
     #[darling(default = "default_on_start")]
     #[darling(map = "to_ident")]
-    pub(crate) on_start: Ident,
+    pub on_start: Ident,
     #[darling(default = "default_on_event")]
     #[darling(map = "to_ident")]
-    pub(crate) on_event: Ident,
+    pub on_event: Ident,
 }
 
 fn to_ident(value: String) -> Ident {
@@ -88,23 +88,25 @@ fn default_on_command() -> Ident {
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(agent))]
-pub(crate) struct SwimAgent {
-    pub(crate) ident: syn::Ident,
-    pub(crate) data: ast::Data<(), LifecycleAttrs>,
+pub struct SwimAgentAttrs {
+    pub ident: syn::Ident,
+    pub data: ast::Data<(), LifecycleAttrs>,
     #[darling(map = "to_ident")]
-    pub(crate) config: Ident,
+    pub config: Ident,
 }
 
 #[derive(Debug, FromField)]
 #[darling(attributes(lifecycle))]
-pub(crate) struct LifecycleAttrs {
-    pub(crate) ident: Option<syn::Ident>,
-    pub(crate) ty: syn::Type,
-    pub(crate) name: Option<String>,
+pub struct LifecycleAttrs {
+    pub ident: Option<syn::Ident>,
+    pub ty: syn::Type,
+    #[darling(default)]
+    pub public: bool,
+    pub name: Option<String>,
 }
 
 impl LifecycleAttrs {
-    pub(crate) fn get_lane_type(&self) -> Option<LaneType> {
+    pub fn get_lane_type(&self) -> Option<LaneType> {
         if let Type::Path(TypePath {
             path: Path { segments, .. },
             ..
@@ -125,7 +127,7 @@ impl LifecycleAttrs {
     }
 }
 
-pub(crate) enum LaneType {
+pub enum LaneType {
     Command,
     Action,
     Value,

@@ -69,6 +69,7 @@ pub trait SwimAgent<Config>: Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
     fn instantiate<Context>(
         configuration: &Config,
+        exec_conf: &AgentExecutionConfig,
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
@@ -142,7 +143,7 @@ where
     async {
         let (agent, tasks, io_providers) = Agent::instantiate::<
             ContextImpl<Agent, Clk, DiscardingSender<RoutingError>>,
-        >(&configuration);
+        >(&configuration, &execution_config);
         let agent_ref = Arc::new(agent);
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let context = ContextImpl::new(
