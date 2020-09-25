@@ -119,7 +119,7 @@ fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
         if #is_public {
             io_map.insert (
                 #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone())) as std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>
+                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
             );
         }
     }
@@ -144,7 +144,7 @@ fn create_value_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
                 swim_server::agent::lane::model::value::make_lane_model_deferred(std::default::Default::default(), lifecycle.create_strategy(), exec_conf);
             io_map.insert (
                 #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ValueLaneIo::new(lane.clone(), deferred)) as std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>
+                std::boxed::Box::new(swim_server::agent::ValueLaneIo::new(lane.clone(), deferred))
             );
 
             (lane, event_stream)
@@ -183,7 +183,7 @@ fn create_map_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
             let (lane, event_stream, deferred) =
                 swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf);
             io_map.insert (
-                #lane_name_lit.to_string(), std::boxed::Box::new(swim_server::agent::MapLaneIo::new(lane.clone(), deferred)) as std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>
+                #lane_name_lit.to_string(), std::boxed::Box::new(swim_server::agent::MapLaneIo::new(lane.clone(), deferred))
             );
 
             (lane, event_stream)

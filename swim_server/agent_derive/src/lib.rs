@@ -46,7 +46,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
                 where
                     Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
             {
-                let mut io_map = std::collections::HashMap::new();
+                let mut io_map: std::collections::HashMap<std::string::String, std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>> = std::collections::HashMap::new();
 
                 #(#lifecycles_ast)*
 
