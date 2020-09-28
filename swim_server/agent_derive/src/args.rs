@@ -90,9 +90,10 @@ fn default_on_command() -> Ident {
 #[darling(attributes(agent))]
 pub struct SwimAgentAttrs {
     pub ident: syn::Ident,
-    pub data: ast::Data<(), LifecycleAttrs>,
     #[darling(map = "to_ident")]
     pub config: Ident,
+    pub data: ast::Data<(), LifecycleAttrs>,
+    pub generics: syn::Generics,
 }
 
 #[derive(Debug, FromField)]

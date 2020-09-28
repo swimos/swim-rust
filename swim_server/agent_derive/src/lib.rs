@@ -2,7 +2,7 @@ use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgentAttr
 use crate::utils::{get_agent_data, get_task_struct_name};
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 mod args;
@@ -18,6 +18,12 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
             return TokenStream::from(e.write_errors());
         }
     };
+
+    if args.generics.params.len() > 0 {
+        return TokenStream::from(quote_spanned! {
+            args.ident.span() => compile_error!("Generic swim agents are not supported!");
+        });
+    }
 
     let (agent_name, config_name, agent_fields) = get_agent_data(args);
 

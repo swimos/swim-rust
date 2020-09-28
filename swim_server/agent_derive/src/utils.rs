@@ -17,6 +17,7 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigName, Vec<Agent
         ident: agent_name,
         data: fields,
         config: config_name,
+        ..
     } = args;
 
     let mut agent_fields = Vec::new();
