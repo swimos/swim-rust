@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod context;
+pub mod context;
 pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;
@@ -62,9 +62,12 @@ use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
+#[doc(hidden)]
+#[allow(unused_imports)]
+pub use agent_derive::*;
+
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
-/// TODO Write derive macro for SwimAgent.
 pub trait SwimAgent<Config>: Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
     fn instantiate<Context>(
@@ -82,17 +85,17 @@ pub trait SwimAgent<Config>: Sized {
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
 pub type DynamicAgentIo<Context> = HashMap<String, Box<dyn LaneIo<Context>>>;
 
+pub const COMMANDED: &str = "Command received";
+pub const ON_COMMAND: &str = "On command handler";
+pub const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.";
+pub const ON_EVENT: &str = "On event handler";
+pub const ACTION_RESULT: &str = "Action result";
 const AGENT_TASK: &str = "Agent task";
 const AGENT_START: &str = "Agent start";
 const LANE_START: &str = "Lane start";
 const SCHEDULER_TASK: &str = "Agent scheduler";
 const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
 const LANE_EVENTS: &str = "Lane events";
-const ON_EVENT: &str = "On event handler";
-const COMMANDED: &str = "Command received";
-const ON_COMMAND: &str = "On command handler";
-const ACTION_RESULT: &str = "Action result";
-const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.";
 
 #[derive(Debug)]
 pub struct AgentResult {

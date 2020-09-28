@@ -91,6 +91,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let on_start_func = &args.on_start;
 
     let output_ast = quote! {
+        use futures::FutureExt as _;
 
         #input_ast
 
@@ -132,6 +133,8 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let on_command_func = &args.on_command;
 
     let output_ast = quote! {
+        use futures::FutureExt as _;
+        use futures::StreamExt as _;
 
         #input_ast
 
@@ -226,6 +229,8 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let on_command_func = &args.on_command;
 
     let output_ast = quote! {
+        use futures::FutureExt as _;
+        use futures::StreamExt as _;
 
         #input_ast
 
@@ -322,6 +327,8 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let on_event_func = &args.on_event;
 
     let output_ast = quote! {
+        use futures::FutureExt as _;
+        use futures::StreamExt as _;
 
         #input_ast
 
@@ -411,6 +418,8 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let on_event_func = &args.on_event;
 
     let output_ast = quote! {
+        use futures::FutureExt as _;
+        use futures::StreamExt as _;
 
         #input_ast
 
