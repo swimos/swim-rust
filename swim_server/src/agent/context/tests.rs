@@ -31,7 +31,7 @@ fn simple_accessors() {
     let agent = Arc::new("agent");
     let context = ContextImpl::new(
         agent.clone(),
-        "node".to_string(),
+        "node".parse().unwrap(),
         tx,
         TestClock::default(),
         close_sig.clone(),
@@ -59,7 +59,7 @@ fn create_context(
     let agent = Arc::new("agent");
     ContextImpl::new(
         agent.clone(),
-        "node".to_string(),
+        "node".parse().unwrap(),
         tx,
         clock,
         close_trigger,

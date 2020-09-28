@@ -25,6 +25,7 @@ use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
+use http::Uri;
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
@@ -98,7 +99,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
+        _route: Uri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }

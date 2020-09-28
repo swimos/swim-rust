@@ -14,6 +14,7 @@
 
 use crate::plane::error::NoAgentAtRoute;
 use futures::future::BoxFuture;
+use http::Uri;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -28,12 +29,12 @@ pub trait PlaneContext: Send + Sync {
     /// This will cause the agent to start if has not already.
     fn get_agent<'a>(
         &'a mut self,
-        route: String,
+        route: Uri,
     ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 
     /// Get all of the routes in this plane.
     fn routes(&self) -> &Vec<RoutePattern>;
 
     /// Get an instantaneous snapshot of the routes currently active on this plane.
-    fn active_routes(&mut self) -> BoxFuture<HashSet<String>>;
+    fn active_routes(&mut self) -> BoxFuture<HashSet<Uri>>;
 }

@@ -16,6 +16,7 @@ use super::AgentLifecycle;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;
+use http::Uri;
 use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
@@ -39,7 +40,7 @@ impl AgentContext<TestAgent> for TestContext {
         panic!("Default lifecycles should do nothing.")
     }
 
-    fn node_uri(&self) -> &str {
+    fn node_uri(&self) -> &Uri {
         panic!("Default lifecycles should do nothing.")
     }
 

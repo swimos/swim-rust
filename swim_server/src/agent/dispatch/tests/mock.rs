@@ -23,6 +23,7 @@ use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, TryFutureExt};
+use http::Uri;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -103,7 +104,7 @@ impl ServerRouter for MockRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
+        _route: Uri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }

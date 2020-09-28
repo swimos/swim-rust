@@ -132,18 +132,20 @@ async fn plane_router_resolve() {
     };
 
     let send_task = async move {
-        let result1 = router.resolve(Some(host), "node".to_string()).await;
+        let result1 = router.resolve(Some(host), "node".parse().unwrap()).await;
         assert!(matches!(result1, Ok(a) if a == addr));
 
         let other_host = Url::parse("warp://other").unwrap();
 
-        let result2 = router.resolve(Some(other_host), "node".to_string()).await;
+        let result2 = router
+            .resolve(Some(other_host), "node".parse().unwrap())
+            .await;
         assert!(matches!(
             result2,
             Err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
         ));
 
-        let result3 = router.resolve(None, "node".to_string()).await;
+        let result3 = router.resolve(None, "node".parse().unwrap()).await;
         assert!(
             matches!(result3, Err(ResolutionError::NoAgent(NoAgentAtRoute(name))) if name == "node")
         );

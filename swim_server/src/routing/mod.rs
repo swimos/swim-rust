@@ -14,6 +14,7 @@
 
 use crate::plane::error::ResolutionError;
 use futures::future::BoxFuture;
+use http::Uri;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
@@ -90,6 +91,6 @@ pub trait ServerRouter: Send + Sync {
     fn resolve(
         &mut self,
         host: Option<Url>,
-        route: String,
+        route: Uri,
     ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
 }

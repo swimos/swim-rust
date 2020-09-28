@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use http::Uri;
 use percent_encoding::percent_decode_str;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -223,6 +224,24 @@ impl RoutePattern {
             Ok(part_map)
         } else {
             Err(UnapplyError::new(self.pattern.as_str(), route))
+        }
+    }
+
+    /// Match a [`Uri`] route against the route pattern, extracting the values of each named
+    /// parameter.
+    pub fn unapply_uri(&self, uri: &Uri) -> Result<HashMap<String, String>, UnapplyError> {
+        if let Some(part_map) = self.unapply_parts(
+            uri.path()
+                .split('/')
+                .skip(1)
+                .map(|s| percent_decode_str(s).map(|b| b as char)),
+        ) {
+            Ok(part_map)
+        } else {
+            Err(UnapplyError::new(
+                self.pattern.as_str(),
+                uri.to_string().as_str(),
+            ))
         }
     }
 

@@ -19,6 +19,7 @@ use crate::plane::AgentRoute;
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
+use http::Uri;
 use pin_utils::core_reexport::fmt::Formatter;
 use std::any::Any;
 use std::collections::HashMap;
@@ -64,7 +65,7 @@ where
 
     pub fn run<Clk, Envelopes, Router>(
         &self,
-        uri: String,
+        uri: Uri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
@@ -108,7 +109,7 @@ where
 {
     fn run_agent(
         &self,
-        uri: String,
+        uri: Uri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,

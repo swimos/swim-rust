@@ -17,6 +17,7 @@ use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
+use http::Uri;
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -38,7 +39,7 @@ mod tests;
 #[derive(Debug)]
 pub(super) struct ContextImpl<Agent, Clk, Router> {
     agent_ref: Arc<Agent>,
-    uri: String,
+    uri: Uri,
     scheduler: mpsc::Sender<Eff>,
     schedule_count: Arc<AtomicU64>,
     clock: Clk,
@@ -70,7 +71,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
 impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        uri: String,
+        uri: Uri,
         scheduler: mpsc::Sender<Eff>,
         clock: Clk,
         stop_signal: trigger::Receiver,
@@ -135,8 +136,8 @@ where
         self.agent_ref.as_ref()
     }
 
-    fn node_uri(&self) -> &str {
-        self.uri.as_str()
+    fn node_uri(&self) -> &Uri {
+        &self.uri
     }
 
     fn agent_stop_event(&self) -> trigger::Receiver {

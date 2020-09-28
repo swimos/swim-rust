@@ -60,7 +60,12 @@ fn make_dispatcher(
         Duration::from_secs(1),
     );
 
-    let dispatcher = AgentDispatcher::new("node".to_string(), config, context.clone(), boxed_lanes);
+    let dispatcher = AgentDispatcher::new(
+        "node".parse().unwrap(),
+        config,
+        context.clone(),
+        boxed_lanes,
+    );
 
     let stall_watch = dispatcher.stall_watcher();
 

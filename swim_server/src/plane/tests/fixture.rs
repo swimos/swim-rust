@@ -22,6 +22,7 @@ use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
+use http::Uri;
 use parking_lot::Mutex;
 use pin_utils::core_reexport::num::NonZeroUsize;
 use pin_utils::core_reexport::time::Duration;
@@ -94,7 +95,7 @@ const MESSAGE: &str = "ping!";
 impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
     fn run_agent(
         &self,
-        uri: String,
+        uri: Uri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
@@ -104,17 +105,17 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
         let agent = Arc::new(SendAgent(id.clone()));
-        let expected_route = format!("/{}/{}", SENDER_PREFIX, id);
+        let expected_route: Uri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
         assert_eq!(uri, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {
-            let target_node = format!("/{}/{}", RECEIVER_PREFIX, target);
+            let target_node: Uri = format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.resolve(None, target_node.clone()).await.unwrap();
             let mut tx = router.get_sender(addr).await.unwrap();
             assert!(tx
                 .send_item(Envelope::make_event(
-                    target_node.as_str(),
-                    LANE_NAME,
+                    target_node.to_string(),
+                    LANE_NAME.to_string(),
                     Some(MESSAGE.into())
                 ))
                 .await
@@ -135,7 +136,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
 impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute {
     fn run_agent(
         &self,
-        uri: String,
+        uri: Uri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
@@ -150,14 +151,17 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
         let expected_target = expected_id.clone();
         assert_eq!(id, expected_target);
         let agent = Arc::new(ReceiveAgent(id.clone()));
-        let expected_route = format!("/{}/{}", RECEIVER_PREFIX, id);
+        let expected_route: Uri = format!("/{}/{}", RECEIVER_PREFIX, id).parse().unwrap();
         assert_eq!(uri, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {
             pin_mut!(incoming_envelopes);
 
-            let expected_envelope =
-                Envelope::make_event(expected_route.as_str(), LANE_NAME, Some(MESSAGE.into()));
+            let expected_envelope = Envelope::make_event(
+                expected_route.to_string(),
+                LANE_NAME.to_string(),
+                Some(MESSAGE.into()),
+            );
 
             let mut times_seen = 0;
 
@@ -185,7 +189,9 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
 impl PlaneLifecycle for TestLifecycle {
     fn on_start<'a>(&'a mut self, context: &'a mut dyn PlaneContext) -> BoxFuture<'a, ()> {
         async move {
-            let result = context.get_agent(format!("/{}/hello", SENDER_PREFIX)).await;
+            let result = context
+                .get_agent(format!("/{}/hello", SENDER_PREFIX).parse().unwrap())
+                .await;
             assert!(result.is_ok());
             let agent = result.unwrap();
             if let Ok(agent) = agent.downcast::<SendAgent>() {
