@@ -307,10 +307,8 @@ async fn agent_loop() {
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
-    let agent_lifecycle = ReportingAgentLifecycleTask {
-        lifecycle: ReportingAgentLifecycle {
-            event_handler: EventCollectorHandler(config.collector.clone()),
-        },
+    let agent_lifecycle = ReportingAgentLifecycle {
+        event_handler: EventCollectorHandler(config.collector.clone()),
     };
 
     let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));

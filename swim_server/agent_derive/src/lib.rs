@@ -87,7 +87,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let lifecycle_name = &input_ast.ident;
-    let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = &args.agent;
     let on_start_func = &args.on_start;
 
@@ -96,17 +95,13 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         #input_ast
 
-        struct #task_name {
-            lifecycle: #lifecycle_name
-        }
-
         #[automatically_derived]
-        impl swim_server::agent::lifecycle::AgentLifecycle<#agent_name> for #task_name {
+        impl swim_server::agent::lifecycle::AgentLifecycle<#agent_name> for #lifecycle_name {
             fn on_start<'a, C>(&'a self, context: &'a C) -> futures::future::BoxFuture<'a, ()>
             where
                 C: swim_server::agent::AgentContext<#agent_name> + core::marker::Send + core::marker::Sync + 'a,
             {
-                self.lifecycle.#on_start_func(context).boxed()
+                self.#on_start_func(context).boxed()
             }
         }
 
