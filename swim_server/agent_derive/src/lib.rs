@@ -38,6 +38,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         .map(|agent_field| &agent_field.lifecycle_ast);
 
     let output_ast = quote! {
+        use swim_server::agent::LaneTasks as _;
 
         #[automatically_derived]
         impl swim_server::agent::SwimAgent<#config_name> for #agent_name {

@@ -403,7 +403,7 @@ pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>
     }
 }
 
-struct ValueLaneIo<T, D> {
+pub struct ValueLaneIo<T, D> {
     lane: ValueLane<T>,
     deferred: D,
 }
@@ -413,7 +413,7 @@ where
     T: Any + Send + Sync + Form + Debug,
     D: DeferredLaneView<Arc<T>>,
 {
-    fn new(lane: ValueLane<T>, deferred: D) -> Self {
+    pub fn new(lane: ValueLane<T>, deferred: D) -> Self {
         ValueLaneIo { lane, deferred }
     }
 }
@@ -457,7 +457,7 @@ where
     }
 }
 
-struct MapLaneIo<K, V, D> {
+pub struct MapLaneIo<K, V, D> {
     lane: MapLane<K, V>,
     deferred: D,
 }
@@ -468,7 +468,7 @@ where
     V: Any + Send + Sync + Form + Debug,
     D: DeferredLaneView<MapLaneEvent<K, V>>,
 {
-    fn new(lane: MapLane<K, V>, deferred: D) -> Self {
+    pub fn new(lane: MapLane<K, V>, deferred: D) -> Self {
         MapLaneIo { lane, deferred }
     }
 }
@@ -520,7 +520,7 @@ where
     }
 }
 
-struct ActionLaneIo<Command, Response> {
+pub struct ActionLaneIo<Command, Response> {
     lane: ActionLane<Command, Response>,
     feedback: bool,
 }
@@ -530,14 +530,14 @@ where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
 {
-    fn new_action(lane: ActionLane<Command, Response>) -> Self {
+    pub fn new_action(lane: ActionLane<Command, Response>) -> Self {
         ActionLaneIo {
             lane,
             feedback: true,
         }
     }
 
-    fn new_command(lane: ActionLane<Command, Response>) -> Self {
+    pub fn new_command(lane: ActionLane<Command, Response>) -> Self {
         ActionLaneIo {
             lane,
             feedback: false,
