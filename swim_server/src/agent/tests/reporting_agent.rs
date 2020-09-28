@@ -24,7 +24,7 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::agent::{AgentConfig, AgentContext, LaneIo, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -268,6 +268,12 @@ impl TestAgentConfig {
         ReportingAgentLifecycle {
             inner: ReportingLifecycleInner(self.collector.clone()),
         }
+    }
+}
+
+impl AgentConfig for TestAgentConfig {
+    fn get_buffer_size(&self) -> NonZeroUsize {
+        self.command_buffer_size.clone()
     }
 }
 

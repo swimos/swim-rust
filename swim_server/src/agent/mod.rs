@@ -68,7 +68,7 @@ pub use agent_derive::*;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
-pub trait SwimAgent<Config>: Sized {
+pub trait SwimAgent<Config: AgentConfig>: Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
     fn instantiate<Context>(
         configuration: &Config,
@@ -80,6 +80,12 @@ pub trait SwimAgent<Config>: Sized {
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static;
+}
+
+/// Trait for the config of a swim agent.
+pub trait AgentConfig {
+    /// Called when creating a lane which needs a buffer size.
+    fn get_buffer_size(&self) -> NonZeroUsize;
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
@@ -137,6 +143,7 @@ pub async fn run_agent<Config, Clk, Agent, L>(
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
 ) -> AgentResult
 where
+    Config: AgentConfig,
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent>,

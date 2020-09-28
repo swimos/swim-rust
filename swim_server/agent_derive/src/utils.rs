@@ -110,7 +110,7 @@ fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
 
     quote! {
         let lifecycle = #lifecycle::create(configuration);
-        let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(configuration.command_buffer_size.clone());
+        let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(configuration.get_buffer_size());
         let #task_variable = #task_structure {
             lifecycle,
             name: #lane_name_lit.into(),

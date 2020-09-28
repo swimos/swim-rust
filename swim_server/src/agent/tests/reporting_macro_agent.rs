@@ -19,9 +19,8 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
-use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::{AgentContext, LaneTasks};
+use crate::agent::{AgentConfig, AgentContext, LaneTasks};
 use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent};
 use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
@@ -290,13 +289,11 @@ impl TestAgentConfig {
             command_buffer_size: NonZeroUsize::new(5).unwrap(),
         }
     }
+}
 
-    pub fn agent_lifecycle(&self) -> impl AgentLifecycle<ReportingAgent> {
-        ReportingAgentLifecycleTask {
-            lifecycle: ReportingAgentLifecycle {
-                event_handler: EventCollectorHandler(self.collector.clone()),
-            },
-        }
+impl AgentConfig for TestAgentConfig {
+    fn get_buffer_size(&self) -> NonZeroUsize {
+        self.command_buffer_size.clone()
     }
 }
 
@@ -310,7 +307,11 @@ async fn agent_loop() {
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
-    let agent_lifecycle = config.agent_lifecycle();
+    let agent_lifecycle = ReportingAgentLifecycleTask {
+        lifecycle: ReportingAgentLifecycle {
+            event_handler: EventCollectorHandler(config.collector.clone()),
+        },
+    };
 
     let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
 
