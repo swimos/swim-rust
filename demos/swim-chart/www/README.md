@@ -1,1 +1,0 @@
-# Swim-Rust WASM real-time chart demo
