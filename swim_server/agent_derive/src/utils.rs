@@ -88,14 +88,43 @@ fn create_lane(
     };
 
     match lane_type {
-        LaneType::Command => (create_action_lane(lane_data), task_variable),
+        LaneType::Command => (create_command_lane(lane_data), task_variable),
         LaneType::Action => (create_action_lane(lane_data), task_variable),
         LaneType::Value => (create_value_lane(lane_data), task_variable),
         LaneType::Map => (create_map_lane(lane_data), task_variable),
     }
 }
 
-//Todo new command should be new action
+fn create_command_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
+    let LaneData {
+        agent_name,
+        is_public,
+        lifecycle,
+        lane_name,
+        task_variable,
+        task_structure,
+        lane_name_lit,
+    } = lane_data;
+
+    quote! {
+        let lifecycle = #lifecycle::create(configuration);
+        let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(configuration.get_buffer_size());
+        let #task_variable = #task_structure {
+            lifecycle,
+            name: #lane_name_lit.into(),
+            event_stream,
+            projection: |agent: &#agent_name| &agent.#lane_name,
+        };
+
+        if #is_public {
+            io_map.insert (
+                #lane_name_lit.to_string(),
+                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
+            );
+        }
+    }
+}
+
 //Todo Decide for is_public at compile time
 fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
     let LaneData {
@@ -121,7 +150,7 @@ fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
         if #is_public {
             io_map.insert (
                 #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
+                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_action(#lane_name.clone()))
             );
         }
     }
