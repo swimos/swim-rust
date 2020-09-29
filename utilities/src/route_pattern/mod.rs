@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::uri::RelativeUri;
 use http::Uri;
 use percent_encoding::percent_decode_str;
 use std::collections::{HashMap, HashSet};
@@ -243,6 +244,15 @@ impl RoutePattern {
                 uri.to_string().as_str(),
             ))
         }
+    }
+
+    /// Match a [`RelativeUri`] route against the route pattern, extracting the values of each named
+    /// parameter.
+    pub fn unapply_relative_uri(
+        &self,
+        uri: &RelativeUri,
+    ) -> Result<HashMap<String, String>, UnapplyError> {
+        self.unapply_uri(uri.as_uri())
     }
 
     /// Match a [`Url`] route against the route pattern, extracting the values of each named

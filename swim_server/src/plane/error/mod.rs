@@ -16,15 +16,15 @@
 mod tests;
 
 use crate::routing::RoutingAddr;
-use http::Uri;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use utilities::route_pattern::RoutePattern;
+use utilities::uri::RelativeUri;
 
 /// Error indicating that request to route to a plane-local agent failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NoAgentAtRoute(pub Uri);
+pub struct NoAgentAtRoute(pub RelativeUri);
 
 impl Display for NoAgentAtRoute {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

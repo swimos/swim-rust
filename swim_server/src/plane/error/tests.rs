@@ -52,10 +52,10 @@ fn resolution_error_display() {
 
     assert_eq!(err.to_string(), RoutingError::HostUnreachable.to_string());
 
-    let err = ResolutionError::NoAgent(NoAgentAtRoute("path".parse().unwrap()));
+    let err = ResolutionError::NoAgent(NoAgentAtRoute("/path".parse().unwrap()));
 
     assert_eq!(
         err.to_string(),
-        NoAgentAtRoute("path".parse().unwrap()).to_string()
+        NoAgentAtRoute("/path".parse().unwrap()).to_string()
     );
 }

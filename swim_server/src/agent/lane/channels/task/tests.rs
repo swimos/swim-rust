@@ -27,7 +27,6 @@ use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnve
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
-use http::Uri;
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
@@ -45,6 +44,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use url::Url;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 #[test]
 fn lane_io_err_display_update() {
@@ -352,7 +352,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: Uri,
+        _route: RelativeUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -1234,8 +1234,8 @@ impl ServerRouter for MultiTestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: Uri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+        _route: RelativeUri,
+    ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }
 }

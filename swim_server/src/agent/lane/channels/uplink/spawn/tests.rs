@@ -25,7 +25,6 @@ use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
-use http::Uri;
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
@@ -41,6 +40,7 @@ use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use url::Url;
+use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
@@ -99,7 +99,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: Uri,
+        _route: RelativeUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }

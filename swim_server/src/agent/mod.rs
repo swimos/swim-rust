@@ -39,7 +39,6 @@ use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
-use http::Uri;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::collections::HashMap;
@@ -58,6 +57,7 @@ use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
@@ -92,14 +92,14 @@ const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.
 
 #[derive(Debug)]
 pub struct AgentResult {
-    pub route: Uri,
+    pub route: RelativeUri,
     pub dispatcher_errors: DispatcherErrors,
     pub failed: bool,
 }
 
 impl AgentResult {
     fn from(
-        route: Uri,
+        route: RelativeUri,
         result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
     ) -> Self {
         let (errs, failed) = match result {
@@ -119,7 +119,7 @@ impl AgentResult {
 pub struct AgentParameters<Config> {
     agent_config: Config,
     execution_config: AgentExecutionConfig,
-    uri: Uri,
+    uri: RelativeUri,
     parameters: HashMap<String, String>,
 }
 
@@ -127,7 +127,7 @@ impl<Config> AgentParameters<Config> {
     pub fn new(
         agent_config: Config,
         execution_config: AgentExecutionConfig,
-        uri: Uri,
+        uri: RelativeUri,
         parameters: HashMap<String, String>,
     ) -> Self {
         AgentParameters {
@@ -341,7 +341,7 @@ pub trait AgentContext<Agent> {
     fn agent(&self) -> &Agent;
 
     /// Get the node URI of the agent instance.
-    fn node_uri(&self) -> &Uri;
+    fn node_uri(&self) -> &RelativeUri;
 
     /// Get a future that will complete when the agent is stopping.
     fn agent_stop_event(&self) -> trigger::Receiver;

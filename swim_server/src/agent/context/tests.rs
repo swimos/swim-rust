@@ -31,7 +31,7 @@ fn simple_accessors() {
     let agent = Arc::new("agent");
     let context = ContextImpl::new(
         agent.clone(),
-        "node".parse().unwrap(),
+        "/node".parse().unwrap(),
         tx,
         TestClock::default(),
         close_sig.clone(),
@@ -39,7 +39,7 @@ fn simple_accessors() {
         HashMap::new(),
     );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
-    assert_eq!(context.node_uri(), "node");
+    assert_eq!(context.node_uri(), "/node");
     assert!(trigger::Receiver::same_receiver(
         &close_sig,
         &context.agent_stop_event()
@@ -59,7 +59,7 @@ fn create_context(
     let agent = Arc::new("agent");
     ContextImpl::new(
         agent.clone(),
-        "node".parse().unwrap(),
+        "/node".parse().unwrap(),
         tx,
         clock,
         close_trigger,

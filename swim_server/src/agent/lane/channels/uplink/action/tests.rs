@@ -22,13 +22,13 @@ use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
-use http::Uri;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::uri::RelativeUri;
 
 struct TestContext(TestRouter, mpsc::Sender<Eff>);
 #[derive(Clone, Debug)]
@@ -46,7 +46,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: Uri,
+        _route: RelativeUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }

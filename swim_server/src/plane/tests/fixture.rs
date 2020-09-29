@@ -34,6 +34,7 @@ use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::clock::Clock;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 #[derive(Debug)]
 pub struct SendAgent(String);
@@ -95,7 +96,7 @@ const MESSAGE: &str = "ping!";
 impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
     fn run_agent(
         &self,
-        uri: Uri,
+        uri: RelativeUri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
@@ -105,11 +106,12 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
         let agent = Arc::new(SendAgent(id.clone()));
-        let expected_route: Uri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
+        let expected_route: RelativeUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
         assert_eq!(uri, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {
-            let target_node: Uri = format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
+            let target_node: RelativeUri =
+                format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.resolve(None, target_node.clone()).await.unwrap();
             let mut tx = router.get_sender(addr).await.unwrap();
             assert!(tx
@@ -136,7 +138,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
 impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute {
     fn run_agent(
         &self,
-        uri: Uri,
+        uri: RelativeUri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,

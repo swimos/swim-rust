@@ -34,7 +34,6 @@ use crate::agent::{
 use crate::plane::provider::AgentProvider;
 use futures::future::{join, BoxFuture};
 use futures::{Stream, StreamExt};
-use http::Uri;
 use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -45,17 +44,18 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
+use utilities::uri::RelativeUri;
 
 mod stub_router {
     use crate::plane::error::ResolutionError;
     use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
     use futures::future::BoxFuture;
     use futures::FutureExt;
-    use http::Uri;
     use swim_common::routing::RoutingError;
     use swim_common::sink::item::{ItemSender, ItemSink};
     use swim_common::warp::envelope::Envelope;
     use url::Url;
+    use utilities::uri::RelativeUri;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter<Inner>(Inner);
@@ -112,7 +112,7 @@ mod stub_router {
         fn resolve(
             &mut self,
             _host: Option<Url>,
-            _route: Uri,
+            _route: RelativeUri,
         ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
             panic!("Unexpected resolution attempt.")
         }
@@ -259,7 +259,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
 
 struct TestContext<Lane> {
     lane: Arc<TestAgent<Lane>>,
-    uri: Uri,
+    uri: RelativeUri,
     closed: trigger::Receiver,
 }
 
@@ -290,7 +290,7 @@ where
         self.lane.as_ref()
     }
 
-    fn node_uri(&self) -> &Uri {
+    fn node_uri(&self) -> &RelativeUri {
         &self.uri
     }
 
@@ -334,7 +334,7 @@ async fn value_lane_start_task() {
         lane: lane.clone(),
     });
 
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     tasks.start(&context).await;
 
@@ -367,7 +367,7 @@ async fn value_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -417,7 +417,7 @@ async fn value_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -449,7 +449,7 @@ async fn map_lane_start_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     tasks.start(&context).await;
 
@@ -482,7 +482,7 @@ async fn map_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -534,7 +534,7 @@ async fn map_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -567,7 +567,7 @@ async fn action_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -617,7 +617,7 @@ async fn action_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -650,7 +650,7 @@ async fn command_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -700,7 +700,7 @@ async fn command_lane_events_task_terminates() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), "test", stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -716,7 +716,7 @@ async fn agent_loop() {
 
     let config = TestAgentConfig::new(tx);
 
-    let uri = "test".parse().unwrap();
+    let uri = "/test".parse().unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 

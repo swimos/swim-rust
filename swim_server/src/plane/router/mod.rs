@@ -17,13 +17,13 @@ use crate::plane::PlaneRequest;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use http::Uri;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSink, MpscSend};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
+use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
@@ -116,7 +116,7 @@ impl ServerRouter for PlaneRouter {
     fn resolve(
         &mut self,
         host: Option<Url>,
-        route: Uri,
+        route: RelativeUri,
     ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;

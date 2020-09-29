@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::route_pattern::{ApplyError, ParseError, RoutePattern, Segment, UnapplyError};
-use http::Uri;
+use crate::uri::RelativeUri;
 use std::collections::HashMap;
 use url::Url;
 
@@ -382,10 +382,10 @@ fn unapply_url() {
 }
 
 #[test]
-fn unapply_uri() {
+fn unapply_relative_uri() {
     let pattern = RoutePattern::parse_str("/path/:id").unwrap();
-    let uri: Uri = "/path/hello%20world%21".parse().unwrap();
-    let result = pattern.unapply_uri(&uri);
+    let uri: RelativeUri = "/path/hello%20world%21".parse().unwrap();
+    let result = pattern.unapply_relative_uri(&uri);
     assert!(result.is_ok());
     let params = result.unwrap();
     assert_eq!(params.len(), 1);

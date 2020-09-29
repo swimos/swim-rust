@@ -32,7 +32,6 @@ use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
-use http::Uri;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -49,6 +48,7 @@ use url::Url;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
+use utilities::uri::RelativeUri;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
@@ -65,7 +65,7 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug {
     /// * `router` - The router by which the agent can send messages.
     fn run_agent(
         &self,
-        uri: Uri,
+        uri: RelativeUri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
@@ -108,7 +108,7 @@ type EnvChannel = TakeUntil<mpsc::Receiver<TaggedEnvelope>, trigger::Receiver>;
 #[derive(Debug, Default)]
 struct PlaneActiveRoutes {
     local_endpoints: HashMap<RoutingAddr, LocalEndpoint>,
-    local_routes: HashMap<Uri, RoutingAddr>,
+    local_routes: HashMap<RelativeUri, RoutingAddr>,
 }
 
 impl PlaneActiveRoutes {
@@ -116,7 +116,7 @@ impl PlaneActiveRoutes {
         self.local_endpoints.get(&addr)
     }
 
-    fn get_endpoint_for_route(&self, route: &Uri) -> Option<&LocalEndpoint> {
+    fn get_endpoint_for_route(&self, route: &RelativeUri) -> Option<&LocalEndpoint> {
         let PlaneActiveRoutes {
             local_endpoints,
             local_routes,
@@ -127,7 +127,7 @@ impl PlaneActiveRoutes {
             .and_then(|addr| local_endpoints.get(addr))
     }
 
-    fn add_endpoint(&mut self, addr: RoutingAddr, route: Uri, endpoint: LocalEndpoint) {
+    fn add_endpoint(&mut self, addr: RoutingAddr, route: RelativeUri, endpoint: LocalEndpoint) {
         let PlaneActiveRoutes {
             local_endpoints,
             local_routes,
@@ -137,25 +137,28 @@ impl PlaneActiveRoutes {
         local_endpoints.insert(addr, endpoint);
     }
 
-    fn routes<'a>(&'a self) -> impl Iterator<Item = &'a Uri> + 'a {
+    fn routes<'a>(&'a self) -> impl Iterator<Item = &'a RelativeUri> + 'a {
         self.local_routes.keys()
     }
 
-    fn addr_for_route(&self, route: &Uri) -> Option<RoutingAddr> {
+    fn addr_for_route(&self, route: &RelativeUri) -> Option<RoutingAddr> {
         self.local_routes.get(route).copied()
     }
 }
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable>>;
-type RoutesRequest = Request<HashSet<Uri>>;
+type RoutesRequest = Request<HashSet<RelativeUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
 
 /// Requests that can be serviced by the plane event loop.
 #[derive(Debug)]
 enum PlaneRequest {
     /// Get a handle to an agent (starting it where necessary).
-    Agent { name: Uri, request: AgentRequest },
+    Agent {
+        name: RelativeUri,
+        request: AgentRequest,
+    },
     /// Get channel to route messages to a specified routing address.
     Endpoint {
         id: RoutingAddr,
@@ -164,7 +167,7 @@ enum PlaneRequest {
     /// Resolve the routing address for an agent.
     Resolve {
         host: Option<Url>,
-        name: Uri,
+        name: RelativeUri,
         request: ResolutionRequest,
     },
     /// Get all of the active routes for the plane.
@@ -186,7 +189,7 @@ impl ContextImpl {
 impl PlaneContext for ContextImpl {
     fn get_agent<'a>(
         &'a mut self,
-        route: Uri,
+        route: RelativeUri,
     ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
         let (tx, rx) = oneshot::channel();
         async move {
@@ -213,7 +216,7 @@ impl PlaneContext for ContextImpl {
         &self.routes
     }
 
-    fn active_routes(&mut self) -> BoxFuture<HashSet<Uri>> {
+    fn active_routes(&mut self) -> BoxFuture<HashSet<RelativeUri>> {
         let (tx, rx) = oneshot::channel();
         async move {
             if self
@@ -255,7 +258,7 @@ impl<Clk: Clock> RouteResolver<Clk> {
     /// Attempts to open an agent at a specified route.
     fn try_open_route<S>(
         &mut self,
-        route: Uri,
+        route: RelativeUri,
         spawner: &S,
     ) -> Result<(Arc<dyn Any + Send + Sync>, RoutingAddr), NoAgentAtRoute>
     where
@@ -505,7 +508,7 @@ type PlaneAgentRoute<Clk> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter>;
 /// Find he appropriate specification for a route along with any parameters derived from the
 /// route pattern.
 fn route_for<'a, Clk>(
-    route: &Uri,
+    route: &RelativeUri,
     routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter>],
 ) -> Result<(&'a PlaneAgentRoute<Clk>, HashMap<String, String>), NoAgentAtRoute> {
     //TODO This could be a lot more efficient though it would probably only matter for planes with a large number of routes.
@@ -516,7 +519,7 @@ fn route_for<'a, Clk>(
                  pattern,
                  agent_route,
              }| {
-                if let Ok(params) = pattern.unapply_uri(route) {
+                if let Ok(params) = pattern.unapply_relative_uri(route) {
                     Some((agent_route, params))
                 } else {
                     None

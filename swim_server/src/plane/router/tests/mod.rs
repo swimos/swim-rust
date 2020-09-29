@@ -29,7 +29,7 @@ async fn plane_router_sender() {
     let mut sender = PlaneRouterSender::new(RoutingAddr::remote(7), tx);
 
     assert!(sender
-        .send_item(Envelope::linked("node", "lane"))
+        .send_item(Envelope::linked("/node", "lane"))
         .await
         .is_ok());
 
@@ -38,7 +38,7 @@ async fn plane_router_sender() {
         received,
         Some(TaggedEnvelope(
             RoutingAddr::remote(7),
-            Envelope::linked("node", "lane")
+            Envelope::linked("/node", "lane")
         ))
     );
 }
@@ -71,12 +71,12 @@ async fn plane_router_get_sender() {
         assert!(result1.is_ok());
         let mut sender = result1.unwrap();
         assert!(sender
-            .send_item(Envelope::linked("node", "lane"))
+            .send_item(Envelope::linked("/node", "lane"))
             .await
             .is_ok());
         assert_eq!(
             send_rx.recv().await,
-            Some(TaggedEnvelope(addr, Envelope::linked("node", "lane")))
+            Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
         );
 
         let result2 = router.get_sender(RoutingAddr::local(56)).await;
@@ -114,7 +114,7 @@ async fn plane_router_resolve() {
                 request,
             } = req
             {
-                if host == Some(host_cpy.clone()) && name == "node" {
+                if host == Some(host_cpy.clone()) && name == "/node" {
                     assert!(request.send_ok(addr).is_ok());
                 } else if host.is_some() {
                     assert!(request
@@ -132,22 +132,22 @@ async fn plane_router_resolve() {
     };
 
     let send_task = async move {
-        let result1 = router.resolve(Some(host), "node".parse().unwrap()).await;
+        let result1 = router.resolve(Some(host), "/node".parse().unwrap()).await;
         assert!(matches!(result1, Ok(a) if a == addr));
 
         let other_host = Url::parse("warp://other").unwrap();
 
         let result2 = router
-            .resolve(Some(other_host), "node".parse().unwrap())
+            .resolve(Some(other_host), "/node".parse().unwrap())
             .await;
         assert!(matches!(
             result2,
             Err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
         ));
 
-        let result3 = router.resolve(None, "node".parse().unwrap()).await;
+        let result3 = router.resolve(None, "/node".parse().unwrap()).await;
         assert!(
-            matches!(result3, Err(ResolutionError::NoAgent(NoAgentAtRoute(name))) if name == "node")
+            matches!(result3, Err(ResolutionError::NoAgent(NoAgentAtRoute(name))) if name == "/node")
         );
     };
 
