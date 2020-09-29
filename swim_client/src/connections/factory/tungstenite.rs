@@ -28,8 +28,9 @@ use url::Url;
 
 use super::async_factory;
 use crate::connections::factory::stream::{
-    build_stream, get_stream_type, MaybeCompressed, SinkTransformer, StreamTransformer,
+    build_stream, get_stream_type, CompressionSwitcher, SinkTransformer, StreamTransformer,
 };
+use http::header::SEC_WEBSOCKET_PROTOCOL;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use swim_common::request::request_future::SendAndAwait;
@@ -46,15 +47,17 @@ type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer
 type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungSink, TungStream), ConnectionError>>;
 
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
-pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>, MaybeCompressed>;
+pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>, CompressionSwitcher>;
 pub type ConnReq = async_factory::ConnReq<TungSink, TungStream>;
+
+const WARP0_PROTO: &str = "warp0";
 
 async fn connect(
     url: Url,
     config: &mut HostConfig,
 ) -> Result<
     (
-        WebSocketStream<MaybeTlsStream<TcpStream>, MaybeCompressed>,
+        WebSocketStream<MaybeTlsStream<TcpStream>, CompressionSwitcher>,
         Response<()>,
     ),
     ConnectionError,
@@ -64,9 +67,11 @@ async fn connect(
         .parse()
         .map_err(|e| ConnectionError::SocketError(WebSocketError::from(e)))?;
     let mut request = Request::get(uri).body(())?;
-    request
-        .headers_mut()
-        .insert("Sec-WebSocket-Protocol", HeaderValue::from_static("warp0"));
+
+    request.headers_mut().insert(
+        SEC_WEBSOCKET_PROTOCOL,
+        HeaderValue::from_static(WARP0_PROTO),
+    );
 
     let request = maybe_resolve_scheme(request)?;
     let stream_type = get_stream_type(&request, &config.protocol)?;
@@ -95,7 +100,7 @@ async fn connect(
         request,
         stream,
         Some(WebSocketConfig::default_with_encoder(
-            MaybeCompressed::new_from_config(config.compression_config.clone()),
+            CompressionSwitcher::from_config(config.compression_config.clone()),
         )),
     )
     .await

@@ -30,27 +30,30 @@ use tokio_tungstenite::tungstenite::protocol::frame::Frame;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;
 
-pub enum MaybeCompressed {
+/// A Tungstenite WebSocket extension that is either `DeflateExt` or `UncompressedExt`.
+pub enum CompressionSwitcher {
     Compressed(DeflateExt),
     Uncompressed(UncompressedExt),
 }
 
-impl MaybeCompressed {
-    pub fn new_from_config(config: CompressionConfig) -> MaybeCompressed {
+const MAX_MESSAGE_SIZE: usize = 64 << 20;
+
+impl CompressionSwitcher {
+    pub fn from_config(config: CompressionConfig) -> CompressionSwitcher {
         match config {
             CompressionConfig::Uncompressed => {
-                MaybeCompressed::Uncompressed(UncompressedExt::new(Some(64 << 20)))
+                CompressionSwitcher::Uncompressed(UncompressedExt::new(Some(MAX_MESSAGE_SIZE)))
             }
             CompressionConfig::Deflate(config) => {
-                MaybeCompressed::Compressed(DeflateExt::new(config))
+                CompressionSwitcher::Compressed(DeflateExt::new(config))
             }
         }
     }
 }
 
-impl Default for MaybeCompressed {
+impl Default for CompressionSwitcher {
     fn default() -> Self {
-        MaybeCompressed::Uncompressed(UncompressedExt::default())
+        CompressionSwitcher::Uncompressed(UncompressedExt::default())
     }
 }
 
@@ -73,24 +76,24 @@ impl Display for CompressionError {
     }
 }
 
-impl WebSocketExtension for MaybeCompressed {
+impl WebSocketExtension for CompressionSwitcher {
     type Error = CompressionError;
 
     fn new(max_message_size: Option<usize>) -> Self {
-        MaybeCompressed::Uncompressed(UncompressedExt::new(max_message_size))
+        CompressionSwitcher::Uncompressed(UncompressedExt::new(max_message_size))
     }
 
     fn enabled(&self) -> bool {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext.enabled(),
-            MaybeCompressed::Compressed(ext) => ext.enabled(),
+            CompressionSwitcher::Uncompressed(ext) => ext.enabled(),
+            CompressionSwitcher::Compressed(ext) => ext.enabled(),
         }
     }
 
     fn on_make_request<T>(&mut self, request: Request<T>) -> Request<T> {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext.on_make_request(request),
-            MaybeCompressed::Compressed(ext) => ext.on_make_request(request),
+            CompressionSwitcher::Uncompressed(ext) => ext.on_make_request(request),
+            CompressionSwitcher::Compressed(ext) => ext.on_make_request(request),
         }
     }
 
@@ -100,10 +103,10 @@ impl WebSocketExtension for MaybeCompressed {
         response: &mut Response<T>,
     ) -> Result<(), Self::Error> {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext
+            CompressionSwitcher::Uncompressed(ext) => ext
                 .on_receive_request(request, response)
                 .map_err(|e| CompressionError(e.to_string())),
-            MaybeCompressed::Compressed(ext) => ext
+            CompressionSwitcher::Compressed(ext) => ext
                 .on_receive_request(request, response)
                 .map_err(|e| CompressionError(e.to_string())),
         }
@@ -111,10 +114,10 @@ impl WebSocketExtension for MaybeCompressed {
 
     fn on_response<T>(&mut self, response: &Response<T>) -> Result<(), Self::Error> {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext
+            CompressionSwitcher::Uncompressed(ext) => ext
                 .on_response(response)
                 .map_err(|e| CompressionError(e.to_string())),
-            MaybeCompressed::Compressed(ext) => ext
+            CompressionSwitcher::Compressed(ext) => ext
                 .on_response(response)
                 .map_err(|e| CompressionError(e.to_string())),
         }
@@ -122,10 +125,10 @@ impl WebSocketExtension for MaybeCompressed {
 
     fn on_send_frame(&mut self, frame: Frame) -> Result<Frame, Self::Error> {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext
+            CompressionSwitcher::Uncompressed(ext) => ext
                 .on_send_frame(frame)
                 .map_err(|e| CompressionError(e.to_string())),
-            MaybeCompressed::Compressed(ext) => ext
+            CompressionSwitcher::Compressed(ext) => ext
                 .on_send_frame(frame)
                 .map_err(|e| CompressionError(e.to_string())),
         }
@@ -133,10 +136,10 @@ impl WebSocketExtension for MaybeCompressed {
 
     fn on_receive_frame(&mut self, frame: Frame) -> Result<Option<Message>, Self::Error> {
         match self {
-            MaybeCompressed::Uncompressed(ext) => ext
+            CompressionSwitcher::Uncompressed(ext) => ext
                 .on_receive_frame(frame)
                 .map_err(|e| CompressionError(e.to_string())),
-            MaybeCompressed::Compressed(ext) => ext
+            CompressionSwitcher::Compressed(ext) => ext
                 .on_receive_frame(frame)
                 .map_err(|e| CompressionError(e.to_string())),
         }
