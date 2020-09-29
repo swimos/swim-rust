@@ -1,6 +1,13 @@
 use crate::args::{LaneType, SwimAgentAttrs};
+use core::fmt;
 use proc_macro2::{Ident, Literal, Span};
 use quote::quote;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use syn::{Data, DeriveInput};
+
+const SWIM_AGENT: &str = "Swim agent";
+const LIFECYCLE: &str = "Lifecycle";
 
 #[derive(Debug)]
 pub struct AgentField {
@@ -232,5 +239,53 @@ fn create_map_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
             event_stream,
             projection: |agent: &#agent_name| &agent.#lane_name,
         };
+    }
+}
+
+#[derive(Debug)]
+pub enum InputAstType {
+    Agent,
+    Lifecycle,
+}
+
+impl Display for InputAstType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            InputAstType::Agent => write!(f, "{}", SWIM_AGENT),
+            InputAstType::Lifecycle => write!(f, "{}", LIFECYCLE),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum InputAstError {
+    UnionError(InputAstType),
+    EnumError(InputAstType),
+    GenericError(InputAstType),
+}
+
+impl Display for InputAstError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            InputAstError::EnumError(ty) => write!(f, "{} cannot be created from Enum!", ty),
+            InputAstError::UnionError(ty) => write!(f, "{} cannot be created from Union!", ty),
+            InputAstError::GenericError(ty) => write!(f, "{} cannot have generic parameters!", ty),
+        }
+    }
+}
+
+impl Error for InputAstError {}
+
+pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(), InputAstError> {
+    match input_ast.data {
+        Data::Enum(_) => Err(InputAstError::EnumError(ty)),
+        Data::Union(_) => Err(InputAstError::UnionError(ty)),
+        _ => {
+            if !input_ast.generics.params.is_empty() {
+                Err(InputAstError::GenericError(ty))
+            } else {
+                Ok(())
+            }
+        }
     }
 }

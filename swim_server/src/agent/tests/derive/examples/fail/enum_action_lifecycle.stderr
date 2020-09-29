@@ -1,0 +1,5 @@
+error: Lifecycle cannot be created from Enum!
+  --> $DIR/enum_action_lifecycle.rs:10:10
+   |
+10 |     enum ActionLifecycle {}
+   |          ^^^^^^^^^^^^^^^

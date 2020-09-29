@@ -1,0 +1,7 @@
+error: Missing field `config`
+ --> $DIR/agent_missing_config.rs:4:21
+  |
+4 |     #[derive(Debug, SwimAgent)]
+  |                     ^^^^^^^^^
+  |
+  = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)

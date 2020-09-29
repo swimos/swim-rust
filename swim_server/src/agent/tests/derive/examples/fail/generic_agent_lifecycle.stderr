@@ -1,0 +1,5 @@
+error: Lifecycle cannot have generic parameters!
+  --> $DIR/generic_agent_lifecycle.rs:10:12
+   |
+10 |     struct TestAgentLifecycle<T> {
+   |            ^^^^^^^^^^^^^^^^^^
