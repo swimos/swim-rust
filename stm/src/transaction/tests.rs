@@ -307,7 +307,8 @@ async fn set_get_and_set() {
 }
 
 // todo: SR-211
-// #[tokio::test(threaded_scheduler)]
+#[ignore]
+#[tokio::test(threaded_scheduler)]
 async fn increment_concurrently() {
     let var = TVar::new(0);
     let var_copy = var.clone();
