@@ -34,15 +34,16 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::SwimRouter;
-use swim_common::connections::WebsocketFactory;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
+use swim_common::ws::WebsocketFactory;
 
 #[cfg(feature = "websocket")]
 use {
     crate::configuration::downlink::ConfigHierarchy,
-    crate::connections::factory::tungstenite::TungsteniteWsFactory, std::fs::File, std::io::Read,
-    swim_common::model::parser::parse_single,
+    crate::connections::factory::tungstenite::HostConfig,
+    crate::connections::factory::tungstenite::TungsteniteWsFactory, std::collections::HashMap,
+    std::fs::File, std::io::Read, swim_common::model::parser::parse_single, url::Url,
 };
 
 /// Represents errors that can occur in the client.
@@ -100,7 +101,7 @@ impl Error for ClientError {
 /// - A `MapDownlink` synchronises a shared real-time key-value map with a remote map lane.
 ///
 /// Both value and map downlinks are available in typed and untyped flavours. Typed downlinks must
-/// conform to a contract that is imposed by a form implementation and all actions are verified
+/// conform to a contract that is imposed by a `Form` implementation and all actions are verified
 /// against the provided schema to ensure that its views are consistent.
 ///
 pub struct SwimClient {
@@ -109,6 +110,29 @@ pub struct SwimClient {
 }
 
 impl SwimClient {
+    /// Creates a new Swim Client using the default configuration and the provided certificates for
+    /// each host.
+    #[cfg(feature = "websocket")]
+    pub async fn default_with_host_configs(configs: HashMap<Url, HostConfig>) -> Self {
+        SwimClient::new(
+            ConfigHierarchy::default(),
+            TungsteniteWsFactory::new_with_configs(5, configs).await,
+        )
+        .await
+    }
+
+    #[cfg(feature = "websocket")]
+    pub async fn config_with_certs(
+        config: ConfigHierarchy,
+        host_configs: HashMap<Url, HostConfig>,
+    ) -> Self {
+        SwimClient::new(
+            config,
+            TungsteniteWsFactory::new_with_configs(5, host_configs).await,
+        )
+        .await
+    }
+
     /// Creates a new SWIM Client using the default configuration.
     #[cfg(feature = "websocket")]
     pub async fn new_with_default() -> Self {
@@ -138,6 +162,7 @@ impl SwimClient {
         .map_err(ClientError::ConfigError)?;
 
         let buffer_size = config.client_params().dl_req_buffer_size.get();
+        // todo: parse certs from file
         let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
 
         Ok(SwimClient::new(config, connection_factory).await)
