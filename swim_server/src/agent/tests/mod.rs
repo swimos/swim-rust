@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
 pub(crate) mod test_clock;

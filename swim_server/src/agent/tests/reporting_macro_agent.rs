@@ -126,17 +126,13 @@ impl ReportingAgentLifecycle {
     }
 }
 
-#[command_lifecycle(
-    agent = "ReportingAgent",
-    command_type = "String",
-    on_command = "action_on_command"
-)]
+#[command_lifecycle(agent = "ReportingAgent", command_type = "String")]
 struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
 
 impl ActionLifecycle {
-    async fn action_on_command<Context>(
+    async fn on_command<Context>(
         &self,
         command: String,
         _model: &ActionLane<String, ()>,
@@ -169,25 +165,19 @@ impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
     }
 }
 
-#[map_lifecycle(
-    agent = "ReportingAgent",
-    key_type = "String",
-    value_type = "i32",
-    on_start = "data_on_start",
-    on_event = "data_on_event"
-)]
+#[map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
 struct DataLifecycle {
     event_handler: EventCollectorHandler,
 }
 
 impl DataLifecycle {
-    async fn data_on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+    async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
     where
         Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
     {
     }
 
-    async fn data_on_event<Context>(
+    async fn on_event<Context>(
         &self,
         event: &MapLaneEvent<String, i32>,
         _model: &MapLane<String, i32>,
@@ -229,29 +219,20 @@ impl StatefulLaneLifecycleBase for DataLifecycle {
     }
 }
 
-#[value_lifecycle(
-    agent = "ReportingAgent",
-    event_type = "i32",
-    on_start = "total_on_start",
-    on_event = "total_on_event"
-)]
+#[value_lifecycle(agent = "ReportingAgent", event_type = "i32")]
 struct TotalLifecycle {
     event_handler: EventCollectorHandler,
 }
 
 impl TotalLifecycle {
-    async fn total_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+    async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
     where
         Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
     {
     }
 
-    async fn total_on_event<Context>(
-        &self,
-        event: &Arc<i32>,
-        _model: &ValueLane<i32>,
-        _context: &Context,
-    ) where
+    async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
+    where
         Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
     {
         let n = **event;
