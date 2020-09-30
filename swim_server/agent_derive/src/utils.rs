@@ -113,6 +113,17 @@ fn create_command_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
         lane_name_lit,
     } = lane_data;
 
+    let io = if is_public {
+        Some(quote! {
+            io_map.insert (
+                #lane_name_lit.to_string(),
+                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
+            );
+        })
+    } else {
+        None
+    };
+
     quote! {
         let lifecycle = #lifecycle::create(configuration);
         let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(configuration.get_buffer_size());
@@ -123,16 +134,10 @@ fn create_command_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
             projection: |agent: &#agent_name| &agent.#lane_name,
         };
 
-        if #is_public {
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
-            );
-        }
+        #io
     }
 }
 
-//Todo Decide for is_public at compile time
 fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
     let LaneData {
         agent_name,
@@ -144,6 +149,17 @@ fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
         lane_name_lit,
     } = lane_data;
 
+    let io = if is_public {
+        Some(quote! {
+            io_map.insert (
+                #lane_name_lit.to_string(),
+                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_action(#lane_name.clone()))
+            );
+        })
+    } else {
+        None
+    };
+
     quote! {
         let lifecycle = #lifecycle::create(configuration);
         let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(configuration.get_buffer_size());
@@ -154,12 +170,7 @@ fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
             projection: |agent: &#agent_name| &agent.#lane_name,
         };
 
-        if #is_public {
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_action(#lane_name.clone()))
-            );
-        }
+        #io
     }
 }
 
@@ -174,25 +185,27 @@ fn create_value_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
         lane_name_lit,
     } = lane_data;
 
+    let lane_creation = if is_public {
+        quote! {
+            let (#lane_name, event_stream, deferred) =
+                swim_server::agent::lane::model::value::make_lane_model_deferred(std::default::Default::default(), lifecycle.create_strategy(), exec_conf);
+
+            io_map.insert (
+                #lane_name_lit.to_string(),
+                std::boxed::Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), deferred))
+            );
+        }
+    } else {
+        quote! {
+            let (#lane_name, event_stream) =
+                swim_server::agent::lane::model::value::make_lane_model(std::default::Default::default(), lifecycle.create_strategy());
+        }
+    };
+
     quote! {
         let lifecycle = #lifecycle::create(configuration);
 
-        let (#lane_name, event_stream) = if #is_public {
-            let (lane, event_stream, deferred) =
-                swim_server::agent::lane::model::value::make_lane_model_deferred(std::default::Default::default(), lifecycle.create_strategy(), exec_conf);
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ValueLaneIo::new(lane.clone(), deferred))
-            );
-
-            (lane, event_stream)
-        } else {
-            let (lane, event_stream) =
-                swim_server::agent::lane::model::value::make_lane_model(std::default::Default::default(), lifecycle.create_strategy());
-
-            (lane, event_stream)
-        };
-
+        #lane_creation
 
         let #task_variable = #task_structure {
             lifecycle,
@@ -214,24 +227,26 @@ fn create_map_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
         lane_name_lit,
     } = lane_data;
 
+    let lane_creation = if is_public {
+        quote! {
+            let (#lane_name, event_stream, deferred) =
+                swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf);
+
+            io_map.insert (
+                #lane_name_lit.to_string(), std::boxed::Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), deferred))
+            );
+        }
+    } else {
+        quote! {
+            let (#lane_name, event_stream) =
+                swim_server::agent::lane::model::map::make_lane_model(lifecycle.create_strategy());
+        }
+    };
+
     quote! {
         let lifecycle = #lifecycle::create(configuration);
 
-        let (#lane_name, event_stream) = if #is_public {
-            let (lane, event_stream, deferred) =
-                swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf);
-            io_map.insert (
-                #lane_name_lit.to_string(), std::boxed::Box::new(swim_server::agent::MapLaneIo::new(lane.clone(), deferred))
-            );
-
-            (lane, event_stream)
-        } else {
-            let (lane, event_stream) =
-                swim_server::agent::lane::model::map::make_lane_model(lifecycle.create_strategy());
-
-            (lane, event_stream)
-        };
-
+        #lane_creation
 
         let #task_variable = #task_structure {
             lifecycle,
