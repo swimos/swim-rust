@@ -258,6 +258,7 @@ pub mod timeout {
         }
     }
 
+    #[derive(Debug)]
     pub struct TimeoutExpired;
 
     impl<F: Future> Future for Timeout<F> {

@@ -16,7 +16,7 @@ use parking_lot::Mutex;
 use parking_lot_core::SpinWait;
 use slab::Slab;
 use std::cell::UnsafeCell;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
@@ -46,11 +46,29 @@ impl OrderedWaker {
 }
 
 /// Intrusive linked list of tasks waiting for a write lock.
-#[derive(Default, Debug)]
+#[derive(Default)]
 struct WriterQueue {
     first: Option<usize>,
     last: Option<usize>,
     wakers: Slab<OrderedWaker>,
+}
+
+struct Wakers<'a>(&'a Slab<OrderedWaker>);
+
+impl<'a> Debug for Wakers<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.0.iter()).finish()
+    }
+}
+
+impl Debug for WriterQueue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WriterQueue")
+            .field("first", &self.first)
+            .field("last", &self.last)
+            .field("wakers", &Wakers(&self.wakers))
+            .finish()
+    }
 }
 
 impl WriterQueue {
@@ -120,6 +138,9 @@ impl WriterQueue {
             if self.wakers.len() <= 1 {
                 self.last = next;
             }
+            if let Some(next_rec) = next.and_then(|i| self.wakers.get_mut(i)) {
+                next_rec.prev = None;
+            }
             Some(waker)
         } else {
             None
@@ -138,13 +159,13 @@ struct RwLockInner<T> {
 impl<T> RwLockInner<T> {
     //If this returns true, a write lock has been taken and the caller should immediately create
     //a write guard.
-    fn try_write_inner(self: &Arc<Self>, slot: Option<usize>) -> bool {
+    fn try_write_inner(self: &Arc<Self>, slot: &mut Option<usize>) -> bool {
         if self
             .state
             .compare_exchange(0, -1, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()
         {
-            if let Some(i) = slot {
+            if let Some(i) = slot.take() {
                 self.write_queue.lock().remove(i);
             }
             true
@@ -201,7 +222,7 @@ impl<T> RwLockInner<T> {
     }
 
     /// Try to immediately take a write lock, if possible.
-    fn try_write(self: Arc<Self>, slot: Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
+    fn try_write(self: Arc<Self>, slot: &mut Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
         if self.try_write_inner(slot) {
             Ok(WriteGuard(self))
         } else {
@@ -211,7 +232,7 @@ impl<T> RwLockInner<T> {
 
     /// Try to immediately take a write lock, if possible, by reference.
     fn try_write_ref(self: &Arc<Self>) -> Option<WriteGuard<T>> {
-        if self.try_write_inner(None) {
+        if self.try_write_inner(&mut None) {
             Some(WriteGuard(self.clone()))
         } else {
             None
@@ -263,6 +284,24 @@ impl<T: Send + Sync> RwLock<T> {
     /// Determine if two handles are for the same lock.
     pub fn same_lock(this: &Self, other: &Self) -> bool {
         Arc::ptr_eq(&this.0, &other.0)
+    }
+}
+
+impl<T: Send + Sync + Debug> RwLock<T> {
+    pub fn dump(&self) {
+        unsafe {
+            let RwLockInner {
+                state,
+                contents,
+                read_waiters,
+                write_queue,
+            } = &*self.0;
+            println!("{}", state.load(Ordering::SeqCst));
+            println!("{:?}", &*contents.get());
+            println!("{}", (*read_waiters.lock()).len());
+            println!("{:?}", (*write_queue.lock()).first);
+            println!("{:?}", (*write_queue.lock()).last);
+        }
     }
 }
 
@@ -441,7 +480,7 @@ impl<T: Send + Sync> Future for WriteFuture<T> {
         let mut spinner = SpinWait::new();
 
         loop {
-            match lck_inner.try_write(*slot) {
+            match lck_inner.try_write(slot) {
                 Ok(guard) => {
                     return Poll::Ready(guard);
                 }
