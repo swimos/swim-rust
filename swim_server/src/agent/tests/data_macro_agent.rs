@@ -14,7 +14,7 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::{ActionLane, CommandLane, Commander};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
@@ -124,6 +124,20 @@ struct DataAgentLifecycle {
     event_handler: EventCollectorHandler,
 }
 
+enum DataAgentCommander {
+    ActionLaneCommander(Commander<String, i32>),
+    CommandLaneCommander(Commander<String, ()>),
+}
+
+impl DataAgentCommander {
+    async fn command(&mut self, key: String) {
+        match self {
+            DataAgentCommander::ActionLaneCommander(commander) => commander.command(key).await,
+            DataAgentCommander::CommandLaneCommander(commander) => commander.command(key).await,
+        }
+    }
+}
+
 impl DataAgentLifecycle {
     async fn on_start<Context>(&self, context: &Context)
     where
@@ -131,7 +145,8 @@ impl DataAgentLifecycle {
     {
         self.event_handler.push(DataAgentEvent::AgentStart).await;
 
-        let mut count = 0;
+        let mut count: i32 = 0;
+        let mut commander_index: i32 = 0;
         let cmd_1 = context.agent().command_1.clone();
         let cmd_2 = context.agent().command_2.clone();
         let action_1 = context.agent().action_1.clone();
@@ -141,19 +156,29 @@ impl DataAgentLifecycle {
                 move || {
                     let index = count;
                     count += 1;
+                    commander_index += 1;
 
-                    let cmd_1_key = format!("Command1:{}", index);
-                    let cmd_2_key = format!("Command2:{}", index);
-                    let action_1_key = format!("Action1:{}", index);
-
-                    let mut commander_1 = cmd_1.commander();
-                    let mut commander_2 = cmd_2.commander();
-                    let mut commander_3 = action_1.commander();
+                    let (key, mut commander) = match commander_index {
+                        1 => (
+                            format!("Command1:{}", index),
+                            DataAgentCommander::CommandLaneCommander(cmd_1.commander()),
+                        ),
+                        2 => (
+                            format!("Command2:{}", index),
+                            DataAgentCommander::CommandLaneCommander(cmd_2.commander()),
+                        ),
+                        3 => {
+                            commander_index = 0;
+                            (
+                                format!("Action1:{}", index),
+                                DataAgentCommander::ActionLaneCommander(action_1.commander()),
+                            )
+                        }
+                        _ => unreachable!(),
+                    };
 
                     Box::pin(async move {
-                        commander_1.command(cmd_1_key).await;
-                        commander_2.command(cmd_2_key).await;
-                        commander_3.command(action_1_key).await;
+                        commander.command(key).await;
                     })
                 },
                 Duration::from_secs(1),
@@ -521,80 +546,38 @@ async fn agent_loop() {
     clock.advance_when_blocked(Duration::from_secs(1)).await;
 
     expect(&mut rx, DataAgentEvent::Command("Command1:0".to_string())).await;
-    expect(&mut rx, DataAgentEvent::Command("Command2:0".to_string())).await;
-    expect(&mut rx, DataAgentEvent::Command("Action1:0".to_string())).await;
 
     expect(
         &mut rx,
         DataAgentEvent::MapEvent1(MapLaneEvent::Update("Command1:0".to_string(), 1.into())),
     )
     .await;
-    expect(
-        &mut rx,
-        DataAgentEvent::MapEvent1(MapLaneEvent::Update("Action1:0".to_string(), 5.into())),
-    )
-    .await;
-    expect(
-        &mut rx,
-        DataAgentEvent::MapEvent2(MapLaneEvent::Update("Command2:0".to_string(), 1.0.into())),
-    )
-    .await;
 
     expect(&mut rx, DataAgentEvent::ValueEvent1(1)).await;
-    expect(&mut rx, DataAgentEvent::ValueEvent1(6)).await;
-    expect(&mut rx, DataAgentEvent::ValueEvent2(1.0)).await;
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
 
-    expect(&mut rx, DataAgentEvent::Command("Command1:1".to_string())).await;
     expect(&mut rx, DataAgentEvent::Command("Command2:1".to_string())).await;
-    expect(&mut rx, DataAgentEvent::Command("Action1:1".to_string())).await;
 
-    expect(
-        &mut rx,
-        DataAgentEvent::MapEvent1(MapLaneEvent::Update("Command1:1".to_string(), 1.into())),
-    )
-    .await;
-    expect(
-        &mut rx,
-        DataAgentEvent::MapEvent1(MapLaneEvent::Update("Action1:1".to_string(), 5.into())),
-    )
-    .await;
     expect(
         &mut rx,
         DataAgentEvent::MapEvent2(MapLaneEvent::Update("Command2:1".to_string(), 1.0.into())),
     )
     .await;
 
-    expect(&mut rx, DataAgentEvent::ValueEvent1(7)).await;
-    expect(&mut rx, DataAgentEvent::ValueEvent1(12)).await;
-    expect(&mut rx, DataAgentEvent::ValueEvent2(2.0)).await;
+    expect(&mut rx, DataAgentEvent::ValueEvent2(1.0)).await;
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
 
-    expect(&mut rx, DataAgentEvent::Command("Command1:2".to_string())).await;
-    expect(&mut rx, DataAgentEvent::Command("Command2:2".to_string())).await;
     expect(&mut rx, DataAgentEvent::Command("Action1:2".to_string())).await;
 
-    expect(
-        &mut rx,
-        DataAgentEvent::MapEvent1(MapLaneEvent::Update("Command1:2".to_string(), 1.into())),
-    )
-    .await;
     expect(
         &mut rx,
         DataAgentEvent::MapEvent1(MapLaneEvent::Update("Action1:2".to_string(), 5.into())),
     )
     .await;
-    expect(
-        &mut rx,
-        DataAgentEvent::MapEvent2(MapLaneEvent::Update("Command2:2".to_string(), 1.0.into())),
-    )
-    .await;
 
-    expect(&mut rx, DataAgentEvent::ValueEvent1(13)).await;
-    expect(&mut rx, DataAgentEvent::ValueEvent1(18)).await;
-    expect(&mut rx, DataAgentEvent::ValueEvent2(3.0)).await;
+    expect(&mut rx, DataAgentEvent::ValueEvent1(6)).await;
 
     drop(envelope_tx);
     assert!(agent_task.await.is_ok());
