@@ -267,7 +267,7 @@ impl UplinkHandle {
     }
 }
 
-/// An error report, generated when an uplink failes, specifying the reason for the failure and the
+/// An error report, generated when an uplink fails, specifying the reason for the failure and the
 /// endpoint to which the uplink was attached.
 #[derive(Debug)]
 pub struct UplinkErrorReport {

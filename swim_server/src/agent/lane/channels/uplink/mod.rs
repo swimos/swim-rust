@@ -38,6 +38,7 @@ mod tests;
 pub mod action;
 pub mod map;
 pub(crate) mod spawn;
+pub mod supply;
 
 /// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
