@@ -398,3 +398,69 @@ async fn no_messages_after_unlink_from_supply_lane() {
 
     join(uplinks_task, assertion_task).await;
 }
+
+// Asserts that any values that are sent to the lane when there are no uplinks are dropped and upon
+// uplinking only the newly sent values are received.
+#[tokio::test]
+async fn send_no_uplink_supply_lane() {
+    let route = RelativePath::new("node", "lane");
+    let (mut producer_tx, producer_rx) = producer();
+    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (router_tx, mut router_rx) = mpsc::channel(5);
+    let (error_tx, _error_rx) = mpsc::channel(5);
+
+    let uplinks = SupplyLaneUplinks::new(producer_rx, route.clone());
+    let router = TestRouter(router_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+
+    let addr = RoutingAddr::remote(7);
+
+    let assertion_task = async move {
+        let values: Vec<i32> = vec![1, 2, 3, 4, 5];
+        for v in values {
+            assert!(producer_tx.send(v).await.is_ok());
+        }
+
+        assert!(action_tx
+            .send(TaggedAction(addr, UplinkAction::Sync))
+            .await
+            .is_ok());
+
+        check_receive(
+            &mut router_rx,
+            addr,
+            Envelope::linked(&route.node, &route.lane),
+        )
+        .await;
+        check_receive(
+            &mut router_rx,
+            addr,
+            Envelope::synced(&route.node, &route.lane),
+        )
+        .await;
+
+        let values: Vec<i32> = vec![6, 7, 8, 9, 10];
+        for v in values {
+            assert!(producer_tx.send(v).await.is_ok());
+
+            check_receive(
+                &mut router_rx,
+                addr,
+                Envelope::make_event(&route.node, &route.lane, Some(v.into())),
+            )
+            .await;
+        }
+
+        drop(action_tx);
+        drop(producer_tx);
+
+        check_receive(
+            &mut router_rx,
+            addr,
+            Envelope::unlinked(&route.node, &route.lane),
+        )
+        .await;
+    };
+
+    join(uplinks_task, assertion_task).await;
+}
