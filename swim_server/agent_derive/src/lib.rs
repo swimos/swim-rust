@@ -9,8 +9,11 @@
 //!
 //! # Example
 //! Creating a custom swim agent with a single command lane.
-//! ```rust
+//! ```ignore
+//! use swim_server::{command_lifecycle, SwimAgent};
+//!
 //! // ----------------------- Agent derivation -----------------------
+//!
 //! #[derive(Debug, SwimAgent)]
 //! #[agent(config = "TestAgentConfig")]
 //! pub struct TestAgent {
@@ -74,7 +77,9 @@ mod utils;
 /// The lifecycles are private by default, and can be made public with the additional `public` attribute.
 /// # Example
 /// Minimal swim agent and configuration without any lanes.
-/// ```rust
+/// ```ignore
+/// use swim_server::SwimAgent;
+///
 /// #[derive(Debug, SwimAgent)]
 /// #[agent(config = "TestAgentConfig")]
 /// pub struct TestAgent {}
@@ -88,7 +93,9 @@ mod utils;
 /// }
 /// ```
 /// Swim agent with multiple lanes of different types.
-/// ```no_run
+/// ```ignore
+/// use swim_server::SwimAgent;
+///
 /// #[derive(Debug, SwimAgent)]
 /// #[agent(config = "TestAgentConfig")]
 /// pub struct TestAgent {
@@ -179,7 +186,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// using the `on_start` attribute.
 /// # Example
 /// Agent lifecycle for [`TestAgent`], created with the default name for the `on_start` action.
-/// ```rust
+/// ```ignore
+/// use swim_server::agent_lifecycle;
+///
 /// #[agent_lifecycle(agent = "TestAgent")]
 /// struct TestAgentLifecycle {}
 ///
@@ -193,7 +202,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 /// Agent lifecycle for `TestAgent`, created with a custom name for the `on_start` action.
-/// ```rust
+/// ```ignore
+/// use swim_server::agent_lifecycle;
+///
 /// #[agent_lifecycle(agent = "TestAgent", on_start = "custom_start_function")]
 /// struct TestAgentLifecycle {}
 ///
@@ -258,7 +269,9 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_command` attribute.
 /// # Example
 /// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with the default name for the `on_command` action.
-/// ```rust
+/// ```ignore
+/// use swim_server::command_lifecycle;
+///
 /// #[command_lifecycle(
 ///     agent = "TestAgent",
 ///     command_type = "String"
@@ -285,7 +298,9 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// ```
 /// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with a custom name for the `on_command` action.
-/// ```rust
+/// ```ignore
+/// use swim_server::command_lifecycle;
+///
 /// #[command_lifecycle(
 ///     agent = "TestAgent",
 ///     command_type = "String",
@@ -311,7 +326,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         unimplemented!()
 ///     }
 /// }
-///
 /// ```
 #[proc_macro_attribute]
 pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -424,7 +438,9 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_command` attribute.
 /// # Example
 /// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default name for the `on_command` action.
-/// ```rust
+/// ```ignore
+/// use swim_server::action_lifecycle;
+///
 /// #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
 /// struct TestActionLifecycle {}
 ///
@@ -449,7 +465,9 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// ```
 /// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with a custom name for the `on_command` action.
-/// ```rust
+/// ```ignore
+/// use swim_server::action_lifecycle;
+///
 /// #[action_lifecycle(
 ///     agent = "TestAgent",
 ///     command_type = "String",
@@ -592,7 +610,9 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_start` and `on_event` attributes.
 /// # Example
 /// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
-/// ```rust
+/// ```ignore
+/// use swim_server::value_lifecycle;
+///
 /// #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
 /// struct TestValueLifecycle {}
 ///
@@ -631,7 +651,9 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// ```
 /// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
-/// ```rust
+/// ```ignore
+/// use swim_server::value_lifecycle;
+///
 /// #[value_lifecycle(
 ///     agent = "TestAgent",
 ///     event_type = "i32",
@@ -780,7 +802,9 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_start` and `on_event` attributes.
 /// # Example
 /// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
-/// ```rust
+/// ```ignore
+/// use swim_server::map_lifecycle;
+///
 /// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
 /// struct TestMapLifecycle {}
 ///
@@ -819,7 +843,9 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// ```
 /// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
-/// ```rust
+/// ```ignore
+/// use swim_server::map_lifecycle;
+///
 /// #[map_lifecycle(
 ///     agent = "TestAgent",
 ///     key_type = "String",
