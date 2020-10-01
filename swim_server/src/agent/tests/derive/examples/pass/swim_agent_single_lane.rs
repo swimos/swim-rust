@@ -1,6 +1,5 @@
 use std::num::NonZeroUsize;
 use swim_server::agent::lane::lifecycle::LaneLifecycle;
-use swim_server::agent::lane::model::action::ActionLane;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::{AgentConfig, AgentContext};
 use swim_server::{command_lifecycle, SwimAgent};
@@ -22,7 +21,7 @@ fn main() {
         async fn on_command<Context>(
             &self,
             _command: i32,
-            _model: &ActionLane<i32, ()>,
+            _model: &CommandLane<i32>,
             _context: &Context,
         ) where
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,

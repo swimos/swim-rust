@@ -294,8 +294,13 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_command` attribute.
 /// # Example
 /// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with the default name for the `on_command` action.
-/// ```ignore
+/// ```
+/// use std::num::NonZeroUsize;
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
+/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::{AgentConfig, AgentContext};
 /// use swim_server::command_lifecycle;
+/// use swim_server::SwimAgent;
 ///
 /// #[command_lifecycle(
 ///     agent = "TestAgent",
@@ -321,6 +326,17 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         unimplemented!()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 /// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with a custom name for the `on_command` action.
 /// ```ignore
