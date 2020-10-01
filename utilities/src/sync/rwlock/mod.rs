@@ -32,7 +32,7 @@ mod tests;
 struct OrderedWaker {
     prev: Option<usize>,
     next: Option<usize>,
-    waker: Waker,
+    waker: Option<Waker>,
 }
 
 impl OrderedWaker {
@@ -40,7 +40,7 @@ impl OrderedWaker {
         OrderedWaker {
             prev,
             next: None,
-            waker,
+            waker: Some(waker),
         }
     }
 }
@@ -51,6 +51,7 @@ struct WriterQueue {
     first: Option<usize>,
     last: Option<usize>,
     wakers: Slab<OrderedWaker>,
+    len: usize,
 }
 
 struct Wakers<'a>(&'a Slab<OrderedWaker>);
@@ -65,7 +66,6 @@ impl Debug for WriterQueue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WriterQueue")
             .field("first", &self.first)
-            .field("last", &self.last)
             .field("wakers", &Wakers(&self.wakers))
             .finish()
     }
@@ -79,21 +79,23 @@ impl WriterQueue {
             first,
             last,
             wakers,
+            len,
         } = self;
 
         if let Some((i, existing)) =
             slot.and_then(|i| wakers.get_mut(i).map(|ord_waker| (i, &mut ord_waker.waker)))
         {
-            *existing = waker;
+            *existing = Some(waker);
             i
         } else {
             let new_entry = OrderedWaker::new(waker, *last);
             let i = wakers.insert(new_entry);
+            *len += 1;
             if let Some(prev) = last.and_then(|j| wakers.get_mut(j)) {
                 prev.next = Some(i);
             }
             *last = Some(i);
-            if wakers.len() == 1 {
+            if *len == 1 {
                 *first = Some(i);
             }
             i
@@ -106,42 +108,59 @@ impl WriterQueue {
             first,
             last,
             wakers,
+            len,
         } = self;
         if wakers.contains(index) {
-            let OrderedWaker { prev, next, .. } = wakers.remove(index);
-            match (prev, next) {
-                (Some(i), Some(j)) => {
-                    wakers[i].next = Some(j);
-                    wakers[j].prev = Some(i);
-                }
-                (Some(i), _) => {
-                    wakers[i].next = None;
-                    *last = Some(i);
-                }
-                (_, Some(j)) => {
-                    wakers[j].prev = None;
-                    *first = Some(j);
-                }
-                _ => {
-                    *first = None;
-                    *last = None;
+            let OrderedWaker { prev, next, waker } = wakers.remove(index);
+            if waker.is_some() {
+                *len -= 1;
+                match (prev, next) {
+                    (Some(i), Some(j)) => {
+                        wakers[i].next = Some(j);
+                        wakers[j].prev = Some(i);
+                    }
+                    (Some(i), _) => {
+                        wakers[i].next = None;
+                        *last = Some(i);
+                    }
+                    (_, Some(j)) => {
+                        wakers[j].prev = None;
+                        *first = Some(j);
+                    }
+                    _ => {
+                        *first = None;
+                        *last = None;
+                    }
                 }
             }
         }
     }
 
-    /// Take the waker at the head of the queue.
+    /// Take the waker at the head of the queue. The head node is unlinked but left in the slab
+    /// until the owning future removes it (to avoid double allocation of slots).
     fn poll(&mut self) -> Option<Waker> {
-        if let Some(first) = self.first.take() {
-            let OrderedWaker { next, waker, .. } = self.wakers.remove(first);
-            self.first = next;
-            if self.wakers.len() <= 1 {
-                self.last = next;
+        let WriterQueue {
+            first,
+            last,
+            wakers,
+            len,
+        } = self;
+        if let Some(OrderedWaker { next, waker, .. }) =
+            first.and_then(|first| wakers.get_mut(first))
+        {
+            let waker = waker.take();
+            debug_assert!(waker.is_some());
+            let new_head = *next;
+            *next = None;
+            *len -= 1;
+            *first = new_head;
+            if *len <= 1 {
+                *last = new_head;
             }
-            if let Some(next_rec) = next.and_then(|i| self.wakers.get_mut(i)) {
+            if let Some(next_rec) = new_head.and_then(|i| wakers.get_mut(i)) {
                 next_rec.prev = None;
             }
-            Some(waker)
+            waker
         } else {
             None
         }
