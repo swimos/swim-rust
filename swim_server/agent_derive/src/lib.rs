@@ -99,12 +99,19 @@ mod utils;
 /// }
 /// ```
 /// Swim agent with multiple lanes of different types.
-/// Todo
-/// ```ignore
+/// ```rust
 /// use swim_server::SwimAgent;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::ValueLane;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use std::sync::Arc;
+/// # use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+/// # use swim_server::agent::lane::model::map::MapLaneEvent;
+/// # use swim_server::agent::lane::strategy::Queue;
+/// # use swim_server::agent::AgentContext;
+/// # use swim_server::{action_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle};
 ///
 /// #[derive(Debug, SwimAgent)]
 /// #[agent(config = "TestAgentConfig")]
@@ -119,6 +126,137 @@ mod utils;
 ///     #[lifecycle(name = "TestMapLifecycle")]
 ///     map: MapLane<String, i32>,
 /// }
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
+/// #
+/// # #[command_lifecycle(
+/// # agent = "TestAgent",
+/// # command_type = "String",
+/// # on_command = "on_command"
+/// # )]
+/// # struct TestCommandLifecycle {}
+/// #
+/// # impl TestCommandLifecycle {
+/// #     async fn on_command<Context>(
+/// #         &self,
+/// #         _command: String,
+/// #         _model: &CommandLane<String>,
+/// #         _context: &Context,
+/// #     ) where
+/// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+/// #     {
+/// #         unimplemented!()
+/// #     }
+/// # }
+/// #
+/// # impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
+/// #     fn create(_config: &TestAgentConfig) -> Self {
+/// #         TestCommandLifecycle {}
+/// #     }
+/// # }
+/// #
+/// # #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
+/// # struct TestActionLifecycle {}
+/// #
+/// # impl TestActionLifecycle {
+/// #     async fn on_command<Context>(
+/// #         &self,
+/// #         _command: String,
+/// #         _model: &ActionLane<String, i32>,
+/// #         _context: &Context,
+/// #     ) -> i32
+/// #         where
+/// #             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+/// #     {
+/// #         unimplemented!()
+/// #     }
+/// # }
+/// #
+/// # impl LaneLifecycle<TestAgentConfig> for TestActionLifecycle {
+/// #     fn create(_config: &TestAgentConfig) -> Self {
+/// #         TestActionLifecycle {}
+/// #     }
+/// # }
+/// #
+/// # #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+/// # struct TestValueLifecycle {}
+/// #
+/// # impl TestValueLifecycle {
+/// #     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+/// #         where
+/// #             Context: AgentContext<TestAgent> + Sized + Send + Sync,
+/// #     {
+/// #         unimplemented!()
+/// #     }
+/// #
+/// #     async fn on_event<Context>(
+/// #         &self,
+/// #         _event: &Arc<i32>,
+/// #         _model: &ValueLane<i32>,
+/// #         _context: &Context,
+/// #     ) where
+/// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+/// #     {
+/// #         unimplemented!()
+/// #     }
+/// # }
+/// #
+/// # impl LaneLifecycle<TestAgentConfig> for TestValueLifecycle {
+/// #     fn create(_config: &TestAgentConfig) -> Self {
+/// #         TestValueLifecycle {}
+/// #     }
+/// # }
+/// #
+/// # impl StatefulLaneLifecycleBase for TestValueLifecycle {
+/// #     type WatchStrategy = Queue;
+/// #
+/// #     fn create_strategy(&self) -> Self::WatchStrategy {
+/// #         Queue::default()
+/// #     }
+/// # }
+/// #
+/// # #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+/// # struct TestMapLifecycle {}
+/// #
+/// # impl TestMapLifecycle {
+/// #     async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+/// #         where
+/// #             Context: AgentContext<TestAgent> + Sized + Send + Sync,
+/// #     {
+/// #         unimplemented!()
+/// #     }
+/// #
+/// #     async fn on_event<Context>(
+/// #         &self,
+/// #         _event: &MapLaneEvent<String, i32>,
+/// #         _model: &MapLane<String, i32>,
+/// #         _context: &Context,
+/// #     ) where
+/// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+/// #     {
+/// #         unimplemented!()
+/// #     }
+/// # }
+/// #
+/// # impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
+/// #     fn create(_config: &TestAgentConfig) -> Self {
+/// #         TestMapLifecycle {}
+/// #     }
+/// # }
+/// #
+/// # impl StatefulLaneLifecycleBase for TestMapLifecycle {
+/// #     type WatchStrategy = Queue;
+/// #
+/// #     fn create_strategy(&self) -> Self::WatchStrategy {
+/// #         Queue::default()
+/// #     }
+/// # }
 /// ```
 /// Note: [`TestAgentConfig`] (ommited here) must be a valid struct that implements the [`AgentConfig`] trait, as shown in the previous example.
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
@@ -227,8 +365,12 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// # }
 /// ```
 /// Agent lifecycle for `TestAgent`, created with a custom name for the `on_start` action.
-/// ```ignore
+/// ```rust
 /// use swim_server::agent_lifecycle;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::SwimAgent;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent", on_start = "custom_start_function")]
 /// struct TestAgentLifecycle {}
@@ -241,6 +383,17 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 ///         unimplemented!()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -295,12 +448,13 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Example
 /// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with the default name for the `on_command` action.
 /// ```
-/// use std::num::NonZeroUsize;
+/// use swim_server::command_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::CommandLane;
-/// use swim_server::agent::{AgentConfig, AgentContext};
-/// use swim_server::command_lifecycle;
-/// use swim_server::SwimAgent;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[command_lifecycle(
 ///     agent = "TestAgent",
@@ -339,8 +493,14 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # }
 /// ```
 /// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with a custom name for the `on_command` action.
-/// ```ignore
+/// ```rust
 /// use swim_server::command_lifecycle;
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
+/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[command_lifecycle(
 ///     agent = "TestAgent",
@@ -367,6 +527,17 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         unimplemented!()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -479,8 +650,14 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_command` attribute.
 /// # Example
 /// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default name for the `on_command` action.
-/// ```ignore
+/// ```rust
 /// use swim_server::action_lifecycle;
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
+/// use swim_server::agent::lane::model::action::ActionLane;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
 /// struct TestActionLifecycle {}
@@ -504,10 +681,27 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         TestActionLifecycle {}
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 /// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with a custom name for the `on_command` action.
-/// ```ignore
+/// ```rust
 /// use swim_server::action_lifecycle;
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
+/// use swim_server::agent::lane::model::action::ActionLane;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[action_lifecycle(
 ///     agent = "TestAgent",
@@ -536,6 +730,17 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         TestActionLifecycle {}
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -651,8 +856,16 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_start` and `on_event` attributes.
 /// # Example
 /// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
-/// ```ignore
+/// ```rust
 /// use swim_server::value_lifecycle;
+/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::strategy::Queue;
+/// use swim_server::agent::lane::model::value::ValueLane;
+/// use std::sync::Arc;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
 /// struct TestValueLifecycle {}
@@ -690,10 +903,29 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         Queue::default()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 /// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
-/// ```ignore
+/// ```rust
 /// use swim_server::value_lifecycle;
+/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::strategy::Queue;
+/// use swim_server::agent::lane::model::value::ValueLane;
+/// use std::sync::Arc;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[value_lifecycle(
 ///     agent = "TestAgent",
@@ -736,6 +968,17 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         Queue::default()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -843,8 +1086,15 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// using the `on_start` and `on_event` attributes.
 /// # Example
 /// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
-/// ```ignore
+/// ```rust
 /// use swim_server::map_lifecycle;
+/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::strategy::Queue;
+/// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
 /// struct TestMapLifecycle {}
@@ -882,10 +1132,28 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         Queue::default()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 /// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
-/// ```ignore
+/// ```rust
 /// use swim_server::map_lifecycle;
+/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::strategy::Queue;
+/// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
+/// # use swim_server::SwimAgent;
 ///
 /// #[map_lifecycle(
 ///     agent = "TestAgent",
@@ -928,6 +1196,17 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         Queue::default()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
