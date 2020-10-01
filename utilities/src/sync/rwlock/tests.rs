@@ -551,6 +551,26 @@ fn remove_detached() {
     check_consistency(&queue, 0);
 }
 
+#[test]
+fn replace_detached() {
+    let (rx1, waker1) = make_waker();
+    let (rx2, waker2) = make_waker();
+
+    let mut queue = WriterQueue::default();
+    let i = queue.add_waker(waker1, None);
+    check_consistency(&queue, 0);
+    assert!(queue.poll().is_some());
+    check_consistency(&queue, 1);
+    let j = queue.add_waker(waker2, Some(i));
+    assert_eq!(j, i);
+    check_consistency(&queue, 0);
+    let waker = queue.poll().unwrap();
+    check_consistency(&queue, 1);
+    waker.wake();
+    assert!(!rx1.woken());
+    assert!(rx2.woken());
+}
+
 #[tokio::test]
 async fn uncontended_read() {
     let rw_lock = RwLock::new(2);

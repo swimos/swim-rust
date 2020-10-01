@@ -82,14 +82,31 @@ impl WriterQueue {
             len,
         } = self;
 
-        if let Some((i, existing)) =
-            slot.and_then(|i| wakers.get_mut(i).map(|ord_waker| (i, &mut ord_waker.waker)))
+        let maybe_existing = slot.and_then(|i| wakers.get_mut(i).map(|ord_waker| (i, ord_waker)));
+
+        let (i, unlinked) = if let Some((
+            i,
+            OrderedWaker {
+                prev,
+                next,
+                waker: existing,
+            },
+        )) = maybe_existing
         {
+            let unlinked = existing.is_none();
             *existing = Some(waker);
-            i
+            if unlinked {
+                *prev = *last;
+                *next = None;
+            }
+            (i, unlinked)
         } else {
             let new_entry = OrderedWaker::new(waker, *last);
             let i = wakers.insert(new_entry);
+            (i, true)
+        };
+
+        if unlinked {
             *len += 1;
             if let Some(prev) = last.and_then(|j| wakers.get_mut(j)) {
                 prev.next = Some(i);
@@ -98,8 +115,8 @@ impl WriterQueue {
             if *len == 1 {
                 *first = Some(i);
             }
-            i
         }
+        i
     }
 
     /// Remove the waker in the specified slot, if it exists.
@@ -113,6 +130,12 @@ impl WriterQueue {
         if wakers.contains(index) {
             let OrderedWaker { prev, next, waker } = wakers.remove(index);
             if waker.is_some() {
+                if *len == 0 {
+                    panic!(
+                        "{:?}, {:?}, {:?}, {:?}, {:?}",
+                        first, last, prev, next, wakers
+                    );
+                }
                 *len -= 1;
                 match (prev, next) {
                     (Some(i), Some(j)) => {
@@ -145,7 +168,7 @@ impl WriterQueue {
             wakers,
             len,
         } = self;
-        if let Some(OrderedWaker { next, waker, .. }) =
+        let w = if let Some(OrderedWaker { next, waker, .. }) =
             first.and_then(|first| wakers.get_mut(first))
         {
             let waker = waker.take();
@@ -163,7 +186,8 @@ impl WriterQueue {
             waker
         } else {
             None
-        }
+        };
+        w
     }
 }
 
