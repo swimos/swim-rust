@@ -7,7 +7,6 @@ members = [
     "swim_server",
     "stm",
     "utilities",
-    "test-macro"
 ]
 
 exclude = [

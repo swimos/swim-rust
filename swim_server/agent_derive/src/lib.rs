@@ -1,3 +1,59 @@
+//! Agent derive is a library for creating swim agents and lifecycles for them and their lanes, by annotating structs and asynchronous functions.
+//!
+//! The minimum requirement for creating swim agents is to provide a config struct that implements the
+//! [`AgentConfig`] trait.
+//!
+//! The minimum requirments for creating lifecycles is to provide the name of the swim agent
+//! for which they will be used, the input/output types of the lanes that they will be applied to, and the corresponding
+//! lifecycles functions.
+//!
+//! # Example
+//! Creating a custom swim agent with a single command lane.
+//! ```rust
+//! // ----------------------- Agent derivation -----------------------
+//! #[derive(Debug, SwimAgent)]
+//! #[agent(config = "TestAgentConfig")]
+//! pub struct TestAgent {
+//!     #[lifecycle(public, name = "TestCommandLifecycle")]
+//!     command: CommandLane<String>,
+//! }
+//!
+//! #[derive(Debug)]
+//! pub struct TestAgentConfig {}
+//!
+//! impl AgentConfig for TestAgentConfig {
+//!     fn get_buffer_size(&self) -> NonZeroUsize {
+//!         NonZeroUsize::new(5).unwrap()
+//!     }
+//! }
+//!
+//! // ----------------------- Command Lifecycle -----------------------
+//!
+//! #[command_lifecycle(
+//!     agent = "TestAgent",
+//!     command_type = "String"
+//! )]
+//! struct TestCommandLifecycle {}
+//!
+//! impl TestCommandLifecycle {
+//!     async fn on_command<Context>(
+//!         &self,
+//!         _command: String,
+//!         _model: &ActionLane<String, ()>,
+//!         _context: &Context,
+//!     ) where
+//!         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+//!     {
+//!         unimplemented!()
+//!     }
+//! }
+//!
+//! impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
+//!     fn create(_config: &TestAgentConfig) -> Self {
+//!         TestCommandLifecycle {}
+//!     }
+//! }
+//! ```
 use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgentAttrs, ValueAttrs};
 use crate::utils::{get_agent_data, get_task_struct_name, validate_input_ast, InputAstType};
 use darling::{FromDeriveInput, FromMeta};
@@ -8,6 +64,46 @@ use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 mod args;
 mod utils;
 
+/// A derive attribute for creating swim agents.
+///
+/// The minimum requirement for creating a swim agent is to provide a config struct that implements the
+/// [`AgentConfig`] trait.
+///
+/// If the swim agent has lanes, they can be annotated with the appropriate lifecycle attributes which require
+/// a correct lifecycle struct to be provided.
+/// The lifecycles are private by default, and can be made public with the additional `public` attribute.
+/// # Example
+/// Minimal swim agent and configuration without any lanes.
+/// ```rust
+/// #[derive(Debug, SwimAgent)]
+/// #[agent(config = "TestAgentConfig")]
+/// pub struct TestAgent {}
+///
+/// pub struct TestAgentConfig {}
+///
+/// impl AgentConfig for TestAgentConfig {
+///     fn get_buffer_size(&self) -> NonZeroUsize {
+///         NonZeroUsize::new(5).unwrap()
+///    }
+/// }
+/// ```
+/// Swim agent with multiple lanes of different types.
+/// ```no_run
+/// #[derive(Debug, SwimAgent)]
+/// #[agent(config = "TestAgentConfig")]
+/// pub struct TestAgent {
+///     #[lifecycle(name = "TestCommandLifecycle")]
+///     command: CommandLane<String>,
+///     //This is public.
+///     #[lifecycle(public, name = "TestActionLifecycle")]
+///     action: ActionLane<String, i32>,
+///     #[lifecycle(name = "TestValueLifecycle")]
+///     value: ValueLane<i32>,
+///     #[lifecycle(name = "TestMapLifecycle")]
+///     map: MapLane<String, i32>,
+/// }
+/// ```
+/// Note: [`TestAgentConfig`] (ommited here) must be a valid struct that implements the [`AgentConfig`] trait, as shown in the previous example.
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -75,6 +171,41 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     TokenStream::from(output_ast)
 }
 
+/// An attribute for creating agent lifecycles for swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used.
+///
+/// By default, it expects an async method named `on_start`, but a method with a custom name can be provided
+/// using the `on_start` attribute.
+/// # Example
+/// Agent lifecycle for [`TestAgent`], created with the default name for the `on_start` action.
+/// ```rust
+/// #[agent_lifecycle(agent = "TestAgent")]
+/// struct TestAgentLifecycle {}
+///
+/// impl TestAgentLifecycle {
+///     async fn on_start<Context>(&self, _context: &Context)
+///     where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///     {
+///         unimplemented!()
+///     }
+/// }
+/// ```
+/// Agent lifecycle for `TestAgent`, created with a custom name for the `on_start` action.
+/// ```rust
+/// #[agent_lifecycle(agent = "TestAgent", on_start = "custom_start_function")]
+/// struct TestAgentLifecycle {}
+///
+/// impl TestAgentLifecycle {
+///     async fn custom_start_function<Context>(&self, _context: &Context)
+///     where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///     {
+///         unimplemented!()
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -118,6 +249,70 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(output_ast)
 }
 
+/// An attribute for creating lifecycles for command lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// type of the [`CommandLane`] to which it will be applied.
+///
+/// By default, it expects an async method named `on_command`, but a method with a custom name can be provided
+/// using the `on_command` attribute.
+/// # Example
+/// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with the default name for the `on_command` action.
+/// ```rust
+/// #[command_lifecycle(
+///     agent = "TestAgent",
+///     command_type = "String"
+/// )]
+/// struct TestCommandLifecycle {}
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestCommandLifecycle {}
+///     }
+/// }
+///
+/// impl TestCommandLifecycle {
+///     async fn on_command<Context>(
+///         &self,
+///         _command: String,
+///         _model: &ActionLane<String, ()>,
+///         _context: &Context,
+///     ) where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+/// ```
+/// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with a custom name for the `on_command` action.
+/// ```rust
+/// #[command_lifecycle(
+///     agent = "TestAgent",
+///     command_type = "String",
+///     on_command = "custom_on_command"
+/// )]
+/// struct TestCommandLifecycle {}
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestCommandLifecycle {}
+///     }
+/// }
+///
+/// impl TestCommandLifecycle {
+///     async fn custom_on_command<Context>(
+///         &self,
+///         _command: String,
+///         _model: &ActionLane<String, ()>,
+///         _context: &Context,
+///     ) where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+///
+/// ```
 #[proc_macro_attribute]
 pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -220,6 +415,69 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(output_ast)
 }
 
+/// An attribute for creating lifecycles for action lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// types of the [`ActionLane`] to which it will be applied.
+///
+/// By default, it expects an async method named `on_command`, but a method with a custom name can be provided
+/// using the `on_command` attribute.
+/// # Example
+/// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default name for the `on_command` action.
+/// ```rust
+/// #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
+/// struct TestActionLifecycle {}
+///
+/// impl TestActionLifecycle {
+///     async fn on_command<Context>(
+///         &self,
+///         _command: String,
+///         _model: &ActionLane<String, i32>,
+///         _context: &Context,
+///     ) -> i32
+///         where
+///             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestActionLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestActionLifecycle {}
+///     }
+/// }
+/// ```
+/// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with a custom name for the `on_command` action.
+/// ```rust
+/// #[action_lifecycle(
+///     agent = "TestAgent",
+///     command_type = "String",
+///     response_type = "i32",
+///     on_command = "custom_on_command"
+/// )]
+/// struct TestActionLifecycle {}
+///
+/// impl TestActionLifecycle {
+///     async fn custom_on_command<Context>(
+///         &self,
+///         _command: String,
+///         _model: &ActionLane<String, i32>,
+///         _context: &Context,
+///     ) -> i32
+///         where
+///             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestActionLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestActionLifecycle {}
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -325,6 +583,97 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(output_ast)
 }
 
+/// An attribute for creating lifecycles for value lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// type of the [`ValueLane`] to which it will be applied.
+///
+/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom names can be provided
+/// using the `on_start` and `on_event` attributes.
+/// # Example
+/// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
+/// ```rust
+/// #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+/// struct TestValueLifecycle {}
+///
+/// impl TestValueLifecycle {
+///     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+///     where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///     {
+///         unimplemented!()
+///     }
+///
+///     async fn on_event<Context>(
+///         &self,
+///         _event: &Arc<i32>,
+///         _model: &ValueLane<i32>,
+///         _context: &Context,
+///     ) where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestValueLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestValueLifecycle {}
+///     }
+/// }
+///
+/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
+///     type WatchStrategy = Queue;
+///
+///     fn create_strategy(&self) -> Self::WatchStrategy {
+///         Queue::default()
+///     }
+/// }
+/// ```
+/// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
+/// ```rust
+/// #[value_lifecycle(
+///     agent = "TestAgent",
+///     event_type = "i32",
+///     on_start = "custom_on_start",
+///     on_event = "custom_on_event"
+/// )]
+/// struct TestValueLifecycle {}
+///
+/// impl TestValueLifecycle {
+///     async fn custom_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+///     where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///     {
+///         unimplemented!()
+///     }
+///
+///     async fn custom_on_event<Context>(
+///         &self,
+///         _event: &Arc<i32>,
+///         _model: &ValueLane<i32>,
+///         _context: &Context,
+///     ) where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestValueLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestValueLifecycle {}
+///     }
+/// }
+///
+/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
+///     type WatchStrategy = Queue;
+///
+///     fn create_strategy(&self) -> Self::WatchStrategy {
+///         Queue::default()
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -422,6 +771,97 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(output_ast)
 }
 
+/// An attribute for creating lifecycles for map lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// type of the [`MapLane`] to which it will be applied.
+///
+/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom names can be provided
+/// using the `on_start` and `on_event` attributes.
+/// # Example
+/// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
+/// ```rust
+/// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+/// struct TestMapLifecycle {}
+///
+/// impl TestMapLifecycle {
+///     async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+///     where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///     {
+///         unimplemented!()
+///     }
+///
+///     async fn on_event<Context>(
+///         &self,
+///         _event: &MapLaneEvent<String, i32>,
+///         _model: &MapLane<String, i32>,
+///         _context: &Context,
+///     ) where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestMapLifecycle {}
+///     }
+/// }
+///
+/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
+///     type WatchStrategy = Queue;
+///
+///     fn create_strategy(&self) -> Self::WatchStrategy {
+///         Queue::default()
+///     }
+/// }
+/// ```
+/// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
+/// ```rust
+/// #[map_lifecycle(
+///     agent = "TestAgent",
+///     key_type = "String",
+///     value_type = "i32",
+///     on_start = "custom_on_start",
+///     on_event = "custom_on_event")]
+/// struct TestMapLifecycle {}
+///
+/// impl TestMapLifecycle {
+///     async fn custom_on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+///     where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///     {
+///         unimplemented!()
+///     }
+///
+///     async fn custom_on_event<Context>(
+///         &self,
+///         _event: &MapLaneEvent<String, i32>,
+///         _model: &MapLane<String, i32>,
+///         _context: &Context,
+///     ) where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         unimplemented!()
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestMapLifecycle {}
+///     }
+/// }
+///
+/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
+///     type WatchStrategy = Queue;
+///
+///     fn create_strategy(&self) -> Self::WatchStrategy {
+///         Queue::default()
+///     }
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
