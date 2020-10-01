@@ -199,7 +199,7 @@ impl CommandLifecycle1 {
     async fn on_command<Context>(
         &self,
         command: String,
-        _model: &ActionLane<String, ()>,
+        _model: &CommandLane<String>,
         context: &Context,
     ) where
         Context: AgentContext<DataAgent> + Sized + Send + Sync + 'static,
@@ -240,7 +240,7 @@ impl CommandLifecycle2 {
     async fn on_command<Context>(
         &self,
         command: String,
-        _model: &ActionLane<String, ()>,
+        _model: &CommandLane<String>,
         context: &Context,
     ) where
         Context: AgentContext<DataAgent> + Sized + Send + Sync + 'static,

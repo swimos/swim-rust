@@ -3,13 +3,17 @@
 //! The minimum requirement for creating swim agents is to provide a config struct that implements the
 //! [`AgentConfig`] trait.
 //!
-//! The minimum requirments for creating lifecycles is to provide the name of the swim agent
+//! The minimum requirements for creating lifecycles is to provide the name of the swim agent
 //! for which they will be used, the input/output types of the lanes that they will be applied to, and the corresponding
 //! lifecycles functions.
 //!
 //! # Example
 //! Creating a custom swim agent with a single command lane.
-//! ```ignore
+//! ```rust
+//! use std::num::NonZeroUsize;
+//! use swim_server::agent::{AgentConfig, AgentContext};
+//! use swim_server::agent::lane::model::action::CommandLane;
+//! use swim_server::agent::lane::lifecycle::LaneLifecycle;
 //! use swim_server::{command_lifecycle, SwimAgent};
 //!
 //! // ----------------------- Agent derivation -----------------------
@@ -42,7 +46,7 @@
 //!     async fn on_command<Context>(
 //!         &self,
 //!         _command: String,
-//!         _model: &ActionLane<String, ()>,
+//!         _model: &CommandLane<String>,
 //!         _context: &Context,
 //!     ) where
 //!         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
@@ -77,7 +81,9 @@ mod utils;
 /// The lifecycles are private by default, and can be made public with the additional `public` attribute.
 /// # Example
 /// Minimal swim agent and configuration without any lanes.
-/// ```ignore
+/// ```rust
+/// use std::num::NonZeroUsize;
+/// use swim_server::agent::AgentConfig;
 /// use swim_server::SwimAgent;
 ///
 /// #[derive(Debug, SwimAgent)]
@@ -93,8 +99,12 @@ mod utils;
 /// }
 /// ```
 /// Swim agent with multiple lanes of different types.
+/// Todo
 /// ```ignore
 /// use swim_server::SwimAgent;
+/// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
+/// use swim_server::agent::lane::model::map::MapLane;
+/// use swim_server::agent::lane::model::value::ValueLane;
 ///
 /// #[derive(Debug, SwimAgent)]
 /// #[agent(config = "TestAgentConfig")]
@@ -186,8 +196,12 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// using the `on_start` attribute.
 /// # Example
 /// Agent lifecycle for [`TestAgent`], created with the default name for the `on_start` action.
-/// ```ignore
+/// ```rust
 /// use swim_server::agent_lifecycle;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::SwimAgent;
+/// # use swim_server::agent::AgentConfig;
+/// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent")]
 /// struct TestAgentLifecycle {}
@@ -200,6 +214,17 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 ///         unimplemented!()
 ///     }
 /// }
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent {}
+/// #
+/// # pub struct TestAgentConfig {}
+/// #
+/// # impl AgentConfig for TestAgentConfig {
+/// #    fn get_buffer_size(&self) -> NonZeroUsize {
+/// #        NonZeroUsize::new(5).unwrap()
+/// #   }
+/// # }
 /// ```
 /// Agent lifecycle for `TestAgent`, created with a custom name for the `on_start` action.
 /// ```ignore
@@ -288,7 +313,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     async fn on_command<Context>(
 ///         &self,
 ///         _command: String,
-///         _model: &ActionLane<String, ()>,
+///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
@@ -318,7 +343,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     async fn custom_on_command<Context>(
 ///         &self,
 ///         _command: String,
-///         _model: &ActionLane<String, ()>,
+///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,

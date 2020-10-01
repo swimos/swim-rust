@@ -18,7 +18,7 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
@@ -139,7 +139,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle
     fn on_command<C>(
         &'a self,
         command: String,
-        _model: &'a ActionLane<String, ()>,
+        _model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
     where

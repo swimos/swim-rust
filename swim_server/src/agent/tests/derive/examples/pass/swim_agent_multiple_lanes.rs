@@ -62,7 +62,7 @@ fn main() {
         async fn on_command<Context>(
             &self,
             _command: String,
-            _model: &ActionLane<String, ()>,
+            _model: &CommandLane<String>,
             _context: &Context,
         ) where
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
