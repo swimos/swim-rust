@@ -80,7 +80,7 @@ where
 
             match next {
                 Either::Left(None) => {
-                    // no-op as the lane doesn't have any data to report.
+                    break;
                 }
                 Either::Left(Some(item)) => {
                     if uplinks.broadcast_msg(item).await.is_err() {

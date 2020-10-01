@@ -16,8 +16,7 @@ use crate::agent::lane::channels::uplink::supply::SupplyLaneUplinks;
 use crate::agent::lane::channels::uplink::UplinkAction;
 use crate::agent::lane::channels::TaggedAction;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
-use futures::future::{join, ready, BoxFuture};
-use futures::stream;
+use futures::future::{join, BoxFuture};
 use futures::FutureExt;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
@@ -65,15 +64,19 @@ async fn check_receive(
     assert_eq!(envelope, expected);
 }
 
+fn producer() -> (mpsc::Sender<i32>, mpsc::Receiver<i32>) {
+    mpsc::channel(5)
+}
+
 #[tokio::test]
 async fn immediate_unlink_supply_lane() {
     let route = RelativePath::new("node", "lane");
-    let producer = stream::once(ready(13));
+    let (producer_tx, producer_rx) = producer();
     let (mut action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = SupplyLaneUplinks::new(producer, route.clone());
+    let uplinks = SupplyLaneUplinks::new(producer_rx, route.clone());
 
     let router = TestRouter(router_tx);
 
@@ -95,6 +98,7 @@ async fn immediate_unlink_supply_lane() {
         )
         .await;
 
+        drop(producer_tx);
         drop(action_tx);
     };
 
@@ -104,12 +108,12 @@ async fn immediate_unlink_supply_lane() {
 #[tokio::test]
 async fn sync_with_supply_lane() {
     let route = RelativePath::new("node", "lane");
-    let producer = stream::once(ready(13));
+    let (producer_tx, producer_rx) = producer();
     let (mut action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = SupplyLaneUplinks::new(producer, route.clone());
+    let uplinks = SupplyLaneUplinks::new(producer_rx, route.clone());
     let router = TestRouter(router_tx);
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -135,6 +139,7 @@ async fn sync_with_supply_lane() {
         .await;
 
         drop(action_tx);
+        drop(producer_tx);
 
         check_receive(
             &mut router_rx,
@@ -150,12 +155,12 @@ async fn sync_with_supply_lane() {
 #[tokio::test]
 async fn sync_after_link_on_supply_lane() {
     let route = RelativePath::new("node", "lane");
-    let producer = stream::once(ready(13));
+    let (producer_tx, producer_rx) = producer();
     let (mut action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = SupplyLaneUplinks::new(producer, route.clone());
+    let uplinks = SupplyLaneUplinks::new(producer_rx, route.clone());
 
     let router = TestRouter(router_tx);
 
@@ -189,6 +194,7 @@ async fn sync_after_link_on_supply_lane() {
         .await;
 
         drop(action_tx);
+        drop(producer_tx);
 
         check_receive(
             &mut router_rx,
