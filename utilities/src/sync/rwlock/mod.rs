@@ -192,7 +192,6 @@ struct ReadWaiters {
 }
 
 impl ReadWaiters {
-
     /// Insert a new waker return the assigned slot and the current epoch.
     fn insert(&mut self, waker: Waker) -> (usize, u64) {
         let ReadWaiters { waiters, epoch } = self;
