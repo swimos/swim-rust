@@ -184,6 +184,7 @@ impl WriterQueue {
     }
 }
 
+/// Maintains a bag of readers waiting to obtain the lock.
 #[derive(Debug, Default)]
 struct ReadWaiters {
     waiters: Slab<Waker>,
@@ -191,11 +192,15 @@ struct ReadWaiters {
 }
 
 impl ReadWaiters {
+
+    /// Insert a new waker return the assigned slot and the current epoch.
     fn insert(&mut self, waker: Waker) -> (usize, u64) {
         let ReadWaiters { waiters, epoch } = self;
         (waiters.insert(waker), *epoch)
     }
 
+    /// If the epoch has changed, does the same as `insert`, otherwise updates the waker in
+    /// the specified slot.
     fn update(&mut self, waker: Waker, slot: usize, expected_epoch: u64) -> (usize, u64) {
         let ReadWaiters { waiters, epoch } = self;
         if *epoch == expected_epoch {
@@ -210,6 +215,7 @@ impl ReadWaiters {
         }
     }
 
+    /// Remove the waker at the provided slot if the epoch has not changed.
     fn remove(&mut self, slot: usize, expected_epoch: u64) {
         let ReadWaiters { waiters, epoch } = self;
         if *epoch == expected_epoch {
@@ -217,6 +223,7 @@ impl ReadWaiters {
         }
     }
 
+    /// Wake all wakers and advance the epoch.
     fn wake_all(&mut self) {
         let ReadWaiters { waiters, epoch } = self;
         *epoch = epoch.wrapping_add(1);
