@@ -245,19 +245,10 @@ struct RwLockInner<T> {
 impl<T> RwLockInner<T> {
     //If this returns true, a write lock has been taken and the caller should immediately create
     //a write guard.
-    fn try_write_inner(self: &Arc<Self>, slot: &mut Option<usize>) -> bool {
-        if self
-            .state
+    fn try_write(self: &Arc<Self>) -> bool {
+        self.state
             .compare_exchange(0, -1, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()
-        {
-            if let Some(i) = slot.take() {
-                self.write_queue.lock().remove(i);
-            }
-            true
-        } else {
-            false
-        }
     }
 
     //If this returns true, a read lock has been taken and the caller should immediately create
@@ -317,8 +308,14 @@ impl<T> RwLockInner<T> {
     }
 
     /// Try to immediately take a write lock, if possible.
-    fn try_write(self: Arc<Self>, slot: &mut Option<usize>) -> Result<WriteGuard<T>, Arc<Self>> {
-        if self.try_write_inner(slot) {
+    fn try_write_fut(
+        self: Arc<Self>,
+        slot: &mut Option<usize>,
+    ) -> Result<WriteGuard<T>, Arc<Self>> {
+        if self.try_write() {
+            if let Some(i) = slot.take() {
+                self.write_queue.lock().remove(i);
+            }
             Ok(WriteGuard(self))
         } else {
             Err(self)
@@ -327,7 +324,7 @@ impl<T> RwLockInner<T> {
 
     /// Try to immediately take a write lock, if possible, by reference.
     fn try_write_ref(self: &Arc<Self>) -> Option<WriteGuard<T>> {
-        if self.try_write_inner(&mut None) {
+        if self.try_write() {
             Some(WriteGuard(self.clone()))
         } else {
             None
@@ -557,8 +554,13 @@ impl<T: Send + Sync> Future for ReadFuture<T> {
                     *slot_and_epoch =
                         Some(lck_inner.add_read_waker(cx.waker().clone(), *slot_and_epoch));
                     if lck_inner.is_write_locked() {
-                        *inner = Some(lck_inner);
-                        return Poll::Pending;
+                        return match lck_inner.try_read(slot_and_epoch) {
+                            Ok(guard) => Poll::Ready(guard),
+                            Err(blocked) => {
+                                *inner = Some(blocked);
+                                Poll::Pending
+                            }
+                        };
                     } else {
                         spinner.spin_no_yield();
                     }
@@ -579,7 +581,7 @@ impl<T: Send + Sync> Future for WriteFuture<T> {
         let mut spinner = SpinWait::new();
 
         loop {
-            match lck_inner.try_write(slot) {
+            match lck_inner.try_write_fut(slot) {
                 Ok(guard) => {
                     return Poll::Ready(guard);
                 }
@@ -587,8 +589,13 @@ impl<T: Send + Sync> Future for WriteFuture<T> {
                     lck_inner = blocked;
                     *slot = Some(lck_inner.add_write_waker(cx.waker().clone(), *slot));
                     if lck_inner.is_locked() {
-                        *inner = Some(lck_inner);
-                        return Poll::Pending;
+                        return match lck_inner.try_write_fut(slot) {
+                            Ok(guard) => Poll::Ready(guard),
+                            Err(blocked) => {
+                                *inner = Some(blocked);
+                                Poll::Pending
+                            }
+                        };
                     } else {
                         spinner.spin_no_yield();
                     }
