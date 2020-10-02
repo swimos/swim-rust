@@ -1,4 +1,4 @@
-error: Swim agent cannot be created from Union!
+error: Swim agent cannot be created from Union.
   --> $DIR/union_agent.rs:17:11
    |
 17 |     union TestAgent {

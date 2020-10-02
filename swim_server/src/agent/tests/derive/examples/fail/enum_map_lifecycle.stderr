@@ -1,4 +1,4 @@
-error: Lifecycle cannot be created from Enum!
+error: Lifecycle cannot be created from Enum.
   --> $DIR/enum_map_lifecycle.rs:10:10
    |
 10 |     enum MapLifecycle {}

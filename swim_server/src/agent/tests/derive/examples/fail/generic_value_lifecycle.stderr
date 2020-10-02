@@ -1,4 +1,4 @@
-error: Lifecycle cannot have generic parameters!
+error: Lifecycle cannot have generic parameters.
   --> $DIR/generic_value_lifecycle.rs:10:12
    |
 10 |     struct ValueLifecycle<T> {

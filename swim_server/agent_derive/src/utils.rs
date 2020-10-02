@@ -1,8 +1,8 @@
 use crate::args::{LaneType, SwimAgentAttrs};
 use core::fmt;
 use proc_macro2::{Ident, Literal, Span};
-use quote::quote;
-use std::error::Error;
+use quote::quote_spanned;
+use quote::{quote, ToTokens};
 use std::fmt::{Display, Formatter};
 use syn::{Data, DeriveInput};
 
@@ -274,30 +274,37 @@ impl Display for InputAstType {
 
 #[derive(Debug)]
 pub enum InputAstError {
-    UnionError(InputAstType),
-    EnumError(InputAstType),
-    GenericError(InputAstType),
+    UnionError(InputAstType, Span),
+    EnumError(InputAstType, Span),
+    GenericError(InputAstType, Span),
 }
 
-impl Display for InputAstError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            InputAstError::EnumError(ty) => write!(f, "{} cannot be created from Enum!", ty),
-            InputAstError::UnionError(ty) => write!(f, "{} cannot be created from Union!", ty),
-            InputAstError::GenericError(ty) => write!(f, "{} cannot have generic parameters!", ty),
-        }
+impl ToTokens for InputAstError {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        *tokens = match self {
+            InputAstError::EnumError(ty, span) => {
+                let message = format! {"{} cannot be created from Enum.", ty};
+                quote_spanned! { *span => compile_error!(#message); }
+            }
+            InputAstError::UnionError(ty, span) => {
+                let message = format! {"{} cannot be created from Union.", ty};
+                quote_spanned! { *span => compile_error!(#message); }
+            }
+            InputAstError::GenericError(ty, span) => {
+                let message = format! {"{} cannot have generic parameters.", ty};
+                quote_spanned! { *span => compile_error!(#message); }
+            }
+        };
     }
 }
 
-impl Error for InputAstError {}
-
 pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(), InputAstError> {
     match input_ast.data {
-        Data::Enum(_) => Err(InputAstError::EnumError(ty)),
-        Data::Union(_) => Err(InputAstError::UnionError(ty)),
+        Data::Enum(_) => Err(InputAstError::EnumError(ty, input_ast.ident.span())),
+        Data::Union(_) => Err(InputAstError::UnionError(ty, input_ast.ident.span())),
         _ => {
             if !input_ast.generics.params.is_empty() {
-                Err(InputAstError::GenericError(ty))
+                Err(InputAstError::GenericError(ty, input_ast.ident.span()))
             } else {
                 Ok(())
             }

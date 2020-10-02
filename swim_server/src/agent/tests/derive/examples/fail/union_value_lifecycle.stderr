@@ -1,4 +1,4 @@
-error: Lifecycle cannot be created from Union!
+error: Lifecycle cannot be created from Union.
   --> $DIR/union_value_lifecycle.rs:10:11
    |
 10 |     union ValueLifecycle {

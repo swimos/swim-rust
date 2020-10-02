@@ -1,4 +1,4 @@
-error: Swim agent cannot have generic parameters!
+error: Swim agent cannot have generic parameters.
   --> $DIR/generic_agent.rs:17:16
    |
 17 |     pub struct TestAgent<S> {

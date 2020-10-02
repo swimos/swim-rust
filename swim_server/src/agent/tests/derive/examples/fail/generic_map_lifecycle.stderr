@@ -1,4 +1,4 @@
-error: Lifecycle cannot have generic parameters!
+error: Lifecycle cannot have generic parameters.
   --> $DIR/generic_map_lifecycle.rs:10:12
    |
 10 |     struct MapLifecycle<T> {

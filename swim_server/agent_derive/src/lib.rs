@@ -65,7 +65,7 @@ use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgentAttr
 use crate::utils::{get_agent_data, get_task_struct_name, validate_input_ast, InputAstType};
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
-use quote::{quote, quote_spanned};
+use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 mod args;
@@ -264,10 +264,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
 
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Agent) {
-        let error = error.to_string();
-        return TokenStream::from(quote_spanned! {
-            input_ast.ident.span() => compile_error!(#error);
-        });
+        return TokenStream::from(quote! {#error});
     }
 
     let args = match SwimAgentAttrs::from_derive_input(&input_ast) {
@@ -401,10 +398,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        let error = error.to_string();
-        return TokenStream::from(quote_spanned! {
-            input_ast.ident.span() => compile_error!(#error);
-        });
+        return TokenStream::from(quote! {#error});
     }
 
     let args = match AgentAttrs::from_list(&attr_args) {
@@ -545,10 +539,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        let error = error.to_string();
-        return TokenStream::from(quote_spanned! {
-            input_ast.ident.span() => compile_error!(#error);
-        });
+        return TokenStream::from(quote! {#error});
     }
 
     let args = match CommandAttrs::from_list(&attr_args) {
@@ -748,10 +739,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        let error = error.to_string();
-        return TokenStream::from(quote_spanned! {
-            input_ast.ident.span() => compile_error!(#error);
-        });
+        return TokenStream::from(quote! {#error});
     }
 
     let args = match ActionAttrs::from_list(&attr_args) {
@@ -986,10 +974,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        let error = error.to_string();
-        return TokenStream::from(quote_spanned! {
-            input_ast.ident.span() => compile_error!(#error);
-        });
+        return TokenStream::from(quote! {#error});
     }
 
     let args = match ValueAttrs::from_list(&attr_args) {
@@ -1214,10 +1199,7 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        let error = error.to_string();
-        return TokenStream::from(quote_spanned! {
-            input_ast.ident.span() => compile_error!(#error);
-        });
+        return TokenStream::from(quote! {#error});
     }
 
     let args = match MapAttrs::from_list(&attr_args) {

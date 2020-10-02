@@ -1,4 +1,4 @@
-error: Swim agent cannot be created from Enum!
+error: Swim agent cannot be created from Enum.
   --> $DIR/enum_agent.rs:17:10
    |
 17 |     enum TestAgent {}
