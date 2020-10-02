@@ -191,11 +191,58 @@ impl WriterQueue {
     }
 }
 
+
+#[derive(Debug, Default)]
+struct ReadWaiters {
+    waiters: Slab<Waker>,
+    epoch: u64,
+}
+
+impl ReadWaiters {
+
+    fn insert(&mut self, waker: Waker) -> (usize, u64) {
+        let ReadWaiters { waiters, epoch } = self;
+        (waiters.insert(waker), *epoch)
+    }
+
+    fn update(&mut self, waker: Waker, slot: usize, expected_epoch: u64) -> (usize, u64) {
+        let ReadWaiters { waiters, epoch } = self;
+        if *epoch == expected_epoch {
+            if let Some(existing) = waiters.get_mut(slot) {
+                *existing = waker;
+                (slot, expected_epoch)
+            } else {
+                (waiters.insert(waker), *epoch)
+            }
+        } else {
+            (waiters.insert(waker), *epoch)
+        }
+    }
+
+    fn remove(&mut self, slot: usize, expected_epoch: u64) {
+        let ReadWaiters { waiters, epoch } = self;
+        if *epoch == expected_epoch {
+            waiters.remove(slot);
+        }
+    }
+
+    fn wake_all(&mut self) {
+        let ReadWaiters { waiters, epoch } = self;
+        *epoch = epoch.wrapping_add(1);
+        waiters.drain().for_each(|w| w.wake());
+    }
+
+    fn is_empty(&self) -> bool {
+        self.waiters.is_empty()
+    }
+
+}
+
 #[derive(Debug)]
 struct RwLockInner<T> {
     state: AtomicIsize,
     contents: UnsafeCell<T>,
-    read_waiters: Mutex<Slab<Waker>>,
+    read_waiters: Mutex<ReadWaiters>,
     write_queue: Mutex<WriterQueue>,
 }
 
@@ -219,7 +266,7 @@ impl<T> RwLockInner<T> {
 
     //If this returns true, a read lock has been taken and the caller should immediately create
     //a read guard.
-    fn try_read_inner(self: &Arc<Self>) -> bool {
+    fn try_read_inner(self: &Arc<Self>, slot_and_epoch: &mut Option<(usize, u64)>) -> bool {
         let mut spinner = SpinWait::new();
         loop {
             let current = self.state.load(Ordering::Relaxed);
@@ -238,6 +285,9 @@ impl<T> RwLockInner<T> {
                     )
                     .is_ok()
                 {
+                    if let Some((slot, expected_epoch)) = slot_and_epoch.take() {
+                        self.read_waiters.lock().remove(slot, expected_epoch);
+                    }
                     return true;
                 } else {
                     spinner.spin_no_yield();
@@ -247,8 +297,8 @@ impl<T> RwLockInner<T> {
     }
 
     /// Try to immediately take a read lock, if possible.
-    fn try_read(self: Arc<Self>) -> Result<ReadGuard<T>, Arc<Self>> {
-        if self.try_read_inner() {
+    fn try_read(self: Arc<Self>, slot_and_epoch: &mut Option<(usize, u64)>) -> Result<ReadGuard<T>, Arc<Self>> {
+        if self.try_read_inner(slot_and_epoch) {
             Ok(ReadGuard(self))
         } else {
             Err(self)
@@ -256,8 +306,8 @@ impl<T> RwLockInner<T> {
     }
 
     /// Try to immediately take a read lock, if possible, by reference.
-    fn try_read_ref(self: &Arc<Self>) -> Option<ReadGuard<T>> {
-        if self.try_read_inner() {
+    fn try_read_ref(self: &Arc<Self>, slot_and_epoch: &mut Option<(usize, u64)>) -> Option<ReadGuard<T>> {
+        if self.try_read_inner(slot_and_epoch) {
             Some(ReadGuard(self.clone()))
         } else {
             None
@@ -288,13 +338,10 @@ impl<T> RwLockInner<T> {
     }
 
     /// Register a task waker, waiting to take a read lock.
-    fn add_read_waker(&self, waker: Waker, slot: Option<usize>) -> usize {
+    fn add_read_waker(&self, waker: Waker, slot_and_epoch: Option<(usize, u64)>) -> (usize, u64) {
         let mut read_wakers = self.read_waiters.lock();
-        if let Some((existing, i)) =
-            slot.and_then(|i| read_wakers.get_mut(i).map(|existing| (existing, i)))
-        {
-            *existing = waker;
-            i
+        if let Some((slot, expected_epoch)) = slot_and_epoch {
+            read_wakers.update(waker, slot, expected_epoch)
         } else {
             read_wakers.insert(waker)
         }
@@ -341,7 +388,7 @@ impl<T: Send + Sync + Debug> RwLock<T> {
             } = &*self.0;
             println!("{}", state.load(Ordering::SeqCst));
             println!("{:?}", &*contents.get());
-            println!("{}", (*read_waiters.lock()).len());
+            println!("{}", (*read_waiters.lock()).waiters.len());
             println!("{:?}", (*write_queue.lock()).first);
             println!("{:?}", (*write_queue.lock()).last);
         }
@@ -364,7 +411,7 @@ impl<T: Send + Sync> RwLock<T> {
         let RwLock(inner) = self;
         ReadFuture {
             inner: Some(inner.clone()),
-            slot: None,
+            slot_and_epoch: None,
         }
     }
 
@@ -380,7 +427,7 @@ impl<T: Send + Sync> RwLock<T> {
     /// Attempt to take a read lock immediately, if possible.
     pub fn try_read(&self) -> Option<ReadGuard<T>> {
         let RwLock(inner) = self;
-        inner.try_read_ref()
+        inner.try_read_ref(&mut None)
     }
 
     /// Attempt to take a write lock immediately, if possible.
@@ -418,7 +465,7 @@ pub struct WriteGuard<T>(Arc<RwLockInner<T>>);
 #[derive(Debug)]
 pub struct ReadFuture<T> {
     inner: Option<Arc<RwLockInner<T>>>,
-    slot: Option<usize>,
+    slot_and_epoch: Option<(usize, u64)>,
 }
 
 /// Future that will result in a [`WriteGuard`].
@@ -449,11 +496,12 @@ impl<T> Deref for WriteGuard<T> {
 impl<T> Drop for ReadGuard<T> {
     fn drop(&mut self) {
         let ReadGuard(inner) = self;
-        let prev_read_count = inner.state.fetch_sub(1, Ordering::Release);
+        let mut waiting_writers = inner.write_queue.lock();
+        let prev_read_count = inner.state.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(prev_read_count > 0);
 
         if prev_read_count == 1 {
-            if let Some(waker) = inner.write_queue.lock().poll() {
+            if let Some(waker) = waiting_writers.poll() {
                 waker.wake();
             }
         }
@@ -470,14 +518,16 @@ impl<T> DerefMut for WriteGuard<T> {
 impl<T> Drop for WriteGuard<T> {
     fn drop(&mut self) {
         let WriteGuard(inner) = self;
-        inner.state.store(0, Ordering::Release);
         let mut waiting_readers = inner.read_waiters.lock();
         if waiting_readers.is_empty() {
-            if let Some(waker) = inner.write_queue.lock().poll() {
+            let mut waiting_writers = inner.write_queue.lock();
+            inner.state.store(0, Ordering::SeqCst);
+            if let Some(waker) = waiting_writers.poll() {
                 waker.wake();
             }
         } else {
-            waiting_readers.drain().for_each(|waker| waker.wake());
+            inner.state.store(0, Ordering::SeqCst);
+            waiting_readers.wake_all();
         }
     }
 }
@@ -486,20 +536,20 @@ impl<T: Send + Sync> Future for ReadFuture<T> {
     type Output = ReadGuard<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let ReadFuture { inner, slot } = self.get_mut();
+        let ReadFuture { inner, slot_and_epoch } = self.get_mut();
 
         let mut lck_inner = inner.take().expect("Read future used twice.");
 
         let mut spinner = SpinWait::new();
 
         loop {
-            match lck_inner.try_read() {
+            match lck_inner.try_read(slot_and_epoch) {
                 Ok(guard) => {
                     return Poll::Ready(guard);
                 }
                 Err(blocked) => {
                     lck_inner = blocked;
-                    *slot = Some(lck_inner.add_read_waker(cx.waker().clone(), *slot));
+                    *slot_and_epoch = Some(lck_inner.add_read_waker(cx.waker().clone(), *slot_and_epoch));
                     if lck_inner.is_write_locked() {
                         *inner = Some(lck_inner);
                         return Poll::Pending;
@@ -544,12 +594,14 @@ impl<T: Send + Sync> Future for WriteFuture<T> {
 
 impl<T> Drop for ReadFuture<T> {
     fn drop(&mut self) {
-        let ReadFuture { inner, slot, .. } = self;
+        let ReadFuture { inner, slot_and_epoch, .. } = self;
         if let Some(inner) = inner.take() {
-            if let Some(i) = slot.take() {
+            if let Some((slot, epoch)) = slot_and_epoch.take() {
                 let mut lock = inner.read_waiters.lock();
-                if lock.contains(i) {
-                    lock.remove(i);
+                lock.remove(slot, epoch);
+                let mut waiting_writers = inner.write_queue.lock();
+                if let Some(waker) = waiting_writers.poll() {
+                    waker.wake();
                 }
             }
         }
@@ -558,10 +610,19 @@ impl<T> Drop for ReadFuture<T> {
 
 impl<T> Drop for WriteFuture<T> {
     fn drop(&mut self) {
-        let WriteFuture { inner, slot } = self;
+        let WriteFuture { inner, slot, .. } = self;
         if let Some(inner) = inner.take() {
             if let Some(i) = slot.take() {
-                inner.write_queue.lock().remove(i);
+                let mut waiting_writers = inner.write_queue.lock();
+                waiting_writers.remove(i);
+                let mut waiting_readers = inner.read_waiters.lock();
+                if waiting_readers.is_empty() {
+                    if let Some(waker) = waiting_writers.poll() {
+                        waker.wake();
+                    }
+                } else {
+                    waiting_readers.wake_all();
+                }
             }
         }
     }
