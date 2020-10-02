@@ -53,8 +53,8 @@ const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
 
 impl<Producer, F> SupplyLaneUplinks<Producer>
 where
-    Producer: Stream<Item = F> + Unpin,
-    F: Clone + Send + Sync + Form + 'static,
+    Producer: Stream<Item = TaggedClientEnvelope>,
+    F: Send + Sync + Form + 'static,
 {
     pub async fn run<Router>(
         self,
@@ -69,8 +69,10 @@ where
         let mut uplinks: ActionUplinks<F, Router> = ActionUplinks::new(router, err_tx, route);
 
         let uplink_actions = uplink_actions.fuse();
-        let mut producer = producer.fuse();
+        let producer = producer.fuse();
+
         pin_mut!(uplink_actions);
+        pin_mut!(producer);
 
         loop {
             let next: Either<Option<F>, Option<TaggedAction>> = select_biased! {
@@ -162,7 +164,7 @@ struct RouterStopping;
 impl<Msg, Router> ActionUplinks<Msg, Router>
 where
     Router: ServerRouter,
-    Msg: Form + Clone,
+    Msg: Form,
 {
     fn new(router: Router, err_tx: mpsc::Sender<UplinkErrorReport>, route: RelativePath) -> Self {
         ActionUplinks {
@@ -175,10 +177,9 @@ where
     }
 
     /// Broadcast the message to all uplinks.
-    async fn broadcast_msg(&mut self, value: Msg) -> Result<bool, RouterStopping>
-    where
-        Msg: Clone,
-    {
+    async fn broadcast_msg(&mut self, value: Msg) -> Result<bool, RouterStopping> {
+        let value = value.into_value();
+
         for (addr, sender) in &mut self.uplinks {
             let msg = UplinkMessage::Event(RespMsg(value.clone()));
 
