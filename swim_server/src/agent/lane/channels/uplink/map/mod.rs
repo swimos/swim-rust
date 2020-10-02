@@ -17,10 +17,9 @@ mod tests;
 
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use either::Either;
-use futures::stream::{unfold, FusedStream};
+use futures::stream::{unfold, FusedStream, FuturesUnordered};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures::{Stream, TryFutureExt};
-use futures_util::stream::FuturesUnordered;
 use im::OrdMap;
 use std::any::Any;
 use std::collections::HashMap;
@@ -216,8 +215,8 @@ pub fn sync_map_lane<'a, K, V, Events, Retries>(
 where
     K: Form + Send + Sync + Debug + 'static,
     V: Any + Send + Sync,
-    Events: FusedStream<Item = MapLaneEvent<K, V>> + Unpin,
-    Retries: RetryManager + 'static,
+    Events: FusedStream<Item = MapLaneEvent<K, V>> + Send + Unpin,
+    Retries: RetryManager + Send + 'static,
 {
     let init = (events, MapLaneSyncState::Init(retry));
 
@@ -343,5 +342,5 @@ where
                 }
             }
         }
-    })
+    }).boxed()
 }

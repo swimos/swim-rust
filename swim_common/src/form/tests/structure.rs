@@ -31,8 +31,8 @@ fn test_transmute() {
     let rec = Value::Record(
         vec![Attr::of("S")],
         vec![
-            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+            Item::Slot(Value::text("a"), Value::Int32Value(1)),
+            Item::Slot(Value::text("b"), Value::Int64Value(2)),
         ],
     );
     assert_eq!(s.as_value(), rec);
@@ -54,10 +54,7 @@ fn test_transmute_generic() {
     let s = S { f: 1 };
     let rec = Value::Record(
         vec![Attr::of("S")],
-        vec![Item::Slot(
-            Value::Text(String::from("f")),
-            Value::Int32Value(1),
-        )],
+        vec![Item::Slot(Value::text("f"), Value::Int32Value(1))],
     );
     assert_eq!(s.as_value(), rec);
     assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
@@ -127,10 +124,7 @@ fn test_skip_field() {
         let s = S { a: 1, b: 2 };
         let rec = Value::Record(
             vec![Attr::of("S")],
-            vec![Item::Slot(
-                Value::Text(String::from("a")),
-                Value::Int32Value(1),
-            )],
+            vec![Item::Slot(Value::text("a"), Value::Int32Value(1))],
         );
         assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_from_value(&rec), Ok(S { a: 1, b: 0 }));
@@ -177,8 +171,8 @@ fn test_tag() {
     let rec = Value::Record(
         vec![Attr::of("Structure")],
         vec![
-            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(1)),
-            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+            Item::Slot(Value::text("a"), Value::Int32Value(1)),
+            Item::Slot(Value::text("b"), Value::Int64Value(2)),
         ],
     );
     assert_eq!(s.as_value(), rec);
@@ -201,8 +195,8 @@ fn test_rename() {
     let rec = Value::Record(
         vec![Attr::of("Structure")],
         vec![
-            Item::Slot(Value::Text(String::from("field_a")), Value::Int32Value(1)),
-            Item::Slot(Value::Text(String::from("b")), Value::Int64Value(2)),
+            Item::Slot(Value::text("field_a"), Value::Int32Value(1)),
+            Item::Slot(Value::text("b"), Value::Int64Value(2)),
         ],
     );
     assert_eq!(s.as_value(), rec);
@@ -221,8 +215,8 @@ fn body_replaces() {
     }
 
     let body = vec![
-        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(7)),
-        Item::Slot(Value::Text(String::from("b")), Value::BooleanValue(true)),
+        Item::Slot(Value::text("a"), Value::Int32Value(7)),
+        Item::Slot(Value::text("b"), Value::BooleanValue(true)),
     ];
 
     let rec = Value::Record(
@@ -230,10 +224,7 @@ fn body_replaces() {
             "BodyReplace",
             Value::Record(
                 Vec::new(),
-                vec![Item::Slot(
-                    Value::Text(String::from("n")),
-                    Value::Int32Value(1033),
-                )],
+                vec![Item::Slot(Value::text("n"), Value::Int32Value(1033))],
             ),
         ))],
         body.clone(),
@@ -265,19 +256,13 @@ fn complex_header() {
         Vec::new(),
         vec![
             Item::ValueItem(Value::Int32Value(17)),
-            Item::Slot(
-                Value::Text(String::from("name")),
-                Value::Text(String::from("hello")),
-            ),
+            Item::Slot(Value::text("name"), Value::text("hello")),
         ],
     );
 
     let rec = Value::Record(
         vec![Attr::of(("ComplexHeader", header_body))],
-        vec![Item::Slot(
-            Value::Text(String::from("other")),
-            Value::Int32Value(-4),
-        )],
+        vec![Item::Slot(Value::text("other"), Value::Int32Value(-4))],
     );
 
     let ch = ComplexHeader {
@@ -307,11 +292,8 @@ fn example1() {
     let rec = Value::Record(
         vec![Attr::of("Example1")],
         vec![
-            Item::Slot(Value::Text(String::from("a")), Value::Int32Value(4)),
-            Item::Slot(
-                Value::Text(String::from("b")),
-                Value::Text(String::from("s")),
-            ),
+            Item::Slot(Value::text("a"), Value::Int32Value(4)),
+            Item::Slot(Value::text("b"), Value::text("s")),
         ],
     );
 
@@ -348,19 +330,16 @@ fn nested() {
         vec![Attr::of("Outer")],
         vec![
             Item::Slot(
-                Value::Text(String::from("inner")),
+                Value::text("inner"),
                 Value::Record(
                     vec![Attr::of("custom")],
                     vec![
-                        Item::Slot(Value::Text(String::from("a")), Value::Int32Value(4)),
-                        Item::Slot(
-                            Value::Text(String::from("b")),
-                            Value::Text(String::from("s")),
-                        ),
+                        Item::Slot(Value::text("a"), Value::Int32Value(4)),
+                        Item::Slot(Value::text("b"), Value::text("s")),
                     ],
                 ),
             ),
-            Item::Slot(Value::Text(String::from("opt")), Value::Int32Value(1)),
+            Item::Slot(Value::text("opt"), Value::Int32Value(1)),
         ],
     );
 
@@ -389,13 +368,10 @@ fn header() {
             "Example",
             Value::Record(
                 Vec::new(),
-                vec![Item::Slot(Value::Text(String::from("b")), Value::Extant)],
+                vec![Item::Slot(Value::text("b"), Value::Extant)],
             ),
         ))],
-        vec![Item::Slot(
-            Value::Text(String::from("a")),
-            Value::Text(String::from("hello")),
-        )],
+        vec![Item::Slot(Value::text("a"), Value::text("hello"))],
     );
 
     assert_eq!(struct_none.as_value(), rec_none);
@@ -410,16 +386,10 @@ fn header() {
             "Example",
             Value::Record(
                 Vec::new(),
-                vec![Item::Slot(
-                    Value::Text(String::from("b")),
-                    Value::Int64Value(7),
-                )],
+                vec![Item::Slot(Value::text("b"), Value::Int64Value(7))],
             ),
         ))],
-        vec![Item::Slot(
-            Value::Text(String::from("a")),
-            Value::Text(String::from("hello")),
-        )],
+        vec![Item::Slot(Value::text("a"), Value::text("hello"))],
     );
 
     assert_eq!(struct_some.as_value(), rec_some);
@@ -453,13 +423,10 @@ fn annotated() {
                 "example",
                 Value::Record(
                     Vec::new(),
-                    vec![Item::Slot(
-                        Value::Text(String::from("count")),
-                        Value::Int64Value(1033),
-                    )],
+                    vec![Item::Slot(Value::text("count"), Value::Int64Value(1033))],
                 ),
             )),
-            Attr::of(("name", Value::Text(String::from("bob")))),
+            Attr::of(("name", Value::text("bob"))),
         ],
         vec![],
     );

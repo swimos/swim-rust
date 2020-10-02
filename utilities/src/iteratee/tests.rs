@@ -15,33 +15,30 @@
 use std::convert::TryInto;
 use std::num::NonZeroUsize;
 
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
-
 use super::*;
 
 #[test]
 fn identity_iteratee() {
     let mut iteratee = identity::<i32>();
 
-    assert_that!(iteratee.feed(7), eq(Some(7)));
-    assert_that!(iteratee.feed(4), eq(Some(4)));
-    assert_that!(iteratee.feed(1), eq(Some(1)));
-    assert_that!(iteratee.feed(3), eq(Some(3)));
+    assert_eq!(iteratee.feed(7), Some(7));
+    assert_eq!(iteratee.feed(4), Some(4));
+    assert_eq!(iteratee.feed(1), Some(1));
+    assert_eq!(iteratee.feed(3), Some(3));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
 fn never_iteratee() {
     let mut iteratee = never::<i32>();
 
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(3), none());
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(3).is_none());
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -57,12 +54,12 @@ fn unfold_iteratee() {
         }
     });
 
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(3), eq(Some(15)));
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(1).is_none());
+    assert_eq!(iteratee.feed(3), Some(15));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -82,12 +79,12 @@ fn unfold_iteratee_with_flush() {
         |state| Some(state.1 + 1),
     );
 
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(3), eq(Some(15)));
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(1).is_none());
+    assert_eq!(iteratee.feed(3), Some(15));
 
-    assert_that!(iteratee.flush(), eq(Some(16)));
+    assert_eq!(iteratee.flush(), Some(16));
 }
 
 #[test]
@@ -95,12 +92,12 @@ fn collect_to_vector() {
     let size = NonZeroUsize::new(3).unwrap();
     let mut iteratee = collect_vec::<i32>(size);
 
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(-1), none());
-    assert_that!(iteratee.feed(7), eq(Some(vec![2, -1, 7])));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(-1).is_none());
+    assert_eq!(iteratee.feed(7), Some(vec![2, -1, 7]));
 
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -108,23 +105,23 @@ fn collect_to_vector_with_remainder() {
     let size = NonZeroUsize::new(3).unwrap();
     let mut iteratee = collect_vec_with_rem::<i32>(size);
 
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(-1), none());
-    assert_that!(iteratee.feed(7), eq(Some(vec![2, -1, 7])));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(-1).is_none());
+    assert_eq!(iteratee.feed(7), Some(vec![2, -1, 7]));
 
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.flush(), eq(Some(vec![3])));
+    assert!(iteratee.feed(3).is_none());
+    assert_eq!(iteratee.flush(), Some(vec![3]));
 }
 
 #[test]
 fn collect_all_to_vector() {
     let mut iteratee = collect_all_vec::<i32>();
 
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(-1), none());
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.flush(), eq(Some(vec![2, -1, 7, 3])));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(-1).is_none());
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(3).is_none());
+    assert_eq!(iteratee.flush(), Some(vec![2, -1, 7, 3]));
 }
 
 #[test]
@@ -132,13 +129,13 @@ fn map_iteratee() {
     let size = NonZeroUsize::new(3).unwrap();
     let mut iteratee = collect_vec::<i32>(size).map(|vec| vec.iter().sum());
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), eq(Some(6)));
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert_eq!(iteratee.feed(3), Some(6));
 
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(5), none());
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(5).is_none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -146,13 +143,13 @@ fn map_iteratee_with_flush() {
     let size = NonZeroUsize::new(3).unwrap();
     let mut iteratee = collect_vec_with_rem::<i32>(size).map(|vec| vec.iter().sum());
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), eq(Some(6)));
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert_eq!(iteratee.feed(3), Some(6));
 
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(5), none());
-    assert_that!(iteratee.flush(), eq(Some(9)));
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(5).is_none());
+    assert_eq!(iteratee.flush(), Some(9));
 }
 
 #[test]
@@ -160,16 +157,16 @@ fn comap_iteratee() {
     let size = NonZeroUsize::new(3).unwrap();
     let mut iteratee = collect_vec(size).comap(|n: i32| n.to_string());
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert_eq!(
         iteratee.feed(3),
-        eq(Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()]))
+        Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])
     );
 
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(5), none());
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(5).is_none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -177,19 +174,16 @@ fn comap_iteratee_with_flush() {
     let size = NonZeroUsize::new(3).unwrap();
     let mut iteratee = collect_vec_with_rem(size).comap(|n: i32| n.to_string());
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert_eq!(
         iteratee.feed(3),
-        eq(Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()]))
+        Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()])
     );
 
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(5), none());
-    assert_that!(
-        iteratee.flush(),
-        eq(Some(vec!["4".to_owned(), "5".to_owned()]))
-    );
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(5).is_none());
+    assert_eq!(iteratee.flush(), Some(vec!["4".to_owned(), "5".to_owned()]));
 }
 
 #[test]
@@ -203,19 +197,19 @@ fn maybe_comap_iteratee() {
         }
     });
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(5), none());
-    assert_that!(
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(5).is_none());
+    assert_eq!(
         iteratee.feed(6),
-        eq(Some(vec!["2".to_owned(), "4".to_owned(), "6".to_owned()]))
+        Some(vec!["2".to_owned(), "4".to_owned(), "6".to_owned()])
     );
 
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(8), none());
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(8).is_none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -229,19 +223,19 @@ fn maybe_comap_iteratee_with_flush() {
         }
     });
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(5), none());
-    assert_that!(
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(5).is_none());
+    assert_eq!(
         iteratee.feed(6),
-        eq(Some(vec!["2".to_owned(), "4".to_owned(), "6".to_owned()]))
+        Some(vec!["2".to_owned(), "4".to_owned(), "6".to_owned()])
     );
 
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(8), none());
-    assert_that!(iteratee.flush(), eq(Some(vec!["8".to_owned()])));
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(8).is_none());
+    assert_eq!(iteratee.flush(), Some(vec!["8".to_owned()]));
 }
 
 #[test]
@@ -255,14 +249,14 @@ fn scan_iteratee() {
         }
     });
 
-    assert_that!(iteratee.feed(2), eq(Some(2)));
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(5), eq(Some(5)));
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(22), eq(Some(22)));
+    assert_eq!(iteratee.feed(2), Some(2));
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert_eq!(iteratee.feed(5), Some(5));
+    assert!(iteratee.feed(4).is_none());
+    assert_eq!(iteratee.feed(22), Some(22));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -282,24 +276,24 @@ fn scan_iteratee_with_flush() {
         |prev| prev,
     );
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), eq(Some(1)));
-    assert_that!(iteratee.feed(5), eq(Some(2)));
-    assert_that!(iteratee.feed(-1), eq(Some(5)));
+    assert!(iteratee.feed(1).is_none());
+    assert_eq!(iteratee.feed(2), Some(1));
+    assert_eq!(iteratee.feed(5), Some(2));
+    assert_eq!(iteratee.feed(-1), Some(5));
 
-    assert_that!(iteratee.flush(), eq(Some(-1)));
+    assert_eq!(iteratee.flush(), Some(-1));
 }
 
 #[test]
 fn filter_iteratee() {
     let mut iteratee = identity::<i32>().filter(|i| i % 2 == 0);
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(4), eq(Some(4)));
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(0), eq(Some(0)));
+    assert!(iteratee.feed(7).is_none());
+    assert_eq!(iteratee.feed(4), Some(4));
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(3).is_none());
+    assert_eq!(iteratee.feed(0), Some(0));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -307,14 +301,14 @@ fn filter_iteratee_with_flush() {
     let size = NonZeroUsize::new(2).unwrap();
     let mut iteratee =
         collect_vec_with_rem::<i32>(size).filter(|v| v.get(0).map(|i| i % 2 == 0).unwrap_or(false));
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), eq(Some(vec![2, 3])));
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert_eq!(iteratee.feed(3), Some(vec![2, 3]));
 
-    assert_that!(iteratee.feed(0), none());
+    assert!(iteratee.feed(0).is_none());
 
-    assert_that!(iteratee.flush(), eq(Some(vec![0])));
+    assert_eq!(iteratee.flush(), Some(vec![0]));
 }
 
 #[test]
@@ -326,13 +320,13 @@ fn maybe_map_iteratee() {
             None
         }
     });
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(4), eq(Some("4".to_owned())));
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(0), eq(Some("0".to_owned())));
+    assert!(iteratee.feed(7).is_none());
+    assert_eq!(iteratee.feed(4), Some("4".to_owned()));
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(3).is_none());
+    assert_eq!(iteratee.feed(0), Some("0".to_owned()));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -342,17 +336,14 @@ fn maybe_map_with_flush() {
         Some(i) if i % 2 == 0 => Some(v.iter().map(|j| j.to_string()).collect()),
         _ => None,
     });
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(
-        iteratee.feed(3),
-        eq(Some(vec!["2".to_owned(), "3".to_owned()]))
-    );
+    assert!(iteratee.feed(7).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert_eq!(iteratee.feed(3), Some(vec!["2".to_owned(), "3".to_owned()]));
 
-    assert_that!(iteratee.feed(0), none());
+    assert!(iteratee.feed(0).is_none());
 
-    assert_that!(iteratee.flush(), eq(Some(vec!["0".to_owned()])));
+    assert_eq!(iteratee.flush(), Some(vec!["0".to_owned()]));
 }
 
 #[test]
@@ -362,15 +353,15 @@ fn and_then_iteratees() {
         .filter(|i| i % 2 == 0)
         .and_then(collect_vec(size));
 
-    assert_that!(iteratee.feed(0), none());
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), eq(Some(vec![0, 2])));
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(10), eq(Some(vec![4, 10])));
-    assert_that!(iteratee.feed(2), none());
+    assert!(iteratee.feed(0).is_none());
+    assert!(iteratee.feed(1).is_none());
+    assert_eq!(iteratee.feed(2), Some(vec![0, 2]));
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert_eq!(iteratee.feed(10), Some(vec![4, 10]));
+    assert!(iteratee.feed(2).is_none());
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -380,15 +371,15 @@ fn and_then_iteratees_with_flush() {
         .filter(|i| i % 2 == 0)
         .and_then(collect_vec_with_rem(size));
 
-    assert_that!(iteratee.feed(0), none());
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), eq(Some(vec![0, 2])));
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(10), eq(Some(vec![4, 10])));
-    assert_that!(iteratee.feed(2), none());
+    assert!(iteratee.feed(0).is_none());
+    assert!(iteratee.feed(1).is_none());
+    assert_eq!(iteratee.feed(2), Some(vec![0, 2]));
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert_eq!(iteratee.feed(10), Some(vec![4, 10]));
+    assert!(iteratee.feed(2).is_none());
 
-    assert_that!(iteratee.flush(), eq(Some(vec![2])));
+    assert_eq!(iteratee.flush(), Some(vec![2]));
 }
 
 fn to_non_zero(n: i32) -> Option<NonZeroUsize> {
@@ -404,24 +395,24 @@ fn flat_map_iteratee() {
         .maybe_map(to_non_zero)
         .flat_map(collect_vec);
 
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(8), eq(Some(vec![7, 8])));
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(9), none());
-    assert_that!(iteratee.feed(10), none());
-    assert_that!(iteratee.feed(11), eq(Some(vec![9, 10, 11])));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(7).is_none());
+    assert_eq!(iteratee.feed(8), Some(vec![7, 8]));
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(9).is_none());
+    assert!(iteratee.feed(10).is_none());
+    assert_eq!(iteratee.feed(11), Some(vec![9, 10, 11]));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
 fn add_flush() {
     let mut iteratee = identity::<i32>().with_flush(42);
-    assert_that!(iteratee.feed(2), eq(Some(2)));
-    assert_that!(iteratee.feed(7), eq(Some(7)));
+    assert_eq!(iteratee.feed(2), Some(2));
+    assert_eq!(iteratee.feed(7), Some(7));
 
-    assert_that!(iteratee.flush(), eq(Some(42)));
+    assert_eq!(iteratee.flush(), Some(42));
 }
 
 #[test]
@@ -429,12 +420,12 @@ fn remove_flush() {
     let size = NonZeroUsize::new(3).unwrap();
     let mut iteratee = collect_vec_with_rem::<i32>(size).without_flush();
 
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(-1), none());
-    assert_that!(iteratee.feed(7), eq(Some(vec![2, -1, 7])));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(-1).is_none());
+    assert_eq!(iteratee.feed(7), Some(vec![2, -1, 7]));
 
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -444,15 +435,15 @@ fn flatten_iteratee() {
         .map(collect_vec)
         .flatten();
 
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(7), none());
-    assert_that!(iteratee.feed(8), eq(Some(vec![7, 8])));
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(9), none());
-    assert_that!(iteratee.feed(10), none());
-    assert_that!(iteratee.feed(11), eq(Some(vec![9, 10, 11])));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(7).is_none());
+    assert_eq!(iteratee.feed(8), Some(vec![7, 8]));
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(9).is_none());
+    assert!(iteratee.feed(10).is_none());
+    assert_eq!(iteratee.feed(11), Some(vec![9, 10, 11]));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -461,33 +452,33 @@ fn fold_iteratee() {
         .filter(|i| i % 2 == 0)
         .fold(0, |sum, i| *sum += i);
 
-    assert_that!(iteratee.feed(1), none());
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(4), none());
+    assert!(iteratee.feed(1).is_none());
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(4).is_none());
 
-    assert_that!(iteratee.flush(), eq(Some(6)));
+    assert_eq!(iteratee.flush(), Some(6));
 }
 
 #[test]
 fn fuse_iteratee() {
     let mut iteratee = identity::<i32>().fuse();
-    assert_that!(iteratee.feed(3), eq(Some(3)));
-    assert_that!(iteratee.feed(12), none());
-    assert_that!(iteratee.feed(-2), none());
+    assert_eq!(iteratee.feed(3), Some(3));
+    assert!(iteratee.feed(12).is_none());
+    assert!(iteratee.feed(-2).is_none());
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
 fn fuse_iteratee_with_flush() {
     let mut iteratee = identity::<i32>().fold(0, |sum, i| *sum += i).fuse();
 
-    assert_that!(iteratee.feed(3), none());
-    assert_that!(iteratee.feed(12), none());
-    assert_that!(iteratee.feed(-2), none());
+    assert!(iteratee.feed(3).is_none());
+    assert!(iteratee.feed(12).is_none());
+    assert!(iteratee.feed(-2).is_none());
 
-    assert_that!(iteratee.flush(), eq(Some(13)));
+    assert_eq!(iteratee.flush(), Some(13));
 }
 
 #[test]
@@ -499,13 +490,13 @@ fn transduce_iterator() {
     let mut iteratee = copy_into_vec_with_rem(size);
     let output1 = iteratee.transduce(data1.iter()).collect::<Vec<_>>();
 
-    assert_that!(output1, eq(vec![vec![5, 3], vec![-5, 10]]));
+    assert_eq!(output1, vec![vec![5, 3], vec![-5, 10]]);
 
     let output2 = iteratee.transduce(data2.iter()).collect::<Vec<_>>();
 
-    assert_that!(output2, eq(vec![vec![7, 12]]));
+    assert_eq!(output2, vec![vec![7, 12]]);
 
-    assert_that!(iteratee.flush(), eq(Some(vec![-1])));
+    assert_eq!(iteratee.flush(), Some(vec![-1]));
 }
 
 #[test]
@@ -515,7 +506,7 @@ fn transduce_iterator_consuming_iteratee() {
     let iteratee = copy_into_vec_with_rem(size);
     let output = iteratee.transduce_into(data.iter()).collect::<Vec<_>>();
 
-    assert_that!(output, eq(vec![vec![5, 3], vec![-5, 10], vec![7]]));
+    assert_eq!(output, vec![vec![5, 3], vec![-5, 10], vec![7]]);
 }
 
 #[test]
@@ -524,15 +515,15 @@ fn fuse_iteratee_on_error() {
         .map(|i| if i > 10 { Err("Too big!") } else { Ok(i) })
         .fuse_on_error();
 
-    assert_that!(iteratee.feed(3), eq(Some(Ok(3))));
-    assert_that!(iteratee.feed(0), eq(Some(Ok(0))));
-    assert_that!(iteratee.feed(-2), eq(Some(Ok(-2))));
-    assert_that!(iteratee.feed(12), eq(Some(Err("Too big!"))));
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(77), none());
+    assert_eq!(iteratee.feed(3), Some(Ok(3)));
+    assert_eq!(iteratee.feed(0), Some(Ok(0)));
+    assert_eq!(iteratee.feed(-2), Some(Ok(-2)));
+    assert_eq!(iteratee.feed(12), Some(Err("Too big!")));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(77).is_none());
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -542,40 +533,40 @@ fn fuse_iteratee_on_error_with_flush() {
         .with_flush(Ok(6))
         .fuse_on_error();
 
-    assert_that!(iteratee.feed(3), eq(Some(Ok(3))));
-    assert_that!(iteratee.feed(0), eq(Some(Ok(0))));
-    assert_that!(iteratee.feed(-2), eq(Some(Ok(-2))));
-    assert_that!(iteratee.feed(12), eq(Some(Err("Too big!"))));
-    assert_that!(iteratee.feed(2), none());
-    assert_that!(iteratee.feed(4), none());
-    assert_that!(iteratee.feed(77), none());
+    assert_eq!(iteratee.feed(3), Some(Ok(3)));
+    assert_eq!(iteratee.feed(0), Some(Ok(0)));
+    assert_eq!(iteratee.feed(-2), Some(Ok(-2)));
+    assert_eq!(iteratee.feed(12), Some(Err("Too big!")));
+    assert!(iteratee.feed(2).is_none());
+    assert!(iteratee.feed(4).is_none());
+    assert!(iteratee.feed(77).is_none());
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
 fn iteratee_look_ahead() {
     let mut iteratee = look_ahead::<char>();
 
-    assert_that!(iteratee.feed('h'), none());
-    assert_that!(iteratee.feed('e'), eq(Some(('h', Some('e')))));
-    assert_that!(iteratee.feed('l'), eq(Some(('e', Some('l')))));
-    assert_that!(iteratee.feed('l'), eq(Some(('l', Some('l')))));
-    assert_that!(iteratee.feed('o'), eq(Some(('l', Some('o')))));
-    assert_that!(iteratee.flush(), eq(Some(('o', None))));
+    assert!(iteratee.feed('h').is_none());
+    assert_eq!(iteratee.feed('e'), Some(('h', Some('e'))));
+    assert_eq!(iteratee.feed('l'), Some(('e', Some('l'))));
+    assert_eq!(iteratee.feed('l'), Some(('l', Some('l'))));
+    assert_eq!(iteratee.feed('o'), Some(('l', Some('o'))));
+    assert_eq!(iteratee.flush(), Some(('o', None)));
 }
 
 #[test]
 fn attach_utf8_offsets() {
     let mut iteratee = utf8_byte_offsets();
 
-    assert_that!(iteratee.feed('a'), eq(Some((0, 'a'))));
-    assert_that!(iteratee.feed('ق'), eq(Some((1, 'ق'))));
-    assert_that!(iteratee.feed('b'), eq(Some((3, 'b'))));
-    assert_that!(iteratee.feed('🐋'), eq(Some((4, '🐋'))));
-    assert_that!(iteratee.feed('c'), eq(Some((8, 'c'))));
+    assert_eq!(iteratee.feed('a'), Some((0, 'a')));
+    assert_eq!(iteratee.feed('ق'), Some((1, 'ق')));
+    assert_eq!(iteratee.feed('b'), Some((3, 'b')));
+    assert_eq!(iteratee.feed('🐋'), Some((4, '🐋')));
+    assert_eq!(iteratee.feed('c'), Some((8, 'c')));
 
-    assert_that!(iteratee.flush(), none());
+    assert!(iteratee.flush().is_none());
 }
 
 #[test]
@@ -593,17 +584,14 @@ fn fallible_composition() {
 
     let mut iteratee = first.and_then_fallible(second);
 
-    assert_that!(iteratee.feed(Ok(1)), none());
-    assert_that!(
-        iteratee.feed(Err("Boom!")),
-        eq(Some(Err("Boom!".to_owned())))
-    );
-    assert_that!(iteratee.feed(Ok(2)), eq(Some(Ok(vec![1, 2]))));
-    assert_that!(iteratee.feed(Ok(3)), none());
-    assert_that!(iteratee.feed(Ok(3)), eq(Some(Err("Identical".to_owned()))));
-    assert_that!(iteratee.feed(Ok(4)), none());
+    assert!(iteratee.feed(Ok(1)).is_none());
+    assert_eq!(iteratee.feed(Err("Boom!")), Some(Err("Boom!".to_owned())));
+    assert_eq!(iteratee.feed(Ok(2)), Some(Ok(vec![1, 2])));
+    assert!(iteratee.feed(Ok(3)).is_none());
+    assert_eq!(iteratee.feed(Ok(3)), Some(Err("Identical".to_owned())));
+    assert!(iteratee.feed(Ok(4)).is_none());
 
-    assert_that!(iteratee.flush(), eq(Some(Ok(vec![4]))));
+    assert_eq!(iteratee.flush(), Some(Ok(vec![4])));
 }
 
 #[test]
@@ -614,10 +602,10 @@ fn enumerate_input() {
 
     let mut iteratee = coenumerate(inner);
 
-    assert_that!(iteratee.feed(10), eq(Some((0, 10))));
-    assert_that!(iteratee.feed(11), none());
-    assert_that!(iteratee.feed(12), eq(Some((2, 12))));
-    assert_that!(iteratee.feed(13), none());
-    assert_that!(iteratee.feed(14), eq(Some((4, 14))));
-    assert_that!(iteratee.flush(), eq(Some((0, 0))));
+    assert_eq!(iteratee.feed(10), Some((0, 10)));
+    assert!(iteratee.feed(11).is_none());
+    assert_eq!(iteratee.feed(12), Some((2, 12)));
+    assert!(iteratee.feed(13).is_none());
+    assert_eq!(iteratee.feed(14), Some((4, 14)));
+    assert_eq!(iteratee.flush(), Some((0, 0)));
 }

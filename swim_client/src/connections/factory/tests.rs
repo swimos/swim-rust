@@ -13,13 +13,12 @@
 // limitations under the License.
 
 use super::async_factory::*;
+use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use std::pin::Pin;
-use swim_common::connections::error::ConnectionError;
-use swim_common::connections::{WebsocketFactory, WsMessage};
+use swim_common::ws::error::ConnectionError;
+use swim_common::ws::{Protocol, WsMessage};
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);
@@ -55,7 +54,10 @@ impl Sink<WsMessage> for TestSink {
     }
 }
 
-async fn open_conn(url: url::Url) -> Result<(TestSink, TestStream), ConnectionError> {
+async fn open_conn(
+    url: url::Url,
+    _config: HostConfig,
+) -> Result<(TestSink, TestStream), ConnectionError> {
     if url.scheme() == "fail" {
         Err(ConnectionError::ConnectError)
     } else {
@@ -79,19 +81,35 @@ fn bad_url() -> url::Url {
 async fn successfully_open() {
     let url = good_url();
     let mut fac = make_fac().await;
-    let result = fac.connect(url.clone()).await;
-    assert_that!(&result, ok());
+    let result = fac
+        .connect_using(
+            url.clone(),
+            HostConfig {
+                protocol: Protocol::PlainText,
+                compression_config: CompressionConfig::Uncompressed,
+            },
+        )
+        .await;
+    assert!(result.is_ok());
     let (snk, stream) = result.unwrap();
-    assert_that!(&snk.0, eq(&url));
-    assert_that!(&stream.0, eq(&url));
+    assert_eq!(snk.0, url);
+    assert_eq!(stream.0, url);
 }
 
 #[tokio::test]
 async fn fail_to_open() {
     let url = bad_url();
     let mut fac = make_fac().await;
-    let result = fac.connect(url.clone()).await;
-    assert_that!(&result, err());
+    let result = fac
+        .connect_using(
+            url.clone(),
+            HostConfig {
+                protocol: Protocol::PlainText,
+                compression_config: CompressionConfig::Uncompressed,
+            },
+        )
+        .await;
+    assert!(result.is_err());
     let err = result.err().unwrap();
-    assert_that!(err, eq(ConnectionError::ConnectError));
+    assert_eq!(err, ConnectionError::ConnectError);
 }

@@ -15,8 +15,6 @@
 use crate::lru_cache::LruCache;
 
 use crate::ZeroUsize;
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 
 #[test]
 fn error_on_zero_capacity() {
@@ -31,61 +29,61 @@ fn error_on_zero_capacity() {
 #[test]
 fn len_on_empty() {
     let cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.len(), eq(0));
+    assert_eq!(cache.len(), 0);
 }
 
 #[test]
 fn peek_lru_when_empty() {
     let cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.peek_lru(), none());
+    assert!(cache.peek_lru().is_none());
 }
 
 #[test]
 fn peek_lru_mut_when_empty() {
     let mut cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.peek_lru_mut(), none());
+    assert!(cache.peek_lru_mut().is_none());
 }
 
 #[test]
 fn peek_mru_when_empty() {
     let cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.peek_mru(), none());
+    assert!(cache.peek_mru().is_none());
 }
 
 #[test]
 fn peek_mru_mut_when_empty() {
     let mut cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.peek_mru_mut(), none());
+    assert!(cache.peek_mru_mut().is_none());
 }
 
 #[test]
 fn iterate_forward_when_empty() {
     let cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.iter().next(), none());
+    assert!(cache.iter().next().is_none());
 }
 
 #[test]
 fn iterate_backwards_when_empty() {
     let cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.reverse_iter().next(), none());
+    assert!(cache.reverse_iter().next().is_none());
 }
 
 #[test]
 fn iterate_mut_forward_when_empty() {
     let mut cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.iter_mut().next(), none());
+    assert!(cache.iter_mut().next().is_none());
 }
 
 #[test]
 fn iterate_mut_backwards_when_empty() {
     let mut cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.reverse_iter_mut().next(), none());
+    assert!(cache.reverse_iter_mut().next().is_none());
 }
 
 #[test]
 fn pop_lru_when_empty() {
     let mut cache: LruCache<(), ()> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.pop_lru(), none());
+    assert!(cache.pop_lru().is_none());
 }
 
 #[test]
@@ -98,7 +96,7 @@ fn contains_when_empty() {
 fn capacity() {
     for i in 1..6 {
         let cache: LruCache<i32, i32> = LruCache::with_capacity(i).unwrap();
-        assert_that!(cache.capacity(), eq(i));
+        assert_eq!(cache.capacity(), i);
     }
 }
 
@@ -115,7 +113,7 @@ fn is_empty() {
 #[test]
 fn get_when_empty() {
     let mut cache: LruCache<i32, String> = LruCache::with_capacity(3).unwrap();
-    assert_that!(cache.get(&0), none());
+    assert!(cache.get(&0).is_none());
 }
 
 #[test]
@@ -125,11 +123,11 @@ fn replace_existing() {
 
     let mut cache = LruCache::with_capacity(3).unwrap();
     cache.insert(2, v1.clone());
-    assert_that!(cache.len(), eq(1));
+    assert_eq!(cache.len(), 1);
     let evicted = cache.insert(2, v2.clone());
-    assert_that!(evicted, eq(Some((2, v1))));
-    assert_that!(cache.len(), eq(1));
-    assert_that!(cache.get(&2), eq(Some(&v2)));
+    assert_eq!(evicted, Some((2, v1)));
+    assert_eq!(cache.len(), 1);
+    assert_eq!(cache.get(&2), Some(&v2));
 }
 
 #[test]
@@ -151,36 +149,36 @@ fn exceed_capacity_cap1() {
 fn exceed_capacity_twice_cap1() {
     let mut cache = LruCache::with_capacity(1).unwrap();
     let evicted = cache.insert(0, "0".to_string());
-    assert_that!(evicted, none());
-    assert_that!(cache.len(), eq(1));
+    assert!(evicted.is_none());
+    assert_eq!(cache.len(), 1);
 
     let evicted = cache.insert(1, "1".to_string());
-    assert_that!(evicted, eq(Some((0, "0".to_string()))));
-    assert_that!(cache.len(), eq(1));
+    assert_eq!(evicted, Some((0, "0".to_string())));
+    assert_eq!(cache.len(), 1);
 
     let evicted = cache.insert(2, "2".to_string());
-    assert_that!(evicted, eq(Some((1, "1".to_string()))));
-    assert_that!(cache.len(), eq(1));
+    assert_eq!(evicted, Some((1, "1".to_string())));
+    assert_eq!(cache.len(), 1);
 }
 
 #[test]
 fn reorder_last_used_cap1() {
     let mut cache = LruCache::with_capacity(1).unwrap();
     let evicted = cache.insert(0, "0".to_string());
-    assert_that!(evicted, none());
-    assert_that!(cache.get(&0), some());
+    assert!(evicted.is_none());
+    assert!(cache.get(&0).is_some());
     let evicted = cache.insert(1, "1".to_string());
-    assert_that!(evicted, eq(Some((0, "0".to_string()))));
-    assert_that!(cache.len(), eq(1));
+    assert_eq!(evicted, Some((0, "0".to_string())));
+    assert_eq!(cache.len(), 1);
 }
 
 #[test]
 fn remove_cap1() {
     let mut cache = LruCache::with_capacity(1).unwrap();
     let evicted = cache.insert(0, "0".to_string());
-    assert_that!(evicted, none());
-    assert_that!(cache.len(), eq(1));
-    assert_that!(cache.remove(&0), eq(Some("0".to_string())));
+    assert!(evicted.is_none());
+    assert_eq!(cache.len(), 1);
+    assert_eq!(cache.remove(&0), Some("0".to_string()));
 
     assert!(!cache.contains(&0));
     assert!(cache.is_empty());
@@ -230,14 +228,14 @@ fn reorder_last_used_cap2() {
     for i in 0..2 {
         cache.insert(i, i.to_string());
     }
-    assert_that!(cache.get(&0), some());
+    assert!(cache.get(&0).is_some());
     let evicted = cache.insert(2, "2".to_string());
-    assert_that!(evicted, eq(Some((1, "1".to_string()))));
-    assert_that!(cache.len(), eq(2));
+    assert_eq!(evicted, Some((1, "1".to_string())));
+    assert_eq!(cache.len(), 2);
 
     let evicted = cache.insert(3, "3".to_string());
-    assert_that!(evicted, eq(Some((0, "0".to_string()))));
-    assert_that!(cache.len(), eq(2));
+    assert_eq!(evicted, Some((0, "0".to_string())));
+    assert_eq!(cache.len(), 2);
 }
 
 #[test]
@@ -246,14 +244,14 @@ fn reorder_last_used_twice_cap2() {
     for i in 0..2 {
         cache.insert(i, i.to_string());
     }
-    assert_that!(cache.get(&0), some());
+    assert!(cache.get(&0).is_some());
     let evicted = cache.insert(2, "2".to_string());
-    assert_that!(evicted, eq(Some((1, "1".to_string()))));
+    assert_eq!(evicted, Some((1, "1".to_string())));
 
-    assert_that!(cache.get(&0), some());
+    assert!(cache.get(&0).is_some());
     let evicted = cache.insert(3, "3".to_string());
-    assert_that!(evicted, eq(Some((2, "2".to_string()))));
-    assert_that!(cache.len(), eq(2));
+    assert_eq!(evicted, Some((2, "2".to_string())));
+    assert_eq!(cache.len(), 2);
 }
 
 #[test]
@@ -274,8 +272,8 @@ fn clear_cap2() {
 fn insert_single_cap_n(n: usize) {
     let mut cache = LruCache::with_capacity(n).unwrap();
     let evicted = cache.insert(2, "hello".to_string());
-    assert_that!(evicted, none());
-    assert_that!(cache.len(), eq(1));
+    assert!(evicted.is_none());
+    assert_eq!(cache.len(), 1);
 }
 
 #[test]
@@ -297,9 +295,9 @@ fn insert_within_capacity_cap_n(n: usize) {
     let mut cache = LruCache::with_capacity(n).unwrap();
     for i in 0..n {
         let evicted = cache.insert(i, i.to_string());
-        assert_that!(evicted, none());
+        assert!(evicted.is_none());
     }
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(cache.len(), n);
 }
 
 #[test]
@@ -324,7 +322,7 @@ fn get_after_insert_cap_n(n: usize) {
     cache.insert(2, s.clone());
 
     let value = cache.get(&2);
-    assert_that!(value, eq(Some(&s)));
+    assert_eq!(value, Some(&s));
 }
 
 #[test]
@@ -348,7 +346,7 @@ fn get_after_insert_not_contained_cap_n(n: usize) {
     let mut cache = LruCache::with_capacity(n).unwrap();
     cache.insert(2, s.clone());
 
-    assert_that!(cache.get(&-1), none());
+    assert!(cache.get(&-1).is_none());
 }
 
 #[test]
@@ -381,10 +379,10 @@ fn exceed_capacity_cap_n(n: usize) {
     for i in 0..n {
         cache.insert(i, i.to_string());
     }
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(cache.len(), n);
     let evicted = cache.insert(n, n.to_string());
-    assert_that!(evicted, eq(Some((0, "0".to_string()))));
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(evicted, Some((0, "0".to_string())));
+    assert_eq!(cache.len(), n);
 }
 
 #[test]
@@ -407,15 +405,15 @@ fn exceed_capacity_twice_cap_n(n: usize) {
     for i in 0..n {
         cache.insert(i, i.to_string());
     }
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(cache.len(), n);
 
     let evicted = cache.insert(n, n.to_string());
-    assert_that!(evicted, eq(Some((0, "0".to_string()))));
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(evicted, Some((0, "0".to_string())));
+    assert_eq!(cache.len(), n);
 
     let evicted = cache.insert(n + 1, (n + 1).to_string());
-    assert_that!(evicted, eq(Some((1, "1".to_string()))));
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(evicted, Some((1, "1".to_string())));
+    assert_eq!(cache.len(), n);
 }
 
 #[test]
@@ -438,14 +436,14 @@ fn reorder_last_used_cap_n(n: usize) {
     for i in 0..n {
         cache.insert(i, i.to_string());
     }
-    assert_that!(cache.get(&0), some());
+    assert!(cache.get(&0).is_some());
     let evicted = cache.insert(n, n.to_string());
-    assert_that!(evicted, eq(Some((1, "1".to_string()))));
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(evicted, Some((1, "1".to_string())));
+    assert_eq!(cache.len(), n);
 
     let evicted = cache.insert(n + 1, (n + 1).to_string());
-    assert_that!(evicted, eq(Some((2, "2".to_string()))));
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(evicted, Some((2, "2".to_string())));
+    assert_eq!(cache.len(), n);
 }
 
 #[test]
@@ -468,11 +466,11 @@ fn reorder_last_used_twice_cap_n(n: usize) {
     for i in 0..n {
         cache.insert(i, i.to_string());
     }
-    assert_that!(cache.get(&0), some());
-    assert_that!(cache.get(&1), some());
+    assert!(cache.get(&0).is_some());
+    assert!(cache.get(&1).is_some());
     let evicted = cache.insert(n, n.to_string());
-    assert_that!(evicted, eq(Some((2, "2".to_string()))));
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(evicted, Some((2, "2".to_string())));
+    assert_eq!(cache.len(), n);
 }
 
 #[test]
@@ -494,12 +492,12 @@ fn remove_index_cap_n(n: usize, index: usize) {
     let mut cache = LruCache::with_capacity(n).unwrap();
     for i in 0..n {
         let evicted = cache.insert(i, i.to_string());
-        assert_that!(evicted, none());
+        assert!(evicted.is_none());
     }
-    assert_that!(cache.len(), eq(n));
-    assert_that!(cache.remove(&index), eq(Some(index.to_string())));
+    assert_eq!(cache.len(), n);
+    assert_eq!(cache.remove(&index), Some(index.to_string()));
 
-    assert_that!(cache.len(), eq(n - 1));
+    assert_eq!(cache.len(), n - 1);
     for i in 0..n {
         if i == index {
             assert!(!cache.contains(&i));
@@ -542,12 +540,12 @@ fn remove_non_existent_cap_n(n: usize) {
     let mut cache = LruCache::with_capacity(n).unwrap();
     for i in 0..n {
         let evicted = cache.insert(i, i.to_string());
-        assert_that!(evicted, none());
+        assert!(evicted.is_none());
     }
-    assert_that!(cache.len(), eq(n));
-    assert_that!(cache.remove(&1000), none());
+    assert_eq!(cache.len(), n);
+    assert!(cache.remove(&1000).is_none());
 
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(cache.len(), n);
     for i in 0..n {
         assert!(cache.contains(&i));
     }
@@ -582,11 +580,11 @@ fn clear_cap_n(n: usize) {
     let mut cache = LruCache::with_capacity(n).unwrap();
     for i in 0..n {
         let evicted = cache.insert(i, i.to_string());
-        assert_that!(evicted, none());
+        assert!(evicted.is_none());
     }
-    assert_that!(cache.len(), eq(n));
+    assert_eq!(cache.len(), n);
     cache.clear();
-    assert_that!(cache.len(), eq(0));
+    assert_eq!(cache.len(), 0);
 }
 
 #[test]
@@ -612,9 +610,9 @@ fn peek_lru() {
     cache.insert(2, 2);
     cache.get(&0);
 
-    assert_that!(cache.peek_lru(), eq(Some((&1, &1))));
+    assert_eq!(cache.peek_lru(), Some((&1, &1)));
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, 1))));
+    assert_eq!(cache.insert(3, 3), Some((1, 1)));
 }
 
 #[test]
@@ -626,13 +624,13 @@ fn peek_lru_mut() {
     cache.get(&0);
 
     let maybe_peeked = cache.peek_lru_mut();
-    assert_that!(&maybe_peeked, some());
+    assert!(maybe_peeked.is_some());
     let (peeked_key, peeked_value) = maybe_peeked.unwrap();
-    assert_that!(*peeked_key, eq(1));
-    assert_that!(*peeked_value, eq(1));
+    assert_eq!(*peeked_key, 1);
+    assert_eq!(*peeked_value, 1);
     *peeked_value = -1;
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, -1))));
+    assert_eq!(cache.insert(3, 3), Some((1, -1)));
 }
 
 #[test]
@@ -643,11 +641,11 @@ fn peek_mru() {
     cache.insert(2, 2);
     cache.get(&0);
 
-    assert_that!(cache.peek_mru(), eq(Some((&0, &0))));
+    assert_eq!(cache.peek_mru(), Some((&0, &0)));
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, 1))));
-    assert_that!(cache.insert(4, 4), eq(Some((2, 2))));
-    assert_that!(cache.insert(5, 5), eq(Some((0, 0))));
+    assert_eq!(cache.insert(3, 3), Some((1, 1)));
+    assert_eq!(cache.insert(4, 4), Some((2, 2)));
+    assert_eq!(cache.insert(5, 5), Some((0, 0)));
 }
 
 #[test]
@@ -659,15 +657,15 @@ fn peek_mru_mut() {
     cache.get(&0);
 
     let maybe_peeked = cache.peek_mru_mut();
-    assert_that!(&maybe_peeked, some());
+    assert!(maybe_peeked.is_some());
     let (peeked_key, peeked_value) = maybe_peeked.unwrap();
-    assert_that!(*peeked_key, eq(0));
-    assert_that!(*peeked_value, eq(0));
+    assert_eq!(*peeked_key, 0);
+    assert_eq!(*peeked_value, 0);
     *peeked_value = -1;
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, 1))));
-    assert_that!(cache.insert(4, 4), eq(Some((2, 2))));
-    assert_that!(cache.insert(5, 5), eq(Some((0, -1))));
+    assert_eq!(cache.insert(3, 3), Some((1, 1)));
+    assert_eq!(cache.insert(4, 4), Some((2, 2)));
+    assert_eq!(cache.insert(5, 5), Some((0, -1)));
 }
 
 #[test]
@@ -680,11 +678,11 @@ fn forward_iteration() {
 
     let entries = cache.iter().map(|(k, v)| (*k, *v)).collect::<Vec<_>>();
 
-    assert_that!(entries, eq(vec![(0, 0), (2, 2), (1, 1)]));
+    assert_eq!(entries, vec![(0, 0), (2, 2), (1, 1)]);
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, 1))));
-    assert_that!(cache.insert(4, 4), eq(Some((2, 2))));
-    assert_that!(cache.insert(5, 5), eq(Some((0, 0))));
+    assert_eq!(cache.insert(3, 3), Some((1, 1)));
+    assert_eq!(cache.insert(4, 4), Some((2, 2)));
+    assert_eq!(cache.insert(5, 5), Some((0, 0)));
 }
 
 #[test]
@@ -700,11 +698,11 @@ fn reverse_iteration() {
         .map(|(k, v)| (*k, *v))
         .collect::<Vec<_>>();
 
-    assert_that!(entries, eq(vec![(1, 1), (2, 2), (0, 0)]));
+    assert_eq!(entries, vec![(1, 1), (2, 2), (0, 0)]);
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, 1))));
-    assert_that!(cache.insert(4, 4), eq(Some((2, 2))));
-    assert_that!(cache.insert(5, 5), eq(Some((0, 0))));
+    assert_eq!(cache.insert(3, 3), Some((1, 1)));
+    assert_eq!(cache.insert(4, 4), Some((2, 2)));
+    assert_eq!(cache.insert(5, 5), Some((0, 0)));
 }
 
 #[test]
@@ -724,11 +722,11 @@ fn forward_iteration_mut() {
         })
         .collect::<Vec<_>>();
 
-    assert_that!(entries, eq(vec![(0, 0), (2, 2), (1, 1)]));
+    assert_eq!(entries, vec![(0, 0), (2, 2), (1, 1)]);
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, 2))));
-    assert_that!(cache.insert(4, 4), eq(Some((2, 3))));
-    assert_that!(cache.insert(5, 5), eq(Some((0, 1))));
+    assert_eq!(cache.insert(3, 3), Some((1, 2)));
+    assert_eq!(cache.insert(4, 4), Some((2, 3)));
+    assert_eq!(cache.insert(5, 5), Some((0, 1)));
 }
 
 #[test]
@@ -748,11 +746,11 @@ fn reverse_iteration_mut() {
         })
         .collect::<Vec<_>>();
 
-    assert_that!(entries, eq(vec![(1, 1), (2, 2), (0, 0)]));
+    assert_eq!(entries, vec![(1, 1), (2, 2), (0, 0)]);
 
-    assert_that!(cache.insert(3, 3), eq(Some((1, 2))));
-    assert_that!(cache.insert(4, 4), eq(Some((2, 3))));
-    assert_that!(cache.insert(5, 5), eq(Some((0, 1))));
+    assert_eq!(cache.insert(3, 3), Some((1, 2)));
+    assert_eq!(cache.insert(4, 4), Some((2, 3)));
+    assert_eq!(cache.insert(5, 5), Some((0, 1)));
 }
 
 #[test]
@@ -763,10 +761,10 @@ fn pop_lru() {
     cache.insert(2, 2);
     cache.get(&0);
 
-    assert_that!(cache.pop_lru(), eq(Some((1, 1))));
-    assert_that!(cache.len(), eq(2));
+    assert_eq!(cache.pop_lru(), Some((1, 1)));
+    assert_eq!(cache.len(), 2);
 
     let entries = cache.iter().map(|(k, v)| (*k, *v)).collect::<Vec<_>>();
 
-    assert_that!(entries, eq(vec![(0, 0), (2, 2)]));
+    assert_eq!(entries, vec![(0, 0), (2, 2)]);
 }

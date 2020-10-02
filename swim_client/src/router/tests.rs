@@ -19,13 +19,13 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use swim_common::connections::error::{ConnectionError, WebSocketError};
-use swim_common::connections::WsMessage;
 use swim_common::model::Value;
 use swim_common::request::request_future::RequestError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use swim_common::ws::error::{ConnectionError, WebSocketError};
+use swim_common::ws::WsMessage;
 use tokio::sync::{mpsc, watch};
 use tokio::time::timeout;
 

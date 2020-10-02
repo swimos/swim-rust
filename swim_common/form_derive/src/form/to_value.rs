@@ -146,7 +146,7 @@ fn compute_as_value(
                         fi => {
                             let name_str = fi.to_string();
                             let func = fn_factory(&fi.as_ident());
-                            items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #func),);
+                            items = quote!(#items swim_common::model::Item::Slot(swim_common::model::Value::text(#name_str), #func),);
                         }
                     }
                 }
@@ -189,7 +189,7 @@ fn compute_as_value(
                             let name_str = fi.to_string();
                             let func = fn_factory(&fi.as_ident());
 
-                            headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::Text(#name_str.to_string()), #func),);
+                            headers = quote!(#headers swim_common::model::Item::Slot(swim_common::model::Value::text(#name_str), #func),);
                         }
                     }
                 }

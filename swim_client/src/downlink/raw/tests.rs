@@ -17,8 +17,6 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::TransitionError;
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use std::time::Instant;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::*;
@@ -218,7 +216,7 @@ async fn sync_on_startup() {
     let (_dl, _messages, mut commands) = make_test_sync_dl().await;
 
     let first_cmd = commands.next().await;
-    assert_that!(first_cmd, eq(Some(Command::Sync)));
+    assert_eq!(first_cmd, Some(Command::Sync));
 }
 
 #[tokio::test]
@@ -226,11 +224,11 @@ async fn event_on_sync() {
     let (dl, mut messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
-    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
-    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
+    assert!(messages.send(Ok(Message::Synced)).await.is_ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event::Remote(0))));
+    assert_eq!(first_ev, Some(Event::Remote(0)));
 }
 
 #[tokio::test]
@@ -238,12 +236,15 @@ async fn ignore_update_before_link() {
     let (dl, mut messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
-    assert_that!(messages.send(Ok(Message::Action(Msg::of(12)))).await, ok());
-    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
-    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+    assert!(messages
+        .send(Ok(Message::Action(Msg::of(12))))
+        .await
+        .is_ok());
+    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
+    assert!(messages.send(Ok(Message::Synced)).await.is_ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event::Remote(0))));
+    assert_eq!(first_ev, Some(Event::Remote(0)));
 }
 
 #[tokio::test]
@@ -251,12 +252,15 @@ async fn apply_updates_between_link_and_sync() {
     let (dl, mut messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
-    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
-    assert_that!(messages.send(Ok(Message::Action(Msg::of(12)))).await, ok());
-    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
+    assert!(messages
+        .send(Ok(Message::Action(Msg::of(12))))
+        .await
+        .is_ok());
+    assert!(messages.send(Ok(Message::Synced)).await.is_ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event::Remote(12))));
+    assert_eq!(first_ev, Some(Event::Remote(12)));
 }
 
 /// Pre-synchronizes a downlink for tests that require the ['DownlinkState::Synced'] state.
@@ -268,14 +272,14 @@ async fn sync_dl(
 ) {
     let n = init.0;
     let first_cmd = commands.recv().await;
-    assert_that!(first_cmd, eq(Some(Command::Sync)));
+    assert_eq!(first_cmd, Some(Command::Sync));
 
-    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
-    assert_that!(messages.send(Ok(Message::Action(init))).await, ok());
-    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
+    assert!(messages.send(Ok(Message::Action(init))).await.is_ok());
+    assert!(messages.send(Ok(Message::Synced)).await.is_ok());
 
     let first_ev = events.recv().await;
-    assert_that!(first_ev, eq(Some(Event::Remote(n))));
+    assert_eq!(first_ev, Some(Event::Remote(n)));
 }
 
 #[tokio::test]
@@ -287,13 +291,22 @@ async fn updates_processed_when_synced() {
 
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 
-    assert_that!(messages.send(Ok(Message::Action(Msg::of(10)))).await, ok());
-    assert_that!(messages.send(Ok(Message::Action(Msg::of(20)))).await, ok());
-    assert_that!(messages.send(Ok(Message::Action(Msg::of(30)))).await, ok());
+    assert!(messages
+        .send(Ok(Message::Action(Msg::of(10))))
+        .await
+        .is_ok());
+    assert!(messages
+        .send(Ok(Message::Action(Msg::of(20))))
+        .await
+        .is_ok());
+    assert!(messages
+        .send(Ok(Message::Action(Msg::of(30))))
+        .await
+        .is_ok());
 
-    assert_that!(events.recv().await, eq(Some(Event::Remote(10))));
-    assert_that!(events.recv().await, eq(Some(Event::Remote(20))));
-    assert_that!(events.recv().await, eq(Some(Event::Remote(30))));
+    assert_eq!(events.recv().await, Some(Event::Remote(10)));
+    assert_eq!(events.recv().await, Some(Event::Remote(20)));
+    assert_eq!(events.recv().await, Some(Event::Remote(30)));
 }
 
 #[tokio::test]
@@ -305,10 +318,10 @@ async fn actions_processed_when_synced() {
 
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 
-    assert_that!(dl_tx.send(AddTo::of(4)).await, ok());
+    assert!(dl_tx.send(AddTo::of(4)).await.is_ok());
 
-    assert_that!(events.recv().await, eq(Some(Event::Local(5))));
-    assert_that!(commands.recv().await, eq(Some(Command::Action(5))));
+    assert_eq!(events.recv().await, Some(Event::Local(5)));
+    assert_eq!(commands.recv().await, Some(Command::Action(5)));
 }
 
 #[tokio::test]
@@ -325,18 +338,18 @@ async fn actions_paused_when_not_synced() {
     let msg = Msg::of(5).when_processed(msg_tx);
 
     //Send an action.
-    assert_that!(dl_tx.send(action).await, ok());
+    assert!(dl_tx.send(action).await.is_ok());
     //Then sync the downlink afterwards.
     sync_dl(msg, &mut messages, &mut events, &mut commands).await;
 
     let action_at = act_rx.await;
     let msg_at = msg_rx.await;
-    assert_that!(&action_at, ok());
-    assert_that!(&msg_at, ok());
-    assert_that!(msg_at.unwrap(), less_than_or_equal_to(action_at.unwrap()));
+    assert!(action_at.is_ok());
+    assert!(msg_at.is_ok());
+    assert!(msg_at.unwrap() <= action_at.unwrap());
 
-    assert_that!(events.recv().await, eq(Some(Event::Local(17))));
-    assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
+    assert_eq!(events.recv().await, Some(Event::Local(17)));
+    assert_eq!(commands.recv().await, Some(Command::Action(17)));
 }
 
 #[tokio::test]
@@ -355,28 +368,28 @@ async fn actions_paused_when_unlinked() {
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 
     //Unlink the downlink.
-    assert_that!(messages.send(Ok(Message::Unlinked)).await, ok());
+    assert!(messages.send(Ok(Message::Unlinked)).await.is_ok());
     //Then send an action.
-    assert_that!(dl_tx.send(action).await, ok());
+    assert!(dl_tx.send(action).await.is_ok());
     //Link but don't yet sync.
-    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
     //Send an update that we expect to be handled before the action.
-    assert_that!(messages.send(Ok(Message::Action(msg))).await, ok());
+    assert!(messages.send(Ok(Message::Action(msg))).await.is_ok());
     //Re-sync which we expect to unblock the action.
-    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+    assert!(messages.send(Ok(Message::Synced)).await.is_ok());
 
     //Check that the events happened in the correct order.
     let action_at = act_rx.await;
     let msg_at = msg_rx.await;
-    assert_that!(&action_at, ok());
-    assert_that!(&msg_at, ok());
-    assert_that!(msg_at.unwrap(), less_than_or_equal_to(action_at.unwrap()));
+    assert!(action_at.is_ok());
+    assert!(msg_at.is_ok());
+    assert!(msg_at.unwrap() <= action_at.unwrap());
 
     //Event generated when we re-sync.
-    assert_that!(events.recv().await, eq(Some(Event::Remote(5))));
+    assert_eq!(events.recv().await, Some(Event::Remote(5)));
     //Event and command generated after the action is applied.
-    assert_that!(events.recv().await, eq(Some(Event::Local(17))));
-    assert_that!(commands.recv().await, eq(Some(Command::Action(17))));
+    assert_eq!(events.recv().await, Some(Event::Local(17)));
+    assert_eq!(commands.recv().await, Some(Command::Action(17)));
 }
 
 #[tokio::test]
@@ -393,15 +406,15 @@ async fn errors_propagate() {
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 
     //Send an action that will trigger an error.
-    assert_that!(dl_tx.send(action).await, ok());
+    assert!(dl_tx.send(action).await.is_ok());
 
     //Wait for the action the be executed.
-    assert_that!(act_rx.await, ok());
+    assert!(act_rx.await.is_ok());
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
 
-    assert_that!(&stop_res, err());
-    assert_that!(stop_res.err().unwrap(), eq(DownlinkError::TransitionError));
+    assert!(stop_res.is_err());
+    assert_eq!(stop_res.err().unwrap(), DownlinkError::TransitionError);
 }
 
 #[tokio::test]
@@ -420,14 +433,14 @@ async fn terminates_on_invalid() {
 
     let msg = Msg(-1, Some(msg_tx));
 
-    assert_that!(messages.send(Ok(Message::Action(msg))).await, ok());
+    assert!(messages.send(Ok(Message::Action(msg))).await.is_ok());
     //Wait for the message to be processed.
-    assert_that!(msg_rx.await, ok());
+    assert!(msg_rx.await.is_ok());
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
 
-    assert_that!(&stop_res, err());
-    assert_that!(stop_res.err().unwrap(), eq(DownlinkError::MalformedMessage));
+    assert!(stop_res.is_err());
+    assert_eq!(stop_res.err().unwrap(), DownlinkError::MalformedMessage);
 }
 
 #[tokio::test]
@@ -446,9 +459,9 @@ async fn continues_on_invalid() {
 
     let msg = Msg(-1, Some(msg_tx));
 
-    assert_that!(messages.send(Ok(Message::Action(msg))).await, ok());
+    assert!(messages.send(Ok(Message::Action(msg))).await.is_ok());
     //Wait for the message to be processed.
-    assert_that!(msg_rx.await, ok());
+    assert!(msg_rx.await.is_ok());
 
     sync_dl(Msg::of(1), &mut messages, &mut events, &mut commands).await;
 }
@@ -459,20 +472,20 @@ async fn unlinks_on_unreachable_host() {
     let (_dl_tx, mut dl_rx) = dl.split();
 
     let first_cmd = commands.next().await;
-    assert_that!(first_cmd, eq(Some(Command::Sync)));
+    assert_eq!(first_cmd, Some(Command::Sync));
 
-    assert_that!(
-        messages.send(Err(RoutingError::HostUnreachable)).await,
-        ok()
-    );
+    assert!(messages
+        .send(Err(RoutingError::HostUnreachable))
+        .await
+        .is_ok());
 
     let first_cmd = commands.recv().await;
 
-    assert_that!(first_cmd, eq(Some(Command::Sync)));
-    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+    assert_eq!(first_cmd, Some(Command::Sync));
+    assert!(messages.send(Ok(Message::Synced)).await.is_ok());
 
     let first_ev = dl_rx.event_stream.recv().await;
-    assert_that!(first_ev, eq(Some(Event::Remote(0))));
+    assert_eq!(first_ev, Some(Event::Remote(0)));
 }
 
 #[tokio::test]
@@ -482,33 +495,33 @@ async fn queues_on_unreachable_host() {
     let mut events = dl_rx.event_stream;
 
     let first_cmd = commands.next().await;
-    assert_that!(first_cmd, eq(Some(Command::Sync)));
+    assert_eq!(first_cmd, Some(Command::Sync));
 
-    assert_that!(
-        messages.send(Err(RoutingError::HostUnreachable)).await,
-        ok()
-    );
+    assert!(messages
+        .send(Err(RoutingError::HostUnreachable))
+        .await
+        .is_ok());
 
-    assert_that!(commands.recv().await, eq(Some(Command::Sync)));
+    assert_eq!(commands.recv().await, Some(Command::Sync));
 
-    assert_that!(dl_tx.send(AddTo::of(1)).await, ok());
-    assert_that!(dl_tx.send(AddTo::of(2)).await, ok());
-    assert_that!(dl_tx.send(AddTo::of(3)).await, ok());
-    assert_that!(dl_tx.send(AddTo::of(4)).await, ok());
+    assert!(dl_tx.send(AddTo::of(1)).await.is_ok());
+    assert!(dl_tx.send(AddTo::of(2)).await.is_ok());
+    assert!(dl_tx.send(AddTo::of(3)).await.is_ok());
+    assert!(dl_tx.send(AddTo::of(4)).await.is_ok());
 
-    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
-    assert_that!(messages.send(Ok(Message::Synced)).await, ok());
+    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
+    assert!(messages.send(Ok(Message::Synced)).await.is_ok());
 
-    assert_that!(commands.recv().await, eq(Some(Command::Action(1))));
-    assert_that!(commands.recv().await, eq(Some(Command::Action(3))));
-    assert_that!(commands.recv().await, eq(Some(Command::Action(6))));
-    assert_that!(commands.recv().await, eq(Some(Command::Action(10))));
+    assert_eq!(commands.recv().await, Some(Command::Action(1)));
+    assert_eq!(commands.recv().await, Some(Command::Action(3)));
+    assert_eq!(commands.recv().await, Some(Command::Action(6)));
+    assert_eq!(commands.recv().await, Some(Command::Action(10)));
 
-    assert_that!(events.recv().await, eq(Some(Event::Remote(0))));
-    assert_that!(events.recv().await, eq(Some(Event::Local(1))));
-    assert_that!(events.recv().await, eq(Some(Event::Local(3))));
-    assert_that!(events.recv().await, eq(Some(Event::Local(6))));
-    assert_that!(events.recv().await, eq(Some(Event::Local(10))));
+    assert_eq!(events.recv().await, Some(Event::Remote(0)));
+    assert_eq!(events.recv().await, Some(Event::Local(1)));
+    assert_eq!(events.recv().await, Some(Event::Local(3)));
+    assert_eq!(events.recv().await, Some(Event::Local(6)));
+    assert_eq!(events.recv().await, Some(Event::Local(10)));
 }
 
 #[tokio::test]
@@ -517,12 +530,15 @@ async fn terminates_when_router_dropped() {
     let (dl_tx, _dl_rx) = dl.split();
     let first_cmd = commands.next().await;
 
-    assert_that!(first_cmd, eq(Some(Command::Sync)));
+    assert_eq!(first_cmd, Some(Command::Sync));
 
-    assert_that!(messages.send(Err(RoutingError::RouterDropped)).await, ok());
+    assert!(messages
+        .send(Err(RoutingError::RouterDropped))
+        .await
+        .is_ok());
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
-    assert_that!(stop_res.err().unwrap(), eq(DownlinkError::DroppedChannel));
+    assert_eq!(stop_res.err().unwrap(), DownlinkError::DroppedChannel);
 }
 
 #[tokio::test]
@@ -535,14 +551,14 @@ async fn action_received_before_synced() {
     .await;
 
     let (mut dl_tx, _dl_rx) = dl.split();
-    assert_that!(messages.send(Ok(Message::Linked)).await, ok());
+    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
 
     dl_tx.send(AddTo::of(4)).await.unwrap();
 
     let first_cmd = commands.next().await;
     let second_cmd = commands.next().await;
-    assert_that!(first_cmd, eq(Some(Command::Link)));
-    assert_that!(second_cmd, eq(Some(Command::Action(4))));
+    assert_eq!(first_cmd, Some(Command::Link));
+    assert_eq!(second_cmd, Some(Command::Action(4)));
 }
 
 #[tokio::test]
@@ -559,5 +575,5 @@ async fn action_received_before_linked() {
     dl_tx.send(AddTo::of(4)).await.unwrap();
 
     let first_cmd = commands.next().await;
-    assert_that!(first_cmd, eq(Some(Command::Action(4))));
+    assert_eq!(first_cmd, Some(Command::Action(4)));
 }

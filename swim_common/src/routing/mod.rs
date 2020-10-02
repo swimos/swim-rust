@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::error::ConnectionError;
 use crate::request::request_future::RequestError;
+use crate::ws::error::ConnectionError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc::error::SendError;

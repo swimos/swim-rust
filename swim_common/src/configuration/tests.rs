@@ -16,8 +16,6 @@ use tokio::fs::File;
 
 use super::ConfigurationError;
 use crate::model::{Attr, Item, Value};
-use hamcrest2::assert_that;
-use hamcrest2::prelude::*;
 use std::path::PathBuf;
 
 fn test_data_path() -> PathBuf {
@@ -32,22 +30,22 @@ async fn read_configuration_from_file() {
     path.push("test.recon");
 
     let file = File::open(path).await;
-    assert_that!(&file, ok());
+    assert!(file.is_ok());
     let result = super::read_config_from(file.unwrap()).await;
-    assert_that!(&result, ok());
+    assert!(result.is_ok());
     let items = result.unwrap();
     let complex = Value::Record(
         vec![Attr::with_value("name", 7u32)],
         vec![Item::of(1u32), Item::of(2u32), Item::of(3u32)],
     );
-    assert_that!(
+    assert_eq!(
         items,
-        eq(vec![
+        vec![
             Item::slot("first", 3u32),
             Item::slot("second", "hello"),
             Item::ValueItem(complex),
             Item::of(true)
-        ])
+        ]
     );
 }
 
@@ -57,7 +55,7 @@ async fn read_invalid_file() {
     path.push("invalid.recon");
 
     let file = File::open(path).await;
-    assert_that!(&file, ok());
+    assert!(file.is_ok());
     let result = super::read_config_from(file.unwrap()).await;
     assert!(matches!(result, Err(ConfigurationError::Parser(_))));
 }
