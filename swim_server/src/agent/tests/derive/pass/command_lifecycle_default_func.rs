@@ -1,16 +1,22 @@
 use std::num::NonZeroUsize;
-use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::{AgentConfig, AgentContext};
-use swim_server::{command_lifecycle, SwimAgent};
+use swim_server::command_lifecycle;
 
+mod swim_server {
+    pub use crate::*;
+}
+
+#[test]
 fn main() {
+    struct TestAgent {}
+
     #[derive(Debug)]
     pub struct TestAgentConfig {}
 
     impl AgentConfig for TestAgentConfig {
         fn get_buffer_size(&self) -> NonZeroUsize {
-            unimplemented!()
+            NonZeroUsize::new(5).unwrap()
         }
     }
 
@@ -28,18 +34,5 @@ fn main() {
         {
             unimplemented!()
         }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle {}
-        }
-    }
-
-    #[derive(Debug, SwimAgent)]
-    #[agent(config = "TestAgentConfig")]
-    pub struct TestAgent {
-        #[lifecycle(public, name = "CommandLifecycle")]
-        command: CommandLane<i32>,
     }
 }

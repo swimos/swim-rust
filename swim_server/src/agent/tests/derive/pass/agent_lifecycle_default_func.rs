@@ -1,6 +1,11 @@
 use swim_server::agent::AgentContext;
 use swim_server::agent_lifecycle;
 
+mod swim_server {
+    pub use crate::*;
+}
+
+#[test]
 fn main() {
     struct TestAgent {}
 

@@ -3,6 +3,11 @@ use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::{AgentConfig, AgentContext};
 use swim_server::map_lifecycle;
 
+mod swim_server {
+    pub use crate::*;
+}
+
+#[test]
 fn main() {
     struct TestAgent {}
 

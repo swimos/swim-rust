@@ -10,6 +10,11 @@ use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
 
+mod swim_server {
+    pub use crate::*;
+}
+
+#[test]
 fn main() {
     // ----------------------- Agent derivation -----------------------
 
@@ -20,21 +25,21 @@ fn main() {
         command_1: CommandLane<String>,
         #[lifecycle(public, name = "CommandLifecycle2")]
         command_2: CommandLane<i32>,
-        #[lifecycle(public, name = "ActionLifecycle1")]
+        #[lifecycle(name = "ActionLifecycle1")]
         action_1: ActionLane<i32, i32>,
-        #[lifecycle(public, name = "ActionLifecycle2")]
+        #[lifecycle(name = "ActionLifecycle2")]
         action_2: ActionLane<i64, i64>,
-        #[lifecycle(public, name = "ActionLifecycle3")]
+        #[lifecycle(name = "ActionLifecycle3")]
         action_3: ActionLane<String, String>,
         #[lifecycle(public, name = "ValueLifecycle1")]
         value_1: ValueLane<i32>,
-        #[lifecycle(public, name = "ValueLifecycle2")]
+        #[lifecycle(name = "ValueLifecycle2")]
         value_2: ValueLane<String>,
         #[lifecycle(public, name = "MapLifecycle1")]
         map_1: MapLane<String, i32>,
-        #[lifecycle(public, name = "MapLifecycle2")]
+        #[lifecycle(name = "MapLifecycle2")]
         map_2: MapLane<i32, String>,
-        #[lifecycle(public, name = "MapLifecycle2")]
+        #[lifecycle(name = "MapLifecycle2")]
         map_3: MapLane<i32, String>,
         #[lifecycle(public, name = "MapLifecycle1")]
         map_4: MapLane<String, i32>,

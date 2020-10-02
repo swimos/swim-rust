@@ -10,6 +10,11 @@ use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
 
+mod swim_server {
+    pub use crate::*;
+}
+
+#[test]
 fn main() {
     // ----------------------- Agent derivation -----------------------
 

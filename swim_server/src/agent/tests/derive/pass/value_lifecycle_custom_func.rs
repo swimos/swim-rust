@@ -4,6 +4,11 @@ use swim_server::agent::lane::model::value::ValueLane;
 use swim_server::agent::{AgentConfig, AgentContext};
 use swim_server::value_lifecycle;
 
+mod swim_server {
+    pub use crate::*;
+}
+
+#[test]
 fn main() {
     struct TestAgent {}
 
