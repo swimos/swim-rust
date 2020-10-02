@@ -168,7 +168,7 @@ impl WriterQueue {
             wakers,
             len,
         } = self;
-        let w = if let Some(OrderedWaker { next, waker, .. }) =
+        if let Some(OrderedWaker { next, waker, .. }) =
             first.and_then(|first| wakers.get_mut(first))
         {
             let waker = waker.take();
@@ -186,11 +186,9 @@ impl WriterQueue {
             waker
         } else {
             None
-        };
-        w
+        }
     }
 }
-
 
 #[derive(Debug, Default)]
 struct ReadWaiters {
@@ -199,7 +197,6 @@ struct ReadWaiters {
 }
 
 impl ReadWaiters {
-
     fn insert(&mut self, waker: Waker) -> (usize, u64) {
         let ReadWaiters { waiters, epoch } = self;
         (waiters.insert(waker), *epoch)
@@ -235,7 +232,6 @@ impl ReadWaiters {
     fn is_empty(&self) -> bool {
         self.waiters.is_empty()
     }
-
 }
 
 #[derive(Debug)]
@@ -297,7 +293,10 @@ impl<T> RwLockInner<T> {
     }
 
     /// Try to immediately take a read lock, if possible.
-    fn try_read(self: Arc<Self>, slot_and_epoch: &mut Option<(usize, u64)>) -> Result<ReadGuard<T>, Arc<Self>> {
+    fn try_read(
+        self: Arc<Self>,
+        slot_and_epoch: &mut Option<(usize, u64)>,
+    ) -> Result<ReadGuard<T>, Arc<Self>> {
         if self.try_read_inner(slot_and_epoch) {
             Ok(ReadGuard(self))
         } else {
@@ -306,7 +305,10 @@ impl<T> RwLockInner<T> {
     }
 
     /// Try to immediately take a read lock, if possible, by reference.
-    fn try_read_ref(self: &Arc<Self>, slot_and_epoch: &mut Option<(usize, u64)>) -> Option<ReadGuard<T>> {
+    fn try_read_ref(
+        self: &Arc<Self>,
+        slot_and_epoch: &mut Option<(usize, u64)>,
+    ) -> Option<ReadGuard<T>> {
         if self.try_read_inner(slot_and_epoch) {
             Some(ReadGuard(self.clone()))
         } else {
@@ -536,7 +538,10 @@ impl<T: Send + Sync> Future for ReadFuture<T> {
     type Output = ReadGuard<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let ReadFuture { inner, slot_and_epoch } = self.get_mut();
+        let ReadFuture {
+            inner,
+            slot_and_epoch,
+        } = self.get_mut();
 
         let mut lck_inner = inner.take().expect("Read future used twice.");
 
@@ -549,7 +554,8 @@ impl<T: Send + Sync> Future for ReadFuture<T> {
                 }
                 Err(blocked) => {
                     lck_inner = blocked;
-                    *slot_and_epoch = Some(lck_inner.add_read_waker(cx.waker().clone(), *slot_and_epoch));
+                    *slot_and_epoch =
+                        Some(lck_inner.add_read_waker(cx.waker().clone(), *slot_and_epoch));
                     if lck_inner.is_write_locked() {
                         *inner = Some(lck_inner);
                         return Poll::Pending;
@@ -594,7 +600,11 @@ impl<T: Send + Sync> Future for WriteFuture<T> {
 
 impl<T> Drop for ReadFuture<T> {
     fn drop(&mut self) {
-        let ReadFuture { inner, slot_and_epoch, .. } = self;
+        let ReadFuture {
+            inner,
+            slot_and_epoch,
+            ..
+        } = self;
         if let Some(inner) = inner.take() {
             if let Some((slot, epoch)) = slot_and_epoch.take() {
                 let mut lock = inner.read_waiters.lock();

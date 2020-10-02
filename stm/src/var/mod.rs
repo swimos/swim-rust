@@ -156,7 +156,10 @@ impl TVarInner {
 
     /// Determine if the contents of the variable have changed as compared to a previous value and,
     /// if not, take the read lock on the variable.
-    pub(crate) async fn validate_read(&self, expected: Contents) -> Result<ReadGuard<TVarGuarded>, ()> {
+    pub(crate) async fn validate_read(
+        &self,
+        expected: Contents,
+    ) -> Result<ReadGuard<TVarGuarded>, ()> {
         let guard = self.guarded.read().await;
         if data_ptr_eq(guard.deref().content.as_ref(), expected.as_ref()) {
             Ok(guard)
