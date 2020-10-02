@@ -130,12 +130,6 @@ impl WriterQueue {
         if wakers.contains(index) {
             let OrderedWaker { prev, next, waker } = wakers.remove(index);
             if waker.is_some() {
-                if *len == 0 {
-                    panic!(
-                        "{:?}, {:?}, {:?}, {:?}, {:?}",
-                        first, last, prev, next, wakers
-                    );
-                }
                 *len -= 1;
                 match (prev, next) {
                     (Some(i), Some(j)) => {
@@ -373,24 +367,6 @@ impl<T: Send + Sync> RwLock<T> {
     /// Determine if two handles are for the same lock.
     pub fn same_lock(this: &Self, other: &Self) -> bool {
         Arc::ptr_eq(&this.0, &other.0)
-    }
-}
-
-impl<T: Send + Sync + Debug> RwLock<T> {
-    pub fn dump(&self) {
-        unsafe {
-            let RwLockInner {
-                state,
-                contents,
-                read_waiters,
-                write_queue,
-            } = &*self.0;
-            println!("{}", state.load(Ordering::SeqCst));
-            println!("{:?}", &*contents.get());
-            println!("{}", (*read_waiters.lock()).waiters.len());
-            println!("{:?}", (*write_queue.lock()).first);
-            println!("{:?}", (*write_queue.lock()).last);
-        }
     }
 }
 
