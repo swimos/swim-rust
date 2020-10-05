@@ -1,11 +1,10 @@
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
 use swim_server::agent::lane::strategy::Queue;
-use swim_server::agent::{AgentConfig, AgentContext};
+use swim_server::agent::AgentContext;
 use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
@@ -33,12 +32,6 @@ fn main() {
 
     #[derive(Debug)]
     pub struct TestAgentConfig;
-
-    impl AgentConfig for TestAgentConfig {
-        fn get_buffer_size(&self) -> NonZeroUsize {
-            NonZeroUsize::new(5).unwrap()
-        }
-    }
 
     // ----------------------- Agent Lifecycle -----------------------
 

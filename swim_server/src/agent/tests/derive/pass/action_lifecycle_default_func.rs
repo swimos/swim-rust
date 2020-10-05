@@ -1,7 +1,6 @@
-use std::num::NonZeroUsize;
 use swim_server::action_lifecycle;
 use swim_server::agent::lane::model::action::ActionLane;
-use swim_server::agent::{AgentConfig, AgentContext};
+use swim_server::agent::AgentContext;
 
 mod swim_server {
     pub use crate::*;
@@ -13,12 +12,6 @@ fn main() {
 
     #[derive(Debug)]
     pub struct TestAgentConfig;
-
-    impl AgentConfig for TestAgentConfig {
-        fn get_buffer_size(&self) -> NonZeroUsize {
-            NonZeroUsize::new(5).unwrap()
-        }
-    }
 
     #[action_lifecycle(agent = "TestAgent", command_type = "f32", response_type = "i32")]
     struct ActionLifecycle;

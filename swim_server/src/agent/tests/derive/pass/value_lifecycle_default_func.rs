@@ -1,7 +1,6 @@
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::{AgentConfig, AgentContext};
+use swim_server::agent::AgentContext;
 use swim_server::value_lifecycle;
 
 mod swim_server {
@@ -14,12 +13,6 @@ fn main() {
 
     #[derive(Debug)]
     pub struct TestAgentConfig;
-
-    impl AgentConfig for TestAgentConfig {
-        fn get_buffer_size(&self) -> NonZeroUsize {
-            NonZeroUsize::new(5).unwrap()
-        }
-    }
 
     #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
     struct ValueLifecycle;

@@ -11,7 +11,7 @@
 //! Creating a custom swim agent with a single command lane.
 //! ```rust
 //! use std::num::NonZeroUsize;
-//! use swim_server::agent::{AgentConfig, AgentContext};
+//! use swim_server::agent::AgentContext;
 //! use swim_server::agent::lane::model::action::CommandLane;
 //! use swim_server::agent::lane::lifecycle::LaneLifecycle;
 //! use swim_server::{command_lifecycle, SwimAgent};
@@ -27,12 +27,6 @@
 //!
 //! #[derive(Debug)]
 //! pub struct TestAgentConfig;
-//!
-//! impl AgentConfig for TestAgentConfig {
-//!     fn get_buffer_size(&self) -> NonZeroUsize {
-//!         NonZeroUsize::new(5).unwrap()
-//!     }
-//! }
 //!
 //! // ----------------------- Command Lifecycle -----------------------
 //!
@@ -83,7 +77,6 @@ mod utils;
 /// Minimal swim agent and configuration without any lanes.
 /// ```rust
 /// use std::num::NonZeroUsize;
-/// use swim_server::agent::AgentConfig;
 /// use swim_server::SwimAgent;
 ///
 /// #[derive(Debug, SwimAgent)]
@@ -91,12 +84,6 @@ mod utils;
 /// pub struct TestAgent;
 ///
 /// pub struct TestAgentConfig;
-///
-/// impl AgentConfig for TestAgentConfig {
-///     fn get_buffer_size(&self) -> NonZeroUsize {
-///         NonZeroUsize::new(5).unwrap()
-///    }
-/// }
 /// ```
 /// Swim agent with multiple lanes of different types.
 /// ```rust
@@ -104,7 +91,6 @@ mod utils;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::ValueLane;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use std::sync::Arc;
 /// # use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
@@ -128,12 +114,6 @@ mod utils;
 /// }
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// #
 /// # #[command_lifecycle(
 /// # agent = "TestAgent",
@@ -335,7 +315,6 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent")]
@@ -354,19 +333,12 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 /// Agent lifecycle for `TestAgent`, created with a custom name for the `on_start` action.
 /// ```rust
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent", on_start = "custom_start_function")]
@@ -385,12 +357,6 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -446,7 +412,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::CommandLane;
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -479,12 +444,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 /// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with a custom name for the `on_command` action.
 /// ```rust
@@ -492,7 +451,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::CommandLane;
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -526,12 +484,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -646,7 +598,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::ActionLane;
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -677,12 +628,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 /// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with a custom name for the `on_command` action.
 /// ```rust
@@ -690,7 +635,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::ActionLane;
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -726,12 +670,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -851,7 +789,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// use std::sync::Arc;
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -896,12 +833,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 /// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
 /// ```rust
@@ -911,7 +842,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// use std::sync::Arc;
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -961,12 +891,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -1077,7 +1001,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -1122,12 +1045,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 /// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
 /// ```rust
@@ -1136,7 +1053,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
-/// # use swim_server::agent::AgentConfig;
 /// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
@@ -1186,12 +1102,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
-/// #
-/// # impl AgentConfig for TestAgentConfig {
-/// #    fn get_buffer_size(&self) -> NonZeroUsize {
-/// #        NonZeroUsize::new(5).unwrap()
-/// #   }
-/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {

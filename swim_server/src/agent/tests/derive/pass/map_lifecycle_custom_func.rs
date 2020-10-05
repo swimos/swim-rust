@@ -1,6 +1,5 @@
-use std::num::NonZeroUsize;
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::{AgentConfig, AgentContext};
+use swim_server::agent::AgentContext;
 use swim_server::map_lifecycle;
 
 mod swim_server {
@@ -13,12 +12,6 @@ fn main() {
 
     #[derive(Debug)]
     pub struct TestAgentConfig;
-
-    impl AgentConfig for TestAgentConfig {
-        fn get_buffer_size(&self) -> NonZeroUsize {
-            NonZeroUsize::new(5).unwrap()
-        }
-    }
 
     #[map_lifecycle(
         agent = "TestAgent",

@@ -24,10 +24,9 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::{AgentConfig, AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
@@ -253,14 +252,12 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
 #[derive(Debug)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
-    command_buffer_size: NonZeroUsize,
 }
 
 impl TestAgentConfig {
     pub fn new(sender: mpsc::Sender<ReportingAgentEvent>) -> Self {
         TestAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: NonZeroUsize::new(5).unwrap(),
         }
     }
 
@@ -268,12 +265,6 @@ impl TestAgentConfig {
         ReportingAgentLifecycle {
             inner: ReportingLifecycleInner(self.collector.clone()),
         }
-    }
-}
-
-impl AgentConfig for TestAgentConfig {
-    fn get_buffer_size(&self) -> NonZeroUsize {
-        self.command_buffer_size.clone()
     }
 }
 
@@ -289,10 +280,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
     where
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
-        let TestAgentConfig {
-            collector,
-            command_buffer_size,
-        } = configuration;
+        let TestAgentConfig { collector } = configuration;
 
         let inner = ReportingLifecycleInner(collector.clone());
 
@@ -324,7 +312,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.action,
-            *command_buffer_size,
+            exec_conf.action_buffer.clone(),
         );
 
         let agent = ReportingAgent {

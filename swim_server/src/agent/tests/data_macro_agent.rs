@@ -20,7 +20,7 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::{AgentConfig, AgentContext, LaneTasks};
+use crate::agent::{AgentContext, LaneTasks};
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
@@ -68,12 +68,6 @@ impl DataAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
             command_buffer_size: NonZeroUsize::new(5).unwrap(),
         }
-    }
-}
-
-impl AgentConfig for DataAgentConfig {
-    fn get_buffer_size(&self) -> NonZeroUsize {
-        self.command_buffer_size.clone()
     }
 }
 
