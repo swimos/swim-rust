@@ -4,7 +4,7 @@
 //! for which they will be used, the input/output types of the lanes that they will be applied to, and the corresponding
 //! lifecycles functions.
 //!
-//! It is also possible to provide a configuration strcut for the swim agent.
+//! It is also possible to provide a configuration struct for the swim agent.
 //!
 //! # Example
 //! Creating a custom swim agent with a single command lane and a configuration struct.
@@ -37,13 +37,13 @@
 //! impl TestCommandLifecycle {
 //!     async fn on_command<Context>(
 //!         &self,
-//!         _command: String,
+//!         command: String,
 //!         _model: &CommandLane<String>,
 //!         _context: &Context,
 //!     ) where
 //!         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 //!     {
-//!         unimplemented!()
+//!         println!("Command received: {}", command);
 //!     }
 //! }
 //!
@@ -117,13 +117,13 @@ mod utils;
 /// # impl TestCommandLifecycle {
 /// #     async fn on_command<Context>(
 /// #         &self,
-/// #         _command: String,
+/// #         command: String,
 /// #         _model: &CommandLane<String>,
 /// #         _context: &Context,
 /// #     ) where
 /// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
-/// #         unimplemented!()
+/// #        println!("Command received: {}", command);
 /// #     }
 /// # }
 /// #
@@ -139,14 +139,15 @@ mod utils;
 /// # impl TestActionLifecycle {
 /// #     async fn on_command<Context>(
 /// #         &self,
-/// #         _command: String,
+/// #         command: String,
 /// #         _model: &ActionLane<String, i32>,
 /// #         _context: &Context,
 /// #     ) -> i32
 /// #         where
 /// #             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
-/// #         unimplemented!()
+/// #         println!("Command received: {}", command);
+/// #         command.len() as i32
 /// #     }
 /// # }
 /// #
@@ -160,22 +161,22 @@ mod utils;
 /// # struct TestValueLifecycle;
 /// #
 /// # impl TestValueLifecycle {
-/// #     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+/// #     async fn on_start<Context>(&self, model: &ValueLane<i32>, _context: &Context)
 /// #         where
 /// #             Context: AgentContext<TestAgent> + Sized + Send + Sync,
 /// #     {
-/// #         unimplemented!()
+/// #         println!("Started value lane: {:?}", model)
 /// #     }
 /// #
 /// #     async fn on_event<Context>(
 /// #         &self,
-/// #         _event: &Arc<i32>,
+/// #         event: &Arc<i32>,
 /// #         _model: &ValueLane<i32>,
 /// #         _context: &Context,
 /// #     ) where
 /// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
-/// #         unimplemented!()
+/// #         println!("Event received: {}", event);
 /// #     }
 /// # }
 /// #
@@ -197,22 +198,22 @@ mod utils;
 /// # struct TestMapLifecycle;
 /// #
 /// # impl TestMapLifecycle {
-/// #     async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+/// #     async fn on_start<Context>(&self, model: &MapLane<String, i32>, _context: &Context)
 /// #         where
 /// #             Context: AgentContext<TestAgent> + Sized + Send + Sync,
 /// #     {
-/// #         unimplemented!()
+/// #         println!("Started map lane: {:?}", model)
 /// #     }
 /// #
 /// #     async fn on_event<Context>(
 /// #         &self,
-/// #         _event: &MapLaneEvent<String, i32>,
+/// #         event: &MapLaneEvent<String, i32>,
 /// #         _model: &MapLane<String, i32>,
 /// #         _context: &Context,
 /// #     ) where
 /// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
-/// #         unimplemented!()
+/// #         println!("Event received {:?}", event)
 /// #     }
 /// # }
 /// #
@@ -315,7 +316,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 ///     where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
 ///     {
-///         unimplemented!()
+///         println!("Agent started");
 ///     }
 /// }
 /// # #[derive(Debug, SwimAgent)]
@@ -338,7 +339,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 ///     where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
 ///     {
-///         unimplemented!()
+///         println!("Agent started");
 ///     }
 /// }
 /// # #[derive(Debug, SwimAgent)]
@@ -418,13 +419,13 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestCommandLifecycle {
 ///     async fn on_command<Context>(
 ///         &self,
-///         _command: String,
+///         command: String,
 ///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///         println!("Command received: {}", command);
 ///     }
 /// }
 /// # #[derive(Debug, SwimAgent)]
@@ -457,13 +458,13 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestCommandLifecycle {
 ///     async fn custom_on_command<Context>(
 ///         &self,
-///         _command: String,
+///         command: String,
 ///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///         println!("Command received: {}", command);
 ///     }
 /// }
 /// # #[derive(Debug, SwimAgent)]
@@ -594,14 +595,15 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestActionLifecycle {
 ///     async fn on_command<Context>(
 ///         &self,
-///         _command: String,
+///         command: String,
 ///         _model: &ActionLane<String, i32>,
 ///         _context: &Context,
 ///     ) -> i32
 ///         where
 ///             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///        println!("Command received: {}", command);
+///        command.len() as i32
 ///     }
 /// }
 ///
@@ -635,14 +637,15 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestActionLifecycle {
 ///     async fn custom_on_command<Context>(
 ///         &self,
-///         _command: String,
+///         command: String,
 ///         _model: &ActionLane<String, i32>,
 ///         _context: &Context,
 ///     ) -> i32
 ///         where
 ///             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///         println!("Command received: {}", command);
+///         command.len() as i32
 ///     }
 /// }
 ///
@@ -782,22 +785,22 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// struct TestValueLifecycle;
 ///
 /// impl TestValueLifecycle {
-///     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+///     async fn on_start<Context>(&self, model: &ValueLane<i32>, _context: &Context)
 ///     where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
 ///     {
-///         unimplemented!()
+///        println!("Started value lane: {:?}", model)
 ///     }
 ///
 ///     async fn on_event<Context>(
 ///         &self,
-///         _event: &Arc<i32>,
+///         event: &Arc<i32>,
 ///         _model: &ValueLane<i32>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///         println!("Event received: {}", event);
 ///     }
 /// }
 ///
@@ -839,22 +842,22 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// struct TestValueLifecycle;
 ///
 /// impl TestValueLifecycle {
-///     async fn custom_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+///     async fn custom_on_start<Context>(&self, model: &ValueLane<i32>, _context: &Context)
 ///     where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
 ///     {
-///         unimplemented!()
+///         println!("Started value lane: {:?}", model)
 ///     }
 ///
 ///     async fn custom_on_event<Context>(
 ///         &self,
-///         _event: &Arc<i32>,
+///         event: &Arc<i32>,
 ///         _model: &ValueLane<i32>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///         println!("Event received: {}", event);
 ///     }
 /// }
 ///
@@ -992,22 +995,22 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// struct TestMapLifecycle;
 ///
 /// impl TestMapLifecycle {
-///     async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+///     async fn on_start<Context>(&self, model: &MapLane<String, i32>, _context: &Context)
 ///     where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
 ///     {
-///         unimplemented!()
+///        println!("Started map lane: {:?}", model)
 ///     }
 ///
 ///     async fn on_event<Context>(
 ///         &self,
-///         _event: &MapLaneEvent<String, i32>,
+///         event: &MapLaneEvent<String, i32>,
 ///         _model: &MapLane<String, i32>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///         println!("Event received {:?}", event)
 ///     }
 /// }
 ///
@@ -1048,22 +1051,22 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// struct TestMapLifecycle;
 ///
 /// impl TestMapLifecycle {
-///     async fn custom_on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
+///     async fn custom_on_start<Context>(&self, model: &MapLane<String, i32>, _context: &Context)
 ///     where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync,
 ///     {
-///         unimplemented!()
+///         println!("Started map lane: {:?}", model)
 ///     }
 ///
 ///     async fn custom_on_event<Context>(
 ///         &self,
-///         _event: &MapLaneEvent<String, i32>,
+///         event: &MapLaneEvent<String, i32>,
 ///         _model: &MapLane<String, i32>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         unimplemented!()
+///        println!("Event received {:?}", event)
 ///     }
 /// }
 ///
