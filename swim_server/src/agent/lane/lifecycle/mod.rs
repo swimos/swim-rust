@@ -186,23 +186,3 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Bu
         ready(())
     }
 }
-
-pub trait StatelessLaneLifecycleBase: Send + Sync + 'static {
-    type WatchStrategy;
-
-    fn create_strategy(&self) -> Self::WatchStrategy;
-}
-
-pub trait StatelessLaneLifecycle<'a, Model: LaneModel, Agent>: StatelessLaneLifecycleBase {
-    type UplinkFuture: Future<Output = ()> + Send + 'a;
-    type CueFuture: Future<Output = Model::Event> + Send + 'a;
-
-    fn on_supply<C>(
-        &'a self,
-        event: Model::Event,
-        model: &'a Model,
-        context: &'a C,
-    ) -> Self::CueFuture
-    where
-        C: AgentContext<Agent> + Send + Sync + 'static;
-}

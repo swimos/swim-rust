@@ -972,11 +972,11 @@ where
 
 /// Create a new supply lane.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
-/// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
+/// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
 pub fn make_supply_lane<Agent, Context, T>(
     name: impl Into<String>,
     is_public: bool,

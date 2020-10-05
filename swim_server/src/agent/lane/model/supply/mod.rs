@@ -20,12 +20,11 @@ use futures::{FutureExt, Stream};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
 
 #[cfg(test)]
 mod tests;
 
-/// Model for a lane that publishes events received to all uplinks.
+/// Model for a stateless lane that publishes events to all uplinks.
 ///
 /// # Type Parameters
 ///
@@ -50,10 +49,6 @@ where
     /// Creates a new supplier to publish events.
     pub fn supplier(&self) -> mpsc::Sender<T> {
         self.sender.clone()
-    }
-
-    pub async fn supply(&mut self, data: T) -> Result<(), SendError<T>> {
-        self.sender.send(data).await
     }
 }
 

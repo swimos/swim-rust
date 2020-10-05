@@ -33,7 +33,7 @@ use tracing::{event, Level};
 #[cfg(test)]
 mod tests;
 
-/// Manages remote uplinks to an [`ActionLane`].
+/// Manages remote uplinks to a [`SupplyLane`].
 pub struct SupplyLaneUplinks<S> {
     producer: S,
     route: RelativePath,
@@ -45,9 +45,9 @@ impl<S> SupplyLaneUplinks<S> {
     }
 }
 
-const LINKING: &str = "Linking uplink an action lane.";
-const SYNCING: &str = "Syncing with an action lane (this is a no-op).";
-const UNLINKING: &str = "Unlinking from an action lane.";
+const LINKING: &str = "Linking uplink a supply lane.";
+const SYNCING: &str = "Syncing with a supply lane (this is a no-op).";
+const UNLINKING: &str = "Unlinking from an supply lane.";
 const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
 const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
 
@@ -65,7 +65,7 @@ where
         Router: ServerRouter,
     {
         let SupplyLaneUplinks { route, producer } = self;
-        let mut uplinks: ActionUplinks<F, Router> = ActionUplinks::new(router, err_tx, route);
+        let mut uplinks: SupplyUplinks<F, Router> = SupplyUplinks::new(router, err_tx, route);
 
         let uplink_actions = uplink_actions.fuse();
         let producer = producer.fuse();
@@ -150,7 +150,7 @@ impl<R: Form> From<RespMsg<R>> for Value {
 }
 
 /// Wraps a map of uplinks and provides compound operations on them to the uplink task.
-struct ActionUplinks<Msg, Router: ServerRouter> {
+struct SupplyUplinks<Msg, Router: ServerRouter> {
     router: Router,
     uplinks: HashMap<RoutingAddr, UplinkMessageSender<Router::Sender>>,
     err_tx: mpsc::Sender<UplinkErrorReport>,
@@ -160,13 +160,13 @@ struct ActionUplinks<Msg, Router: ServerRouter> {
 
 struct RouterStopping;
 
-impl<Msg, Router> ActionUplinks<Msg, Router>
+impl<Msg, Router> SupplyUplinks<Msg, Router>
 where
     Router: ServerRouter,
     Msg: Form,
 {
     fn new(router: Router, err_tx: mpsc::Sender<UplinkErrorReport>, route: RelativePath) -> Self {
-        ActionUplinks {
+        SupplyUplinks {
             router,
             uplinks: HashMap::new(),
             err_tx,
@@ -205,7 +205,7 @@ where
     where
         Router: ServerRouter,
     {
-        let ActionUplinks {
+        let SupplyUplinks {
             router,
             uplinks,
             route,
@@ -245,7 +245,7 @@ where
     where
         Router: ServerRouter,
     {
-        let ActionUplinks {
+        let SupplyUplinks {
             router,
             uplinks,
             route,
@@ -266,7 +266,7 @@ where
 
     /// Remove the uplink to a specified endpoint, sending an unlink message if possible.
     async fn unlink(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping> {
-        let ActionUplinks {
+        let SupplyUplinks {
             router,
             uplinks,
             err_tx,
@@ -291,7 +291,7 @@ where
 
     /// Attempt to send an unlink mesage to all remaining uplinks.
     async fn unlink_all(self) {
-        let ActionUplinks {
+        let SupplyUplinks {
             uplinks,
             mut err_tx,
             ..
