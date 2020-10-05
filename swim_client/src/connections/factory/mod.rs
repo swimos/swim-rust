@@ -15,10 +15,9 @@
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "websocket")]
+pub mod stream;
 pub mod tungstenite;
 
-#[cfg(not(target_arch = "wasm32"))]
 pub mod async_factory {
     use futures::future::ErrInto as FutErrInto;
     use futures::stream::StreamExt;
@@ -29,8 +28,9 @@ pub mod async_factory {
     use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
     use swim_common::request::Request;
 
-    use swim_common::connections::error::ConnectionError;
-    use swim_common::connections::{WebsocketFactory, WsMessage};
+    use crate::connections::factory::tungstenite::HostConfig;
+    use swim_common::ws::error::ConnectionError;
+    use swim_common::ws::WsMessage;
     use swim_runtime::task::{spawn, TaskHandle};
     use utilities::errors::FlattenErrors;
 
@@ -38,6 +38,7 @@ pub mod async_factory {
     pub struct ConnReq<Snk, Str> {
         pub(crate) request: Request<Result<(Snk, Str), ConnectionError>>,
         url: url::Url,
+        config: HostConfig,
     }
 
     /// Abstract asynchronous factory where requests are serviced by an independent task.
@@ -59,7 +60,7 @@ pub mod async_factory {
             connect_async: Fac,
         ) -> Self
         where
-            Fac: FnMut(url::Url) -> Fut + Send + 'static,
+            Fac: FnMut(url::Url, HostConfig) -> Fut + Send + 'static,
             Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
         {
             let (tx, rx) = mpsc::channel(buffer_size);
@@ -78,11 +79,16 @@ pub mod async_factory {
     ) where
         Str: Send + 'static,
         Snk: Send + 'static,
-        Fac: FnMut(url::Url) -> Fut + Send + 'static,
+        Fac: FnMut(url::Url, HostConfig) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
     {
-        while let Some(ConnReq { request, url }) = receiver.next().await {
-            let conn: Result<(Snk, Str), ConnectionError> = connect_async(url).await;
+        while let Some(ConnReq {
+            request,
+            url,
+            config,
+        }) = receiver.next().await
+        {
+            let conn: Result<(Snk, Str), ConnectionError> = connect_async(url, config).await;
             let _ = request.send(conn);
         }
     }
@@ -90,20 +96,21 @@ pub mod async_factory {
     pub type ConnectionFuture<Str, Snk> =
         SendAndAwait<ConnReq<Snk, Str>, Result<(Snk, Str), ConnectionError>>;
 
-    impl<Snk, Str> WebsocketFactory for AsyncFactory<Snk, Str>
+    impl<Snk, Str> AsyncFactory<Snk, Str>
     where
         Str: Stream<Item = Result<WsMessage, ConnectionError>> + Unpin + Send + 'static,
         Snk: Sink<WsMessage> + Unpin + Send + 'static,
     {
-        type WsStream = Str;
-        type WsSink = Snk;
-        type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture<Str, Snk>, ConnectionError>>;
-
-        fn connect(&mut self, url: url::Url) -> Self::ConnectFut {
+        pub fn connect_using(
+            &mut self,
+            url: url::Url,
+            config: HostConfig,
+        ) -> FlattenErrors<FutErrInto<ConnectionFuture<Str, Snk>, ConnectionError>> {
             let (tx, rx) = oneshot::channel();
             let req = ConnReq {
                 request: Request::new(tx),
                 url,
+                config,
             };
             let req_fut = RequestFuture::new(self.sender.clone(), req);
             FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(

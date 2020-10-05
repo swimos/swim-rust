@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = ["websocket"]
-websocket = ["tokio-tungstenite", "tokio-tls"]
+websocket = ["tokio-tungstenite", "http", "tokio-tls", "native-tls", "tokio-native-tls", "swim_common/tls"]
 debug = ["log_verbose"]
 log_verbose = []
 test-server = ["test_server"]
@@ -17,12 +17,26 @@ features = ["enabled"]
 optional = true
 
 [dependencies.tokio-tungstenite]
-version = "0.10.1"
-features = ["tls"]
+version = "0.11.0"
+git = "https://github.com/swimos/tokio-tungstenite/"
+features = ["tls", "deflate"]
+optional = true
+
+[dependencies.native-tls]
+version = "0.2"
+features = ["vendored"]
+optional = true
+
+[dependencies.http]
+version = "0.2"
+optional = true
+
+[dependencies.tokio-native-tls]
+version = "0.1"
 optional = true
 
 [dependencies.tokio-tls]
-version = "0.3.1"
+version = "0.3"
 optional = true
 
 [target.'cfg(log_verbose)'.dependencies]
@@ -31,8 +45,11 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 [target.'cfg(not(log_verbose))'.dependencies]
 tracing = "0.1.16"
 
+[dependencies.swim_common]
+path = "../swim_common"
+default-features = false
+
 [dependencies]
-swim_common = { path = "../swim_common" }
 utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 
