@@ -4,7 +4,7 @@ use swim_server::SwimAgent;
 
 fn main() {
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     impl AgentConfig for TestAgentConfig {
         fn get_buffer_size(&self) -> NonZeroUsize {

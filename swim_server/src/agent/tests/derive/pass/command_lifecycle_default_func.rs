@@ -9,10 +9,10 @@ mod swim_server {
 
 #[test]
 fn main() {
-    struct TestAgent {}
+    struct TestAgent;
 
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     impl AgentConfig for TestAgentConfig {
         fn get_buffer_size(&self) -> NonZeroUsize {
@@ -21,7 +21,7 @@ fn main() {
     }
 
     #[command_lifecycle(agent = "TestAgent", command_type = "i32")]
-    struct CommandLifecycle {}
+    struct CommandLifecycle;
 
     impl CommandLifecycle {
         async fn on_command<Context>(

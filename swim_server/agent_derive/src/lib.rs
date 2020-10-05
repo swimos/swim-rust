@@ -26,7 +26,7 @@
 //! }
 //!
 //! #[derive(Debug)]
-//! pub struct TestAgentConfig {}
+//! pub struct TestAgentConfig;
 //!
 //! impl AgentConfig for TestAgentConfig {
 //!     fn get_buffer_size(&self) -> NonZeroUsize {
@@ -40,7 +40,7 @@
 //!     agent = "TestAgent",
 //!     command_type = "String"
 //! )]
-//! struct TestCommandLifecycle {}
+//! struct TestCommandLifecycle;
 //!
 //! impl TestCommandLifecycle {
 //!     async fn on_command<Context>(
@@ -88,9 +88,9 @@ mod utils;
 ///
 /// #[derive(Debug, SwimAgent)]
 /// #[agent(config = "TestAgentConfig")]
-/// pub struct TestAgent {}
+/// pub struct TestAgent;
 ///
-/// pub struct TestAgentConfig {}
+/// pub struct TestAgentConfig;
 ///
 /// impl AgentConfig for TestAgentConfig {
 ///     fn get_buffer_size(&self) -> NonZeroUsize {
@@ -127,7 +127,7 @@ mod utils;
 ///     map: MapLane<String, i32>,
 /// }
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -140,7 +140,7 @@ mod utils;
 /// # command_type = "String",
 /// # on_command = "on_command"
 /// # )]
-/// # struct TestCommandLifecycle {}
+/// # struct TestCommandLifecycle;
 /// #
 /// # impl TestCommandLifecycle {
 /// #     async fn on_command<Context>(
@@ -162,7 +162,7 @@ mod utils;
 /// # }
 /// #
 /// # #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
-/// # struct TestActionLifecycle {}
+/// # struct TestActionLifecycle;
 /// #
 /// # impl TestActionLifecycle {
 /// #     async fn on_command<Context>(
@@ -185,7 +185,7 @@ mod utils;
 /// # }
 /// #
 /// # #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
-/// # struct TestValueLifecycle {}
+/// # struct TestValueLifecycle;
 /// #
 /// # impl TestValueLifecycle {
 /// #     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
@@ -222,7 +222,7 @@ mod utils;
 /// # }
 /// #
 /// # #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
-/// # struct TestMapLifecycle {}
+/// # struct TestMapLifecycle;
 /// #
 /// # impl TestMapLifecycle {
 /// #     async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
@@ -339,7 +339,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent")]
-/// struct TestAgentLifecycle {}
+/// struct TestAgentLifecycle;
 ///
 /// impl TestAgentLifecycle {
 ///     async fn on_start<Context>(&self, _context: &Context)
@@ -351,9 +351,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -370,7 +370,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent", on_start = "custom_start_function")]
-/// struct TestAgentLifecycle {}
+/// struct TestAgentLifecycle;
 ///
 /// impl TestAgentLifecycle {
 ///     async fn custom_start_function<Context>(&self, _context: &Context)
@@ -382,9 +382,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -454,7 +454,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     agent = "TestAgent",
 ///     command_type = "String"
 /// )]
-/// struct TestCommandLifecycle {}
+/// struct TestCommandLifecycle;
 ///
 /// impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
 ///     fn create(_config: &TestAgentConfig) -> Self {
@@ -476,9 +476,9 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -501,7 +501,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     command_type = "String",
 ///     on_command = "custom_on_command"
 /// )]
-/// struct TestCommandLifecycle {}
+/// struct TestCommandLifecycle;
 ///
 /// impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
 ///     fn create(_config: &TestAgentConfig) -> Self {
@@ -523,9 +523,9 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -651,7 +651,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # use swim_server::SwimAgent;
 ///
 /// #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
-/// struct TestActionLifecycle {}
+/// struct TestActionLifecycle;
 ///
 /// impl TestActionLifecycle {
 ///     async fn on_command<Context>(
@@ -674,9 +674,9 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -700,7 +700,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     response_type = "i32",
 ///     on_command = "custom_on_command"
 /// )]
-/// struct TestActionLifecycle {}
+/// struct TestActionLifecycle;
 ///
 /// impl TestActionLifecycle {
 ///     async fn custom_on_command<Context>(
@@ -723,9 +723,9 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -856,7 +856,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # use swim_server::SwimAgent;
 ///
 /// #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
-/// struct TestValueLifecycle {}
+/// struct TestValueLifecycle;
 ///
 /// impl TestValueLifecycle {
 ///     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
@@ -893,9 +893,9 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -921,7 +921,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     on_start = "custom_on_start",
 ///     on_event = "custom_on_event"
 /// )]
-/// struct TestValueLifecycle {}
+/// struct TestValueLifecycle;
 ///
 /// impl TestValueLifecycle {
 ///     async fn custom_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
@@ -958,9 +958,9 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -1082,7 +1082,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # use swim_server::SwimAgent;
 ///
 /// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
-/// struct TestMapLifecycle {}
+/// struct TestMapLifecycle;
 ///
 /// impl TestMapLifecycle {
 ///     async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
@@ -1119,9 +1119,9 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {
@@ -1146,7 +1146,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     value_type = "i32",
 ///     on_start = "custom_on_start",
 ///     on_event = "custom_on_event")]
-/// struct TestMapLifecycle {}
+/// struct TestMapLifecycle;
 ///
 /// impl TestMapLifecycle {
 ///     async fn custom_on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
@@ -1183,9 +1183,9 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
-/// # pub struct TestAgent {}
+/// # pub struct TestAgent;
 /// #
-/// # pub struct TestAgentConfig {}
+/// # pub struct TestAgentConfig;
 /// #
 /// # impl AgentConfig for TestAgentConfig {
 /// #    fn get_buffer_size(&self) -> NonZeroUsize {

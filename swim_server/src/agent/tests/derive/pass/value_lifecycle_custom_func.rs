@@ -10,10 +10,10 @@ mod swim_server {
 
 #[test]
 fn main() {
-    struct TestAgent {}
+    struct TestAgent;
 
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     impl AgentConfig for TestAgentConfig {
         fn get_buffer_size(&self) -> NonZeroUsize {
@@ -27,7 +27,7 @@ fn main() {
         on_start = "custom_on_start",
         on_event = "custom_on_event"
     )]
-    struct ValueLifecycle {}
+    struct ValueLifecycle;
 
     impl ValueLifecycle {
         async fn custom_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)

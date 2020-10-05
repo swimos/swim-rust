@@ -9,10 +9,10 @@ mod swim_server {
 
 #[test]
 fn main() {
-    struct TestAgent {}
+    struct TestAgent;
 
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     impl AgentConfig for TestAgentConfig {
         fn get_buffer_size(&self) -> NonZeroUsize {
@@ -21,7 +21,7 @@ fn main() {
     }
 
     #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
-    struct MapLifecycle {}
+    struct MapLifecycle;
 
     impl MapLifecycle {
         async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)

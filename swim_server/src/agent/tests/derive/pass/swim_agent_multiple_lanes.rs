@@ -32,7 +32,7 @@ fn main() {
     }
 
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     impl AgentConfig for TestAgentConfig {
         fn get_buffer_size(&self) -> NonZeroUsize {
@@ -43,7 +43,7 @@ fn main() {
     // ----------------------- Agent Lifecycle -----------------------
 
     #[agent_lifecycle(agent = "TestAgent", on_start = "agent_on_start")]
-    struct TestAgentLifecycle {}
+    struct TestAgentLifecycle;
 
     impl TestAgentLifecycle {
         async fn agent_on_start<Context>(&self, _context: &Context)
@@ -61,7 +61,7 @@ fn main() {
         command_type = "String",
         on_command = "on_command"
     )]
-    struct CommandLifecycle {}
+    struct CommandLifecycle;
 
     impl CommandLifecycle {
         async fn on_command<Context>(
@@ -85,7 +85,7 @@ fn main() {
     // ----------------------- Action Lifecycle -----------------------
 
     #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
-    struct ActionLifecycle {}
+    struct ActionLifecycle;
 
     impl ActionLifecycle {
         async fn on_command<Context>(
@@ -110,7 +110,7 @@ fn main() {
     // ----------------------- Value Lifecycle -----------------------
 
     #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
-    struct ValueLifecycle {}
+    struct ValueLifecycle;
 
     impl ValueLifecycle {
         async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
@@ -149,7 +149,7 @@ fn main() {
     // ----------------------- Map Lifecycle -----------------------
 
     #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
-    struct MapLifecycle {}
+    struct MapLifecycle;
 
     impl MapLifecycle {
         async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)

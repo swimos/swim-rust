@@ -1,10 +1,10 @@
 use swim_server::agent_lifecycle;
 
 fn main() {
-    struct TestAgent {}
+    struct TestAgent;
 
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     #[agent_lifecycle(agent = "TestAgent")]
     struct TestAgentLifecycle<T> {

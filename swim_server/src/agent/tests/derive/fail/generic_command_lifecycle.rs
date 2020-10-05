@@ -1,10 +1,10 @@
 use swim_server::command_lifecycle;
 
 fn main() {
-    struct TestAgent {}
+    struct TestAgent;
 
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     #[command_lifecycle(agent = "TestAgent", command_type = "i32")]
     struct CommandLifecycle<T> {

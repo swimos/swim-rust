@@ -1,10 +1,10 @@
 use swim_server::map_lifecycle;
 
 fn main() {
-    struct TestAgent {}
+    struct TestAgent;
 
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
     enum MapLifecycle {}

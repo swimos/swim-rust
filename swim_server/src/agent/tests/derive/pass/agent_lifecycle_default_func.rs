@@ -7,10 +7,10 @@ mod swim_server {
 
 #[test]
 fn main() {
-    struct TestAgent {}
+    struct TestAgent;
 
     #[agent_lifecycle(agent = "TestAgent")]
-    struct TestAgentLifecycle {}
+    struct TestAgentLifecycle;
 
     impl TestAgentLifecycle {
         async fn on_start<Context>(&self, _context: &Context)

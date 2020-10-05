@@ -9,7 +9,7 @@ mod swim_server {
 #[test]
 fn main() {
     #[derive(Debug)]
-    pub struct TestAgentConfig {}
+    pub struct TestAgentConfig;
 
     impl AgentConfig for TestAgentConfig {
         fn get_buffer_size(&self) -> NonZeroUsize {
@@ -19,5 +19,5 @@ fn main() {
 
     #[derive(Debug, SwimAgent)]
     #[agent(config = "TestAgentConfig")]
-    pub struct TestAgent {}
+    pub struct TestAgent;
 }
