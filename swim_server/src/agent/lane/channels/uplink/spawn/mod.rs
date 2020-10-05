@@ -99,7 +99,7 @@ where
         }
     }
 
-    /// Run the uplink spawner as an asycn task.
+    /// Run the uplink spawner as an async task.
     ///
     /// #Arguments
     ///

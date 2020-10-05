@@ -34,13 +34,13 @@ use tracing::{event, Level};
 mod tests;
 
 /// Manages remote uplinks to an [`ActionLane`].
-pub struct SupplyLaneUplinks<Producer> {
-    producer: Producer,
+pub struct SupplyLaneUplinks<S> {
+    producer: S,
     route: RelativePath,
 }
 
-impl<Producer> SupplyLaneUplinks<Producer> {
-    pub fn new(producer: Producer, route: RelativePath) -> Self {
+impl<S> SupplyLaneUplinks<S> {
+    pub fn new(producer: S, route: RelativePath) -> Self {
         SupplyLaneUplinks { producer, route }
     }
 }
@@ -51,9 +51,9 @@ const UNLINKING: &str = "Unlinking from an action lane.";
 const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
 const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
 
-impl<Producer, F> SupplyLaneUplinks<Producer>
+impl<S, F> SupplyLaneUplinks<S>
 where
-    Producer: Stream<Item = TaggedClientEnvelope>,
+    S: Stream<Item = F>,
     F: Send + Sync + Form + 'static,
 {
     pub async fn run<Router>(
@@ -65,7 +65,6 @@ where
         Router: ServerRouter,
     {
         let SupplyLaneUplinks { route, producer } = self;
-
         let mut uplinks: ActionUplinks<F, Router> = ActionUplinks::new(router, err_tx, route);
 
         let uplink_actions = uplink_actions.fuse();

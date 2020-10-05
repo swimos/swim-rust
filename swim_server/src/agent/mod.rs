@@ -16,8 +16,7 @@ mod context;
 pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;
-#[allow(warnings)]
-mod supply;
+pub mod supply;
 #[cfg(test)]
 mod tests;
 
