@@ -1,4 +1,4 @@
-use crate::args::{LaneType, SwimAgentAttrs};
+use crate::args::{ConfigType, LaneType, SwimAgentAttrs};
 use core::fmt;
 use proc_macro2::{Ident, Literal, Span};
 use quote::quote_spanned;
@@ -16,14 +16,13 @@ pub struct AgentField {
     pub lifecycle_ast: proc_macro2::TokenStream,
 }
 
-type ConfigName = Ident;
 type AgentName = Ident;
 
-pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigName, Vec<AgentField>) {
+pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<AgentField>) {
     let SwimAgentAttrs {
         ident: agent_name,
         data: fields,
-        config: config_name,
+        config: config_type,
         ..
     } = args;
 
@@ -51,7 +50,7 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigName, Vec<Agent
         }
     });
 
-    (agent_name, config_name, agent_fields)
+    (agent_name, config_type, agent_fields)
 }
 
 pub fn get_task_struct_name(name: &str) -> Ident {

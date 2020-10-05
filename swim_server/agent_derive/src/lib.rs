@@ -1,16 +1,14 @@
 //! Agent derive is a library for creating swim agents and lifecycles for them and their lanes, by annotating structs and asynchronous functions.
 //!
-//! The minimum requirement for creating swim agents is to provide a config struct that implements the
-//! [`AgentConfig`] trait.
-//!
 //! The minimum requirements for creating lifecycles is to provide the name of the swim agent
 //! for which they will be used, the input/output types of the lanes that they will be applied to, and the corresponding
 //! lifecycles functions.
 //!
+//! It is also possible to provide a configuration strcut for the swim agent.
+//!
 //! # Example
-//! Creating a custom swim agent with a single command lane.
+//! Creating a custom swim agent with a single command lane and a configuration struct.
 //! ```rust
-//! use std::num::NonZeroUsize;
 //! use swim_server::agent::AgentContext;
 //! use swim_server::agent::lane::model::action::CommandLane;
 //! use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -67,31 +65,25 @@ mod utils;
 
 /// A derive attribute for creating swim agents.
 ///
-/// The minimum requirement for creating a swim agent is to provide a config struct that implements the
-/// [`AgentConfig`] trait.
+/// If the swim agent has configuration, it can be provided from the `config` attribute of the `agent` annotation.
 ///
 /// If the swim agent has lanes, they can be annotated with the appropriate lifecycle attributes which require
 /// a correct lifecycle struct to be provided.
 /// The lifecycles are private by default, and can be made public with the additional `public` attribute.
 /// # Example
-/// Minimal swim agent and configuration without any lanes.
+/// Minimal swim agent without any lanes or configuration.
 /// ```rust
-/// use std::num::NonZeroUsize;
 /// use swim_server::SwimAgent;
 ///
 /// #[derive(Debug, SwimAgent)]
-/// #[agent(config = "TestAgentConfig")]
 /// pub struct TestAgent;
-///
-/// pub struct TestAgentConfig;
 /// ```
-/// Swim agent with multiple lanes of different types.
+/// Swim agent with multiple lanes of different types and custom configuration.
 /// ```rust
 /// use swim_server::SwimAgent;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::ValueLane;
-/// # use std::num::NonZeroUsize;
 /// # use std::sync::Arc;
 /// # use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 /// # use swim_server::agent::lane::model::map::MapLaneEvent;
@@ -112,8 +104,8 @@ mod utils;
 ///     #[lifecycle(name = "TestMapLifecycle")]
 ///     map: MapLane<String, i32>,
 /// }
-/// #
-/// # pub struct TestAgentConfig;
+///
+/// pub struct TestAgentConfig;
 /// #
 /// # #[command_lifecycle(
 /// # agent = "TestAgent",
@@ -238,7 +230,6 @@ mod utils;
 /// #     }
 /// # }
 /// ```
-/// Note: [`TestAgentConfig`] (ommited here) must be a valid struct that implements the [`AgentConfig`] trait, as shown in the previous example.
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
@@ -254,7 +245,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         }
     };
 
-    let (agent_name, config_name, agent_fields) = get_agent_data(args);
+    let (agent_name, config_type, agent_fields) = get_agent_data(args);
 
     let lanes = agent_fields
         .iter()
@@ -270,9 +261,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         use swim_server::agent::LaneTasks as _;
 
         #[automatically_derived]
-        impl swim_server::agent::SwimAgent<#config_name> for #agent_name {
+        impl swim_server::agent::SwimAgent<#config_type> for #agent_name {
             fn instantiate<Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext>(
-                configuration: &#config_name,
+                configuration: &#config_type,
                 exec_conf: &swim_server::agent::lane::channels::AgentExecutionConfig,
             ) -> (
                 Self,
@@ -315,7 +306,6 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
-/// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent")]
 /// struct TestAgentLifecycle;
@@ -339,7 +329,6 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
-/// # use std::num::NonZeroUsize;
 ///
 /// #[agent_lifecycle(agent = "TestAgent", on_start = "custom_start_function")]
 /// struct TestAgentLifecycle;
@@ -412,7 +401,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::CommandLane;
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[command_lifecycle(
@@ -451,7 +439,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::CommandLane;
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[command_lifecycle(
@@ -559,7 +546,8 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     let mut events = event_stream.take_until(context.agent_stop_event());
                     let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
 
-                    while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
+                    while let std::option::Option::Some(action) = events.next().await {
+                        let(command, responder) = action.destruct();
 
                         tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
@@ -598,7 +586,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::ActionLane;
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
@@ -635,7 +622,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::ActionLane;
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[action_lifecycle(
@@ -746,7 +732,8 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
                     let mut events = event_stream.take_until(context.agent_stop_event());
                     let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
 
-                    while let std::option::Option::Some(swim_server::agent::lane::model::action::Action { command, responder }) = events.next().await {
+                    while let std::option::Option::Some(action) = events.next().await {
+                        let(command, responder) = action.destruct();
 
                         tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
@@ -789,7 +776,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// use std::sync::Arc;
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
@@ -842,7 +828,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// use std::sync::Arc;
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[value_lifecycle(
@@ -1001,7 +986,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
@@ -1053,7 +1037,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
-/// # use std::num::NonZeroUsize;
 /// # use swim_server::SwimAgent;
 ///
 /// #[map_lifecycle(

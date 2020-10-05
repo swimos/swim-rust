@@ -1,7 +1,8 @@
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
-use proc_macro2::{Ident, Span};
+use proc_macro2::{Delimiter, Group, Ident, Span};
+use quote::ToTokens;
+use syn::export::TokenStream2;
 use syn::{Path, Type, TypePath};
-
 const COMMAND_LANE: &str = "CommandLane";
 const ACTION_LANE: &str = "ActionLane";
 const VALUE_LANE: &str = "ValueLane";
@@ -86,12 +87,38 @@ fn default_on_command() -> Ident {
     to_ident("on_command".to_string())
 }
 
+fn default_config() -> ConfigType {
+    ConfigType::Unit
+}
+
+fn parse_config(value: String) -> ConfigType {
+    ConfigType::Struct(to_ident(value))
+}
+
+#[derive(Debug)]
+pub enum ConfigType {
+    Struct(Ident),
+    Unit,
+}
+
+impl ToTokens for ConfigType {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            ConfigType::Struct(ident) => ident.to_tokens(tokens),
+            ConfigType::Unit => {
+                Group::new(Delimiter::Parenthesis, TokenStream2::new()).to_tokens(tokens)
+            }
+        }
+    }
+}
+
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(agent))]
 pub struct SwimAgentAttrs {
     pub ident: syn::Ident,
-    #[darling(map = "to_ident")]
-    pub config: Ident,
+    #[darling(default = "default_config")]
+    #[darling(map = "parse_config")]
+    pub config: ConfigType,
     pub data: ast::Data<(), LifecycleAttrs>,
     pub generics: syn::Generics,
 }

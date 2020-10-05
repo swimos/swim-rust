@@ -38,8 +38,8 @@ pub struct ActionLane<Command, Response> {
 
 #[derive(Debug)]
 pub struct Action<Command, Response> {
-    pub command: Command,
-    pub responder: Option<oneshot::Sender<Response>>,
+    pub(crate) command: Command,
+    pub(crate) responder: Option<oneshot::Sender<Response>>,
 }
 
 impl<Command, Response> Action<Command, Response> {
@@ -55,6 +55,11 @@ impl<Command, Response> Action<Command, Response> {
             command,
             responder: Some(responder),
         }
+    }
+
+    pub fn destruct(self) -> (Command, Option<oneshot::Sender<Response>>) {
+        let Action { command, responder } = self;
+        (command, responder)
     }
 }
 
