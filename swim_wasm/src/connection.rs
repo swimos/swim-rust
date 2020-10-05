@@ -24,8 +24,8 @@ use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequence
 use swim_common::request::Request;
 
 use std::ops::Deref;
-use swim_common::connections::error::{ConnectionError, WebSocketError};
-use swim_common::connections::{WebsocketFactory, WsMessage};
+use swim_common::ws::error::{ConnectionError, WebSocketError};
+use swim_common::ws::{WebsocketFactory, WsMessage};
 use utilities::errors::FlattenErrors;
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
@@ -119,7 +119,7 @@ impl WebsocketFactory for WasmWsFactory {
     }
 }
 
-// A wrappper around the [`ws_stream_wasm::WsErr`] used to implement [`From`] for converting to
+// A wrapper around the [`ws_stream_wasm::WsErr`] used to implement [`From`] for converting to
 // [`ConnectionError`]s.
 struct WsError(WsErr);
 
