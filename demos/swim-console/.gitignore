@@ -1,4 +1,0 @@
-/target
-**/*.rs.bk
-bin/
-.cargo-ok
