@@ -25,6 +25,7 @@ use utilities::future::TransformMut;
 
 pub mod action;
 pub mod map;
+pub mod supply;
 pub mod value;
 
 pub trait DeferredLaneView<T>: Send + Sync {
