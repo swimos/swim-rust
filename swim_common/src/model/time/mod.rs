@@ -16,18 +16,14 @@ use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::schema::StandardSchema;
 use crate::model::{Value, ValueKind};
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
-use pin_utils::core_reexport::fmt::Formatter;
-use std::fmt::{Debug, Display};
-use std::ops::Deref;
+use std::fmt::Display;
 
 /// A structure representing the time that it was created.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Timestamp(DateTime<Utc>);
 
-impl Deref for Timestamp {
-    type Target = DateTime<Utc>;
-
-    fn deref(&self) -> &Self::Target {
+impl AsRef<DateTime<Utc>> for Timestamp {
+    fn as_ref(&self) -> &DateTime<Utc> {
         &self.0
     }
 }
@@ -41,12 +37,6 @@ impl Into<DateTime<Utc>> for Timestamp {
 impl From<DateTime<Utc>> for Timestamp {
     fn from(dt: DateTime<Utc>) -> Self {
         Timestamp(dt)
-    }
-}
-
-impl Debug for Timestamp {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Timestamp({})", self.0.to_string())
     }
 }
 
