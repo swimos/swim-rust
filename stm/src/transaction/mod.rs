@@ -26,10 +26,9 @@ use crate::stm::stm_futures::{RunIn, TransactionFuture};
 use crate::stm::{ExecResult, Stm};
 use crate::transaction::frame_mask::{FrameMask, ReadWrite};
 use crate::var::{Contents, ReadContentsFuture, TVarInner, TVarRead};
-use futures::stream::FusedStream;
+use futures::future::try_join_all;
 use futures::task::{Context, Poll};
 use futures::{ready, Future, FutureExt, Stream, StreamExt};
-use futures_util::stream::FuturesUnordered;
 use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -468,8 +467,8 @@ impl Transaction {
 
     // Attempt to commit the transaction, returning true of the commit succeeded.
     async fn try_commit(&mut self) -> bool {
-        let mut reads = FuturesUnordered::new();
-        let mut writes = FuturesUnordered::new();
+        let mut reads = vec![];
+        let mut writes = vec![];
         for (key, i) in self.log_assoc.iter() {
             let LogEntry {
                 state, mut stack, ..
@@ -491,34 +490,21 @@ impl Transaction {
                 _ => {}
             }
         }
-        let mut read_locks = Vec::with_capacity(reads.len());
-        if !reads.is_empty() {
-            while let Some(maybe_lck) = reads.next().await {
-                match maybe_lck {
-                    Some(lck) => {
-                        read_locks.push(lck);
-                    }
-                    _ => {
-                        return false;
-                    }
-                }
+
+        let _read_locks = match try_join_all(reads).await {
+            Ok(read_locks) => read_locks,
+            _ => {
+                return false;
             }
-        }
-        let mut write_locks = Vec::with_capacity(writes.len());
-        if !writes.is_empty() {
-            while !writes.is_terminated() {
-                while let Some(maybe_lck) = writes.next().await {
-                    match maybe_lck {
-                        Some(lck) => {
-                            write_locks.push(lck);
-                        }
-                        _ => {
-                            return false;
-                        }
-                    }
-                }
+        };
+
+        let write_locks = match try_join_all(writes).await {
+            Ok(write_locks) => write_locks,
+            _ => {
+                return false;
             }
-        }
+        };
+
         for write in write_locks.into_iter() {
             write.apply().await;
         }
