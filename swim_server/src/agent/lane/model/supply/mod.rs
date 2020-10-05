@@ -13,14 +13,23 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
-use crate::agent::{AgentContext, Eff, Lane, LaneTasks, SupplyLifecycleTasks};
+use crate::agent::{AgentContext, Eff, Lane, LaneTasks, StatelessLifecycleTasks};
 use futures::future::ready;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
 
+#[cfg(test)]
+mod tests;
+
+/// Model for a lane that publishes events received to all uplinks.
+///
+/// # Type Parameters
+///
+/// * `T` - The type of the events produced.
 #[derive(Debug, Clone)]
 pub struct SupplyLane<T> {
     sender: mpsc::Sender<T>,
@@ -38,8 +47,13 @@ where
         }
     }
 
+    /// Creates a new supplier to publish events.
     pub fn supplier(&self) -> mpsc::Sender<T> {
         self.sender.clone()
+    }
+
+    pub async fn supply(&mut self, data: T) -> Result<(), SendError<T>> {
+        self.sender.send(data).await
     }
 }
 
@@ -51,6 +65,8 @@ impl<T> LaneModel for SupplyLane<T> {
     }
 }
 
+/// Create a new supply lane model. Returns a new supply lane model and a stream that events can be
+/// received from.
 pub fn make_lane_model<T>(
     buffer_size: NonZeroUsize,
 ) -> (SupplyLane<T>, impl Stream<Item = T> + Send + 'static)
@@ -62,13 +78,13 @@ where
     (lane, rx)
 }
 
-impl Lane for SupplyLifecycleTasks {
+impl Lane for StatelessLifecycleTasks {
     fn name(&self) -> &str {
-        self.0.name.as_str()
+        self.name.as_str()
     }
 }
 
-impl<Agent, Context> LaneTasks<Agent, Context> for SupplyLifecycleTasks
+impl<Agent, Context> LaneTasks<Agent, Context> for StatelessLifecycleTasks
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
@@ -78,6 +94,6 @@ where
     }
 
     fn events(self: Box<Self>, _context: Context) -> Eff {
-        async { panic!() }.boxed()
+        ready(()).boxed()
     }
 }

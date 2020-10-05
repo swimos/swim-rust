@@ -20,6 +20,7 @@ use crate::agent::lane::lifecycle::{
 };
 use crate::agent::lane::model::action::{ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;

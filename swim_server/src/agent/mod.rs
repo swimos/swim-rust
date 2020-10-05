@@ -586,6 +586,10 @@ struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
+struct StatelessLifecycleTasks {
+    name: String,
+}
+
 impl<L, S, P> Lane for ValueLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
@@ -966,6 +970,13 @@ where
     (lane, tasks, lane_io)
 }
 
+/// Create a new supply lane.
+///
+/// #Arguments
+///
+/// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_supply_lane<Agent, Context, T>(
     name: impl Into<String>,
     is_public: bool,
@@ -982,7 +993,7 @@ where
 {
     let (lane, event_stream) = make_lane_model(buffer_size);
 
-    let tasks = SupplyLifecycleTasks(StatelessLifecycleTasks { name: name.into() });
+    let tasks = StatelessLifecycleTasks { name: name.into() };
 
     let lane_io = if is_public {
         Some(SupplyLaneIo::new(event_stream))
@@ -991,12 +1002,6 @@ where
     };
 
     (lane, tasks, lane_io)
-}
-
-struct SupplyLifecycleTasks(StatelessLifecycleTasks);
-
-struct StatelessLifecycleTasks {
-    name: String,
 }
 
 struct SupplyLaneIo<S> {
