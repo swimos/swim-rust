@@ -31,8 +31,10 @@ use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::{ItemSchema, StandardSchema};
 use crate::model::text::Text;
 use crate::model::{Item, Value, ValueKind};
+use base64::CharacterSet::Standard;
 use chrono::{DateTime, Local, LocalResult, TimeZone};
 use std::fmt::Display;
+use std::ops::Range;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
 impl Form for Blob {
@@ -854,5 +856,14 @@ impl Form for DateTime<Local> {
 
     fn try_convert(value: Value) -> Result<Self, FormErr> {
         Form::try_from_value(&value)
+    }
+}
+
+impl ValidatedForm for DateTime<Local> {
+    fn schema() -> StandardSchema {
+        StandardSchema::Or(vec![
+            StandardSchema::OfKind(ValueKind::Int64),
+            StandardSchema::OfKind(ValueKind::UInt64),
+        ])
     }
 }
