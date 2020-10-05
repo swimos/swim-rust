@@ -31,6 +31,8 @@ use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::{ItemSchema, StandardSchema};
 use crate::model::text::Text;
 use crate::model::{Item, Value, ValueKind};
+use chrono::{DateTime, Local, LocalResult, TimeZone};
+use std::fmt::Display;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
 impl Form for Blob {
@@ -811,5 +813,46 @@ impl Form for AtomicU64 {
 impl ValidatedForm for AtomicU64 {
     fn schema() -> StandardSchema {
         StandardSchema::OfKind(ValueKind::UInt64)
+    }
+}
+
+fn check_parse_time_result<T, V>(me: LocalResult<T>, ts: &V) -> Result<T, FormErr>
+where
+    V: Display,
+{
+    match me {
+        LocalResult::Single(val) => Ok(val),
+        _ => Err(FormErr::Message(format!(
+            "Failed to parse timestamp: {}",
+            ts
+        ))),
+    }
+}
+
+impl Form for DateTime<Local> {
+    fn as_value(&self) -> Value {
+        Value::Int64Value(self.timestamp_nanos())
+    }
+
+    fn into_value(self) -> Value {
+        Value::Int64Value(self.timestamp_nanos())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::UInt64Value(n) => check_parse_time_result(
+                Local.timestamp_opt((n / 1_000_000_000) as i64, (n % 1_000_000_000) as u32),
+                n,
+            ),
+            Value::Int64Value(n) => check_parse_time_result(
+                Local.timestamp_opt(n / 1_000_000_000, (n % 1_000_000_000) as u32),
+                n,
+            ),
+            _ => Err(FormErr::Malformatted),
+        }
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormErr> {
+        Form::try_from_value(&value)
     }
 }

@@ -20,6 +20,7 @@ use crate::form::Form;
 use crate::model::{Attr, Item, Value};
 
 use crate::model::blob::Blob;
+use chrono::{DateTime, Local};
 use num_bigint::{BigInt, BigUint};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64};
 
@@ -475,4 +476,13 @@ mod field_collections {
         ll.push_back(5);
         ll
     });
+}
+
+#[test]
+fn test_local_time() {
+    let now = Local::now();
+    let value = now.as_value();
+
+    assert_eq!(Value::Int64Value(now.timestamp_nanos()), value);
+    assert_eq!(DateTime::try_convert(value), Ok(now))
 }
