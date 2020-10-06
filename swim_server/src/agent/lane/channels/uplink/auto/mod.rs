@@ -14,7 +14,8 @@
 
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
-    AddressedUplinkMessage, UplinkAction, UplinkError, UplinkMessage, UplinkMessageSender,
+    AddressedUplinkMessage, UplinkAction, UplinkError, UplinkKind, UplinkMessage,
+    UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
 use crate::routing::{RoutingAddr, ServerRouter};
@@ -33,10 +34,23 @@ use tracing::{event, Level};
 #[cfg(test)]
 mod tests;
 
-/// Manages remote uplinks to a [`SupplyLane`].
+const LINKING: &str = "Linking uplink a ";
+const SYNCING: &str = "Syncing with a ";
+const UNLINKING: &str = "Unlinking from a ";
+const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
+const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
+
+fn format_debug_event(uplink_kind: UplinkKind, msg: &'static str) {
+    let event_str = format!("{:?} {} lane ", uplink_kind, msg);
+    event!(Level::DEBUG, "{}", event_str.as_str());
+}
+
+/// Automatically links and syncs (no-op) uplinks. Either sending events directly to an uplink or
+/// broadcasting them to all uplinks.
 pub struct AutoUplinks<S> {
     producer: S,
     route: RelativePath,
+    uplink_kind: UplinkKind,
 }
 
 impl<S, F> AutoUplinks<S>
@@ -44,16 +58,14 @@ where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
 {
-    pub fn new(producer: S, route: RelativePath) -> Self {
-        AutoUplinks { producer, route }
+    pub fn new(producer: S, route: RelativePath, uplink_kind: UplinkKind) -> Self {
+        AutoUplinks {
+            producer,
+            route,
+            uplink_kind,
+        }
     }
 }
-
-const LINKING: &str = "Linking uplink a supply lane.";
-const SYNCING: &str = "Syncing with a supply lane (this is a no-op).";
-const UNLINKING: &str = "Unlinking from an supply lane.";
-const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
-const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
 
 impl<S, F> AutoUplinks<S>
 where
@@ -68,7 +80,11 @@ where
     ) where
         Router: ServerRouter,
     {
-        let AutoUplinks { route, producer } = self;
+        let AutoUplinks {
+            route,
+            producer,
+            uplink_kind,
+        } = self;
         let mut uplinks: Uplinks<F, Router> = Uplinks::new(router, err_tx, route);
 
         let uplink_actions = uplink_actions.fuse();
@@ -108,7 +124,7 @@ where
                 },
                 Either::Right(Some(TaggedAction(addr, act))) => match act {
                     UplinkAction::Link => {
-                        event!(Level::DEBUG, LINKING);
+                        format_debug_event(uplink_kind, LINKING);
                         if uplinks.send_msg(UplinkMessage::Linked, addr).await.is_err() {
                             break;
                         }
@@ -116,10 +132,10 @@ where
                     UplinkAction::Sync => {
                         let linked = uplinks.uplinks.contains_key(&addr);
                         if !linked {
-                            event!(Level::DEBUG, LINKING);
+                            format_debug_event(uplink_kind, LINKING);
                             match uplinks.send_msg(UplinkMessage::Linked, addr).await {
                                 Ok(true) => {
-                                    event!(Level::DEBUG, SYNCING);
+                                    format_debug_event(uplink_kind, SYNCING);
                                     if uplinks.send_msg(UplinkMessage::Synced, addr).await.is_err()
                                     {
                                         break;
@@ -131,7 +147,7 @@ where
                                 _ => {}
                             }
                         } else {
-                            event!(Level::DEBUG, SYNCING);
+                            format_debug_event(uplink_kind, SYNCING);
                             if uplinks.send_msg(UplinkMessage::Synced, addr).await.is_err() {
                                 break;
                             }
@@ -142,7 +158,7 @@ where
                         }
                     }
                     UplinkAction::Unlink => {
-                        event!(Level::DEBUG, UNLINKING);
+                        format_debug_event(uplink_kind, UNLINKING);
                         if uplinks.unlink(addr).await.is_err() {
                             break;
                         }
@@ -289,7 +305,7 @@ where
             uplinks,
             err_tx,
             route,
-            _input,
+            ..
         } = self;
         let msg: UplinkMessage<RespMsg<Msg>> = UplinkMessage::Unlinked;
         if let Some(sender) = uplinks.get_mut(&addr) {

@@ -23,7 +23,7 @@ use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::auto::AutoUplinks;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
-    AddressedUplinkMessage, MapLaneUplink, UplinkAction, ValueLaneUplink,
+    AddressedUplinkMessage, MapLaneUplink, UplinkAction, UplinkKind, ValueLaneUplink,
 };
 use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
@@ -517,7 +517,7 @@ where
         }
         .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-        let uplinks = AutoUplinks::new(feedback_rx, route.clone());
+        let uplinks = AutoUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
         let uplink_task = uplinks
             .run(uplink_rx, context.router_handle(), err_tx)
             .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
@@ -629,7 +629,7 @@ where
     let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
     let (err_tx, mut err_rx) = mpsc::channel(config.uplink_err_buffer.get());
     let stream = stream.map(AddressedUplinkMessage::broadcast);
-    let uplinks = AutoUplinks::new(stream, route.clone());
+    let uplinks = AutoUplinks::new(stream, route.clone(), UplinkKind::Supply);
     let envelope_task = envelope_task_with_uplinks(route.clone(), envelopes, uplink_tx);
 
     let uplink_task = uplinks
