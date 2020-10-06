@@ -1,3 +1,0 @@
-[submodule "client-config-cli"]
-	path = client-config-cli
-	url = git@github.com:swimos/rust-client-config-cli.git
