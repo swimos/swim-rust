@@ -619,47 +619,6 @@ where
     }
 }
 
-pub async fn envelope_task_with_uplinks(
-    route: RelativePath,
-    envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    mut actions: mpsc::Sender<TaggedAction>,
-) -> bool {
-    pin_mut!(envelopes);
-
-    let envelopes = envelopes.fuse();
-    pin_mut!(envelopes);
-
-    let mut failed = false;
-
-    while let Some(TaggedClientEnvelope(addr, envelope)) = envelopes.next().await {
-        let OutgoingLinkMessage { header, .. } = envelope;
-
-        let sent = match header {
-            OutgoingHeader::Link(_) => {
-                send_action(&mut actions, &route, addr, UplinkAction::Link).await
-            }
-            OutgoingHeader::Sync(_) => {
-                send_action(&mut actions, &route, addr, UplinkAction::Sync).await
-            }
-            OutgoingHeader::Unlink => {
-                send_action(&mut actions, &route, addr, UplinkAction::Unlink).await
-            }
-            OutgoingHeader::Command => {
-                event!(Level::ERROR, UNSUPPORTED_ACTION, ?route, ?addr, ?header);
-                false
-            }
-        };
-        if !sent {
-            failed = true;
-            break;
-        }
-    }
-
-    drop(actions);
-
-    failed
-}
-
 async fn action_envelope_task_with_uplinks<Cmd>(
     route: RelativePath,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
