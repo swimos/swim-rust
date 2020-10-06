@@ -192,7 +192,7 @@ impl PlaneLifecycle for TestLifecycle {
     fn on_start<'a>(&'a mut self, context: &'a mut dyn PlaneContext) -> BoxFuture<'a, ()> {
         async move {
             let result = context
-                .get_agent(format!("/{}/hello", SENDER_PREFIX).parse().unwrap())
+                .get_agent_ref(format!("/{}/hello", SENDER_PREFIX).parse().unwrap())
                 .await;
             assert!(result.is_ok());
             let agent = result.unwrap();
