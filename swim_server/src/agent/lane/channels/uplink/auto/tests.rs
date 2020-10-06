@@ -338,19 +338,13 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         drop(action_tx);
         drop(response_tx);
 
-        check_receive(
-            &mut router_rx,
-            addr1,
-            Envelope::unlinked(&route.node, &route.lane),
-        )
-        .await;
+        let addrs = vec![addr1, addr2];
 
-        check_receive(
-            &mut router_rx,
-            addr2,
-            Envelope::unlinked(&route.node, &route.lane),
-        )
-        .await;
+        for _ in &addrs {
+            let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
+            assert_eq!(envelope, Envelope::unlinked(&route.node, &route.lane));
+            assert!(addrs.contains(&rec_addr));
+        }
     };
 
     join(uplinks_task, assertion_task).await;
