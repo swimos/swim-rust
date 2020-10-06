@@ -14,7 +14,7 @@
 
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
-    UplinkAction, UplinkError, UplinkMessage, UplinkMessageSender,
+    AddressedUplinkMessage, UplinkAction, UplinkError, UplinkMessage, UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
 use crate::routing::{RoutingAddr, ServerRouter};
@@ -33,28 +33,32 @@ use tracing::{event, Level};
 #[cfg(test)]
 mod tests;
 
-/// Manages remote uplinks to an [`ActionLane`].
-pub struct ActionLaneUplinks<Response> {
-    responses: mpsc::Receiver<(RoutingAddr, Response)>,
+/// Manages remote uplinks to a [`SupplyLane`].
+pub struct AutoUplinks<S> {
+    producer: S,
     route: RelativePath,
 }
 
-impl<Response> ActionLaneUplinks<Response> {
-    pub fn new(responses: mpsc::Receiver<(RoutingAddr, Response)>, route: RelativePath) -> Self {
-        ActionLaneUplinks { responses, route }
+impl<S, F> AutoUplinks<S>
+where
+    S: Stream<Item = AddressedUplinkMessage<F>>,
+    F: Send + Sync + Form + 'static,
+{
+    pub fn new(producer: S, route: RelativePath) -> Self {
+        AutoUplinks { producer, route }
     }
 }
 
-const LINKING: &str = "Linking uplink an action lane.";
-const SYNCING: &str = "Syncing with an action lane (this is a no-op).";
-const UNLINKING: &str = "Unlinking from an action lane.";
-const AWAITING_PENDING: &str = "Awaiting pending responses.";
+const LINKING: &str = "Linking uplink a supply lane.";
+const SYNCING: &str = "Syncing with a supply lane (this is a no-op).";
+const UNLINKING: &str = "Unlinking from an supply lane.";
 const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
 const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
 
-impl<Response> ActionLaneUplinks<Response>
+impl<S, F> AutoUplinks<S>
 where
-    Response: Send + Sync + Form + 'static,
+    S: Stream<Item = AddressedUplinkMessage<F>>,
+    F: Send + Sync + Form + 'static,
 {
     pub async fn run<Router>(
         self,
@@ -64,27 +68,44 @@ where
     ) where
         Router: ServerRouter,
     {
-        let ActionLaneUplinks { responses, route } = self;
-
-        let mut uplinks: ActionUplinks<Response, Router> =
-            ActionUplinks::new(router, err_tx, route);
+        let AutoUplinks { route, producer } = self;
+        let mut uplinks: Uplinks<F, Router> = Uplinks::new(router, err_tx, route);
 
         let uplink_actions = uplink_actions.fuse();
-        let mut responses = responses.fuse();
+        let producer = producer.fuse();
+
         pin_mut!(uplink_actions);
+        pin_mut!(producer);
 
         loop {
-            let next: Either<Option<(RoutingAddr, Response)>, Option<TaggedAction>> = select_biased! {
-               response = responses.next() => Either::Left(response),
+            let next: Either<Option<AddressedUplinkMessage<F>>, Option<TaggedAction>> = select_biased! {
+               p = producer.next() => Either::Left(p),
                act = uplink_actions.next() => Either::Right(act),
             };
 
             match next {
-                Either::Left(Some((addr, response))) => {
-                    uplinks
-                        .send_if_open(UplinkMessage::Event(RespMsg(response)), addr)
-                        .await;
+                Either::Left(None) => {
+                    break;
                 }
+                Either::Left(Some(item)) => match item {
+                    AddressedUplinkMessage::Addressed {
+                        message,
+                        address: addr,
+                    } => {
+                        if uplinks
+                            .send_msg(UplinkMessage::Event(RespMsg(message)), addr)
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    AddressedUplinkMessage::Broadcast(message) => {
+                        if uplinks.broadcast_msg(message).await.is_err() {
+                            break;
+                        }
+                    }
+                },
                 Either::Right(Some(TaggedAction(addr, act))) => match act {
                     UplinkAction::Link => {
                         event!(Level::DEBUG, LINKING);
@@ -115,6 +136,10 @@ where
                                 break;
                             }
                         }
+
+                        if uplinks.insert(addr).is_err() {
+                            break;
+                        }
                     }
                     UplinkAction::Unlink => {
                         event!(Level::DEBUG, UNLINKING);
@@ -127,13 +152,6 @@ where
                     break;
                 }
             }
-        }
-
-        event!(Level::DEBUG, AWAITING_PENDING);
-        while let Some((addr, response)) = responses.next().await {
-            uplinks
-                .send_if_open(UplinkMessage::Event(RespMsg(response)), addr)
-                .await;
         }
 
         event!(Level::DEBUG, UNLINKING_ALL);
@@ -150,29 +168,45 @@ impl<R: Form> From<RespMsg<R>> for Value {
 }
 
 /// Wraps a map of uplinks and provides compound operations on them to the uplink task.
-struct ActionUplinks<Msg, Router: ServerRouter> {
+struct Uplinks<Msg, Router: ServerRouter> {
     router: Router,
     uplinks: HashMap<RoutingAddr, UplinkMessageSender<Router::Sender>>,
     err_tx: mpsc::Sender<UplinkErrorReport>,
     route: RelativePath,
-    _input: PhantomData<fn(Msg)>,
+    _input: PhantomData<Msg>,
 }
 
 struct RouterStopping;
 
-impl<Msg, Router> ActionUplinks<Msg, Router>
+impl<Msg, Router> Uplinks<Msg, Router>
 where
     Router: ServerRouter,
     Msg: Form,
 {
     fn new(router: Router, err_tx: mpsc::Sender<UplinkErrorReport>, route: RelativePath) -> Self {
-        ActionUplinks {
+        Uplinks {
             router,
             uplinks: HashMap::new(),
             err_tx,
             route,
             _input: PhantomData,
         }
+    }
+
+    /// Broadcast the message to all uplinks.
+    async fn broadcast_msg(&mut self, value: Msg) -> Result<bool, RouterStopping> {
+        let value = value.into_value();
+
+        for (addr, sender) in &mut self.uplinks {
+            let msg = UplinkMessage::Event(RespMsg(value.clone()));
+
+            if sender.send_item(msg).await.is_err() {
+                handle_err(&mut self.err_tx, *addr).await;
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 
     /// Get the router handle associated with an address or create a new one if necessary.
@@ -189,7 +223,7 @@ where
     where
         Router: ServerRouter,
     {
-        let ActionUplinks {
+        let Uplinks {
             router,
             uplinks,
             route,
@@ -225,20 +259,32 @@ where
         }
     }
 
-    /// Send a message to the speciffied endpoint only if there is already a router handle in the
-    /// map.
-    async fn send_if_open(&mut self, msg: UplinkMessage<RespMsg<Msg>>, addr: RoutingAddr) {
-        if let Some(sender) = self.uplinks.get_mut(&addr) {
-            if sender.send_item(msg).await.is_err() {
-                handle_err(&mut self.err_tx, addr).await;
-                self.uplinks.remove(&addr);
-            }
+    fn insert(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping>
+    where
+        Router: ServerRouter,
+    {
+        let Uplinks {
+            router,
+            uplinks,
+            route,
+            ..
+        } = self;
+
+        match uplinks.entry(addr) {
+            Entry::Occupied(_) => Ok(()),
+            Entry::Vacant(vacant) => match router.get_sender(addr) {
+                Ok(sender) => {
+                    vacant.insert(UplinkMessageSender::new(sender, route.clone()));
+                    Ok(())
+                }
+                _ => Err(RouterStopping),
+            },
         }
     }
 
     /// Remove the uplink to a specified endpoint, sending an unlink message if possible.
     async fn unlink(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping> {
-        let ActionUplinks {
+        let Uplinks {
             router,
             uplinks,
             err_tx,
@@ -261,9 +307,9 @@ where
         }
     }
 
-    /// Attempt to send an unlink mesage to all remaining uplinks.
+    /// Attempt to send an unlink message to all remaining uplinks.
     async fn unlink_all(self) {
-        let ActionUplinks {
+        let Uplinks {
             uplinks,
             mut err_tx,
             ..

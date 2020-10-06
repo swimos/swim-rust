@@ -15,6 +15,7 @@
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
+use crate::routing::RoutingAddr;
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, StreamExt};
@@ -35,10 +36,9 @@ use tracing::{event, span, Level};
 #[cfg(test)]
 mod tests;
 
-pub mod action;
+pub mod auto;
 pub mod map;
 pub(crate) mod spawn;
-pub mod supply;
 
 /// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -63,6 +63,25 @@ pub enum UplinkMessage<Ev> {
     Synced,
     Unlinked,
     Event(Ev),
+}
+
+/// An addressed uplink message. Either to be broadcast to all uplinks or to a single address.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum AddressedUplinkMessage<Ev> {
+    /// Broadcast the `UplinkMessage` to all uplinks.
+    Broadcast(Ev),
+    /// Send the `UplinkMessage` to the `RoutingAddr`.
+    Addressed { message: Ev, address: RoutingAddr },
+}
+
+impl<Ev> AddressedUplinkMessage<Ev> {
+    pub fn broadcast(message: Ev) -> AddressedUplinkMessage<Ev> {
+        AddressedUplinkMessage::Broadcast(message)
+    }
+
+    pub fn addressed(message: Ev, address: RoutingAddr) -> AddressedUplinkMessage<Ev> {
+        AddressedUplinkMessage::Addressed { message, address }
+    }
 }
 
 /// Error conditions for the task running an uplink.
