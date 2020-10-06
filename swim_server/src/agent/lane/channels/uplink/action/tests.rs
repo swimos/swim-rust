@@ -18,14 +18,16 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError};
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::Eff;
+use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
-use futures::future::{join, BoxFuture};
+use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
+use url::Url;
 
 struct TestContext(TestRouter, mpsc::Sender<Eff>);
 #[derive(Clone, Debug)]
@@ -36,8 +38,16 @@ struct TestSender(RoutingAddr, mpsc::Sender<TaggedEnvelope>);
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        Ok(TestSender(addr, self.0.clone()))
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        ready(Ok(TestSender(addr, self.0.clone()))).boxed()
+    }
+
+    fn resolve(
+        &mut self,
+        _host: Option<Url>,
+        _route: String,
+    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+        panic!("Unexpected resolution attempt.")
     }
 }
 

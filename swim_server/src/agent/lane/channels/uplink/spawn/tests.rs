@@ -19,15 +19,15 @@ use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkEr
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
+use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
-use futures::future::BoxFuture;
-use futures::future::{join, join3, ready};
+use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::{Form, FormErr};
@@ -39,6 +39,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use url::Url;
 
 const INIT: i32 = 42;
 
@@ -86,11 +87,20 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        Ok(TestSender {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        ready(Ok(TestSender {
             addr,
             inner: self.0.clone(),
-        })
+        }))
+        .boxed()
+    }
+
+    fn resolve(
+        &mut self,
+        _host: Option<Url>,
+        _route: String,
+    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+        panic!("Unexpected resolution attempt.")
     }
 }
 

@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use pin_utils::core_reexport::fmt::Formatter;
-use std::fmt::Display;
+use crate::plane::error::ResolutionError;
+use futures::future::BoxFuture;
+use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSender, ItemSink};
+use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
+use url::Url;
 
 #[cfg(test)]
 mod tests;
@@ -44,13 +46,21 @@ impl RoutingAddr {
     pub const fn local(id: u32) -> Self {
         RoutingAddr(Location::Local(id))
     }
+
+    pub fn is_local(&self) -> bool {
+        matches!(self, RoutingAddr(Location::Local(_)))
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, RoutingAddr(Location::RemoteEndpoint(_)))
+    }
 }
 
 impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote Endpoint ({:X})", id),
-            RoutingAddr(Location::Local(id)) => write!(f, "Local consumer ({:X})", id),
+            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
+            RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
         }
     }
 }
@@ -74,54 +84,11 @@ impl TaggedClientEnvelope {
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError>;
-}
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>>;
 
-pub struct SingleChannelRouter<Inner>(Inner);
-
-impl<Inner> SingleChannelRouter<Inner>
-where
-    Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone,
-{
-    pub(crate) fn new(sender: Inner) -> Self {
-        SingleChannelRouter(sender)
-    }
-}
-
-pub struct SingleChannelSender<Inner> {
-    inner: Inner,
-    destination: RoutingAddr,
-}
-
-impl<Inner> SingleChannelSender<Inner>
-where
-    Inner: ItemSender<TaggedEnvelope, RoutingError>,
-{
-    fn new(inner: Inner, destination: RoutingAddr) -> Self {
-        SingleChannelSender { inner, destination }
-    }
-}
-
-impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
-where
-    Inner: ItemSink<'a, TaggedEnvelope, Error = RoutingError>,
-{
-    type Error = RoutingError;
-    type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
-
-    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        let msg = TaggedEnvelope(self.destination, value);
-        self.inner.send_item(msg)
-    }
-}
-
-impl<Inner> ServerRouter for SingleChannelRouter<Inner>
-where
-    Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
-{
-    type Sender = SingleChannelSender<Inner>;
-
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        Ok(SingleChannelSender::new(self.0.clone(), addr))
-    }
+    fn resolve(
+        &mut self,
+        host: Option<Url>,
+        route: String,
+    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
 }

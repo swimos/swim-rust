@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod context;
+pub(crate) mod context;
 pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;
@@ -34,38 +34,34 @@ use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
-use pin_utils::core_reexport::fmt::Formatter;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::DiscardingSender;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
 /// TODO Write derive macro for SwimAgent.
-pub trait SwimAgent<Config>: Sized {
+pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
     fn instantiate<Context>(
         configuration: &Config,
@@ -95,12 +91,14 @@ const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.
 
 #[derive(Debug)]
 pub struct AgentResult {
+    pub route: String,
     pub dispatcher_errors: DispatcherErrors,
     pub failed: bool,
 }
 
 impl AgentResult {
     fn from(
+        route: String,
         result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
     ) -> Self {
         let (errs, failed) = match result {
@@ -109,8 +107,33 @@ impl AgentResult {
             _ => (Default::default(), true),
         };
         AgentResult {
+            route,
             dispatcher_errors: errs,
             failed,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AgentParameters<Config> {
+    agent_config: Config,
+    execution_config: AgentExecutionConfig,
+    uri: String,
+    parameters: HashMap<String, String>,
+}
+
+impl<Config> AgentParameters<Config> {
+    pub fn new(
+        agent_config: Config,
+        execution_config: AgentExecutionConfig,
+        uri: String,
+        parameters: HashMap<String, String>,
+    ) -> Self {
+        AgentParameters {
+            agent_config,
+            execution_config,
+            uri,
+            parameters,
         }
     }
 }
@@ -124,34 +147,47 @@ impl AgentResult {
 /// * `url` - The node URL for the agent instance.
 /// * `clock` - Clock for timing asynchronous events.
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
-pub async fn run_agent<Config, Clk, Agent, L>(
-    configuration: Config,
+/// * `parameters` - Parameters extracted from the agent node route pattern.
+/// * `incoming_envelopes` - The stream of envelopes routed to the agent.
+pub fn run_agent<Config, Clk, Agent, L, Router>(
     lifecycle: L,
-    url: Url,
-    execution_config: AgentExecutionConfig,
     clock: Clk,
+    parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
-) -> AgentResult
+    router: Router,
+) -> (
+    Arc<Agent>,
+    impl Future<Output = AgentResult> + Send + 'static,
+)
 where
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
-    L: AgentLifecycle<Agent>,
+    L: AgentLifecycle<Agent> + Send + Sync + 'static,
+    Router: ServerRouter + Clone + 'static,
 {
-    let span = span!(Level::INFO, AGENT_TASK, %url);
+    let AgentParameters {
+        agent_config,
+        execution_config,
+        uri,
+        parameters,
+    } = parameters;
+
+    let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
-    async {
-        let (agent, tasks, io_providers) = Agent::instantiate::<
-            ContextImpl<Agent, Clk, DiscardingSender<RoutingError>>,
-        >(&configuration);
-        let agent_ref = Arc::new(agent);
+    let (agent, tasks, io_providers) =
+        Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config);
+    let agent_ref = Arc::new(agent);
+    let agent_cpy = agent_ref.clone();
+    let task = async move {
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let context = ContextImpl::new(
             agent_ref,
-            url.clone(),
+            uri.clone(),
             tx,
             clock,
             stop_trigger.clone(),
-            DiscardingSender::default(),
+            router,
+            parameters,
         );
 
         lifecycle
@@ -185,12 +221,8 @@ where
             );
         }
 
-        let dispatcher = AgentDispatcher::new(
-            url.to_string(),
-            execution_config,
-            context.clone(),
-            io_providers,
-        );
+        let dispatcher =
+            AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
 
         let (result_tx, result_rx) = oneshot::channel();
 
@@ -212,10 +244,10 @@ where
             .map(|_| ()) //Never is an empty type so we can discard the errors.
             .await;
 
-        AgentResult::from(result_rx.await)
+        AgentResult::from(uri, result_rx.await)
     }
-    .instrument(span)
-    .await
+    .instrument(span);
+    (agent_cpy, task)
 }
 
 pub type Eff = BoxFuture<'static, ()>;
@@ -307,11 +339,17 @@ pub trait AgentContext<Agent> {
     /// Access the agent instance.
     fn agent(&self) -> &Agent;
 
-    /// Get the node URL of the agent instance.
-    fn node_url(&self) -> &Url;
+    /// Get the node URI of the agent instance.
+    fn node_uri(&self) -> &str;
 
     /// Get a future that will complete when the agent is stopping.
     fn agent_stop_event(&self) -> trigger::Receiver;
+
+    /// Get the value of a parameter extracted from the agent node route.
+    fn parameter(&self, key: &str) -> Option<&String>;
+
+    /// Get a copy of all parameters extracted from the agent node route.
+    fn parameters(&self) -> HashMap<String, String>;
 }
 
 pub trait Lane {
