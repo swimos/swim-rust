@@ -20,7 +20,8 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope};
+use crate::routing::remote::ConnectionDropped;
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedClientEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, TryFutureExt};
 use parking_lot::Mutex;
@@ -36,6 +37,7 @@ use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use url::Url;
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -57,10 +59,35 @@ impl<'a> ItemSink<'a, Envelope> for MockSender {
 }
 
 #[derive(Debug)]
+struct RouteReceiver {
+    receiver: Option<mpsc::Receiver<Envelope>>,
+    _drop_tx: promise::Sender<ConnectionDropped>,
+}
+
+impl RouteReceiver {
+    fn new(
+        receiver: mpsc::Receiver<Envelope>,
+        drop_tx: promise::Sender<ConnectionDropped>,
+    ) -> Self {
+        RouteReceiver {
+            receiver: Some(receiver),
+            _drop_tx: drop_tx,
+        }
+    }
+
+    fn taken(drop_tx: promise::Sender<ConnectionDropped>) -> Self {
+        RouteReceiver {
+            receiver: None,
+            _drop_tx: drop_tx,
+        }
+    }
+}
+
+#[derive(Debug)]
 struct MockRouterInner {
     buffer_size: usize,
-    senders: HashMap<RoutingAddr, mpsc::Sender<Envelope>>,
-    receivers: HashMap<RoutingAddr, mpsc::Receiver<Envelope>>,
+    senders: HashMap<RoutingAddr, Route<MockSender>>,
+    receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
 impl MockRouterInner {
@@ -79,7 +106,10 @@ pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 impl ServerRouter for MockRouter {
     type Sender = MockSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn get_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {
@@ -91,12 +121,13 @@ impl ServerRouter for MockRouter {
                 Entry::Occupied(entry) => entry.get().clone(),
                 Entry::Vacant(entry) => {
                     let (tx, rx) = mpsc::channel(*buffer_size);
-                    entry.insert(tx.clone());
-                    receivers.insert(addr, rx);
-                    tx
+                    let (drop_tx, drop_rx) = promise::promise();
+                    entry.insert(Route::new(MockSender(tx.clone()), drop_rx.clone()));
+                    receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
+                    Route::new(MockSender(tx), drop_rx)
                 }
             };
-            Ok(MockSender(tx))
+            Ok(tx)
         }
         .boxed()
     }
@@ -144,10 +175,12 @@ impl MockExecutionContext {
             receivers,
         } = &mut *lock;
         match senders.entry(*addr) {
-            Entry::Occupied(_) => receivers.remove(addr),
+            Entry::Occupied(_) => receivers.get_mut(addr).and_then(|rr| rr.receiver.take()),
             Entry::Vacant(entry) => {
                 let (tx, rx) = mpsc::channel(*buffer_size);
-                entry.insert(tx);
+                let (drop_tx, drop_rx) = promise::promise();
+                entry.insert(Route::new(MockSender(tx), drop_rx));
+                receivers.insert(*addr, RouteReceiver::taken(drop_tx));
                 Some(rx)
             }
         }
@@ -194,7 +227,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
                                 if let Ok(sender) = router.get_sender(addr).await {
-                                    entry.insert(sender)
+                                    entry.insert(sender.sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(
                                         route.clone(),

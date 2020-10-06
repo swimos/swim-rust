@@ -26,7 +26,7 @@ use std::sync::Arc;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct PromiseInner<T>(Arc<UnsafeCell<Option<Arc<T>>>>);
 
 unsafe impl<T: Send> Send for PromiseInner<T> {}
@@ -40,10 +40,19 @@ pub struct Sender<T> {
 }
 
 /// Receive half of the promise that can await the completion promise and provide access to the value.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Receiver<T> {
     trigger: trigger::Receiver,
     data: PromiseInner<T>,
+}
+
+impl<T> Clone for Receiver<T> {
+    fn clone(&self) -> Self {
+        Receiver {
+            trigger: self.trigger.clone(),
+            data: PromiseInner(self.data.0.clone()),
+        }
+    }
 }
 
 /// A promise allows a value to be provided, exactly once, at some time in the future.

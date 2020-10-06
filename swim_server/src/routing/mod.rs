@@ -13,14 +13,17 @@
 // limitations under the License.
 
 use crate::plane::error::ResolutionError;
+use crate::routing::remote::ConnectionDropped;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use url::Url;
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
+pub mod remote;
 #[cfg(test)]
 mod tests;
 pub mod ws;
@@ -82,11 +85,26 @@ impl TaggedClientEnvelope {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Route<Sender> {
+    pub sender: Sender,
+    pub on_drop: promise::Receiver<ConnectionDropped>,
+}
+
+impl<Sender> Route<Sender> {
+    pub fn new(sender: Sender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
+        Route { sender, on_drop }
+    }
+}
+
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>>;
+    fn get_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>>;
 
     fn resolve(
         &mut self,

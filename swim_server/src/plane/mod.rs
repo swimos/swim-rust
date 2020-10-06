@@ -27,7 +27,8 @@ use crate::plane::context::PlaneContext;
 use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::routing::remote::ConnectionDropped;
+use crate::routing::{Route, RoutingAddr, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -46,7 +47,7 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
 use utilities::route_pattern::RoutePattern;
-use utilities::sync::trigger;
+use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;
 use utilities::uri::RelativeUri;
 
@@ -88,6 +89,8 @@ type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, 
 struct LocalEndpoint {
     agent_handle: Weak<dyn Any + Send + Sync>,
     channel: mpsc::Sender<TaggedEnvelope>,
+    _drop_tx: promise::Sender<ConnectionDropped>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
 }
 
 impl LocalEndpoint {
@@ -95,10 +98,20 @@ impl LocalEndpoint {
         agent_handle: Weak<dyn Any + Send + Sync>,
         channel: mpsc::Sender<TaggedEnvelope>,
     ) -> Self {
+        let (drop_tx, drop_rx) = promise::promise();
         LocalEndpoint {
             agent_handle,
             channel,
+            _drop_tx: drop_tx,
+            drop_rx,
         }
+    }
+
+    fn route(&self) -> Route<mpsc::Sender<TaggedEnvelope>> {
+        let LocalEndpoint {
+            channel, drop_rx, ..
+        } = self;
+        Route::new(channel.clone(), drop_rx.clone())
     }
 }
 
@@ -147,7 +160,7 @@ impl PlaneActiveRoutes {
 }
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable>>;
+type EndpointRequest = Request<Result<Route<mpsc::Sender<TaggedEnvelope>>, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
 
@@ -404,7 +417,7 @@ pub async fn run_plane<Clk, S>(
                         let result = if let Some(tx) = resolver
                             .active_routes
                             .get_endpoint(&id)
-                            .map(|ep| ep.channel.clone())
+                            .map(LocalEndpoint::route)
                         {
                             Ok(tx)
                         } else {

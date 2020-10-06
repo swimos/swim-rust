@@ -15,13 +15,14 @@
 use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory, PlaneRouterSender};
 use crate::plane::PlaneRequest;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::sync::promise;
 
 #[tokio::test]
 async fn plane_router_sender() {
@@ -49,6 +50,7 @@ async fn plane_router_get_sender() {
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
     let (send_tx, mut send_rx) = mpsc::channel(8);
+    let (_drop_tx, drop_rx) = promise::promise();
 
     let mut router = PlaneRouter::new(addr, req_tx);
 
@@ -56,7 +58,9 @@ async fn plane_router_get_sender() {
         while let Some(req) = req_rx.recv().await {
             if let PlaneRequest::Endpoint { id, request } = req {
                 if id == addr {
-                    assert!(request.send_ok(send_tx.clone()).is_ok());
+                    assert!(request
+                        .send_ok(Route::new(send_tx.clone(), drop_rx.clone()))
+                        .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(id)).is_ok());
                 }
@@ -71,6 +75,7 @@ async fn plane_router_get_sender() {
         assert!(result1.is_ok());
         let mut sender = result1.unwrap();
         assert!(sender
+            .sender
             .send_item(Envelope::linked("/node", "lane"))
             .await
             .is_ok());
