@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use percent_encoding::percent_decode_str;
-use pin_utils::core_reexport::fmt::Formatter;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use url::Url;
 
 #[cfg(test)]
@@ -24,13 +23,13 @@ mod tests;
 
 ///Pattern to match a '/'-separated route specifier. Pattern components can either be literal
 ///strings or named parameters, starting with ':'. For example "/path/:id".
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RoutePattern {
     pattern: String,
     segments: Vec<Segment>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct Segment {
     start: usize,
     end: usize,

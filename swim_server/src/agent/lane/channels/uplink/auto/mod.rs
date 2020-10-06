@@ -226,7 +226,7 @@ where
     }
 
     /// Get the router handle associated with an address or create a new one if necessary.
-    fn get_sender(
+    async fn get_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> Result<
@@ -248,7 +248,7 @@ where
         } = self;
         match uplinks.entry(addr) {
             Entry::Occupied(entry) => Ok((entry.into_mut(), err_tx)),
-            Entry::Vacant(vacant) => match router.get_sender(addr) {
+            Entry::Vacant(vacant) => match router.get_sender(addr).await {
                 Ok(sender) => Ok((
                     vacant.insert(UplinkMessageSender::new(sender, route.clone())),
                     err_tx,
@@ -265,7 +265,7 @@ where
         msg: UplinkMessage<RespMsg<Msg>>,
         addr: RoutingAddr,
     ) -> Result<bool, RouterStopping> {
-        let (sender, err_tx) = self.get_sender(addr)?;
+        let (sender, err_tx) = self.get_sender(addr).await?;
         if sender.send_item(msg).await.is_err() {
             handle_err(err_tx, addr).await;
             self.uplinks.remove(&addr);
@@ -314,7 +314,7 @@ where
             }
             uplinks.remove(&addr);
             Ok(())
-        } else if let Ok(sender) = router.get_sender(addr) {
+        } else if let Ok(sender) = router.get_sender(addr).await {
             let mut sender = UplinkMessageSender::new(sender, route.clone());
             let _ = sender.send_item(msg).await;
             Ok(())

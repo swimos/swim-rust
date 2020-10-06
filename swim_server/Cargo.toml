@@ -18,6 +18,7 @@ tracing = "0.1.16"
 [dependencies]
 either = "1.5.3"
 futures = "0.3.4"
+futures-util = "0.3.4"
 im = "15.0.0"
 parking_lot = "0.11.0"
 pin-project = "0.4.20"
