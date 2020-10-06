@@ -19,7 +19,7 @@ use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use std::fmt::Display;
 
 /// A structure representing the time that it was created.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Ord, PartialOrd, Hash)]
 pub struct Timestamp(DateTime<Utc>);
 
 impl AsRef<DateTime<Utc>> for Timestamp {
@@ -28,15 +28,18 @@ impl AsRef<DateTime<Utc>> for Timestamp {
     }
 }
 
-impl Into<DateTime<Utc>> for Timestamp {
-    fn into(self) -> DateTime<Utc> {
-        self.0
+impl<TZ> From<DateTime<TZ>> for Timestamp
+where
+    TZ: TimeZone,
+{
+    fn from(dt: DateTime<TZ>) -> Self {
+        Timestamp(dt.with_timezone(&Utc))
     }
 }
 
-impl From<DateTime<Utc>> for Timestamp {
-    fn from(dt: DateTime<Utc>) -> Self {
-        Timestamp(dt)
+impl From<Timestamp> for DateTime<Utc> {
+    fn from(ts: Timestamp) -> Self {
+        ts.0
     }
 }
 
