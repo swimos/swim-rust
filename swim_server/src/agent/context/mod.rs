@@ -13,22 +13,20 @@
 // limitations under the License.
 
 use crate::agent::{AgentContext, Eff};
-use crate::routing::{ServerRouter, SingleChannelRouter, TaggedEnvelope};
+use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Duration;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
@@ -40,12 +38,13 @@ mod tests;
 #[derive(Debug)]
 pub(super) struct ContextImpl<Agent, Clk, Router> {
     agent_ref: Arc<Agent>,
-    url: Url,
+    uri: String,
     scheduler: mpsc::Sender<Eff>,
     schedule_count: Arc<AtomicU64>,
     clock: Clk,
     stop_signal: trigger::Receiver,
     router: Router,
+    parameters: HashMap<String, String>,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -57,12 +56,13 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
     fn clone(&self) -> Self {
         ContextImpl {
             agent_ref: self.agent_ref.clone(),
-            url: self.url.clone(),
+            uri: self.uri.clone(),
             scheduler: self.scheduler.clone(),
             schedule_count: self.schedule_count.clone(),
             clock: self.clock.clone(),
             stop_signal: self.stop_signal.clone(),
             router: self.router.clone(),
+            parameters: self.parameters.clone(),
         }
     }
 }
@@ -70,20 +70,22 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
 impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        url: Url,
+        uri: String,
         scheduler: mpsc::Sender<Eff>,
         clock: Clk,
         stop_signal: trigger::Receiver,
         router: Router,
+        parameters: HashMap<String, String>,
     ) -> Self {
         ContextImpl {
             agent_ref,
-            url,
+            uri,
             scheduler,
             schedule_count: Default::default(),
             clock,
             stop_signal,
             router,
+            parameters,
         }
     }
 }
@@ -133,12 +135,20 @@ where
         self.agent_ref.as_ref()
     }
 
-    fn node_url(&self) -> &Url {
-        &self.url
+    fn node_uri(&self) -> &str {
+        self.uri.as_str()
     }
 
     fn agent_stop_event(&self) -> trigger::Receiver {
         self.stop_signal.clone()
+    }
+
+    fn parameter(&self, key: &str) -> Option<&String> {
+        self.parameters.get(key)
+    }
+
+    fn parameters(&self) -> HashMap<String, String> {
+        self.parameters.clone()
     }
 }
 
@@ -155,12 +165,12 @@ pub trait AgentExecutionContext {
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
 where
-    RouterInner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+    RouterInner: ServerRouter + Clone + 'static,
 {
-    type Router = SingleChannelRouter<RouterInner>;
+    type Router = RouterInner;
 
     fn router_handle(&self) -> Self::Router {
-        SingleChannelRouter::new(self.router.clone())
+        self.router.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {
