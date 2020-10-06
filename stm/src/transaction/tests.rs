@@ -306,8 +306,6 @@ async fn set_get_and_set() {
     assert_eq!(*after, 13);
 }
 
-// todo: SR-211
-#[ignore]
 #[tokio::test(threaded_scheduler)]
 async fn increment_concurrently() {
     let var = TVar::new(0);

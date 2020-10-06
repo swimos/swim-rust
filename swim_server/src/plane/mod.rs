@@ -82,7 +82,7 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug {
 
 type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, Router>>;
 
-/// Endpoing connected to an agent within the plane.
+/// Endpoint connected to an agent within the plane.
 #[derive(Debug)]
 struct LocalEndpoint {
     agent_handle: Weak<dyn Any + Send + Sync>,
@@ -183,7 +183,7 @@ impl ContextImpl {
 }
 
 impl PlaneContext for ContextImpl {
-    fn get_agent<'a>(
+    fn get_agent_ref<'a>(
         &'a mut self,
         route: String,
     ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
@@ -502,7 +502,7 @@ pub async fn run_plane<Clk, S>(
 
 type PlaneAgentRoute<Clk> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter>;
 
-/// Find he appropriate specification for a route along with any parameters derived from the
+/// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.
 fn route_for<'a, Clk>(
     route: &str,
