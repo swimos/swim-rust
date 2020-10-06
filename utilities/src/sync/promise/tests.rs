@@ -24,7 +24,6 @@ fn display_promise_error() {
 
 #[tokio::test]
 async fn await_promise() {
-
     let (tx, rx) = super::promise();
 
     let send_task = async move {
@@ -37,12 +36,10 @@ async fn await_promise() {
     };
 
     join(send_task, receive_task).await;
-
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn await_promise_threaded() {
-
     for _ in 0..10000 {
         let (tx, rx) = super::promise();
 
@@ -63,23 +60,18 @@ async fn await_promise_threaded() {
 
 #[tokio::test]
 async fn promise_sender_dropped() {
-
     let (tx, rx) = super::promise::<i32>();
 
     drop(tx);
     let result = rx.await;
     assert!(result.is_err());
-
 }
 
 #[test]
 fn promise_receiver_dropped() {
-
     let (tx, rx) = super::promise();
 
     drop(rx);
     let result = tx.provide(6);
     assert_eq!(result, Err(6));
-
 }
-

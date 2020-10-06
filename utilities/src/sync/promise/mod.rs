@@ -55,16 +55,21 @@ pub fn promise<T: Send + Sync>() -> (Sender<T>, Receiver<T>) {
             trigger: tx,
             data: PromiseInner(data.clone()),
         },
-        Receiver { trigger: rx, data: PromiseInner(data) },
+        Receiver {
+            trigger: rx,
+            data: PromiseInner(data),
+        },
     )
 }
 
 impl<T: Send + Sync> Sender<T> {
-
     /// Provide the value for the promise. This consumes the sender, which cannot be cloned, so the
     /// value can be provided exactly once.
     pub fn provide(self, value: T) -> Result<(), T> {
-        let Sender { trigger, data: PromiseInner(data) } = self;
+        let Sender {
+            trigger,
+            data: PromiseInner(data),
+        } = self;
         unsafe {
             *data.get() = Some(Arc::new(value));
             if trigger.trigger() {
