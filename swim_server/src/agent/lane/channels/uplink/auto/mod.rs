@@ -153,7 +153,7 @@ where
                             }
                         }
 
-                        if uplinks.insert(addr).is_err() {
+                        if uplinks.insert(addr).await.is_err() {
                             break;
                         }
                     }
@@ -275,7 +275,7 @@ where
         }
     }
 
-    fn insert(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping>
+    async fn insert(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping>
     where
         Router: ServerRouter,
     {
@@ -288,7 +288,7 @@ where
 
         match uplinks.entry(addr) {
             Entry::Occupied(_) => Ok(()),
-            Entry::Vacant(vacant) => match router.get_sender(addr) {
+            Entry::Vacant(vacant) => match router.get_sender(addr).await {
                 Ok(sender) => {
                     vacant.insert(UplinkMessageSender::new(sender, route.clone()));
                     Ok(())

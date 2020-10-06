@@ -173,7 +173,6 @@ const DISPATCH_COMMAND: &str = "Dispatching lane command.";
 const UPLINK_FAILED: &str = "An uplink failed with a non-fatal error.";
 const UPLINK_FATAL: &str = "An uplink failed with a fatal error.";
 const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
-const UNSUPPORTED_ACTION: &str = "Received an unsupported action";
 
 /// Run the [`Envelope`] IO for a lane, updating the state of the lane and creating uplinks to
 /// remote subscribers.

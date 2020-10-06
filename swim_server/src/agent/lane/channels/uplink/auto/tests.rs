@@ -24,7 +24,9 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::auto::AutoUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use url::Url;
 
 #[derive(Clone, Debug)]
 struct TestRouter(mpsc::Sender<TaggedEnvelope>);
@@ -35,8 +37,17 @@ struct TestSender(RoutingAddr, mpsc::Sender<TaggedEnvelope>);
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        Ok(TestSender(addr, self.0.clone()))
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        let res = TestSender(addr, self.0.clone());
+        async move { Ok(res) }.boxed()
+    }
+
+    fn resolve(
+        &mut self,
+        _host: Option<Url>,
+        _route: String,
+    ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
+        unimplemented!()
     }
 }
 
