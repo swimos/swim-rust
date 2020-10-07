@@ -20,6 +20,11 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+/// Model for a stateless, lazy, lane that uses its lifecycle to generate a value.
+///
+/// # Type Parameters
+///
+/// * `T` - The type of the events produced.
 #[derive(Debug)]
 pub struct DemandLane<Value> {
     sender: mpsc::Sender<()>,
@@ -46,11 +51,17 @@ impl<Value> DemandLane<Value> {
         }
     }
 
+    /// Create a new `DemandLaneController` that can be used to cue a value.
     pub fn controller(&self) -> DemandLaneController<Value> {
         DemandLaneController::new(self.sender.clone())
     }
 }
 
+/// A controller that can be used to cue a value to an associated `DemandLane`.
+///
+/// # Type Parameters
+///
+/// * `T` - The type of the events produced by the `DemandLane`.
 pub struct DemandLaneController<Value> {
     tx: mpsc::Sender<()>,
     _pd: PhantomData<Value>,
@@ -64,6 +75,7 @@ impl<Value> DemandLaneController<Value> {
         }
     }
 
+    /// Cue a value to the `DemandLane`. Returns whether or not the operation was successful.
     pub async fn cue(&mut self) -> bool {
         self.tx.send(()).await.is_ok()
     }
@@ -77,6 +89,8 @@ impl<Value> LaneModel for DemandLane<Value> {
     }
 }
 
+/// Create a new demand lane model. Returns a new demand lane model and a stream of unit values that
+/// represent a cue request.
 pub fn make_lane_model<Value>(
     buffer_size: NonZeroUsize,
 ) -> (DemandLane<Value>, impl Stream<Item = ()> + Send + 'static)

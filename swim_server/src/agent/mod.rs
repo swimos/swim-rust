@@ -1088,6 +1088,14 @@ where
     }
 }
 
+/// Create a new demand lane.
+///
+/// # Arguments
+///
+/// * `name` - The name of the lane.
+/// * `lifecycle` - Life-cycle event handler for the lane.
+/// * `projection` - A projection from the agent type to this lane.
+/// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_demand_lane<Agent, Context, Value, L>(
     name: impl Into<String>,
     lifecycle: L,
