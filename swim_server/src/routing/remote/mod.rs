@@ -22,4 +22,5 @@ pub enum ConnectionDropped {
     Closed,
     TimedOut(Duration),
     Failed(ConnectionFailed),
+    AgentFailed,
 }

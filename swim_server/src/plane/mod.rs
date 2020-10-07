@@ -89,7 +89,7 @@ type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, 
 struct LocalEndpoint {
     agent_handle: Weak<dyn Any + Send + Sync>,
     channel: mpsc::Sender<TaggedEnvelope>,
-    _drop_tx: promise::Sender<ConnectionDropped>,
+    drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
 }
 
@@ -102,7 +102,7 @@ impl LocalEndpoint {
         LocalEndpoint {
             agent_handle,
             channel,
-            _drop_tx: drop_tx,
+            drop_tx,
             drop_rx,
         }
     }
@@ -156,6 +156,18 @@ impl PlaneActiveRoutes {
 
     fn addr_for_route(&self, route: &RelativeUri) -> Option<RoutingAddr> {
         self.local_routes.get(route).copied()
+    }
+
+    fn remove_endpoint(&mut self, route: &RelativeUri) -> Option<LocalEndpoint> {
+        let PlaneActiveRoutes {
+            local_endpoints,
+            local_routes,
+        } = self;
+        if let Some(addr) = local_routes.remove(route) {
+            local_endpoints.remove(&addr)
+        } else {
+            None
+        }
     }
 }
 
@@ -480,6 +492,15 @@ pub async fn run_plane<Clk, S>(
                     dispatcher_errors,
                     failed,
                 })) => {
+                    if let Some(LocalEndpoint { drop_tx, .. }) =
+                        resolver.active_routes.remove_endpoint(&route)
+                    {
+                        let _ = if failed {
+                            drop_tx.provide(ConnectionDropped::AgentFailed)
+                        } else {
+                            drop_tx.provide(ConnectionDropped::Closed)
+                        };
+                    }
                     if failed {
                         event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_errors);
                     } else {
