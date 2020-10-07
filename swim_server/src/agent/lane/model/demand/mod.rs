@@ -46,8 +46,26 @@ impl<Value> DemandLane<Value> {
         }
     }
 
+    pub fn controller(&self) -> DemandLaneController<Value> {
+        DemandLaneController::new(self.sender.clone())
+    }
+}
+
+pub struct DemandLaneController<Value> {
+    tx: mpsc::Sender<()>,
+    _pd: PhantomData<Value>,
+}
+
+impl<Value> DemandLaneController<Value> {
+    fn new(tx: mpsc::Sender<()>) -> DemandLaneController<Value> {
+        DemandLaneController {
+            tx,
+            _pd: Default::default(),
+        }
+    }
+
     pub async fn cue(&mut self) -> bool {
-        self.sender.send(()).await.is_ok()
+        self.tx.send(()).await.is_ok()
     }
 }
 

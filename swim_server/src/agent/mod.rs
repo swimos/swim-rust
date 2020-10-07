@@ -1088,7 +1088,7 @@ where
     }
 }
 
-pub fn make_demand_lane<Agent, Context, Value, L, P>(
+pub fn make_demand_lane<Agent, Context, Value, L>(
     name: impl Into<String>,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &DemandLane<Value> + Send + Sync + 'static,
@@ -1103,7 +1103,6 @@ where
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     Value: Any + Send + Sync + Form + Debug,
     L: for<'l> DemandLaneLifecycle<'l, Value, Agent>,
-    P: Fn(&Agent) -> &DemandLane<Value> + AgentExecutionContext + Send + Sync + 'static,
 {
     let (lane, cue_stream) = model::demand::make_lane_model(buffer_size);
     let (response_tx, response_rx) = mpsc::channel(buffer_size.get());
@@ -1213,7 +1212,7 @@ where
 
             while let Some(_) = events.next().await {
                 if let Some(value) = lifecycle.on_cue(&model, &context).await {
-                    if response_tx.send(value).await.is_err() {}
+                    let _ = response_tx.send(value).await;
                 }
             }
         }
