@@ -24,6 +24,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use utilities::future::TransformMut;
 
 pub mod action;
+pub mod demand;
 pub mod map;
 pub mod supply;
 pub mod value;

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
@@ -185,4 +186,12 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Bu
     ) -> Self::EventFuture {
         ready(())
     }
+}
+
+pub trait DemandLaneLifecycle<'a, Value, Agent>: Send + Sync + 'static {
+    type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
+
+    fn on_cue<C>(&'a self, model: &'a DemandLane<Value>, context: &'a C) -> Self::OnCueFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
 }
