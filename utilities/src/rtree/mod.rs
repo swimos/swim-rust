@@ -1,71 +1,82 @@
 #[cfg(test)]
 mod tests;
 
+static MAX_CHILDREN: usize = 10;
+static MIN_CHILDREN: usize = 5;
+
 #[derive(Debug)]
 struct RTree {
-    max_children: usize,
-    min_children: usize,
-    root: Vec<Node>,
+    root: Node,
 }
 
 impl RTree {
-    fn new(max_children: usize, min_children: usize) -> Self {
-        if min_children > max_children / 2 {
-            //Todo maybe change this to a macro to have a compile time error.
-            panic!("The minimum number of children nodes must be less than half of the maximum number of children nodes!")
-        }
-
+    fn new() -> Self {
         RTree {
-            max_children,
-            min_children,
-            root: Vec::new(),
+            root: Node::Leaf(Vec::new()),
         }
     }
 
-    fn add(&mut self, item: Rect) {
-        if self.root.len() < self.max_children {
-            self.root.push(Node::new(item, self.max_children))
-        } else {
-            //Todo split
-            unimplemented!();
-        }
-    }
-
-    fn is_leaf(&self) -> bool {
-        self.root.is_empty()
+    fn insert(&mut self, item: Rect) {
+        self.root.insert(item)
     }
 }
 
 #[derive(Debug)]
-struct Node {
-    mbb: Rect,
-    capacity: usize,
-    children: Option<Vec<Node>>,
+enum Node {
+    Branch(Vec<Entry>),
+    Leaf(Vec<Rect>),
 }
 
 impl Node {
-    fn new(mbb: Rect, capacity: usize) -> Self {
-        Node {
-            mbb,
-            capacity,
-            children: None,
+    fn insert(&mut self, item: Rect) {
+        match self {
+            Node::Branch(entries) => {
+                let mut entries_iter = entries.iter_mut();
+
+                let mut min_entry = entries_iter.next().unwrap();
+                let (mut min_diff, mut min_rect) = min_entry.mbb.expand(&item);
+
+                for entry in entries_iter {
+                    let (diff, expanded_rect) = entry.mbb.expand(&item);
+
+                    if diff < min_diff {
+                        min_diff = diff;
+                        min_rect = expanded_rect;
+                        min_entry = entry;
+                    }
+                }
+
+                min_entry.insert(item, min_rect);
+            }
+            Node::Leaf(entries) => {
+                if entries.len() < MAX_CHILDREN {
+                    entries.push(item);
+                } else {
+                    // Split node
+                    unimplemented!()
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Entry {
+    mbb: Rect,
+    child: Node,
+}
+
+impl Entry {
+    fn new(item: Rect) -> Self {
+        Entry {
+            mbb: item,
+            child: Node::Leaf(Vec::new()),
         }
     }
 
-    fn add(&mut self, item: Rect) {
-        match &mut self.children {
-            Some(nodes) => {
-                if nodes.len() == self.capacity {
-                    unimplemented!();
-                } else {
-                    nodes.push(Node::new(item, self.capacity))
-                }
-            }
-            None => {
-                let children = vec![Node::new(item, self.capacity)];
-                self.children = Some(children);
-            }
-        }
+    fn insert(&mut self, item: Rect, expanded_rect: Rect) {
+        self.mbb = expanded_rect;
+        self.child.insert(item)
     }
 }
 
@@ -83,9 +94,39 @@ impl Rect {
             upper_right,
         }
     }
+
+    // Expand this rectangle in order to include the other rectangle.
+    fn expand(&self, other: &Rect) -> (i32, Rect) {
+        let mut new_lower_left = self.lower_left.clone();
+        let mut new_upper_right = self.upper_right.clone();
+
+        if self.lower_left.x > other.lower_left.x {
+            new_lower_left.x = other.lower_left.x;
+        }
+
+        if self.upper_right.x < other.upper_right.x {
+            new_upper_right.x = other.upper_right.x
+        }
+
+        if self.lower_left.y > other.lower_left.y {
+            new_lower_left.y = other.lower_left.y;
+        }
+
+        if self.upper_right.y < other.upper_right.y {
+            new_upper_right.y = other.upper_right.y
+        }
+
+        let expanded = Rect::new(new_lower_left, new_upper_right);
+
+        (expanded.area() - self.area(), expanded)
+    }
+
+    fn area(&self) -> i32 {
+        (self.upper_right.x - self.lower_left.x) * (self.upper_right.y - self.lower_left.y)
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Point {
     x: i32,
     y: i32,
