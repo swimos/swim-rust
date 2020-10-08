@@ -1218,7 +1218,7 @@ where
 
             pin_mut!(events);
 
-            while let Some(_) = events.next().await {
+            while events.next().await.is_some() {
                 if let Some(value) = lifecycle.on_cue(&model, &context).await {
                     let _ = response_tx.send(value).await;
                 }
