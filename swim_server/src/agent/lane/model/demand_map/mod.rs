@@ -15,22 +15,15 @@
 use crate::agent::lane::LaneModel;
 use futures::Stream;
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 /// Model for a stateless, lazy, lane that uses its lifecycle to generate a map from keys to values.
-///
-/// # Type Parameters
-///
-/// * `Key` - The type of the events produced.
 #[derive(Debug)]
 pub struct DemandMapLane<Key, Value> {
-    sender: mpsc::Sender<()>,
+    sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
     id: Arc<()>,
-    _key_pd: PhantomData<Key>,
-    _value_pd: PhantomData<Value>,
 }
 
 impl<Key, Value> Clone for DemandMapLane<Key, Value> {
@@ -38,19 +31,17 @@ impl<Key, Value> Clone for DemandMapLane<Key, Value> {
         DemandMapLane {
             sender: self.sender.clone(),
             id: self.id.clone(),
-            _key_pd: Default::default(),
-            _value_pd: Default::default(),
         }
     }
 }
 
 impl<Key, Value> DemandMapLane<Key, Value> {
-    pub(crate) fn new(sender: mpsc::Sender<()>) -> DemandMapLane<Key, Value> {
+    pub(crate) fn new(
+        sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+    ) -> DemandMapLane<Key, Value> {
         DemandMapLane {
             sender,
             id: Default::default(),
-            _key_pd: Default::default(),
-            _value_pd: Default::default(),
         }
     }
 
@@ -66,28 +57,60 @@ impl<Key, Value> DemandMapLane<Key, Value> {
 ///
 /// * `T` - The type of the events produced by the `DemandMapLane`.
 pub struct DemandMapLaneController<Key, Value> {
-    tx: mpsc::Sender<()>,
-    _key_pd: PhantomData<Key>,
-    _value_pd: PhantomData<Value>,
+    tx: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
 }
 
 impl<Key, Value> DemandMapLaneController<Key, Value> {
-    fn new(tx: mpsc::Sender<()>) -> DemandMapLaneController<Key, Value> {
-        DemandMapLaneController {
-            tx,
-            _key_pd: Default::default(),
-            _value_pd: Default::default(),
-        }
+    fn new(
+        tx: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+    ) -> DemandMapLaneController<Key, Value> {
+        DemandMapLaneController { tx }
     }
 
-    /// Cue a value to the `DemandMapLane`. Returns whether or not the operation was successful.
-    pub async fn cue(&mut self) -> bool {
-        self.tx.send(()).await.is_ok()
+    pub async fn sync(&mut self) -> oneshot::Receiver<Vec<Key>> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        let DemandMapLaneController { tx, .. } = self;
+
+        if tx.send(DemandMapLaneEvent::sync(resp_tx)).await.is_err() {
+            todo!("Logging")
+        }
+
+        resp_rx
+    }
+
+    pub async fn cue(&mut self, key: Key) -> oneshot::Receiver<Option<Value>> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        let DemandMapLaneController { tx, .. } = self;
+
+        if tx
+            .send(DemandMapLaneEvent::cue(key, resp_tx))
+            .await
+            .is_err()
+        {
+            todo!("Logging")
+        }
+
+        resp_rx
+    }
+}
+
+pub enum DemandMapLaneEvent<Key, Value> {
+    Sync(oneshot::Sender<Vec<Key>>),
+    Cue(oneshot::Sender<Option<Value>>, Key),
+}
+
+impl<Key, Value> DemandMapLaneEvent<Key, Value> {
+    fn sync(tx: oneshot::Sender<Vec<Key>>) -> DemandMapLaneEvent<Key, Value> {
+        DemandMapLaneEvent::Sync(tx)
+    }
+
+    fn cue(key: Key, tx: oneshot::Sender<Option<Value>>) -> DemandMapLaneEvent<Key, Value> {
+        DemandMapLaneEvent::Cue(tx, key)
     }
 }
 
 impl<Key, Value> LaneModel for DemandMapLane<Key, Value> {
-    type Event = ();
+    type Event = Key;
 
     fn same_lane(this: &Self, other: &Self) -> bool {
         Arc::ptr_eq(&this.id, &other.id)
@@ -100,9 +123,10 @@ pub fn make_lane_model<Key, Value>(
     buffer_size: NonZeroUsize,
 ) -> (
     DemandMapLane<Key, Value>,
-    impl Stream<Item = ()> + Send + 'static,
+    impl Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + 'static,
 )
 where
+    Key: Send + Sync + 'static,
     Value: Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());

@@ -198,7 +198,7 @@ pub trait DemandLaneLifecycle<'a, Value, Agent>: Send + Sync + 'static {
 }
 
 pub trait DemandMapLaneLifecycle<'a, Key, Value, Agent>: Send + Sync + 'static {
-    type OnSyncFuture: Future<Output = impl Iterator<Item = Key>> + Send + 'a;
+    type OnSyncFuture: Future<Output = Vec<Key>> + Send + 'a;
     type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
 
     fn on_sync<C>(
@@ -213,7 +213,7 @@ pub trait DemandMapLaneLifecycle<'a, Key, Value, Agent>: Send + Sync + 'static {
         &'a self,
         model: &'a DemandMapLane<Key, Value>,
         context: &'a C,
-        key: &Key,
+        key: Key,
     ) -> Self::OnCueFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;

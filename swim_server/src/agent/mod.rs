@@ -32,7 +32,7 @@ use crate::agent::lane::lifecycle::{
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
-use crate::agent::lane::model::demand_map::DemandMapLane;
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
@@ -624,23 +624,15 @@ struct LifecycleTasks<L, S, P> {
 }
 
 struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
-
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
-
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
-
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+struct DemandMapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
 struct DemandLifecycleTasks<L, S, P, Value> {
     tasks: LifecycleTasks<L, S, P>,
     response_tx: mpsc::Sender<Value>,
 }
-
-struct DemandMapLifecycleTasks<L, S, P, Value> {
-    tasks: LifecycleTasks<L, S, P>,
-    response_tx: mpsc::Sender<Value>,
-}
-
 struct StatelessLifecycleTasks {
     name: String,
 }
@@ -1238,30 +1230,25 @@ where
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Create a new demand lane.
+/// Create a new demand map lane.
 ///
 /// # Arguments
 ///
 /// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
     name: impl Into<String>,
+    is_public: bool,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &DemandLane<Value> + Send + Sync + 'static,
+    projection: impl Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
     DemandMapLane<Key, Value>,
     impl LaneTasks<Agent, Context>,
-    impl LaneIo<Context>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1270,61 +1257,54 @@ where
     Value: Any + Send + Sync + Form + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
 {
-    let (lane, cue_stream) = model::demand_map::make_lane_model(buffer_size);
-    let (response_tx, response_rx) = mpsc::channel(buffer_size.get());
+    let (lane, event_stream) = model::demand_map::make_lane_model(buffer_size);
 
-    let tasks = DemandLifecycleTasks {
-        tasks: LifecycleTasks {
-            name: name.into(),
-            lifecycle,
-            event_stream: cue_stream,
-            projection,
-        },
-        response_tx,
+    let tasks = DemandMapLifecycleTasks(LifecycleTasks {
+        name: name.into(),
+        lifecycle,
+        event_stream,
+        projection,
+    });
+
+    let lane_io = if is_public {
+        Some(DemandMapLaneIo::new(lane.clone()))
+    } else {
+        None
     };
-
-    let lane_io = DemandLaneIo::new(response_rx);
 
     (lane, tasks, lane_io)
 }
 
-struct DemandMapLaneIo<Value> {
-    response_rx: mpsc::Receiver<Value>,
+struct DemandMapLaneIo<Key, Value> {
+    lane: DemandMapLane<Key, Value>,
 }
 
-impl<Value> DemandLaneIo<Value>
+impl<Key, Value> DemandMapLaneIo<Key, Value>
 where
+    Key: Send + Sync + 'static,
     Value: Send + Sync + 'static,
 {
-    fn new(response_rx: mpsc::Receiver<Value>) -> DemandLaneIo<Value> {
-        DemandLaneIo { response_rx }
+    fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneIo<Key, Value> {
+        DemandMapLaneIo { lane }
     }
 }
 
-impl<Value, Context> LaneIo<Context> for DemandLaneIo<Value>
+impl<Key, Value, Context> LaneIo<Context> for DemandMapLaneIo<Key, Value>
 where
+    Key: Send + Sync + 'static,
     Value: Form + Send + Sync + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
-        route: RelativePath,
-        envelopes: Receiver<TaggedClientEnvelope>,
-        config: AgentExecutionConfig,
-        context: Context,
+        _route: RelativePath,
+        _envelopes: Receiver<TaggedClientEnvelope>,
+        _config: AgentExecutionConfig,
+        _context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let DemandLaneIo { response_rx } = self;
+        let DemandMapLaneIo { .. } = self;
 
-        Ok(
-            lane::channels::task::run_demand_lane_io(
-                envelopes,
-                config,
-                context,
-                route,
-                response_rx,
-            )
-            .boxed(),
-        )
+        unimplemented!()
     }
 
     fn attach_boxed(
@@ -1338,21 +1318,22 @@ where
     }
 }
 
-impl<L, S, P, Value> Lane for DemandLifecycleTasks<L, S, P, Value> {
+impl<L, S, P> Lane for DemandMapLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
-        self.tasks.name.as_str()
+        self.0.name.as_str()
     }
 }
 
-impl<Agent, Context, L, S, P, Value> LaneTasks<Agent, Context>
-    for DemandLifecycleTasks<L, S, P, Value>
+impl<Agent, Context, L, S, P, Key, Value> LaneTasks<Agent, Context>
+    for DemandMapLifecycleTasks<L, S, P>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = ()> + Send + Sync + 'static,
+    S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
+    Key: Any + Send + Sync + Debug,
     Value: Any + Send + Sync + Debug,
-    L: for<'l> DemandLaneLifecycle<'l, Value, Agent>,
-    P: Fn(&Agent) -> &DemandLane<Value> + Send + Sync + 'static,
+    L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
+    P: Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
 {
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
         ready(()).boxed()
@@ -1360,25 +1341,32 @@ where
 
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
-            let DemandLifecycleTasks {
-                tasks:
-                    LifecycleTasks {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    },
-                mut response_tx,
-            } = *self;
+            let DemandMapLifecycleTasks(LifecycleTasks {
+                lifecycle,
+                event_stream,
+                projection,
+                ..
+            }) = *self;
 
             let model = projection(context.agent()).clone();
             let events = event_stream.take_until(context.agent_stop_event());
 
             pin_mut!(events);
 
-            while events.next().await.is_some() {
-                if let Some(value) = lifecycle.on_cue(&model, &context).await {
-                    let _ = response_tx.send(value).await;
+            while let Some(event) = events.next().await {
+                match event {
+                    DemandMapLaneEvent::Sync(sender) => {
+                        let value = lifecycle.on_sync(&model, &context).await;
+                        if sender.send(value).is_err() {
+                            todo!("Logging")
+                        }
+                    }
+                    DemandMapLaneEvent::Cue(sender, key) => {
+                        let value = lifecycle.on_cue(&model, &context, key).await;
+                        if sender.send(value).is_err() {
+                            todo!("Logging")
+                        }
+                    }
                 }
             }
         }
