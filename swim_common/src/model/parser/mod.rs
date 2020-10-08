@@ -549,7 +549,7 @@ impl ReconToken<&str> {
 impl<S: TokenStr> ReconToken<S> {
     /// True if, and only if, the token constitutes a ['Value'] in itself.
     fn is_value(&self) -> bool {
-        match self {
+        matches!(self,
             ReconToken::Identifier(_)
             | ReconToken::StringLiteral(_)
             | ReconToken::Int32Literal(_)
@@ -559,9 +559,7 @@ impl<S: TokenStr> ReconToken<S> {
             | ReconToken::Float64Literal(_)
             | ReconToken::BigInt(_)
             | ReconToken::BigUint(_)
-            | ReconToken::BoolLiteral(_) => true,
-            _ => false,
-        }
+            | ReconToken::BoolLiteral(_))
     }
 
     /// Try to get a value from a single token.
