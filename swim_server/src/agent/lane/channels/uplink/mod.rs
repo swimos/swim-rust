@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
+use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::RoutingAddr;
@@ -543,5 +544,35 @@ where
             }
         };
         inner.send_item(envelope)
+    }
+}
+
+pub struct DemandMapLaneUplink<Key, Value>(DemandMapLane<Key, Value>);
+
+impl<Key, Value> DemandMapLaneUplink<Key, Value> {
+    pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneUplink<Key, Value> {
+        DemandMapLaneUplink(lane)
+    }
+}
+
+impl<Key, Value> UplinkStateMachine<Value> for DemandMapLaneUplink<Key, Value>
+where
+    Key: Form + Any + Send + Sync + Debug,
+    Value: Form + Any + Send + Sync + Debug,
+{
+    type Msg = Value;
+
+    fn message_for(&self, _event: Value) -> Result<Option<Self::Msg>, UplinkError> {
+        Ok(None)
+    }
+
+    fn sync_lane<'a, Updates>(
+        &'a self,
+        _updates: &'a mut Updates,
+    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+    where
+        Updates: FusedStream<Item = Value> + Send + Unpin + 'a,
+    {
+        unimplemented!()
     }
 }

@@ -19,6 +19,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(test)]
+mod tests;
+
 /// Model for a stateless, lazy, lane that uses its lifecycle to generate a map from keys to values.
 #[derive(Debug)]
 pub struct DemandMapLane<Key, Value> {
@@ -94,6 +97,7 @@ impl<Key, Value> DemandMapLaneController<Key, Value> {
     }
 }
 
+#[derive(Debug)]
 pub enum DemandMapLaneEvent<Key, Value> {
     Sync(oneshot::Sender<Vec<Key>>),
     Cue(oneshot::Sender<Option<Value>>, Key),
