@@ -14,6 +14,7 @@
 
 use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand::DemandLane;
+use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
@@ -192,6 +193,28 @@ pub trait DemandLaneLifecycle<'a, Value, Agent>: Send + Sync + 'static {
     type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
 
     fn on_cue<C>(&'a self, model: &'a DemandLane<Value>, context: &'a C) -> Self::OnCueFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
+}
+
+pub trait DemandMapLaneLifecycle<'a, Key, Value, Agent>: Send + Sync + 'static {
+    type OnSyncFuture: Future<Output = impl Iterator<Item = Key>> + Send + 'a;
+    type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
+
+    fn on_sync<C>(
+        &'a self,
+        model: &'a DemandMapLane<Key, Value>,
+        context: &'a C,
+    ) -> Self::OnSyncFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
+
+    fn on_cue<C>(
+        &'a self,
+        model: &'a DemandMapLane<Key, Value>,
+        context: &'a C,
+        key: &Key,
+    ) -> Self::OnCueFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
 }
