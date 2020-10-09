@@ -595,10 +595,7 @@ impl PartialEq for Value {
                 Value::Data(tb) => mb.eq(tb),
                 _ => false,
             },
-            Value::Extant => match other {
-                Value::Extant => true,
-                _ => false,
-            },
+            Value::Extant => matches!(other, Value::Extant),
             Value::Int32Value(n) => match other {
                 Value::Int32Value(m) => n == m,
                 Value::Int64Value(m) => i32::try_from(*m).map(|ref m| n == m).unwrap_or(false),
@@ -1348,10 +1345,7 @@ fn unpack_attr_body(attrs: &[Attr], items: &[Item]) -> bool {
         true
     } else {
         match items.first() {
-            Some(item) => match item {
-                Item::Slot(_, _) => true,
-                _ => false,
-            },
+            Some(item) => matches!(item, Item::Slot(_, _)),
             _ => false,
         }
     }
