@@ -12,16 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+use std::any::Any;
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
+use either::Either;
+use futures::future::{join, join3};
+use futures::{select, Stream, StreamExt};
+use pin_utils::pin_mut;
+use tokio::sync::mpsc;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
+
+use stm::transaction::RetryManager;
+use swim_common::form::{Form, FormErr};
+use swim_common::model::Value;
+use swim_common::topic::Topic;
+use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
+use swim_common::warp::path::RelativePath;
+use utilities::sync::trigger;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::channels::uplink::auto::AutoUplinks;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
+use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{
     AddressedUplinkMessage, MapLaneUplink, UplinkAction, UplinkKind, ValueLaneUplink,
 };
@@ -33,25 +52,9 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
-use either::Either;
-use futures::future::{join, join3};
-use futures::{select, Stream, StreamExt};
-use pin_utils::pin_mut;
-use std::any::Any;
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use stm::transaction::RetryManager;
-use swim_common::form::{Form, FormErr};
-use swim_common::model::Value;
-use swim_common::topic::Topic;
-use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
-use tokio::sync::mpsc;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
-use utilities::sync::trigger;
+
+#[cfg(test)]
+mod tests;
 
 /// Aggregate error report combining lane update errors and lane uplink errors.
 #[derive(Debug)]
@@ -447,7 +450,7 @@ where
         }
         .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-        let uplinks = AutoUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
+        let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
         let uplink_task = uplinks
             .run(uplink_rx, context.router_handle(), err_tx)
             .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
@@ -496,20 +499,28 @@ fn combine_results(
     }
 }
 
+/// An error handling strategy for an uplink.
 enum UplinkErrorHandler {
+    /// Sinks any errors that occur.
     Sink,
+    /// Accumulates any errors that occur.
     Collect(UplinkErrorAcc),
 }
 
 impl UplinkErrorHandler {
+    /// Creates a new `UplinkErrorHandler` that sinks any errors that occur.
     pub fn sink() -> UplinkErrorHandler {
         UplinkErrorHandler::Sink
     }
 
+    /// Creates a new `UplinkErrorHandler` that collects any errors that occur.
     pub fn collector(route: RelativePath, max_fatal: usize) -> UplinkErrorHandler {
         UplinkErrorHandler::Collect(UplinkErrorAcc::new(route, max_fatal))
     }
 
+    /// Reports a new error to the underlying handler. For sinks, the error is dropped and `Ok(())`
+    /// is returned. For a collector, the error is accumalted and if maximum number of fatal errors
+    /// is exceeded then an error is returned.
     pub fn add(&mut self, error: UplinkErrorReport) -> Result<(), ()> {
         match self {
             UplinkErrorHandler::Sink => Ok(()),
@@ -517,6 +528,8 @@ impl UplinkErrorHandler {
         }
     }
 
+    /// Takes any accumulated errors and returns them. For a sink, this returns an empty vector.
+    /// For a collector it returns any errors that were accumulated.
     pub fn take_errors(self) -> Vec<UplinkErrorReport> {
         match self {
             UplinkErrorHandler::Sink => Vec::new(),
@@ -592,7 +605,7 @@ where
     let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
     let stream = stream.map(AddressedUplinkMessage::broadcast);
-    let uplinks = AutoUplinks::new(stream, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(stream, route.clone(), UplinkKind::Supply);
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
 
@@ -695,8 +708,11 @@ impl Form for Dropping {
     }
 }
 
+/// A strategy for handling `OutgoingHeader::Command` messages.
 enum OnCommandStrategy<V = Dropping> {
+    /// Drop the message. Essentially a no-op.
     Drop,
+    /// Forward the message to a given `OnCommandHandler` and return the result.
     Send(OnCommandHandler<V>),
 }
 
@@ -704,10 +720,12 @@ impl<F> OnCommandStrategy<F>
 where
     F: Send + Sync + Form + Debug + 'static,
 {
+    /// Creates a new `OnCommandStrategy` that will drop any messages and always succeed.
     fn dropping() -> OnCommandStrategy<Dropping> {
         OnCommandStrategy::Drop
     }
 
+    /// Handle the message and return whether or not the operation was successful.
     async fn on_command(&mut self, payload: Option<Value>, address: RoutingAddr) -> bool {
         match self {
             OnCommandStrategy::Drop => true,
@@ -716,8 +734,11 @@ where
     }
 }
 
+/// A handler for `OutgoingHeader::Command` messages. Forwarding any messages received to a sender.
 struct OnCommandHandler<F> {
+    /// The sender to forward messages to.
     sender: mpsc::Sender<Result<(RoutingAddr, F), FormErr>>,
+    /// The corresponding route that this handler is operating on.
     route: RelativePath,
 }
 
@@ -732,6 +753,9 @@ where
         OnCommandHandler { sender, route }
     }
 
+    /// Attempt to convert the `payload` to `F`, otherwise map it to `Value::Extant` and forward
+    /// the result to the underlying sender. Returns whether the forwarding operation was
+    /// successful.
     async fn send(&mut self, payload: Option<Value>, address: RoutingAddr) -> bool {
         let OnCommandHandler { sender, route } = self;
         let command = F::try_convert(payload.unwrap_or(Value::Extant)).map(|cmd| (address, cmd));

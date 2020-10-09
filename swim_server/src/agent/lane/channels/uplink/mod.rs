@@ -36,9 +36,9 @@ use tracing::{event, span, Level};
 #[cfg(test)]
 mod tests;
 
-pub mod auto;
 pub mod map;
 pub(crate) mod spawn;
+pub mod stateless;
 
 /// An enumeration representing the type of an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

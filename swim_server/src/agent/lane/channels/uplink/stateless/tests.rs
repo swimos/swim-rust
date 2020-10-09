@@ -21,7 +21,7 @@ use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 
-use crate::agent::lane::channels::uplink::auto::AutoUplinks;
+use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
 use crate::plane::error::ResolutionError;
@@ -79,14 +79,14 @@ async fn check_receive(
 }
 
 #[tokio::test]
-async fn immediate_unlink_auto_uplinks() {
+async fn immediate_unlink_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
     let (producer_tx, producer_rx) = mpsc::channel::<AddressedUplinkMessage<i32>>(5);
     let (mut action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
 
     let router = TestRouter(router_tx);
 
@@ -116,14 +116,14 @@ async fn immediate_unlink_auto_uplinks() {
 }
 
 #[tokio::test]
-async fn sync_with_auto_uplinks() {
+async fn sync_with_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
     let (producer_tx, producer_rx) = mpsc::channel::<AddressedUplinkMessage<i32>>(5);
     let (mut action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
     let router = TestRouter(router_tx);
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -163,14 +163,14 @@ async fn sync_with_auto_uplinks() {
 }
 
 #[tokio::test]
-async fn sync_after_link_on_auto_uplinks() {
+async fn sync_after_link_on_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
     let (producer_tx, producer_rx) = mpsc::channel::<AddressedUplinkMessage<i32>>(5);
     let (mut action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
 
     let router = TestRouter(router_tx);
 
@@ -225,7 +225,7 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
 
     let router = TestRouter(router_tx);
 
@@ -290,7 +290,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
 
     let router = TestRouter(router_tx);
 
@@ -362,7 +362,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
 }
 
 #[tokio::test]
-async fn link_twice_to_auto_uplinks() {
+async fn link_twice_to_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
     let (mut response_tx, response_rx) = mpsc::channel(5);
 
@@ -370,7 +370,7 @@ async fn link_twice_to_auto_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
 
     let router = TestRouter(router_tx);
 
@@ -424,7 +424,7 @@ async fn link_twice_to_auto_uplinks() {
 }
 
 #[tokio::test]
-async fn no_messages_after_unlink_from_auto_uplinks() {
+async fn no_messages_after_unlink_from_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
     let (mut response_tx, response_rx) = mpsc::channel(5);
 
@@ -432,7 +432,7 @@ async fn no_messages_after_unlink_from_auto_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
 
     let router = TestRouter(router_tx);
 
@@ -508,14 +508,14 @@ async fn no_messages_after_unlink_from_auto_uplinks() {
 // Asserts that any values that are sent to the lane when there are no uplinks are dropped and upon
 // uplinking only the newly sent values are received.
 #[tokio::test]
-async fn send_no_uplink_auto_uplinks() {
+async fn send_no_uplink_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
     let (mut producer_tx, producer_rx) = mpsc::channel(5);
     let (mut action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = AutoUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
     let router = TestRouter(router_tx);
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 

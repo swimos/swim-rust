@@ -47,19 +47,19 @@ fn format_debug_event(uplink_kind: UplinkKind, msg: &'static str) {
 
 /// Automatically links and syncs (no-op) uplinks. Either sending events directly to an uplink or
 /// broadcasting them to all uplinks.
-pub struct AutoUplinks<S> {
+pub struct StatelessUplinks<S> {
     producer: S,
     route: RelativePath,
     uplink_kind: UplinkKind,
 }
 
-impl<S, F> AutoUplinks<S>
+impl<S, F> StatelessUplinks<S>
 where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
 {
     pub fn new(producer: S, route: RelativePath, uplink_kind: UplinkKind) -> Self {
-        AutoUplinks {
+        StatelessUplinks {
             producer,
             route,
             uplink_kind,
@@ -67,7 +67,7 @@ where
     }
 }
 
-impl<S, F> AutoUplinks<S>
+impl<S, F> StatelessUplinks<S>
 where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
@@ -80,7 +80,7 @@ where
     ) where
         Router: ServerRouter,
     {
-        let AutoUplinks {
+        let StatelessUplinks {
             route,
             producer,
             uplink_kind,
