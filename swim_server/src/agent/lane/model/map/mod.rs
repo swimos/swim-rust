@@ -163,8 +163,11 @@ where
     K: Form,
     V: Form,
 {
-    Update(K, Arc<V>),
-    Remove(K),
+    #[form(tag = "update")]
+    Update(#[form(header, rename = "key")] K, #[form(body)] Arc<V>),
+    #[form(tag = "remove")]
+    Remove(#[form(header, rename = "key")] K),
+    #[form(tag = "clear")]
     Clear,
 }
 
