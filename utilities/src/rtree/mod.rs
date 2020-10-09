@@ -17,7 +17,9 @@ impl RTree {
     }
 
     fn insert(&mut self, item: Rect) {
-        self.root.insert(item)
+        if let Some((first_entry, second_entry)) = self.root.insert(item) {
+            self.root = Node::Branch(vec![first_entry, second_entry])
+        }
     }
 }
 
@@ -28,36 +30,96 @@ enum Node {
 }
 
 impl Node {
-    fn insert(&mut self, item: Rect) {
+    fn insert(&mut self, item: Rect) -> Option<(Entry, Entry)> {
         match self {
             Node::Branch(entries) => {
                 let mut entries_iter = entries.iter_mut();
 
                 let mut min_entry = entries_iter.next().unwrap();
+                let mut min_entry_idx = 0;
                 let (mut min_diff, mut min_rect) = min_entry.mbb.expand(&item);
 
-                for entry in entries_iter {
+                for (idx, entry) in entries_iter.enumerate() {
                     let (diff, expanded_rect) = entry.mbb.expand(&item);
 
                     if diff < min_diff {
                         min_diff = diff;
                         min_rect = expanded_rect;
                         min_entry = entry;
+                        min_entry_idx = idx;
                     }
                 }
 
-                min_entry.insert(item, min_rect);
-            }
-            Node::Leaf(entries) => {
-                if entries.len() < MAX_CHILDREN {
-                    entries.push(item);
-                } else {
-                    // Split node
-                    unimplemented!()
+                match min_entry.insert(item, min_rect) {
+                    Some((first_entry, second_entry)) => {
+                        entries.remove(min_entry_idx);
+                        entries.push(first_entry);
+                        entries.push(second_entry);
+
+                        if entries.len() > MAX_CHILDREN {
+                            //Split node
+                            //let (L: Entry{mbb: min_rect, child: Branch(Vec<Entry>), LL: Entry{mbb: min_rect, child: Branch(Vec<Entry>) = split_node(self);
+                            //Some(L, LL)
+                        }
+                    }
+                    None => (),
                 }
             }
-        }
+            Node::Leaf(entries) => {
+                entries.push(item);
+
+                if entries.len() > MAX_CHILDREN {
+                    // Split node
+                    //let (L: Entry{mbb: min_rect, child: Leaf(Vec<Rect>), LL: Entry{mbb: min_rect, child: Leaf(Vec<Rect>) = split_node(self);
+                    //Some(L, LL)
+                }
+            }
+        };
+        None
     }
+
+    fn split(&mut self) -> (Entry, Entry) {
+        match self {
+            Node::Branch(entries) => {
+                let mut rects: Vec<&Rect> = entries.iter().map(|entry| &entry.mbb).collect();
+                quadratic_split(&mut rects);
+            }
+            Node::Leaf(entries) => {
+                let mut rects: Vec<&Rect> = entries.iter().collect();
+                quadratic_split(&mut rects);
+            }
+        }
+        unimplemented!()
+    }
+}
+
+fn quadratic_split(rects: &mut Vec<&Rect>) {
+    let (first_seed_idx, second_seed_idx) = pick_seeds(rects);
+
+    //Todo fix
+    let first_seed = rects.remove(first_seed_idx);
+    let second_seed = rects.remove(second_seed_idx);
+
+    let first_group = vec![first_seed];
+    let second_group = vec![second_seed];
+
+    if !rects.is_empty() {
+
+        // if first_group.len()
+    }
+
+    unimplemented!()
+}
+
+fn pick_seeds(rects: &Vec<&Rect>) -> (usize, usize) {
+    //compare rect[n] with rect[n+1] for all n from 0 to N
+    //Calculate area when expanding the smaller one to the bigger one and substract the areas of the two rectangles
+    // choose the one that wastes the most space
+    unimplemented!()
+}
+
+fn pick_next(rects: &Vec<&Rect>) -> usize {
+    unimplemented!();
 }
 
 #[derive(Debug)]
@@ -74,7 +136,7 @@ impl Entry {
         }
     }
 
-    fn insert(&mut self, item: Rect, expanded_rect: Rect) {
+    fn insert(&mut self, item: Rect, expanded_rect: Rect) -> Option<(Entry, Entry)> {
         self.mbb = expanded_rect;
         self.child.insert(item)
     }
