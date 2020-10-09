@@ -22,8 +22,9 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
+use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
-use futures::future::{join, join3, BoxFuture};
+use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -41,6 +42,7 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
+use url::Url;
 use utilities::sync::trigger;
 
 #[test]
@@ -77,7 +79,7 @@ fn lane_io_err_display_uplink() {
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
             "- uplink_errors =",
-            "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
+            "* Uplink to Remote(1) failed: Uplink send channel was dropped."
         ]
     );
 
@@ -96,7 +98,7 @@ fn lane_io_err_display_uplink() {
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
             "- uplink_errors =",
-            "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
+            "* Uplink to Remote(1) failed: Uplink send channel was dropped."
         ]
     );
 }
@@ -120,7 +122,7 @@ fn lane_io_err_display_both() {
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
             "- update_error = The body of an incoming envelope was invalid: Malformatted",
             "- uplink_errors =",
-            "* Uplink to Remote Endpoint (1) failed: Uplink send channel was dropped."
+            "* Uplink to Remote(1) failed: Uplink send channel was dropped."
         ]
     );
 }
@@ -338,11 +340,20 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        Ok(TestSender {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        ready(Ok(TestSender {
             addr,
             inner: self.0.clone(),
-        })
+        }))
+        .boxed()
+    }
+
+    fn resolve(
+        &mut self,
+        _host: Option<Url>,
+        _route: String,
+    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+        panic!("Unexpected resolution attempt.")
     }
 }
 
@@ -1201,19 +1212,30 @@ impl AgentExecutionContext for MultiTestContext {
 impl ServerRouter for MultiTestRouter {
     type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        let mut lock = self.0.lock();
-        if let Some(sender) = lock.senders.get(&addr) {
-            Ok(TestSender {
-                addr,
-                inner: sender.clone(),
-            })
-        } else {
-            let (tx, rx) = mpsc::channel(5);
-            lock.senders.insert(addr, tx.clone());
-            lock.receivers.insert(addr, rx);
-            Ok(TestSender { addr, inner: tx })
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        async move {
+            let mut lock = self.0.lock();
+            if let Some(sender) = lock.senders.get(&addr) {
+                Ok(TestSender {
+                    addr,
+                    inner: sender.clone(),
+                })
+            } else {
+                let (tx, rx) = mpsc::channel(5);
+                lock.senders.insert(addr, tx.clone());
+                lock.receivers.insert(addr, rx);
+                Ok(TestSender { addr, inner: tx })
+            }
         }
+        .boxed()
+    }
+
+    fn resolve(
+        &mut self,
+        _host: Option<Url>,
+        _route: String,
+    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+        panic!("Unexpected resolution attempt.")
     }
 }
 

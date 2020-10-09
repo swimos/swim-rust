@@ -27,6 +27,7 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
@@ -83,7 +84,7 @@ impl ReportingLifecycleInner {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ReportingAgentLifecycle {
     inner: ReportingLifecycleInner,
 }
@@ -249,7 +250,7 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
 }
 
 /// The event reporter is injected into the agent as ersatz configuration.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
 }
@@ -261,7 +262,7 @@ impl TestAgentConfig {
         }
     }
 
-    pub fn agent_lifecycle(&self) -> impl AgentLifecycle<ReportingAgent> {
+    pub fn agent_lifecycle(&self) -> impl AgentLifecycle<ReportingAgent> + Clone + Debug {
         ReportingAgentLifecycle {
             inner: ReportingLifecycleInner(self.collector.clone()),
         }

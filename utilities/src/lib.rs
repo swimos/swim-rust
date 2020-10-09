@@ -25,6 +25,7 @@ pub mod num;
 pub mod ptr;
 pub mod route_pattern;
 pub mod sync;
+pub mod task;
 pub mod trace;
 
 #[allow(unused_imports)]

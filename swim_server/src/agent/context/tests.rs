@@ -16,12 +16,12 @@ use crate::agent::context::ContextImpl;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-use url::Url;
 use utilities::sync::trigger;
 
 #[test]
@@ -29,17 +29,17 @@ fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
-    let url: Url = Url::parse("swim://host/node").unwrap();
     let context = ContextImpl::new(
         agent.clone(),
-        url.clone(),
+        "node".to_string(),
         tx,
         TestClock::default(),
         close_sig.clone(),
         (),
+        HashMap::new(),
     );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
-    assert_eq!(context.node_url(), &url);
+    assert_eq!(context.node_uri(), "node");
     assert!(trigger::Receiver::same_receiver(
         &close_sig,
         &context.agent_stop_event()
@@ -57,8 +57,15 @@ fn create_context(
     task::spawn(async move { rx.for_each(|eff| eff).await });
 
     let agent = Arc::new("agent");
-    let url: Url = Url::parse("swim://host/node").unwrap();
-    ContextImpl::new(agent.clone(), url.clone(), tx, clock, close_trigger, ())
+    ContextImpl::new(
+        agent.clone(),
+        "node".to_string(),
+        tx,
+        clock,
+        close_trigger,
+        (),
+        HashMap::new(),
+    )
 }
 
 #[tokio::test]

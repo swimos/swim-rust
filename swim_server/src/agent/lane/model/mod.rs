@@ -14,9 +14,9 @@
 
 use crate::agent::AttachError;
 use futures::Stream;
-use pin_utils::core_reexport::num::NonZeroUsize;
 use std::any::Any;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use swim_common::topic::{
     BroadcastSender, BroadcastTopic, MpscTopic, Topic, TransformedTopic, WatchTopic,
 };

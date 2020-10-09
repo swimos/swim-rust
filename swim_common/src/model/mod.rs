@@ -32,6 +32,7 @@ use tokio_util::codec::Encoder;
 pub mod blob;
 pub mod parser;
 pub mod schema;
+pub mod time;
 
 #[cfg(test)]
 mod tests;
