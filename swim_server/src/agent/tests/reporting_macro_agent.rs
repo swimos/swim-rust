@@ -19,17 +19,22 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
+use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, LaneTasks};
+use crate::plane::provider::AgentProvider;
 use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent};
 use futures::{FutureExt, StreamExt};
+use std::collections::HashMap;
+use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_common::sink::item::DiscardingSender;
 use tokio::sync::{mpsc, Mutex};
-use url::Url;
 
 mod swim_server {
     pub use crate::*;
@@ -257,7 +262,7 @@ impl StatefulLaneLifecycleBase for TotalLifecycle {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
     command_buffer_size: NonZeroUsize,
@@ -270,6 +275,12 @@ impl TestAgentConfig {
             command_buffer_size: NonZeroUsize::new(5).unwrap(),
         }
     }
+
+    pub fn agent_lifecycle(&self) -> impl AgentLifecycle<ReportingAgent> + Clone + Debug {
+        ReportingAgentLifecycle {
+            event_handler: EventCollectorHandler(self.collector.clone()),
+        }
+    }
 }
 
 #[tokio::test]
@@ -278,28 +289,28 @@ async fn agent_loop() {
 
     let config = TestAgentConfig::new(tx);
 
-    let url = Url::parse("test://").unwrap();
+    let uri = "test".to_string();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
-    let agent_lifecycle = ReportingAgentLifecycle {
-        event_handler: EventCollectorHandler(config.collector.clone()),
-    };
+    let agent_lifecycle = config.agent_lifecycle();
 
     let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
+    let provider = AgentProvider::new(config, agent_lifecycle);
+
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
-    let agent_proc = super::super::run_agent(
-        config,
-        agent_lifecycle,
-        url,
+    let (_, agent_proc) = provider.run(
+        uri,
+        HashMap::new(),
         exec_config,
         clock.clone(),
         envelope_rx,
+        SingleChannelRouter::new(DiscardingSender::default()),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

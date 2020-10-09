@@ -19,19 +19,24 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
+use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, LaneTasks};
+use crate::plane::provider::AgentProvider;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
 use futures::{FutureExt, StreamExt};
+use std::collections::HashMap;
+use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_common::sink::item::DiscardingSender;
 use tokio::sync::{mpsc, Mutex};
-use url::Url;
 
 mod swim_server {
     pub use crate::*;
@@ -39,7 +44,7 @@ mod swim_server {
 
 #[derive(Debug, SwimAgent)]
 #[agent(config = "DataAgentConfig")]
-struct DataAgent {
+pub struct DataAgent {
     #[lifecycle(public, name = "MapLifecycle1")]
     map_1: MapLane<String, i32>,
     #[lifecycle(public, name = "MapLifecycle2")]
@@ -56,7 +61,7 @@ struct DataAgent {
     action_1: ActionLane<String, i32>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DataAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
     command_buffer_size: NonZeroUsize,
@@ -67,6 +72,12 @@ impl DataAgentConfig {
         DataAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
             command_buffer_size: NonZeroUsize::new(5).unwrap(),
+        }
+    }
+
+    pub fn agent_lifecycle(&self) -> impl AgentLifecycle<DataAgent> + Clone + Debug {
+        DataAgentLifecycle {
+            event_handler: EventCollectorHandler(self.collector.clone()),
         }
     }
 }
@@ -505,25 +516,25 @@ async fn agent_loop() {
 
     let config = DataAgentConfig::new(tx);
 
-    let url = Url::parse("test://").unwrap();
+    let uri = "test".to_string();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
-    let agent_lifecycle = DataAgentLifecycle {
-        event_handler: EventCollectorHandler(config.collector.clone()),
-    };
+    let agent_lifecycle = config.agent_lifecycle();
 
     let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
-    let agent_proc = super::super::run_agent(
-        config,
-        agent_lifecycle,
-        url,
+    let provider = AgentProvider::new(config, agent_lifecycle);
+
+    let (_, agent_proc) = provider.run(
+        uri,
+        HashMap::new(),
         exec_config,
         clock.clone(),
         envelope_rx,
+        SingleChannelRouter::new(DiscardingSender::default()),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

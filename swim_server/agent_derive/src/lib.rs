@@ -371,6 +371,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     let output_ast = quote! {
         use futures::FutureExt as _;
 
+        #[derive(core::clone::Clone, core::fmt::Debug)]
         #input_ast
 
         #[automatically_derived]

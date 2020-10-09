@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub(crate) mod context;
+pub mod context;
 pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;
@@ -179,7 +179,7 @@ where
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
     let (agent, tasks, io_providers) =
-        Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, , &execution_config);
+        Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
     let task = async move {
