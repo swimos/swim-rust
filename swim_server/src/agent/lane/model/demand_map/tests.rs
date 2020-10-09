@@ -17,11 +17,11 @@ use futures::StreamExt;
 use pin_utils::core_reexport::num::NonZeroUsize;
 use std::collections::HashMap;
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test]
 async fn test_sync() {
     let (lane, mut events) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
     let mut controller = lane.controller();
-    let _ = controller.sync().await.await.unwrap();
+    let _ = controller.sync().await;
 
     assert!(matches!(
         events.next().await,
@@ -101,11 +101,11 @@ async fn test_cue_resp() {
     assert!(jh.await.is_ok());
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test]
 async fn test_cue() {
     let (lane, mut events) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
     let mut controller = lane.controller();
-    let _ = controller.cue(13).await.await.unwrap();
+    let _ = controller.cue(13).await;
 
     assert!(matches!(
         events.next().await,
