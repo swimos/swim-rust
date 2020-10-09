@@ -22,9 +22,13 @@ use tokio::sync::{mpsc, oneshot};
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
+pub struct CueRequest<Key>(pub Key);
+
 /// Model for a stateless, lazy, lane that uses its lifecycle to generate a map from keys to values.
 #[derive(Debug)]
 pub struct DemandMapLane<Key, Value> {
+    cue_requests_tx: mpsc::Sender<CueRequest<Key>>,
     sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
     id: Arc<()>,
 }
@@ -32,6 +36,7 @@ pub struct DemandMapLane<Key, Value> {
 impl<Key, Value> Clone for DemandMapLane<Key, Value> {
     fn clone(&self) -> Self {
         DemandMapLane {
+            cue_requests_tx: self.cue_requests_tx.clone(),
             sender: self.sender.clone(),
             id: self.id.clone(),
         }
@@ -41,11 +46,21 @@ impl<Key, Value> Clone for DemandMapLane<Key, Value> {
 impl<Key, Value> DemandMapLane<Key, Value> {
     pub(crate) fn new(
         sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
-    ) -> DemandMapLane<Key, Value> {
-        DemandMapLane {
-            sender,
-            id: Default::default(),
-        }
+        buffer_size: NonZeroUsize,
+    ) -> (
+        DemandMapLane<Key, Value>,
+        impl Stream<Item = CueRequest<Key>>,
+    ) {
+        let (cue_requests_tx, cue_requests_rx) = mpsc::channel(buffer_size.get());
+
+        (
+            DemandMapLane {
+                sender,
+                cue_requests_tx,
+                id: Default::default(),
+            },
+            cue_requests_rx,
+        )
     }
 
     /// Create a new `DemandMapLaneController` that can be used to cue a value.
@@ -128,12 +143,13 @@ pub fn make_lane_model<Key, Value>(
 ) -> (
     DemandMapLane<Key, Value>,
     impl Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + 'static,
+    impl Stream<Item = CueRequest<Key>>,
 )
 where
     Key: Send + Sync + 'static,
     Value: Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
-    let lane = DemandMapLane::new(tx);
-    (lane, rx)
+    let (lane, cue_requests_rx) = DemandMapLane::new(tx, buffer_size);
+    (lane, rx, cue_requests_rx)
 }

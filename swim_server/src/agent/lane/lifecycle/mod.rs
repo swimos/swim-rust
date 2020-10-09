@@ -19,6 +19,7 @@ use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
+use std::fmt::Debug;
 use std::future::Future;
 
 #[cfg(test)]
@@ -197,7 +198,11 @@ pub trait DemandLaneLifecycle<'a, Value, Agent>: Send + Sync + 'static {
         C: AgentContext<Agent> + Send + Sync + 'static;
 }
 
-pub trait DemandMapLaneLifecycle<'a, Key, Value, Agent>: Send + Sync + 'static {
+pub trait DemandMapLaneLifecycle<'a, Key, Value, Agent>: Send + Sync + 'static
+where
+    Key: Debug + Send + Sync + 'static,
+    Value: Debug + Send + Sync + 'static,
+{
     type OnSyncFuture: Future<Output = Vec<Key>> + Send + 'a;
     type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
 

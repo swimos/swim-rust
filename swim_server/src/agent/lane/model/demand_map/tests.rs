@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 #[tokio::test]
 async fn test_sync() {
-    let (lane, mut events) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
+    let (lane, mut events, _) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
     let mut controller = lane.controller();
     let _ = controller.sync().await;
 
@@ -31,7 +31,7 @@ async fn test_sync() {
 
 #[tokio::test(threaded_scheduler)]
 async fn test_sync_resp() {
-    let (lane, mut events) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
+    let (lane, mut events, _) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
     let mut controller = lane.controller();
 
     let jh = tokio::spawn(async move {
@@ -59,7 +59,7 @@ async fn test_sync_resp() {
 
 #[tokio::test(threaded_scheduler)]
 async fn test_cue_resp() {
-    let (lane, mut events) = make_lane_model(NonZeroUsize::new(5).unwrap());
+    let (lane, mut events, _) = make_lane_model(NonZeroUsize::new(5).unwrap());
     let mut controller = lane.controller();
 
     let jh = tokio::spawn(async move {
@@ -103,7 +103,7 @@ async fn test_cue_resp() {
 
 #[tokio::test]
 async fn test_cue() {
-    let (lane, mut events) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
+    let (lane, mut events, _) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap());
     let mut controller = lane.controller();
     let _ = controller.cue(13).await;
 

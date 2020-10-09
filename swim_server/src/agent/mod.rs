@@ -32,7 +32,7 @@ use crate::agent::lane::lifecycle::{
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
-use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
+use crate::agent::lane::model::demand_map::{CueRequest, DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
@@ -1257,7 +1257,7 @@ where
     Value: Any + Send + Sync + Form + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
 {
-    let (lane, event_stream) = model::demand_map::make_lane_model(buffer_size);
+    let (lane, event_stream, cue_requests_rx) = model::demand_map::make_lane_model(buffer_size);
 
     let tasks = DemandMapLifecycleTasks(LifecycleTasks {
         name: name.into(),
@@ -1267,7 +1267,7 @@ where
     });
 
     let lane_io = if is_public {
-        Some(DemandMapLaneIo::new(lane.clone()))
+        Some(DemandMapLaneIo::new(lane.clone(), cue_requests_rx))
     } else {
         None
     };
@@ -1275,36 +1275,51 @@ where
     (lane, tasks, lane_io)
 }
 
-struct DemandMapLaneIo<Key, Value> {
+struct DemandMapLaneIo<Key, Value, S>
+where
+    Key: Debug + Send + Sync + 'static,
+    Value: Debug + Send + Sync + 'static,
+{
     lane: DemandMapLane<Key, Value>,
+    cue_requests: S,
 }
 
-impl<Key, Value> DemandMapLaneIo<Key, Value>
+impl<Key, Value, S> DemandMapLaneIo<Key, Value, S>
 where
-    Key: Send + Sync + 'static,
-    Value: Send + Sync + 'static,
+    Key: Debug + Send + Sync + 'static,
+    Value: Debug + Send + Sync + 'static,
+    S: Stream<Item = CueRequest<Key>> + Send + Sync + 'static,
 {
-    fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneIo<Key, Value> {
-        DemandMapLaneIo { lane }
+    fn new(lane: DemandMapLane<Key, Value>, cue_requests: S) -> DemandMapLaneIo<Key, Value, S> {
+        DemandMapLaneIo { lane, cue_requests }
     }
 }
 
-impl<Key, Value, Context> LaneIo<Context> for DemandMapLaneIo<Key, Value>
+impl<Key, Value, Context, S> LaneIo<Context> for DemandMapLaneIo<Key, Value, S>
 where
-    Key: Send + Sync + 'static,
-    Value: Form + Send + Sync + 'static,
+    Key: Debug + Form + Send + Sync + 'static,
+    Value: Debug + Form + Send + Sync + 'static,
+    S: Stream<Item = CueRequest<Key>> + Send + Sync + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
-        _route: RelativePath,
-        _envelopes: Receiver<TaggedClientEnvelope>,
-        _config: AgentExecutionConfig,
-        _context: Context,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let DemandMapLaneIo { .. } = self;
+        let DemandMapLaneIo { lane, cue_requests } = self;
 
-        unimplemented!()
+        Ok(lane::channels::task::run_demand_map_lane_io(
+            lane,
+            envelopes,
+            config,
+            context,
+            route,
+            cue_requests,
+        )
+        .boxed())
     }
 
     fn attach_boxed(
