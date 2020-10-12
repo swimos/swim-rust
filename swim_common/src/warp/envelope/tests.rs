@@ -792,3 +792,23 @@ fn event_to_value() {
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
     assert_eq!(value, expected);
 }
+
+#[test]
+fn envelope_parse_err_display() {
+    let err = EnvelopeParseErr::Malformatted;
+    assert_eq!(err.to_string(), "Envelope was malformed.");
+    let err = EnvelopeParseErr::DuplicateHeader("name".into());
+    assert_eq!(err.to_string(), "Duplicate header: 'name'.");
+    let err = EnvelopeParseErr::DuplicateKey("name".into());
+    assert_eq!(err.to_string(), "Duplicate key: 'name'.");
+    let err = EnvelopeParseErr::MissingHeader("name".into());
+    assert_eq!(err.to_string(), "Required header 'name' was missing.");
+    let err = EnvelopeParseErr::UnexpectedItem(Item::ValueItem(Value::Extant));
+    assert_eq!(err.to_string(), "Envelope was malformed.");
+    let err = EnvelopeParseErr::UnexpectedKey("name".into());
+    assert_eq!(err.to_string(), "Unexpected key: 'name'.");
+    let err = EnvelopeParseErr::UnexpectedType(Value::Int32Value(2));
+    assert_eq!(err.to_string(), "Value of unexpected kind: 'Int32'.");
+    let err = EnvelopeParseErr::UnknownTag("name".into());
+    assert_eq!(err.to_string(), "Unknown tag in envelope: 'name'.");
+}

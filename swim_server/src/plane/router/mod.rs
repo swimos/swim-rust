@@ -14,6 +14,7 @@
 
 use crate::plane::error::ResolutionError;
 use crate::plane::PlaneRequest;
+use crate::routing::error::SendError;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -40,8 +41,8 @@ impl PlaneRouterSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for PlaneRouterSender {
-    type Error = RoutingError;
-    type SendFuture = MpscSend<'a, TaggedEnvelope, RoutingError>;
+    type Error = SendError;
+    type SendFuture = MpscSend<'a, TaggedEnvelope, SendError>;
 
     fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
         let PlaneRouterSender { tag, inner } = self;

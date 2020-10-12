@@ -23,10 +23,10 @@ use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
-pub mod remote;
+pub(crate) mod remote;
 #[cfg(test)]
 mod tests;
-pub mod ws;
+pub(crate) mod ws;
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
@@ -97,9 +97,62 @@ impl<Sender> Route<Sender> {
     }
 }
 
+pub mod error {
+    use crate::routing::TaggedEnvelope;
+    use std::error::Error;
+    use std::fmt::{Display, Formatter};
+    use swim_common::routing::RoutingError;
+    use swim_common::warp::envelope::Envelope;
+    use tokio::sync::mpsc;
+
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct SendError {
+        error: RoutingError,
+        envelope: Envelope,
+    }
+
+    impl SendError {
+        pub fn new(error: RoutingError, envelope: Envelope) -> Self {
+            SendError { error, envelope }
+        }
+
+        pub fn split(self) -> (RoutingError, Envelope) {
+            let SendError { error, envelope } = self;
+            (error, envelope)
+        }
+    }
+
+    impl Display for SendError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            self.error.fmt(f)
+        }
+    }
+
+    impl Error for SendError {}
+
+    impl From<mpsc::error::SendError<Envelope>> for SendError {
+        fn from(err: mpsc::error::SendError<Envelope>) -> Self {
+            SendError {
+                error: RoutingError::RouterDropped,
+                envelope: err.0,
+            }
+        }
+    }
+
+    impl From<mpsc::error::SendError<TaggedEnvelope>> for SendError {
+        fn from(err: mpsc::error::SendError<TaggedEnvelope>) -> Self {
+            let mpsc::error::SendError(TaggedEnvelope(_, envelope)) = err;
+            SendError {
+                error: RoutingError::RouterDropped,
+                envelope,
+            }
+        }
+    }
+}
+
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
-    type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
+    type Sender: ItemSender<Envelope, error::SendError> + Send + 'static;
 
     fn get_sender(
         &mut self,

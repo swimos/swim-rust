@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::future::ErrInto;
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{ready, Sink, SinkExt, Stream, StreamExt};
+use futures::{ready, Sink, SinkExt, Stream, StreamExt, TryFutureExt};
 use pin_project::pin_project;
+use std::future::Future;
+use std::marker::PhantomData;
 use std::pin::Pin;
+use swim_common::ws::error::ConnectionError;
+use swim_common::ws::WsMessage;
 
 #[cfg(test)]
 mod tests;
@@ -225,4 +230,111 @@ where
         },
         _ => Poll::Pending,
     }
+}
+
+pub enum CloseReason {
+    GoingAway,
+    ProtocolError(String),
+    //TODO Fill in others.
+}
+
+pub trait JoinedStreamSink<T, E>: Stream<Item = Result<T, E>> + Sink<T, Error = E> {
+    type CloseFut: Future<Output = Result<(), E>> + Send + Sync + 'static;
+
+    fn close(&mut self, reason: Option<CloseReason>) -> Self::CloseFut;
+
+    fn transform_data<T2, E2>(self) -> TransformedStreamSink<Self, T, T2, E, E2>
+    where
+        Self: Sized,
+        T2: From<T>,
+        T: From<T2>,
+        E2: From<E>,
+    {
+        TransformedStreamSink {
+            str_sink: self,
+            _bijection: PhantomData,
+            _errors: PhantomData,
+        }
+    }
+}
+
+#[pin_project]
+pub struct TransformedStreamSink<S, T1, T2, E1, E2> {
+    #[pin]
+    str_sink: S,
+    _bijection: PhantomData<(fn(T1) -> T2, fn(T2) -> T1)>,
+    _errors: PhantomData<fn(E1) -> E2>,
+}
+
+impl<T1, T2, E1, E2, S> Stream for TransformedStreamSink<S, T1, T2, E1, E2>
+where
+    S: Stream<Item = Result<T1, E1>>,
+    T2: From<T1>,
+    E2: From<E1>,
+{
+    type Item = Result<T2, E2>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let result: Option<Result<T1, E1>> = ready!(self.project().str_sink.poll_next(cx));
+        Poll::Ready(result.map(|r| r.map(From::from).map_err(From::from)))
+    }
+}
+
+impl<T1, T2, S, E1, E2> Sink<T2> for TransformedStreamSink<S, T1, T2, E1, E2>
+where
+    S: Sink<T1, Error = E1>,
+    T1: From<T2>,
+    E2: From<E1>,
+{
+    type Error = E2;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project()
+            .str_sink
+            .poll_ready(cx)
+            .map(|r| r.map_err(From::from))
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: T2) -> Result<(), Self::Error> {
+        self.project()
+            .str_sink
+            .start_send(item.into())
+            .map_err(From::from)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project()
+            .str_sink
+            .poll_flush(cx)
+            .map(|r| r.map_err(From::from))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project()
+            .str_sink
+            .poll_close(cx)
+            .map(|r| r.map_err(From::from))
+    }
+}
+
+impl<T1, T2, E1, E2, S> JoinedStreamSink<T2, E2> for TransformedStreamSink<S, T1, T2, E1, E2>
+where
+    S: JoinedStreamSink<T1, E1>,
+    T2: From<T1>,
+    T1: From<T2>,
+    E2: From<E1> + Send + Sync + 'static,
+{
+    type CloseFut = ErrInto<S::CloseFut, E2>;
+
+    fn close(&mut self, reason: Option<CloseReason>) -> Self::CloseFut {
+        self.str_sink.close(reason).err_into()
+    }
+}
+
+pub trait WsConnections {
+    type StreamSink: JoinedStreamSink<WsMessage, ConnectionError>;
+    type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>>;
+
+    fn open_connection<Sock>(&self, socket: Sock) -> Self::Fut;
+    fn accept_connection<Sock>(&self, socket: Sock) -> Self::Fut;
 }

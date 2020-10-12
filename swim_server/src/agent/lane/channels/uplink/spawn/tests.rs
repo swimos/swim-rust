@@ -20,6 +20,7 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStat
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
 use crate::plane::error::ResolutionError;
+use crate::routing::error::SendError;
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{join, join3, ready, BoxFuture};
@@ -75,18 +76,12 @@ struct TestSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = RoutingError;
+    type Error = SendError;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         let tagged = TaggedEnvelope(self.addr, value);
-        async move {
-            self.inner
-                .send(tagged)
-                .await
-                .map_err(|_| RoutingError::RouterDropped)
-        }
-        .boxed()
+        async move { self.inner.send(tagged).await.map_err(Into::into) }.boxed()
     }
 }
 

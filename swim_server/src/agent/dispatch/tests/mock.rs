@@ -20,6 +20,7 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::plane::error::ResolutionError;
+use crate::routing::error::SendError;
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedClientEnvelope};
 use futures::future::BoxFuture;
@@ -47,14 +48,11 @@ pub struct MockLane;
 pub struct MockSender(mpsc::Sender<Envelope>);
 
 impl<'a> ItemSink<'a, Envelope> for MockSender {
-    type Error = RoutingError;
-    type SendFuture = BoxFuture<'a, Result<(), RoutingError>>;
+    type Error = SendError;
+    type SendFuture = BoxFuture<'a, Result<(), SendError>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        self.0
-            .send(value)
-            .map_err(|_| RoutingError::RouterDropped)
-            .boxed()
+        self.0.send(value).map_err(Into::into).boxed()
     }
 }
 
