@@ -48,7 +48,7 @@ const APPLYING_UPDATE: &str = "Applying map update.";
 impl<K, V, F, Ret> LaneUpdate for MapLaneUpdateTask<K, V, F>
 where
     K: Form + Any + Send + Sync + Debug,
-    V: Any + Send + Sync + Debug,
+    V: Any + Form + Send + Sync + Debug,
     F: Fn() -> Ret + Send + Sync + 'static,
     Ret: RetryManager + Send,
 {

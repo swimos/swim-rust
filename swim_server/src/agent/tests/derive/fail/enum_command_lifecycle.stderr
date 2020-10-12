@@ -1,0 +1,5 @@
+error: Lifecycle cannot be created from Enum.
+  --> $DIR/enum_command_lifecycle.rs:10:10
+   |
+10 |     enum CommandLifecycle<T> {}
+   |          ^^^^^^^^^^^^^^^^
