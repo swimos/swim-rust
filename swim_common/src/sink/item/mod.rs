@@ -89,7 +89,7 @@ pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
 impl<X, T, E> ItemSender<T, E> for X where X: for<'a> ItemSink<'a, T, Error = E> {}
 
 #[derive(Clone, Debug)]
-pub struct SendError {}
+pub struct SendError;
 
 pub type BoxItemSink<T, E> =
     Box<dyn for<'a> ItemSink<'a, T, Error = E, SendFuture = BoxFuture<'a, Result<(), E>>>>;

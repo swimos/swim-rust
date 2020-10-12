@@ -186,3 +186,22 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Bu
         ready(())
     }
 }
+
+/// Trait for the lifecycle of a lane that has access to the configuration of
+/// a swim agent and defines how the lifecycle is created.
+///
+/// # Type Parameters
+///
+/// * `Config` - Swim agent config.
+
+pub trait LaneLifecycle<Config> {
+    /// Called when a task for a swim agent is created using the lifecycle.
+    /// This method defines how to create the lifecycle and has access to the swim
+    /// agent config file.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Swim agent config.
+
+    fn create(config: &Config) -> Self;
+}
