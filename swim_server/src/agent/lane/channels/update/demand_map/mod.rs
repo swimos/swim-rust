@@ -26,6 +26,9 @@ use tracing::{event, Level};
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::model::demand_map::{CueRequest, DemandMapLane};
 
+#[cfg(test)]
+mod tests;
+
 const NO_COMPLETION: &str = "On Cue did not complete.";
 const CLEANUP_TIMEOUT: &str = "Timeout waiting for pending completions.";
 

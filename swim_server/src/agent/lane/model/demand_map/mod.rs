@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
-use futures::Stream;
+use futures::stream::FusedStream;
+use futures::{Stream, StreamExt};
+use std::convert::identity;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -77,8 +79,19 @@ impl<Key, Value> DemandMapLane<Key, Value> {
 pub struct DemandMapLaneController<Key, Value> {
     tx: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
 }
+impl<Key, Value> Clone for DemandMapLaneController<Key, Value> {
+    fn clone(&self) -> Self {
+        DemandMapLaneController {
+            tx: self.tx.clone(),
+        }
+    }
+}
 
-impl<Key, Value> DemandMapLaneController<Key, Value> {
+impl<Key, Value> DemandMapLaneController<Key, Value>
+where
+    Key: Send + Sync,
+    Value: Send + Sync,
+{
     fn new(
         tx: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
     ) -> DemandMapLaneController<Key, Value> {
@@ -94,6 +107,35 @@ impl<Key, Value> DemandMapLaneController<Key, Value> {
         }
 
         resp_rx
+    }
+
+    pub fn fused_sync(&mut self) -> impl FusedStream<Item = Value> + Send {
+        let DemandMapLaneController { tx } = self;
+
+        futures::stream::once(async {
+            let (resp_tx, resp_rx) = oneshot::channel();
+            let DemandMapLaneController { tx, .. } = self;
+
+            if tx.send(DemandMapLaneEvent::sync(resp_tx)).await.is_err() {
+                todo!("Logging")
+            }
+
+            resp_rx
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|v| async { self.cue_and_await(v).await.unwrap() })
+        })
+        .flat_map(|v| futures::stream::iter(v).filter_map(identity))
+        .fuse()
+    }
+
+    pub async fn sync_and_await(&mut self) -> Result<Vec<Key>, ()> {
+        self.sync().await.await.map_err(|_| ())
+    }
+
+    pub async fn cue_and_await(&mut self, key: Key) -> Result<Option<Value>, ()> {
+        self.cue(key).await.await.map_err(|_| ())
     }
 
     pub async fn cue(&mut self, key: Key) -> oneshot::Receiver<Option<Value>> {

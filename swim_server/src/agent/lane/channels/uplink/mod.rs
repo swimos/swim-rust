@@ -18,10 +18,12 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::RoutingAddr;
 use futures::future::ready;
-use futures::stream::{BoxStream, FusedStream};
-use futures::{select, select_biased, FutureExt, StreamExt};
+use futures::stream::BoxStream;
+use futures::stream::{iter, once, FusedStream};
+use futures::{select, select_biased, Future, FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
+use std::convert::identity;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
@@ -566,6 +568,7 @@ where
         Ok(None)
     }
 
+    // todo: tidy up
     fn sync_lane<'a, Updates>(
         &'a self,
         _updates: &'a mut Updates,
@@ -573,6 +576,33 @@ where
     where
         Updates: FusedStream<Item = Value> + Send + Unpin + 'a,
     {
-        unimplemented!()
+        let DemandMapLaneUplink(lane) = self;
+        let controller = lane.controller();
+
+        Box::pin(unpack(
+            {
+                let mut controller = controller.clone();
+                async move { controller.sync_and_await().await.unwrap() }
+            },
+            move |f| {
+                let mut controller = controller.clone();
+                async move { controller.cue_and_await(f).await.unwrap() }
+            },
+        ))
     }
+}
+
+fn unpack<Key, Value, Fut1, Fut2, F>(
+    fut: Fut1,
+    f: F,
+) -> impl FusedStream<Item = Result<Value, UplinkError>>
+where
+    Fut1: Future<Output = Vec<Key>>,
+    F: FnMut(Key) -> Fut2,
+    Fut2: Future<Output = Option<Value>>,
+{
+    once(fut.map(move |v| v.into_iter().map(f)))
+        .flat_map(|v| iter(v).filter_map(identity))
+        .map(Ok)
+        .fuse()
 }
