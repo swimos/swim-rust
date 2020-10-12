@@ -56,6 +56,11 @@ impl<Command, Response> Action<Command, Response> {
             responder: Some(responder),
         }
     }
+
+    pub fn destruct(self) -> (Command, Option<oneshot::Sender<Response>>) {
+        let Action { command, responder } = self;
+        (command, responder)
+    }
 }
 
 impl<Command, Response> ActionLane<Command, Response>

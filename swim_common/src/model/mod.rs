@@ -1333,7 +1333,7 @@ fn encode_escaped(s: &str, dst: &mut BytesMut) -> Result<(), std::io::Error> {
 ///
 /// Encodes [`Value`]s as bytes using a compact UTF-8 recon formatting.
 ///
-pub struct ValueEncoder {}
+pub struct ValueEncoder;
 
 const TRUE: &[u8] = b"true";
 const FALSE: &[u8] = b"false";
