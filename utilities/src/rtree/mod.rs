@@ -69,9 +69,8 @@ impl Node {
                 entries.push(item);
 
                 if entries.len() > MAX_CHILDREN {
-                    // Split node
-                    //let (L: Entry{mbb: min_rect, child: Leaf(Vec<Rect>), LL: Entry{mbb: min_rect, child: Leaf(Vec<Rect>) = split_node(self);
-                    //Some(L, LL)
+                    let split_entries = self.split();
+                    return Some(split_entries);
                 }
             }
         };
@@ -82,44 +81,144 @@ impl Node {
         match self {
             Node::Branch(entries) => {
                 let mut rects: Vec<&Rect> = entries.iter().map(|entry| &entry.mbb).collect();
-                quadratic_split(&mut rects);
+                // quadratic_split(&mut rects);
+                unimplemented!()
             }
-            Node::Leaf(entries) => {
-                let mut rects: Vec<&Rect> = entries.iter().collect();
-                quadratic_split(&mut rects);
-            }
+            Node::Leaf(entries) => quadratic_split(entries),
         }
-        unimplemented!()
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Node::Branch(entries) => entries.len(),
+            Node::Leaf(entries) => entries.len(),
+        }
     }
 }
 
-fn quadratic_split(rects: &mut Vec<&Rect>) {
+fn quadratic_split(rects: &mut Vec<Rect>) -> (Entry, Entry) {
     let (first_seed_idx, second_seed_idx) = pick_seeds(rects);
 
-    //Todo fix
     let first_seed = rects.remove(first_seed_idx);
-    let second_seed = rects.remove(second_seed_idx);
+    let second_seed = rects.remove(second_seed_idx - 1);
 
-    let first_group = vec![first_seed];
-    let second_group = vec![second_seed];
+    let mut first_group = Entry {
+        mbb: first_seed.clone(),
+        //Todo should this be a leaf?
+        child: Node::Leaf(vec![first_seed]),
+    };
 
-    if !rects.is_empty() {
+    let mut second_group = Entry {
+        mbb: second_seed.clone(),
+        child: Node::Leaf(vec![second_seed]),
+    };
 
-        // if first_group.len()
+    while !rects.is_empty() {
+        if MIN_CHILDREN - first_group.child.len() == rects.len() {
+            for item in rects.drain(..) {
+                let (_, expanded_rect) = first_group.mbb.expand(&item);
+                first_group.insert(item, expanded_rect);
+            }
+        } else if MIN_CHILDREN - second_group.child.len() == rects.len() {
+            for item in rects.drain(..) {
+                let (_, expanded_rect) = second_group.mbb.expand(&item);
+                second_group.insert(item, expanded_rect);
+            }
+        } else {
+            place_next(rects, &mut first_group, &mut second_group)
+        }
     }
 
-    unimplemented!()
+    (first_group, second_group)
 }
 
-fn pick_seeds(rects: &Vec<&Rect>) -> (usize, usize) {
-    //compare rect[n] with rect[n+1] for all n from 0 to N
-    //Calculate area when expanding the smaller one to the bigger one and substract the areas of the two rectangles
-    // choose the one that wastes the most space
-    unimplemented!()
+fn pick_seeds(rects: &Vec<Rect>) -> (usize, usize) {
+    let length = rects.len();
+
+    let mut first_idx = 0;
+    let mut second_idx = 1;
+    let mut max_diff = i32::MIN;
+
+    if length > 2 {
+        for (i, first_rect) in rects.iter().enumerate() {
+            for (j, second_rect) in rects.iter().skip(i + 1).enumerate() {
+                let combined_rect = first_rect.combine(second_rect);
+                let diff = combined_rect.area() - first_rect.area() - second_rect.area();
+
+                if diff > max_diff {
+                    max_diff = diff;
+                    first_idx = i;
+                    second_idx = j;
+                }
+            }
+        }
+    }
+
+    (first_idx, second_idx)
 }
 
-fn pick_next(rects: &Vec<&Rect>) -> usize {
-    unimplemented!();
+fn place_next(rects: &mut Vec<Rect>, first_group: &mut Entry, second_group: &mut Entry) {
+    let mut max_preference = 0;
+    let mut item_idx = 0;
+    let mut group = Group::First;
+    let mut expanded_rect: Option<Rect> = None;
+
+    for (idx, item) in rects.iter().skip(1).enumerate() {
+        let (first_diff, first_expanded_rect) = first_group.mbb.expand(item);
+        let (second_diff, second_expanded_rect) = second_group.mbb.expand(item);
+
+        let preference = (first_diff - second_diff).abs();
+
+        if max_preference < preference {
+            max_preference = preference;
+            item_idx = idx;
+            group = select_group(first_group, second_group, first_diff, second_diff);
+
+            match group {
+                Group::First => expanded_rect = Some(first_expanded_rect),
+                Group::Second => expanded_rect = Some(second_expanded_rect),
+            }
+        }
+    }
+
+    let item = rects.remove(item_idx);
+
+    match group {
+        Group::First => first_group.insert(item, expanded_rect.unwrap()),
+        Group::Second => second_group.insert(item, expanded_rect.unwrap()),
+    };
+}
+
+fn select_group(
+    first_group: &Entry,
+    second_group: &Entry,
+    first_diff: i32,
+    second_diff: i32,
+) -> Group {
+    if first_diff < second_diff {
+        Group::First
+    } else if second_diff < first_diff {
+        Group::Second
+    } else {
+        if first_group.mbb.area() < second_group.mbb.area() {
+            Group::First
+        } else if second_group.mbb.area() < first_group.mbb.area() {
+            Group::Second
+        } else {
+            if first_group.child.len() < second_group.child.len() {
+                Group::First
+            } else if second_group.child.len() < first_group.child.len() {
+                Group::Second
+            } else {
+                Group::First
+            }
+        }
+    }
+}
+
+enum Group {
+    First,
+    Second,
 }
 
 #[derive(Debug)]
@@ -142,7 +241,7 @@ impl Entry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Rect {
     lower_left: Point,
     upper_right: Point,
@@ -155,6 +254,38 @@ impl Rect {
             lower_left,
             upper_right,
         }
+    }
+
+    // Create the smallest rectangle that contains both.
+    fn combine(&self, other: &Rect) -> Rect {
+        let new_lower_left_x = if self.lower_left.x > other.lower_left.x {
+            other.lower_left.x
+        } else {
+            self.lower_left.x
+        };
+
+        let new_lower_left_y = if self.lower_left.y > other.lower_left.y {
+            other.lower_left.y
+        } else {
+            self.lower_left.y
+        };
+
+        let new_upper_right_x = if self.upper_right.x > other.upper_right.x {
+            self.upper_right.x
+        } else {
+            other.upper_right.x
+        };
+
+        let new_upper_right_y = if self.upper_right.y > other.upper_right.y {
+            self.upper_right.y
+        } else {
+            other.upper_right.y
+        };
+
+        Rect::new(
+            Point::new(new_lower_left_x, new_lower_left_y),
+            Point::new(new_upper_right_x, new_upper_right_y),
+        )
     }
 
     // Expand this rectangle in order to include the other rectangle.
