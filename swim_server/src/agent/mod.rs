@@ -42,6 +42,7 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
+use futures::stream::iter;
 use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -1371,8 +1372,22 @@ where
             while let Some(event) = events.next().await {
                 match event {
                     DemandMapLaneEvent::Sync(sender) => {
-                        let value = lifecycle.on_sync(&model, &context).await;
-                        if sender.send(value).is_err() {
+                        let keys: Vec<Key> = lifecycle.on_sync(&model, &context).await;
+                        let keys_len = keys.len();
+
+                        let mut results = iter(keys)
+                            .fold(Vec::with_capacity(keys_len), |mut results, key| async {
+                                if let Some(value) = lifecycle.on_cue(&model, &context, key).await {
+                                    results.push(value);
+                                }
+
+                                results
+                            })
+                            .await;
+
+                        results.shrink_to_fit();
+
+                        if sender.send(results).is_err() {
                             todo!("Logging")
                         }
                     }

@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
-use futures::stream::FusedStream;
-use futures::{Stream, StreamExt};
-use std::convert::identity;
+use futures::Stream;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -87,18 +85,14 @@ impl<Key, Value> Clone for DemandMapLaneController<Key, Value> {
     }
 }
 
-impl<Key, Value> DemandMapLaneController<Key, Value>
-where
-    Key: Send + Sync,
-    Value: Send + Sync,
-{
+impl<Key, Value> DemandMapLaneController<Key, Value> {
     fn new(
         tx: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
     ) -> DemandMapLaneController<Key, Value> {
         DemandMapLaneController { tx }
     }
 
-    pub async fn sync(&mut self) -> oneshot::Receiver<Vec<Key>> {
+    pub async fn sync(&mut self) -> oneshot::Receiver<Vec<Value>> {
         let (resp_tx, resp_rx) = oneshot::channel();
         let DemandMapLaneController { tx, .. } = self;
 
@@ -109,28 +103,7 @@ where
         resp_rx
     }
 
-    pub fn fused_sync(&mut self) -> impl FusedStream<Item = Value> + Send {
-        let DemandMapLaneController { tx } = self;
-
-        futures::stream::once(async {
-            let (resp_tx, resp_rx) = oneshot::channel();
-            let DemandMapLaneController { tx, .. } = self;
-
-            if tx.send(DemandMapLaneEvent::sync(resp_tx)).await.is_err() {
-                todo!("Logging")
-            }
-
-            resp_rx
-                .await
-                .unwrap()
-                .into_iter()
-                .map(|v| async { self.cue_and_await(v).await.unwrap() })
-        })
-        .flat_map(|v| futures::stream::iter(v).filter_map(identity))
-        .fuse()
-    }
-
-    pub async fn sync_and_await(&mut self) -> Result<Vec<Key>, ()> {
+    pub async fn sync_and_await(&mut self) -> Result<Vec<Value>, ()> {
         self.sync().await.await.map_err(|_| ())
     }
 
@@ -156,12 +129,12 @@ where
 
 #[derive(Debug)]
 pub enum DemandMapLaneEvent<Key, Value> {
-    Sync(oneshot::Sender<Vec<Key>>),
+    Sync(oneshot::Sender<Vec<Value>>),
     Cue(oneshot::Sender<Option<Value>>, Key),
 }
 
 impl<Key, Value> DemandMapLaneEvent<Key, Value> {
-    fn sync(tx: oneshot::Sender<Vec<Key>>) -> DemandMapLaneEvent<Key, Value> {
+    fn sync(tx: oneshot::Sender<Vec<Value>>) -> DemandMapLaneEvent<Key, Value> {
         DemandMapLaneEvent::Sync(tx)
     }
 

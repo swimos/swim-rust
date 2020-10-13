@@ -577,18 +577,20 @@ where
         Updates: FusedStream<Item = Value> + Send + Unpin + 'a,
     {
         let DemandMapLaneUplink(lane) = self;
-        let controller = lane.controller();
+        // let controller = lane.controller();
 
-        Box::pin(unpack(
-            {
-                let mut controller = controller.clone();
-                async move { controller.sync_and_await().await.unwrap() }
-            },
-            move |f| {
-                let mut controller = controller.clone();
-                async move { controller.cue_and_await(f).await.unwrap() }
-            },
-        ))
+        // Box::pin(unpack(
+        //     {
+        //         let mut controller = controller.clone();
+        //         async move { controller.sync_and_await().await.unwrap() }
+        //     },
+        //     move |f| {
+        //         let mut controller = controller.clone();
+        //         async move { controller.cue_and_await(f).await.unwrap() }
+        //     },
+        // ))
+
+        unimplemented!()
     }
 }
 
