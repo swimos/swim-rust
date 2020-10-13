@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests;
 
-static MAX_CHILDREN: usize = 10;
-static MIN_CHILDREN: usize = 5;
+static MAX_CHILDREN: usize = 4;
+static MIN_CHILDREN: usize = 2;
 
 #[derive(Debug)]
 struct RTree {
@@ -46,7 +46,7 @@ impl Node {
                         min_diff = diff;
                         min_rect = expanded_rect;
                         min_entry = entry;
-                        min_entry_idx = idx;
+                        min_entry_idx = idx + 1;
                     }
                 }
 
@@ -57,9 +57,8 @@ impl Node {
                         entries.push(second_entry);
 
                         if entries.len() > MAX_CHILDREN {
-                            //Split node
-                            //let (L: Entry{mbb: min_rect, child: Branch(Vec<Entry>), LL: Entry{mbb: min_rect, child: Branch(Vec<Entry>) = split_node(self);
-                            //Some(L, LL)
+                            let split_entries = self.split();
+                            return Some(split_entries);
                         }
                     }
                     None => (),
@@ -81,10 +80,123 @@ impl Node {
         match self {
             Node::Branch(entries) => {
                 let mut rects: Vec<&Rect> = entries.iter().map(|entry| &entry.mbb).collect();
-                // quadratic_split(&mut rects);
-                unimplemented!()
+                let (first_seed_idx, second_seed_idx) = pick_seeds(&rects);
+
+                rects.remove(first_seed_idx);
+                rects.remove(second_seed_idx - 1);
+                let first_seed = entries.remove(first_seed_idx);
+                let second_seed = entries.remove(second_seed_idx - 1);
+
+                let mut first_group = Entry {
+                    mbb: first_seed.mbb.clone(),
+                    child: Node::Branch(vec![first_seed]),
+                };
+
+                let mut second_group = Entry {
+                    mbb: second_seed.mbb.clone(),
+                    child: Node::Branch(vec![second_seed]),
+                };
+
+                //Todo refactor
+                while !entries.is_empty() {
+                    if entries.len() + first_group.child.len() == MIN_CHILDREN {
+                        for item in entries.drain(..) {
+                            let (_, expanded_rect) = first_group.mbb.expand(&item.mbb);
+
+                            first_group.mbb = expanded_rect;
+                            match &mut first_group.child {
+                                Node::Branch(entries) => entries.push(item),
+                                Node::Leaf(_) => unreachable!(),
+                            }
+                        }
+                    } else if entries.len() + second_group.child.len() == MIN_CHILDREN {
+                        for item in entries.drain(..) {
+                            let (_, expanded_rect) = second_group.mbb.expand(&item.mbb);
+                            second_group.mbb = expanded_rect;
+                            match &mut second_group.child {
+                                Node::Branch(entries) => entries.push(item),
+                                Node::Leaf(_) => unreachable!(),
+                            }
+                        }
+                    } else {
+                        let mut rects: Vec<&Rect> =
+                            entries.iter().map(|entry| &entry.mbb).collect();
+
+                        let (idx, expanded_rect, group) =
+                            pick_next(&rects, &mut first_group, &mut second_group);
+
+                        rects.remove(idx);
+                        let item = entries.remove(idx);
+
+                        match group {
+                            Group::First => {
+                                first_group.mbb = expanded_rect;
+                                match &mut first_group.child {
+                                    Node::Branch(entries) => entries.push(item),
+                                    Node::Leaf(_) => unreachable!(),
+                                }
+                            }
+                            Group::Second => {
+                                second_group.mbb = expanded_rect;
+                                match &mut second_group.child {
+                                    Node::Branch(entries) => entries.push(item),
+                                    Node::Leaf(_) => unreachable!(),
+                                }
+                            }
+                        };
+                    }
+                }
+                (first_group, second_group)
             }
-            Node::Leaf(entries) => quadratic_split(entries),
+            Node::Leaf(entries) => {
+                let mut rects: Vec<&Rect> = entries.iter().collect();
+                let (first_seed_idx, second_seed_idx) = pick_seeds(&rects);
+
+                rects.remove(first_seed_idx);
+                rects.remove(second_seed_idx - 1);
+                let first_seed = entries.remove(first_seed_idx);
+                let second_seed = entries.remove(second_seed_idx - 1);
+
+                let mut first_group = Entry {
+                    mbb: first_seed.clone(),
+                    child: Node::Leaf(vec![first_seed]),
+                };
+
+                let mut second_group = Entry {
+                    mbb: second_seed.clone(),
+                    child: Node::Leaf(vec![second_seed]),
+                };
+
+                //Todo refactor
+                while !entries.is_empty() {
+                    if entries.len() + first_group.child.len() == MIN_CHILDREN {
+                        for item in entries.drain(..) {
+                            let (_, expanded_rect) = first_group.mbb.expand(&item);
+                            first_group.insert(item, expanded_rect);
+                        }
+                    } else if entries.len() + second_group.child.len() == MIN_CHILDREN {
+                        for item in entries.drain(..) {
+                            let (_, expanded_rect) = second_group.mbb.expand(&item);
+                            second_group.insert(item, expanded_rect);
+                        }
+                    } else {
+                        let mut rects: Vec<&Rect> = entries.iter().collect();
+
+                        let (idx, expanded_rect, group) =
+                            pick_next(&rects, &mut first_group, &mut second_group);
+
+                        rects.remove(idx);
+                        let item = entries.remove(idx);
+
+                        match group {
+                            Group::First => first_group.insert(item, expanded_rect),
+                            Group::Second => second_group.insert(item, expanded_rect),
+                        };
+                    }
+                }
+
+                (first_group, second_group)
+            }
         }
     }
 
@@ -96,43 +208,7 @@ impl Node {
     }
 }
 
-fn quadratic_split(rects: &mut Vec<Rect>) -> (Entry, Entry) {
-    let (first_seed_idx, second_seed_idx) = pick_seeds(rects);
-
-    let first_seed = rects.remove(first_seed_idx);
-    let second_seed = rects.remove(second_seed_idx - 1);
-
-    let mut first_group = Entry {
-        mbb: first_seed.clone(),
-        //Todo should this be a leaf?
-        child: Node::Leaf(vec![first_seed]),
-    };
-
-    let mut second_group = Entry {
-        mbb: second_seed.clone(),
-        child: Node::Leaf(vec![second_seed]),
-    };
-
-    while !rects.is_empty() {
-        if MIN_CHILDREN - first_group.child.len() == rects.len() {
-            for item in rects.drain(..) {
-                let (_, expanded_rect) = first_group.mbb.expand(&item);
-                first_group.insert(item, expanded_rect);
-            }
-        } else if MIN_CHILDREN - second_group.child.len() == rects.len() {
-            for item in rects.drain(..) {
-                let (_, expanded_rect) = second_group.mbb.expand(&item);
-                second_group.insert(item, expanded_rect);
-            }
-        } else {
-            place_next(rects, &mut first_group, &mut second_group)
-        }
-    }
-
-    (first_group, second_group)
-}
-
-fn pick_seeds(rects: &Vec<Rect>) -> (usize, usize) {
+fn pick_seeds(rects: &Vec<&Rect>) -> (usize, usize) {
     let length = rects.len();
 
     let mut first_idx = 0;
@@ -141,7 +217,7 @@ fn pick_seeds(rects: &Vec<Rect>) -> (usize, usize) {
 
     if length > 2 {
         for (i, first_rect) in rects.iter().enumerate() {
-            for (j, second_rect) in rects.iter().skip(i + 1).enumerate() {
+            for (j, second_rect) in rects.iter().enumerate().skip(i + 1) {
                 let combined_rect = first_rect.combine(second_rect);
                 let diff = combined_rect.area() - first_rect.area() - second_rect.area();
 
@@ -157,19 +233,22 @@ fn pick_seeds(rects: &Vec<Rect>) -> (usize, usize) {
     (first_idx, second_idx)
 }
 
-fn place_next(rects: &mut Vec<Rect>, first_group: &mut Entry, second_group: &mut Entry) {
+fn pick_next(
+    rects: &Vec<&Rect>,
+    first_group: &Entry,
+    second_group: &Entry,
+) -> (usize, Rect, Group) {
     let mut max_preference = 0;
     let mut item_idx = 0;
     let mut group = Group::First;
     let mut expanded_rect: Option<Rect> = None;
 
-    for (idx, item) in rects.iter().skip(1).enumerate() {
+    for (idx, item) in rects.iter().enumerate() {
         let (first_diff, first_expanded_rect) = first_group.mbb.expand(item);
         let (second_diff, second_expanded_rect) = second_group.mbb.expand(item);
 
         let preference = (first_diff - second_diff).abs();
-
-        if max_preference < preference {
+        if max_preference <= preference {
             max_preference = preference;
             item_idx = idx;
             group = select_group(first_group, second_group, first_diff, second_diff);
@@ -181,12 +260,7 @@ fn place_next(rects: &mut Vec<Rect>, first_group: &mut Entry, second_group: &mut
         }
     }
 
-    let item = rects.remove(item_idx);
-
-    match group {
-        Group::First => first_group.insert(item, expanded_rect.unwrap()),
-        Group::Second => second_group.insert(item, expanded_rect.unwrap()),
-    };
+    (item_idx, expanded_rect.unwrap(), group)
 }
 
 fn select_group(
@@ -228,13 +302,6 @@ struct Entry {
 }
 
 impl Entry {
-    fn new(item: Rect) -> Self {
-        Entry {
-            mbb: item,
-            child: Node::Leaf(Vec::new()),
-        }
-    }
-
     fn insert(&mut self, item: Rect, expanded_rect: Rect) -> Option<(Entry, Entry)> {
         self.mbb = expanded_rect;
         self.child.insert(item)
