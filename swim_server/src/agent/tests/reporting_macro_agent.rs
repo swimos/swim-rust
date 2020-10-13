@@ -27,6 +27,7 @@ use crate::plane::provider::AgentProvider;
 use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent};
 use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -35,6 +36,7 @@ use stm::stm::Stm;
 use stm::transaction::atomically;
 use swim_common::sink::item::DiscardingSender;
 use tokio::sync::{mpsc, Mutex};
+use utilities::uri::RelativeUri;
 
 mod swim_server {
     pub use crate::*;
@@ -289,7 +291,7 @@ async fn agent_loop() {
 
     let config = TestAgentConfig::new(tx);
 
-    let uri = "test".to_string();
+    let uri = RelativeUri::try_from("/test").unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
