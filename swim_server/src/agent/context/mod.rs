@@ -29,6 +29,7 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
@@ -38,7 +39,7 @@ mod tests;
 #[derive(Debug)]
 pub(super) struct ContextImpl<Agent, Clk, Router> {
     agent_ref: Arc<Agent>,
-    uri: String,
+    uri: RelativeUri,
     scheduler: mpsc::Sender<Eff>,
     schedule_count: Arc<AtomicU64>,
     clock: Clk,
@@ -70,7 +71,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
 impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        uri: String,
+        uri: RelativeUri,
         scheduler: mpsc::Sender<Eff>,
         clock: Clk,
         stop_signal: trigger::Receiver,
@@ -135,8 +136,8 @@ where
         self.agent_ref.as_ref()
     }
 
-    fn node_uri(&self) -> &str {
-        self.uri.as_str()
+    fn node_uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn agent_stop_event(&self) -> trigger::Receiver {

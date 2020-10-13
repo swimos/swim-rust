@@ -57,6 +57,7 @@ use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 #[doc(hidden)]
 #[allow(unused_imports)]
@@ -95,14 +96,14 @@ const LANE_EVENTS: &str = "Lane events";
 
 #[derive(Debug)]
 pub struct AgentResult {
-    pub route: String,
+    pub route: RelativeUri,
     pub dispatcher_errors: DispatcherErrors,
     pub failed: bool,
 }
 
 impl AgentResult {
     fn from(
-        route: String,
+        route: RelativeUri,
         result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
     ) -> Self {
         let (errs, failed) = match result {
@@ -122,7 +123,7 @@ impl AgentResult {
 pub struct AgentParameters<Config> {
     agent_config: Config,
     execution_config: AgentExecutionConfig,
-    uri: String,
+    uri: RelativeUri,
     parameters: HashMap<String, String>,
 }
 
@@ -130,7 +131,7 @@ impl<Config> AgentParameters<Config> {
     pub fn new(
         agent_config: Config,
         execution_config: AgentExecutionConfig,
-        uri: String,
+        uri: RelativeUri,
         parameters: HashMap<String, String>,
     ) -> Self {
         AgentParameters {
@@ -344,7 +345,7 @@ pub trait AgentContext<Agent> {
     fn agent(&self) -> &Agent;
 
     /// Get the node URI of the agent instance.
-    fn node_uri(&self) -> &str;
+    fn node_uri(&self) -> &RelativeUri;
 
     /// Get a future that will complete when the agent is stopping.
     fn agent_stop_event(&self) -> trigger::Receiver;

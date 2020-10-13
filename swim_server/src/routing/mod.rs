@@ -19,6 +19,7 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use url::Url;
+use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
@@ -90,6 +91,6 @@ pub trait ServerRouter: Send + Sync {
     fn resolve(
         &mut self,
         host: Option<Url>,
-        route: String,
+        route: RelativeUri,
     ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
 }
