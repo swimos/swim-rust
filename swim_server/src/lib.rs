@@ -17,3 +17,5 @@
 pub mod agent;
 pub mod plane;
 pub mod routing;
+
+pub use agent_derive::*;
