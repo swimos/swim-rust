@@ -332,8 +332,8 @@ where
 }
 
 pub trait WsConnections {
-    type StreamSink: JoinedStreamSink<WsMessage, ConnectionError>;
-    type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>>;
+    type StreamSink: JoinedStreamSink<WsMessage, ConnectionError> + Send + Sync + Unpin + 'static;
+    type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + Sync + 'static;
 
     fn open_connection<Sock>(&self, socket: Sock) -> Self::Fut;
     fn accept_connection<Sock>(&self, socket: Sock) -> Self::Fut;

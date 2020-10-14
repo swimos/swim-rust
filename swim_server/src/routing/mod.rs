@@ -23,7 +23,7 @@ use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
-pub(crate) mod remote;
+pub mod remote;
 #[cfg(test)]
 mod tests;
 pub(crate) mod ws;

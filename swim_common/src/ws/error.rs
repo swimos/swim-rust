@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::request::request_future::RequestError;
+use futures::io::Error;
 use http::uri::InvalidUri;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -139,6 +140,12 @@ impl Display for WebSocketError {
 impl From<CertificateError> for ConnectionError {
     fn from(e: CertificateError) -> Self {
         ConnectionError::SocketError(WebSocketError::CertificateError(e))
+    }
+}
+
+impl From<std::io::Error> for ConnectionError {
+    fn from(err: Error) -> Self {
+        ConnectionError::SocketError(WebSocketError::Message(err.to_string()))
     }
 }
 

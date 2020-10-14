@@ -32,7 +32,7 @@ use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tokio::time::{delay_for, Instant};
 use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::sync::{promise, trigger};
+use utilities::sync::trigger;
 use utilities::uri::{BadRelativeUri, RelativeUri};
 
 pub struct ConnectionTask<Str, Router> {
@@ -40,7 +40,6 @@ pub struct ConnectionTask<Str, Router> {
     messages: mpsc::Receiver<TaggedEnvelope>,
     router: Router,
     stop_signal: trigger::Receiver,
-    drop_tx: promise::Sender<ConnectionDropped>,
     activity_timeout: Duration,
     retry_strategy: RetryStrategy,
 }
@@ -77,7 +76,6 @@ where
         router: Router,
         messages: mpsc::Receiver<TaggedEnvelope>,
         stop_signal: trigger::Receiver,
-        drop_tx: promise::Sender<ConnectionDropped>,
         activity_timeout: Duration,
         retry_strategy: RetryStrategy,
     ) -> Self {
@@ -87,19 +85,17 @@ where
             messages,
             router,
             stop_signal,
-            drop_tx,
             activity_timeout,
             retry_strategy,
         }
     }
 
-    pub async fn run(self) {
+    pub async fn run(self) -> ConnectionDropped {
         let ConnectionTask {
             mut ws_stream,
             messages,
             mut router,
             stop_signal,
-            drop_tx,
             activity_timeout,
             retry_strategy,
         } = self;
@@ -167,21 +163,19 @@ where
             Completion::ProtocolError(err) => Some(CloseReason::ProtocolError(err.clone())),
             _ => None,
         } {
-            if let Err(err) = ws_stream.close(Some(CloseReason::GoingAway)).await {
+            if let Err(_err) = ws_stream.close(Some(reason)).await {
                 //TODO Log close error.
             }
         }
 
-        let drop_reason = match completion {
+        match completion {
             Completion::Failed(err) => ConnectionDropped::Failed(err),
             Completion::TimedOut => ConnectionDropped::TimedOut(activity_timeout),
-            Completion::ProtocolError(err) => {
+            Completion::ProtocolError(_) => {
                 ConnectionDropped::Failed(ConnectionError::ReceiveMessageError)
             }
             _ => ConnectionDropped::Closed,
-        };
-
-        let _ = drop_tx.provide(drop_reason);
+        }
     }
 }
 
