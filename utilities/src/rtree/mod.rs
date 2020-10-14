@@ -37,10 +37,12 @@ impl Node {
 
                 let mut min_entry = entries_iter.next().unwrap();
                 let mut min_entry_idx = 0;
-                let (mut min_diff, mut min_rect) = min_entry.mbb.expand(&item);
+                let mut min_rect = min_entry.mbb.combine_boxes(&item);
+                let mut min_diff = min_rect.area() - min_entry.mbb.area();
 
                 for (idx, entry) in entries_iter.enumerate() {
-                    let (diff, expanded_rect) = entry.mbb.expand(&item);
+                    let expanded_rect = entry.mbb.combine_boxes(&item);
+                    let diff = expanded_rect.area() - entry.mbb.area();
 
                     if diff < min_diff {
                         min_diff = diff;
@@ -79,11 +81,8 @@ impl Node {
     fn split(&mut self) -> (Entry, Entry) {
         match self {
             Node::Branch(entries) => {
-                let mut rects: Vec<&Rect> = entries.iter().map(|entry| &entry.mbb).collect();
-                let (first_seed_idx, second_seed_idx) = pick_seeds(&rects);
+                let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
-                rects.remove(first_seed_idx);
-                rects.remove(second_seed_idx - 1);
                 let first_seed = entries.remove(first_seed_idx);
                 let second_seed = entries.remove(second_seed_idx - 1);
 
@@ -101,7 +100,7 @@ impl Node {
                 while !entries.is_empty() {
                     if entries.len() + first_group.child.len() == MIN_CHILDREN {
                         for item in entries.drain(..) {
-                            let (_, expanded_rect) = first_group.mbb.expand(&item.mbb);
+                            let expanded_rect = first_group.mbb.combine_boxes(&item.mbb);
 
                             first_group.mbb = expanded_rect;
                             match &mut first_group.child {
@@ -111,7 +110,7 @@ impl Node {
                         }
                     } else if entries.len() + second_group.child.len() == MIN_CHILDREN {
                         for item in entries.drain(..) {
-                            let (_, expanded_rect) = second_group.mbb.expand(&item.mbb);
+                            let expanded_rect = second_group.mbb.combine_boxes(&item.mbb);
                             second_group.mbb = expanded_rect;
                             match &mut second_group.child {
                                 Node::Branch(entries) => entries.push(item),
@@ -119,17 +118,14 @@ impl Node {
                             }
                         }
                     } else {
-                        let mut rects: Vec<&Rect> =
-                            entries.iter().map(|entry| &entry.mbb).collect();
-
                         let (idx, expanded_rect, group) =
-                            pick_next(&rects, &mut first_group, &mut second_group);
+                            pick_next(entries, &mut first_group, &mut second_group);
 
-                        rects.remove(idx);
                         let item = entries.remove(idx);
 
                         match group {
                             Group::First => {
+                                // first_group.insert(item, expanded_rect);
                                 first_group.mbb = expanded_rect;
                                 match &mut first_group.child {
                                     Node::Branch(entries) => entries.push(item),
@@ -149,11 +145,8 @@ impl Node {
                 (first_group, second_group)
             }
             Node::Leaf(entries) => {
-                let mut rects: Vec<&Rect> = entries.iter().collect();
-                let (first_seed_idx, second_seed_idx) = pick_seeds(&rects);
+                let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
-                rects.remove(first_seed_idx);
-                rects.remove(second_seed_idx - 1);
                 let first_seed = entries.remove(first_seed_idx);
                 let second_seed = entries.remove(second_seed_idx - 1);
 
@@ -171,21 +164,18 @@ impl Node {
                 while !entries.is_empty() {
                     if entries.len() + first_group.child.len() == MIN_CHILDREN {
                         for item in entries.drain(..) {
-                            let (_, expanded_rect) = first_group.mbb.expand(&item);
+                            let expanded_rect = first_group.mbb.combine_boxes(&item);
                             first_group.insert(item, expanded_rect);
                         }
                     } else if entries.len() + second_group.child.len() == MIN_CHILDREN {
                         for item in entries.drain(..) {
-                            let (_, expanded_rect) = second_group.mbb.expand(&item);
+                            let expanded_rect = second_group.mbb.combine_boxes(&item);
                             second_group.insert(item, expanded_rect);
                         }
                     } else {
-                        let mut rects: Vec<&Rect> = entries.iter().collect();
-
                         let (idx, expanded_rect, group) =
-                            pick_next(&rects, &mut first_group, &mut second_group);
+                            pick_next(entries, &mut first_group, &mut second_group);
 
-                        rects.remove(idx);
                         let item = entries.remove(idx);
 
                         match group {
@@ -208,17 +198,17 @@ impl Node {
     }
 }
 
-fn pick_seeds(rects: &Vec<&Rect>) -> (usize, usize) {
-    let length = rects.len();
+fn pick_seeds<T: BoundingBox>(entries: &Vec<T>) -> (usize, usize) {
+    let length = entries.len();
 
     let mut first_idx = 0;
     let mut second_idx = 1;
     let mut max_diff = i32::MIN;
 
     if length > 2 {
-        for (i, first_rect) in rects.iter().enumerate() {
-            for (j, second_rect) in rects.iter().enumerate().skip(i + 1) {
-                let combined_rect = first_rect.combine(second_rect);
+        for (i, first_rect) in entries.iter().enumerate() {
+            for (j, second_rect) in entries.iter().enumerate().skip(i + 1) {
+                let combined_rect = first_rect.combine_boxes::<T>(second_rect);
                 let diff = combined_rect.area() - first_rect.area() - second_rect.area();
 
                 if diff > max_diff {
@@ -233,8 +223,8 @@ fn pick_seeds(rects: &Vec<&Rect>) -> (usize, usize) {
     (first_idx, second_idx)
 }
 
-fn pick_next(
-    rects: &Vec<&Rect>,
+fn pick_next<T: BoundingBox>(
+    entries: &Vec<T>,
     first_group: &Entry,
     second_group: &Entry,
 ) -> (usize, Rect, Group) {
@@ -243,9 +233,12 @@ fn pick_next(
     let mut group = Group::First;
     let mut expanded_rect: Option<Rect> = None;
 
-    for (idx, item) in rects.iter().enumerate() {
-        let (first_diff, first_expanded_rect) = first_group.mbb.expand(item);
-        let (second_diff, second_expanded_rect) = second_group.mbb.expand(item);
+    for (idx, item) in entries.iter().enumerate() {
+        let first_expanded_rect = first_group.mbb.combine_boxes::<T>(item);
+        let first_diff = first_expanded_rect.area() - first_group.mbb.area();
+
+        let second_expanded_rect = second_group.mbb.combine_boxes::<T>(item);
+        let second_diff = second_expanded_rect.area() - second_group.mbb.area();
 
         let preference = (first_diff - second_diff).abs();
         if max_preference <= preference {
@@ -260,6 +253,7 @@ fn pick_next(
         }
     }
 
+    //Todo remove unwrap
     (item_idx, expanded_rect.unwrap(), group)
 }
 
@@ -308,6 +302,20 @@ impl Entry {
     }
 }
 
+impl BoundingBox for Entry {
+    fn get_mbb(&self) -> &Rect {
+        &self.mbb
+    }
+
+    fn area(&self) -> i32 {
+        self.mbb.area()
+    }
+
+    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
+        self.mbb.combine_boxes(other.get_mbb())
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Rect {
     lower_left: Point,
@@ -322,67 +330,49 @@ impl Rect {
             upper_right,
         }
     }
+}
 
-    // Create the smallest rectangle that contains both.
-    fn combine(&self, other: &Rect) -> Rect {
-        let new_lower_left_x = if self.lower_left.x > other.lower_left.x {
-            other.lower_left.x
+impl BoundingBox for Rect {
+    fn get_mbb(&self) -> &Rect {
+        self
+    }
+
+    fn area(&self) -> i32 {
+        (self.upper_right.x - self.lower_left.x) * (self.upper_right.y - self.lower_left.y)
+    }
+
+    // Create the minimum bounding box that contains both.
+    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
+        let other_mbb = other.get_mbb();
+
+        let new_lower_left_x = if self.lower_left.x > other_mbb.lower_left.x {
+            other_mbb.lower_left.x
         } else {
             self.lower_left.x
         };
 
-        let new_lower_left_y = if self.lower_left.y > other.lower_left.y {
-            other.lower_left.y
+        let new_lower_left_y = if self.lower_left.y > other_mbb.lower_left.y {
+            other_mbb.lower_left.y
         } else {
             self.lower_left.y
         };
 
-        let new_upper_right_x = if self.upper_right.x > other.upper_right.x {
+        let new_upper_right_x = if self.upper_right.x > other_mbb.upper_right.x {
             self.upper_right.x
         } else {
-            other.upper_right.x
+            other_mbb.upper_right.x
         };
 
-        let new_upper_right_y = if self.upper_right.y > other.upper_right.y {
+        let new_upper_right_y = if self.upper_right.y > other_mbb.upper_right.y {
             self.upper_right.y
         } else {
-            other.upper_right.y
+            other_mbb.upper_right.y
         };
 
         Rect::new(
             Point::new(new_lower_left_x, new_lower_left_y),
             Point::new(new_upper_right_x, new_upper_right_y),
         )
-    }
-
-    // Expand this rectangle in order to include the other rectangle.
-    fn expand(&self, other: &Rect) -> (i32, Rect) {
-        let mut new_lower_left = self.lower_left.clone();
-        let mut new_upper_right = self.upper_right.clone();
-
-        if self.lower_left.x > other.lower_left.x {
-            new_lower_left.x = other.lower_left.x;
-        }
-
-        if self.upper_right.x < other.upper_right.x {
-            new_upper_right.x = other.upper_right.x
-        }
-
-        if self.lower_left.y > other.lower_left.y {
-            new_lower_left.y = other.lower_left.y;
-        }
-
-        if self.upper_right.y < other.upper_right.y {
-            new_upper_right.y = other.upper_right.y
-        }
-
-        let expanded = Rect::new(new_lower_left, new_upper_right);
-
-        (expanded.area() - self.area(), expanded)
-    }
-
-    fn area(&self) -> i32 {
-        (self.upper_right.x - self.lower_left.x) * (self.upper_right.y - self.lower_left.y)
     }
 }
 
@@ -396,4 +386,10 @@ impl Point {
     fn new(x: i32, y: i32) -> Self {
         Point { x, y }
     }
+}
+
+trait BoundingBox {
+    fn get_mbb(&self) -> &Rect;
+    fn area(&self) -> i32;
+    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect;
 }
