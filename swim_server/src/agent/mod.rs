@@ -1350,8 +1350,8 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
     S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
-    Key: Any + Form + Send + Sync + Debug,
-    Value: Any + Form + Send + Sync + Debug,
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
     P: Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
 {
@@ -1381,8 +1381,10 @@ where
 
                         let mut results = iter(keys)
                             .fold(Vec::with_capacity(keys_len), |mut results, key| async {
-                                if let Some(value) = lifecycle.on_cue(&model, &context, key).await {
-                                    results.push(value);
+                                if let Some(value) =
+                                    lifecycle.on_cue(&model, &context, key.clone()).await
+                                {
+                                    results.push(DemandMapLaneUpdate::make(key, value));
                                 }
 
                                 results

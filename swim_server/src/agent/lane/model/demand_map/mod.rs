@@ -56,8 +56,12 @@ where
     }
 }
 
-pub enum DemandMapLaneEvent<Key, Value> {
-    Sync(oneshot::Sender<Vec<Value>>),
+pub enum DemandMapLaneEvent<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    Sync(oneshot::Sender<Vec<DemandMapLaneUpdate<Key, Value>>>),
     Cue(oneshot::Sender<Option<Value>>, Key),
 }
 
@@ -71,11 +75,7 @@ where
     Key: Form,
     Value: Form,
 {
-    fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneController<Key, Value> {
-        DemandMapLaneController(lane)
-    }
-
-    pub async fn sync(&mut self) -> Result<Vec<Value>, ()> {
+    pub async fn sync(mut self) -> Result<Vec<DemandMapLaneUpdate<Key, Value>>, ()> {
         let (tx, rx) = oneshot::channel();
 
         if self
@@ -120,7 +120,7 @@ where
 impl<Key, Value> DemandMapLane<Key, Value>
 where
     Key: Clone + Form,
-    Value: Form,
+    Value: Clone + Form,
 {
     pub(crate) fn new(
         uplink_sender: mpsc::Sender<DemandMapLaneUpdate<Key, Value>>,
@@ -133,7 +133,7 @@ where
         }
     }
 
-    pub(crate) fn controller(&self) -> DemandMapLaneController<Key, Value> {
+    pub fn controller(&self) -> DemandMapLaneController<Key, Value> {
         DemandMapLaneController(self.clone())
     }
 

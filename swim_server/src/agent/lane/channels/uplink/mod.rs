@@ -558,8 +558,8 @@ where
 
 impl<Key, Value> DemandMapLaneUplink<Key, Value>
 where
-    Key: Form,
-    Value: Form,
+    Key: Clone + Form,
+    Value: Clone + Form,
 {
     pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneUplink<Key, Value> {
         DemandMapLaneUplink { lane }
@@ -581,7 +581,6 @@ where
         Ok(Some(event))
     }
 
-    // todo: tidy up
     fn sync_lane<'a, Updates>(
         &'a self,
         _updates: &'a mut Updates,
@@ -589,21 +588,19 @@ where
     where
         Updates: FusedStream<Item = DemandMapLaneUpdate<Key, Value>> + Send + Unpin + 'a,
     {
-        let DemandMapLaneUplink { lane: _lane } = self;
+        let DemandMapLaneUplink { lane, .. } = self;
 
-        // let controller = lane.controller();
+        let controller = lane.controller();
+        let sync_fut = controller.sync();
 
-        // Box::pin(unpack(
-        //     {
-        //         let mut controller = controller.clone();
-        //         async move { controller.sync_and_await().await.unwrap() }
-        //     },
-        //     move |f| {
-        //         let mut controller = controller.clone();
-        //         async move { controller.cue_and_await(f).await.unwrap() }
-        //     },
-        // ))
-
-        unimplemented!()
+        Box::pin(
+            futures::stream::once(sync_fut)
+                .filter_map(|r| match r {
+                    Ok(v) => ready(Some(v.into_iter())),
+                    Err(_) => ready(None),
+                })
+                .flat_map(|v| futures::stream::iter(v).map(Ok))
+                .fuse(),
+        )
     }
 }
