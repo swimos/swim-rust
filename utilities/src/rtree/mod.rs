@@ -32,7 +32,7 @@ enum Node {
 impl Node {
     fn insert(&mut self, item: Rect) -> Option<(Entry, Entry)> {
         match self {
-            Node::Branch(entries) => {
+            Node::Branch(entries) if !entries.is_empty() => {
                 let mut entries_iter = entries.iter_mut();
 
                 let mut min_entry = entries_iter.next().unwrap();
@@ -40,7 +40,7 @@ impl Node {
                 let mut min_rect = min_entry.mbb.combine_boxes(&item);
                 let mut min_diff = min_rect.area() - min_entry.mbb.area();
 
-                for (idx, entry) in entries_iter.enumerate() {
+                for (entry, idx) in entries_iter.zip(1..) {
                     let expanded_rect = entry.mbb.combine_boxes(&item);
                     let diff = expanded_rect.area() - entry.mbb.area();
 
@@ -48,7 +48,7 @@ impl Node {
                         min_diff = diff;
                         min_rect = expanded_rect;
                         min_entry = entry;
-                        min_entry_idx = idx + 1;
+                        min_entry_idx = idx;
                     }
                 }
 
@@ -74,6 +74,7 @@ impl Node {
                     return Some(split_entries);
                 }
             }
+            _ => unreachable!(),
         };
         None
     }
@@ -81,121 +82,91 @@ impl Node {
     fn split(&mut self) -> (Entry, Entry) {
         match self {
             Node::Branch(entries) => {
-                let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
+                let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(entries);
 
-                let first_seed = entries.remove(first_seed_idx);
-                let second_seed = entries.remove(second_seed_idx - 1);
-
-                let mut first_group = Entry {
-                    mbb: first_seed.mbb.clone(),
-                    child: Node::Branch(vec![first_seed]),
+                let first_group = Entry {
+                    mbb: first_mbb,
+                    child: Node::Branch(first_group),
                 };
 
-                let mut second_group = Entry {
-                    mbb: second_seed.mbb.clone(),
-                    child: Node::Branch(vec![second_seed]),
+                let second_group = Entry {
+                    mbb: second_mbb,
+                    child: Node::Branch(second_group),
                 };
 
-                //Todo refactor
-                while !entries.is_empty() {
-                    if entries.len() + first_group.child.len() == MIN_CHILDREN {
-                        for item in entries.drain(..) {
-                            let expanded_rect = first_group.mbb.combine_boxes(&item.mbb);
-
-                            first_group.mbb = expanded_rect;
-                            match &mut first_group.child {
-                                Node::Branch(entries) => entries.push(item),
-                                Node::Leaf(_) => unreachable!(),
-                            }
-                        }
-                    } else if entries.len() + second_group.child.len() == MIN_CHILDREN {
-                        for item in entries.drain(..) {
-                            let expanded_rect = second_group.mbb.combine_boxes(&item.mbb);
-                            second_group.mbb = expanded_rect;
-                            match &mut second_group.child {
-                                Node::Branch(entries) => entries.push(item),
-                                Node::Leaf(_) => unreachable!(),
-                            }
-                        }
-                    } else {
-                        let (idx, expanded_rect, group) =
-                            pick_next(entries, &mut first_group, &mut second_group);
-
-                        let item = entries.remove(idx);
-
-                        match group {
-                            Group::First => {
-                                // first_group.insert(item, expanded_rect);
-                                first_group.mbb = expanded_rect;
-                                match &mut first_group.child {
-                                    Node::Branch(entries) => entries.push(item),
-                                    Node::Leaf(_) => unreachable!(),
-                                }
-                            }
-                            Group::Second => {
-                                second_group.mbb = expanded_rect;
-                                match &mut second_group.child {
-                                    Node::Branch(entries) => entries.push(item),
-                                    Node::Leaf(_) => unreachable!(),
-                                }
-                            }
-                        };
-                    }
-                }
                 (first_group, second_group)
             }
             Node::Leaf(entries) => {
-                let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
+                let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(entries);
 
-                let first_seed = entries.remove(first_seed_idx);
-                let second_seed = entries.remove(second_seed_idx - 1);
-
-                let mut first_group = Entry {
-                    mbb: first_seed.clone(),
-                    child: Node::Leaf(vec![first_seed]),
+                let first_group = Entry {
+                    mbb: first_mbb,
+                    child: Node::Leaf(first_group),
                 };
 
-                let mut second_group = Entry {
-                    mbb: second_seed.clone(),
-                    child: Node::Leaf(vec![second_seed]),
+                let second_group = Entry {
+                    mbb: second_mbb,
+                    child: Node::Leaf(second_group),
                 };
-
-                //Todo refactor
-                while !entries.is_empty() {
-                    if entries.len() + first_group.child.len() == MIN_CHILDREN {
-                        for item in entries.drain(..) {
-                            let expanded_rect = first_group.mbb.combine_boxes(&item);
-                            first_group.insert(item, expanded_rect);
-                        }
-                    } else if entries.len() + second_group.child.len() == MIN_CHILDREN {
-                        for item in entries.drain(..) {
-                            let expanded_rect = second_group.mbb.combine_boxes(&item);
-                            second_group.insert(item, expanded_rect);
-                        }
-                    } else {
-                        let (idx, expanded_rect, group) =
-                            pick_next(entries, &mut first_group, &mut second_group);
-
-                        let item = entries.remove(idx);
-
-                        match group {
-                            Group::First => first_group.insert(item, expanded_rect),
-                            Group::Second => second_group.insert(item, expanded_rect),
-                        };
-                    }
-                }
 
                 (first_group, second_group)
             }
         }
     }
+}
 
-    fn len(&self) -> usize {
-        match self {
-            Node::Branch(entries) => entries.len(),
-            Node::Leaf(entries) => entries.len(),
+fn quadratic_split<T: BoundingBox>(entries: &mut Vec<T>) -> (Vec<T>, Vec<T>, Rect, Rect) {
+    let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
+
+    let first_seed = entries.remove(first_seed_idx);
+    let second_seed = entries.remove(second_seed_idx - 1);
+
+    let mut first_mbb = first_seed.get_mbb().clone();
+    let mut first_group = vec![first_seed];
+
+    let mut second_mbb = second_seed.get_mbb().clone();
+    let mut second_group = vec![second_seed];
+
+    while !entries.is_empty() {
+        if entries.len() + first_group.len() == MIN_CHILDREN {
+            for item in entries.drain(..) {
+                let expanded_rect = first_mbb.combine_boxes(&item);
+
+                first_mbb = expanded_rect;
+                first_group.push(item);
+            }
+        } else if entries.len() + second_group.len() == MIN_CHILDREN {
+            for item in entries.drain(..) {
+                let expanded_rect = second_mbb.combine_boxes(&item);
+
+                second_mbb = expanded_rect;
+                second_group.push(item);
+            }
+        } else {
+            let (idx, expanded_rect, group) = pick_next(
+                entries,
+                &first_mbb,
+                &second_mbb,
+                first_group.len(),
+                second_group.len(),
+            );
+
+            let item = entries.remove(idx);
+
+            match group {
+                Group::First => {
+                    first_mbb = expanded_rect;
+                    first_group.push(item);
+                }
+                Group::Second => {
+                    second_mbb = expanded_rect;
+                    second_group.push(item);
+                }
+            };
         }
     }
+
+    (first_group, second_group, first_mbb, second_mbb)
 }
 
 fn pick_seeds<T: BoundingBox>(entries: &Vec<T>) -> (usize, usize) {
@@ -225,41 +196,69 @@ fn pick_seeds<T: BoundingBox>(entries: &Vec<T>) -> (usize, usize) {
 
 fn pick_next<T: BoundingBox>(
     entries: &Vec<T>,
-    first_group: &Entry,
-    second_group: &Entry,
+    first_mbb: &Rect,
+    second_mbb: &Rect,
+    first_group_size: usize,
+    second_group_size: usize,
 ) -> (usize, Rect, Group) {
-    let mut max_preference = 0;
+    //Todo remove duplication
+    let mut entries_iter = entries.iter();
+    let item = entries_iter.next().unwrap();
     let mut item_idx = 0;
-    let mut group = Group::First;
-    let mut expanded_rect: Option<Rect> = None;
+    let first_expanded_rect = first_mbb.combine_boxes::<T>(item);
+    let first_diff = first_expanded_rect.area() - first_mbb.area();
+    let second_expanded_rect = second_mbb.combine_boxes::<T>(item);
+    let second_diff = second_expanded_rect.area() - second_mbb.area();
+    let mut max_preference = (first_diff - second_diff).abs();
+    let mut group = select_group(
+        first_mbb,
+        second_mbb,
+        first_group_size,
+        second_group_size,
+        first_diff,
+        second_diff,
+    );
 
-    for (idx, item) in entries.iter().enumerate() {
-        let first_expanded_rect = first_group.mbb.combine_boxes::<T>(item);
-        let first_diff = first_expanded_rect.area() - first_group.mbb.area();
+    let mut expanded_rect = match group {
+        Group::First => first_expanded_rect,
+        Group::Second => second_expanded_rect,
+    };
 
-        let second_expanded_rect = second_group.mbb.combine_boxes::<T>(item);
-        let second_diff = second_expanded_rect.area() - second_group.mbb.area();
+    for (item, idx) in entries_iter.zip(1..) {
+        let first_expanded_rect = first_mbb.combine_boxes::<T>(item);
+        let first_diff = first_expanded_rect.area() - first_mbb.area();
+
+        let second_expanded_rect = second_mbb.combine_boxes::<T>(item);
+        let second_diff = second_expanded_rect.area() - second_mbb.area();
 
         let preference = (first_diff - second_diff).abs();
         if max_preference <= preference {
             max_preference = preference;
             item_idx = idx;
-            group = select_group(first_group, second_group, first_diff, second_diff);
+            group = select_group(
+                first_mbb,
+                second_mbb,
+                first_group_size,
+                second_group_size,
+                first_diff,
+                second_diff,
+            );
 
             match group {
-                Group::First => expanded_rect = Some(first_expanded_rect),
-                Group::Second => expanded_rect = Some(second_expanded_rect),
+                Group::First => expanded_rect = first_expanded_rect,
+                Group::Second => expanded_rect = second_expanded_rect,
             }
         }
     }
 
-    //Todo remove unwrap
-    (item_idx, expanded_rect.unwrap(), group)
+    (item_idx, expanded_rect, group)
 }
 
 fn select_group(
-    first_group: &Entry,
-    second_group: &Entry,
+    first_mbb: &Rect,
+    second_mbb: &Rect,
+    first_group_size: usize,
+    second_group_size: usize,
     first_diff: i32,
     second_diff: i32,
 ) -> Group {
@@ -268,14 +267,14 @@ fn select_group(
     } else if second_diff < first_diff {
         Group::Second
     } else {
-        if first_group.mbb.area() < second_group.mbb.area() {
+        if first_mbb.area() < second_mbb.area() {
             Group::First
-        } else if second_group.mbb.area() < first_group.mbb.area() {
+        } else if second_mbb.area() < first_mbb.area() {
             Group::Second
         } else {
-            if first_group.child.len() < second_group.child.len() {
+            if first_group_size < second_group_size {
                 Group::First
-            } else if second_group.child.len() < first_group.child.len() {
+            } else if second_group_size < first_group_size {
                 Group::Second
             } else {
                 Group::First
