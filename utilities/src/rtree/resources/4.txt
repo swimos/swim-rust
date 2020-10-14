@@ -1,0 +1,46 @@
+RTree {
+    root: Leaf(
+        [
+            Rect {
+                lower_left: Point {
+                    x: 0,
+                    y: 0,
+                },
+                upper_right: Point {
+                    x: 10,
+                    y: 10,
+                },
+            },
+            Rect {
+                lower_left: Point {
+                    x: 12,
+                    y: 0,
+                },
+                upper_right: Point {
+                    x: 15,
+                    y: 15,
+                },
+            },
+            Rect {
+                lower_left: Point {
+                    x: 7,
+                    y: 7,
+                },
+                upper_right: Point {
+                    x: 14,
+                    y: 14,
+                },
+            },
+            Rect {
+                lower_left: Point {
+                    x: 10,
+                    y: 11,
+                },
+                upper_right: Point {
+                    x: 11,
+                    y: 12,
+                },
+            },
+        ],
+    ),
+}

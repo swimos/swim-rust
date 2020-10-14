@@ -1,4 +1,5 @@
 use crate::rtree::{Point, RTree, Rect};
+use std::fs;
 
 #[test]
 fn rtree_insert() {
@@ -16,18 +17,81 @@ fn rtree_insert() {
     let twelfth = Rect::new(Point::new(7, 3), Point::new(8, 6));
 
     let mut tree = RTree::new();
-    tree.insert(first);
-    tree.insert(second);
-    tree.insert(third);
-    tree.insert(fourth);
-    tree.insert(fifth);
-    tree.insert(sixth);
-    tree.insert(seventh);
-    tree.insert(eighth);
-    tree.insert(ninth);
-    tree.insert(tenth);
-    tree.insert(eleventh);
-    tree.insert(twelfth);
 
-    eprintln!("{:#?}", tree);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/0.txt").unwrap()
+    );
+
+    tree.insert(first);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/1.txt").unwrap()
+    );
+
+    tree.insert(second);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2.txt").unwrap()
+    );
+
+    tree.insert(third);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3.txt").unwrap()
+    );
+
+    tree.insert(fourth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/4.txt").unwrap()
+    );
+
+    tree.insert(fifth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/5.txt").unwrap()
+    );
+
+    tree.insert(sixth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/6.txt").unwrap()
+    );
+
+    tree.insert(seventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/7.txt").unwrap()
+    );
+
+    tree.insert(eighth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/8.txt").unwrap()
+    );
+
+    tree.insert(ninth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/9.txt").unwrap()
+    );
+
+    tree.insert(tenth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/10.txt").unwrap()
+    );
+
+    tree.insert(eleventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/11.txt").unwrap()
+    );
+
+    tree.insert(twelfth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/12.txt").unwrap()
+    )
 }
