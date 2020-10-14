@@ -206,9 +206,6 @@ where
 {
     type OnSyncFuture: Future<Output = Vec<Key>> + Send + 'a;
     type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
-    type WatchStrategy;
-
-    fn create_strategy(&self) -> Self::WatchStrategy;
 
     fn on_sync<C>(
         &'a self,

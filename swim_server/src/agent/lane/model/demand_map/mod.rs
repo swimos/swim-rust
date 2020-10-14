@@ -26,7 +26,7 @@ use swim_common::topic::MpscTopic;
 #[cfg(test)]
 mod tests;
 
-#[derive(Form, Debug, Clone)]
+#[derive(Form, Debug, Clone, PartialEq)]
 #[form(tag = "update")]
 pub struct DemandMapLaneUpdate<Key, Value>(
     #[form(header, rename = "key")] Key,
@@ -72,10 +72,10 @@ where
 
 impl<Key, Value> DemandMapLaneController<Key, Value>
 where
-    Key: Form,
+    Key: Clone + Form,
     Value: Form,
 {
-    pub async fn sync(mut self) -> Result<Vec<DemandMapLaneUpdate<Key, Value>>, ()> {
+    pub(crate) async fn sync(mut self) -> Result<Vec<DemandMapLaneUpdate<Key, Value>>, ()> {
         let (tx, rx) = oneshot::channel();
 
         if self
@@ -89,6 +89,32 @@ where
         }
 
         rx.await.map_err(|_| ())
+    }
+
+    pub async fn cue(&mut self, key: Key) -> Result<bool, ()> {
+        let (tx, rx) = oneshot::channel();
+        if self
+            .0
+            .lifecycle_sender
+            .send(DemandMapLaneEvent::Cue(tx, key.clone()))
+            .await
+            .is_err()
+        {
+            return Err(());
+        }
+
+        match rx.await {
+            Ok(Some(value)) => {
+                let _ = self
+                    .0
+                    .uplink_sender
+                    .send(DemandMapLaneUpdate::make(key, value))
+                    .await;
+                Ok(true)
+            }
+            Ok(None) => Ok(false),
+            _ => Err(()),
+        }
     }
 }
 
@@ -135,28 +161,6 @@ where
 
     pub fn controller(&self) -> DemandMapLaneController<Key, Value> {
         DemandMapLaneController(self.clone())
-    }
-
-    pub async fn cue(&mut self, key: Key) -> bool {
-        let (tx, rx) = oneshot::channel();
-        if self
-            .lifecycle_sender
-            .send(DemandMapLaneEvent::Cue(tx, key.clone()))
-            .await
-            .is_err()
-        {
-            return false;
-        }
-
-        match rx.await {
-            Ok(Some(value)) => self
-                .uplink_sender
-                .send(DemandMapLaneUpdate::make(key, value))
-                .await
-                .is_ok(),
-            Ok(None) => true,
-            _ => false,
-        }
     }
 }
 

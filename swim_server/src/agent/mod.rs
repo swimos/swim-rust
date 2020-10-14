@@ -411,7 +411,7 @@ impl Display for AttachError {
                 write!(f, "A lane named \"{}\" does not exist.", name)
             }
             AttachError::AgentStopping => {
-                write!(f, "Could not attach to the lane as the agent is stoping.")
+                write!(f, "Could not attach to the lane as the agent is stopping.")
             }
         }
     }
@@ -1241,18 +1241,20 @@ where
 /// # Arguments
 ///
 /// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
     name: impl Into<String>,
+    is_public: bool,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
     DemandMapLane<Key, Value>,
     impl LaneTasks<Agent, Context>,
-    impl LaneIo<Context>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1271,7 +1273,11 @@ where
         projection,
     });
 
-    let lane_io = DemandMapLaneIo::new(lane.clone(), topic);
+    let lane_io = if is_public {
+        Some(DemandMapLaneIo::new(lane.clone(), topic))
+    } else {
+        None
+    };
 
     (lane, tasks, lane_io)
 }
@@ -1379,7 +1385,7 @@ where
                         let keys: Vec<Key> = lifecycle.on_sync(&model, &context).await;
                         let keys_len = keys.len();
 
-                        let mut results = iter(keys)
+                        let mut values = iter(keys)
                             .fold(Vec::with_capacity(keys_len), |mut results, key| async {
                                 if let Some(value) =
                                     lifecycle.on_cue(&model, &context, key.clone()).await
@@ -1391,17 +1397,13 @@ where
                             })
                             .await;
 
-                        results.shrink_to_fit();
+                        values.shrink_to_fit();
 
-                        if sender.send(results).is_err() {
-                            todo!("Logging")
-                        }
+                        let _ = sender.send(values);
                     }
                     DemandMapLaneEvent::Cue(sender, key) => {
                         let value = lifecycle.on_cue(&model, &context, key).await;
-                        if sender.send(value).is_err() {
-                            todo!("Logging")
-                        }
+                        let _ = sender.send(value);
                     }
                 }
             }
