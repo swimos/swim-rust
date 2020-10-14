@@ -65,6 +65,7 @@ where
     Cue(oneshot::Sender<Option<Value>>, Key),
 }
 
+/// A controller for a demand map lane that may be used to cue a value by its key.
 pub struct DemandMapLaneController<Key, Value>(DemandMapLane<Key, Value>)
 where
     Key: Form,
@@ -75,6 +76,7 @@ where
     Key: Clone + Form,
     Value: Form,
 {
+    /// Syncs this lane. Called by the uplink.
     pub(crate) async fn sync(mut self) -> Result<Vec<DemandMapLaneUpdate<Key, Value>>, ()> {
         let (tx, rx) = oneshot::channel();
 
@@ -91,6 +93,8 @@ where
         rx.await.map_err(|_| ())
     }
 
+    /// Cues a value. Returns `Ok(true)` if the key mapped successfully to a value or `Ok(false)`
+    /// if it was not. Returns `Err(())` if an error occurred.
     pub async fn cue(&mut self, key: Key) -> Result<bool, ()> {
         let (tx, rx) = oneshot::channel();
         if self
@@ -118,6 +122,8 @@ where
     }
 }
 
+/// A model for a map lane that has no state and fetches its values from the lifecycle
+/// implementation.
 #[derive(Debug)]
 pub struct DemandMapLane<Key, Value>
 where
@@ -176,7 +182,12 @@ where
     }
 }
 
-/// Create a new demand map lane model
+/// Create a new demand map lane model. Returns a demand map lane instance and a topic containing a
+/// stream of cued values.
+///
+/// # Arguments
+/// `buffer_size`: the size of the topic's buffer.
+/// `lifecycle_sender`: a sender to the `DemandMapLaneLifecycle`.
 pub fn make_lane_model<Key, Value>(
     buffer_size: NonZeroUsize,
     lifecycle_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
