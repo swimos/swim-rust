@@ -17,31 +17,32 @@ mod tests;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
-use crate::agent::lane::channels::update::demand_map::DemandMapCueHandler;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::auto::AutoUplinks;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
-    AddressedUplinkMessage, MapLaneUplink, UplinkAction, UplinkKind, ValueLaneUplink,
+    AddressedUplinkMessage, DemandMapLaneUplink, MapLaneUplink, UplinkAction, UplinkKind,
+    ValueLaneUplink,
 };
 use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::demand_map::{CueRequest, DemandMapLane};
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
-use futures::future::{join, join3};
+use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
@@ -788,57 +789,66 @@ where
     .await
 }
 
-pub async fn run_demand_map_lane_io<Key, Value, Cues>(
-    lane: DemandMapLane<Key, Value>,
-    envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
-    route: RelativePath,
-    cue_requests: Cues,
-) -> Result<Vec<UplinkErrorReport>, LaneIoError>
-where
-    Key: Send + Sync + Form + 'static,
-    Value: Send + Sync + Form + 'static,
-    Cues: Stream<Item = CueRequest<Key>> + Send + Sync + 'static,
-{
-    let span = span!(Level::INFO, LANE_IO_TASK, ?route);
-    let _enter = span.enter();
+pub struct UnitLaneUpdateTask<T>(PhantomData<T>);
 
-    let (cue_resp_tx, cue_resp_rx) = mpsc::channel(config.update_buffer.get());
-    let (upd_done_tx, upd_done_rx) = trigger::trigger();
-    let envelopes = envelopes.take_until(upd_done_rx);
-    let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
-    let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
-
-    let cue_handler = DemandMapCueHandler::new(cue_requests, lane, config.cleanup_timeout);
-
-    let cue_task = async move {
-        let result = cue_handler.run(cue_resp_tx).await;
-        upd_done_tx.trigger();
-        result
+impl<T> Default for UnitLaneUpdateTask<T> {
+    fn default() -> Self {
+        UnitLaneUpdateTask(PhantomData::default())
     }
-    .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
+}
 
-    let cue_resp_rx = cue_resp_rx.map(AddressedUplinkMessage::Broadcast);
+impl<T> LaneUpdate for UnitLaneUpdateTask<T>
+where
+    T: Debug + Send + 'static,
+{
+    type Msg = T;
 
-    let uplinks = AutoUplinks::new(cue_resp_rx, route.clone(), UplinkKind::DemandMap);
-    let uplink_task = uplinks
-        .run(uplink_rx, context.router_handle(), err_tx)
-        .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
+    fn run_update<Messages, Err>(
+        self,
+        _messages: Messages,
+    ) -> BoxFuture<'static, Result<(), UpdateError>>
+    where
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
+        Err: Send,
+        UpdateError: From<Err>,
+    {
+        Box::pin(ready(Err(UpdateError::OperationNotSupported)))
+    }
+}
 
-    let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
+pub struct DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    lane: DemandMapLane<Key, Value>,
+}
 
-    let envelope_task = action_envelope_task_with_uplinks(
-        route.clone(),
-        envelopes,
-        uplink_tx,
-        err_rx,
-        UplinkErrorHandler::sink(),
-        on_command_strategy,
-    );
+impl<Key, Value> DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneMessageHandler<Key, Value> {
+        DemandMapLaneMessageHandler { lane }
+    }
+}
 
-    let (upd_result, _, (uplink_fatal, uplink_errs)) =
-        join3(cue_task, uplink_task, envelope_task).await;
+impl<Key, Value> LaneMessageHandler for DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
+{
+    type Event = DemandMapLaneUpdate<Key, Value>;
+    type Uplink = DemandMapLaneUplink<Key, Value>;
+    type Update = UnitLaneUpdateTask<Value>;
 
-    combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
+    fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
+        let DemandMapLaneMessageHandler { lane } = self;
+        DemandMapLaneUplink::new(lane.clone())
+    }
+
+    fn make_update(&self) -> Self::Update {
+        UnitLaneUpdateTask::default()
+    }
 }

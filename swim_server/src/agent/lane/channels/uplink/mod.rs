@@ -13,17 +13,16 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
-use crate::agent::lane::model::demand_map::DemandMapLane;
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::RoutingAddr;
 use futures::future::ready;
 use futures::stream::BoxStream;
-use futures::stream::{iter, once, FusedStream};
-use futures::{select, select_biased, Future, FutureExt, StreamExt};
+use futures::stream::FusedStream;
+use futures::{select, select_biased, FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
-use std::convert::identity;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
@@ -549,23 +548,37 @@ where
     }
 }
 
-pub struct DemandMapLaneUplink<Key, Value>(DemandMapLane<Key, Value>);
+pub struct DemandMapLaneUplink<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    lane: DemandMapLane<Key, Value>,
+}
 
-impl<Key, Value> DemandMapLaneUplink<Key, Value> {
+impl<Key, Value> DemandMapLaneUplink<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
     pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneUplink<Key, Value> {
-        DemandMapLaneUplink(lane)
+        DemandMapLaneUplink { lane }
     }
 }
 
-impl<Key, Value> UplinkStateMachine<Value> for DemandMapLaneUplink<Key, Value>
+impl<Key, Value> UplinkStateMachine<DemandMapLaneUpdate<Key, Value>>
+    for DemandMapLaneUplink<Key, Value>
 where
-    Key: Form + Any + Send + Sync + Debug,
-    Value: Form + Any + Send + Sync + Debug,
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
 {
-    type Msg = Value;
+    type Msg = DemandMapLaneUpdate<Key, Value>;
 
-    fn message_for(&self, _event: Value) -> Result<Option<Self::Msg>, UplinkError> {
-        Ok(None)
+    fn message_for(
+        &self,
+        event: DemandMapLaneUpdate<Key, Value>,
+    ) -> Result<Option<Self::Msg>, UplinkError> {
+        Ok(Some(event))
     }
 
     // todo: tidy up
@@ -574,9 +587,10 @@ where
         _updates: &'a mut Updates,
     ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
     where
-        Updates: FusedStream<Item = Value> + Send + Unpin + 'a,
+        Updates: FusedStream<Item = DemandMapLaneUpdate<Key, Value>> + Send + Unpin + 'a,
     {
-        let DemandMapLaneUplink(lane) = self;
+        let DemandMapLaneUplink { lane: _lane } = self;
+
         // let controller = lane.controller();
 
         // Box::pin(unpack(
@@ -592,19 +606,4 @@ where
 
         unimplemented!()
     }
-}
-
-fn unpack<Key, Value, Fut1, Fut2, F>(
-    fut: Fut1,
-    f: F,
-) -> impl FusedStream<Item = Result<Value, UplinkError>>
-where
-    Fut1: Future<Output = Vec<Key>>,
-    F: FnMut(Key) -> Fut2,
-    Fut2: Future<Output = Option<Value>>,
-{
-    once(fut.map(move |v| v.into_iter().map(f)))
-        .flat_map(|v| iter(v).filter_map(identity))
-        .map(Ok)
-        .fuse()
 }

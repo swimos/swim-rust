@@ -24,7 +24,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 #[tokio::test]
-async fn update_task_vale_lane() {
+async fn update_task_value_lane() {
     let (lane, mut events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
 
     let task = ValueLaneUpdateTask::new(lane);

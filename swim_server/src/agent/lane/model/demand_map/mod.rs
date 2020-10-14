@@ -12,138 +12,159 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::LaneModel;
-use futures::Stream;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+
 use tokio::sync::{mpsc, oneshot};
+
+use crate::agent::lane::LaneModel;
+use swim_common::form::Form;
+use swim_common::model::Value;
+use swim_common::topic::MpscTopic;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug)]
-pub struct CueRequest<Key>(pub Key);
+#[derive(Form, Debug, Clone)]
+#[form(tag = "update")]
+pub struct DemandMapLaneUpdate<Key, Value>(
+    #[form(header, rename = "key")] Key,
+    #[form(body)] Arc<Value>,
+)
+where
+    Key: Form,
+    Value: Form;
 
-/// Model for a stateless, lazy, lane that uses its lifecycle to generate a map from keys to values.
-#[derive(Debug)]
-pub struct DemandMapLane<Key, Value> {
-    cue_requests_tx: mpsc::Sender<CueRequest<Key>>,
-    sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
-    id: Arc<()>,
-}
-
-impl<Key, Value> Clone for DemandMapLane<Key, Value> {
-    fn clone(&self) -> Self {
-        DemandMapLane {
-            cue_requests_tx: self.cue_requests_tx.clone(),
-            sender: self.sender.clone(),
-            id: self.id.clone(),
-        }
+impl<K, V> From<DemandMapLaneUpdate<K, V>> for Value
+where
+    K: Form,
+    V: Form,
+{
+    fn from(update: DemandMapLaneUpdate<K, V>) -> Self {
+        update.into_value()
     }
 }
 
-impl<Key, Value> DemandMapLane<Key, Value> {
-    pub(crate) fn new(
-        sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
-        buffer_size: NonZeroUsize,
-    ) -> (
-        DemandMapLane<Key, Value>,
-        impl Stream<Item = CueRequest<Key>>,
-    ) {
-        let (cue_requests_tx, cue_requests_rx) = mpsc::channel(buffer_size.get());
-
-        (
-            DemandMapLane {
-                sender,
-                cue_requests_tx,
-                id: Default::default(),
-            },
-            cue_requests_rx,
-        )
-    }
-
-    /// Create a new `DemandMapLaneController` that can be used to cue a value.
-    pub fn controller(&self) -> DemandMapLaneController<Key, Value> {
-        DemandMapLaneController::new(self.sender.clone())
+impl<Key, Value> DemandMapLaneUpdate<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    pub fn make(key: Key, value: Value) -> DemandMapLaneUpdate<Key, Value> {
+        DemandMapLaneUpdate(key, Arc::new(value))
     }
 }
 
-/// A controller that can be used to cue a value to an associated `DemandMapLane`.
-///
-/// # Type Parameters
-///
-/// * `T` - The type of the events produced by the `DemandMapLane`.
-pub struct DemandMapLaneController<Key, Value> {
-    tx: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
-}
-impl<Key, Value> Clone for DemandMapLaneController<Key, Value> {
-    fn clone(&self) -> Self {
-        DemandMapLaneController {
-            tx: self.tx.clone(),
-        }
-    }
-}
-
-impl<Key, Value> DemandMapLaneController<Key, Value> {
-    fn new(
-        tx: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
-    ) -> DemandMapLaneController<Key, Value> {
-        DemandMapLaneController { tx }
-    }
-
-    pub async fn sync(&mut self) -> oneshot::Receiver<Vec<Value>> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        let DemandMapLaneController { tx, .. } = self;
-
-        if tx.send(DemandMapLaneEvent::sync(resp_tx)).await.is_err() {
-            todo!("Logging")
-        }
-
-        resp_rx
-    }
-
-    pub async fn sync_and_await(&mut self) -> Result<Vec<Value>, ()> {
-        self.sync().await.await.map_err(|_| ())
-    }
-
-    pub async fn cue_and_await(&mut self, key: Key) -> Result<Option<Value>, ()> {
-        self.cue(key).await.await.map_err(|_| ())
-    }
-
-    pub async fn cue(&mut self, key: Key) -> oneshot::Receiver<Option<Value>> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        let DemandMapLaneController { tx, .. } = self;
-
-        if tx
-            .send(DemandMapLaneEvent::cue(key, resp_tx))
-            .await
-            .is_err()
-        {
-            todo!("Logging")
-        }
-
-        resp_rx
-    }
-}
-
-#[derive(Debug)]
 pub enum DemandMapLaneEvent<Key, Value> {
     Sync(oneshot::Sender<Vec<Value>>),
     Cue(oneshot::Sender<Option<Value>>, Key),
 }
 
-impl<Key, Value> DemandMapLaneEvent<Key, Value> {
-    fn sync(tx: oneshot::Sender<Vec<Value>>) -> DemandMapLaneEvent<Key, Value> {
-        DemandMapLaneEvent::Sync(tx)
+pub struct DemandMapLaneController<Key, Value>(DemandMapLane<Key, Value>)
+where
+    Key: Form,
+    Value: Form;
+
+impl<Key, Value> DemandMapLaneController<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneController<Key, Value> {
+        DemandMapLaneController(lane)
     }
 
-    fn cue(key: Key, tx: oneshot::Sender<Option<Value>>) -> DemandMapLaneEvent<Key, Value> {
-        DemandMapLaneEvent::Cue(tx, key)
+    pub async fn sync(&mut self) -> Result<Vec<Value>, ()> {
+        let (tx, rx) = oneshot::channel();
+
+        if self
+            .0
+            .lifecycle_sender
+            .send(DemandMapLaneEvent::Sync(tx))
+            .await
+            .is_err()
+        {
+            return Err(());
+        }
+
+        rx.await.map_err(|_| ())
     }
 }
 
-impl<Key, Value> LaneModel for DemandMapLane<Key, Value> {
+#[derive(Debug)]
+pub struct DemandMapLane<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    uplink_sender: mpsc::Sender<DemandMapLaneUpdate<Key, Value>>,
+    lifecycle_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+    id: Arc<()>,
+}
+
+impl<Key, Value> Clone for DemandMapLane<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    fn clone(&self) -> Self {
+        DemandMapLane {
+            uplink_sender: self.uplink_sender.clone(),
+            lifecycle_sender: self.lifecycle_sender.clone(),
+            id: self.id.clone(),
+        }
+    }
+}
+
+impl<Key, Value> DemandMapLane<Key, Value>
+where
+    Key: Clone + Form,
+    Value: Form,
+{
+    pub(crate) fn new(
+        uplink_sender: mpsc::Sender<DemandMapLaneUpdate<Key, Value>>,
+        lifecycle_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+    ) -> DemandMapLane<Key, Value> {
+        DemandMapLane {
+            uplink_sender,
+            lifecycle_sender,
+            id: Default::default(),
+        }
+    }
+
+    pub(crate) fn controller(&self) -> DemandMapLaneController<Key, Value> {
+        DemandMapLaneController(self.clone())
+    }
+
+    pub async fn cue(&mut self, key: Key) -> bool {
+        let (tx, rx) = oneshot::channel();
+        if self
+            .lifecycle_sender
+            .send(DemandMapLaneEvent::Cue(tx, key.clone()))
+            .await
+            .is_err()
+        {
+            return false;
+        }
+
+        match rx.await {
+            Ok(Some(value)) => self
+                .uplink_sender
+                .send(DemandMapLaneUpdate::make(key, value))
+                .await
+                .is_ok(),
+            Ok(None) => true,
+            _ => false,
+        }
+    }
+}
+
+impl<Key, Value> LaneModel for DemandMapLane<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
     type Event = Key;
 
     fn same_lane(this: &Self, other: &Self) -> bool {
@@ -151,20 +172,21 @@ impl<Key, Value> LaneModel for DemandMapLane<Key, Value> {
     }
 }
 
-/// Create a new demand lane model. Returns a new demand lane model and a stream of unit values that
-/// represent a cue request.
+/// Create a new demand map lane model
 pub fn make_lane_model<Key, Value>(
     buffer_size: NonZeroUsize,
+    lifecycle_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
 ) -> (
     DemandMapLane<Key, Value>,
-    impl Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + 'static,
-    impl Stream<Item = CueRequest<Key>>,
+    MpscTopic<DemandMapLaneUpdate<Key, Value>>,
 )
 where
-    Key: Send + Sync + 'static,
-    Value: Send + Sync + 'static,
+    Key: Send + Clone + Form + Sync + 'static,
+    Value: Send + Clone + Form + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
-    let (lane, cue_requests_rx) = DemandMapLane::new(tx, buffer_size);
-    (lane, rx, cue_requests_rx)
+    let (topic, _rec) = MpscTopic::new(rx, buffer_size, buffer_size);
+    let lane = DemandMapLane::new(tx, lifecycle_sender);
+
+    (lane, topic)
 }
