@@ -21,6 +21,10 @@ impl RTree {
             self.root = Node::Branch(vec![first_entry, second_entry])
         }
     }
+
+    fn remove(&mut self, item: Rect) -> Option<Rect> {
+        self.root.remove(item)
+    }
 }
 
 #[derive(Debug)]
@@ -77,6 +81,28 @@ impl Node {
             _ => unreachable!(),
         };
         None
+    }
+
+    fn remove(&mut self, item: Rect) -> Option<Rect> {
+        match self {
+            Node::Branch(entries) => {
+                for entry in entries {
+                    if entry.is_covering(&item) {
+                        entry.remove(item)
+                    }
+                }
+            }
+            Node::Leaf(entries) => {
+                for (idx, entry) in entries.iter().enumerate() {
+                    if entry == item {
+                        break Some(idx);
+                    }
+                    None
+                };
+            }
+        };
+
+        unimplemented!()
     }
 
     fn split(&mut self) -> (Entry, Entry) {
@@ -314,6 +340,10 @@ impl Entry {
         self.mbb = expanded_rect;
         self.child.insert(item)
     }
+
+    fn remove(&mut self, item: Rect) -> Option<Rect> {
+        self.child.remove(item)
+    }
 }
 
 impl BoundingBox for Entry {
@@ -327,6 +357,10 @@ impl BoundingBox for Entry {
 
     fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
         self.mbb.combine_boxes(other.get_mbb())
+    }
+
+    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
+        self.mbb.is_covering(other.get_mbb())
     }
 }
 
@@ -388,6 +422,22 @@ impl BoundingBox for Rect {
             Point::new(new_upper_right_x, new_upper_right_y),
         )
     }
+
+    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
+        let other_mbb = other.get_mbb();
+
+        if self.lower_left.x > other_mbb.lower_left.x {
+            return false;
+        } else if self.lower_left.y > other_mbb.lower_left.y {
+            return false;
+        } else if self.upper_right.x < other_mbb.upper_right.x {
+            return false;
+        } else if self.upper_right.y < other_mbb.upper_right.y {
+            return false;
+        }
+
+        true
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -406,4 +456,5 @@ trait BoundingBox {
     fn get_mbb(&self) -> &Rect;
     fn area(&self) -> i32;
     fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect;
+    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool;
 }
