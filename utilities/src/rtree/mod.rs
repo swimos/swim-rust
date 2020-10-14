@@ -170,13 +170,11 @@ fn quadratic_split<T: BoundingBox>(entries: &mut Vec<T>) -> (Vec<T>, Vec<T>, Rec
 }
 
 fn pick_seeds<T: BoundingBox>(entries: &Vec<T>) -> (usize, usize) {
-    let length = entries.len();
-
     let mut first_idx = 0;
     let mut second_idx = 1;
     let mut max_diff = i32::MIN;
 
-    if length > 2 {
+    if entries.len() > 2 {
         for (i, first_rect) in entries.iter().enumerate() {
             for (j, second_rect) in entries.iter().enumerate().skip(i + 1) {
                 let combined_rect = first_rect.combine_boxes::<T>(second_rect);
@@ -201,22 +199,22 @@ fn pick_next<T: BoundingBox>(
     first_group_size: usize,
     second_group_size: usize,
 ) -> (usize, Rect, Group) {
-    //Todo remove duplication
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
     let mut item_idx = 0;
-    let first_expanded_rect = first_mbb.combine_boxes::<T>(item);
-    let first_diff = first_expanded_rect.area() - first_mbb.area();
-    let second_expanded_rect = second_mbb.combine_boxes::<T>(item);
-    let second_diff = second_expanded_rect.area() - second_mbb.area();
-    let mut max_preference = (first_diff - second_diff).abs();
+
+    let (first_preference, second_preference, first_expanded_rect, second_expanded_rect) =
+        calc_preferences(item, first_mbb, second_mbb);
+
+    let mut max_preference_diff = (first_preference - second_preference).abs();
+
     let mut group = select_group(
         first_mbb,
         second_mbb,
         first_group_size,
         second_group_size,
-        first_diff,
-        second_diff,
+        first_preference,
+        second_preference,
     );
 
     let mut expanded_rect = match group {
@@ -225,33 +223,50 @@ fn pick_next<T: BoundingBox>(
     };
 
     for (item, idx) in entries_iter.zip(1..) {
-        let first_expanded_rect = first_mbb.combine_boxes::<T>(item);
-        let first_diff = first_expanded_rect.area() - first_mbb.area();
+        let (first_preference, second_preference, first_expanded_rect, second_expanded_rect) =
+            calc_preferences(item, first_mbb, second_mbb);
+        let preference_diff = (first_preference - second_preference).abs();
 
-        let second_expanded_rect = second_mbb.combine_boxes::<T>(item);
-        let second_diff = second_expanded_rect.area() - second_mbb.area();
-
-        let preference = (first_diff - second_diff).abs();
-        if max_preference <= preference {
-            max_preference = preference;
+        if max_preference_diff <= preference_diff {
+            max_preference_diff = preference_diff;
             item_idx = idx;
+
             group = select_group(
                 first_mbb,
                 second_mbb,
                 first_group_size,
                 second_group_size,
-                first_diff,
-                second_diff,
+                first_preference,
+                second_preference,
             );
 
-            match group {
-                Group::First => expanded_rect = first_expanded_rect,
-                Group::Second => expanded_rect = second_expanded_rect,
-            }
+            expanded_rect = match group {
+                Group::First => first_expanded_rect,
+                Group::Second => second_expanded_rect,
+            };
         }
     }
 
     (item_idx, expanded_rect, group)
+}
+
+fn calc_preferences<T: BoundingBox>(
+    item: &T,
+    first_mbb: &Rect,
+    second_mbb: &Rect,
+) -> (i32, i32, Rect, Rect) {
+    let first_expanded_rect = first_mbb.combine_boxes::<T>(item);
+    let first_diff = first_expanded_rect.area() - first_mbb.area();
+
+    let second_expanded_rect = second_mbb.combine_boxes::<T>(item);
+    let second_diff = second_expanded_rect.area() - second_mbb.area();
+
+    (
+        first_diff,
+        second_diff,
+        first_expanded_rect,
+        second_expanded_rect,
+    )
 }
 
 fn select_group(
