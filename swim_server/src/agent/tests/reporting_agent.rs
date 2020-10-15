@@ -18,7 +18,7 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
@@ -28,7 +28,6 @@ use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
@@ -140,7 +139,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle
     fn on_command<C>(
         &'a self,
         command: String,
-        _model: &'a ActionLane<String, ()>,
+        _model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
     where
@@ -254,14 +253,12 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
 #[derive(Debug, Clone)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
-    command_buffer_size: NonZeroUsize,
 }
 
 impl TestAgentConfig {
     pub fn new(sender: mpsc::Sender<ReportingAgentEvent>) -> Self {
         TestAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: NonZeroUsize::new(5).unwrap(),
         }
     }
 
@@ -275,6 +272,7 @@ impl TestAgentConfig {
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
     fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
         configuration: &TestAgentConfig,
+        exec_conf: &AgentExecutionConfig,
     ) -> (
         Self,
         Vec<Box<dyn LaneTasks<Self, Context>>>,
@@ -283,19 +281,14 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
     where
         Context: AgentContext<Self> + Send + Sync + 'static,
     {
-        let TestAgentConfig {
-            collector,
-            command_buffer_size,
-        } = configuration;
-
-        let exec_conf = AgentExecutionConfig::default();
+        let TestAgentConfig { collector } = configuration;
 
         let inner = ReportingLifecycleInner(collector.clone());
 
         let (data, data_tasks, _) = agent::make_map_lane(
             "data",
             false,
-            &exec_conf,
+            exec_conf,
             DataLifecycle {
                 inner: inner.clone(),
             },
@@ -305,7 +298,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         let (total, total_tasks, _) = agent::make_value_lane(
             "total",
             false,
-            &exec_conf,
+            exec_conf,
             0,
             TotalLifecycle {
                 inner: inner.clone(),
@@ -320,7 +313,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.action,
-            *command_buffer_size,
+            exec_conf.action_buffer.clone(),
         );
 
         let agent = ReportingAgent {

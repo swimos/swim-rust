@@ -2,6 +2,13 @@
 [![codecov](https://codecov.io/gh/swimos/swim-rust/branch/master/graph/badge.svg?token=IVWBLXCGW8)](https://codecov.io/gh/swimos/swim-rust)
 <a href="https://www.swimos.org"><img src="https://docs.swimos.org/readme/marlin-blue.svg" align="left"></a>
 <br><br><br>
+
+## Demo applications
+A number of demo applications are available in the [swim-rust-demos](https://github.com/swimos/swim-rust-demos) repository.
+
+## Client configuration CLI tool
+A CLI tool is available for creating configuration files for client instances [here](https://github.com/swimos/rust-client-config-cli).
+
 ## Development
 
 ### Dependencies

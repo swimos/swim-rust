@@ -339,7 +339,7 @@ where
 impl<K, V, F, Ret> LaneMessageHandler for MapLaneMessageHandler<K, V, F>
 where
     K: Any + Form + Send + Sync + Debug,
-    V: Any + Send + Sync + Debug,
+    V: Any + Form + Send + Sync + Debug,
     F: Fn() -> Ret + Clone + Send + Sync + 'static,
     Ret: RetryManager + Send + Sync + 'static,
 {

@@ -1,0 +1,5 @@
+error: Swim agent cannot be created from Enum.
+ --> $DIR/enum_agent.rs:9:10
+  |
+9 |     enum TestAgent {}
+  |          ^^^^^^^^^
