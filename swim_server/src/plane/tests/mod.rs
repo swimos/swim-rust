@@ -18,10 +18,10 @@ use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, EnvChannel};
 use futures::future::join;
-use futures::stream::FuturesUnordered;
 use std::time::Duration;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
+use utilities::future::open_ended::OpenEndedFutures;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 
@@ -70,7 +70,7 @@ async fn plane_event_loop() {
         swim_runtime::time::clock::runtime_clock(),
         spec,
         stop_rx,
-        FuturesUnordered::new(),
+        OpenEndedFutures::new(),
     );
 
     let completion_task = async move {
