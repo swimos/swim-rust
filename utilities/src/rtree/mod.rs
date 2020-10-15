@@ -22,8 +22,19 @@ impl RTree {
         }
     }
 
-    fn remove(&mut self, item: Rect) -> Option<Rect> {
-        self.root.remove(item)
+    fn remove(&mut self, item: &Rect) -> Option<Rect> {
+        let maybe_removed = self.root.remove(item);
+
+        //Todo children should be returned here
+        //all leaves are inserted as normal
+        //branches are inserted at the appropriate level
+        //splits are also done if needed
+
+        if maybe_removed.is_some() && self.root.len() == 1 {
+            //Todo
+        }
+
+        Some(maybe_removed?.0)
     }
 }
 
@@ -34,6 +45,13 @@ enum Node {
 }
 
 impl Node {
+    fn len(&self) -> usize {
+        match self {
+            Node::Branch(entries) => entries.len(),
+            Node::Leaf(entries) => entries.len(),
+        }
+    }
+
     fn insert(&mut self, item: Rect) -> Option<(Entry, Entry)> {
         match self {
             Node::Branch(entries) if !entries.is_empty() => {
@@ -83,26 +101,56 @@ impl Node {
         None
     }
 
-    fn remove(&mut self, item: Rect) -> Option<Rect> {
+    fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
         match self {
             Node::Branch(entries) => {
-                for entry in entries {
-                    if entry.is_covering(&item) {
-                        entry.remove(item)
+                let mut entry_index = None;
+                let mut maybe_removed = None;
+
+                for (idx, entry) in entries.iter_mut().enumerate() {
+                    if entry.is_covering(item) {
+                        maybe_removed = entry.remove(item);
+
+                        if maybe_removed.is_some() {
+                            if entry.len() < MIN_CHILDREN {
+                                entry_index = Some(idx);
+                            }
+                            break;
+                        }
                     }
+                }
+
+                let (removed, mut maybe_orphan_nodes) = maybe_removed?;
+
+                if entry_index.is_some() {
+                    let Entry {
+                        mbb: _,
+                        child: orphan,
+                    } = entries.remove(entry_index.unwrap());
+
+                    match maybe_orphan_nodes {
+                        Some(mut orphan_nodes) => {
+                            orphan_nodes.push(orphan);
+                            Some((removed, Some(orphan_nodes)))
+                        }
+                        None => Some((removed, Some(vec![orphan]))),
+                    }
+                } else {
+                    Some((removed, None))
                 }
             }
             Node::Leaf(entries) => {
+                let mut remove_idx = None;
+
                 for (idx, entry) in entries.iter().enumerate() {
                     if entry == item {
-                        break Some(idx);
+                        remove_idx = Some(idx);
+                        break;
                     }
-                    None
-                };
+                }
+                Some((entries.remove(remove_idx?), None))
             }
-        };
-
-        unimplemented!()
+        }
     }
 
     fn split(&mut self) -> (Entry, Entry) {
@@ -336,13 +384,43 @@ struct Entry {
 }
 
 impl Entry {
+    fn len(&self) -> usize {
+        self.child.len()
+    }
+
     fn insert(&mut self, item: Rect, expanded_rect: Rect) -> Option<(Entry, Entry)> {
         self.mbb = expanded_rect;
         self.child.insert(item)
     }
 
-    fn remove(&mut self, item: Rect) -> Option<Rect> {
-        self.child.remove(item)
+    fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
+        let (removed, orphan_nodes) = self.child.remove(item)?;
+
+        let removed_mbb = removed.get_mbb();
+
+        if removed_mbb.lower_left.x == self.mbb.lower_left.x
+            || removed_mbb.lower_left.y == self.mbb.lower_left.y
+            || removed_mbb.upper_right.x == self.mbb.upper_right.x
+            || removed_mbb.upper_right.y == self.mbb.upper_right.y
+        {
+            let shrunken_mbb = match &self.child {
+                //Todo refactor and add length checks
+                Node::Branch(entries) => {
+                    let mut entries_iter = entries.iter();
+                    let shrunken_mbb = entries_iter.next().unwrap().mbb.clone();
+                    entries_iter.fold(shrunken_mbb, |acc, entry| entry.mbb.combine_boxes(&acc))
+                }
+                Node::Leaf(entries) => {
+                    let mut entries_iter = entries.iter();
+                    let shrunken_mbb = entries_iter.next().unwrap().clone();
+                    entries_iter.fold(shrunken_mbb, |acc, entry| entry.combine_boxes(&acc))
+                }
+            };
+
+            self.mbb = shrunken_mbb;
+        }
+
+        Some((removed, orphan_nodes))
     }
 }
 
@@ -364,7 +442,7 @@ impl BoundingBox for Entry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Rect {
     lower_left: Point,
     upper_right: Point,
@@ -389,7 +467,6 @@ impl BoundingBox for Rect {
         (self.upper_right.x - self.lower_left.x) * (self.upper_right.y - self.lower_left.y)
     }
 
-    // Create the minimum bounding box that contains both.
     fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
         let other_mbb = other.get_mbb();
 
@@ -440,7 +517,7 @@ impl BoundingBox for Rect {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Point {
     x: i32,
     y: i32,
@@ -455,6 +532,7 @@ impl Point {
 trait BoundingBox {
     fn get_mbb(&self) -> &Rect;
     fn area(&self) -> i32;
+    // Create a minimum bounding box that contains both items.
     fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect;
     fn is_covering<T: BoundingBox>(&self, other: &T) -> bool;
 }
