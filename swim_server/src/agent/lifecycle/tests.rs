@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 use utilities::sync::trigger::Receiver;
+use utilities::uri::RelativeUri;
 
 struct TestAgent;
 
@@ -39,7 +40,7 @@ impl AgentContext<TestAgent> for TestContext {
         panic!("Default lifecycles should do nothing.")
     }
 
-    fn node_uri(&self) -> &str {
+    fn node_uri(&self) -> &RelativeUri {
         panic!("Default lifecycles should do nothing.")
     }
 

@@ -27,6 +27,7 @@ pub mod route_pattern;
 pub mod sync;
 pub mod task;
 pub mod trace;
+pub mod uri;
 
 #[allow(unused_imports)]
 #[macro_use]

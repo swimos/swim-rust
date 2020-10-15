@@ -22,7 +22,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 
 /// A mock [`Router`] where connections produce no data and all outputs are silently dropped.
-pub struct StubRouter {}
+pub struct StubRouter;
 
 impl Router for StubRouter {
     type ConnectionStream = Pending<RouterEvent>;
