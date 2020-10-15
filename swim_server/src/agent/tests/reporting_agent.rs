@@ -421,7 +421,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.demand_map,
-            *command_buffer_size,
+            exec_conf.action_buffer.clone(),
         );
 
         let agent = ReportingAgent {
