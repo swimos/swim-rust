@@ -12,49 +12,62 @@ struct RTree {
 impl RTree {
     fn new() -> Self {
         RTree {
-            root: Node::Leaf(Vec::new()),
+            root: Node::Leaf(Vec::new(), 0),
         }
     }
 
     fn insert(&mut self, item: Rect) {
         if let Some((first_entry, second_entry)) = self.root.insert(item) {
-            self.root = Node::Branch(vec![first_entry, second_entry])
+            match self.root {
+                Node::Branch(_, level) | Node::Leaf(_, level) => {
+                    self.root = Node::Branch(vec![first_entry, second_entry], level + 1)
+                }
+            }
         }
     }
 
     fn remove(&mut self, item: &Rect) -> Option<Rect> {
-        let maybe_removed = self.root.remove(item);
+        let (removed, maybe_orphan_nodes) = self.root.remove(item)?;
 
-        //Todo children should be returned here
-        //all leaves are inserted as normal
-        //branches are inserted at the appropriate level
-        //splits are also done if needed
-
-        if maybe_removed.is_some() && self.root.len() == 1 {
-            //Todo
+        if maybe_orphan_nodes.is_some() {
+            for orphan_node in maybe_orphan_nodes? {
+                match orphan_node {
+                    Node::Branch(entries, _) => {
+                        for entry in entries {
+                            // Todo insert branch at appropriate level
+                            // And do split if needed
+                        }
+                    }
+                    Node::Leaf(entries, _) => {
+                        for entry in entries {
+                            self.insert(entry);
+                        }
+                    }
+                }
+            }
         }
 
-        Some(maybe_removed?.0)
+        Some(removed)
     }
 }
 
 #[derive(Debug)]
 enum Node {
-    Branch(Vec<Entry>),
-    Leaf(Vec<Rect>),
+    Branch(Vec<Entry>, i32),
+    Leaf(Vec<Rect>, i32),
 }
 
 impl Node {
     fn len(&self) -> usize {
         match self {
-            Node::Branch(entries) => entries.len(),
-            Node::Leaf(entries) => entries.len(),
+            Node::Branch(entries, _) => entries.len(),
+            Node::Leaf(entries, _) => entries.len(),
         }
     }
 
     fn insert(&mut self, item: Rect) -> Option<(Entry, Entry)> {
         match self {
-            Node::Branch(entries) if !entries.is_empty() => {
+            Node::Branch(entries, _) if !entries.is_empty() => {
                 let mut entries_iter = entries.iter_mut();
 
                 let mut min_entry = entries_iter.next().unwrap();
@@ -88,7 +101,7 @@ impl Node {
                     None => (),
                 }
             }
-            Node::Leaf(entries) => {
+            Node::Leaf(entries, level) => {
                 entries.push(item);
 
                 if entries.len() > MAX_CHILDREN {
@@ -103,7 +116,7 @@ impl Node {
 
     fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
         match self {
-            Node::Branch(entries) => {
+            Node::Branch(entries, _) => {
                 let mut entry_index = None;
                 let mut maybe_removed = None;
 
@@ -139,7 +152,7 @@ impl Node {
                     Some((removed, None))
                 }
             }
-            Node::Leaf(entries) => {
+            Node::Leaf(entries, _) => {
                 let mut remove_idx = None;
 
                 for (idx, entry) in entries.iter().enumerate() {
@@ -155,32 +168,32 @@ impl Node {
 
     fn split(&mut self) -> (Entry, Entry) {
         match self {
-            Node::Branch(entries) => {
+            Node::Branch(entries, level) => {
                 let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(entries);
 
                 let first_group = Entry {
                     mbb: first_mbb,
-                    child: Node::Branch(first_group),
+                    child: Node::Branch(first_group, *level),
                 };
 
                 let second_group = Entry {
                     mbb: second_mbb,
-                    child: Node::Branch(second_group),
+                    child: Node::Branch(second_group, *level),
                 };
 
                 (first_group, second_group)
             }
-            Node::Leaf(entries) => {
+            Node::Leaf(entries, level) => {
                 let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(entries);
 
                 let first_group = Entry {
                     mbb: first_mbb,
-                    child: Node::Leaf(first_group),
+                    child: Node::Leaf(first_group, *level),
                 };
 
                 let second_group = Entry {
                     mbb: second_mbb,
-                    child: Node::Leaf(second_group),
+                    child: Node::Leaf(second_group, *level),
                 };
 
                 (first_group, second_group)
@@ -405,12 +418,12 @@ impl Entry {
         {
             let shrunken_mbb = match &self.child {
                 //Todo refactor and add length checks
-                Node::Branch(entries) => {
+                Node::Branch(entries, _) => {
                     let mut entries_iter = entries.iter();
                     let shrunken_mbb = entries_iter.next().unwrap().mbb.clone();
                     entries_iter.fold(shrunken_mbb, |acc, entry| entry.mbb.combine_boxes(&acc))
                 }
-                Node::Leaf(entries) => {
+                Node::Leaf(entries, _) => {
                     let mut entries_iter = entries.iter();
                     let shrunken_mbb = entries_iter.next().unwrap().clone();
                     entries_iter.fold(shrunken_mbb, |acc, entry| entry.combine_boxes(&acc))
