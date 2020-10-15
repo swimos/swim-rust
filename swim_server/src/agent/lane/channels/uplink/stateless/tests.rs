@@ -27,6 +27,7 @@ use crate::agent::lane::channels::TaggedAction;
 use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use url::Url;
+use utilities::uri::RelativeUri;
 
 #[derive(Clone, Debug)]
 struct TestRouter(mpsc::Sender<TaggedEnvelope>);
@@ -45,7 +46,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
+        _route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
         unimplemented!()
     }
