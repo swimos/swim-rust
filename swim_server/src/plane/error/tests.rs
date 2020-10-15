@@ -19,7 +19,7 @@ use utilities::route_pattern::RoutePattern;
 
 #[test]
 fn no_agent_at_route_display() {
-    let err = NoAgentAtRoute("/test".to_string());
+    let err = NoAgentAtRoute("/test".parse().unwrap());
     let string = err.to_string();
 
     assert_eq!(string, "No agent at route: '/test'");
@@ -52,10 +52,10 @@ fn resolution_error_display() {
 
     assert_eq!(err.to_string(), RoutingError::HostUnreachable.to_string());
 
-    let err = ResolutionError::NoAgent(NoAgentAtRoute("path".to_string()));
+    let err = ResolutionError::NoAgent(NoAgentAtRoute("/path".parse().unwrap()));
 
     assert_eq!(
         err.to_string(),
-        NoAgentAtRoute("path".to_string()).to_string()
+        NoAgentAtRoute("/path".parse().unwrap()).to_string()
     );
 }

@@ -89,7 +89,7 @@ pub fn send_and_await<T: Unpin + Send + 'static>(
 }
 
 #[derive(Debug, Clone)]
-pub struct RequestError {}
+pub struct RequestError;
 
 impl From<RecvError> for RequestError {
     fn from(_: RecvError) -> Self {

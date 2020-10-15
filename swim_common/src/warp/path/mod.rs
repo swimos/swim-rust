@@ -73,7 +73,7 @@ pub struct RelativePath {
 }
 
 impl RelativePath {
-    pub fn new(node: &str, lane: &str) -> RelativePath {
+    pub fn new<S: Into<Text>>(node: S, lane: S) -> RelativePath {
         RelativePath {
             node: node.into(),
             lane: lane.into(),
