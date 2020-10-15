@@ -24,6 +24,7 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::auto::AutoUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use crate::agent::RelativeUri;
 use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use url::Url;
@@ -45,7 +46,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
+        _route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
         unimplemented!()
     }

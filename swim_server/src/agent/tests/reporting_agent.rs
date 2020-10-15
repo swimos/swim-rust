@@ -18,7 +18,7 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, DemandLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
@@ -351,7 +351,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.demand,
-            *command_buffer_size,
+            exec_conf.action_buffer.clone(),
         );
 
         let agent = ReportingAgent {
