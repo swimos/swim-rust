@@ -258,11 +258,13 @@ pub trait JoinedStreamSink<T, E>: Stream<Item = Result<T, E>> + Sink<T, Error = 
     }
 }
 
+type Bijection<T1, T2> = (fn(T1) -> T2, fn(T2) -> T1);
+
 #[pin_project]
 pub struct TransformedStreamSink<S, T1, T2, E1, E2> {
     #[pin]
     str_sink: S,
-    _bijection: PhantomData<(fn(T1) -> T2, fn(T2) -> T1)>,
+    _bijection: PhantomData<Bijection<T1, T2>>,
     _errors: PhantomData<fn(E1) -> E2>,
 }
 

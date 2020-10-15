@@ -75,6 +75,12 @@ impl<Fut> OpenEndedFutures<Fut> {
             Ok(())
         }
     }
+
+    pub fn push(&self, fut: Fut) {
+        if self.try_push(fut).is_err() {
+            panic!("Future pushed after closed.")
+        }
+    }
 }
 
 impl<Fut: Future> Stream for OpenEndedFutures<Fut> {

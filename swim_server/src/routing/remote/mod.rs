@@ -20,7 +20,6 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use futures::select_biased;
-use futures::stream::FuturesUnordered;
 use futures::stream::{poll_fn, FusedStream};
 use futures::{FutureExt, StreamExt};
 use tokio::io;
@@ -43,6 +42,7 @@ use utilities::uri::RelativeUri;
 use crate::plane::error::{ResolutionError, Unresolvable};
 use crate::routing::ws::{JoinedStreamSink, WsConnections};
 use crate::routing::{error, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use utilities::future::open_ended::OpenEndedFutures;
 
 mod task;
 
@@ -111,6 +111,12 @@ enum DeferredResult<Snk, I> {
         request: ResolutionRequest,
         host: Option<String>,
     },
+    FailedConnection {
+        error: ConnectionError,
+        remaining: I,
+        request: ResolutionRequest,
+        host: String,
+    },
     Dns {
         result: io::Result<I>,
         host: HostAndPort,
@@ -142,6 +148,20 @@ impl<Snk, I> DeferredResult<Snk, I> {
             request,
         }
     }
+
+    fn failed_connection(
+        error: ConnectionError,
+        remaining: I,
+        request: ResolutionRequest,
+        host: String,
+    ) -> Self {
+        DeferredResult::FailedConnection {
+            error,
+            remaining,
+            request,
+            host,
+        }
+    }
 }
 
 struct TaskFactory {
@@ -171,7 +191,7 @@ impl TaskFactory {
     ) -> mpsc::Sender<TaggedEnvelope>
     where
         Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
-        Sp: Spawner<BoxFuture<'static, ConnectionDropped>>,
+        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     {
         let TaskFactory {
             request_tx,
@@ -187,21 +207,29 @@ impl TaskFactory {
             configuration.activity_timeout,
             configuration.connection_retries,
         );
-        spawner.add(task.run().boxed());
+
+        spawner.add(
+            async move {
+                let result = task.run().await;
+                (tag, result)
+            }
+            .boxed(),
+        );
         msg_tx
     }
 }
 
-const REQUEST_DROPPED: &'static str =
-    "The receiver of a routing request was dropped before it completed.";
-const FAILED_SERVER_CONN: &'static str = "Failed to establish a server connection.";
-const FAILED_CLIENT_CONN: &'static str = "Failed to establish a client connection.";
+const REQUEST_DROPPED: &str = "The receiver of a routing request was dropped before it completed.";
+const FAILED_SERVER_CONN: &str = "Failed to establish a server connection.";
+const FAILED_CLIENT_CONN: &str = "Failed to establish a client connection.";
+const NOT_IN_TABLE: &str = "A connection closed that was not in the routing table.";
+const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining.";
 
 impl<Ws, Router, Sp> RemoteConnections<Ws, Router, Sp>
 where
     Ws: WsConnections + Send + Sync + 'static,
     Router: ServerRouter + Clone + Send + Sync + 'static,
-    Sp: Spawner<BoxFuture<'static, ConnectionDropped>> + Send,
+    Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
     pub fn new(
         req_buffer_size: NonZeroUsize,
@@ -233,7 +261,7 @@ where
             websockets,
             delegate_router: _,
             stop_trigger,
-            spawner,
+            mut spawner,
             configuration,
         } = self;
 
@@ -242,11 +270,11 @@ where
 
         let mut table = RoutingTable::default();
 
-        let mut deferred_actions = FuturesUnordered::new();
+        let mut deferred_actions = OpenEndedFutures::new();
 
         let websockets = &websockets;
 
-        let mut closing = false;
+        let mut state = State::Running;
 
         let tasks = TaskFactory::new(requests_tx.clone(), stop_trigger.clone(), configuration);
 
@@ -257,7 +285,8 @@ where
                 &mut listener,
                 &mut requests,
                 &mut deferred_actions,
-                &mut closing,
+                &mut spawner,
+                &mut state,
             )
             .await;
             match next {
@@ -338,6 +367,28 @@ where
                     event!(Level::ERROR, FAILED_CLIENT_CONN, ?error);
                     request.send_err_debug(error, REQUEST_DROPPED);
                 }
+                Some(Event::Deferred(DeferredResult::FailedConnection {
+                    error,
+                    mut remaining,
+                    request,
+                    host,
+                })) => {
+                    if let Some(sock_addr) = remaining.next() {
+                        if let Some(addr) = table.get_resolved(&sock_addr) {
+                            table.add_host(host, sock_addr);
+                            request.send_ok_debug(addr, REQUEST_DROPPED);
+                        } else {
+                            deferred_actions.push(
+                                connect_and_handshake(
+                                    sock_addr, remaining, request, host, websockets,
+                                )
+                                .boxed(),
+                            );
+                        }
+                    } else {
+                        request.send_err_debug(error, REQUEST_DROPPED);
+                    }
+                }
                 Some(Event::Deferred(DeferredResult::Dns {
                     result: Err(_err),
                     request,
@@ -346,18 +397,33 @@ where
                     request.send_err_debug(ConnectionError::ConnectError, REQUEST_DROPPED);
                 }
                 Some(Event::Deferred(DeferredResult::Dns {
-                    result: Ok(addrs),
+                    result: Ok(mut addrs),
                     host,
                     request,
                 })) => {
                     let HostAndPort(host, _) = host;
-                    deferred_actions.push(
-                        async move {
-                            let result = connect_and_handshake(addrs, websockets).await;
-                            DeferredResult::outgoing_handshake(result, request, Some(host))
+                    if let Some(sock_addr) = addrs.next() {
+                        if let Some(addr) = table.get_resolved(&sock_addr) {
+                            table.add_host(host, sock_addr);
+                            request.send_ok_debug(addr, REQUEST_DROPPED);
+                        } else {
+                            deferred_actions.push(
+                                connect_and_handshake(sock_addr, addrs, request, host, websockets)
+                                    .boxed(),
+                            );
                         }
-                        .boxed(),
-                    );
+                    } else {
+                        request.send_err_debug(ConnectionError::ConnectError, REQUEST_DROPPED);
+                    }
+                }
+                Some(Event::ConnectionClosed(addr, reason)) => {
+                    if let Some(tx) = table.remove(addr) {
+                        if let Err(reason) = tx.provide(reason) {
+                            event!(Level::TRACE, CLOSED_NO_HANDLES, ?addr, ?reason);
+                        }
+                    } else {
+                        event!(Level::ERROR, NOT_IN_TABLE, ?addr);
+                    }
                 }
                 _ => {
                     break None;
@@ -389,42 +455,57 @@ enum Event<Snk, I> {
     Incoming(io::Result<(TcpStream, SocketAddr)>),
     Request(RoutingRequest),
     Deferred(DeferredResult<Snk, I>),
+    ConnectionClosed(RoutingAddr, ConnectionDropped),
 }
 
-async fn select_next<'a, Listener, Requests, Snk, I>(
+enum State {
+    Running,
+    ClosingConnections,
+    ClearingDeferred,
+}
+
+async fn select_next<'a, Listener, Requests, Snk, I, Sp>(
     listener: &mut Listener,
     requests: &mut Requests,
-    deferred: &mut FuturesUnordered<BoxFuture<'a, DeferredResult<Snk, I>>>,
-    closing: &mut bool,
+    deferred: &mut OpenEndedFutures<BoxFuture<'a, DeferredResult<Snk, I>>>,
+    spawner: &mut Sp,
+    state: &mut State,
 ) -> Option<Event<Snk, I>>
 where
     Listener: FusedStream<Item = io::Result<(TcpStream, SocketAddr)>> + Unpin,
     Requests: FusedStream<Item = RoutingRequest> + Unpin,
+    Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
 {
     loop {
-        if *closing {
-            return if deferred.is_empty() {
-                None
-            } else {
-                deferred.next().await.map(Event::Deferred)
-            };
-        } else {
-            let next = if deferred.is_empty() {
-                select_biased! {
-                    incoming = listener.next() => incoming.map(Event::Incoming),
-                    request = requests.next() => request.map(Event::Request),
-                }
-            } else {
-                select_biased! {
+        match state {
+            State::Running => {
+                let result = select_biased! {
                     incoming = listener.next() => incoming.map(Event::Incoming),
                     request = requests.next() => request.map(Event::Request),
                     def_complete = deferred.next() => def_complete.map(Event::Deferred),
+                    result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
+                };
+                if result.is_none() {
+                    spawner.stop();
+                    *state = State::ClosingConnections;
+                } else {
+                    return result;
                 }
-            };
-            if next.is_none() {
-                *closing = true;
-            } else {
-                return next;
+            }
+            State::ClosingConnections => {
+                let result = select_biased! {
+                    def_complete = deferred.next() => def_complete.map(Event::Deferred),
+                    result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
+                };
+                if result.is_none() {
+                    OpenEndedFutures::stop(deferred);
+                    *state = State::ClearingDeferred;
+                } else {
+                    return result;
+                }
+            }
+            State::ClearingDeferred => {
+                return deferred.next().await.map(Event::Deferred);
             }
         }
     }
@@ -445,27 +526,20 @@ where
     }
 }
 
-async fn connect_and_handshake<Ws>(
-    mut addrs: impl Iterator<Item = SocketAddr>,
+async fn connect_and_handshake<Ws, I>(
+    sock_addr: SocketAddr,
+    remaining: I,
+    request: ResolutionRequest,
+    host: String,
     websockets: &Ws,
-) -> Result<(Ws::StreamSink, SocketAddr), ConnectionError>
+) -> DeferredResult<Ws::StreamSink, I>
 where
     Ws: WsConnections,
+    I: Iterator<Item = SocketAddr>,
 {
-    let mut prev_err = None;
-    loop {
-        if let Some(addr) = addrs.next() {
-            match connect_and_handshake_single(addr, websockets).await {
-                Ok(str) => {
-                    break Ok((str, addr));
-                }
-                Err(err) => {
-                    prev_err = Some(err);
-                }
-            }
-        } else {
-            break Err(prev_err.unwrap_or(ConnectionError::ConnectError));
-        }
+    match connect_and_handshake_single(sock_addr, websockets).await {
+        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), request, Some(host)),
+        Err(err) => DeferredResult::failed_connection(err, remaining, request, host),
     }
 }
 

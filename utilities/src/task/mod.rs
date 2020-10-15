@@ -29,8 +29,17 @@ pub trait Spawner<F: Future>: FusedStream<Item = F::Output> {
     /// accept tasks (for example, when closing).
     fn try_add(&self, fut: F) -> Result<(), F>;
 
+    fn add(&self, fut: F) {
+        if self.try_add(fut).is_err() {
+            panic!("Future added after closed.");
+        }
+    }
+
     /// Determine if the spawner is running any tasks.
     fn is_empty(&self) -> bool;
+
+    /// Instruct the spawner to stop accepting new tasks and eventually terminated.
+    fn stop(&mut self);
 }
 
 #[derive(Debug)]
@@ -62,6 +71,10 @@ where
 
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+
+    fn stop(&mut self) {
+        OpenEndedFutures::stop(self)
     }
 }
 
@@ -119,5 +132,9 @@ where
 
     fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    fn stop(&mut self) {
+        self.0.stop()
     }
 }

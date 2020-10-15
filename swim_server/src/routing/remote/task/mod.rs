@@ -135,7 +135,7 @@ where
                                     &mut router,
                                     &mut resolved,
                                     envelope,
-                                    retry_strategy.clone(),
+                                    retry_strategy,
                                 )
                                 .await
                                 {
