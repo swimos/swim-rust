@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::map::{make_lane_model, MapLane, MapLaneEvent};
+use crate::agent::lane::model::map::{make_lane_model, MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::{FutureExt, Stream, StreamExt};
@@ -20,7 +20,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_common::model::Value;
+use swim_common::form::Form;
+use swim_common::model::{Attr, Item, Value};
 
 #[test]
 fn try_type_update_event_success() {
@@ -683,4 +684,31 @@ async fn checkpoint_map() {
 
     let event = events.next().await;
     assert!(matches!(event, Some(MapLaneEvent::Checkpoint(12))));
+}
+
+#[test]
+fn test_derive_map_update() {
+    let clear: MapUpdate<i32, i32> = MapUpdate::Clear;
+    assert_eq!(clear.as_value(), Value::of_attr("clear"));
+
+    let remove: MapUpdate<i32, i32> = MapUpdate::Remove(100);
+    assert_eq!(
+        remove.as_value(),
+        Value::Record(
+            vec![(Attr::of(("remove", Value::from_vec(vec![Item::of(("key", 100i32))]))))],
+            Vec::new()
+        )
+    );
+
+    let update = MapUpdate::Update(100, Arc::new(200));
+    assert_eq!(
+        update.as_value(),
+        Value::Record(
+            vec![Attr::of((
+                "update",
+                Value::from_vec(vec![Item::of(("key", 100i32))])
+            ))],
+            vec![Item::of(200i32)]
+        )
+    );
 }

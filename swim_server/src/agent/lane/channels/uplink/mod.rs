@@ -115,10 +115,8 @@ pub enum UplinkError {
 }
 
 fn trans_err_fatal(err: &TransactionError) -> bool {
-    match err {
-        TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } => false,
-        _ => true,
-    }
+    matches!(err, 
+        TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } )
 }
 
 impl UplinkError {
@@ -484,7 +482,7 @@ where
 impl<K, V, Retries, F> UplinkStateMachine<MapLaneEvent<K, V>> for MapLaneUplink<K, V, F>
 where
     K: Form + Any + Send + Sync + Debug,
-    V: Any + Send + Sync + Debug,
+    V: Any + Form + Send + Sync + Debug,
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {

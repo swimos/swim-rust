@@ -19,6 +19,7 @@ tracing = "0.1.16"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
+http = "0.2.1"
 im = "15.0.0"
 parking_lot = "0.11.0"
 pin-project = "0.4.20"
@@ -30,6 +31,9 @@ utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
 tracing-futures = "0.2.4"
+agent_derive = { path = "agent_derive" }
+trybuild = "1.0.17"
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }
+tracing = "0.1.16"

@@ -15,6 +15,7 @@ bytes = "0.5.3"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
+http = "0.2.1"
 pin-project = "0.4.20"
 tokio = { version = "0.2.21", features = ["sync", "rt-core"] }
 regex = "1.3.6"
@@ -29,7 +30,6 @@ num-traits = "0.2.12"
 base64 = "0.12.3"
 form_derive = { path = "form_derive" }
 im = "14.2.0"
-http = "0.2.1"
 chrono = "0.4"
 
 [dependencies.native-tls]
