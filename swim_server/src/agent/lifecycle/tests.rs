@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::AgentLifecycle;
+use crate::agent::meta::LogLevel;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;
@@ -57,7 +58,7 @@ impl AgentContext<TestAgent> for TestContext {
         HashMap::new()
     }
 
-    fn log<E: Form>(&self, _entry: E) {}
+    fn log<E: Form>(&self, _entry: E, _level: LogLevel) {}
 }
 
 #[tokio::test]

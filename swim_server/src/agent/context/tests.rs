@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::ContextImpl;
-use crate::agent::meta::LogHandler;
+use crate::agent::meta::make_log_handler;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;
@@ -39,7 +39,7 @@ fn simple_accessors() {
         close_sig.clone(),
         (),
         HashMap::new(),
-        LogHandler::new("/node".parse().unwrap()),
+        make_log_handler("/node".parse().unwrap()),
     );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_uri(), "/node");
@@ -68,7 +68,7 @@ fn create_context(
         close_trigger,
         (),
         HashMap::new(),
-        LogHandler::new("/node".parse().unwrap()),
+        make_log_handler("/node".parse().unwrap()),
     )
 }
 

@@ -72,7 +72,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
-use crate::agent::meta::open_log_lanes;
+use crate::agent::meta::{open_log_lanes, LogLevel};
 
 #[doc(hidden)]
 #[allow(unused_imports)]
@@ -390,7 +390,7 @@ pub trait AgentContext<Agent> {
     /// Get a copy of all parameters extracted from the agent node route.
     fn parameters(&self) -> HashMap<String, String>;
 
-    fn log<E: Form>(&self, entry: E);
+    fn log<E: Form>(&self, entry: E, level: LogLevel);
 }
 
 pub trait Lane {

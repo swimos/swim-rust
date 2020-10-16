@@ -43,7 +43,7 @@ pub enum MetaKind {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum LogLevel {
+pub enum LogLevel {
     Trace,
     Debug,
     Info,
@@ -142,15 +142,51 @@ impl Debug for LogHandler {
     }
 }
 
-impl LogHandler {
-    pub fn new(_uri: RelativeUri) -> LogHandler {
-        unimplemented!()
+#[cfg(test)]
+pub(crate) fn make_log_handler(uri: RelativeUri) -> LogHandler {
+    use tokio::sync::mpsc;
+
+    LogHandler {
+        uri,
+        trace_lane: SupplyLane::new(mpsc::channel(1).0),
+        debug_lane: SupplyLane::new(mpsc::channel(1).0),
+        info_lane: SupplyLane::new(mpsc::channel(1).0),
+        warn_lane: SupplyLane::new(mpsc::channel(1).0),
+        error_lane: SupplyLane::new(mpsc::channel(1).0),
+        fail_lane: SupplyLane::new(mpsc::channel(1).0),
     }
 }
 
 impl LogHandler {
-    pub fn log<E: Form>(&self, _entry: E) {
-        unimplemented!()
+    pub fn log<E: Form>(&self, entry: E, level: LogLevel) {
+        let entry = LogEntry::make(entry, level);
+
+        match level {
+            LogLevel::Trace => {
+                let mut supplier = self.trace_lane.supplier();
+                let _ = supplier.try_send(entry);
+            }
+            LogLevel::Debug => {
+                let mut supplier = self.debug_lane.supplier();
+                let _ = supplier.try_send(entry);
+            }
+            LogLevel::Info => {
+                let mut supplier = self.info_lane.supplier();
+                let _ = supplier.try_send(entry);
+            }
+            LogLevel::Warn => {
+                let mut supplier = self.warn_lane.supplier();
+                let _ = supplier.try_send(entry);
+            }
+            LogLevel::Error => {
+                let mut supplier = self.error_lane.supplier();
+                let _ = supplier.try_send(entry);
+            }
+            LogLevel::Fail => {
+                let mut supplier = self.fail_lane.supplier();
+                let _ = supplier.try_send(entry);
+            }
+        }
     }
 }
 

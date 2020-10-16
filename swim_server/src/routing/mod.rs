@@ -162,7 +162,7 @@ impl MetaPath for RelativePath {
                 match r {
                     Ok(kind) => {
                         let node_uri = &node_uri[1..];
-                        if node_uri.len() == 0 {
+                        if node_uri.is_empty() {
                             return Err(RelativePath::new(node, lane));
                         }
 

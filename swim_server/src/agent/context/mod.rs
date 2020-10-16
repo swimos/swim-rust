@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::LogHandler;
+use crate::agent::meta::{LogHandler, LogLevel};
 use crate::agent::{AgentContext, Eff};
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -73,6 +73,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
 }
 
 impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
+    #![allow(clippy::too_many_arguments)]
     pub(super) fn new(
         agent_ref: Arc<Agent>,
         uri: RelativeUri,
@@ -158,8 +159,8 @@ where
         self.parameters.clone()
     }
 
-    fn log<E: Form>(&self, entry: E) {
-        self.meta_log.log(entry)
+    fn log<E: Form>(&self, entry: E, level: LogLevel) {
+        self.meta_log.log(entry, level);
     }
 }
 
