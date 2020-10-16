@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::ContextImpl;
+use crate::agent::meta::LogHandler;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;
@@ -29,6 +30,7 @@ fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
+
     let context = ContextImpl::new(
         agent.clone(),
         "/node".parse().unwrap(),
@@ -37,6 +39,7 @@ fn simple_accessors() {
         close_sig.clone(),
         (),
         HashMap::new(),
+        LogHandler::new("/node".parse().unwrap()),
     );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_uri(), "/node");
@@ -65,6 +68,7 @@ fn create_context(
         close_trigger,
         (),
         HashMap::new(),
+        LogHandler::new("/node".parse().unwrap()),
     )
 }
 

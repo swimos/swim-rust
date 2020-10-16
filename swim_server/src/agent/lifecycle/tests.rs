@@ -19,6 +19,7 @@ use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
+use swim_common::form::Form;
 use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
@@ -55,6 +56,8 @@ impl AgentContext<TestAgent> for TestContext {
     fn parameters(&self) -> HashMap<String, String> {
         HashMap::new()
     }
+
+    fn log<E: Form>(&self, _entry: E) {}
 }
 
 #[tokio::test]

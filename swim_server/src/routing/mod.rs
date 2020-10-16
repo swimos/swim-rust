@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::meta::MetaKind;
 use crate::plane::error::ResolutionError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
@@ -66,6 +67,15 @@ impl Display for RoutingAddr {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaggedRequest {
+    Envelope(TaggedEnvelope),
+    Meta(TaggedMeta),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedMeta(pub RoutingAddr, pub Envelope, pub MetaKind);
 
 /// An [`Envelope`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]

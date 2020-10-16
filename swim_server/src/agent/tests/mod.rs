@@ -41,6 +41,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::form::Form;
 use swim_common::sink::item::DiscardingSender;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
@@ -308,6 +309,8 @@ where
     fn parameters(&self) -> HashMap<String, String> {
         HashMap::new()
     }
+
+    fn log<E: Form>(&self, _entry: E) {}
 }
 
 fn proj<Lane>() -> impl Fn(&TestAgent<Lane>) -> &Lane {

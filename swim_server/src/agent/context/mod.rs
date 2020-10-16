@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::meta::LogHandler;
 use crate::agent::{AgentContext, Eff};
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -21,6 +22,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use swim_common::form::Form;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -46,6 +48,7 @@ pub(super) struct ContextImpl<Agent, Clk, Router> {
     stop_signal: trigger::Receiver,
     router: Router,
     parameters: HashMap<String, String>,
+    meta_log: LogHandler,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -64,6 +67,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
             stop_signal: self.stop_signal.clone(),
             router: self.router.clone(),
             parameters: self.parameters.clone(),
+            meta_log: self.meta_log.clone(),
         }
     }
 }
@@ -77,6 +81,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
         stop_signal: trigger::Receiver,
         router: Router,
         parameters: HashMap<String, String>,
+        meta_log: LogHandler,
     ) -> Self {
         ContextImpl {
             agent_ref,
@@ -87,6 +92,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             stop_signal,
             router,
             parameters,
+            meta_log,
         }
     }
 }
@@ -150,6 +156,10 @@ where
 
     fn parameters(&self) -> HashMap<String, String> {
         self.parameters.clone()
+    }
+
+    fn log<E: Form>(&self, entry: E) {
+        self.meta_log.log(entry)
     }
 }
 
