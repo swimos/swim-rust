@@ -35,13 +35,22 @@ impl RTree {
     fn remove(&mut self, item: &Rect) -> Option<Rect> {
         let (removed, maybe_orphan_nodes) = self.root.remove(item)?;
 
+        if self.root.len() == 1 {
+            match &mut self.root {
+                Node::Branch { entries, level: _ } => {
+                    let Entry { mbb: _, child } = entries.remove(0);
+                    self.root = child;
+                }
+                _ => (),
+            }
+        }
+
         if maybe_orphan_nodes.is_some() {
             for orphan_node in maybe_orphan_nodes? {
                 match orphan_node {
-                    Node::Branch { entries, level: _ } => {
+                    Node::Branch { entries, level } => {
                         for entry in entries {
-                            // Todo insert branch at appropriate level
-                            // And do split if needed
+                            self.insert_at_level(entry, level);
                         }
                     }
                     Node::Leaf { entries, level: _ } => {
@@ -54,6 +63,19 @@ impl RTree {
         }
 
         Some(removed)
+    }
+
+    fn insert_at_level(&mut self, entry: Entry, level: i32) {
+        if let Some((first_entry, second_entry)) = self.root.insert_at_level(entry, level) {
+            match self.root {
+                Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
+                    self.root = Node::Branch {
+                        entries: vec![first_entry, second_entry],
+                        level: level + 1,
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -120,6 +142,59 @@ impl Node {
         None
     }
 
+    fn insert_at_level(&mut self, item: Entry, level: i32) -> Option<(Entry, Entry)> {
+        match self {
+            Node::Branch {
+                entries,
+                level: current_level,
+            } if level == *current_level => {
+                entries.push(item);
+
+                if entries.len() > MAX_CHILDREN {
+                    let split_entries = self.split();
+                    return Some(split_entries);
+                }
+            }
+            Node::Branch { entries, level: _ } => {
+                //Todo Refactor
+                let mut entries_iter = entries.iter_mut();
+
+                let mut min_entry = entries_iter.next().unwrap();
+                let mut min_entry_idx = 0;
+                let mut min_rect = min_entry.mbb.combine_boxes(&item);
+                let mut min_diff = min_rect.area() - min_entry.mbb.area();
+
+                for (entry, idx) in entries_iter.zip(1..) {
+                    let expanded_rect = entry.mbb.combine_boxes(&item);
+                    let diff = expanded_rect.area() - entry.mbb.area();
+
+                    if diff < min_diff {
+                        min_diff = diff;
+                        min_rect = expanded_rect;
+                        min_entry = entry;
+                        min_entry_idx = idx;
+                    }
+                }
+
+                match min_entry.insert_at_level(item, min_rect, level) {
+                    Some((first_entry, second_entry)) => {
+                        entries.remove(min_entry_idx);
+                        entries.push(first_entry);
+                        entries.push(second_entry);
+
+                        if entries.len() > MAX_CHILDREN {
+                            let split_entries = self.split();
+                            return Some(split_entries);
+                        }
+                    }
+                    None => (),
+                }
+            }
+            Node::Leaf { .. } => (),
+        }
+        None
+    }
+
     fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
         match self {
             Node::Branch { entries, level: _ } => {
@@ -139,7 +214,7 @@ impl Node {
                     }
                 }
 
-                let (removed, mut maybe_orphan_nodes) = maybe_removed?;
+                let (removed, maybe_orphan_nodes) = maybe_removed?;
 
                 if entry_index.is_some() {
                     let Entry {
@@ -155,7 +230,7 @@ impl Node {
                         None => Some((removed, Some(vec![orphan]))),
                     }
                 } else {
-                    Some((removed, None))
+                    Some((removed, maybe_orphan_nodes))
                 }
             }
             Node::Leaf { entries, level: _ } => {
@@ -422,6 +497,16 @@ impl Entry {
     fn insert(&mut self, item: Rect, expanded_rect: Rect) -> Option<(Entry, Entry)> {
         self.mbb = expanded_rect;
         self.child.insert(item)
+    }
+
+    fn insert_at_level(
+        &mut self,
+        item: Entry,
+        expanded_rect: Rect,
+        level: i32,
+    ) -> Option<(Entry, Entry)> {
+        self.mbb = expanded_rect;
+        self.child.insert_at_level(item, level)
     }
 
     fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
