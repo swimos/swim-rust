@@ -52,7 +52,7 @@ use utilities::uri::RelativeUri;
 
 mod stub_router {
     use crate::plane::error::ResolutionError;
-    use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+    use crate::routing::{RoutingAddr, ServerRouter, TaggedAgentEnvelope};
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use swim_common::routing::RoutingError;
@@ -66,7 +66,7 @@ mod stub_router {
 
     impl<Inner> SingleChannelRouter<Inner>
     where
-        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone,
+        Inner: ItemSender<TaggedAgentEnvelope, RoutingError> + Clone,
     {
         pub(crate) fn new(sender: Inner) -> Self {
             SingleChannelRouter(sender)
@@ -80,7 +80,7 @@ mod stub_router {
 
     impl<Inner> SingleChannelSender<Inner>
     where
-        Inner: ItemSender<TaggedEnvelope, RoutingError>,
+        Inner: ItemSender<TaggedAgentEnvelope, RoutingError>,
     {
         fn new(inner: Inner, destination: RoutingAddr) -> Self {
             SingleChannelSender { inner, destination }
@@ -89,20 +89,20 @@ mod stub_router {
 
     impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
     where
-        Inner: ItemSink<'a, TaggedEnvelope, Error = RoutingError>,
+        Inner: ItemSink<'a, TaggedAgentEnvelope, Error = RoutingError>,
     {
         type Error = RoutingError;
-        type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
+        type SendFuture = <Inner as ItemSink<'a, TaggedAgentEnvelope>>::SendFuture;
 
         fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-            let msg = TaggedEnvelope(self.destination, value);
+            let msg = TaggedAgentEnvelope(self.destination, value);
             self.inner.send_item(msg)
         }
     }
 
     impl<Inner> ServerRouter for SingleChannelRouter<Inner>
     where
-        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+        Inner: ItemSender<TaggedAgentEnvelope, RoutingError> + Clone + Send + Sync + 'static,
     {
         type Sender = SingleChannelSender<Inner>;
 

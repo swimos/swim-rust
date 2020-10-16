@@ -28,7 +28,7 @@ use crate::plane::context::PlaneContext;
 use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::routing::{RoutingAddr, TaggedRequest};
+use crate::routing::{RoutingAddr, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -88,13 +88,13 @@ type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, 
 #[derive(Debug)]
 struct LocalEndpoint {
     agent_handle: Weak<dyn Any + Send + Sync>,
-    channel: mpsc::Sender<TaggedRequest>,
+    channel: mpsc::Sender<TaggedEnvelope>,
 }
 
 impl LocalEndpoint {
     fn new(
         agent_handle: Weak<dyn Any + Send + Sync>,
-        channel: mpsc::Sender<TaggedRequest>,
+        channel: mpsc::Sender<TaggedEnvelope>,
     ) -> Self {
         LocalEndpoint {
             agent_handle,
@@ -103,7 +103,7 @@ impl LocalEndpoint {
     }
 }
 
-type EnvChannel = TakeUntil<mpsc::Receiver<TaggedRequest>, trigger::Receiver>;
+type EnvChannel = TakeUntil<mpsc::Receiver<TaggedEnvelope>, trigger::Receiver>;
 
 /// Container for the running routes within a plane.
 #[derive(Debug, Default)]
@@ -148,7 +148,7 @@ impl PlaneActiveRoutes {
 }
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-type EndpointRequest = Request<Result<mpsc::Sender<TaggedRequest>, Unresolvable>>;
+type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
 

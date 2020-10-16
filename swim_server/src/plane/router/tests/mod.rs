@@ -15,7 +15,7 @@
 use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory, PlaneRouterSender};
 use crate::plane::PlaneRequest;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope, TaggedRequest};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedAgentEnvelope, TaggedEnvelope};
 use futures::future::join;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
@@ -36,7 +36,7 @@ async fn plane_router_sender() {
     let received = rx.recv().await;
     assert_eq!(
         received,
-        Some(TaggedRequest::envelope(TaggedEnvelope(
+        Some(TaggedEnvelope::agent(TaggedAgentEnvelope(
             RoutingAddr::remote(7),
             Envelope::linked("/node", "lane")
         )))
@@ -76,7 +76,7 @@ async fn plane_router_get_sender() {
             .is_ok());
         assert_eq!(
             send_rx.recv().await,
-            Some(TaggedRequest::envelope(TaggedEnvelope(
+            Some(TaggedEnvelope::agent(TaggedAgentEnvelope(
                 addr,
                 Envelope::linked("/node", "lane")
             )))

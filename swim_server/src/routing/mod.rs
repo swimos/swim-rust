@@ -72,27 +72,30 @@ impl Display for RoutingAddr {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TaggedRequest {
-    Envelope(TaggedEnvelope),
-    Meta(TaggedMeta),
+pub enum TaggedEnvelope {
+    AgentEnvelope(TaggedAgentEnvelope),
+    MetaEnvelope(TaggedMetaEnvelope),
 }
 
-impl TaggedRequest {
-    pub fn envelope(envelope: TaggedEnvelope) -> TaggedRequest {
-        TaggedRequest::Envelope(envelope)
+impl TaggedEnvelope {
+    pub fn agent(envelope: TaggedAgentEnvelope) -> TaggedEnvelope {
+        TaggedEnvelope::AgentEnvelope(envelope)
     }
 
-    pub fn meta(meta: TaggedMeta) -> TaggedRequest {
-        TaggedRequest::Meta(meta)
+    pub fn meta(meta: TaggedMetaEnvelope) -> TaggedEnvelope {
+        TaggedEnvelope::MetaEnvelope(meta)
     }
 }
 
+/// An [`Envelope`] for a meta lane, tagged with the key of the endpoint into routing table from
+/// which it originated.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaggedMeta(pub RoutingAddr, pub Envelope, pub MetaKind);
+pub struct TaggedMetaEnvelope(pub RoutingAddr, pub Envelope, pub MetaKind);
 
-/// An [`Envelope`] tagged with the key of the endpoint into routing table from which it originated.
+/// An [`Envelope`] for an agent lane, tagged with the key of the endpoint into routing table from
+/// which it originated.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
+pub struct TaggedAgentEnvelope(pub RoutingAddr, pub Envelope);
 
 /// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
 /// originated.

@@ -23,7 +23,7 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
 use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedAgentEnvelope, TaggedClientEnvelope};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -303,7 +303,7 @@ impl LaneMessageHandler for TestHandler {
 #[derive(Clone)]
 struct TestContext(
     mpsc::Sender<Eff>,
-    mpsc::Sender<TaggedEnvelope>,
+    mpsc::Sender<TaggedAgentEnvelope>,
     Arc<Mutex<Option<trigger::Sender>>>,
 );
 
@@ -315,11 +315,11 @@ impl TestContext {
     }
 }
 
-struct TestRouter(mpsc::Sender<TaggedEnvelope>);
+struct TestRouter(mpsc::Sender<TaggedAgentEnvelope>);
 
 struct TestSender {
     addr: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
+    inner: mpsc::Sender<TaggedAgentEnvelope>,
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
@@ -327,7 +327,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        let tagged = TaggedEnvelope(self.addr, value);
+        let tagged = TaggedAgentEnvelope(self.addr, value);
         async move {
             self.inner
                 .send(tagged)
@@ -485,7 +485,7 @@ fn make_task(
 
 fn make_context() -> (
     TestContext,
-    mpsc::Receiver<TaggedEnvelope>,
+    mpsc::Receiver<TaggedAgentEnvelope>,
     BoxFuture<'static, ()>,
 ) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
@@ -905,11 +905,11 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
 }
 
 async fn expect_envelope(
-    router_rx: &mut mpsc::Receiver<TaggedEnvelope>,
+    router_rx: &mut mpsc::Receiver<TaggedAgentEnvelope>,
     expected_addr: RoutingAddr,
     expected_envelope: Envelope,
 ) {
-    let TaggedEnvelope(addr, env) = router_rx.recv().await.expect("Channel closed");
+    let TaggedAgentEnvelope(addr, env) = router_rx.recv().await.expect("Channel closed");
     assert_eq!(addr, expected_addr);
     assert_eq!(env, expected_envelope);
 }
@@ -1116,11 +1116,11 @@ async fn action_lane_multiple_links() {
 
         let expected_unlink = Envelope::unlinked(&route.node, &route.lane);
 
-        let TaggedEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
+        let TaggedAgentEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
         assert!(rec_addr1 == addr1 || rec_addr1 == addr2);
         assert_eq!(env, expected_unlink);
 
-        let TaggedEnvelope(rec_addr2, env) = router_rx.recv().await.expect("Channel closed");
+        let TaggedAgentEnvelope(rec_addr2, env) = router_rx.recv().await.expect("Channel closed");
         assert!(rec_addr2 == addr1 || rec_addr2 == addr2);
         assert_ne!(rec_addr1, rec_addr2);
         assert_eq!(env, expected_unlink);
@@ -1168,8 +1168,8 @@ async fn handle_action_lane_update_failure() {
 
 #[derive(Default, Debug)]
 struct MultiTestContextInner {
-    senders: HashMap<RoutingAddr, mpsc::Sender<TaggedEnvelope>>,
-    receivers: HashMap<RoutingAddr, mpsc::Receiver<TaggedEnvelope>>,
+    senders: HashMap<RoutingAddr, mpsc::Sender<TaggedAgentEnvelope>>,
+    receivers: HashMap<RoutingAddr, mpsc::Receiver<TaggedAgentEnvelope>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1183,7 +1183,7 @@ impl MultiTestContext {
         MultiTestContext(Default::default(), spawner)
     }
 
-    fn take_receiver(&self, addr: RoutingAddr) -> Option<mpsc::Receiver<TaggedEnvelope>> {
+    fn take_receiver(&self, addr: RoutingAddr) -> Option<mpsc::Receiver<TaggedAgentEnvelope>> {
         let mut lock = self.0.lock();
         if lock.senders.contains_key(&addr) {
             lock.receivers.remove(&addr)

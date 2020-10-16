@@ -26,14 +26,14 @@ use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction,
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::RelativeUri;
 use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedAgentEnvelope};
 use url::Url;
 
 #[derive(Clone, Debug)]
-struct TestRouter(mpsc::Sender<TaggedEnvelope>);
+struct TestRouter(mpsc::Sender<TaggedAgentEnvelope>);
 
 #[derive(Clone, Debug)]
-struct TestSender(RoutingAddr, mpsc::Sender<TaggedEnvelope>);
+struct TestSender(RoutingAddr, mpsc::Sender<TaggedAgentEnvelope>);
 
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
@@ -57,7 +57,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        let tagged = TaggedEnvelope(self.0, value);
+        let tagged = TaggedAgentEnvelope(self.0, value);
         async move {
             self.1
                 .send(tagged)
@@ -69,11 +69,11 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 }
 
 async fn check_receive(
-    rx: &mut mpsc::Receiver<TaggedEnvelope>,
+    rx: &mut mpsc::Receiver<TaggedAgentEnvelope>,
     expected_addr: RoutingAddr,
     expected: Envelope,
 ) {
-    let TaggedEnvelope(rec_addr, envelope) = rx.recv().await.unwrap();
+    let TaggedAgentEnvelope(rec_addr, envelope) = rx.recv().await.unwrap();
 
     assert_eq!(rec_addr, expected_addr);
     assert_eq!(envelope, expected);
@@ -353,7 +353,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         let addrs = vec![addr1, addr2];
 
         for _ in &addrs {
-            let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
+            let TaggedAgentEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
             assert_eq!(envelope, Envelope::unlinked(&route.node, &route.lane));
             assert!(addrs.contains(&rec_addr));
         }
@@ -403,7 +403,7 @@ async fn link_twice_to_auto_uplinks() {
                 .is_ok());
 
             for _ in &addrs {
-                let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
+                let TaggedAgentEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
                 let expected = Envelope::make_event(&route.node, &route.lane, Some(v.into()));
 
                 assert!(addrs.contains(&rec_addr));
@@ -415,7 +415,7 @@ async fn link_twice_to_auto_uplinks() {
         drop(response_tx);
 
         for _ in &addrs {
-            let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
+            let TaggedAgentEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
             assert_eq!(envelope, Envelope::unlinked(&route.node, &route.lane));
             assert!(addrs.contains(&rec_addr));
         }

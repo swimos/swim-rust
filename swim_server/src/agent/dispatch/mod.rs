@@ -24,7 +24,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
-use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{TaggedAgentEnvelope, TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::stream::{FusedStream, FuturesUnordered};
@@ -528,7 +528,11 @@ impl EnvelopeDispatcher {
                         break false;
                     }
                 },
-                Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
+                // Some(Either::Right(TaggedRequest::Meta(TaggedMeta(addr, envelope, kind))))=>{},
+                Some(Either::Right(TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(
+                    addr,
+                    envelope,
+                )))) => {
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
                     if let Ok(envelope) = envelope.into_outgoing() {
                         if let Some(entry) = idle_senders.get_mut(lane(&envelope)) {
