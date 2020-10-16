@@ -19,7 +19,7 @@ use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::{AgentRoute, EnvChannel};
-use crate::routing::{ServerRouter, TaggedEnvelope};
+use crate::routing::{ServerRouter, TaggedEnvelope, TaggedRequest};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
 use http::Uri;
@@ -167,7 +167,9 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
 
             let mut times_seen = 0;
 
-            while let Some(TaggedEnvelope(_, env)) = incoming_envelopes.next().await {
+            while let Some(TaggedRequest::Envelope(TaggedEnvelope(_, env))) =
+                incoming_envelopes.next().await
+            {
                 if env == expected_envelope {
                     times_seen += 1;
                     if let Some(tx) = done_sender.take() {

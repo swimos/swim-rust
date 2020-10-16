@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::RoutingAddr;
+use crate::agent::meta::{
+    MetaKind, META_EDGE, META_HOST, META_LANE, META_MESH, META_NODE, META_PART,
+};
+use crate::routing::{MetaPath, RoutingAddr};
+use swim_common::warp::path::RelativePath;
 
 #[test]
 fn routing_addr_display() {
@@ -21,4 +25,31 @@ fn routing_addr_display() {
 
     let string = format!("{}", RoutingAddr::local(0x1a));
     assert_eq!(string, "Local(1A)");
+}
+
+#[test]
+fn test_meta_paths() {
+    fn assert(kind: MetaKind, node: &str) {
+        let path = RelativePath::new(node.to_owned() + "/test/node", "unit".to_string());
+        assert_eq!(
+            Ok((kind, RelativePath::new("test/node", "unit"))),
+            path.into_kind_and_path()
+        );
+    }
+
+    assert(MetaKind::Edge, META_EDGE);
+    assert(MetaKind::Mesh, META_MESH);
+    assert(MetaKind::Part, META_PART);
+    assert(MetaKind::Host, META_HOST);
+    assert(MetaKind::Node, META_NODE);
+    assert(MetaKind::Lane, META_LANE);
+
+    let path = RelativePath::new(META_EDGE, "unit");
+    assert_eq!(Err(path.clone()), path.into_kind_and_path());
+
+    let path = RelativePath::new(META_EDGE.to_owned() + "/", "unit".to_string());
+    assert_eq!(Err(path.clone()), path.into_kind_and_path());
+
+    let path = RelativePath::new("swim:not::a_path", "unit");
+    assert_eq!(Err(path.clone()), path.into_kind_and_path());
 }

@@ -16,6 +16,13 @@ use swim_common::form::Form;
 use swim_common::model::time::Timestamp;
 use utilities::uri::RelativeUri;
 
+pub const META_EDGE: &str = "swim:meta:edge";
+pub const META_MESH: &str = "swim:meta:mesh";
+pub const META_PART: &str = "swim:meta:part";
+pub const META_HOST: &str = "swim:meta:host";
+pub const META_NODE: &str = "swim:meta:node";
+pub const META_LANE: &str = "swim:meta:lane";
+
 #[derive(Debug)]
 pub enum MetaRequest {
     Edge,
@@ -23,15 +30,17 @@ pub enum MetaRequest {
     Part,
     Host,
     Node { node_uri: RelativeUri },
+    Lane { lane_uri: RelativeUri },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetaKind {
     Edge,
     Mesh,
     Part,
     Host,
     Node,
+    Lane,
 }
 
 #[derive(Copy, Clone, Debug)]

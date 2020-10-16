@@ -14,13 +14,15 @@
 
 use crate::plane::error::ResolutionError;
 use crate::plane::PlaneRequest;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{
+    MetaPath, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedMeta, TaggedRequest,
+};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSink, MpscSend};
-use swim_common::warp::envelope::Envelope;
+use swim_common::warp::envelope::{Envelope, EnvelopeHeader};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -30,22 +32,68 @@ mod tests;
 /// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
 pub struct PlaneRouterSender {
     tag: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
+    inner: mpsc::Sender<TaggedRequest>,
 }
 
 impl PlaneRouterSender {
-    fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
+    fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedRequest>) -> Self {
         PlaneRouterSender { tag, inner }
     }
 }
 
 impl<'a> ItemSink<'a, Envelope> for PlaneRouterSender {
     type Error = RoutingError;
-    type SendFuture = MpscSend<'a, TaggedEnvelope, RoutingError>;
+    type SendFuture = MpscSend<'a, TaggedRequest, RoutingError>;
 
     fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
         let PlaneRouterSender { tag, inner } = self;
-        MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
+        let Envelope { header, body } = envelope;
+
+        let request = match header {
+            EnvelopeHeader::IncomingLink(header, path) => match path.into_kind_and_path() {
+                Ok((kind, path)) => TaggedRequest::meta(TaggedMeta(
+                    *tag,
+                    Envelope {
+                        header: EnvelopeHeader::IncomingLink(header, path),
+                        body,
+                    },
+                    kind,
+                )),
+                Err(path) => TaggedRequest::envelope(TaggedEnvelope(
+                    *tag,
+                    Envelope {
+                        header: EnvelopeHeader::IncomingLink(header, path),
+                        body,
+                    },
+                )),
+            },
+            EnvelopeHeader::OutgoingLink(header, path) => match path.into_kind_and_path() {
+                Ok((kind, path)) => TaggedRequest::meta(TaggedMeta(
+                    *tag,
+                    Envelope {
+                        header: EnvelopeHeader::OutgoingLink(header, path),
+                        body,
+                    },
+                    kind,
+                )),
+                Err(path) => TaggedRequest::envelope(TaggedEnvelope(
+                    *tag,
+                    Envelope {
+                        header: EnvelopeHeader::OutgoingLink(header, path),
+                        body,
+                    },
+                )),
+            },
+            EnvelopeHeader::Negotiation(header, path) => TaggedRequest::envelope(TaggedEnvelope(
+                *tag,
+                Envelope {
+                    header: EnvelopeHeader::Negotiation(header, path),
+                    body,
+                },
+            )),
+        };
+
+        MpscSend::new(inner, request)
     }
 }
 
