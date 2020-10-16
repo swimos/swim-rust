@@ -42,6 +42,7 @@ use utilities::uri::RelativeUri;
 use crate::plane::error::{ResolutionError, Unresolvable};
 use crate::routing::ws::{JoinedStreamSink, WsConnections};
 use crate::routing::{error, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use std::collections::hash_map::Entry;
 use utilities::future::open_ended::OpenEndedFutures;
 
 mod task;
@@ -108,19 +109,16 @@ enum DeferredResult<Snk, I> {
     },
     ClientHandshake {
         result: Result<(Snk, SocketAddr), ConnectionError>,
-        request: ResolutionRequest,
-        host: Option<String>,
+        host: HostAndPort,
     },
     FailedConnection {
         error: ConnectionError,
         remaining: I,
-        request: ResolutionRequest,
-        host: String,
+        host: HostAndPort,
     },
     Dns {
         result: io::Result<I>,
         host: HostAndPort,
-        request: ResolutionRequest,
     },
 }
 
@@ -131,34 +129,19 @@ impl<Snk, I> DeferredResult<Snk, I> {
 
     fn outgoing_handshake(
         result: Result<(Snk, SocketAddr), ConnectionError>,
-        request: ResolutionRequest,
-        host: Option<String>,
+        host: HostAndPort,
     ) -> Self {
-        DeferredResult::ClientHandshake {
-            result,
-            request,
-            host,
-        }
+        DeferredResult::ClientHandshake { result, host }
     }
 
-    fn dns(result: io::Result<I>, host: HostAndPort, request: ResolutionRequest) -> Self {
-        DeferredResult::Dns {
-            result,
-            host,
-            request,
-        }
+    fn dns(result: io::Result<I>, host: HostAndPort) -> Self {
+        DeferredResult::Dns { result, host }
     }
 
-    fn failed_connection(
-        error: ConnectionError,
-        remaining: I,
-        request: ResolutionRequest,
-        host: String,
-    ) -> Self {
+    fn failed_connection(error: ConnectionError, remaining: I, host: HostAndPort) -> Self {
         DeferredResult::FailedConnection {
             error,
             remaining,
-            request,
             host,
         }
     }
@@ -219,6 +202,45 @@ impl TaskFactory {
     }
 }
 
+#[derive(Debug, Default)]
+struct PendingRequests(HashMap<HostAndPort, Vec<ResolutionRequest>>);
+
+impl PendingRequests {
+    fn add(&mut self, host: HostAndPort, request: ResolutionRequest) {
+        let PendingRequests(map) = self;
+        match map.entry(host) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().push(request);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(vec![request]);
+            }
+        }
+    }
+
+    fn send_ok(&mut self, host: &HostAndPort, addr: RoutingAddr) {
+        let PendingRequests(map) = self;
+        if let Some(requests) = map.remove(host) {
+            for request in requests.into_iter() {
+                request.send_ok_debug(addr, REQUEST_DROPPED);
+            }
+        }
+    }
+
+    fn send_err(&mut self, host: &HostAndPort, err: ConnectionError) {
+        let PendingRequests(map) = self;
+        if let Some(mut requests) = map.remove(host) {
+            let first = requests.pop();
+            for request in requests.into_iter() {
+                request.send_err_debug(err.clone(), REQUEST_DROPPED);
+            }
+            if let Some(first) = first {
+                first.send_err_debug(err, REQUEST_DROPPED);
+            }
+        }
+    }
+}
+
 const REQUEST_DROPPED: &str = "The receiver of a routing request was dropped before it completed.";
 const FAILED_SERVER_CONN: &str = "Failed to establish a server connection.";
 const FAILED_CLIENT_CONN: &str = "Failed to establish a client connection.";
@@ -273,12 +295,10 @@ where
         let mut deferred_actions = OpenEndedFutures::new();
 
         let websockets = &websockets;
-
         let mut state = State::Running;
-
         let tasks = TaskFactory::new(requests_tx.clone(), stop_trigger.clone(), configuration);
-
         let mut addresses = RemoteRoutingAddresses::default();
+        let mut pending = PendingRequests::default();
 
         let _err = loop {
             let next = select_next(
@@ -316,13 +336,15 @@ where
                             if let Some(addr) = table.try_resolve(&target) {
                                 request.send_ok_debug(addr, REQUEST_DROPPED);
                             } else {
+                                let target_cpy = target.clone();
                                 deferred_actions.push(
                                     async move {
-                                        let resolved = lookup_host(target.to_string()).await;
-                                        DeferredResult::dns(resolved, target, request)
+                                        let resolved = lookup_host(target_cpy.to_string()).await;
+                                        DeferredResult::dns(resolved, target_cpy)
                                     }
                                     .boxed(),
                                 );
+                                pending.add(target, request);
                             }
                         }
                         _ => {
@@ -351,69 +373,62 @@ where
                 }
                 Some(Event::Deferred(DeferredResult::ClientHandshake {
                     result: Ok((ws_stream, sock_addr)),
-                    request,
                     host,
                 })) => {
                     let addr = addresses.next().expect("Counter overflow.");
                     let msg_tx = tasks.spawn_connection_task(ws_stream, addr, &spawner);
-                    table.insert(addr, host, sock_addr, msg_tx.clone());
-                    request.send_ok_debug(addr, REQUEST_DROPPED);
+                    pending.send_ok(&host, addr);
+                    table.insert(addr, Some(host), sock_addr, msg_tx.clone());
                 }
                 Some(Event::Deferred(DeferredResult::ClientHandshake {
                     result: Err(error),
-                    request,
+                    host,
                     ..
                 })) => {
                     event!(Level::ERROR, FAILED_CLIENT_CONN, ?error);
-                    request.send_err_debug(error, REQUEST_DROPPED);
+                    pending.send_err(&host, error);
                 }
                 Some(Event::Deferred(DeferredResult::FailedConnection {
                     error,
                     mut remaining,
-                    request,
                     host,
                 })) => {
                     if let Some(sock_addr) = remaining.next() {
                         if let Some(addr) = table.get_resolved(&sock_addr) {
+                            pending.send_ok(&host, addr);
                             table.add_host(host, sock_addr);
-                            request.send_ok_debug(addr, REQUEST_DROPPED);
                         } else {
                             deferred_actions.push(
-                                connect_and_handshake(
-                                    sock_addr, remaining, request, host, websockets,
-                                )
-                                .boxed(),
-                            );
-                        }
-                    } else {
-                        request.send_err_debug(error, REQUEST_DROPPED);
-                    }
-                }
-                Some(Event::Deferred(DeferredResult::Dns {
-                    result: Err(_err),
-                    request,
-                    ..
-                })) => {
-                    request.send_err_debug(ConnectionError::ConnectError, REQUEST_DROPPED);
-                }
-                Some(Event::Deferred(DeferredResult::Dns {
-                    result: Ok(mut addrs),
-                    host,
-                    request,
-                })) => {
-                    let HostAndPort(host, _) = host;
-                    if let Some(sock_addr) = addrs.next() {
-                        if let Some(addr) = table.get_resolved(&sock_addr) {
-                            table.add_host(host, sock_addr);
-                            request.send_ok_debug(addr, REQUEST_DROPPED);
-                        } else {
-                            deferred_actions.push(
-                                connect_and_handshake(sock_addr, addrs, request, host, websockets)
+                                connect_and_handshake(sock_addr, remaining, host, websockets)
                                     .boxed(),
                             );
                         }
                     } else {
-                        request.send_err_debug(ConnectionError::ConnectError, REQUEST_DROPPED);
+                        pending.send_err(&host, error);
+                    }
+                }
+                Some(Event::Deferred(DeferredResult::Dns {
+                    result: Err(_err),
+                    host,
+                    ..
+                })) => {
+                    pending.send_err(&host, ConnectionError::ConnectError);
+                }
+                Some(Event::Deferred(DeferredResult::Dns {
+                    result: Ok(mut addrs),
+                    host,
+                })) => {
+                    if let Some(sock_addr) = addrs.next() {
+                        if let Some(addr) = table.get_resolved(&sock_addr) {
+                            pending.send_ok(&host, addr);
+                            table.add_host(host, sock_addr);
+                        } else {
+                            deferred_actions.push(
+                                connect_and_handshake(sock_addr, addrs, host, websockets).boxed(),
+                            );
+                        }
+                    } else {
+                        pending.send_err(&host, ConnectionError::ConnectError);
                     }
                 }
                 Some(Event::ConnectionClosed(addr, reason)) => {
@@ -529,8 +544,7 @@ where
 async fn connect_and_handshake<Ws, I>(
     sock_addr: SocketAddr,
     remaining: I,
-    request: ResolutionRequest,
-    host: String,
+    host: HostAndPort,
     websockets: &Ws,
 ) -> DeferredResult<Ws::StreamSink, I>
 where
@@ -538,8 +552,8 @@ where
     I: Iterator<Item = SocketAddr>,
 {
     match connect_and_handshake_single(sock_addr, websockets).await {
-        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), request, Some(host)),
-        Err(err) => DeferredResult::failed_connection(err, remaining, request, host),
+        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), host),
+        Err(err) => DeferredResult::failed_connection(err, remaining, host),
     }
 }
 
@@ -643,7 +657,7 @@ impl RoutingTable {
     fn insert(
         &mut self,
         addr: RoutingAddr,
-        host: Option<String>,
+        host: Option<HostAndPort>,
         sock_addr: SocketAddr,
         tx: mpsc::Sender<TaggedEnvelope>,
     ) {
@@ -657,14 +671,14 @@ impl RoutingTable {
         open_sockets.insert(sock_addr, addr);
         let mut hosts = HashSet::new();
         if let Some(host) = host {
-            resolved_forward.insert(HostAndPort(host.clone(), sock_addr.port()), addr);
-            hosts.insert(HostAndPort(host, sock_addr.port()));
+            resolved_forward.insert(host.clone(), addr);
+            hosts.insert(host);
         }
 
         endpoints.insert(addr, Handle::new(tx, sock_addr, hosts));
     }
 
-    fn add_host(&mut self, host: String, sock_addr: SocketAddr) -> Option<RoutingAddr> {
+    fn add_host(&mut self, host: HostAndPort, sock_addr: SocketAddr) -> Option<RoutingAddr> {
         let RoutingTable {
             open_sockets,
             resolved_forward,
@@ -673,11 +687,10 @@ impl RoutingTable {
         } = self;
 
         if let Some(addr) = open_sockets.get(&sock_addr) {
-            let host_and_port = HostAndPort(host, sock_addr.port());
-            debug_assert!(!resolved_forward.contains_key(&host_and_port));
-            resolved_forward.insert(host_and_port.clone(), *addr);
+            debug_assert!(!resolved_forward.contains_key(&host));
+            resolved_forward.insert(host.clone(), *addr);
             let handle = endpoints.get_mut(&addr).expect("Inconsistent table.");
-            handle.bindings.insert(host_and_port);
+            handle.bindings.insert(host);
             Some(*addr)
         } else {
             None
