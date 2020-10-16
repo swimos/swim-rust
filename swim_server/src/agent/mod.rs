@@ -73,9 +73,11 @@ use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
 use crate::agent::meta::LogHandler;
+
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use swim_common::routing::LaneIdentifier;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
@@ -240,6 +242,11 @@ where
                     .instrument(span!(Level::DEBUG, LANE_EVENTS, name = %lane_name)),
             );
         }
+
+        let io_providers = io_providers
+            .into_iter()
+            .map(|(k, v)| (LaneIdentifier::Agent(k), v))
+            .collect();
 
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);

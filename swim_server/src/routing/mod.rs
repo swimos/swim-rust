@@ -92,6 +92,13 @@ impl TaggedEnvelope {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedMetaEnvelope(pub RoutingAddr, pub Envelope, pub MetaKind);
 
+impl TaggedMetaEnvelope {
+    fn as_agent_envelope(&self) -> TaggedAgentEnvelope {
+        let TaggedMetaEnvelope(addr, envelope, ..) = self;
+        TaggedAgentEnvelope(addr.clone(), envelope.clone())
+    }
+}
+
 /// An [`Envelope`] for an agent lane, tagged with the key of the endpoint into routing table from
 /// which it originated.
 #[derive(Debug, Clone, PartialEq)]

@@ -28,6 +28,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
+use swim_common::routing::LaneIdentifier;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::{mpsc, watch, Barrier};
@@ -48,7 +49,7 @@ fn make_dispatcher(
 
     let boxed_lanes = lanes
         .into_iter()
-        .map(|(name, lane)| (name, lane.boxed()))
+        .map(|(name, lane)| (LaneIdentifier::Agent(name), lane.boxed()))
         .collect();
 
     let context = MockExecutionContext::new(buffer_size, spawn_tx);
