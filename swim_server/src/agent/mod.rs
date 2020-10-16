@@ -72,7 +72,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
-use crate::agent::meta::LogHandler;
+use crate::agent::meta::open_log_lanes;
 
 #[doc(hidden)]
 #[allow(unused_imports)]
@@ -184,6 +184,7 @@ where
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent> + Send + Sync + 'static,
     Router: ServerRouter + Clone + 'static,
+    Config: 'static,
 {
     let AgentParameters {
         agent_config,
@@ -194,11 +195,17 @@ where
 
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
-    let (agent, tasks, io_providers) =
+    let (agent, mut tasks, mut io_providers) =
         Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
     let task = async move {
+        let (log_handler, mut log_tasks, log_io) = open_log_lanes::<
+            Config,
+            Agent,
+            ContextImpl<Agent, Clk, Router>,
+        >(uri.clone(), &execution_config);
+
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let context = ContextImpl::new(
             agent_ref,
@@ -208,8 +215,10 @@ where
             stop_trigger.clone(),
             router,
             parameters,
-            LogHandler::new(uri.clone()),
+            log_handler,
         );
+
+        tasks.append(&mut log_tasks);
 
         lifecycle
             .on_start(&context)
@@ -241,6 +250,10 @@ where
                     .instrument(span!(Level::DEBUG, LANE_EVENTS, name = %lane_name)),
             );
         }
+
+        log_io.into_iter().for_each(|(k, v)| {
+            io_providers.insert(k, Box::new(v.unwrap()));
+        });
 
         let io_providers = io_providers
             .into_iter()
@@ -1047,7 +1060,7 @@ where
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
 pub fn make_supply_lane<Agent, Context, T>(
-    name: impl Into<String>,
+    name: &str,
     is_public: bool,
     buffer_size: NonZeroUsize,
 ) -> (

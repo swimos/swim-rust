@@ -18,10 +18,11 @@ use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::meta::MetaKind;
 use crate::agent::AttachError;
 use crate::agent::LaneIo;
 use crate::routing::{
-    LaneIdentifier, MetaKind, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedMetaEnvelope,
+    LaneIdentifier, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedMetaEnvelope,
 };
 use futures::future::{join, join3, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
