@@ -20,7 +20,9 @@ use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AttachError;
 use crate::agent::LaneIo;
-use crate::routing::{RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope};
+use crate::routing::{
+    LaneIdentifier, MetaKind, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedMetaEnvelope,
+};
 use futures::future::{join, join3, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
@@ -28,7 +30,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::routing::LaneIdentifier;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::{mpsc, watch, Barrier};
@@ -38,7 +39,7 @@ mod mock;
 fn make_dispatcher(
     buffer_size: usize,
     max_pending: usize,
-    lanes: HashMap<String, MockLane>,
+    lanes: HashMap<LaneIdentifier, MockLane>,
     envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
 ) -> (
     BoxFuture<'static, Result<DispatcherErrors, DispatcherErrors>>,
@@ -49,7 +50,7 @@ fn make_dispatcher(
 
     let boxed_lanes = lanes
         .into_iter()
-        .map(|(name, lane)| (LaneIdentifier::Agent(name), lane.boxed()))
+        .map(|(name, lane)| (name, lane.boxed()))
         .collect();
 
     let context = MockExecutionContext::new(buffer_size, spawn_tx);
@@ -81,11 +82,17 @@ fn make_dispatcher(
     )
 }
 
-fn lanes(names: Vec<&str>) -> HashMap<String, MockLane> {
+fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
     let mut map = HashMap::new();
     for name in names.iter() {
-        map.insert(name.to_string(), MockLane);
+        map.insert(LaneIdentifier::Agent(name.to_string()), MockLane);
     }
+
+    map.insert(
+        LaneIdentifier::Meta(MetaKind::Node, "swim:meta:node".to_string()),
+        MockLane,
+    );
+
     map
 }
 
@@ -117,6 +124,37 @@ async fn dispatch_nothing() {
     drop(context);
 
     let result = task.await;
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[tokio::test]
+async fn dispatch_meta() {
+    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context, _) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+
+    let addr = RoutingAddr::remote(1);
+
+    let link = Envelope::link("/node", "swim:meta:node");
+
+    let assertion_task = async move {
+        assert!(envelope_tx
+            .send(TaggedEnvelope::meta(TaggedMetaEnvelope(
+                addr,
+                link.clone(),
+                MetaKind::Node
+            )))
+            .await
+            .is_ok());
+
+        let mut rx = context.take_receiver(&addr).unwrap();
+        expect_echo(&mut rx, "swim:meta:node", link).await;
+
+        drop(envelope_tx);
+        drop(context);
+    };
+
+    let (result, _) = join(task, assertion_task).await;
     assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 

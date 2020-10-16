@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::text::Text;
 use crate::request::request_future::RequestError;
 use crate::ws::error::ConnectionError;
 use std::error::Error;
@@ -76,31 +75,5 @@ impl<T> From<SendError<T>> for RoutingError {
 impl From<RoutingError> for RequestError {
     fn from(_: RoutingError) -> Self {
         RequestError {}
-    }
-}
-
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
-pub enum LaneIdentifier {
-    Agent(String),
-    Meta(String),
-}
-
-impl ToString for LaneIdentifier {
-    fn to_string(&self) -> String {
-        match self {
-            LaneIdentifier::Agent(s) => s.clone(),
-            LaneIdentifier::Meta(s) => s.clone(),
-        }
-    }
-}
-
-impl From<LaneIdentifier> for Text {
-    fn from(identifier: LaneIdentifier) -> Self {
-        let inner = match identifier {
-            LaneIdentifier::Agent(s) => s,
-            LaneIdentifier::Meta(s) => s,
-        };
-
-        From::from(inner)
     }
 }

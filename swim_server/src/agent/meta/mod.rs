@@ -23,26 +23,6 @@ pub const META_HOST: &str = "swim:meta:host";
 pub const META_NODE: &str = "swim:meta:node";
 pub const META_LANE: &str = "swim:meta:lane";
 
-#[derive(Debug)]
-pub enum MetaRequest {
-    Edge,
-    Mesh,
-    Part,
-    Host,
-    Node { node_uri: RelativeUri },
-    Lane { lane_uri: RelativeUri },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MetaKind {
-    Edge,
-    Mesh,
-    Part,
-    Host,
-    Node,
-    Lane,
-}
-
 #[derive(Copy, Clone, Debug)]
 enum LogLevel {
     Trace,

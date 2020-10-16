@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::{
-    MetaKind, META_EDGE, META_HOST, META_LANE, META_MESH, META_NODE, META_PART,
-};
-use crate::routing::{MetaPath, RoutingAddr};
+use crate::agent::meta::{META_EDGE, META_HOST, META_LANE, META_MESH, META_NODE, META_PART};
+use crate::routing::{MetaKind, MetaPath, RoutingAddr};
 use swim_common::warp::path::RelativePath;
 
 #[test]

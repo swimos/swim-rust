@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::{
-    MetaKind, META_EDGE, META_HOST, META_LANE, META_MESH, META_NODE, META_PART,
-};
+use crate::agent::meta::{META_EDGE, META_HOST, META_LANE, META_MESH, META_NODE, META_PART};
 use crate::plane::error::ResolutionError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
+use swim_common::model::text::Text;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -78,6 +77,19 @@ pub enum TaggedEnvelope {
 }
 
 impl TaggedEnvelope {
+    pub fn consume(self) -> (RoutingAddr, Envelope, Option<MetaKind>) {
+        match self {
+            TaggedEnvelope::MetaEnvelope(TaggedMetaEnvelope(addr, envelope, kind)) => {
+                (addr, envelope, Some(kind))
+            }
+            TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(addr, envelope)) => {
+                (addr, envelope, None)
+            }
+        }
+    }
+}
+
+impl TaggedEnvelope {
     pub fn agent(envelope: TaggedAgentEnvelope) -> TaggedEnvelope {
         TaggedEnvelope::AgentEnvelope(envelope)
     }
@@ -91,13 +103,6 @@ impl TaggedEnvelope {
 /// which it originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedMetaEnvelope(pub RoutingAddr, pub Envelope, pub MetaKind);
-
-impl TaggedMetaEnvelope {
-    fn as_agent_envelope(&self) -> TaggedAgentEnvelope {
-        let TaggedMetaEnvelope(addr, envelope, ..) = self;
-        TaggedAgentEnvelope(addr.clone(), envelope.clone())
-    }
-}
 
 /// An [`Envelope`] for an agent lane, tagged with the key of the endpoint into routing table from
 /// which it originated.
@@ -165,6 +170,42 @@ impl MetaPath for RelativePath {
                 }
             }
             None => Err(RelativePath::new(node, lane)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MetaKind {
+    Edge,
+    Mesh,
+    Part,
+    Host,
+    Node,
+    Lane,
+}
+
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub enum LaneIdentifier {
+    Agent(String),
+    Meta(MetaKind, String),
+}
+
+impl From<LaneIdentifier> for Text {
+    fn from(identifier: LaneIdentifier) -> Self {
+        let inner = match identifier {
+            LaneIdentifier::Agent(lane) => lane,
+            LaneIdentifier::Meta(_kind, lane) => lane,
+        };
+
+        From::from(inner)
+    }
+}
+
+impl ToString for LaneIdentifier {
+    fn to_string(&self) -> String {
+        match self {
+            LaneIdentifier::Agent(lane) => lane.clone(),
+            LaneIdentifier::Meta(_kind, lane) => lane.clone(),
         }
     }
 }

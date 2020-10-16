@@ -22,7 +22,6 @@ pub mod spec;
 mod tests;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::meta::MetaRequest;
 use crate::agent::AgentResult;
 use crate::plane::context::PlaneContext;
 use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
@@ -173,8 +172,6 @@ enum PlaneRequest {
     },
     /// Get all of the active routes for the plane.
     Routes(RoutesRequest),
-    /// Handle a metadata request
-    Meta(MetaRequest),
 }
 
 /// Plane context implementation.
@@ -308,7 +305,6 @@ const GETTING_LOCAL_ENDPOINT: &str = "Attempting to get a local endpoint.";
 const GETTING_REMOTE_ENDPOINT: &str = "Attempting to get a remote endpoint.";
 const RESOLVING: &str = "Attempting to resolve a target.";
 const PROVIDING_ROUTES: &str = "Providing all running routes in the plane.";
-const META_REQUEST: &str = "Handling metadata request";
 const PLANE_STOPPING: &str = "The plane is stopping.";
 const ON_STOP_EVENT: &str = "Running plane on_stop handler.";
 const PLANE_STOPPED: &str = "The plane has stopped.";
@@ -465,10 +461,6 @@ pub async fn run_plane<Clk, S>(
                     {
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
-                }
-                Either::Left(Some(PlaneRequest::Meta(_meta_request))) => {
-                    event!(Level::TRACE, META_REQUEST);
-                    unimplemented!()
                 }
                 Either::Right(Some(AgentResult {
                     route,

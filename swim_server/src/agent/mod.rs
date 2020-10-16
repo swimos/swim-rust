@@ -45,7 +45,7 @@ use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{LaneIdentifier, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::iter;
@@ -77,7 +77,6 @@ use crate::agent::meta::LogHandler;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
-use swim_common::routing::LaneIdentifier;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.

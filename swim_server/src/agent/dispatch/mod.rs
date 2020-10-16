@@ -24,7 +24,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
-use crate::routing::{TaggedAgentEnvelope, TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{LaneIdentifier, TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::stream::{FusedStream, FuturesUnordered};
@@ -36,7 +36,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use swim_common::routing::LaneIdentifier;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::OutgoingLinkMessage;
 use swim_common::warp::path::RelativePath;
@@ -134,6 +133,8 @@ where
         let (open_tx, open_rx) = mpsc::channel(config.lane_attachment_buffer.get());
 
         let (tripwire_tx, tripwire_rx) = trigger::trigger();
+
+        // open_meta_lanes();
 
         let attacher = LaneAttachmentTask::new(agent_route, lanes, &config, context);
         let open_task = attacher
@@ -536,12 +537,11 @@ impl EnvelopeDispatcher {
                         break false;
                     }
                 },
-                // Some(Either::Right(TaggedRequest::Meta(TaggedMeta(addr, envelope, kind))))=>{},
-                Some(Either::Right(TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(
-                    addr,
-                    envelope,
-                )))) => {
+                Some(Either::Right(request)) => {
+                    let (addr, envelope, maybe_meta) = request.consume();
+
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
+
                     if let Ok(envelope) = envelope.into_outgoing() {
                         if let Some(entry) = idle_senders.get_mut(lane(&envelope)) {
                             let maybe_pending = if let Some(mut sender) = entry.take() {
@@ -585,10 +585,12 @@ impl EnvelopeDispatcher {
                         } else {
                             event!(Level::TRACE, message = REQUESTING_ATTACH, ?envelope);
                             let (req_tx, req_rx) = oneshot::channel();
-
                             let label = lane(&envelope).to_string();
 
-                            let identifier = LaneIdentifier::Agent(label.clone());
+                            let identifier = match maybe_meta {
+                                Some(kind) => LaneIdentifier::Meta(kind, label.clone()),
+                                None => LaneIdentifier::Agent(label.clone()),
+                            };
 
                             if open_tx
                                 .send(OpenRequest::new(identifier, req_tx))
