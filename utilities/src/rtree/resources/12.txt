@@ -1,6 +1,6 @@
 RTree {
-    root: Branch(
-        [
+    root: Branch {
+        entries: [
             Entry {
                 mbb: Rect {
                     lower_left: Point {
@@ -12,8 +12,8 @@ RTree {
                         y: 16,
                     },
                 },
-                child: Branch(
-                    [
+                child: Branch {
+                    entries: [
                         Entry {
                             mbb: Rect {
                                 lower_left: Point {
@@ -25,8 +25,8 @@ RTree {
                                     y: 16,
                                 },
                             },
-                            child: Leaf(
-                                [
+                            child: Leaf {
+                                entries: [
                                     Rect {
                                         lower_left: Point {
                                             x: 13,
@@ -58,8 +58,8 @@ RTree {
                                         },
                                     },
                                 ],
-                                0,
-                            ),
+                                level: 0,
+                            },
                         },
                         Entry {
                             mbb: Rect {
@@ -72,8 +72,8 @@ RTree {
                                     y: 6,
                                 },
                             },
-                            child: Leaf(
-                                [
+                            child: Leaf {
+                                entries: [
                                     Rect {
                                         lower_left: Point {
                                             x: 10,
@@ -95,8 +95,8 @@ RTree {
                                         },
                                     },
                                 ],
-                                0,
-                            ),
+                                level: 0,
+                            },
                         },
                         Entry {
                             mbb: Rect {
@@ -109,8 +109,8 @@ RTree {
                                     y: 14,
                                 },
                             },
-                            child: Leaf(
-                                [
+                            child: Leaf {
+                                entries: [
                                     Rect {
                                         lower_left: Point {
                                             x: 7,
@@ -132,12 +132,12 @@ RTree {
                                         },
                                     },
                                 ],
-                                0,
-                            ),
+                                level: 0,
+                            },
                         },
                     ],
-                    1,
-                ),
+                    level: 1,
+                },
             },
             Entry {
                 mbb: Rect {
@@ -150,8 +150,8 @@ RTree {
                         y: 16,
                     },
                 },
-                child: Branch(
-                    [
+                child: Branch {
+                    entries: [
                         Entry {
                             mbb: Rect {
                                 lower_left: Point {
@@ -163,8 +163,8 @@ RTree {
                                     y: 16,
                                 },
                             },
-                            child: Leaf(
-                                [
+                            child: Leaf {
+                                entries: [
                                     Rect {
                                         lower_left: Point {
                                             x: 2,
@@ -186,8 +186,8 @@ RTree {
                                         },
                                     },
                                 ],
-                                0,
-                            ),
+                                level: 0,
+                            },
                         },
                         Entry {
                             mbb: Rect {
@@ -200,8 +200,8 @@ RTree {
                                     y: 10,
                                 },
                             },
-                            child: Leaf(
-                                [
+                            child: Leaf {
+                                entries: [
                                     Rect {
                                         lower_left: Point {
                                             x: 2,
@@ -233,14 +233,14 @@ RTree {
                                         },
                                     },
                                 ],
-                                0,
-                            ),
+                                level: 0,
+                            },
                         },
                     ],
-                    1,
-                ),
+                    level: 1,
+                },
             },
         ],
-        2,
-    ),
+        level: 2,
+    },
 }

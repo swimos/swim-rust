@@ -12,15 +12,21 @@ struct RTree {
 impl RTree {
     fn new() -> Self {
         RTree {
-            root: Node::Leaf(Vec::new(), 0),
+            root: Node::Leaf {
+                entries: Vec::new(),
+                level: 0,
+            },
         }
     }
 
     fn insert(&mut self, item: Rect) {
         if let Some((first_entry, second_entry)) = self.root.insert(item) {
             match self.root {
-                Node::Branch(_, level) | Node::Leaf(_, level) => {
-                    self.root = Node::Branch(vec![first_entry, second_entry], level + 1)
+                Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
+                    self.root = Node::Branch {
+                        entries: vec![first_entry, second_entry],
+                        level: level + 1,
+                    }
                 }
             }
         }
@@ -32,13 +38,13 @@ impl RTree {
         if maybe_orphan_nodes.is_some() {
             for orphan_node in maybe_orphan_nodes? {
                 match orphan_node {
-                    Node::Branch(entries, _) => {
+                    Node::Branch { entries, level: _ } => {
                         for entry in entries {
                             // Todo insert branch at appropriate level
                             // And do split if needed
                         }
                     }
-                    Node::Leaf(entries, _) => {
+                    Node::Leaf { entries, level: _ } => {
                         for entry in entries {
                             self.insert(entry);
                         }
@@ -53,21 +59,21 @@ impl RTree {
 
 #[derive(Debug)]
 enum Node {
-    Branch(Vec<Entry>, i32),
-    Leaf(Vec<Rect>, i32),
+    Branch { entries: Vec<Entry>, level: i32 },
+    Leaf { entries: Vec<Rect>, level: i32 },
 }
 
 impl Node {
     fn len(&self) -> usize {
         match self {
-            Node::Branch(entries, _) => entries.len(),
-            Node::Leaf(entries, _) => entries.len(),
+            Node::Branch { entries, level: _ } => entries.len(),
+            Node::Leaf { entries, level: _ } => entries.len(),
         }
     }
 
     fn insert(&mut self, item: Rect) -> Option<(Entry, Entry)> {
         match self {
-            Node::Branch(entries, _) if !entries.is_empty() => {
+            Node::Branch { entries, level: _ } if !entries.is_empty() => {
                 let mut entries_iter = entries.iter_mut();
 
                 let mut min_entry = entries_iter.next().unwrap();
@@ -101,7 +107,7 @@ impl Node {
                     None => (),
                 }
             }
-            Node::Leaf(entries, level) => {
+            Node::Leaf { entries, level: _ } => {
                 entries.push(item);
 
                 if entries.len() > MAX_CHILDREN {
@@ -116,7 +122,7 @@ impl Node {
 
     fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
         match self {
-            Node::Branch(entries, _) => {
+            Node::Branch { entries, level: _ } => {
                 let mut entry_index = None;
                 let mut maybe_removed = None;
 
@@ -152,7 +158,7 @@ impl Node {
                     Some((removed, None))
                 }
             }
-            Node::Leaf(entries, _) => {
+            Node::Leaf { entries, level: _ } => {
                 let mut remove_idx = None;
 
                 for (idx, entry) in entries.iter().enumerate() {
@@ -168,32 +174,44 @@ impl Node {
 
     fn split(&mut self) -> (Entry, Entry) {
         match self {
-            Node::Branch(entries, level) => {
+            Node::Branch { entries, level } => {
                 let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(entries);
 
                 let first_group = Entry {
                     mbb: first_mbb,
-                    child: Node::Branch(first_group, *level),
+                    child: Node::Branch {
+                        entries: first_group,
+                        level: *level,
+                    },
                 };
 
                 let second_group = Entry {
                     mbb: second_mbb,
-                    child: Node::Branch(second_group, *level),
+                    child: Node::Branch {
+                        entries: second_group,
+                        level: *level,
+                    },
                 };
 
                 (first_group, second_group)
             }
-            Node::Leaf(entries, level) => {
+            Node::Leaf { entries, level } => {
                 let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(entries);
 
                 let first_group = Entry {
                     mbb: first_mbb,
-                    child: Node::Leaf(first_group, *level),
+                    child: Node::Leaf {
+                        entries: first_group,
+                        level: *level,
+                    },
                 };
 
                 let second_group = Entry {
                     mbb: second_mbb,
-                    child: Node::Leaf(second_group, *level),
+                    child: Node::Leaf {
+                        entries: second_group,
+                        level: *level,
+                    },
                 };
 
                 (first_group, second_group)
@@ -418,12 +436,12 @@ impl Entry {
         {
             let shrunken_mbb = match &self.child {
                 //Todo refactor and add length checks
-                Node::Branch(entries, _) => {
+                Node::Branch { entries, level: _ } => {
                     let mut entries_iter = entries.iter();
                     let shrunken_mbb = entries_iter.next().unwrap().mbb.clone();
                     entries_iter.fold(shrunken_mbb, |acc, entry| entry.mbb.combine_boxes(&acc))
                 }
-                Node::Leaf(entries, _) => {
+                Node::Leaf { entries, level: _ } => {
                     let mut entries_iter = entries.iter();
                     let shrunken_mbb = entries_iter.next().unwrap().clone();
                     entries_iter.fold(shrunken_mbb, |acc, entry| entry.combine_boxes(&acc))

@@ -1,6 +1,6 @@
 RTree {
-    root: Leaf(
-        [
+    root: Leaf {
+        entries: [
             Rect {
                 lower_left: Point {
                     x: 0,
@@ -12,6 +12,6 @@ RTree {
                 },
             },
         ],
-        0,
-    ),
+        level: 0,
+    },
 }

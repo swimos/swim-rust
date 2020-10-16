@@ -1,6 +1,6 @@
 RTree {
-    root: Leaf(
-        [],
-        0,
-    ),
+    root: Leaf {
+        entries: [],
+        level: 0,
+    },
 }
