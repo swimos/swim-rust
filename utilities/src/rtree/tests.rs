@@ -167,3 +167,18 @@ fn rtree_insert() {
         fs::read_to_string("src/rtree/resources/0.txt").unwrap()
     );
 }
+
+#[test]
+fn immutable() {
+    let mut tree = RTree::new();
+    tree.insert(Rect::new(Point::new(0, 0), Point::new(10, 10)));
+    let tree_copy = tree.clone();
+
+    tree.insert(Rect::new(Point::new(12, 0), Point::new(15, 15)));
+    tree.insert(Rect::new(Point::new(7, 7), Point::new(14, 14)));
+    tree.insert(Rect::new(Point::new(10, 11), Point::new(11, 12)));
+    tree.insert(Rect::new(Point::new(4, 4), Point::new(5, 6)));
+
+    eprintln!("tree = {:#?}", tree);
+    eprintln!("copy = {:#?}", tree_copy);
+}
