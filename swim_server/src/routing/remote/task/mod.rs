@@ -13,9 +13,12 @@
 // limitations under the License.
 
 use crate::plane::error::ResolutionError;
-use crate::routing::remote::ConnectionDropped;
+use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::router::RemoteRouter;
+use crate::routing::remote::{ConnectionDropped, RoutingRequest};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, SelectorResult, WsStreamSelector};
-use crate::routing::{Route, ServerRouter, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -33,6 +36,7 @@ use tokio::sync::mpsc;
 use tokio::time::{delay_for, Instant};
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
+use utilities::task::Spawner;
 use utilities::uri::{BadRelativeUri, RelativeUri};
 
 pub struct ConnectionTask<Str, Router> {
@@ -305,4 +309,59 @@ where
         .resolve(None, RelativeUri::from_str(&target.node.as_str())?)
         .await?;
     Ok(router.get_sender(target_addr).await?)
+}
+
+pub struct TaskFactory {
+    request_tx: mpsc::Sender<RoutingRequest>,
+    stop_trigger: trigger::Receiver,
+    configuration: ConnectionConfig,
+}
+
+impl TaskFactory {
+    pub(super) fn new(
+        request_tx: mpsc::Sender<RoutingRequest>,
+        stop_trigger: trigger::Receiver,
+        configuration: ConnectionConfig,
+    ) -> Self {
+        TaskFactory {
+            request_tx,
+            stop_trigger,
+            configuration,
+        }
+    }
+
+    pub fn spawn_connection_task<Str, Sp>(
+        &self,
+        ws_stream: Str,
+        tag: RoutingAddr,
+        spawner: &Sp,
+    ) -> mpsc::Sender<TaggedEnvelope>
+    where
+        Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
+        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
+    {
+        let TaskFactory {
+            request_tx,
+            stop_trigger,
+            configuration,
+        } = self;
+        let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
+        let task = ConnectionTask::new(
+            ws_stream,
+            RemoteRouter::new(tag, request_tx.clone()),
+            msg_rx,
+            stop_trigger.clone(),
+            configuration.activity_timeout,
+            configuration.connection_retries,
+        );
+
+        spawner.add(
+            async move {
+                let result = task.run().await;
+                (tag, result)
+            }
+            .boxed(),
+        );
+        msg_tx
+    }
 }
