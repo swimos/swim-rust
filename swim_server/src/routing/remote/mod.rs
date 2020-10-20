@@ -42,6 +42,7 @@ use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use std::io;
 
 #[derive(Debug, Clone)]
 pub enum ConnectionDropped {
@@ -121,7 +122,7 @@ where
         }
     }
 
-    pub async fn run(self) {
+    pub async fn run(self) -> Result<(), io::Error> {
         let RemoteConnectionsTask {
             mut listener,
             websockets,
@@ -136,14 +137,17 @@ where
         let mut state =
             RemoteConnections::new(&websockets, configuration, spawner, listener, stop_trigger);
 
-        let _err = loop {
+        let mut overall_result = Ok(());
+
+        loop {
             let next = state.select_next().await;
             match next {
                 Some(Event::Incoming(Ok((stream, peer_addr)))) => {
                     state.defer_handshake(stream, peer_addr);
                 }
                 Some(Event::Incoming(Err(conn_err))) => {
-                    break Some(conn_err);
+                    overall_result = Err(conn_err);
+                    state.stop();
                 }
                 Some(Event::Request(RoutingRequest::Endpoint { addr, request })) => {
                     let result = if let Some(tx) = state.table().resolve(addr) {
@@ -236,10 +240,11 @@ where
                     }
                 }
                 _ => {
-                    break None;
+                    break;
                 }
             }
-        };
+        }
+        overall_result
     }
 }
 

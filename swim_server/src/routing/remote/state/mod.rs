@@ -20,7 +20,7 @@ use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ConnectionDropped, ResolutionRequest, RoutingRequest, SocketAddrIt};
 use crate::routing::ws::WsConnections;
 use crate::routing::RoutingAddr;
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, Fuse};
 use futures::stream::FusedStream;
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
@@ -46,6 +46,8 @@ pub struct RemoteConnections<'a, Ws: WsConnections, Listener, Sp> {
     tasks: TaskFactory,
     deferred: OpenEndedFutures<BoxFuture<'a, DeferredResult<Ws::StreamSink>>>,
     state: State,
+    external_stop: Fuse<trigger::Receiver>,
+    internal_stop: Option<trigger::Sender>,
 }
 
 impl<'a, Ws, Listener, Sp> RemoteConnections<'a, Ws, Listener, Sp>
@@ -61,19 +63,22 @@ where
         listener: Listener,
         stop_trigger: trigger::Receiver,
     ) -> Self {
+        let (stop_tx, stop_rx) = trigger::trigger();
         let (req_tx, req_rx) = mpsc::channel(configuration.router_buffer_size.get());
-        let tasks = TaskFactory::new(req_tx, stop_trigger.clone(), configuration);
+        let tasks = TaskFactory::new(req_tx, stop_rx.clone(), configuration);
         RemoteConnections {
             websockets,
             listener,
             spawner,
-            requests: req_rx.take_until(stop_trigger),
+            requests: req_rx.take_until(stop_rx),
             table: RoutingTable::default(),
             pending: PendingRequests::default(),
             addresses: RemoteRoutingAddresses::default(),
             tasks,
             deferred: OpenEndedFutures::new(),
             state: State::Running,
+            external_stop: stop_trigger.fuse(),
+            internal_stop: Some(stop_tx),
         }
     }
 
@@ -84,8 +89,11 @@ where
             requests,
             deferred,
             state,
+            ref mut external_stop,
+            internal_stop,
             ..
         } = self;
+        let mut external_stop = external_stop;
         loop {
             match state {
                 State::Running => {
@@ -94,6 +102,12 @@ where
                         request = requests.next() => request.map(Event::Request),
                         def_complete = deferred.next() => def_complete.map(Event::Deferred),
                         result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
+                        _ = &mut external_stop => {
+                            if let Some(stop_tx) = internal_stop.take() {
+                                stop_tx.trigger();
+                            }
+                            None
+                        }
                     };
                     if result.is_none() {
                         spawner.stop();
@@ -118,6 +132,22 @@ where
                     return deferred.next().await.map(Event::Deferred);
                 }
             }
+        }
+    }
+
+    pub fn stop(&mut self) {
+        let RemoteConnections {
+            spawner,
+            state,
+            internal_stop,
+            ..
+        } = self;
+        if matches!(*state, State::Running) {
+            if let Some(stop_tx) = internal_stop.take() {
+                stop_tx.trigger();
+            }
+            spawner.stop();
+            *state = State::ClosingConnections;
         }
     }
 
