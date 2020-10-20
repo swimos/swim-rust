@@ -7,11 +7,14 @@ static MAX_CHILDREN: usize = 4;
 static MIN_CHILDREN: usize = 2;
 
 #[derive(Debug, Clone)]
-struct RTree {
-    root: Node,
+struct RTree<T: Clone + BoundingBox + PartialEq> {
+    root: Node<T>,
 }
 
-impl RTree {
+impl<T> RTree<T>
+where
+    T: Clone + BoundingBox + PartialEq,
+{
     fn new() -> Self {
         RTree {
             root: Node::Leaf {
@@ -21,7 +24,7 @@ impl RTree {
         }
     }
 
-    fn insert(&mut self, item: Rect) {
+    fn insert(&mut self, item: T) {
         if let Some((first_entry, second_entry)) = self.root.insert(item) {
             match self.root {
                 Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
@@ -34,7 +37,7 @@ impl RTree {
         }
     }
 
-    fn remove(&mut self, item: &Rect) -> Option<Rect> {
+    fn remove(&mut self, item: &T) -> Option<T> {
         let (removed, maybe_orphan_nodes) = self.root.remove(item)?;
 
         if self.root.len() == 1 {
@@ -67,7 +70,7 @@ impl RTree {
         Some(removed)
     }
 
-    fn insert_at_level(&mut self, entry: Entry, level: i32) {
+    fn insert_at_level(&mut self, entry: Entry<T>, level: i32) {
         if let Some((first_entry, second_entry)) = self.root.insert_at_level(entry, level) {
             match self.root {
                 Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
@@ -82,12 +85,18 @@ impl RTree {
 }
 
 #[derive(Debug, Clone)]
-enum Node {
-    Branch { entries: Vector<Entry>, level: i32 },
-    Leaf { entries: Vector<Rect>, level: i32 },
+enum Node<T: Clone + BoundingBox + PartialEq> {
+    Branch {
+        entries: Vector<Entry<T>>,
+        level: i32,
+    },
+    Leaf {
+        entries: Vector<T>,
+        level: i32,
+    },
 }
 
-impl Node {
+impl<T: Clone + BoundingBox + PartialEq> Node<T> {
     fn len(&self) -> usize {
         match self {
             Node::Branch { entries, level: _ } => entries.len(),
@@ -95,7 +104,7 @@ impl Node {
         }
     }
 
-    fn insert(&mut self, item: Rect) -> Option<(Entry, Entry)> {
+    fn insert(&mut self, item: T) -> Option<(Entry<T>, Entry<T>)> {
         match self {
             Node::Branch { entries, level: _ } if !entries.is_empty() => {
                 let mut entries_iter = entries.iter_mut();
@@ -144,7 +153,7 @@ impl Node {
         None
     }
 
-    fn insert_at_level(&mut self, item: Entry, level: i32) -> Option<(Entry, Entry)> {
+    fn insert_at_level(&mut self, item: Entry<T>, level: i32) -> Option<(Entry<T>, Entry<T>)> {
         match self {
             Node::Branch {
                 entries,
@@ -197,7 +206,7 @@ impl Node {
         None
     }
 
-    fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
+    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Node<T>>>)> {
         match self {
             Node::Branch { entries, level: _ } => {
                 let mut entry_index = None;
@@ -249,7 +258,7 @@ impl Node {
         }
     }
 
-    fn split(&mut self) -> (Entry, Entry) {
+    fn split(&mut self) -> (Entry<T>, Entry<T>) {
         match self {
             Node::Branch { entries, level } => {
                 let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(entries);
@@ -495,32 +504,32 @@ enum Group {
 }
 
 #[derive(Debug, Clone)]
-struct Entry {
+struct Entry<T: Clone + BoundingBox + PartialEq> {
     mbb: Rect,
-    child: Node,
+    child: Node<T>,
 }
 
-impl Entry {
+impl<T: Clone + BoundingBox + PartialEq> Entry<T> {
     fn len(&self) -> usize {
         self.child.len()
     }
 
-    fn insert(&mut self, item: Rect, expanded_rect: Rect) -> Option<(Entry, Entry)> {
+    fn insert(&mut self, item: T, expanded_rect: Rect) -> Option<(Entry<T>, Entry<T>)> {
         self.mbb = expanded_rect;
         self.child.insert(item)
     }
 
     fn insert_at_level(
         &mut self,
-        item: Entry,
+        item: Entry<T>,
         expanded_rect: Rect,
         level: i32,
-    ) -> Option<(Entry, Entry)> {
+    ) -> Option<(Entry<T>, Entry<T>)> {
         self.mbb = expanded_rect;
         self.child.insert_at_level(item, level)
     }
 
-    fn remove(&mut self, item: &Rect) -> Option<(Rect, Option<Vec<Node>>)> {
+    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Node<T>>>)> {
         let (removed, orphan_nodes) = self.child.remove(item)?;
 
         let removed_mbb = removed.get_mbb();
@@ -539,7 +548,7 @@ impl Entry {
                 }
                 Node::Leaf { entries, level: _ } => {
                     let mut entries_iter = entries.iter();
-                    let shrunken_mbb = entries_iter.next().unwrap().clone();
+                    let shrunken_mbb = entries_iter.next().unwrap().get_mbb().clone();
                     entries_iter.fold(shrunken_mbb, |acc, entry| entry.combine_boxes(&acc))
                 }
             };
@@ -551,7 +560,7 @@ impl Entry {
     }
 }
 
-impl BoundingBox for Entry {
+impl<T: Clone + BoundingBox + PartialEq> BoundingBox for Entry<T> {
     fn get_mbb(&self) -> &Rect {
         &self.mbb
     }
@@ -560,11 +569,11 @@ impl BoundingBox for Entry {
         self.mbb.area()
     }
 
-    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
+    fn combine_boxes<B: BoundingBox>(&self, other: &B) -> Rect {
         self.mbb.combine_boxes(other.get_mbb())
     }
 
-    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
+    fn is_covering<B: BoundingBox>(&self, other: &B) -> bool {
         self.mbb.is_covering(other.get_mbb())
     }
 }
