@@ -19,7 +19,7 @@ use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ConnectionDropped, ResolutionRequest, RoutingRequest, SocketAddrIt};
 use crate::routing::ws::WsConnections;
-use crate::routing::RoutingAddr;
+use crate::routing::{RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::stream::FusedStream;
 use futures::StreamExt;
@@ -35,7 +35,7 @@ use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
-pub struct RemoteConnections<'a, Ws: WsConnections, Listener, Sp> {
+pub struct RemoteConnections<'a, Ws: WsConnections, Listener, Sp, RouterFac> {
     websockets: &'a Ws,
     spawner: Sp,
     listener: Listener,
@@ -43,18 +43,19 @@ pub struct RemoteConnections<'a, Ws: WsConnections, Listener, Sp> {
     table: RoutingTable,
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
-    tasks: TaskFactory,
+    tasks: TaskFactory<RouterFac>,
     deferred: OpenEndedFutures<BoxFuture<'a, DeferredResult<Ws::StreamSink>>>,
     state: State,
     external_stop: Fuse<trigger::Receiver>,
     internal_stop: Option<trigger::Sender>,
 }
 
-impl<'a, Ws, Listener, Sp> RemoteConnections<'a, Ws, Listener, Sp>
+impl<'a, Ws, Listener, Sp, RouterFac> RemoteConnections<'a, Ws, Listener, Sp, RouterFac>
 where
     Ws: WsConnections + Send + Sync + 'static,
     Listener: FusedStream<Item = io::Result<(TcpStream, SocketAddr)>> + Unpin,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
+    RouterFac: ServerRouterFactory + 'static,
 {
     pub fn new(
         websockets: &'a Ws,
@@ -62,10 +63,11 @@ where
         spawner: Sp,
         listener: Listener,
         stop_trigger: trigger::Receiver,
+        delegate_router: RouterFac,
     ) -> Self {
         let (stop_tx, stop_rx) = trigger::trigger();
         let (req_tx, req_rx) = mpsc::channel(configuration.router_buffer_size.get());
-        let tasks = TaskFactory::new(req_tx, stop_rx.clone(), configuration);
+        let tasks = TaskFactory::new(req_tx, stop_rx.clone(), configuration, delegate_router);
         RemoteConnections {
             websockets,
             listener,

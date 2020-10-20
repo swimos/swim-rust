@@ -17,7 +17,7 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::{ConnectionDropped, RoutingRequest};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, SelectorResult, WsStreamSelector};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
@@ -311,25 +311,32 @@ where
     Ok(router.get_sender(target_addr).await?)
 }
 
-pub struct TaskFactory {
+pub struct TaskFactory<RouterFac> {
     request_tx: mpsc::Sender<RoutingRequest>,
     stop_trigger: trigger::Receiver,
     configuration: ConnectionConfig,
+    delegate_router: RouterFac,
 }
 
-impl TaskFactory {
+impl<RouterFac> TaskFactory<RouterFac> {
     pub(super) fn new(
         request_tx: mpsc::Sender<RoutingRequest>,
         stop_trigger: trigger::Receiver,
         configuration: ConnectionConfig,
+        delegate_router: RouterFac,
     ) -> Self {
         TaskFactory {
             request_tx,
             stop_trigger,
             configuration,
+            delegate_router,
         }
     }
-
+}
+impl<RouterFac> TaskFactory<RouterFac>
+where
+    RouterFac: ServerRouterFactory + 'static,
+{
     pub fn spawn_connection_task<Str, Sp>(
         &self,
         ws_stream: Str,
@@ -344,11 +351,12 @@ impl TaskFactory {
             request_tx,
             stop_trigger,
             configuration,
+            delegate_router,
         } = self;
         let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
         let task = ConnectionTask::new(
             ws_stream,
-            RemoteRouter::new(tag, request_tx.clone()),
+            RemoteRouter::new(tag, delegate_router.create_for(tag), request_tx.clone()),
             msg_rx,
             stop_trigger.clone(),
             configuration.activity_timeout,

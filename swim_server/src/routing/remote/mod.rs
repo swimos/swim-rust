@@ -41,7 +41,7 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
 
 #[derive(Debug, Clone)]
@@ -98,17 +98,17 @@ const FAILED_CLIENT_CONN: &str = "Failed to establish a client connection.";
 const NOT_IN_TABLE: &str = "A connection closed that was not in the routing table.";
 const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining.";
 
-impl<Ws, Router, Sp> RemoteConnectionsTask<Ws, Router, Sp>
+impl<Ws, RouterFac, Sp> RemoteConnectionsTask<Ws, RouterFac, Sp>
 where
     Ws: WsConnections + Send + Sync + 'static,
-    Router: ServerRouter + Clone + Send + Sync + 'static,
+    RouterFac: ServerRouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
     pub fn new(
         configuration: ConnectionConfig,
         listener: TcpListener,
         websockets: Ws,
-        delegate_router: Router,
+        delegate_router: RouterFac,
         stop_trigger: trigger::Receiver,
         spawner: Sp,
     ) -> Self {
@@ -126,7 +126,7 @@ where
         let RemoteConnectionsTask {
             mut listener,
             websockets,
-            delegate_router: _,
+            delegate_router,
             stop_trigger,
             spawner,
             configuration,
@@ -134,8 +134,14 @@ where
 
         let listener = poll_fn(move |cx| listener.poll_accept(cx).map(Some)).fuse();
 
-        let mut state =
-            RemoteConnections::new(&websockets, configuration, spawner, listener, stop_trigger);
+        let mut state = RemoteConnections::new(
+            &websockets,
+            configuration,
+            spawner,
+            listener,
+            stop_trigger,
+            delegate_router,
+        );
 
         let mut overall_result = Ok(());
 

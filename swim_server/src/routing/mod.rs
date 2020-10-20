@@ -165,3 +165,10 @@ pub trait ServerRouter: Send + Sync {
         route: RelativeUri,
     ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
 }
+
+/// Create router instances bound to particular routing addresses.
+pub trait ServerRouterFactory: Send + Sync {
+    type Router: ServerRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router;
+}
