@@ -89,7 +89,7 @@ fn build_struct_as_value(
     fn_factory: fn(&Ident) -> TokenStream2,
     requires_deref: bool,
 ) -> TokenStream2 {
-    let structure_name_str = descriptor.name.to_string();
+    let structure_name_str = descriptor.label.to_name();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
     let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
@@ -110,13 +110,14 @@ fn build_variant_as_value(
     requires_deref: bool,
     structure_name: &Ident,
 ) -> TokenStream2 {
-    let variant_name_str = variant_name.to_string();
+    let variant_original_ident = variant_name.original();
+    let variant_name_str = variant_name.to_name();
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
     let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
     quote! {
-        #structure_name::#variant_name #self_deconstruction => {
+        #structure_name::#variant_original_ident #self_deconstruction => {
             let mut attrs = vec![swim_common::model::Attr::of((#variant_name_str #headers)), #attributes];
             swim_common::model::Value::Record(attrs, #items)
         },

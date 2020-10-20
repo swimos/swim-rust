@@ -39,18 +39,16 @@ pub fn build_type_contents<'t>(
                 .variants
                 .iter()
                 .map(|variant| {
-                    let (compound_type, fields, manifest) = parse_struct(context, &variant.fields);
                     let attributes = variant.attrs.get_attributes(context, FORM_PATH);
-                    let descriptor = FormDescriptor::from_attributes(
-                        context,
-                        &variant.ident,
-                        attributes,
-                        manifest,
-                    );
+                    let mut container_label =
+                        parse_container_tag(context, &variant.ident, attributes);
+                    let (compound_type, fields, manifest) =
+                        parse_struct(context, &variant.fields, &mut container_label);
+                    let descriptor = FormDescriptor::from(container_label, manifest);
 
                     EnumVariant {
                         syn_variant: variant,
-                        name: descriptor.name.clone(),
+                        name: descriptor.label.clone(),
                         compound_type,
                         fields,
                         descriptor,
@@ -61,10 +59,11 @@ pub fn build_type_contents<'t>(
             TypeContents::Enum(variants)
         }
         Data::Struct(data) => {
-            let (compound_type, fields, manifest) = parse_struct(context, &data.fields);
             let attributes = input.attrs.get_attributes(context, FORM_PATH);
-            let descriptor =
-                FormDescriptor::from_attributes(context, &input.ident, attributes, manifest);
+            let mut container_label = parse_container_tag(context, &input.ident, attributes);
+            let (compound_type, fields, manifest) =
+                parse_struct(context, &data.fields, &mut container_label);
+            let descriptor = FormDescriptor::from(container_label, manifest);
 
             TypeContents::Struct(StructRepr {
                 input,
@@ -93,51 +92,52 @@ pub struct FormDescriptor {
     /// compound type.
     pub body_replaced: bool,
     /// The name that the compound type will be transmuted with.
-    pub name: Label,
+    pub label: Label,
     /// A derived [`FieldManifest`] from the attributes on the members.
     pub manifest: FieldManifest,
 }
 
-impl FormDescriptor {
-    /// Builds a [`FormDescriptor`] from the provided attributes. An errors encountered while
-    /// parsing the attributes are added to the [`Context`].
-    pub fn from_attributes(
-        context: &mut Context,
-        ident: &Ident,
-        attributes: Vec<NestedMeta>,
-        manifest: FieldManifest,
-    ) -> FormDescriptor {
-        let mut name_opt = None;
+pub fn parse_container_tag(
+    context: &mut Context,
+    ident: &Ident,
+    attributes: Vec<NestedMeta>,
+) -> Label {
+    let mut name_opt = None;
 
-        attributes.iter().for_each(|meta: &NestedMeta| match meta {
-            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
-                Lit::Str(s) => {
-                    let tag = s.value();
-                    if tag.is_empty() {
-                        context.error_spanned_by(meta, "New name cannot be empty")
-                    } else {
-                        match name_opt {
-                            Some(_) => context.error_spanned_by(s, "Duplicate tag"),
-                            None => {
-                                name_opt = Some(Label::Renamed {
-                                    new_label: tag,
-                                    old_label: ident.clone(),
-                                });
-                            }
+    attributes.iter().for_each(|meta: &NestedMeta| match meta {
+        NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
+            Lit::Str(s) => {
+                let tag = s.value();
+                if tag.is_empty() {
+                    context.error_spanned_by(meta, "New name cannot be empty")
+                } else {
+                    match name_opt {
+                        Some(_) => context.error_spanned_by(s, "Duplicate tag"),
+                        None => {
+                            name_opt = Some(Label::Renamed {
+                                new_label: tag,
+                                old_label: ident.clone(),
+                            });
                         }
                     }
                 }
-                _ => context.error_spanned_by(meta, "Expected string argument"),
-            },
-            NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
-                // handled by the validated form derive
             }
-            _ => context.error_spanned_by(meta, "Unknown container attribute"),
-        });
+            _ => context.error_spanned_by(meta, "Expected string argument"),
+        },
+        NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
+            // handled by the validated form derive
+        }
+        _ => context.error_spanned_by(meta, "Unknown container attribute"),
+    });
 
+    name_opt.unwrap_or_else(|| Label::Unmodified(ident.clone()))
+}
+
+impl FormDescriptor {
+    pub fn from(label: Label, manifest: FieldManifest) -> FormDescriptor {
         FormDescriptor {
             body_replaced: false,
-            name: name_opt.unwrap_or_else(|| Label::Named(ident.clone())),
+            label: label,
             manifest,
         }
     }

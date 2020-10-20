@@ -30,7 +30,7 @@ pub fn from_value(
     match type_contents {
         TypeContents::Struct(repr) => {
             let descriptor = &repr.descriptor;
-            let structure_name_str = descriptor.name.to_string();
+            let structure_name_str = descriptor.label.to_string();
             let field_manifest = &descriptor.manifest;
             let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
             let (headers, header_body, items, attributes) =
@@ -70,8 +70,8 @@ pub fn from_value(
         }
         TypeContents::Enum(variants) => {
             let arms = variants.iter().fold(TokenStream2::new(), |ts, variant| {
+                let original_ident = variant.name.original();
                 let variant_name_str = variant.name.to_string();
-                let variant_ident = variant.name.as_ident();
                 let (field_opts, field_assignments) =
                     parse_fields(&variant.fields, &variant.compound_type);
 
@@ -99,7 +99,7 @@ pub fn from_value(
                         #field_opts
                         #attrs
                         #items
-                        Ok(#structure_name::#variant_ident#self_members)
+                        Ok(#structure_name::#original_ident#self_members)
                     },
                 }
             });

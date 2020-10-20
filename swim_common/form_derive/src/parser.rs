@@ -18,6 +18,7 @@ use syn::spanned::Spanned;
 use syn::{Attribute, DeriveInput, Lit, Meta, NestedMeta, Variant};
 
 use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Label, Symbol};
+use syn::export::ToTokens;
 
 pub const FORM_PATH: Symbol = Symbol("form");
 pub const HEADER_PATH: Symbol = Symbol("header");
@@ -78,7 +79,7 @@ pub struct FormField<'a> {
 
 impl<'a> FormField<'a> {
     pub fn is_skipped(&self) -> bool {
-        self.kind == FieldKind::Skip
+        self.kind == FieldKind::Skip && !self.label.is_foreign()
     }
 
     pub fn is_attr(&self) -> bool {
@@ -108,18 +109,19 @@ impl<'a> FormField<'a> {
 pub fn parse_struct<'a>(
     context: &mut Context,
     fields: &'a syn::Fields,
+    container_label: &mut Label,
 ) -> (CompoundTypeKind, Vec<FormField<'a>>, FieldManifest) {
     match fields {
         syn::Fields::Named(fields) => {
-            let (fields, manifest) = fields_from_ast(context, &fields.named);
+            let (fields, manifest) = fields_from_ast(context, &fields.named, container_label);
             (CompoundTypeKind::Struct, fields, manifest)
         }
         syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
-            let (fields, manifest) = fields_from_ast(context, &fields.unnamed);
+            let (fields, manifest) = fields_from_ast(context, &fields.unnamed, container_label);
             (CompoundTypeKind::NewType, fields, manifest)
         }
         syn::Fields::Unnamed(fields) => {
-            let (fields, manifest) = fields_from_ast(context, &fields.unnamed);
+            let (fields, manifest) = fields_from_ast(context, &fields.unnamed, container_label);
             (CompoundTypeKind::Tuple, fields, manifest)
         }
         syn::Fields::Unit => (CompoundTypeKind::Unit, Vec::new(), FieldManifest::default()),
@@ -131,18 +133,28 @@ pub fn parse_struct<'a>(
 pub fn fields_from_ast<'t>(
     ctx: &mut Context,
     fields: &'t Punctuated<syn::Field, syn::Token![,]>,
+    container_label: &mut Label,
 ) -> (Vec<FormField<'t>>, FieldManifest) {
+    let mut name_opt = None;
+
     let mut manifest = FieldManifest::default();
     let fields = fields
         .iter()
         .enumerate()
         .map(|(index, original)| {
             let mut kind_opt = None;
-            let mut set_kind = |kind, ctx: &mut Context| match kind_opt {
-                Some(_) => {
-                    ctx.error_spanned_by(original, "A field can be marked by at most one kind.")
+            let mut set_kind = |kind, ctx: &mut Context, protected: bool| {
+                if protected {
+                    match kind_opt {
+                        Some(_) => ctx.error_spanned_by(
+                            original,
+                            "A field can be marked by at most one kind.",
+                        ),
+                        None => kind_opt = Some(kind),
+                    }
+                } else {
+                    kind_opt = Some(kind);
                 }
-                None => kind_opt = Some(kind),
             };
 
             let mut renamed = None;
@@ -153,14 +165,14 @@ pub fn fields_from_ast<'t>(
                     match meta {
                         NestedMeta::Meta(Meta::Path(path)) if path == HEADER_PATH => {
                             manifest.has_header_fields = true;
-                            set_kind(FieldKind::Header, ctx);
+                            set_kind(FieldKind::Header, ctx, true);
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == ATTR_PATH => {
-                            set_kind(FieldKind::Attr, ctx);
+                            set_kind(FieldKind::Attr, ctx, true);
                             manifest.has_attr_fields = true;
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == SLOT_PATH => {
-                            set_kind(FieldKind::Slot, ctx);
+                            set_kind(FieldKind::Slot, ctx, true);
 
                             if manifest.replaces_body {
                                 manifest.has_header_fields = true;
@@ -169,7 +181,7 @@ pub fn fields_from_ast<'t>(
                             }
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == BODY_PATH => {
-                            set_kind(FieldKind::Body, ctx);
+                            set_kind(FieldKind::Body, ctx, true);
 
                             if manifest.replaces_body {
                                 ctx.error_spanned_by(
@@ -185,7 +197,7 @@ pub fn fields_from_ast<'t>(
                             }
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == HEADER_BODY_PATH => {
-                            set_kind(FieldKind::HeaderBody, ctx);
+                            set_kind(FieldKind::HeaderBody, ctx, true);
 
                             if manifest.header_body {
                                 ctx.error_spanned_by(
@@ -212,11 +224,55 @@ pub fn fields_from_ast<'t>(
                             }
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == SKIP_PATH => {
-                            set_kind(FieldKind::Skip, ctx);
+                            set_kind(FieldKind::Skip, ctx, true);
                         }
                         NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
                             // no-op as this is parsed by the validated form derive macro
                         }
+                        // NestedMeta::Meta(Meta::List(list)) if list.path == TAG_PATH => {
+                        //     let nested = &list.nested;
+                        //     match nested.iter().next() {
+                        //         Some(NestedMeta::Meta(Meta::Path(name))) if name == TAG_PLAIN => {
+                        //             match name_opt {
+                        //                 Some(_) => context.error_spanned_by(name, "Duplicate tag"),
+                        //                 None => match &original.ident {
+                        //                     Some(ident) => {
+                        //                         name_opt = Some(Label::Field(ident.clone()));
+                        //                     }
+                        //                     None => ctx.error_spanned_by(
+                        //                         path,
+                        //                         "Cannot apply a tag using an unnamed element",
+                        //                     ),
+                        //                 },
+                        //             }
+                        //         }
+                        //         Some(NestedMeta::Meta(Meta::Path(name))) if name == TAG_ENUM => {
+                        //             unimplemented!()
+                        //         }
+                        //         Some(inner) => {
+                        //             // context.error_spanned_by(inner, "Unknown tag attribute")
+                        //             unimplemented!()
+                        //         }
+                        //         None => {
+                        //             // context.error_spanned_by(nested, "Malformatted tag attribute")
+                        //             unimplemented!()
+                        //         }
+                        //     }
+                        // }
+                        NestedMeta::Meta(Meta::Path(path)) if path == TAG_PATH => match name_opt {
+                            Some(_) => ctx.error_spanned_by(path, "Duplicate tag"),
+                            None => match &original.ident {
+                                Some(ident) => {
+                                    if container_label.is_modified() {
+                                        ctx.error_spanned_by(path, "Cannot apply a tag using a field when one has already been applied at the container level");   
+                                    } else {
+                                        name_opt = Some(Label::Foreign(ident.clone(), original.ty.to_token_stream(), container_label.original()));
+                                        set_kind(FieldKind::Skip, ctx, false);
+                                    }
+                                }
+                                None => ctx.error_spanned_by(path, "Invalid on anonymous fields"),
+                            },
+                        },
                         _ => ctx.error_spanned_by(meta, "Unknown attribute"),
                     }
 
@@ -225,7 +281,7 @@ pub fn fields_from_ast<'t>(
             );
 
             let name = renamed.unwrap_or_else(|| match &original.ident {
-                Some(ident) => Label::Named(ident.clone()),
+                Some(ident) => Label::Unmodified(ident.clone()),
                 None => Label::Anonymous(index.into()),
             });
 
@@ -245,6 +301,10 @@ pub fn fields_from_ast<'t>(
             }
         })
         .collect();
+
+    if let Some(name) = name_opt {
+        *container_label = name;
+    }
 
     (fields, manifest)
 }

@@ -65,7 +65,7 @@ impl ValidatedFormDescriptor {
     ) -> ValidatedFormDescriptor {
         let mut schema_opt = None;
         let mut all_items = false;
-        let mut label = Label::Named(ident.clone());
+        let mut label = Label::Unmodified(ident.clone());
 
         attributes.iter().for_each(|meta: &NestedMeta| match meta {
             NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
@@ -166,22 +166,33 @@ impl<'f> ValidatedField<'f> {
         } = self;
 
         let field_schema = field_schema.to_token_stream();
-        let ident = match &form_field.label {
-            Label::Named(ident) => ident.to_string(),
-            Label::Renamed { new_label, .. } => new_label.clone(),
-            Label::Anonymous(_) => {
-                // Caught by the form descriptor parser
-                unreachable!()
-            }
-        };
 
-        quote! {
-            swim_common::model::schema::FieldSpec::default(
-                swim_common::model::schema::attr::AttrSchema::named(
-                    #ident,
-                    #field_schema,
+        if let Label::Foreign(ident, ..) = &form_field.label {
+            quote! {
+                swim_common::model::schema::FieldSpec::default(
+                    swim_common::model::schema::attr::AttrSchema::named(
+                        std::string::ToString::to_string(#ident.clone()),
+                        #field_schema,
+                    )
                 )
-            )
+            }
+        } else {
+            let ident = match &form_field.label {
+                Label::Unmodified(ident) => ident.to_string(),
+                Label::Renamed { new_label, .. } => new_label.clone(),
+                _ => {
+                    // Caught by the form descriptor parser
+                    unreachable!()
+                }
+            };
+            quote! {
+                swim_common::model::schema::FieldSpec::default(
+                    swim_common::model::schema::attr::AttrSchema::named(
+                        #ident,
+                        #field_schema,
+                    )
+                )
+            }
         }
     }
 
@@ -206,11 +217,21 @@ impl<'f> ValidatedField<'f> {
         };
 
         match &form_field.label {
-            Label::Named(ident) => build_named(ident.to_string()),
+            Label::Unmodified(ident) => build_named(ident.to_string()),
             Label::Renamed { new_label, .. } => build_named(new_label.to_string()),
             Label::Anonymous(_) => quote!(
                 swim_common::model::schema::ItemSchema::ValueItem(#field_schema)
             ),
+            Label::Foreign(ident, ..) => {
+                quote! {
+                    swim_common::model::schema::ItemSchema::Field(
+                        swim_common::model::schema::slot::SlotSchema::new(
+                            swim_common::model::schema::StandardSchema::text(std::string::ToString::to_string(self.#ident.clone())),
+                            #field_schema,
+                        )
+                    )
+                }
+            }
         }
     }
 }

@@ -463,3 +463,27 @@ fn header_body_replace() {
     );
     assert_eq!(ex.into_value(), expected);
 }
+
+#[test]
+fn test_tag_plain() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    struct TestyWesty {
+        #[form(tag)]
+        a: String,
+        b: i64,
+    }
+
+    let s = TestyWesty {
+        a: String::from("test"),
+        b: 2,
+    };
+    let rec = Value::Record(
+        vec![Attr::of("test")],
+        vec![Item::Slot(Value::text("b"), Value::Int64Value(2))],
+    );
+    assert_eq!(s.as_value(), rec);
+
+    // assert_eq!(TestyWesty::try_from_value(&rec), Ok(s.clone()));
+    // assert_eq!(TestyWesty::try_convert(rec.clone()), Ok(s.clone()));
+    // assert_eq!(s.into_value(), rec);
+}
