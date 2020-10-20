@@ -1358,10 +1358,6 @@ fn form_attr() {
 
 #[test]
 fn form_header() {
-    fn eq() -> Value {
-        Value::Int32Value(i32::max_value())
-    }
-
     #[derive(Form, ValidatedForm)]
     struct S {
         #[form(header_body)]

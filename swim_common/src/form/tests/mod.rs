@@ -13,10 +13,9 @@
 // limitations under the License.
 
 mod enumeration;
-// mod impls;
+mod impls;
 mod structure;
-// #[allow(warnings)]
-// mod validated;
+mod validated;
 
 use trybuild::TestCases;
 

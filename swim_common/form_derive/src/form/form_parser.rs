@@ -137,7 +137,7 @@ impl FormDescriptor {
     pub fn from(label: Label, manifest: FieldManifest) -> FormDescriptor {
         FormDescriptor {
             body_replaced: false,
-            label: label,
+            label,
             manifest,
         }
     }
