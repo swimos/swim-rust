@@ -23,11 +23,10 @@ use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::auto::AutoUplinks;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
-    AddressedUplinkMessage, DemandMapLaneUplink, MapLaneUplink, UplinkAction, UplinkKind,
-    ValueLaneUplink,
+    AddressedUplinkMessage, DemandMapLaneUplink, MapLaneUplink, UplinkAction, ValueLaneUplink,
 };
 use crate::agent::lane::channels::{
-    AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
+    AgentExecutionConfig, InputMessage, LaneKind, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
@@ -450,7 +449,7 @@ where
         }
         .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-        let uplinks = AutoUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
+        let uplinks = AutoUplinks::new(feedback_rx, route.clone(), LaneKind::Action);
         let uplink_task = uplinks
             .run(uplink_rx, context.router_handle(), err_tx)
             .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
@@ -584,7 +583,7 @@ pub async fn run_auto_lane_io<S, Item>(
     context: impl AgentExecutionContext,
     route: RelativePath,
     stream: S,
-    uplink_kind: UplinkKind,
+    uplink_kind: LaneKind,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
@@ -633,15 +632,7 @@ where
     S: Stream<Item = Item> + Send + Sync + 'static,
     Item: Send + Sync + Form + 'static,
 {
-    run_auto_lane_io(
-        envelopes,
-        config,
-        context,
-        route,
-        stream,
-        UplinkKind::Supply,
-    )
-    .await
+    run_auto_lane_io(envelopes, config, context, route, stream, LaneKind::Supply).await
 }
 
 async fn action_envelope_task_with_uplinks<Cmd>(
@@ -784,7 +775,7 @@ where
         context,
         route,
         response_rx,
-        UplinkKind::Demand,
+        LaneKind::Demand,
     )
     .await
 }

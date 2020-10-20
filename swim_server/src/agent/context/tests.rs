@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::ContextImpl;
-use crate::agent::meta::make_log_handler;
+use crate::agent::meta::log::make_log_handler;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod data_macro_agent;
+// mod data_macro_agent;
 mod derive;
 mod reporting_agent;
-mod reporting_macro_agent;
+// mod reporting_macro_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -27,7 +27,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
-use crate::agent::meta::LogLevel;
+use crate::agent::meta::log::LogLevel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
@@ -311,7 +311,7 @@ where
         HashMap::new()
     }
 
-    fn log<E: Form>(&self, _entry: E, _level: LogLevel) {}
+    fn log<E: Form>(&self, _entry: E, _level: LogLevel, _node: RelativeUri) {}
 }
 
 fn proj<Lane>() -> impl Fn(&TestAgent<Lane>) -> &Lane {

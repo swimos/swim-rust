@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::{LogHandler, LogLevel};
+use crate::agent::meta::log::{LogHandler, LogLevel};
 use crate::agent::{AgentContext, Eff};
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -159,8 +159,8 @@ where
         self.parameters.clone()
     }
 
-    fn log<E: Form>(&self, entry: E, level: LogLevel) {
-        self.meta_log.log(entry, level);
+    fn log<E: Form>(&self, entry: E, level: LogLevel, node: RelativeUri) {
+        self.meta_log.log(entry, level, node);
     }
 }
 

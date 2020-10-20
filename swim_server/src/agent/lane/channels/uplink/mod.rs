@@ -42,21 +42,6 @@ pub mod auto;
 pub mod map;
 pub(crate) mod spawn;
 
-/// An enumeration representing the type of an uplink.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum UplinkKind {
-    Action,
-    Command,
-    Demand,
-    DemandMap,
-    Map,
-    JoinMap,
-    JoinValue,
-    Supply,
-    Spatial,
-    Value,
-}
-
 /// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum UplinkAction {

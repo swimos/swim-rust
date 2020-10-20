@@ -14,10 +14,9 @@
 
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
-    AddressedUplinkMessage, UplinkAction, UplinkError, UplinkKind, UplinkMessage,
-    UplinkMessageSender,
+    AddressedUplinkMessage, UplinkAction, UplinkError, UplinkMessage, UplinkMessageSender,
 };
-use crate::agent::lane::channels::TaggedAction;
+use crate::agent::lane::channels::{LaneKind, TaggedAction};
 use crate::routing::{RoutingAddr, ServerRouter};
 use either::Either;
 use futures::{select_biased, Stream, StreamExt};
@@ -40,7 +39,7 @@ const UNLINKING: &str = "Unlinking from a ";
 const FAILED_ERR_REPORT: &str = "Failed to send uplink error report.";
 const UNLINKING_ALL: &str = "Unlinking remaining uplinks.";
 
-fn format_debug_event(uplink_kind: UplinkKind, msg: &'static str) {
+fn format_debug_event(uplink_kind: LaneKind, msg: &'static str) {
     let event_str = format!("{:?} {} lane ", uplink_kind, msg);
     event!(Level::DEBUG, "{}", event_str.as_str());
 }
@@ -50,7 +49,7 @@ fn format_debug_event(uplink_kind: UplinkKind, msg: &'static str) {
 pub struct AutoUplinks<S> {
     producer: S,
     route: RelativePath,
-    uplink_kind: UplinkKind,
+    uplink_kind: LaneKind,
 }
 
 impl<S, F> AutoUplinks<S>
@@ -58,7 +57,7 @@ where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
 {
-    pub fn new(producer: S, route: RelativePath, uplink_kind: UplinkKind) -> Self {
+    pub fn new(producer: S, route: RelativePath, uplink_kind: LaneKind) -> Self {
         AutoUplinks {
             producer,
             route,

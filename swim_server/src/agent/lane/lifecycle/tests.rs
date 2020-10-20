@@ -15,7 +15,7 @@
 use super::{StatefulLaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
-use crate::agent::meta::LogLevel;
+use crate::agent::meta::log::LogLevel;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;
@@ -71,7 +71,7 @@ impl AgentContext<TestAgent> for TestContext {
         HashMap::new()
     }
 
-    fn log<E: Form>(&self, _entry: E, _level: LogLevel) {}
+    fn log<E: Form>(&self, _entry: E, _level: LogLevel, _node: RelativeUri) {}
 }
 
 #[tokio::test]

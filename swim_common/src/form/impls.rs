@@ -32,6 +32,7 @@ use crate::model::schema::{ItemSchema, StandardSchema};
 use crate::model::text::Text;
 use crate::model::{Item, Value, ValueKind};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
+use utilities::uri::RelativeUri;
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
@@ -811,5 +812,22 @@ impl Form for AtomicU64 {
 impl ValidatedForm for AtomicU64 {
     fn schema() -> StandardSchema {
         StandardSchema::OfKind(ValueKind::UInt64)
+    }
+}
+
+impl Form for RelativeUri {
+    fn as_value(&self) -> Value {
+        Value::text(self.to_string())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Text(inner) => {
+                let uri =
+                    RelativeUri::from_str(inner.as_str()).map_err(|_| FormErr::Malformatted)?;
+                Ok(uri)
+            }
+            v => Err(FormErr::incorrect_type("Value::Text", v)),
+        }
     }
 }

@@ -1,6 +1,6 @@
 use trybuild::TestCases;
 
-mod pass;
+// mod pass;
 
 #[test]
 fn test_derive() {

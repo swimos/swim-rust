@@ -29,7 +29,7 @@ use crate::agent::lane::channels::task::{
 };
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
-use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::lane::channels::{AgentExecutionConfig, LaneKind};
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
 };
@@ -45,6 +45,7 @@ use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::meta::MetaKind;
 use crate::routing::{LaneIdentifier, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
@@ -72,7 +73,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
-use crate::agent::meta::{open_log_lanes, LogLevel};
+use crate::agent::meta::log::{open_log_lanes, LogLevel};
 
 #[doc(hidden)]
 #[allow(unused_imports)]
@@ -195,16 +196,17 @@ where
 
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
-    let (agent, mut tasks, mut io_providers) =
+    let (agent, mut tasks, io_providers) =
         Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
     let task = async move {
-        let (log_handler, mut log_tasks, log_io) = open_log_lanes::<
-            Config,
-            Agent,
-            ContextImpl<Agent, Clk, Router>,
-        >(uri.clone(), &execution_config);
+        let (log_handler, mut log_tasks, log_io) =
+            open_log_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
+                uri.clone(),
+                &execution_config,
+                MetaKind::Node,
+            );
 
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let context = ContextImpl::new(
@@ -227,6 +229,7 @@ where
 
         for lane_task in tasks.iter() {
             let lane_name = lane_task.name();
+
             (**lane_task)
                 .start(&context)
                 .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
@@ -251,14 +254,17 @@ where
             );
         }
 
-        log_io.into_iter().for_each(|(k, v)| {
-            io_providers.insert(k, Box::new(v.unwrap()));
-        });
-
-        let io_providers = io_providers
+        let mut io_providers: HashMap<_, _> = io_providers
             .into_iter()
             .map(|(k, v)| (LaneIdentifier::Agent(k), v))
             .collect();
+
+        log_io
+            .into_iter()
+            .map(|(k, v)| (k, Box::new(v.unwrap())))
+            .for_each(|(k, v)| {
+                io_providers.insert(k, v);
+            });
 
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
@@ -390,12 +396,15 @@ pub trait AgentContext<Agent> {
     /// Get a copy of all parameters extracted from the agent node route.
     fn parameters(&self) -> HashMap<String, String>;
 
-    fn log<E: Form>(&self, entry: E, level: LogLevel);
+    fn log<E: Form>(&self, entry: E, level: LogLevel, node: RelativeUri);
 }
 
 pub trait Lane {
     /// The name of the lane.
     fn name(&self) -> &str;
+
+    /// The type of the lane.
+    fn kind(&self) -> LaneKind;
 }
 
 /// Provides an abstraction over the different types of lane to allow the lane life-cycles to be
@@ -669,12 +678,17 @@ struct DemandLifecycleTasks<L, S, P, Value> {
     response_tx: mpsc::Sender<Value>,
 }
 struct StatelessLifecycleTasks {
+    lane_kind: LaneKind,
     name: String,
 }
 
 impl<L, S, P> Lane for ValueLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Value
     }
 }
 
@@ -772,6 +786,10 @@ impl<L, S, P> Lane for MapLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Map
+    }
 }
 
 impl<Agent, Context, K, V, L, S, P> LaneTasks<Agent, Context> for MapLifecycleTasks<L, S, P>
@@ -868,6 +886,10 @@ impl<L, S, P> Lane for ActionLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Action
+    }
 }
 
 impl<Agent, Context, Command, Response, L, S, P> LaneTasks<Agent, Context>
@@ -918,6 +940,10 @@ where
 impl<L, S, P> Lane for CommandLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Command
     }
 }
 
@@ -1075,7 +1101,10 @@ where
 {
     let (lane, event_stream) = make_lane_model(buffer_size);
 
-    let tasks = StatelessLifecycleTasks { name: name.into() };
+    let tasks = StatelessLifecycleTasks {
+        lane_kind: LaneKind::Supply,
+        name: name.into(),
+    };
 
     let lane_io = if is_public {
         Some(SupplyLaneIo::new(event_stream))
@@ -1220,6 +1249,10 @@ where
 impl<L, S, P, Value> Lane for DemandLifecycleTasks<L, S, P, Value> {
     fn name(&self) -> &str {
         self.tasks.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Demand
     }
 }
 
@@ -1376,6 +1409,10 @@ where
 impl<L, S, P> Lane for DemandMapLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::DemandMap
     }
 }
 

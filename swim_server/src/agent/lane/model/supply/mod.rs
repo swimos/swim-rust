@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::LaneKind;
 use crate::agent::lane::LaneModel;
 use crate::agent::{AgentContext, Eff, Lane, LaneTasks, StatelessLifecycleTasks};
 use futures::future::ready;
@@ -76,6 +77,10 @@ where
 impl Lane for StatelessLifecycleTasks {
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        self.lane_kind
     }
 }
 
