@@ -16,10 +16,12 @@ use crate::routing::{RoutingAddr, TaggedEnvelope};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
+use std::io::ErrorKind;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::ws::error::WebSocketError;
 use tokio::sync::mpsc;
+use utilities::errors::Recoverable;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
@@ -76,11 +78,37 @@ pub enum RouterError {
     RouterDropped,
 }
 
-impl RouterError {
-    pub fn is_fatal(&self) -> bool {
-        //TODO Implement this.
-        true
+impl Display for RouterError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RouterError::NoAgentAtRoute(route) => write!(f, "No agent at: '{}'", route),
+            RouterError::ConnectionFailure(err) => {
+                write!(f, "Failed to route to requested endpoint: '{}'", err)
+            }
+            RouterError::RouterDropped => write!(f, "The router channel was dropped."),
+        }
     }
+}
+
+impl Error for RouterError {}
+
+impl Recoverable for RouterError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            RouterError::ConnectionFailure(err) => err.is_fatal(),
+            _ => true,
+        }
+    }
+}
+
+fn io_fatal(kind: &ErrorKind) -> bool {
+    !matches!(
+        kind,
+        ErrorKind::ConnectionRefused
+            | ErrorKind::ConnectionReset
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::TimedOut
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -88,13 +116,31 @@ pub enum ConnectionError {
     Resolution,
     Socket(io::ErrorKind),
     Websocket(WebSocketError),
+    ClosedRemotely,
     Warp(String),
 }
 
-impl ConnectionError {
-    pub fn is_transient(&self) -> bool {
-        //TODO Implement this.
-        false
+impl Display for ConnectionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionError::Resolution => write!(f, "The specified host could not be resolved."),
+            ConnectionError::Socket(err) => write!(f, "IO error: '{:?}'", err),
+            ConnectionError::Websocket(err) => write!(f, "Web socket error: '{}'", err),
+            ConnectionError::ClosedRemotely => write!(f, "The connection was closed remotely."),
+            ConnectionError::Warp(err) => write!(f, "Warp protocol error: '{}'", err),
+        }
+    }
+}
+
+impl Error for ConnectionError {}
+
+impl Recoverable for ConnectionError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            ConnectionError::Socket(err) => io_fatal(err),
+            ConnectionError::Warp(_) => false,
+            _ => true,
+        }
     }
 }
 
@@ -110,12 +156,14 @@ pub enum ResolutionError {
     Unresolvable(Unresolvable),
     RouterDropped,
 }
-/*
+
 impl Display for ResolutionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ResolutionError::NoAgent(err) => err.fmt(f),
-            ResolutionError::NoRoute(err) => err.fmt(f),
+            ResolutionError::Unresolvable(Unresolvable(id)) => {
+                write!(f, "Address {} could not be resolved.", id)
+            }
+            ResolutionError::RouterDropped => write!(f, "The router channel was dropped."),
         }
     }
 }
@@ -123,11 +171,11 @@ impl Display for ResolutionError {
 impl Error for ResolutionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ResolutionError::NoAgent(err) => Some(err),
-            ResolutionError::NoRoute(err) => Some(err),
+            ResolutionError::Unresolvable(err) => Some(err),
+            ResolutionError::RouterDropped => None,
         }
     }
-}*/
+}
 
 /// Error indicating that a routing address is invalid. (Typically, this should not occur and
 /// suggests a bug).

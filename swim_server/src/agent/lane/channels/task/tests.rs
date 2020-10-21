@@ -341,7 +341,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
 
-    fn get_sender(
+    fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
@@ -358,7 +358,7 @@ impl ServerRouter for TestRouter {
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
@@ -1266,7 +1266,7 @@ impl AgentExecutionContext for MultiTestContext {
 impl ServerRouter for MultiTestRouter {
     type Sender = TestSender;
 
-    fn get_sender(
+    fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
@@ -1286,7 +1286,7 @@ impl ServerRouter for MultiTestRouter {
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,

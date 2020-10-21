@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
@@ -23,6 +26,8 @@ use futures::{select_biased, FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
@@ -32,6 +37,7 @@ use swim_common::warp::path::RelativePath;
 use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tokio::time::{delay_for, Instant};
+use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
@@ -183,18 +189,45 @@ fn read_envelope(msg: &str) -> Result<Envelope, Completion> {
     Ok(Envelope::try_from(parser::parse_single(msg)?)?)
 }
 
+#[derive(Debug)]
 enum DispatchError {
     BadNodeUri(BadRelativeUri),
     Unresolvable(ResolutionError),
     RoutingProblem(RouterError),
-    ChannelDropped(ConnectionDropped),
+    Dropped(ConnectionDropped),
 }
 
-impl DispatchError {
+impl Display for DispatchError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DispatchError::BadNodeUri(err) => write!(f, "Invalid relative URI: '{}'", err),
+            DispatchError::Unresolvable(err) => {
+                write!(f, "Could not resolve a router endpoint: '{}'", err)
+            }
+            DispatchError::RoutingProblem(err) => {
+                write!(f, "Could not find a router endpoint: '{}'", err)
+            }
+            DispatchError::Dropped(err) => write!(f, "The routing channel was dropped: '{}'", err),
+        }
+    }
+}
+
+impl Error for DispatchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            DispatchError::BadNodeUri(err) => Some(err),
+            DispatchError::Unresolvable(err) => Some(err),
+            DispatchError::RoutingProblem(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl Recoverable for DispatchError {
     fn is_fatal(&self) -> bool {
         match self {
             DispatchError::RoutingProblem(err) => err.is_fatal(),
-            DispatchError::ChannelDropped(reason) => !reason.is_recoverable(),
+            DispatchError::Dropped(reason) => !reason.is_recoverable(),
             _ => true,
         }
     }
@@ -282,7 +315,7 @@ where
                     .map(|reason| (*reason).clone())
                     .unwrap_or(ConnectionDropped::Unknown);
                 let (_, env) = err.split();
-                Err((env, DispatchError::ChannelDropped(reason)))
+                Err((env, DispatchError::Dropped(reason)))
             } else {
                 unreachable!();
             }
@@ -302,9 +335,9 @@ where
     Router: ServerRouter,
 {
     let target_addr = router
-        .resolve(None, RelativeUri::from_str(&target.node.as_str())?)
+        .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
         .await?;
-    Ok(router.get_sender(target_addr).await?)
+    Ok(router.resolve_sender(target_addr).await?)
 }
 
 pub struct TaskFactory<RouterFac> {

@@ -102,7 +102,7 @@ pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 impl ServerRouter for MockRouter {
     type Sender = MockSender;
 
-    fn get_sender(
+    fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
@@ -128,7 +128,7 @@ impl ServerRouter for MockRouter {
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
@@ -222,7 +222,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
-                                if let Ok(sender) = router.get_sender(addr).await {
+                                if let Ok(sender) = router.resolve_sender(addr).await {
                                     entry.insert(sender.sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(

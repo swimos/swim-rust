@@ -101,12 +101,12 @@ impl<Sender> Route<Sender> {
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, error::SendError> + Send + 'static;
 
-    fn get_sender(
+    fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>>;
 
-    fn resolve(
+    fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,

@@ -85,7 +85,7 @@ impl PlaneRouter {
 impl ServerRouter for PlaneRouter {
     type Sender = PlaneRouterSender;
 
-    fn get_sender(
+    fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
@@ -117,7 +117,7 @@ impl ServerRouter for PlaneRouter {
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,

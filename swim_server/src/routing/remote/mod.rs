@@ -42,7 +42,9 @@ use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
 use crate::routing::{Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use std::fmt::{Display, Formatter};
 use std::io;
+use utilities::errors::Recoverable;
 
 #[derive(Debug, Clone)]
 pub enum ConnectionDropped {
@@ -51,6 +53,18 @@ pub enum ConnectionDropped {
     Failed(ConnectionError),
     AgentFailed,
     Unknown,
+}
+
+impl Display for ConnectionDropped {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionDropped::Closed => write!(f, "The connection was explicitly closed."),
+            ConnectionDropped::TimedOut(t) => write!(f, "The connection timed out after {:?}.", t),
+            ConnectionDropped::Failed(err) => write!(f, "The connection failed: '{}'", err),
+            ConnectionDropped::AgentFailed => write!(f, "The agent failed."),
+            ConnectionDropped::Unknown => write!(f, "The reason could not be determined."),
+        }
+    }
 }
 
 impl ConnectionDropped {

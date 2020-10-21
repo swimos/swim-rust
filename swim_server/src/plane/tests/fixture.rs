@@ -112,8 +112,8 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
         let task = async move {
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
-            let addr = router.resolve(None, target_node.clone()).await.unwrap();
-            let mut tx = router.get_sender(addr).await.unwrap().sender;
+            let addr = router.lookup(None, target_node.clone()).await.unwrap();
+            let mut tx = router.resolve_sender(addr).await.unwrap().sender;
             assert!(tx
                 .send_item(Envelope::make_event(
                     target_node.to_string(),

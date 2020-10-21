@@ -86,7 +86,7 @@ impl<'a, D: ItemSink<'a, Envelope, Error = error::SendError>> ItemSink<'a, Envel
 impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
     type Sender = RemoteRouterSender<Delegate::Sender>;
 
-    fn get_sender(
+    fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
@@ -106,7 +106,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                     Ok(Ok(Route { sender, on_drop })) => {
                         Ok(Route::new(RemoteRouterSender::new(*tag, sender), on_drop))
                     }
-                    Ok(Err(_)) => match delegate_router.get_sender(addr).await {
+                    Ok(Err(_)) => match delegate_router.resolve_sender(addr).await {
                         Ok(Route { sender, on_drop }) => {
                             Ok(Route::new(RemoteRouterSender::delegate(sender), on_drop))
                         }
@@ -119,7 +119,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
@@ -144,7 +144,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                     }
                 }
             } else {
-                delegate_router.resolve(host, route).await
+                delegate_router.lookup(host, route).await
             }
         }
         .boxed()

@@ -116,7 +116,7 @@ mod stub_router {
     {
         type Sender = SingleChannelSender<Inner>;
 
-        fn get_sender(
+        fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
         ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
@@ -130,7 +130,7 @@ mod stub_router {
             })
         }
 
-        fn resolve(
+        fn lookup(
             &mut self,
             _host: Option<Url>,
             _route: RelativeUri,

@@ -70,7 +70,7 @@ async fn plane_router_get_sender() {
     };
 
     let send_task = async move {
-        let result1 = router.get_sender(addr).await;
+        let result1 = router.resolve_sender(addr).await;
         assert!(result1.is_ok());
         let mut sender = result1.unwrap();
         assert!(sender
@@ -83,7 +83,7 @@ async fn plane_router_get_sender() {
             Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
         );
 
-        let result2 = router.get_sender(RoutingAddr::local(56)).await;
+        let result2 = router.resolve_sender(RoutingAddr::local(56)).await;
 
         assert!(matches!(
             result2,
@@ -139,20 +139,20 @@ async fn plane_router_resolve() {
     };
 
     let send_task = async move {
-        let result1 = router.resolve(Some(host), "/node".parse().unwrap()).await;
+        let result1 = router.lookup(Some(host), "/node".parse().unwrap()).await;
         assert!(matches!(result1, Ok(a) if a == addr));
 
         let other_host = Url::parse("warp://other").unwrap();
 
         let result2 = router
-            .resolve(Some(other_host), "/node".parse().unwrap())
+            .lookup(Some(other_host), "/node".parse().unwrap())
             .await;
         assert!(matches!(
             result2,
             Err(RouterError::ConnectionFailure(ConnectionError::Warp(msg))) if msg == "Boom!"
         ));
 
-        let result3 = router.resolve(None, "/node".parse().unwrap()).await;
+        let result3 = router.lookup(None, "/node".parse().unwrap()).await;
         assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/node"));
     };
 

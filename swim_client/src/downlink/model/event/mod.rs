@@ -28,6 +28,7 @@ use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tracing::{error, instrument, trace};
+use utilities::errors::Recoverable;
 
 #[cfg(test)]
 mod tests;
