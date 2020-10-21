@@ -43,6 +43,10 @@ impl FormErr {
     pub fn incorrect_type(expected: &'static str, actual: &Value) -> FormErr {
         FormErr::IncorrectType(format!("Expected: {}, found: {}", expected, actual.kind()))
     }
+
+    pub fn message<I: Into<String>>(msg: I) -> FormErr {
+        FormErr::Message(msg.into())
+    }
 }
 
 impl Error for FormErr {}
@@ -780,4 +784,12 @@ impl ValidatedForm for Value {
     fn schema() -> StandardSchema {
         StandardSchema::Anything
     }
+}
+
+pub trait Tag: Sized {
+    fn from_string(tag: String) -> Result<Self, ()>;
+
+    fn as_string(&self) -> String;
+
+    fn enumerated() -> Vec<Self>;
 }

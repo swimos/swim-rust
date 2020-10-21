@@ -1,11 +1,17 @@
-error[E0277]: `main::B` doesn't implement `std::fmt::Display`
+error[E0277]: the trait bound `main::B: swim_common::form::Tag` is not satisfied
   --> $DIR/tag_no_to_string.rs:21:14
    |
 21 |     #[derive(Form)]
-   |              ^^^^ `main::B` cannot be formatted with the default formatter
+   |              ^^^^ the trait `swim_common::form::Tag` is not implemented for `main::B`
    |
-   = help: the trait `std::fmt::Display` is not implemented for `main::B`
-   = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
-   = note: required because of the requirements on the impl of `std::string::ToString` for `main::B`
-   = note: required by `std::string::ToString::to_string`
+   = note: required by `swim_common::form::Tag::as_string`
+   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `main::B: swim_common::form::Tag` is not satisfied
+  --> $DIR/tag_no_to_string.rs:21:14
+   |
+21 |     #[derive(Form)]
+   |              ^^^^ the trait `swim_common::form::Tag` is not implemented for `main::B`
+   |
+   = note: required by `swim_common::form::Tag::from_string`
    = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)

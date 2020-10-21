@@ -84,12 +84,33 @@ pub fn build_head_attribute(
         }
     };
 
-    let compound_label = compound_label.to_string();
-    let attr_schema = quote! {
-        swim_common::model::schema::attr::AttrSchema::named(
-            #compound_label,
-            #tag_value_schema,
-        )
+    let attr_schema = match compound_label {
+        Label::Foreign(_new_ident, ty, _old_ident) => {
+            quote! {
+                {
+                    let enumerated = #ty::enumerated();
+                    let len = enumerated.len();
+
+                    let attr_schemas = enumerated.into_iter().fold(Vec::with_capacity(len), |mut vec, variant| {
+                        let schema = swim_common::model::schema::text::TextSchema::exact(&swim_common::form::Tag::as_string(&variant));
+                        vec.push(schema);
+                        vec
+                    });
+
+                    swim_common::model::schema::attr::AttrSchema::new(swim_common::model::schema::text::TextSchema::Or(attr_schemas), #tag_value_schema)
+                }
+            }
+        }
+        l => {
+            let name = l.to_name();
+
+            quote! {
+                swim_common::model::schema::attr::AttrSchema::named(
+                    #name,
+                    #tag_value_schema,
+                )
+            }
+        }
     };
 
     quote! {

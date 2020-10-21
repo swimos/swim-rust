@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::Form;
+use crate::form::{Form, Tag};
 use crate::model::time::Timestamp;
 use crate::model::{Attr, Item, Value};
 
@@ -466,31 +466,6 @@ fn header_body_replace() {
 }
 
 #[test]
-fn test_tag_plain() {
-    #[derive(Form, Debug, PartialEq, Clone)]
-    struct TestStruct {
-        #[form(tag)]
-        a: String,
-        b: i64,
-    }
-
-    let s = TestStruct {
-        a: String::from("test"),
-        b: 2,
-    };
-    let rec = Value::Record(
-        vec![Attr::of("test")],
-        vec![Item::Slot(Value::text("b"), Value::Int64Value(2))],
-    );
-
-    assert_eq!(s.as_value(), rec);
-
-    // assert_eq!(TestyWesty::try_from_value(&rec), Ok(s.clone()));
-    // assert_eq!(TestyWesty::try_convert(rec.clone()), Ok(s.clone()));
-    // assert_eq!(s.into_value(), rec);
-}
-
-#[test]
 fn test_enum_tag() {
     #[derive(Clone, PartialEq, Debug)]
     enum Level {
@@ -498,20 +473,26 @@ fn test_enum_tag() {
         Error,
     }
 
-    impl Default for Level {
-        fn default() -> Self {
-            Level::Trace
+    impl Tag for Level {
+        fn from_string(tag: String) -> Result<Self, ()> {
+            match tag.to_lowercase().as_str() {
+                "trace" => Ok(Level::Trace),
+                "error" => Ok(Level::Error),
+                _ => Err(()),
+            }
         }
-    }
 
-    impl ToString for Level {
-        fn to_string(&self) -> String {
+        fn as_string(&self) -> String {
             let s = match self {
                 Level::Trace => "trace",
                 Level::Error => "error",
             };
 
             s.to_string()
+        }
+
+        fn enumerated() -> Vec<Self> {
+            vec![Level::Trace, Level::Error]
         }
     }
 

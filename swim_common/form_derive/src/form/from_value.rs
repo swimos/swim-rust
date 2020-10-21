@@ -30,7 +30,6 @@ pub fn from_value(
     match type_contents {
         TypeContents::Struct(repr) => {
             let descriptor = &repr.descriptor;
-            let structure_name_str = descriptor.label.to_string();
             let field_manifest = &descriptor.manifest;
             let (field_opts, field_assignments) = parse_fields(&repr.fields, &repr.compound_type);
             let (headers, header_body, items, attributes) =
@@ -48,13 +47,8 @@ pub fn from_value(
                 _ => quote!(Ok(#structure_name(#field_assignments))),
             };
 
-            let attrs = build_attr_quote(
-                &structure_name_str,
-                &headers,
-                header_body,
-                &attributes,
-                into,
-            );
+            let attrs =
+                build_attr_quote(&descriptor.label, &headers, header_body, &attributes, into);
 
             quote! {
                 match value {
@@ -64,7 +58,7 @@ pub fn from_value(
                         #items
                         #self_members
                     }
-                    _ => return Err(swim_common::form::FormErr::Message(String::from("Expected record"))),
+                    _ => return Err(swim_common::form::FormErr::message("Expected record")),
                 }
             }
         }
@@ -91,7 +85,7 @@ pub fn from_value(
                 };
 
                 let attrs =
-                    build_attr_quote(&variant_name_str, &headers, header_body, &attributes, into);
+                    build_attr_quote(&variant.name, &headers, header_body, &attributes, into);
 
                 quote! {
                     #ts
@@ -110,7 +104,7 @@ pub fn from_value(
                         #arms
                         _ => return Err(swim_common::form::FormErr::MismatchedTag),
                     }
-                    _ => return Err(swim_common::form::FormErr::Message(String::from("Expected record"))),
+                    _ => return Err(swim_common::form::FormErr::message("Expected record")),
                 }
             }
         }
@@ -118,7 +112,7 @@ pub fn from_value(
 }
 
 fn build_attr_quote(
-    name_str: &str,
+    tag: &Label,
     headers: &TokenStream2,
     mut header_body: TokenStream2,
     attributes: &TokenStream2,
@@ -134,25 +128,71 @@ fn build_attr_quote(
         quote!(iter)
     };
 
-    quote! {
-        let mut attr_it = attrs.#iterator();
-        while let Some(swim_common::model::Attr { name, value }) = attr_it.next() {
-            match name.as_ref() {
-                 #name_str => match value {
-                    swim_common::model::Value::Record(_attrs, items) => {
-                        let mut iter_items = items.#iterator();
-                        while let Some(item) = iter_items.next() {
-                            match item {
-                                #headers
-                                i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item in tag body: {:?}", i))),
-                            }
-                        }
+    let value_match_expr = quote! {
+        match value {
+            swim_common::model::Value::Record(_attrs, items) => {
+                let mut iter_items = items.#iterator();
+                while let Some(item) = iter_items.next() {
+                    match item {
+                        #headers
+                        i => return Err(swim_common::form::FormErr::message(format!("Unexpected item in tag body: {:?}", i))),
                     }
-                    swim_common::model::Value::Extant => {},
-                    #header_body
-                },
+                }
+            }
+            swim_common::model::Value::Extant => {},
+            #header_body
+        }
+    };
+
+    let name_check = match tag {
+        Label::Foreign(new_ident, ty, _old_ident) => {
+            let opt_name = Ident::new(
+                &format!("__opt_{}", new_ident.to_string()),
+                new_ident.span(),
+            );
+
+            quote! {
+                let mut attr_it = attrs.#iterator();
+
+                match attr_it.next() {
+                    Some(swim_common::model::Attr { name, value })=> {
+                        let __tag_name: #ty = swim_common::form::Tag::from_string(name.as_str().to_string()).map_err(|_| swim_common::form::FormErr::MismatchedTag)?;
+
+                        #opt_name = Some(__tag_name);
+
+                        #value_match_expr
+                    },
+                    None=> {
+                        return Err(swim_common::form::FormErr::MismatchedTag);
+                    }
+                }
+            }
+        }
+        label => {
+            let name_str = label.to_string();
+
+            quote! {
+                let mut attr_it = attrs.#iterator();
+
+                match attr_it.next() {
+                    Some(swim_common::model::Attr { name, value }) if name == #name_str => {
+                        #value_match_expr
+                    },
+                    _ => {
+                        return Err(swim_common::form::FormErr::MismatchedTag);
+                    }
+                }
+            }
+        }
+    };
+
+    quote! {
+        #name_check
+
+        while let Some(swim_common::model::Attr { name, value }) = attr_it.next() {
+            match name.as_str() {
                 #attributes
-                _ => return Err(swim_common::form::FormErr::MismatchedTag),
+                _ => return Err(swim_common::form::FormErr::Malformatted),
             }
         }
     }
@@ -318,8 +358,8 @@ fn parse_elements(
                         };
                     };
                 }
-                FieldKind::Tagged=>{
-                    // no-op
+                FieldKind::Tagged => {
+                    // no-op as the field is ignored and marked as a tag 
                 },
                 _ => {
                     let fn_call = fn_factory(quote!(v));

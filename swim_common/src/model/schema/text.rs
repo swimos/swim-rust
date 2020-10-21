@@ -13,6 +13,8 @@ pub enum TextSchema {
     Exact(String),
     /// Matches a string against a regular expression.
     Matches(Regex),
+    /// A logical OR of text schemas
+    Or(Vec<TextSchema>),
 }
 
 impl TextSchema {
@@ -24,6 +26,11 @@ impl TextSchema {
     /// A schema that accepts strings matching a regular expression.
     pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
         Regex::new(string).map(TextSchema::Matches)
+    }
+
+    /// A schema that performs a logical OR over a number of text schemas.
+    pub fn or(schemas: Vec<TextSchema>) -> TextSchema {
+        TextSchema::Or(schemas)
     }
 }
 
@@ -63,6 +70,9 @@ impl ToValue for TextSchema {
             TextSchema::NonEmpty => Attr::of("non_empty"),
             TextSchema::Exact(v) => Attr::of(("equal", v.clone())),
             TextSchema::Matches(r) => Attr::of(("matches", r.to_string())),
+            TextSchema::Or(vec) => {
+                Attr::with_items("or", vec.iter().map(ToValue::to_value).collect()).into()
+            }
         }
         .into()
     }
@@ -76,6 +86,7 @@ impl PartialEq for TextSchema {
             (TextSchema::Matches(left), TextSchema::Matches(right)) => {
                 left.as_str() == right.as_str()
             }
+            (TextSchema::Or(l), TextSchema::Or(r)) => l == r,
             _ => false,
         }
     }
@@ -89,6 +100,7 @@ impl TextSchema {
             TextSchema::NonEmpty => !text.is_empty(),
             TextSchema::Exact(s) => text == s,
             TextSchema::Matches(r) => r.is_match(text),
+            TextSchema::Or(vec) => vec.iter().any(|s| s.matches_str(text)),
         }
     }
 

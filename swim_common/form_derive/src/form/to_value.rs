@@ -179,7 +179,7 @@ fn compute_as_value(
                     }
                 }
                 FieldKind::Tagged => {
-                    // no-op
+                    // no-op as the field is being promoted to the tag and ignored
                 }
                 _ => {
                     match label {

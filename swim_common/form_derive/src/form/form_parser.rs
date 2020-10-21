@@ -117,7 +117,7 @@ pub fn parse_container_tag(
             Lit::Str(s) => {
                 let tag = s.value();
                 if tag.is_empty() {
-                    context.error_spanned_by(meta, "New name cannot be empty")
+                    context.error_spanned_by(meta, "New tag cannot be empty")
                 } else {
                     match name_opt {
                         Some(_) => context.error_spanned_by(s, "Duplicate tag"),

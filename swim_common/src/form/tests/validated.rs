@@ -15,10 +15,11 @@
 use num_bigint::BigInt;
 use num_traits::Float;
 
-use crate::form::Form;
 use crate::form::ValidatedForm;
+use crate::form::{Form, Tag};
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::slot::SlotSchema;
+use crate::model::schema::text::TextSchema;
 use crate::model::schema::Schema;
 use crate::model::schema::StandardSchema;
 use crate::model::schema::{FieldSpec, ItemSchema};
@@ -1818,4 +1819,96 @@ fn test_nested() {
 
     assert!(Parent::schema().matches(&value));
     assert!(!Parent::schema().matches(&Value::Int32Value(1)));
+}
+
+#[test]
+fn tagged() {
+    #[derive(Clone)]
+    enum Level {
+        Info,
+        Trace,
+    }
+
+    impl Tag for Level {
+        fn from_string(tag: String) -> Result<Self, ()> {
+            match tag.to_lowercase().as_str() {
+                "info" => Ok(Level::Info),
+                "trace" => Ok(Level::Trace),
+                _ => Err(()),
+            }
+        }
+
+        fn as_string(&self) -> String {
+            let s = match self {
+                Level::Trace => "trace",
+                Level::Info => "info",
+            };
+            s.to_string()
+        }
+
+        fn enumerated() -> Vec<Self> {
+            vec![Level::Info, Level::Trace]
+        }
+    }
+
+    #[derive(Form, ValidatedForm)]
+    #[form(schema(all_items(of_kind(ValueKind::Int32))))]
+    struct S {
+        #[form(tag)]
+        level: Level,
+        a: i32,
+        b: i32,
+    }
+
+    let expected_schema = StandardSchema::HeadAttribute {
+        schema: Box::new(AttrSchema::new(
+            TextSchema::Or(vec![TextSchema::exact("info"), TextSchema::exact("trace")]),
+            StandardSchema::OfKind(ValueKind::Extant),
+        )),
+        required: true,
+        remainder: Box::new(StandardSchema::And(vec![
+            StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(
+                StandardSchema::Anything,
+                StandardSchema::OfKind(ValueKind::Int32),
+            )))),
+            StandardSchema::Layout {
+                items: vec![
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("a"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                    (
+                        ItemSchema::Field(SlotSchema::new(
+                            StandardSchema::text("b"),
+                            i32::schema(),
+                        )),
+                        true,
+                    ),
+                ],
+                exhaustive: true,
+            },
+        ])),
+    };
+
+    let valid = S {
+        level: Level::Info,
+        a: 1,
+        b: 2,
+    }
+    .as_value();
+
+    let invalid_value = Value::Record(
+        vec![Attr::of("S")],
+        vec![
+            Item::Slot(Value::text("a"), Value::Int32Value(1)),
+            Item::Slot(Value::text("b"), Value::text("invalid")),
+        ],
+    );
+
+    assert_eq!(S::schema(), expected_schema);
+    assert!(S::schema().matches(&valid));
+    assert!(!S::schema().matches(&invalid_value));
 }

@@ -152,7 +152,7 @@ impl Label {
                 let name = format!("__self_{}", index.index);
                 quote!(#name)
             }
-            Label::Foreign(ident, ..) => quote!(std::string::ToString::to_string(&#ident.clone())),
+            Label::Foreign(ident, ..) => quote!(swim_common::form::Tag::as_string(&#ident.clone())),
         }
     }
 }

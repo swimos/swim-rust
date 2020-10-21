@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use num_bigint::BigInt;
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::export::TokenStream2;
-use syn::{ExprPath, Lit, Meta, NestedMeta, Type};
+use syn::{ExprPath, Meta, NestedMeta, Type};
 
 use macro_helpers::{CompoundTypeKind, Context, Label, Symbol};
 
@@ -58,30 +58,17 @@ impl ValidatedFormDescriptor {
     /// while parsing the [`DeriveInput`] will be added to the [`Context`].
     pub fn from(
         context: &mut Context,
-        ident: &Ident,
         attributes: Vec<NestedMeta>,
         kind: CompoundTypeKind,
         form_descriptor: FormDescriptor,
     ) -> ValidatedFormDescriptor {
         let mut schema_opt = None;
         let mut all_items = false;
-        let mut label = Label::Unmodified(ident.clone());
 
         attributes.iter().for_each(|meta: &NestedMeta| match meta {
-            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
-                Lit::Str(s) => {
-                    let tag = s.value();
-                    if tag.is_empty() {
-                        context.error_spanned_by(meta, "New name cannot be empty")
-                    } else {
-                        label = Label::Renamed {
-                            new_label: tag,
-                            old_label: ident.clone(),
-                        }
-                    }
-                }
-                _ => context.error_spanned_by(meta, "Expected string literal"),
-            },
+            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => {
+                // no-op
+            }
             NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
                 list.nested.iter().for_each(|nested| {
                     let set_container_schema =
@@ -144,7 +131,7 @@ impl ValidatedFormDescriptor {
         });
 
         ValidatedFormDescriptor {
-            label,
+            label: form_descriptor.label.clone(),
             schema: schema_opt.unwrap_or(StandardSchema::None),
             all_items,
             form_descriptor,
@@ -167,32 +154,21 @@ impl<'f> ValidatedField<'f> {
 
         let field_schema = field_schema.to_token_stream();
 
-        if let Label::Foreign(ident, ..) = &form_field.label {
-            quote! {
-                swim_common::model::schema::FieldSpec::default(
-                    swim_common::model::schema::attr::AttrSchema::named(
-                        std::string::ToString::to_string(#ident.clone()),
-                        #field_schema,
-                    )
-                )
+        let ident = match &form_field.label {
+            Label::Unmodified(ident) => ident.to_string(),
+            Label::Renamed { new_label, .. } => new_label.clone(),
+            _ => {
+                // Caught by the form descriptor parser
+                unreachable!()
             }
-        } else {
-            let ident = match &form_field.label {
-                Label::Unmodified(ident) => ident.to_string(),
-                Label::Renamed { new_label, .. } => new_label.clone(),
-                _ => {
-                    // Caught by the form descriptor parser
-                    unreachable!()
-                }
-            };
-            quote! {
-                swim_common::model::schema::FieldSpec::default(
-                    swim_common::model::schema::attr::AttrSchema::named(
-                        #ident,
-                        #field_schema,
-                    )
+        };
+        quote! {
+            swim_common::model::schema::FieldSpec::default(
+                swim_common::model::schema::attr::AttrSchema::named(
+                    #ident,
+                    #field_schema,
                 )
-            }
+            )
         }
     }
 
@@ -226,9 +202,9 @@ impl<'f> ValidatedField<'f> {
                 quote! {
                     swim_common::model::schema::ItemSchema::Field(
                         swim_common::model::schema::slot::SlotSchema::new(
-                            swim_common::model::schema::StandardSchema::text(std::string::ToString::to_string(self.#ident.clone())),
+                            swim_common::model::schema::StandardSchema::text(swim_common::form::Tag::as_string(&(self.#ident.clone())),
                             #field_schema,
-                        )
+                        ))
                     )
                 }
             }
@@ -377,19 +353,13 @@ impl ToTokens for StandardSchema {
 /// path `#[form(schema(..))]`.
 pub fn type_contents_to_validated<'f>(
     ctx: &mut Context,
-    ident: &Ident,
     type_contents: TypeContents<'f, FormDescriptor, FormField<'f>>,
 ) -> TypeContents<'f, ValidatedFormDescriptor, ValidatedField<'f>> {
     match type_contents {
         TypeContents::Struct(repr) => TypeContents::Struct({
             let attrs = repr.input.attrs.get_attributes(ctx, FORM_PATH);
-            let descriptor = ValidatedFormDescriptor::from(
-                ctx,
-                ident,
-                attrs,
-                repr.compound_type,
-                repr.descriptor,
-            );
+            let descriptor =
+                ValidatedFormDescriptor::from(ctx, attrs, repr.compound_type, repr.descriptor);
 
             StructRepr {
                 input: repr.input,
@@ -405,7 +375,6 @@ pub fn type_contents_to_validated<'f>(
                     let attrs = variant.syn_variant.attrs.get_attributes(ctx, FORM_PATH);
                     let descriptor = ValidatedFormDescriptor::from(
                         ctx,
-                        ident,
                         attrs,
                         variant.compound_type,
                         variant.descriptor,
