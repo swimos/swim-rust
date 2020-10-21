@@ -27,8 +27,6 @@ A CLI tool is available for creating configuration files for client instances [h
 [Swim Developer website](https://www.swimos.org/) |
 [Chat](https://gitter.im/swimos)
 
-## Development
-
 ### Dependencies
 [Formatting](https://github.com/rust-lang/rustfmt): `rustup component add rustfmt`<br>
 [Clippy](https://github.com/rust-lang/rust-clippy): `rustup component add clippy`<br>
