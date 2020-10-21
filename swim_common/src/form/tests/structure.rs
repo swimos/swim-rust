@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::form::Form;
+use crate::model::time::Timestamp;
 use crate::model::{Attr, Item, Value};
 
 mod swim_common {
@@ -467,13 +468,13 @@ fn header_body_replace() {
 #[test]
 fn test_tag_plain() {
     #[derive(Form, Debug, PartialEq, Clone)]
-    struct TestyWesty {
+    struct TestStruct {
         #[form(tag)]
         a: String,
         b: i64,
     }
 
-    let s = TestyWesty {
+    let s = TestStruct {
         a: String::from("test"),
         b: 2,
     };
@@ -481,9 +482,64 @@ fn test_tag_plain() {
         vec![Attr::of("test")],
         vec![Item::Slot(Value::text("b"), Value::Int64Value(2))],
     );
+
     assert_eq!(s.as_value(), rec);
 
     // assert_eq!(TestyWesty::try_from_value(&rec), Ok(s.clone()));
     // assert_eq!(TestyWesty::try_convert(rec.clone()), Ok(s.clone()));
     // assert_eq!(s.into_value(), rec);
+}
+
+#[test]
+fn test_enum_tag() {
+    #[derive(Clone, PartialEq, Debug)]
+    enum Level {
+        Trace,
+        Error,
+    }
+
+    impl Default for Level {
+        fn default() -> Self {
+            Level::Trace
+        }
+    }
+
+    impl ToString for Level {
+        fn to_string(&self) -> String {
+            let s = match self {
+                Level::Trace => "trace",
+                Level::Error => "error",
+            };
+
+            s.to_string()
+        }
+    }
+
+    #[derive(Form, Debug, PartialEq, Clone)]
+    struct LogEntry<F: Form> {
+        #[form(tag)]
+        level: Level,
+        #[form(header)]
+        time: Timestamp,
+        message: F,
+    }
+
+    let now = Timestamp::now();
+
+    let entry = LogEntry {
+        level: Level::Error,
+        time: now,
+        message: String::from("Not good"),
+    };
+
+    assert_eq!(
+        entry.as_value(),
+        Value::Record(
+            vec![Attr::of((
+                "error",
+                Value::from_vec(vec![Item::Slot(Value::text("time"), now.as_value())])
+            ))],
+            vec![Item::Slot(Value::text("message"), Value::text("Not good"))]
+        )
+    )
 }

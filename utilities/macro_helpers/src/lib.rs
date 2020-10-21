@@ -55,6 +55,18 @@ pub enum StructureKind {
     Struct,
 }
 
+impl StructureKind {
+    pub fn is_struct(&self) -> bool {
+        matches!(self, StructureKind::Struct)
+    }
+    pub fn is_enum(&self) -> bool {
+        matches!(self, StructureKind::Enum)
+    }
+    pub fn is_union(&self) -> bool {
+        matches!(self, StructureKind::Union)
+    }
+}
+
 impl From<&syn::Data> for StructureKind {
     fn from(data: &Data) -> Self {
         match &data {

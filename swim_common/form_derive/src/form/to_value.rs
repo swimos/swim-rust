@@ -132,13 +132,13 @@ fn compute_as_value(
     let (mut headers, mut items, attributes) = fields
         .iter()
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut items, mut attributes), f| {
-            let name = &f.label;
+            let label = &f.label;
             let manifest = &descriptor.manifest;
 
             match &f.kind {
                 FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
-                    match name {
+                    match label {
                         un @ Label::Anonymous(_) => {
                             let ident = un.as_ident();
                             let func = fn_factory(&ident);
@@ -152,8 +152,8 @@ fn compute_as_value(
                     }
                 }
                 FieldKind::Attr => {
-                    let name_str = name.to_string();
-                    let func = fn_factory(&name.as_ident());
+                    let name_str = label.to_string();
+                    let func = fn_factory(&label.as_ident());
 
                     attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #func)),);
                 }
@@ -170,7 +170,7 @@ fn compute_as_value(
                     });
                 }
                 FieldKind::HeaderBody => {
-                    let func = fn_factory(&name.as_ident());
+                    let func = fn_factory(&label.as_ident());
 
                     if manifest.has_header_fields {
                         headers = quote!(#headers swim_common::model::Item::ValueItem(#func),);
@@ -178,8 +178,11 @@ fn compute_as_value(
                         headers = quote!(, #func);
                     }
                 }
+                FieldKind::Tagged => {
+                    // no-op
+                }
                 _ => {
-                    match name {
+                    match label {
                         un @ Label::Anonymous(_) => {
                             let ident = un.as_ident();
                             let func = fn_factory(&ident);

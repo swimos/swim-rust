@@ -17,7 +17,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Attribute, DeriveInput, Lit, Meta, NestedMeta, Variant};
 
-use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Label, Symbol};
+use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Label, StructureKind, Symbol};
 use syn::export::ToTokens;
 
 pub const FORM_PATH: Symbol = Symbol("form");
@@ -110,18 +110,22 @@ pub fn parse_struct<'a>(
     context: &mut Context,
     fields: &'a syn::Fields,
     container_label: &mut Label,
+    structure_kind: StructureKind,
 ) -> (CompoundTypeKind, Vec<FormField<'a>>, FieldManifest) {
     match fields {
         syn::Fields::Named(fields) => {
-            let (fields, manifest) = fields_from_ast(context, &fields.named, container_label);
+            let (fields, manifest) =
+                fields_from_ast(context, &fields.named, container_label, structure_kind);
             (CompoundTypeKind::Struct, fields, manifest)
         }
         syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
-            let (fields, manifest) = fields_from_ast(context, &fields.unnamed, container_label);
+            let (fields, manifest) =
+                fields_from_ast(context, &fields.unnamed, container_label, structure_kind);
             (CompoundTypeKind::NewType, fields, manifest)
         }
         syn::Fields::Unnamed(fields) => {
-            let (fields, manifest) = fields_from_ast(context, &fields.unnamed, container_label);
+            let (fields, manifest) =
+                fields_from_ast(context, &fields.unnamed, container_label, structure_kind);
             (CompoundTypeKind::Tuple, fields, manifest)
         }
         syn::Fields::Unit => (CompoundTypeKind::Unit, Vec::new(), FieldManifest::default()),
@@ -134,6 +138,7 @@ pub fn fields_from_ast<'t>(
     ctx: &mut Context,
     fields: &'t Punctuated<syn::Field, syn::Token![,]>,
     container_label: &mut Label,
+    structure_type: StructureKind,
 ) -> (Vec<FormField<'t>>, FieldManifest) {
     let mut name_opt = None;
 
@@ -265,9 +270,11 @@ pub fn fields_from_ast<'t>(
                                 Some(ident) => {
                                     if container_label.is_modified() {
                                         ctx.error_spanned_by(path, "Cannot apply a tag using a field when one has already been applied at the container level");   
+                                    } else if structure_type.is_enum(){
+                                        ctx.error_spanned_by(path, "Deriving tags is not supported by enumerations. Use #[form(tag = \"....\")] on this variant instead")
                                     } else {
                                         name_opt = Some(Label::Foreign(ident.clone(), original.ty.to_token_stream(), container_label.original()));
-                                        set_kind(FieldKind::Skip, ctx, false);
+                                        set_kind(FieldKind::Tagged, ctx, false);
                                     }
                                 }
                                 None => ctx.error_spanned_by(path, "Invalid on anonymous fields"),
@@ -355,6 +362,7 @@ pub enum FieldKind {
     /// The field will be ignored during transformations. The decorated field must implement
     /// [`Default`].
     Skip,
+    Tagged,
 }
 
 impl Default for FieldKind {

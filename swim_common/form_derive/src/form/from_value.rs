@@ -125,53 +125,34 @@ fn build_attr_quote(
     into: bool,
 ) -> TokenStream2 {
     if header_body.is_empty() {
-        header_body = quote!(_ => return Err(swim_common::form::FormErr::Malformatted),);
+        header_body = quote!(_ => return Err(swim_common::form::FormErr::MismatchedTag),);
     }
 
-    if into {
-        quote! {
-            let mut attr_it = attrs.into_iter();
-            while let Some(swim_common::model::Attr { name, value }) = attr_it.next() {
-                match name.as_ref() {
-                     #name_str => match value {
-                        swim_common::model::Value::Record(_attrs, items) => {
-                            let mut iter_items = items.into_iter();
-                            while let Some(item) = iter_items.next() {
-                                match item {
-                                    #headers
-                                    i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item in tag body: {:?}", i))),
-                                }
-                            }
-                        }
-                        swim_common::model::Value::Extant => {},
-                        #header_body
-                    },
-                    #attributes
-                    _ => return Err(swim_common::form::FormErr::MismatchedTag),
-                }
-            }
-        }
+    let iterator = if into {
+        quote!(into_iter)
     } else {
-        quote! {
-            let mut attr_it = attrs.iter();
-            while let Some(swim_common::model::Attr { name, ref value }) = attr_it.next() {
-                match name.as_ref() {
-                     #name_str => match value {
-                        swim_common::model::Value::Record(_attrs, items) => {
-                            let mut iter_items = items.iter();
-                            while let Some(item) = iter_items.next() {
-                                match item {
-                                    #headers
-                                    i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item in tag body: {:?}", i))),
-                                }
+        quote!(iter)
+    };
+
+    quote! {
+        let mut attr_it = attrs.#iterator();
+        while let Some(swim_common::model::Attr { name, value }) = attr_it.next() {
+            match name.as_ref() {
+                 #name_str => match value {
+                    swim_common::model::Value::Record(_attrs, items) => {
+                        let mut iter_items = items.#iterator();
+                        while let Some(item) = iter_items.next() {
+                            match item {
+                                #headers
+                                i => return Err(swim_common::form::FormErr::Message(format!("Unexpected item in tag body: {:?}", i))),
                             }
                         }
-                        swim_common::model::Value::Extant => {},
-                        #header_body
-                    },
-                    #attributes
-                    _ => return Err(swim_common::form::FormErr::MismatchedTag),
-                }
+                    }
+                    swim_common::model::Value::Extant => {},
+                    #header_body
+                },
+                #attributes
+                _ => return Err(swim_common::form::FormErr::MismatchedTag),
             }
         }
     }
@@ -337,6 +318,9 @@ fn parse_elements(
                         };
                     };
                 }
+                FieldKind::Tagged=>{
+                    // no-op
+                },
                 _ => {
                     let fn_call = fn_factory(quote!(v));
 

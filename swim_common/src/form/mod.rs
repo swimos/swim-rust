@@ -532,7 +532,7 @@ pub trait Form: Sized {
 /// ## Attributes
 /// The `ValidatedForm` macro supports attributes in the path of `#[form(schema(..))]`.
 ///
-/// The derivo macro supports all the attributes that the `Form` derive macro supports. With the
+/// The derive macro supports all the attributes that the `Form` derive macro supports. With the
 /// exception of any field marked as `#[form(skip)]` may not also contain a schema.
 ///
 /// Similar to the `Form` derive, `ValidatedForm` derivation supports attributes at `struct`,

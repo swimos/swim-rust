@@ -16,7 +16,7 @@ use crate::parser::{
     parse_struct, Attributes, EnumVariant, FieldManifest, FormField, StructRepr, TypeContents,
     FORM_PATH, SCHEMA_PATH, TAG_PATH,
 };
-use macro_helpers::{Context, Label};
+use macro_helpers::{Context, Label, StructureKind};
 use proc_macro2::Ident;
 use syn::{Data, Lit, Meta, NestedMeta};
 
@@ -42,8 +42,12 @@ pub fn build_type_contents<'t>(
                     let attributes = variant.attrs.get_attributes(context, FORM_PATH);
                     let mut container_label =
                         parse_container_tag(context, &variant.ident, attributes);
-                    let (compound_type, fields, manifest) =
-                        parse_struct(context, &variant.fields, &mut container_label);
+                    let (compound_type, fields, manifest) = parse_struct(
+                        context,
+                        &variant.fields,
+                        &mut container_label,
+                        StructureKind::Enum,
+                    );
                     let descriptor = FormDescriptor::from(container_label, manifest);
 
                     EnumVariant {
@@ -61,8 +65,12 @@ pub fn build_type_contents<'t>(
         Data::Struct(data) => {
             let attributes = input.attrs.get_attributes(context, FORM_PATH);
             let mut container_label = parse_container_tag(context, &input.ident, attributes);
-            let (compound_type, fields, manifest) =
-                parse_struct(context, &data.fields, &mut container_label);
+            let (compound_type, fields, manifest) = parse_struct(
+                context,
+                &data.fields,
+                &mut container_label,
+                StructureKind::Struct,
+            );
             let descriptor = FormDescriptor::from(container_label, manifest);
 
             TypeContents::Struct(StructRepr {
